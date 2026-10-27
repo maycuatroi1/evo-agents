@@ -82,12 +82,17 @@ PERMISSION = {
     hub_events.BASELINE: "canvas:read",
     hub_events.SIGNALS: "signals:read",
     hub_events.SRS_APPROVED: "srs:read",
+    hub_events.SRS_USE_CASE_APPROVED: "srs:read",
     hub_events.TASK_STATUS: "tasks:read",
     NOTIFICATION: "notifications:send",
 }
 # the core plugin each of these kinds belongs to, which takes it ungranted: srs keeps the tasks of an approved version
 # in step from its own event (``evo_agents.hub.server.srs.auto_tasks``)
-OWN = {hub_events.SRS_APPROVED: "srs", hub_events.TASK_STATUS: "tasks"}
+OWN = {
+    hub_events.SRS_APPROVED: "srs",
+    hub_events.SRS_USE_CASE_APPROVED: "srs",
+    hub_events.TASK_STATUS: "tasks",
+}
 MAX_ATTEMPTS = 8
 BACKOFF_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600

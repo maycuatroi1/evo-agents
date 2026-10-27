@@ -9,7 +9,8 @@ Quyết định): where a person decides the direction of the project.
   those claims (any writer once the plugin canvas's self_approval is on); and each open proposal of a claim (a brainstorm's, the value check's, the Curator's lens product), for
   any writer. Both are read under their labels, as the plugin canvas reads them; an archived canvas has none.
 - gate 3, ``policy``: each pending proposal of @builder of kind policy or goal, each repo of the merge queue whose
-  breaker tripped, and the Loop's own breaker tripped; an admin decides each.
+  breaker tripped, each active goal that aims at an SRS document whose baseline is not confirmed (``srs_baseline``,
+  plan srs-backlog-loop; ``evo-agents hub loop baseline``), and the Loop's own breaker tripped; an admin decides each.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, goals, tables
+from evo_agents.hub.server.loop import baseline
 from evo_agents.hub.server.loop.board_items import (
     ADMIN,
     WRITER,
@@ -226,6 +228,15 @@ async def policy_items(conn: AsyncConnection, reading: Reading, crowd: People) -
     for row in await conn.execute(query.order_by(mb.c.repo)):
         title = f"The merge queue of {row.repo} stopped: {line(row.reason or row.cause or 'its breaker tripped')}"
         found.append(item("merge_breaker", title, row.tripped_at, ADMIN, admins, queue, refs={"repo": row.repo}))
+    for row in await baseline.waiting(conn, reading.project_id):
+        title = (
+            f"Baseline of goal G-{row.number} on SRS document {row.slug} waits for an admin: "
+            "the Loop makes no build for it until it is confirmed "
+            f"(evo-agents hub loop baseline --goal G-{row.number})"
+        )
+        link = project_path(reading.project, "goals")
+        refs = {"goal": f"G-{row.number}", "document": row.slug}
+        found.append(item("srs_baseline", title, row.since, ADMIN, admins, link, refs=refs))
     s = tables.loop_states
     query = select(s.c.breaker_reason, s.c.tripped_at).where(
         s.c.project_id == reading.project_id, s.c.breaker == TRIPPED

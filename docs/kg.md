@@ -374,11 +374,20 @@ that repo, a bare SHA (7 to 40 hex digits, with a letter and a digit) in a step'
 step's `repo` first, then of every repo; a SHA no source read keeps a `Commit` node of its own, `commit:<sha>` or
 `commit:<repo>@<sha>`, as before.
 
+A commit's message is the item's text (redacted like a file, cut at 20,000 characters, labelled integrity U). The text
+of a commit, of a pull request and the comments of a source file (a line comment or a `/* */` block of the common
+languages) are read for the codes of the project's `identifiers`: a code gives a `mentions` edge from the commit, the
+pull request or the file to the node `<kind>:<code>`, such as `usecase:UC CCACT-372`. An identifier may carry
+`aliases`, `{alias: code}`: a mention of an alias (the old number `UC 41`) links to the node of its code, so no node
+has the alias as its id. The hub's srs plugin gives these identifiers and the use case nodes, with `props.approval`
+(`approved`, `in_review` or `draft`) and `props.aliases`.
+
 **Pull requests.** For a repo whose `origin` in harness.yaml is on GitHub, the git source also reads its pull
 requests (`evo_agents/kg/connectors/github.py`): an item `<source>:pr:<number>`, a node of kind `PullRequest`
 named by its title, with `number`, `status` (open, closed or merged), `head` and `base` branches and
 `merge_commit` in its props, and a `merged_as` edge to the commit that merged it when a source read that commit. The
-body and the comments of a pull request are never read; the item is labelled integrity U for its title. A step
+comments of a pull request are never read; its body is the item's text, redacted like a file and cut at 20,000
+characters, and the item is labelled integrity U for its title and body. A step
 mentions a pull request by its URL, `owner/repo#57`, `<repo>#57` with a repo name of harness.yaml, or "PR #57" in
 the text of a step whose `repo` is that repo. The first read takes the 3,000 most recently updated; later reads only
 those updated since the newest the cursor saw (`pulls.since`), so a pull request is never removed. The token is the

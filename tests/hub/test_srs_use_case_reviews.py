@@ -56,13 +56,13 @@ def test_use_case_reviews_every_use_case_approved_approves_the_version_and_submi
         done = one(client, hub["other"], 1, ref)
         assert done.status_code == 200, done.text
         assert done.json()["state"] == "in_review"
-    assert stored(hub_db) == []
+    assert stored(hub_db, "srs.version.approved") == []
     last = one(client, hub["other"], 1, "UC RET-1", body="Fine")
     assert last.status_code == 200, last.text
     assert last.json()["state"] == "approved"
     assert {c["code"]: c["state"] for c in last.json()["use_cases"]} == dict.fromkeys(CASES, "approved")
     assert states(client, hub["reader"], 1) == dict.fromkeys(CASES, "approved"), "the version approved last keeps them"
-    (event,) = stored(hub_db)
+    (event,) = stored(hub_db, "srs.version.approved")
     assert (event["version"], event["document"]) == (1, "demo-shop")
     first = last.json()["use_cases"][2]
     assert (first["code"], first["change"]) == ("UC RET-1", "added")
@@ -123,7 +123,7 @@ def test_use_case_reviews_a_later_version_needs_only_what_it_changes(client, hub
     assert refused.status_code == 422 and "UC ORD-1" in refused.json()["message"]
     done = one(client, hub["other"], 2, "UC ORD-1")
     assert done.status_code == 200 and done.json()["state"] == "approved"
-    assert len(stored(hub_db)) == 2
+    assert len(stored(hub_db, "srs.version.approved")) == 2
 
 
 def test_use_case_reviews_a_policy_of_two_roles_is_filled_per_use_case_or_by_a_version_wide_approval(client, hub):
@@ -206,3 +206,48 @@ def test_use_case_reviews_an_open_decide_finding_holds_an_approval_but_not_a_req
     asked = one(client, hub["other"], 1, "UC ORD-1", "request_changes", body="Settle the retries first")
     assert asked.status_code == 200 and asked.json()["state"] == "in_review", asked.text
     assert states(client, hub["chi"], 1)["UC ORD-1"] == "changes_requested"
+
+
+def test_use_case_reviews_each_use_case_approved_emits_its_event_once_before_the_versions(client, hub, hub_db):
+    imported(client, hub["chi"])
+    submitted(client, hub["chi"], 1)
+    kind = "srs.use_case.approved"
+    assert one(client, hub["other"], 1, "UC ORD-1").status_code == 200
+    (first,) = stored(hub_db, kind)
+    assert (first["document"], first["version"], first["code"], first["approver"]) == (
+        "demo-shop",
+        1,
+        "UC ORD-1",
+        "someone-else",
+    )
+    assert first["parent"] and first["claim"] is None and first["approver_id"] and first["version_id"]
+    assert one(client, hub["owner"], 1, "UC ORD-1", "request_changes", body="Again").status_code == 200
+    assert states(client, hub["chi"], 1)["UC ORD-1"] == "changes_requested"
+    assert one(client, hub["owner"], 1, "UC ORD-1").status_code == 200  # approved again: no second event
+    assert one(client, hub["other"], 1, "UC ORD-2").status_code == 200
+    assert one(client, hub["other"], 1, "UC RET-1").json()["state"] == "approved"
+    assert [e["code"] for e in stored(hub_db, kind)] == CASES, "each once, in the order of the reviews"
+    assert len(stored(hub_db, "srs.version.approved")) == 1
+
+
+def test_use_case_reviews_a_version_wide_approval_emits_the_use_cases_it_approves(client, hub, hub_db):
+    imported(client, hub["chi"])
+    submitted(client, hub["chi"], 1)
+    assert whole(client, hub["other"], 1).json()["state"] == "approved"
+    assert [e["code"] for e in stored(hub_db, "srs.use_case.approved")] == CASES
+    assert len(stored(hub_db, "srs.version.approved")) == 1
+
+
+def test_use_case_reviews_the_event_carries_the_claim_field_and_the_parent_heading(client, hub, hub_db):
+    imported(client, hub["chi"])
+    submitted(client, hub["chi"], 1)
+    assert whole(client, hub["other"], 1).json()["state"] == "approved"
+    cart = item(client, hub["chi"], "UC ORD-1")
+    table = "| Item | Content |\n|---|---|\n"
+    assert table in cart["body"]
+    saved(client, hub["chi"], 1, {"key": cart["key"], "body": cart["body"].replace(table, table + "| Claim | G-3 |\n")})
+    submitted(client, hub["chi"], 2)
+    assert one(client, hub["other"], 2, "UC ORD-1").status_code == 200
+    first, second = [e for e in stored(hub_db, "srs.use_case.approved") if e["code"] == "UC ORD-1"]
+    assert (first["version"], first["claim"]) == (1, None)
+    assert (second["version"], second["claim"], second["parent"]) == (2, "G-3", first["parent"])

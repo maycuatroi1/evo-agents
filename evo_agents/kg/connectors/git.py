@@ -47,9 +47,11 @@ Besides the files, a run reads the history of the ref: an item ``<source>:commit
 commit reachable from the commit read, with its parents, its committer time, its author's email (``author_email``, as
 the commit records it; the build keeps it on the Commit node, labelled as the source like every other prop) and the
 paths it changed that the source does not exclude (a merge's against its first parent, at most MAX_COMMIT_PATHS of
-them, ``files`` counting them all); never its message. For a repo whose origin is on GitHub it also reads the pull
-requests (``github``): an item ``<source>:pr:<number>`` (kind ``pr``) with the title, the state (open, closed or
-merged), the head and base branches and the merge commit, labelled integrity U; ``pulls: false`` on the source turns
+them, ``files`` counting them all) and its message as the item's text, with its secrets redacted like a file's and
+cut at MAX_TEXT_CHARS, labelled integrity U as it is free text: the link stage reads the codes it names. For a repo
+whose origin is on GitHub it also reads the pull requests (``github``): an item ``<source>:pr:<number>`` (kind
+``pr``) with the title, the state (open, closed or merged), the head and base branches, the merge commit and the
+body as the item's text (redacted and cut the same way), labelled integrity U; ``pulls: false`` on the source turns
 that off. A run whose cursor has the input of this run reads only the commits since the cursor's commit and the pull
 requests updated since the newest one it saw (``pulls.since`` in the cursor); their listings are then not complete,
 so nothing read before goes. Any other run reads the whole history, and its complete listing of commits removes those
@@ -75,6 +77,7 @@ from evo_agents.kg.redact import redact_file
 # Keys of a source that say when or how it runs, or what the build does with its items: they leave the items as they
 # are, so changing one does not make the next sync read the commit again.
 NOT_READ = frozenset({"refresh", "timeout", "fetch", "deletion", "credentials", "label", "code"})
+MAX_TEXT_CHARS = 20_000  # characters of a commit message or a pull request's body the item keeps
 MAX_COMMIT_PATHS = 100  # paths a commit item names; a commit over that is a sweep, and the graph keeps its first ones
 
 
@@ -208,9 +211,16 @@ def prior_cursor(ctx) -> dict:
     return cursor if cursor.get("commit") and cursor.get("input") == read_input(ctx) else {}
 
 
+def text_body(text: str) -> tuple[dict | None, dict[str, int]]:
+    """The ``body`` of an item for free text read from a forge or a commit (a message, a pull request's description):
+    its secrets redacted like a file's, cut at MAX_TEXT_CHARS; None for a text with nothing in it."""
+    text, redactions = redact_file(text.strip(), "message.txt")
+    return ({"format": "text", "text": text[:MAX_TEXT_CHARS]} if text else None), redactions
+
+
 def commit_item(sid: str, repo_name: str, origin: str, commit: dict, exclude, allow) -> dict:
-    """The item of one commit of the history: what it changed, by path, and its author's email when it names one; no
-    word of its message."""
+    """The item of one commit of the history: what it changed, by path, its author's email when it names one, and its
+    message as the item's text, redacted, cut and labelled integrity U (``text_body``)."""
     paths = sorted(path for path in commit["paths"] if not excluded(path, exclude, allow))
     props = {
         "repo": repo_name,
@@ -232,6 +242,12 @@ def commit_item(sid: str, repo_name: str, origin: str, commit: dict, exclude, al
         "title": f"{repo_name}@{commit['sha'][:10]}",
         "props": props,
     }
+    body, redactions = text_body(commit.get("message") or "")
+    if body:
+        item["body"] = body
+        item["label"] = {"integrity": "U"}
+    if redactions:
+        props["redactions"] = redactions
     uri = _git.commit_url(origin, commit["sha"]) if origin else None
     if uri:
         item["uri"] = uri
@@ -270,21 +286,27 @@ def history_items(ctx, repo: Path, commit: str, repo_name: str, origin: str, pri
 
 
 def pull_item(sid: str, repo_name: str, project: str, pull: dict) -> dict:
-    """The item of one pull request: number, title, state, branches and merge commit; integrity U, as its title is
-    free text. The revision is a digest of what it holds, so a pull request that only got a comment keeps it."""
+    """The item of one pull request: number, title, body, state, branches and merge commit; integrity U, as its title
+    and body are free text. The revision is a digest of what it holds, so a pull request that only got a comment keeps
+    it."""
     props = {"repo": repo_name, "github": project, "number": pull["number"], "status": pull["status"]}
     props.update({key: pull[key] for key in ("head", "base", "merge_commit") if pull.get(key)})
     title = pull["title"] or f"#{pull['number']}"
+    body, redactions = text_body(pull.get("body") or "")
+    if redactions:
+        props["redactions"] = redactions
     item = {
         "id": f"{sid}:pr:{pull['number']}",
         "kind": "pr",
-        "rev": sha256(canonical_json({"title": title, "props": props})).removeprefix("sha256:"),
+        "rev": sha256(canonical_json({"title": title, "body": body, "props": props})).removeprefix("sha256:"),
         "rev_time": pull["updated"],
         "rev_exact": True,
         "title": title,
         "props": props,
         "label": {"integrity": "U"},
     }
+    if body:
+        item["body"] = body
     if pull.get("url"):
         item["uri"] = pull["url"]
     return finalize_item(item)

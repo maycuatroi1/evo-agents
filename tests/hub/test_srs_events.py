@@ -91,7 +91,7 @@ def test_srs_events_an_approval_emits_the_codes_it_changed_to_plugins_granted_sr
     assert stored(hub_db) == [], "a draft and a submit emit nothing"
     assert review(client, hub["other"], 1).json()["state"] == "approved"
 
-    (first,) = stored(hub_db)
+    (first,) = stored(hub_db, APPROVED)
     added = first["items"]["added"]
     assert {key: first[key] for key in ("v", "document", "version", "previous", "approver")} == {
         "v": 1,
@@ -105,13 +105,14 @@ def test_srs_events_an_approval_emits_the_codes_it_changed_to_plugins_granted_sr
     assert (first["items"]["changed"], first["items"]["dropped"]) == ({}, {})
     assert "Place an order" not in json.dumps(first), "ids and codes, never a text"
     # srs takes its own event ungranted, sample with srs:read, runs-only not at all
-    assert deliveries(hub_db) == [("sample", "run-changed", APPROVED, first), ("srs", "approvals", APPROVED, first)]
+    sent_all = [row for row in deliveries(hub_db) if row[2] == APPROVED]
+    assert sent_all == [("sample", "run-changed", APPROVED, first), ("srs", "approvals", APPROVED, first)]
 
     fake = FakeHost()
     client.app.state.plugin_host = fake
     report = client.portal.call(lambda: plugin_events.deliver(client.app.state.engine, host=fake))
-    assert (report["delivered"], report["retried"], report["failed"]) == (2, 0, 0)
-    (sent,) = [call for call in fake.calls if call.method == "event"]
+    assert (report["delivered"], report["retried"], report["failed"]) == (5, 0, 0)  # and the 3 use cases
+    (sent,) = [c for c in fake.calls if c.method == "event" and c.params["kind"] == APPROVED]
     assert (sent.plugin, sent.params["kind"], sent.params["payload"]) == ("sample", APPROVED, first)
     assert protocol.params_problems("event", sent.params) == []
 
@@ -123,7 +124,7 @@ def test_srs_events_an_approval_emits_the_codes_it_changed_to_plugins_granted_sr
     assert retired.status_code == 200 and retired.json()["version"] == 3, retired.text
     submitted(client, hub["chi"], 3)
     assert review(client, hub["other"], 3).json()["state"] == "approved"
-    third = stored(hub_db)[-1]
+    third = stored(hub_db, APPROVED)[-1]
     assert (third["version"], third["previous"]) == (3, 1)
     assert third["items"]["added"] == {"use_case": ["UC ORD-3"]}
     assert third["items"]["changed"]["business_rule"] == ["BR ORD1-1"]
@@ -149,7 +150,9 @@ def test_srs_events_the_tasks_of_an_approval_come_from_its_delivery_and_a_replay
     assert review(client, hub["other"], 1).json()["state"] == "approved"
     # the route no longer keeps the tasks: until the event is delivered there is none, and no split run
     assert counts(hub_db) == (0, 0, 0, 1) and approval_rows(hub_db) == []
-    assert [kind for (kind,) in sql(hub_db, select(tables.hub_events.c.kind))] == [APPROVED]
+    assert [
+        kind for (kind,) in sql(hub_db, select(tables.hub_events.c.kind).where(tables.hub_events.c.kind == APPROVED))
+    ] == [APPROVED]
 
     delivered(client)
     assert [t["ref"] for t in tasks(client, hub["reader"])] == ["T-1", "T-2", "T-3"]
@@ -169,7 +172,7 @@ def test_srs_events_the_tasks_of_an_approval_come_from_its_delivery_and_a_replay
     )
 
     # delivered again, twice, and called again with the same params: no task, comment, history row, run or event more
-    before, events_before = counts(hub_db), len(stored(hub_db))
+    before, events_before = counts(hub_db), len(stored(hub_db, APPROVED))
     for _ in range(2):
         client.portal.call(_pending_again, client.app.state.engine)
         assert delivered(client)["delivered"] == 1
@@ -178,7 +181,7 @@ def test_srs_events_the_tasks_of_an_approval_come_from_its_delivery_and_a_replay
     params = {"event": "approvals", "project": PROJECT, "payload": payload, "kind": APPROVED, "delivery": delivery_id}
     context = CoreContext("srs", client.app.state.engine, None, PROJECT, project_id(hub_db))
     assert client.portal.call(on_version_approved, params, context) == {}
-    assert counts(hub_db) == before == (3, 0, 6, 2) and len(stored(hub_db)) == events_before
+    assert counts(hub_db) == before == (3, 0, 6, 2) and len(stored(hub_db, APPROVED)) == events_before
     assert len(approval_rows(hub_db)) == 1
 
     # version 2 drops UC RET-1: its open frame task T-3 is cancelled, and tasks.status says so

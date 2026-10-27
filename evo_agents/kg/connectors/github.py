@@ -1,8 +1,8 @@
-"""Pull requests of a repo on GitHub, for the git connector: number, title, state, branches and merge commit.
+"""Pull requests of a repo on GitHub, for the git connector: number, title, body, state, branches and merge commit.
 
 A run asks ``GET /repos/{owner}/{repo}/pulls`` for every state, the most recently updated first, PAGE at a time, and
 stops at the first pull request updated before ``since`` (the newest ``updated_at`` the run before it saw), or after
-MAX_PAGES. Only those fields are kept: the body and the comments of a pull request, its free text, are never read.
+MAX_PAGES. Only those fields are kept: the comments of a pull request are never read; its body is, for the codes it names.
 
 The token comes from the source's credentials (GH_TOKEN or GITHUB_TOKEN in its environment), else this process's
 environment, else ``gh auth token``; without one no pull request is read. The token only ever goes into the
@@ -120,6 +120,7 @@ def shape(raw: dict) -> dict | None:
     return {
         "number": number,
         "title": str(raw.get("title") or ""),
+        "body": str(raw.get("body") or ""),
         "status": "merged" if merged else str(raw.get("state") or "open"),
         "head": head.get("ref") if isinstance(head.get("ref"), str) else None,
         "base": base.get("ref") if isinstance(base.get("ref"), str) else None,

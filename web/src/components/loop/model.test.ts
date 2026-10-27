@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { GoalMetric, LoopGoal, LoopItem } from "@/lib/loop-queries";
+import type { BaselineItem, GoalMetric, LoopGoal, LoopItem } from "@/lib/loop-queries";
 
-import { byState, chainsOf, goalWord, loopSearch, NO_LOOP_FILTERS, openCount, progressOf, readLoopFilters, subjectOf, totalCount } from "./model";
+import { backlogGroups, backlogOpen, byState, chainsOf, goalWord, loopSearch, NO_LOOP_FILTERS, openCount, progressOf, readLoopFilters, subjectOf, totalCount } from "./model";
 
 function item(id: number, values: Partial<LoopItem> = {}): LoopItem {
   return {
@@ -115,5 +115,24 @@ describe("goals", () => {
     const lower: GoalMetric = { ...METRIC, comparator: "<=", target: 0.05 };
     expect(progressOf(lower, figure(0.1, false))).toBeCloseTo(50);
     expect(progressOf(lower, figure(0, true))).toBe(100);
+  });
+});
+
+function useCase(code: string, heading: string | null, state: BaselineItem["state"]): BaselineItem {
+  return { code, title: code, heading, state, source: "proposal", reason: "", evidence: [] };
+}
+
+describe("backlogGroups", () => {
+  const items = [useCase("UC-1", "Cart", "undelivered"), useCase("UC-2", null, "unknown"), useCase("UC-3", "Cart", "delivered"), useCase("UC-4", "Pay", "undelivered")];
+
+  it("groups by heading in order of appearance and puts the use cases without one last", () => {
+    const groups = backlogGroups(items);
+    expect(groups.map((group) => group.heading)).toEqual(["Cart", "Pay", null]);
+    expect(groups[0]?.counts).toEqual({ undelivered: 1, delivering: 0, unknown: 0, delivered: 1 });
+  });
+
+  it("counts the backlog as the undelivered use cases", () => {
+    expect(backlogOpen(items)).toBe(2);
+    expect(backlogGroups([])).toEqual([]);
   });
 });

@@ -444,6 +444,41 @@ async def claim_request(conn: AsyncConnection, project_id: int, project: str, it
     return runs.clip("\n".join(lines), author.MAX_REQUEST_BYTES)
 
 
+async def srs_request(conn: AsyncConnection, project_id: int, project: str, item: ItemView) -> str:
+    """The request of the author run of build ``item``, made of one group of the backlog of a goal that aims at an SRS
+    document: one plan that delivers every use case of the group, with the goal, the problem it answers, the document
+    and each use case's code, title and version, and what the hub's merge queue asks of the plan. The plan's problems
+    are the goal's problem, and it names every code, as the Loop reads the use cases a plan delivers from them."""
+    goal = await goal_of(conn, item.goal_id)
+    d = tables.srs.documents
+    document = await conn.scalar(select(d.c.slug).where(d.c.id == item.srs_document_id)) or "its SRS document"
+    srs = item.detail.get("backlog") if isinstance(item.detail.get("backlog"), dict) else {}
+    cases = [case for case in srs.get("use_cases") or [] if isinstance(case, dict)]
+    problem = _problem_code(goal)
+    lines = [
+        f"Write one execution plan that delivers the use cases below of {document}, in project {project}: they are "
+        f"approved, not delivered yet, and share {_line(str(srs.get('title') or 'a group'))}. Plan the code, the tests "
+        "and what each use case needs to work as its text says; name every use case's code in the plan, in the steps "
+        "that build it, so that the plan shows which step answers which use case.",
+        f"The Loop of the project asks for it as work item #{item.id} ({item.key}). The plan is delivered as a whole: "
+        "when it is done and merged, every use case below counts as delivered.",
+        *merge_queue_lines(await _merged_by_queue(conn, project_id)),
+        "",
+        *_goal_lines(goal),
+        *_problem_lines(goal),
+        *_opportunity_lines(goal),
+    ]
+    if problem is not None:
+        lines.append(f"The plan answers problem {problem}: its problems are [{problem}].")
+    else:
+        lines.append("The goal answers no problem of the project: write the plan with no problems entry.")
+    lines += ["", f"The use cases {DATA}:"]
+    for case in cases:
+        version = f" (version {case['version']})" if case.get("version") else ""
+        lines.append(f"- {case.get('code')}{version}: {_line(str(case.get('title') or ''))}")
+    return runs.clip("\n".join(lines), author.MAX_REQUEST_BYTES)
+
+
 __all__ = [
     "author_request",
     "brainstorm_task",
@@ -451,5 +486,6 @@ __all__ = [
     "discover_task",
     "goal_of",
     "merge_queue_lines",
+    "srs_request",
     "use_case_task",
 ]

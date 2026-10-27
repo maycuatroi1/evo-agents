@@ -324,7 +324,7 @@ async def goal_figures(conn: AsyncConnection, project_id: int) -> list[LoopGoal]
     found = []
     for row in rows:
         metric = row.metric or None
-        value = await measure(conn, project_id, metric, now) if metric else None
+        value = await measure(conn, project_id, metric, now, goal_id=row.id) if metric else None
         comparator, target = (metric or {}).get("comparator"), (metric or {}).get("target")
         reached = None if value is None or comparator not in COMPARE else COMPARE[comparator](value, target)
         found.append(LoopGoal(code=goals.code(row.number), value=value, reached=reached, items=counted[row.id]))

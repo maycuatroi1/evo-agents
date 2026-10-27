@@ -2172,6 +2172,13 @@ category `loop` (run it again, drop it, leave it to a person), which the hub doe
 ```sh
 evo-agents hub loop status --project demo     # on or off, its breaker, cursor, last tick, work items by state
 evo-agents hub loop resume --project demo     # an admin resets the breaker that tripped
+evo-agents hub goal set G-1 --srs-document ordering --srs-heading "Cart" --metric srs.backlog.open --comparator "<=" \
+  --target 0 --aggregate last --window-days 1 --project demo      # aim a goal at an SRS document (--no-srs-document clears)
+evo-agents hub loop baseline --goal G-1 --project demo                 # preview the baseline the hub proposes from the graph
+evo-agents hub loop baseline --goal G-1 --set UC-1=delivered --heading Cart=undelivered --unknown undelivered \
+  --project demo                                                       # an admin fixes it by code, heading and the unknown ones
+evo-agents hub loop baseline --goal G-1 --confirm --project demo       # an admin confirms it, once: the Loop builds its backlog
+evo-agents hub loop adopt PLAN-ID --goal G-1 --use-cases UC-1 --project demo   # a plan of the hub becomes a deliver; more codes follow the first
 ```
 
 `GET /v1/projects/{p}/loop` is what `status` prints, for anyone with a grant; `POST /v1/projects/{p}/loop/resume` the

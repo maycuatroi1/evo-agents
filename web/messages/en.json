@@ -10588,7 +10588,8 @@
         "items": "Open work items",
         "deadline": "Deadline",
         "owner": "Owner"
-      }
+      },
+      "srsScope": "SRS {scope}"
     },
     "goal": {
       "meta": "{code} of {project}",
@@ -10614,7 +10615,10 @@
       "itemsSearch": "Work items of {goal}",
       "itemsCaption": "Work items of {goal}",
       "notFoundTitle": "No goal {code}",
-      "notFoundText": "The project has no goal of that code or alias."
+      "notFoundText": "The project has no goal of that code or alias.",
+      "srsScope": "SRS scope",
+      "srsScopeHeading": "{document}, under {heading}",
+      "backlogTitle": "SRS backlog"
     },
     "chain": {
       "meta": "Work item {id} of {project}",
@@ -10684,7 +10688,9 @@
       "yours": "Yours to decide",
       "chain": "Work item #{id}",
       "open": "Open",
-      "openLabel": "Open: {title}"
+      "openLabel": "Open: {title}",
+      "baselinePreview": "Preview the baseline",
+      "baselineHide": "Hide the baseline"
     },
     "boardKind": {
       "goal_review": "Monthly goal review",
@@ -10702,7 +10708,8 @@
       "merge_manual": "Merge by hand",
       "merge_sample": "Audit sample",
       "srs_review": "SRS review",
-      "srs_finding": "SRS finding"
+      "srs_finding": "SRS finding",
+      "srs_baseline": "SRS baseline"
     },
     "decidedBy": {
       "admin": "An admin",
@@ -10710,6 +10717,34 @@
       "run_owner": "The run's owner",
       "srs_reviewer": "An SRS reviewer",
       "chat_member": "A member of the chat"
+    },
+    "baseline": {
+      "title": "SRS backlog",
+      "scopeHeading": "{document}, under {heading}",
+      "noUseCases": "No approved use case in this scope yet.",
+      "noHeading": "No heading",
+      "count": "{count, number} {label}",
+      "state": {
+        "undelivered": "undelivered",
+        "delivering": "delivering",
+        "unknown": "unknown",
+        "delivered": "delivered"
+      },
+      "proposed": "Proposed: the Loop makes no build until an admin confirms it",
+      "confirmed": "Confirmed by {by}",
+      "noGraphTitle": "The knowledge graph could not be read",
+      "noGraphText": "Without it the baseline has no evidence, and it cannot be confirmed.",
+      "confirm": "Confirm baseline",
+      "confirming": "Confirming",
+      "cancel": "Cancel",
+      "confirmTitle": "Confirm the baseline of {goal}?",
+      "confirmText": "{open, number} of {total, number} approved use cases are undelivered and become the backlog: the Loop then makes a build for each group. A use case left unknown is not built.",
+      "done": "Baseline confirmed",
+      "doneText": "The Loop builds the backlog of {goal} from its next tick.",
+      "forbidden": "Only an admin of the project confirms a baseline.",
+      "conflict": "The baseline is confirmed already, or a use case has no state yet.",
+      "noBuilds": "The Loop has made no build for this goal yet.",
+      "buildsCaption": "Builds of {goal}, one for each group of its backlog"
     }
   },
   "problems": {

@@ -83,7 +83,8 @@ def test_plugin_protocol_events_name_an_approved_srs_version_and_a_tasks_status_
     """plan loop-engine adds two kinds after the seven before, only adding: those keep their names and places."""
     assert protocol.EVENT_KINDS[7:9] == ("srs.version.approved", "tasks.status")
     assert protocol.EVENT_KINDS[9:10] == ("agent.answer",)  # plan core-plugin-agent-questions, added after them
-    assert protocol.EVENT_KINDS[10:] == ("chat.bridge",)  # plan chat-bridges, added after that
+    assert protocol.EVENT_KINDS[10:11] == ("chat.bridge",)  # plan chat-bridges, added after that
+    assert protocol.EVENT_KINDS[11:] == ("srs.use_case.approved",)  # plan srs-backlog-loop, added after that
     for kind in protocol.EVENT_KINDS[7:]:
         params = {"event": "e", "project": "p", "payload": {"v": 1}, "kind": kind, "delivery": 4}
         assert protocol.params_problems("event", params) == []

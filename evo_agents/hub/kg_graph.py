@@ -47,6 +47,7 @@ from datetime import datetime
 from pathlib import Path
 
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
+from evo_agents.hub.srs_baseline import CODE_COMMENT, COMMIT, PLAN_COMPLETED, PULL_REQUEST, STEP_DONE, Evidence
 from evo_agents.kg import freshness
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.policy import Label, Policy, audience_below
@@ -59,6 +60,7 @@ MAX_HANDLES = 100  # kg_more handles kept per user and project
 LATEST_COMMITS = 3  # the newest commits of a file whose authors ``unknown`` gives
 COMMITS_PAGE = 500  # edges into a file read at once to find its commits
 MAX_COMMITS_READ = 5_000  # edges into one file read at most; a file changed more often is read that far
+MAX_MENTIONS_READ = 500  # edges into the node of one use case read at most
 
 
 class GraphUnavailable(Exception):
@@ -350,6 +352,30 @@ class HubSession(Session):
                 missing.append(path)
         return lacking, missing, self._authors(store, b, sorted(named))
 
+    def mentions(self, codes: list[str]) -> dict[str, list[Evidence]]:
+        """For each use case code of ``codes`` (the node ``usecase:<code>``), what the graph shows of its delivery as
+        the session reads it: a ``mentions`` edge from a plan whose steps are all done, a step done, a commit, a merged
+        pull request or a source file (a comment of the code). ToolError when nothing of the project is visible or the
+        graph holds no ready build."""
+        if self.error:
+            raise ToolError(self.error)
+        store, b = self._store()
+        found: dict[str, list[Evidence]] = {}
+        for code in codes:
+            edges = store.edges_into(
+                f"usecase:{code}", b, ("mentions",), IMPACT_STATUSES, self.clearance, limit=MAX_MENTIONS_READ
+            )
+            sources = store.nodes([edge["src"] for edge in edges if self.visible(edge["label"])], b)
+            found[code] = sorted(
+                {
+                    item
+                    for node in sources.values()
+                    if self.visible(node["label"]) and (item := _evidence(node)) is not None
+                },
+                key=lambda item: (item.kind, item.ref),
+            )
+        return found
+
     def _authors(self, store: Store, b: int, file_ids: list[str]) -> list[str]:
         """The author emails of the LATEST_COMMITS newest commits visible to the session that changed each of
         ``file_ids``, each address once, in the order found."""
@@ -375,6 +401,25 @@ class HubSession(Session):
                 if isinstance(email, str) and email and email not in found:
                     found.append(email)
         return found
+
+
+def _evidence(node: dict) -> Evidence | None:
+    """The evidence of delivery a node that mentions a use case is, or None when it is none (a plan with steps left, a
+    step not done, a pull request not merged, a document)."""
+    props, kind = node["props"], node["kind"]
+    if kind == "Plan" and props.get("steps") and props.get("done") == props.get("steps"):
+        found = PLAN_COMPLETED
+    elif kind == "PlanStep" and props.get("status") == "done":
+        found = STEP_DONE
+    elif kind == "Commit":
+        found = COMMIT
+    elif kind == "PullRequest" and props.get("status") == "merged":
+        found = PULL_REQUEST
+    elif kind == "File":
+        found = CODE_COMMENT
+    else:
+        return None
+    return Evidence(found, node["id"], str(node.get("name") or "")[:120])
 
 
 class Handles:
@@ -429,6 +474,30 @@ def answer(
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             return handles.call(session, owner, tool, arguments)
+        finally:
+            opened.close()
+    finally:
+        cache.release(path)
+
+
+def mentioning(
+    cache: GraphCache,
+    store: BlobStore | None,
+    project: str,
+    policy: Policy,
+    ceiling: Label | None,
+    sink: str,
+    graphs: list[BuiltGraph],
+    codes: list[str],
+) -> dict[str, list[Evidence]]:
+    """What the newest graph of ``project`` that can be read shows of the delivery of each use case code of ``codes``
+    (``HubSession.mentions``), read through ``sink`` under ``ceiling``. Blocking, as ``answer``. Raises
+    GraphUnavailable, ArtifactMismatch; ToolError when nothing of the project is visible."""
+    path, graph = cache.acquire(store, project, graphs)
+    try:
+        opened = open_graph(path, project, graph)
+        try:
+            return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).mentions(codes)
         finally:
             opened.close()
     finally:

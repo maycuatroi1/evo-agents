@@ -37,7 +37,9 @@ function GoalsTable({ project, rows }: { project: string; rows: Row[] }) {
         enableSorting: false,
         cell: (info) => {
           const { goal } = info.row.original;
-          const sub = goal.metric ? metricText(goal.metric) : t("noMetric");
+          const metric = goal.metric ? metricText(goal.metric) : t("noMetric");
+          const scope = goal.srs_document ? t("srsScope", { scope: goal.srs_heading ? `${goal.srs_document} / ${goal.srs_heading}` : goal.srs_document }) : null;
+          const sub = scope ? `${metric}, ${scope}` : metric;
           return (
             <CellMain sub={sub} subTitle={sub}>
               <Identifier value={goal.code} />

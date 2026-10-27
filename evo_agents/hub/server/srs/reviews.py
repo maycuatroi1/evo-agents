@@ -163,7 +163,9 @@ async def review(
         await conn.execute(update(s.versions).where(s.versions.c.id == held.id).values(state="draft"))
     else:
         mine = ReviewRow(user.login, user.user_id, role, APPROVE, request.body, held.round, held.created_at)
-        if await _approves(conn, access, doc, held, settings, [*approvals, mine]):
+        approves, cases = await _approves(conn, access, doc, held, settings, [*approvals, mine])
+        await events.use_cases_approved(conn, access.project_id, doc, held, user, cases)
+        if approves:
             await _approve(conn, doc, held)
             await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
     return await store.version(conn, doc, number)
@@ -176,14 +178,15 @@ async def _approves(
     held: VersionRow,
     settings: Settings,
     approvals: list[ReviewRow],
-) -> bool:
+) -> tuple[bool, list[CaseState]]:
     """Whether the version-wide ``approvals`` of the round, with the reviews of use cases that count, approve ``held``:
-    every use case to review approved, or the policy satisfied by ``approvals`` when it has none."""
+    every use case to review approved, or the policy satisfied by ``approvals`` when it has none; and the use cases to
+    review as they leave them."""
     doc_now = (await store.snapshot(conn, held)).doc
     cases = await use_case_reviews.states(conn, access.project_id, doc, held, doc_now, settings, approvals)
     if cases:
-        return use_case_reviews.ready(cases)
-    return approved_by(settings.policy.get(doc.kind), approvals)
+        return use_case_reviews.ready(cases), cases
+    return approved_by(settings.policy.get(doc.kind), approvals), cases
 
 
 async def review_use_case(
@@ -223,6 +226,8 @@ async def review_use_case(
     await use_case_reviews.record(conn, held, item_id, user.user_id, role, request.decision, request.body)
     doc_now = (await store.snapshot(conn, held)).doc
     after = await use_case_reviews.states(conn, access.project_id, doc, held, doc_now, settings, wide)
+    if request.decision == APPROVE:
+        await events.use_cases_approved(conn, access.project_id, doc, held, user, after)
     if request.decision == APPROVE and use_case_reviews.ready(after):
         await _approve(conn, doc, held)
         await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)

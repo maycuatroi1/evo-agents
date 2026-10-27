@@ -11257,6 +11257,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/goals/{ref}/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Baseline
+         * @description The baseline of a goal that aims at an SRS document: what the hub proposes of each approved use case, with its
+         *     evidence, and whether an admin confirmed it.
+         */
+        get: operations["show_baseline_v1_projects__project__goals__ref__baseline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/baseline/fix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fix Baseline
+         * @description Set use cases of the baseline to delivered or undelivered by code, by heading, or the unknown ones as a whole (an
+         *     admin of the project); answers the baseline as it stands.
+         */
+        post: operations["fix_baseline_v1_projects__project__goals__ref__baseline_fix_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/baseline/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Baseline
+         * @description Confirm the baseline of a goal, once (an admin of the project): the Loop then makes builds for its backlog.
+         */
+        post: operations["confirm_baseline_v1_projects__project__goals__ref__baseline_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Plan
+         * @description Adopt a plan of the project as a deliver for use cases of a goal's document (an admin of the project, or the
+         *     writer who owns the goal): the use cases are being delivered, and delivered at once for a plan already completed.
+         */
+        post: operations["adopt_plan_v1_projects__project__loop_adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/merge-queue": {
         parameters: {
             query?: never;
@@ -13098,6 +13181,67 @@ export interface components {
              */
             fresh: boolean;
         };
+        /** BaselineEvidence */
+        BaselineEvidence: {
+            /**
+             * Kind
+             * @description plan_completed, step_done, commit_merged, pr_merged or code_comment
+             */
+            kind: string;
+            /**
+             * Ref
+             * @description the id of the node of the graph it is read from
+             */
+            ref: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BaselineFix
+         * @description What an admin sets: use cases by code, by heading (every use case under it) and the unknown ones as a whole.
+         */
+        BaselineFix: {
+            /** Codes */
+            codes?: {
+                [key: string]: "delivered" | "undelivered";
+            };
+            /** Headings */
+            headings?: {
+                [key: string]: "delivered" | "undelivered";
+            };
+            /**
+             * Unknown
+             * @description every use case still unknown becomes this
+             */
+            unknown?: ("delivered" | "undelivered") | null;
+        };
+        /**
+         * BaselineItem
+         * @description An approved use case of the goal's scope with its state in the baseline.
+         */
+        BaselineItem: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /** Heading */
+            heading: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "delivered" | "undelivered" | "unknown" | "delivering";
+            /**
+             * Source
+             * @description proposal: the hub's proposal, not in the ledger yet; kg, admin and deliver: the ledger row's
+             * @enum {string}
+             */
+            source: "kg" | "admin" | "deliver" | "proposal";
+            /** Reason */
+            reason: string;
+            /** Evidence */
+            evidence: components["schemas"]["BaselineEvidence"][];
+        };
         /** Blob */
         Blob: {
             /** Sha256 */
@@ -13127,7 +13271,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
+            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "srs_baseline" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
             /**
              * Title
              * @description what waits, in one line
@@ -21735,6 +21879,49 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** LoopAdopt */
+        LoopAdopt: {
+            /**
+             * Plan
+             * @description the id of a plan of the project, active or completed
+             */
+            plan: string;
+            /**
+             * Goal
+             * @description the code or alias of a goal that aims at an SRS document
+             */
+            goal: string;
+            /**
+             * Use Cases
+             * @description the codes the plan delivers
+             */
+            use_cases: string[];
+        };
+        /** LoopAdopted */
+        LoopAdopted: {
+            /** Project */
+            project: string;
+            /** Goal */
+            goal: string;
+            /** Plan */
+            plan: string;
+            /**
+             * Item
+             * @description the id of the deliver
+             */
+            item: number;
+            /** State */
+            state: string;
+            /** Reason */
+            reason: string | null;
+            /** Use Cases */
+            use_cases: string[];
+            /**
+             * Delivered
+             * @description the plan was completed: the use cases are delivered now
+             */
+            delivered: boolean;
+        };
         /** LoopChainClaim */
         LoopChainClaim: {
             /** Canvas */
@@ -28577,6 +28764,16 @@ export interface components {
              */
             opportunity?: string | null;
             /**
+             * Srs Document
+             * @description the slug of the SRS document whose approved use cases the goal delivers; null: none
+             */
+            srs_document?: string | null;
+            /**
+             * Srs Heading
+             * @description the code or title of a heading of that document the goal is limited to; null: all
+             */
+            srs_heading?: string | null;
+            /**
              * Rank
              * @description its place among the project's goals, 1 first
              */
@@ -28653,6 +28850,16 @@ export interface components {
              */
             opportunity?: string | null;
             /**
+             * Srs Document
+             * @description the slug of a document of the project, not archived, whose approved use cases the goal delivers; null: none. The metric srs.backlog.open needs one
+             */
+            srs_document?: string | null;
+            /**
+             * Srs Heading
+             * @description the code or title of a heading of that document to limit the goal to; null: all. Not without a document
+             */
+            srs_heading?: string | null;
+            /**
              * Rank
              * @description null: kept, or after the project's other goals for a new one
              */
@@ -28723,6 +28930,16 @@ export interface components {
              * @description the code (O-<number>) of the opportunity of the project it answers; null: none. A goal answers a problem or an opportunity, never both
              */
             opportunity?: string | null;
+            /**
+             * Srs Document
+             * @description the slug of the SRS document whose approved use cases the goal delivers; null: none
+             */
+            srs_document?: string | null;
+            /**
+             * Srs Heading
+             * @description the code or title of a heading of that document the goal is limited to; null: all
+             */
+            srs_heading?: string | null;
             /**
              * Rank
              * @description its place among the project's goals, 1 first
@@ -35296,6 +35513,45 @@ export interface components {
              * @description the commit on its forge, when the repo's origin is on one
              */
             url: string | null;
+        };
+        /**
+         * SrsBaseline
+         * @description The baseline of a goal that aims at an SRS document: proposed until an admin confirms it.
+         */
+        SrsBaseline: {
+            /** Project */
+            project: string;
+            /** Goal */
+            goal: string;
+            /** Document */
+            document: string;
+            /** Heading */
+            heading: string | null;
+            /**
+             * Confirmed
+             * @description an admin confirmed it: the Loop makes builds for the goal's backlog
+             */
+            confirmed: boolean;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /**
+             * Graph
+             * @description whether the knowledge graph could be read for the evidence
+             */
+            graph: boolean;
+            /**
+             * Why
+             * @description why the graph could not be read
+             */
+            why: string | null;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["BaselineItem"][];
         };
         /**
          * SrsChange
@@ -83076,6 +83332,285 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_baseline_v1_projects__project__goals__ref__baseline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fix_baseline_v1_projects__project__goals__ref__baseline_fix_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineFix"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_baseline_v1_projects__project__goals__ref__baseline_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_plan_v1_projects__project__loop_adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoopAdopt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopAdopted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
