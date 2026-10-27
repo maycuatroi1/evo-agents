@@ -1,12 +1,43 @@
 {
   "api_version": [
     1,
-    5
+    6
   ],
   "names": {
     "ANSWER_EVENT": {
       "kind": "constant",
       "value": "'agent.answer'"
+    },
+    "AcceptedRule": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "summary",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "at",
+          "annotation": "datetime | None",
+          "default": null
+        }
+      ]
     },
     "AgentAnswer": {
       "kind": "dataclass",
@@ -284,6 +315,32 @@
       "annotated": "Session",
       "metadata": [
         "Depends(caller)"
+      ]
+    },
+    "CauseClassified": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cause",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "previous",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "seq",
+          "annotation": "int",
+          "default": null
+        }
       ]
     },
     "Channel": {
@@ -566,6 +623,32 @@
         }
       ]
     },
+    "Cleared": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "sink",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "items",
+          "annotation": "tuple[Any, ...]",
+          "default": null
+        },
+        {
+          "name": "withheld",
+          "annotation": "int",
+          "default": "0"
+        },
+        {
+          "name": "reason",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ]
+    },
     "Context": {
       "kind": "dataclass",
       "frozen": true,
@@ -609,6 +692,27 @@
           "name": "jobs",
           "annotation": "object | None",
           "default": "None"
+        }
+      ]
+    },
+    "CorrectionText": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "text",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "evidence",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "at",
+          "annotation": "datetime",
+          "default": null
         }
       ]
     },
@@ -699,6 +803,32 @@
         }
       ]
     },
+    "DecisionTaken": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "number",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "rev",
+          "annotation": "int",
+          "default": null
+        }
+      ]
+    },
     "DirectChat": {
       "kind": "dataclass",
       "frozen": true,
@@ -711,6 +841,43 @@
         {
           "name": "made",
           "annotation": "bool",
+          "default": null
+        }
+      ]
+    },
+    "DismissedItem": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "fingerprint",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "rule",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "EgressSink": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "host",
+          "annotation": "str",
           "default": null
         }
       ]
@@ -1331,6 +1498,11 @@
           "name": "kinds",
           "annotation": "tuple[str, ...]",
           "default": null
+        },
+        {
+          "name": "egress",
+          "annotation": "tuple[EgressSink, ...]",
+          "default": "()"
         }
       ]
     },
@@ -1503,6 +1675,58 @@
         "returns": ""
       }
     },
+    "ReviewItemText": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "fingerprint",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "rule",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "action",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "nodes",
+          "annotation": "tuple[ReviewNodeText, ...]",
+          "default": null
+        },
+        {
+          "name": "snippet",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "ReviewNodeText": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
     "RunActorRef": {
       "kind": "dataclass",
       "frozen": true,
@@ -1535,6 +1759,78 @@
         {
           "name": "dispatcher",
           "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "RunEventText": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "seq",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "text",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "RunFailure": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "error",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "failure_cause",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "inferred",
+          "annotation": "bool",
+          "default": null
+        },
+        {
+          "name": "events",
+          "annotation": "tuple[RunEventText, ...]",
           "default": null
         }
       ]
@@ -3366,6 +3662,54 @@
       ],
       "returns": "ChatRunRef | None"
     },
+    "classify_run_failure": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cause",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "model",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "confidence",
+          "kind": "keyword_only",
+          "annotation": "float",
+          "default": null
+        }
+      ],
+      "returns": "CauseClassified"
+    },
     "create_invite": {
       "kind": "async function",
       "params": [
@@ -3420,6 +3764,78 @@
       ],
       "returns": "Invite"
     },
+    "decide_graph": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "src",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "rel",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "dst",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "reason",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "propose",
+          "kind": "keyword_only",
+          "annotation": "bool",
+          "default": "False"
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "DecisionTaken"
+    },
     "delivered_notification": {
       "kind": "async function",
       "params": [
@@ -3473,6 +3889,54 @@
         }
       ],
       "returns": "Member | None"
+    },
+    "dismiss_review_item": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig",
+          "default": null
+        },
+        {
+          "name": "fingerprint",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "reason",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "DismissedItem"
     },
     "emit_event": {
       "kind": "async function",
@@ -4355,6 +4819,42 @@
       ],
       "returns": "None"
     },
+    "read_accepted_rules": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "100"
+        }
+      ],
+      "returns": "Cleared"
+    },
     "read_agent_answer": {
       "kind": "async function",
       "params": [
@@ -4480,6 +4980,54 @@
         }
       ],
       "returns": "tuple[ClaimRef, ...]"
+    },
+    "read_corrections": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "since",
+          "kind": "keyword_only",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "until",
+          "kind": "keyword_only",
+          "annotation": "datetime | None",
+          "default": "None"
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "200"
+        }
+      ],
+      "returns": "Cleared"
     },
     "read_decisions": {
       "kind": "async function",
@@ -4805,6 +5353,48 @@
       ],
       "returns": "EnabledProject"
     },
+    "read_review_queue": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig",
+          "default": null
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "limit",
+          "kind": "keyword_only",
+          "annotation": "int",
+          "default": "100"
+        }
+      ],
+      "returns": "Cleared"
+    },
     "read_run": {
       "kind": "async function",
       "params": [
@@ -4828,6 +5418,42 @@
         }
       ],
       "returns": "RunActorRef | None"
+    },
+    "read_run_failure": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "sink",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": ""
     },
     "read_runs": {
       "kind": "async function",

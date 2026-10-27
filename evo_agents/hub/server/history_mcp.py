@@ -117,6 +117,7 @@ async def _search(request: Request, project: str, user: Principal, arguments: di
             runtime=arguments.get("runtime"),
             limit=arguments.get("limit", 20),
             offset=arguments.get("offset", 0),
+            state=request.app.state,
         )
     head = (
         f"{len(found.hits)} of {found.total} hits of {found.query!r} in the {', '.join(found.sources)} of project "

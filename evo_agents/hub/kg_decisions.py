@@ -43,6 +43,11 @@ TRANSITIONS = {"accept": ("proposed", "active"), "reject": ("proposed", "rejecte
 VISIBLE, HIDDEN, ABSENT = "visible", "hidden", "absent"
 
 
+def plugin_actor(plugin_id: str) -> str:
+    """How a history or a dismissal names a core plugin that acted as itself (migration 0174): ``plugin:<id>``."""
+    return f"plugin:{plugin_id}"
+
+
 def subject(kind: str, src: str, rel: str | None, dst: str | None) -> tuple[list[str], tuple[str, str, str] | None]:
     """The node ids a decision names, and the edge it names when it deprecates one (a link's edge is its own doing,
     so only its two nodes count)."""
@@ -149,6 +154,7 @@ __all__ = [
     "VISIBLE",
     "active",
     "curation_item",
+    "plugin_actor",
     "read",
     "seen_state",
     "subject",
