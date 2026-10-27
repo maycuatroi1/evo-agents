@@ -375,6 +375,11 @@ writes as a revision (`evo-agents hub policy`, `docs/merge-queue.md`). A key a r
 | `loop.caps.plan.minutes`, `loop.caps.plan.turns` | 240, 600 | the caps of a plan run the Loop hands out |
 | `loop.use_cases` | auto | whether a solution goes through use cases of SRS documents (`rules/2`): `always`, `never`, or `auto`, which does when the plugin srs is on and the project has an SRS document not archived |
 
+The section `context` is not the Loop's, and sits in the same policy: `context.answers` (false by default) adds to the
+prompt of every run of the project the confirmed answers that match its work, whether or not the Loop is on. It is
+described in `docs/hub.md`, Confirmed answers in a run's prompt. Its key and the policy revision that turns it on are
+the first week of the trial that compares the repeated corrections of the 28 days after with the 28 before.
+
 ## Commands, routes and pages
 
 ```sh

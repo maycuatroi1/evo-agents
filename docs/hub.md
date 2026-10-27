@@ -532,6 +532,33 @@ pack's skill too), and a pack widens no other axis. Schema 0041 adds `packs` to 
 before it and always for a default one; each version written since keeps them in its body, and a version written
 before it attaches none. Going back to 0040 drops them: a profile that attached packs runs without them.
 
+### Confirmed answers in a run's prompt
+
+The policy key `context.answers` (`evo-agents hub policy set`, false by default, section `context` beside `loop`) makes
+the hub end the prompt of every run of the project with a block `# Confirmed answers`, before the index of an agent's
+memories. The block holds what people already answered that matches the run's work, from two sources of the run's own
+project: the decisions that were answered (the question, the option chosen, the answerer's words, who and when) and the
+feedback memories of the project's scope that the run's owner owns. The hub picks them by rules, with no model call
+(`evo_agents/hub/server/context_answers.py`):
+
+- an item matches by the `code:REPO:PATH` references in it (a decision's evidence, question, context and answer; a
+  memory's text) against the run: its repos and the prompt, which holds the plan step. A path the prompt names weighs
+  3, a directory of it 2, the repo alone 1; a decision of category `architecture` or `scope` adds 1 to a run on a plan.
+  An item that matches by none is left out, and a run with no match, or a project with the key off, gets its prompt
+  byte for byte as before;
+- the block is ordered by match, then newest, and stops at 4 KiB and at the room the prompt leaves under
+  `MAX_PROMPT_BYTES`; each line names its source (`memory_get ID`, `evo-agents hub decision show ID`);
+- never in it: an item of another project; a decision of category `credential`, `wait`, `release` or `loop`; a decision
+  whose run showed its agent an audience this run's agent does not hold; a memory deleted, archived, an agent's own,
+  someone else's feedback, whose label the agent's sink does not reach or whose audience the agent does not hold (the
+  same checks as `memory_get` and the index of memories). The audiences it shows are noted to the run.
+
+Each answer loaded is a row of `context_answer_loads` (schema 0175): the run, the project, the source (`decision` or
+`memory`), its id, the scope key that matched (`repo:REPO`, `dir:REPO:DIR` or `path:REPO:PATH`) and when. A run loads an
+answer once, so a run claimed again adds no row. `context_answers.load_counts` counts the runs that loaded and the
+answers loaded by day or by week. The policy revision that sets the key true is the first week of the trial that
+compares the 28 days after with the 28 before (`evo-agents hub policy history`).
+
 ### Runs under a profile
 
 `POST /v1/projects/{p}/runs`, `.../plan-runs` and `.../author-runs` take `profile`, a handle (`--agent` on `hub run
