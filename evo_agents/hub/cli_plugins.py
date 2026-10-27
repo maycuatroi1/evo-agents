@@ -46,6 +46,7 @@ PLUGIN_KEYS = (
     "title",
     "description",
     "tier",
+    "project",
 )
 DETAIL_KEYS = (*PLUGIN_KEYS, "manifest", "versions")
 PUBLISHED_KEYS = ("name", "created", "version")
