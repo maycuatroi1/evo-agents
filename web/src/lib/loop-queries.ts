@@ -25,6 +25,8 @@ export type ProjectGoal = Schemas["ProjectGoal"];
 export type GoalMetric = Schemas["GoalMetric"];
 export type DecisionBoard = Schemas["DecisionBoard"];
 export type BoardItem = Schemas["BoardItem"];
+export type SrsBaseline = Schemas["SrsBaseline"];
+export type BaselineItem = Schemas["BaselineItem"];
 
 export type ItemState = LoopItem["state"];
 export type ItemKind = LoopItem["kind"];
@@ -86,6 +88,7 @@ export const loopKeys = {
   goalList: (project: string) => ["projects", project, "goals"] as const,
   goal: (project: string, ref: string) => ["projects", project, "goals", ref] as const,
   board: (project: string) => ["projects", project, "loop", "board"] as const,
+  baseline: (project: string, ref: string) => ["projects", project, "goals", ref, "baseline"] as const,
 };
 
 /** The Loop now: on or off, its breaker, its work items by state. */
@@ -155,6 +158,13 @@ export const decisionBoardQuery = (api: ApiSource, project: string) =>
     queryFn: ({ signal }) => call(api().GET("/v1/projects/{project}/decision-board", { params: { path: { project } }, signal })),
   });
 
+/** The baseline of a goal that aims at an SRS document: what the hub proposes of each approved use case, with its evidence. */
+export const baselineQuery = (api: ApiSource, project: string, ref: string) =>
+  queryOptions({
+    queryKey: loopKeys.baseline(project, ref),
+    queryFn: ({ signal }) => call(api().GET("/v1/projects/{project}/goals/{ref}/baseline", { params: { path: { project, ref } }, signal })),
+  });
+
 // Writes: an admin of the project alone; each fetches the session's CSRF header first, as every write of the web does.
 
 /**
@@ -172,4 +182,10 @@ export async function setLoopEnabled(api: ApiClient, project: string, enabled: b
 export async function resumeLoop(api: ApiClient, project: string) {
   const headers = await csrfHeaders(api);
   return call(api.POST("/v1/projects/{project}/loop/resume", { params: { path: { project } }, headers }));
+}
+
+/** Confirm the baseline of a goal, once: the Loop then makes builds for its backlog. An admin of the project alone. */
+export async function confirmBaseline(api: ApiClient, project: string, ref: string) {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/projects/{project}/goals/{ref}/baseline/confirm", { params: { path: { project, ref } }, headers }));
 }

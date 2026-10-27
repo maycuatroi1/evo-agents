@@ -27,6 +27,8 @@ is the engine ``rules/1`` (``rules``) with the changes below, three pure functio
     campaign of the plugin marketing for a claim of the cells Channels and Customer segments).
 
   Each waits in watching (reason ``stable``) until the baseline has been approved ``loop.stable_hours``, as row 3's.
+- A goal that aims at an SRS document whose baseline an admin confirmed gets a ``build`` for each group of its backlog on
+  each tick (``srs_rules``, plan srs-backlog-loop); it makes no brainstorm. Key ``build:srs:<document>:<group>:<round>``.
 - Everything else is rules/1's: the result of a claim validated, invalidated or retired noted in its chain (rows 4 and
   5), an approved version answering a use_case (row 6), the brainstorms of the clock (rows 1 and 2), the stale work
   items cancelled, failures, triage, and where each work item of rules/1's kinds moves.
@@ -76,6 +78,7 @@ from evo_agents.hub.server.loop.rules import (
     run_of,
     use_case_work,
 )
+from evo_agents.hub.server.loop.srs_rules import srs_builds
 
 STABLE = "stable"
 ACTION = "action"  # canvas_claims.delivery: the claim is delivered by a task, not by code
@@ -238,7 +241,7 @@ class Rules2(Rules):
         return [stamp(effect, view) for effect in found]
 
     def scheduled(self, view: View) -> list[Effect]:
-        return [stamp(effect, view) for effect in super().scheduled(view)]
+        return [stamp(effect, view) for effect in [*super().scheduled(view), *srs_builds(view)]]
 
     def reconcile(self, item: ItemView, view: View) -> Transition | None:
         found = super().reconcile(item, view)

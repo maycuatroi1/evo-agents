@@ -488,6 +488,8 @@ class Rules:
         for goal in sorted(view.goals.values(), key=lambda goal: (goal.rank, goal.id)):
             if goal.status != ACTIVE or not goal.has_metric or goal.reached or goal.id in busy:
                 continue
+            if goal.srs_document_id is not None:
+                continue  # a goal that aims at an SRS document goes from its backlog, not from claims (srs_rules)
             spec = _brainstorm(view, goal)
             if spec is not None:
                 effects.append(spec)

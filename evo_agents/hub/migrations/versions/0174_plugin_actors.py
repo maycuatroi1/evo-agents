@@ -1,7 +1,7 @@
 """A core plugin as the actor of a decision on the knowledge graph or of a dismissal of a review item.
 
-Revision ID: 0169
-Revises: 0168
+Revision ID: 0174
+Revises: 0173
 Create Date: 2026-10-27
 
 The names below are copies of ``evo_agents.hub.tables_kg`` as of this revision, never imports, so a later change to
@@ -12,7 +12,7 @@ a project's graph and dismisses items of its review queue as itself, not as a me
 kg_decision_events.actor_plugin and kg_review_dismissals.dismissed_by_plugin hold the plugin's id (1 to 63 characters,
 as plugin.schema.json bounds an id). The member columns, kg_decision_events.actor_id and
 kg_review_dismissals.dismissed_by, become nullable, and a check keeps each row to exactly one of the two: a member or
-a plugin, never both and never none. Every row of 0168 has its member, so it passes.
+a plugin, never both and never none. Every row of 0173 has its member, so it passes.
 
 Going back drops the plugin columns and makes the member columns required again. A dismissal a plugin made goes (the
 next build lists its item again); a step of a decision's history a plugin took stays, its actor the member with the
@@ -22,8 +22,8 @@ lowest id, because a decision's history is numbered without gaps and its other s
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0169"
-down_revision = "0168"
+revision = "0174"
+down_revision = "0173"
 branch_labels = None
 depends_on = None
 

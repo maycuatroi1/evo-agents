@@ -151,7 +151,10 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
 
         if not gfy.available():
             return Graph(), {}, [missing_graphify(sid) for sid in explicit], []
-    identifiers = [{"kind": i["kind"], "pattern": i["pattern"]} for i in project.knowledge.get("identifiers") or []]
+    identifiers = [
+        {"kind": i["kind"], "pattern": i["pattern"], **({"aliases": i["aliases"]} if i.get("aliases") else {})}
+        for i in project.knowledge.get("identifiers") or []
+    ]
     identifiers_digest = sha256(canonical_json(identifiers))
     records = [r for r in corpus.items() if r.source in sources]
 
@@ -196,7 +199,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             if r["kind"] == "code":
                 code_items[rec.source].append((r, extractor))
             inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": extractor}
-            if r["kind"] == "markdown":  # a frontmatter id is a code only if an identifier pattern says so
+            if r["kind"] in ("markdown", "code"):  # a frontmatter id, a comment, is a code only if a pattern says so
                 inputs["identifiers"] = identifiers_digest
             structured, shash = memo.run(
                 "structure",

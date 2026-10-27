@@ -34,12 +34,13 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import column, func, select, table, update
+from sqlalchemy import column, func, insert, select, table, update
 from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import hub_events, jobs, loop_jobs, plugin_calls, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.loop import rules
+from evo_agents.hub.server.loop import rules, srs_ledger, texts
+from evo_agents.hub.server.loop.model import ItemView
 from evo_agents.hub.server.loop.tick import fit_key, tick
 from evo_agents.hub.server.loop.view import use_cases
 from evo_agents.hub.tables_srs import frame_task_key
@@ -552,3 +553,117 @@ def test_loop_tick_use_cases_auto_follows_the_srs_documents_of_the_project(clien
         ("brainstorm:G-1:r1", "brainstorm"),
         (f"build:claim:{SLUG}:CL-1:b1", "build"),
     ]
+
+
+SRS_METRIC = {"key": "srs.backlog.open", "aggregate": "last", "comparator": "<=", "target": 0}
+
+
+def srs_goal(client, hub, hub_db) -> tuple[int, int]:
+    """Goal G-1 aimed at demo-shop, whose version 1 is approved before the Loop is on; (document, goal) ids."""
+    body = {"statement": "Deliver the order service", "srs_document": "demo-shop", "metric": SRS_METRIC}
+    assert client.put(f"{GOALS}/G-1", json=body, headers=hub["owner"]).status_code == 200
+    submitted(client, hub["chi"], 1)
+    assert review(client, hub["other"], 1).json()["state"] == "approved"
+    document = sql(hub_db, select(tables.srs.documents.c.id))[0][0]
+    return document, sql(hub_db, select(tables.goals.c.id))[0][0]
+
+
+def confirm(hub_db, document: int, goal: int) -> None:
+    sql(hub_db, insert(tables.srs_baselines).values(goal_id=goal, project_id=project_id(hub_db), document_id=document))
+
+
+def ledger_of(db) -> dict[str, tuple]:
+    s = tables.srs_delivery
+    return {code: (state, source) for code, state, source in sql(db, select(s.c.code, s.c.state, s.c.source))}
+
+
+def test_loop_tick_srs_goal_builds_each_group_of_its_confirmed_backlog_once_and_delivery_marks_it_delivered(
+    client, hub, hub_db
+):
+    document, goal = srs_goal(client, hub, hub_db)
+    policy(client, hub, {"enabled": True})  # on late: what was approved before it came is the backlog
+    ticked(client, hub_db)
+    assert items(hub_db) == [], "the baseline is not confirmed: no build, and an SRS goal makes no brainstorm"
+    confirm(hub_db, document, goal)
+    report = ticked(client, hub_db)
+    built = [(key, kind, state) for key, kind, state, _ in items(hub_db)]
+    assert report["changed"] >= 1 and len(built) >= 1 and {kind for _, kind, _ in built} == {"build"}
+    assert all(key.startswith(f"build:srs:{document}:") and key.endswith(":1") for key, _, _ in built)
+    assert len(keys := [key for key, _, _ in built]) == 2, "demo-shop has two headings with use cases"
+    covered = sorted(case["code"] for key in keys for case in item(hub_db, key)["detail"]["backlog"]["use_cases"])
+    assert covered == ["UC ORD-1", "UC ORD-2", "UC RET-1"], "every approved use case is in one build"
+    first = item(hub_db, keys[0])
+    assert (first["cycle"], first["srs_document_id"], first["use_case"], first["goal_id"]) == (
+        "development",
+        document,
+        None,
+        goal,
+    )
+    assert ledger_of(hub_db) == dict.fromkeys(covered, ("delivering", "deliver"))
+    before = counts(hub_db)
+    ticked(client, hub_db)
+    assert counts(hub_db)[:2] == before[:2], "the same tick again makes nothing: the group has a work item"
+
+    # the author run of the first build wrote a plan: a deliver of it, as for any build; done, its use cases are delivered
+    codes = [case["code"] for case in first["detail"]["backlog"]["use_cases"]]
+    i = tables.loop_items
+    sql(hub_db, update(i).where(i.c.id == first["id"]).values(state="done", reason=None, finished_at=func.now()))
+    deliver_row = {"project_id": project_id(hub_db), "kind": "deliver", "cycle": "development", "engine": "rules/2"}
+    deliver_row |= {"key": "deliver:srs-plan", "goal_id": goal, "parent_id": first["id"], "plan_id": "srs-plan"}
+    deliver = sql(hub_db, insert(i).values(**deliver_row, state="watching").returning(i.c.id))[0][0]
+    ticked(client, hub_db)
+    assert {ledger_of(hub_db)[code] for code in codes} == {("delivering", "deliver")}, "its deliver is not done"
+    sql(hub_db, update(i).where(i.c.id == deliver).values(state="done", reason=None, finished_at=func.now()))
+    ticked(client, hub_db)
+    ledger = ledger_of(hub_db)
+    assert {ledger[code] for code in codes} == {("delivered", "deliver")}
+    s = tables.srs_delivery
+    evidence = [e for (e,) in sql(hub_db, select(s.c.evidence).where(s.c.code.in_(codes)))]
+    expected = {"plan": "srs-plan", "merges": [], "after_sha": [], "deliver": deliver, "build": first["id"]}
+    assert evidence == [expected] * len(codes)
+    open_codes = sorted(set(covered) - set(codes))
+    assert {ledger[code] for code in open_codes} <= {("delivering", "deliver")}
+
+    # a build cancelled puts its use cases back in the backlog, and the next tick makes the next round of its group
+    second = item(hub_db, keys[1])
+    cancelled = {"state": "cancelled", "reason": "person", "finished_at": func.now()}
+    sql(hub_db, update(i).where(i.c.id == second["id"]).values(**cancelled))
+    ticked(client, hub_db)
+    assert [code for code, (state, _) in ledger_of(hub_db).items() if state == "undelivered"] == sorted(
+        case["code"] for case in second["detail"]["backlog"]["use_cases"]
+    )
+    ticked(client, hub_db)
+    assert [key for key, *_ in items(hub_db) if key.endswith(":2")] == [keys[1][:-1] + "2"]
+
+
+def test_loop_tick_srs_goal_gives_the_author_run_every_use_case_of_its_group(client, hub, hub_db):
+    document, goal = srs_goal(client, hub, hub_db)
+    policy(client, hub, {"enabled": True})
+    confirm(hub_db, document, goal)
+    ticked(client, hub_db)
+    row = item(hub_db, items(hub_db)[0][0])
+    view = ItemView(
+        row["id"], "build", row["key"], "queued", None, goal, srs_document_id=document, detail=row["detail"]
+    )
+    assert view.from_srs
+
+    async def request():
+        async with client.app.state.engine.begin() as conn:
+            return await texts.srs_request(conn, project_id(hub_db), PROJECT, view)
+
+    asked = client.portal.call(request)
+    for said in ("demo-shop", "Deliver the order service", row["key"], "every use case below counts as delivered"):
+        assert said in asked, asked
+    for case in row["detail"]["backlog"]["use_cases"]:
+        assert case["code"] in asked and f"version {case['version']}" in asked
+    listed = client.get(LOOP_ITEMS, headers=hub["chi"]).json()["items"]
+    (shown,) = [entry for entry in listed if entry["id"] == row["id"]]
+    assert (shown["kind"], shown["goal"], shown["use_case"]["document"]) == ("build", "G-1", "demo-shop")
+
+
+def test_loop_tick_a_goal_with_no_srs_document_and_a_project_with_the_loop_off_are_as_before(client, hub, hub_db):
+    assert srs_ledger.hold and ticked(client, hub_db) == {"off": 1}
+    policy(client, hub, {"enabled": True})
+    ticked(client, hub_db)
+    assert [row[:2] for row in items(hub_db)] == [("brainstorm:G-1:r1", "brainstorm")]
+    assert ledger_of(hub_db) == {}

@@ -40,7 +40,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, tables
-from evo_agents.hub.server.loop import breaker, stall
+from evo_agents.hub.server.loop import breaker, srs_ledger, stall
 from evo_agents.hub.server.loop.admit import Dispatch, admit
 from evo_agents.hub.server.loop.dispatch import hand_out
 from evo_agents.hub.server.loop.model import (
@@ -49,6 +49,7 @@ from evo_agents.hub.server.loop.model import (
     FINISHED,
     NOTED,
     PLUGIN_KINDS,
+    SRS_BUILD,
     Effect,
     Engine,
     Event,
@@ -92,7 +93,7 @@ async def _ledger(
 # Writing what the engine returns
 
 
-async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id: int | None, engine: str) -> bool:
+async def make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id: int | None, engine: str) -> bool:
     i = tables.loop_items
     values = {
         "project_id": project_id,
@@ -113,6 +114,7 @@ async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id
         "owner": spec.owner,
         "engine": engine,
         "event_id": event_id,
+        "finished_at": func.now() if spec.state in FINISHED else None,
         "problem_id": spec.problem_id,
         "opportunity_id": spec.opportunity_id,
     }
@@ -121,6 +123,12 @@ async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id
     if item_id is None:
         return False
     await _ledger(conn, item_id, CREATED, spec.state, spec.reason, {"key": values["key"]}, event_id)
+    srs = spec.detail.get("backlog") if spec.key.startswith(SRS_BUILD) else None
+    if srs and spec.srs_document_id is not None:  # the use cases of a group are in no backlog while the build is
+        codes = [case["code"] for case in srs["use_cases"]]
+        await srs_ledger.hold(
+            conn, project_id, spec.srs_document_id, codes, item_id, spec.goal_id, {"key": values["key"]}
+        )
     return True
 
 
@@ -142,7 +150,7 @@ async def _move(conn: AsyncConnection, project_id: int, move: Transition, event_
         return False
     await _ledger(conn, move.item_id, move.event, move.state, move.reason, move.detail, event_id)
     for spec in move.spawn:
-        await _make(conn, project_id, spec, event_id, engine)
+        await make(conn, project_id, spec, event_id, engine)
     return True
 
 
@@ -166,7 +174,7 @@ async def _note(conn: AsyncConnection, project_id: int, note: Note, event_id: in
 async def apply(conn: AsyncConnection, project_id: int, effect: Effect, event_id: int | None, engine: str) -> bool:
     """Write ``effect`` of the engine named ``engine``; whether it changed anything."""
     if isinstance(effect, WorkSpec):
-        return await _make(conn, project_id, effect, event_id, engine)
+        return await make(conn, project_id, effect, event_id, engine)
     if isinstance(effect, Transition):
         return await _move(conn, project_id, effect, event_id, engine)
     return await _note(conn, project_id, effect, event_id)
@@ -231,6 +239,7 @@ async def _clock_and_reconcile(
         move = ruled.reconcile(item, view) if item.kind in PLUGIN_KINDS else rules.reconcile(item, view)
         if move is not None:
             report["changed"] += await apply(conn, project_id, move, None, rules.name)
+    report["changed"] += await srs_ledger.sync(conn, project_id)
 
 
 async def _stalls(conn: AsyncConnection, project_id: int, *, report: Counter) -> None:

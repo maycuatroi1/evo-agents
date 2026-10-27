@@ -15,7 +15,14 @@ run's order of its repos, and each repo's notes keep their order in the log.
 
 Criterion a2 of the same plan: a chat run that goes on in the session of the one before, in the worktrees it adopted,
 takes leases of its own and asks no origin (no ls-remote, no push --dry-run); it fetches each repo once, several at a
-time, and a fetch git refuses fails it with cause credentials before its agent starts."""
+time, and a fetch git refuses fails it with cause credentials before its agent starts.
+
+A plan run whose branch for a repo on github.com is not its default branch lands it through a pull request its agent
+opens, so its preflight asks GitHub (faked here, no network) whether a token the agent has can open one: gh's (GH_TOKEN,
+GITHUB_TOKEN, its own login) read only, the App token the hub leased with an empty POST GitHub refuses with 403 or 422.
+It fails with cause credentials when each token was refused (401, a token without pull_requests: write, a user who may
+not push, a scope missing) or there is none, naming the repo, each token and what it lacks; GitHub not answering fails
+nothing, and an origin off GitHub, or a plan that names the default branch, asks GitHub nothing."""
 
 from __future__ import annotations
 
@@ -722,3 +729,302 @@ def test_the_next_chat_run_of_a_session_whose_fetch_git_refuses_fails_with_cause
     assert served and all(path.endswith("/info/refs") for _, path, _, _ in served), "the fetch asked, refused"
     assert [item for item in machine.starts() if item["run"] == later] == [], "the agent never started"
     assert (machine.directory(first) / "alpha").is_dir(), "the worktree stays for the next run of the session"
+
+
+# Pull requests on GitHub: a credential the agent has opens one where its plan run lands a branch through one
+
+
+OWNER_GITHUB = "https://github.com/northwind/alpha.git"
+USER_TOKEN = "gho_" + "u" * 36  # a user's token of gh's login, as GitHub writes one
+GH_ENV_TOKEN = "ghp_" + "e" * 36  # a personal access token in GH_TOKEN
+APP_TOKEN = "ghs_" + "a" * 36  # an installation token of the hub's GitHub App
+APP_LEASE = {
+    "id": 31,
+    "kind": "git",
+    "provider": "github-app",
+    "name": "github-app:northwind",
+    "url_prefix": "https://github.com/northwind",
+    "username": "x-access-token",
+    "value": APP_TOKEN,
+}
+REPO_PATH = "/repos/northwind/alpha"
+PULLS_PATH = "/repos/northwind/alpha/pulls"
+REFUSED_APP = (
+    403,
+    {"x-accepted-github-permissions": "pull_requests=write"},
+    {"message": "Resource not accessible by integration"},
+)
+PUSHER = (200, {"x-oauth-scopes": "gist, read:org, repo, workflow"}, {"private": True, "permissions": {"push": True}})
+BAD_CREDENTIALS = (401, {}, {"message": "Bad credentials"})
+VALIDATION = (422, {}, {"message": 'Invalid request.\n\n"base", "head" weren\'t supplied.'})
+
+
+class FakeGitHub:
+    """GitHub's API as ``preflight.github_call`` reaches it: each answer by (method, path, token), a call with no answer
+    is GitHub not answering (``preflight.Unclear``); every call noted, so a test sees what was asked and with what."""
+
+    def __init__(self, answers: dict):
+        self.answers = answers
+        self.calls: list[tuple[str, str, str, dict | None]] = []
+
+    async def __call__(self, method: str, path: str, token: str, body: dict | None = None):
+        self.calls.append((method, path, token, body))
+        answer = self.answers.get((method, path, token))
+        if answer is None:
+            raise preflight.Unclear("GitHub did not answer: timed out")
+        return answer
+
+
+def fake_gh(tmp_path, *, token: str | None) -> str:
+    """A directory whose ``gh`` answers ``gh auth token`` with ``token``, or as gh does without a login; the PATH of
+    an agent whose gh that is."""
+    bin_dir = tmp_path / "gh-bin"
+    bin_dir.mkdir(exist_ok=True)
+    script = bin_dir / "gh"
+    said = f'echo "{token}"' if token else 'echo "no oauth token found for github.com" >&2; exit 1'
+    script.write_text(f"#!/bin/sh\n{said}\n", encoding="utf-8")
+    script.chmod(0o755)
+    return f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin"
+
+
+class PullRun:
+    """What ``access.opens_pull`` reads of a run: its claim, its runtime, its leases (``RunCredentials``, held for run
+    7), the origin of its checkout of alpha, its agent's environment and its notes."""
+
+    def __init__(self, tmp_path, origin: str = OWNER_GITHUB, *, env: dict, leases=(), missing=(), agent_vars=None):
+        from evo_agents.worker.credentials import RunCredentials
+        from evo_agents.worker.home import WorkerHome
+
+        self.project = "demo"
+        self.spec = {"kind": "plan"}
+        self.runtime = "claude-code"
+        self.notes: list[str] = []
+        self.credentials = RunCredentials(7, WorkerHome(tmp_path / "worker"), {}, self.note)
+        self.credentials._keep({"leases": list(leases), "missing": list(missing)})
+        self.credentials.origins = {"alpha": [origin]}
+        self.credentials.agent_vars = dict(agent_vars or {})
+        self.env = {**env, **self.credentials.agent_vars}
+
+        class Agent:
+            def env(inner):  # noqa: N805
+                return dict(self.env)
+
+        self.agent = Agent()
+
+    def note(self, text: str, **extra) -> None:
+        self.notes.append(text)
+
+
+@pytest.fixture
+def github(monkeypatch):
+    """GitHub faked, with no answer until a test gives some; the leases of run 7 forgotten after the test."""
+    from evo_agents.worker import credentials
+
+    fake = FakeGitHub({})
+    monkeypatch.setattr(preflight, "github_call", fake)
+    yield fake
+    credentials.forget(7)
+
+
+def test_preflight_passes_a_pull_request_that_gh_s_own_login_opens(tmp_path, github):
+    github.answers[("GET", REPO_PATH, USER_TOKEN)] = PUSHER
+    run = PullRun(tmp_path, env={"PATH": fake_gh(tmp_path, token=USER_TOKEN)}, leases=[APP_LEASE])
+    assert asyncio.run(access.opens_pull(run, "alpha")) is None
+    assert github.calls == [("GET", REPO_PATH, USER_TOKEN, None)], "read only, and the App token is not asked"
+    assert run.notes == []
+
+
+def test_preflight_passes_a_pull_request_the_leased_app_token_opens(tmp_path, github):
+    github.answers[("POST", PULLS_PATH, APP_TOKEN)] = VALIDATION
+    run = PullRun(tmp_path, env={"PATH": fake_gh(tmp_path, token=None)}, leases=[APP_LEASE])
+    assert asyncio.run(access.opens_pull(run, "alpha")) is None
+    assert github.calls == [("POST", PULLS_PATH, APP_TOKEN, {})], "an empty body, which opens nothing"
+
+
+def test_preflight_fails_a_run_whose_gh_gets_401_and_whose_app_token_lacks_pull_requests_write(tmp_path, github):
+    """Runs #819 and #855 of 2026-10-26: gh's login answered 401 and the App token the hub leased could not open a pull
+    request, and each run parked for hours once its code was written. The preflight says so before the agent starts."""
+    github.answers[("GET", REPO_PATH, USER_TOKEN)] = BAD_CREDENTIALS
+    github.answers[("POST", PULLS_PATH, APP_TOKEN)] = REFUSED_APP
+    run = PullRun(tmp_path, env={"PATH": fake_gh(tmp_path, token=USER_TOKEN)}, leases=[APP_LEASE])
+    problem = asyncio.run(access.opens_pull(run, "alpha"))
+    assert problem is not None and problem.cause == "credentials"
+    assert problem.message == (
+        f"the run cannot open a pull request in alpha at {OWNER_GITHUB}: this machine's own gh login is not valid "
+        "(GitHub answered 401: Bad credentials); the GitHub App token the hub leased the run (github-app:northwind) "
+        "lacks pull_requests: write on northwind/alpha (GitHub answered 403: Resource not accessible by integration; "
+        "it accepts pull_requests=write)"
+    )
+    assert USER_TOKEN not in problem.message and APP_TOKEN not in problem.message
+
+
+def test_preflight_fails_a_run_whose_only_token_is_the_app_s_without_pull_requests_write(tmp_path, github):
+    github.answers[("POST", PULLS_PATH, APP_TOKEN)] = REFUSED_APP
+    (tmp_path / "no-gh-bin").mkdir()
+    run = PullRun(tmp_path, env={"PATH": str(tmp_path / "no-gh-bin")}, leases=[APP_LEASE])
+    problem = asyncio.run(access.opens_pull(run, "alpha"))
+    assert problem is not None and problem.cause == "credentials"
+    assert problem.message.startswith(
+        f"the run cannot open a pull request in alpha at {OWNER_GITHUB}: the GitHub App token the hub leased the run "
+        "(github-app:northwind) lacks pull_requests: write on northwind/alpha"
+    )
+    assert problem.message.endswith("; neither GH_TOKEN nor GITHUB_TOKEN is set, and gh is not on the run's PATH")
+
+
+@pytest.mark.parametrize(
+    "answer, lacks",
+    [
+        (
+            (200, {"x-oauth-scopes": "repo"}, {"private": True, "permissions": {"push": False}}),
+            "belongs to a user who may not push to northwind/alpha (GitHub's permissions.push is false)",
+        ),
+        (
+            (200, {"x-oauth-scopes": "read:org"}, {"private": True, "permissions": {"push": True}}),
+            "lacks the scope repo (it has read:org)",
+        ),
+        ((404, {}, {"message": "Not Found"}), "does not see northwind/alpha (GitHub answered 404: Not Found)"),
+    ],
+)
+def test_preflight_names_what_a_leased_gh_token_lacks(tmp_path, github, answer, lacks):
+    github.answers[("GET", REPO_PATH, GH_ENV_TOKEN)] = answer
+    run = PullRun(tmp_path, env={"PATH": "/usr/bin:/bin"}, agent_vars={"GH_TOKEN": GH_ENV_TOKEN})
+    problem = asyncio.run(access.opens_pull(run, "alpha"))
+    assert problem is not None and problem.cause == "credentials"
+    assert problem.message == (
+        f"the run cannot open a pull request in alpha at {OWNER_GITHUB}: the GH_TOKEN the hub leased the run {lacks}; "
+        "no lease of the run covers it"
+    )
+
+
+def test_preflight_fails_a_run_whose_agent_holds_no_token_for_github(tmp_path, github):
+    run = PullRun(tmp_path, env={"PATH": fake_gh(tmp_path, token=None)})
+    problem = asyncio.run(access.opens_pull(run, "alpha"))
+    assert problem is not None and problem.cause == "credentials"
+    assert problem.message == (
+        f"the run holds no credential to open a pull request in alpha at {OWNER_GITHUB} with: neither GH_TOKEN nor "
+        "GITHUB_TOKEN is set, and gh on this worker is not signed in to github.com; no lease of the run covers it"
+    )
+    assert github.calls == []
+
+
+def test_preflight_does_not_fail_a_run_when_github_does_not_answer(tmp_path, github):
+    run = PullRun(tmp_path, env={"PATH": fake_gh(tmp_path, token=USER_TOKEN)}, leases=[APP_LEASE])
+    assert asyncio.run(access.opens_pull(run, "alpha")) is None, "no answer from GitHub is no refusal"
+    assert [call[:2] for call in github.calls] == [("GET", REPO_PATH), ("POST", PULLS_PATH)]
+    (note,) = run.notes
+    assert note.startswith("Preflight: whether the run can open a pull request in alpha is not known (")
+    assert note.endswith("GitHub did not answer: timed out): the agent starts all the same.")
+
+
+def test_preflight_does_not_fail_a_run_on_a_rate_limit_or_an_answer_it_does_not_read(tmp_path, github):
+    limited = (403, {"x-ratelimit-remaining": "0"}, {"message": "API rate limit exceeded for installation"})
+    github.answers[("GET", REPO_PATH, USER_TOKEN)] = (502, {}, None)
+    github.answers[("POST", PULLS_PATH, APP_TOKEN)] = limited
+    run = PullRun(tmp_path, env={"PATH": fake_gh(tmp_path, token=USER_TOKEN)}, leases=[APP_LEASE])
+    assert asyncio.run(access.opens_pull(run, "alpha")) is None
+    (note,) = run.notes
+    assert "GitHub answered 502" in note and "GitHub answered 403 for northwind/alpha: API rate limit" in note
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://gitlab.example.org/northwind/alpha.git", "git@gitlab.example.org:northwind/alpha.git", "/srv/git/alpha"],
+)
+def test_preflight_leaves_the_pull_requests_of_an_origin_off_github_alone(tmp_path, github, origin):
+    run = PullRun(tmp_path, origin, env={"PATH": fake_gh(tmp_path, token=None)})
+    assert access.on_github(run, "alpha") is None
+    assert asyncio.run(access.opens_pull(run, "alpha")) is None
+    assert github.calls == [] and run.notes == []
+
+
+def test_preflight_reads_github_from_an_ssh_origin_and_gh_s_token_from_its_variables_first(tmp_path):
+    run = PullRun(tmp_path, "git@github.com:northwind/alpha.git", env={})
+    assert access.on_github(run, "alpha") == ("git@github.com:northwind/alpha.git", "northwind", "alpha")
+    path = fake_gh(tmp_path, token=USER_TOKEN)
+    assert asyncio.run(preflight.gh_token({"PATH": path, "GITHUB_TOKEN": GH_ENV_TOKEN})) == (
+        GH_ENV_TOKEN,
+        "GITHUB_TOKEN",
+    )
+    assert asyncio.run(preflight.gh_token({"PATH": path})) == (USER_TOKEN, "gh")
+    value, why = asyncio.run(preflight.gh_token({"PATH": path}, login=False))
+    assert value is None and "its config dir is its own" in why, "an agent with a config dir of its own"
+
+
+# Plan runs whose repo is on GitHub
+
+
+@pytest.fixture
+def on_github_alpha(machine, monkeypatch):  # noqa: F811
+    """The machine whose checkout of alpha has its origin on github.com (git's insteadOf takes it to its bare
+    repository on disk), whose agent's gh takes a token of GH_TOKEN, and GitHub faked."""
+    git("remote", "set-url", "origin", OWNER_GITHUB, cwd=machine.checkouts["alpha"])
+    git("config", f"url.{machine.origins['alpha']}.insteadOf", OWNER_GITHUB, cwd=machine.checkouts["alpha"])
+    machine.env.pop("GITHUB_TOKEN", None)
+    machine.env["GH_TOKEN"] = USER_TOKEN
+    fake = FakeGitHub({})
+    monkeypatch.setattr(preflight, "github_call", fake)
+    machine.github = fake
+    return machine
+
+
+def test_preflight_a_plan_run_that_cannot_open_its_pull_request_fails_before_its_agent(on_github_alpha):
+    machine = on_github_alpha
+    machine.github.answers[("GET", REPO_PATH, USER_TOKEN)] = BAD_CREDENTIALS
+    machine.github.answers[("POST", PULLS_PATH, APP_TOKEN)] = REFUSED_APP
+    found = {}
+
+    async def run_it(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        hub.leases[run_id] = {"leases": [APP_LEASE], "missing": []}
+        assert await hub.wait_state(run_id, "done", "failed") == "failed", hub.texts(run_id)
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, run_it)
+    hub, run_id = found["hub"], found["run"]
+    run = stopped(hub, run_id, machine)
+    assert run["failure_cause"] == "credentials"
+    assert run["error"].startswith(
+        f"preflight: the run cannot open a pull request in alpha at {OWNER_GITHUB}: this machine's GH_TOKEN is not "
+        "valid (GitHub answered 401: Bad credentials); "
+    ), run["error"]
+    assert (
+        "the GitHub App token the hub leased the run (github-app:northwind) lacks pull_requests: write" in run["error"]
+    )
+    assert "beta" not in run["error"], "beta's origin is not on GitHub"
+    assert [call[:2] for call in machine.github.calls] == [("GET", REPO_PATH), ("POST", PULLS_PATH)]
+
+
+def test_preflight_a_plan_run_that_pushes_the_default_branch_asks_github_nothing(on_github_alpha):
+    machine = on_github_alpha
+    found = {}
+
+    async def run_it(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body(alpha="main")))
+        hub.leases[run_id] = {"leases": [APP_LEASE], "missing": []}
+        await hub.wait_state(run_id, "done", "failed", timeout=WAIT)
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, run_it, plan=plan_body(alpha="main"))
+    texts = found["hub"].texts(found["run"])
+    assert "Preflight passed: 2 repo(s)." in texts, texts
+    assert machine.github.calls == [], "a plan that names main opens no pull request there"
+
+
+def test_preflight_a_plan_run_that_can_open_its_pull_request_says_so_and_goes_on(on_github_alpha):
+    machine = on_github_alpha
+    machine.github.answers[("GET", REPO_PATH, USER_TOKEN)] = PUSHER
+    found = {}
+
+    async def run_it(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        hub.leases[run_id] = {"leases": [APP_LEASE], "missing": []}
+        await hub.wait_state(run_id, "done", "failed", timeout=WAIT)
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, run_it)
+    texts = found["hub"].texts(found["run"])
+    assert "Preflight passed: 2 repo(s) and the pull requests of 1 repo(s) on GitHub." in texts, texts
+    assert machine.github.calls == [("GET", REPO_PATH, USER_TOKEN, None)]

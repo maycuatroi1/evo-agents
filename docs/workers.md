@@ -627,7 +627,13 @@ results, since each step was verified when it was reported (it never goes to `re
 or `cancelled` sets back to `pending` the steps it reported, it or an earlier attempt of it, that are still
 `in_progress`, with the note `run #N failed: ...` or `run #N was cancelled: ...`; a step someone else left in
 progress stays as it is. A plan run that is `lost` queues its next attempt as a plan run with the same repos and model,
-and leaves the steps as they are.
+and leaves the steps as they are. When the worker that lost it claims that attempt on the same runtime, the claim names
+the lost attempt and its agent's session (`lost_attempt`: `{run_id, session_id}`; none for a run with a session for
+each step or with a budget). The daemon then goes on in that session and in the lost attempt's directory and
+worktrees, its plan branches checked out again, when the attempt ended on this machine, every worktree is still there,
+and the runtime finds the session's record (Claude Code's transcript, Codex's rollout; opencode and a plugin's runtime
+never do); its agent is told that its process was interrupted and to check each worktree before it goes on. Otherwise,
+and always on another worker, the attempt starts a new session in new worktrees, as before.
 
 ## Author runs
 
@@ -962,11 +968,13 @@ asked before the run put a plan has no plan (`plan_id` null) and is read by whoe
 every decision its turn asked, or a reply in its chat, rather than the first answer; and a parked author run resumes
 only once none of its decisions is open. A plan run keeps waking at the first answer.
 
-A plan run's agent that needs a time, or an event of the hub (a baseline of a canvas approved, a claim or a task
-changing), waits for it with `evo-agents worker wait` instead of asking its owner to say when it came, and ends its
-turn: the run waits as on a decision, and the hub wakes it with a message naming the wait when the time or the event
-comes (`docs/notifications.md`, A wait). An option of a decision that only means not yet goes with `evo-agents worker
-ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until another answer.
+A plan run's agent that needs a time, or an event of the hub (a step of another plan done, a baseline of a canvas
+approved, a claim or a task changing), waits for it with `evo-agents worker wait` instead of asking its owner to say
+when it came, and ends its turn: the run waits as on a decision, and the hub wakes it with a message naming the wait
+when the time or the event comes (`docs/notifications.md`, A wait). A step of another plan done is `--on plan.step
+--contains plan=PLAN --contains step=STEP --contains status=done`. An option of a decision that only means not yet goes
+with `evo-agents worker ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until
+another answer.
 
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
@@ -2893,6 +2901,21 @@ machine](#a-chat-run-on-the-machine)). The checks:
   key, a key that reads only, a repository the credential does not see); a remote that does not answer within 60
   seconds, or any other trouble, is left to the fetch. An origin that is a path on the machine is not asked. A run of
   the Curator that pushes needs a lease that covers each forge origin, as its push does;
+- a credential the agent has opens a pull request in each repo of a plan run whose origin is on github.com and whose
+  branch in the plan is not a default branch of the repo (the remote's HEAD, the hub's `default_branch`, main or
+  master), since the agent lands that branch through a pull request it opens itself. The daemon asks GitHub with each
+  token the agent may open one with, in the order it would take them: the one `gh` takes in the agent's environment
+  (`GH_TOKEN`, else `GITHUB_TOKEN`, else the machine's own `gh` login, which an agent with a Claude Code config dir of
+  its own does not see), then the git lease that covers the origin (the hub's GitHub App token). A user's token is
+  asked for the repo, `GET /repos/{owner}/{repo}`, read only: its user may push there, and a classic or OAuth token
+  has the scope `repo` (`public_repo` for a public repo). No route shows an App's installation token (`ghs_`) its own
+  permissions, so it is asked to open a pull request with an empty body: GitHub answers 403 when the token lacks
+  `pull_requests: write` and 422 when it has it, and opens nothing. The first token that can open one passes the
+  check (a note names those refused before it); when each was refused (401, 403, 404, no push, a scope or a permission
+  missing), or the agent holds none, the run fails with cause `credentials`, naming the repo, each token and what it
+  lacks. GitHub or `gh` not answering, a rate limit, or any other answer is noted and the agent starts. A plan that
+  names the default branch, a run of one step, a release run and a Builder of the Curator (whose pull requests the
+  hub opens) are not asked, nor is an origin on GitLab, another host or this machine;
 - each program a verify command of the run calls is on the run's PATH: the step's verify for a run of one step (from
   its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
   hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
@@ -2921,7 +2944,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | cause | the run failed because |
 |---|---|
 | `origin` | the project lists no origin for a repo it needs (preflight) |
-| `credentials` | git cannot read or push to a repo with what the run holds (preflight), or the remote refused the fetch or the push for its credential |
+| `credentials` | git cannot read or push to a repo with what the run holds, or no token the agent of a plan run has can open the pull request of a repo on GitHub (preflight), or the remote refused the fetch or the push for its credential |
 | `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), a verify command exited 127, or a repo asks for a Python environment and uv is not on PATH |
 | `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight); or the Python environment a repo asks for was not made ([The Python environment of a worktree](#the-python-environment-of-a-worktree)) |
 | `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |

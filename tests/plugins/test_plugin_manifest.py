@@ -198,7 +198,7 @@ def test_plugin_events_of_srs_and_tasks_are_taken_with_their_permissions():
     """plan loop-engine adds srs:read and tasks:read after the nine before, and the events they let a plugin take."""
     from evo_agents.plugins.manifest import PERMISSION_TEXT
 
-    assert PERMISSIONS[9:] == ("srs:read", "tasks:read") and set(PERMISSION_TEXT) == set(PERMISSIONS)
+    assert PERMISSIONS[9:11] == ("srs:read", "tasks:read") and set(PERMISSION_TEXT) == set(PERMISSIONS)
     data = manifest(
         permissions=["srs:read", "tasks:read"],
         contributes={"events": [{"name": "loop", "on": ["srs.version.approved", "tasks.status"]}]},

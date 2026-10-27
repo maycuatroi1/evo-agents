@@ -302,6 +302,14 @@ reads it (`docs/plugins.md`, section Extension points). The plugin srs takes it 
 events contribution `approvals`; the job `hub.deliver_plugin_events` delivers it within a minute or so of the
 approval, and the approval's route does nothing more to tasks.
 
+A review also emits the event `srs.use_case.approved` (plan srs-backlog-loop), one for each use case it just made
+approved: the document's slug and id, the version's number and id, the use case's code and key, the code (or else the
+title) of its direct parent item, its `claim` field when it has one, and the approver's login. A use case of a version is
+emitted once, whatever reviews follow: a review of one use case emits its own, and a version approved emits those no
+event told of yet, before `srs.version.approved`. Plugins with `srs:read` get it as they get the version's; the hub keeps
+it in `hub_events`, where the Loop reads it to know which use cases are approved ahead of their version
+(`docs/loop.md`, SRS là nguồn).
+
 When the project enables the plugin tasks, whether its Loop is on or off, that handler compares the version with the
 version approved before it (none the first time) and keeps the project's tasks in step with its use cases, in the
 delivery's transaction (`evo_agents/hub/server/srs/auto_tasks.py`):

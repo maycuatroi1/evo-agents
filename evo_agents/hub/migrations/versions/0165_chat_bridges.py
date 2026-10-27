@@ -120,7 +120,7 @@ def upgrade() -> None:
             name="chat_bridges_check",
         ),
     )
-    linked = sa.column("unlinked_at").is_(None)
+    linked = col("unlinked_at").is_(None)
     op.create_index(
         "chat_bridges_external_key", "chat_bridges", ["kind", "external_id"], unique=True, postgresql_where=linked
     )

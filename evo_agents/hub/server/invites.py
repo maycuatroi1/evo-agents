@@ -1,5 +1,6 @@
 """Invite links: a hub admin makes a one-time link that gives a grant on a project, or the right to register one new
-project, and a signed-in member accepts it.
+project, and a signed-in member accepts it. (In a self-managed project its admin makes a join link too, up to their
+own role and max level: ``evo_agents.hub.server.project_admin``.)
 
 POST /v1/admin/invites makes a link of kind ``join``, naming a project, a role and a max level of the project's ladder
 as ``PUT /v1/admin/projects/{project}/grants/{login}`` takes them, or of kind ``register``, naming none. It lasts
@@ -212,6 +213,50 @@ def _url(config: HubConfig, token: str) -> str | None:
     return f"{config.public_url}{PAGE}{token}" if config.public_url else None
 
 
+async def make_invite(conn: AsyncConnection, user: Principal, body: InviteRequest) -> tuple[InviteRow, str]:
+    """Make the one-time link ``body`` asks for, as ``user``, with its audit row; the link and its token, which the hub
+    keeps only as a hash. A join link names a project and a max level of its ladder."""
+    invites = tables.invites
+    token = PREFIX + secrets.token_urlsafe(TOKEN_BYTES)
+    project_id = None
+    if body.kind == JOIN:
+        project_id, ladder = await project_ladder(conn, body.project)
+        if body.max_level not in ladder:
+            levels = ", ".join(ladder)
+            raise HTTPException(
+                422, f"max_level must be a level of project {body.project} ({levels}), not {body.max_level}"
+            )
+    made = await conn.execute(
+        insert(invites)
+        .values(
+            kind=body.kind,
+            project_id=project_id,
+            role=body.role,
+            max_level=body.max_level,
+            for_login=body.for_login,
+            token_hash=hash_token(token),
+            created_by=user.user_id,
+            expires_at=func.now() + timedelta(days=body.days),
+        )
+        .returning(invites.c.id)
+    )
+    invite = await _one(conn, made.scalar_one())
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.INVITE_CREATE,
+        target=_target(invite),
+        project_id=project_id,
+    )
+    return invite, token
+
+
+def created(config: HubConfig, invite: InviteRow, token: str) -> InviteCreated:
+    """The answer to making a link: the link with its token and, with a public URL, the address to hand out."""
+    return InviteCreated(**invite.model_dump(), token=token, url=_url(config, token))
+
+
 @router.post(
     "",
     status_code=201,
@@ -220,42 +265,10 @@ def _url(config: HubConfig, token: str) -> str | None:
 )
 async def create(request: Request, response: Response, body: InviteRequest, user: AdminUser) -> InviteCreated:
     """Make a one-time invite link; the answer holds its token, which the hub shows this once."""
-    invites = tables.invites
-    token = PREFIX + secrets.token_urlsafe(TOKEN_BYTES)
     async with request.app.state.engine.begin() as conn:
-        project_id = None
-        if body.kind == JOIN:
-            project_id, ladder = await project_ladder(conn, body.project)
-            if body.max_level not in ladder:
-                levels = ", ".join(ladder)
-                raise HTTPException(
-                    422, f"max_level must be a level of project {body.project} ({levels}), not {body.max_level}"
-                )
-        made = await conn.execute(
-            insert(invites)
-            .values(
-                kind=body.kind,
-                project_id=project_id,
-                role=body.role,
-                max_level=body.max_level,
-                for_login=body.for_login,
-                token_hash=hash_token(token),
-                created_by=user.user_id,
-                expires_at=func.now() + timedelta(days=body.days),
-            )
-            .returning(invites.c.id)
-        )
-        invite = await _one(conn, made.scalar_one())
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=audit.INVITE_CREATE,
-            target=_target(invite),
-            project_id=project_id,
-        )
+        invite, token = await make_invite(conn, user, body)
     response.headers.update(NO_STORE)
-    return InviteCreated(**invite.model_dump(), token=token, url=_url(request.app.state.config, token))
+    return created(request.app.state.config, invite, token)
 
 
 @router.get("", response_model=list[InviteRow], responses=PAGED)

@@ -211,6 +211,16 @@ async def project_access(conn: AsyncConnection, user: Principal, name: str) -> P
     return ProjectAccess(row.id, rules, role, max_level)
 
 
+async def access_of(conn: AsyncConnection, user_id: int | None, name: str) -> ProjectAccess | None:
+    """The access user ``user_id`` holds to project ``name`` now, as its grant says, with no run's scope; None when the
+    project is not registered. Without a user (or a grant) the role and max level are None: the project's rules alone."""
+    row = (await conn.execute(_ACCESS, {"user_id": user_id, "name": name})).first()
+    if row is None:
+        return None
+    rules = ProjectRules(name, row.levels, row.locations, row.sinks, row.default_label)
+    return ProjectAccess(row.id, rules, row.role, row.max_level)
+
+
 # Registration
 
 

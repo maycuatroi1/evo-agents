@@ -39,6 +39,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.market_refresh import GitHubMarket, MarketUnavailable
+from evo_agents.hub.self_managed import ProjectScope
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.blobs import blob_store, put_bytes
@@ -205,15 +206,18 @@ async def _download(request: Request, fetch, *args):
 
 
 async def check_trust(
-    engine: AsyncEngine, config: HubConfig, publisher: str, signer: str, confirmed: bool
+    engine: AsyncEngine, config: HubConfig, publisher: str, signer: str, confirmed: bool, *, for_one: bool = False
 ) -> tuple[tuple, bool]:
     """The publishers the hub trusts with ``signer`` for ``publisher``, and whether that signer is new to it; 409 when
-    it is new and not ``confirmed``."""
+    it is new and not ``confirmed``. For an admin of a self-managed project (``for_one``) the signer is trusted for this
+    release alone and the hub keeps no trust of it: the answer says it is not new."""
     async with engine.begin() as conn:
         trusted = await trusted_publishers(conn, config)
     if trusts(trusted, publisher, signer):
         return trusted, False
     check_may_trust(config, publisher)
+    if for_one:
+        return merge_publishers(trusted, [(publisher, signer)]), False
     if not confirmed:
         raise HTTPException(
             409,
@@ -223,7 +227,7 @@ async def check_trust(
     return merge_publishers(trusted, [(publisher, signer)]), True
 
 
-async def _place(conn: AsyncConnection, user, name: str, version: str) -> bool:
+async def _place(conn: AsyncConnection, user, name: str, version: str, project_id: int | None = None) -> bool:
     """Install or upgrade plugin ``name`` to ``version``; whether it was an upgrade. 409 for an older version."""
     row = await find(conn, name, lock=True)
     target = next(v for v in await version_rows(conn, row.id) if v.version == version)
@@ -234,9 +238,9 @@ async def _place(conn: AsyncConnection, user, name: str, version: str) -> bool:
             raise HTTPException(409, f"plugin {name} is installed at {installed}, above {version}; {NOTHING_INSTALLED}")
         if version == installed:
             return False
-        await set_installed(conn, user, row, version, upgrade=True)
+        await set_installed(conn, user, row, version, upgrade=True, project_id=project_id)
         return True
-    await set_installed(conn, user, row, version, upgrade=False)
+    await set_installed(conn, user, row, version, upgrade=False, project_id=project_id)
     return False
 
 
@@ -266,15 +270,37 @@ class Installing:
         return cls(state.engine, state.config, state.plugin_sigstore, state.hub_version, blob_store(request))
 
 
-async def install_checked(hub: Installing, user, item: dict, checked: CheckedRelease, confirmed: bool):
-    """Trust the entry's signer when confirmed, then publish and install the checked release as the store does."""
+async def _scope_plugin(conn: AsyncConnection, name: str, scope: ProjectScope) -> bool:
+    """Refuse a plugin ``name`` the hub or another project holds; whether the store holds none of that name yet."""
+    row = await find(conn, name, lock=True)
+    if row is None:
+        return True
+    if row.project_id != scope.project_id:
+        whose = "the hub's" if row.project_id is None else "another project's"
+        raise HTTPException(
+            409, f"plugin {name} is {whose} already: a self-managed project installs only its own; {NOTHING_INSTALLED}"
+        )
+    return False
+
+
+async def install_checked(
+    hub: Installing,
+    user,
+    item: dict,
+    checked: CheckedRelease,
+    confirmed: bool,
+    scope: ProjectScope | None = None,
+):
+    """Trust the entry's signer when confirmed, then publish and install the checked release as the store does. For an
+    admin of a self-managed project (``scope``) the plugin is that project's alone and the signer is trusted for this
+    release only."""
     manifest = checked.manifest
     if manifest.tier != "isolated":
         raise HTTPException(
             422, f"{manifest.id} is a core plugin, which ships in the hub's image and is never installed from a market"
         )
     publisher, signer = item["publisher"]["id"], item["publisher"]["signer"]
-    publishers, new = await check_trust(hub.engine, hub.config, publisher, signer, confirmed)
+    publishers, new = await check_trust(hub.engine, hub.config, publisher, signer, confirmed, for_one=scope is not None)
     data = checked.data
     stored = await asyncio.to_thread(
         check_bundle,
@@ -298,20 +324,26 @@ async def install_checked(hub: Installing, user, item: dict, checked: CheckedRel
             .values(project_id=None, sha256=sha256, size=len(data), kind="plugin-bundle", created_by=user.user_id)
             .on_conflict_do_nothing()
         )
+        fresh = scope is not None and await _scope_plugin(conn, manifest.id, scope)
         await record_version(conn, user, body, stored)
-        upgraded = await _place(conn, user, manifest.id, manifest.version)
+        if fresh:
+            plugins = tables.plugins
+            await conn.execute(update(plugins).where(plugins.c.name == manifest.id).values(project_id=scope.project_id))
+        upgraded = await _place(conn, user, manifest.id, manifest.version, scope.project_id if scope else None)
         await _close_requests(conn, user, manifest.id)
         result = await stored_plugin(conn, manifest.id, hub.hub_version)
     log.info("plugin installed from a release", extra={"plugin": manifest.id, "version": manifest.version})
     return MarketInstalled(plugin=result, trusted_publisher=new, upgraded=upgraded)
 
 
-async def install_github(hub: Installing, transport, user, body: GitHubInstallIn) -> MarketInstalled:
+async def install_github(
+    hub: Installing, transport, user, body: GitHubInstallIn, scope: ProjectScope | None = None
+) -> MarketInstalled:
     """Install the release of a GitHub repo ``body`` names, as ``install_from_github`` does, without a request: what
     approving a proposal of @builder to install a plugin does (``evo_agents.core_plugins.builder``). ``transport``
     reads GitHub, the real one when None."""
     item, checked = await _fetched(hub.config, transport, hub.sigstore, download_github, body)
-    return await install_checked(hub, user, item, checked, body.trust_publisher)
+    return await install_checked(hub, user, item, checked, body.trust_publisher, scope)
 
 
 async def install_release(request: Request, user, item: dict, checked: CheckedRelease, confirmed: bool):

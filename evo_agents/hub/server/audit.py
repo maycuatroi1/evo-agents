@@ -205,6 +205,11 @@ PLUGIN_DISABLE = "plugin.disable"  # the hub turned off an installed version tha
 # publisher a hub admin trusted or stopped trusting, "market:<OWNER/REPO>" for a market source added or removed.
 PLUGIN_PUBLISHER_ADD = "plugin.publisher.add"
 PLUGIN_PUBLISHER_REMOVE = "plugin.publisher.remove"
+# A hub admin turned a project's self-managed state on or off (evo_agents.hub.server.project_admin), in the project:
+# "<project> self_managed=true owners=<the trusted GitHub owners>" or "<project> self_managed=false"; the admins of such a
+# project then install plugins (plugin.install|upgrade|remove with the project), give grants (grant.put, grant.delete)
+# and make invite links (invite.create) themselves.
+PROJECT_SELF_MANAGED = "project.self_managed"
 MARKET_SOURCE_ADD = "market.source.add"
 MARKET_SOURCE_REMOVE = "market.source.remove"
 # A project admin asked the hub admins to install a plugin of a market, in that project:

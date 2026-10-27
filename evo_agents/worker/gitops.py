@@ -925,6 +925,11 @@ async def detach(cwd: Path) -> None:
     await git(cwd, "checkout", "--quiet", "--detach")
 
 
+async def attach(cwd: Path, branch: str) -> None:
+    """Check ``branch`` out again in a worktree ``detach`` left at its tip; what is not committed stays."""
+    await git(cwd, "checkout", "--quiet", branch, "--")
+
+
 async def remove_worktree(cwd: Path, path: Path) -> None:
     await git(cwd, "worktree", "remove", "--force", str(path))
 

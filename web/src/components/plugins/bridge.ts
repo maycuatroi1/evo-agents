@@ -72,6 +72,13 @@ export type RouteMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type RouteCall = { method: RouteMethod; path: string; query: Record<string, string>; body?: unknown };
 export type RouteAnswer = { status: number; body: unknown };
 
+/** One call on the plugin's own records (docs/plugins.md, Records), which the hub answers by the viewer's grant. */
+export type RecordsCall =
+  | { op: "list"; collection: string; after?: string; limit: number }
+  | { op: "get"; collection: string; key: string }
+  | { op: "put"; collection: string; key: string; body: Record<string, unknown>; level?: string; audience?: "writer" | "everyone"; revision?: number }
+  | { op: "delete"; collection: string; key: string; revision?: number };
+
 /** What the methods ask of the hub, with the viewer's session; each rejects with the hub's refusal. */
 export type HubReader = {
   runs: (query: { state?: string[]; limit: number; offset: number }) => Promise<unknown>;
@@ -80,6 +87,7 @@ export type HubReader = {
   plan: (id: string) => Promise<unknown>;
   memories: (query: { limit: number; cursor?: string }) => Promise<unknown>;
   route: (call: RouteCall) => Promise<RouteAnswer>;
+  records: (call: RecordsCall) => Promise<unknown>;
 };
 
 export type Host = {
@@ -110,6 +118,10 @@ export const METHODS = {
   "plans.list": "plans:read",
   "plans.get": "plans:read",
   "memories.list": "memories:read",
+  "records.list": "records:use",
+  "records.get": "records:use",
+  "records.put": "records:use",
+  "records.delete": "records:use",
 } as const satisfies Record<string, string | null>;
 export type Method = keyof typeof METHODS;
 
@@ -119,6 +131,8 @@ const RUN_STATES = new Set([
 ]);
 const ROUTE_METHODS = new Set<string>(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const ROUTE_PATH = /^[A-Za-z0-9._~!$&'()*+,;=:@-]+(\/[A-Za-z0-9._~!$&'()*+,;=:@-]+)*\/?$/;
+const COLLECTION = /^[a-z][a-z0-9_-]{0,62}$/;
+const RECORD_KEY = /^[A-Za-z0-9][A-Za-z0-9._~:@=+-]{0,199}$/;
 const PLAN_ID = /^[a-z0-9][a-z0-9-]{0,99}$/;
 
 function isMethod(name: string): name is Method {
@@ -184,6 +198,43 @@ function stringList(value: unknown, key: string, allowed: Set<string>): string[]
     throw new BridgeError("invalid_params", `${key} lists states of runs, such as running or done`);
   }
   return value as string[];
+}
+
+function nameParam(params: Record<string, unknown>, key: "collection" | "key", pattern: RegExp, what: string): string {
+  const value = params[key];
+  if (typeof value !== "string" || !pattern.test(value)) throw new BridgeError("invalid_params", `${key} is ${what}`);
+  return value;
+}
+
+function revisionParam(params: Record<string, unknown>): number | undefined {
+  return params.revision === undefined ? undefined : intParam(params, "revision", 0, 0, Number.MAX_SAFE_INTEGER);
+}
+
+function recordsCall(method: string, params: Record<string, unknown>): RecordsCall {
+  const collection = nameParam(params, "collection", COLLECTION, "lowercase letters, digits, - and _, starting with a letter");
+  const keyed = () => nameParam(params, "key", RECORD_KEY, "1 to 200 letters, digits or . _ ~ : @ = + -");
+  switch (method) {
+    case "records.list": {
+      if (params.after !== undefined && typeof params.after !== "string") {
+        throw new BridgeError("invalid_params", "after is a key");
+      }
+      return { op: "list", collection, after: params.after, limit: intParam(params, "limit", 50, 1, 200) };
+    }
+    case "records.get":
+      return { op: "get", collection, key: keyed() };
+    case "records.put": {
+      const body = params.body;
+      if (!isRecord(body)) throw new BridgeError("invalid_params", "body is an object");
+      const { level, audience } = params;
+      if (level !== undefined && typeof level !== "string") throw new BridgeError("invalid_params", "level is a level");
+      if (audience !== undefined && audience !== "writer" && audience !== "everyone") {
+        throw new BridgeError("invalid_params", "audience is writer or everyone");
+      }
+      return { op: "put", collection, key: keyed(), body, level, audience, revision: revisionParam(params) };
+    }
+    default:
+      return { op: "delete", collection, key: keyed(), revision: revisionParam(params) };
+  }
 }
 
 function routeCall(params: Record<string, unknown>): RouteCall {
@@ -287,6 +338,11 @@ export async function answer(request: BridgeRequest, host: Host): Promise<unknow
     case "runs.get":
       if (params.id === undefined) throw new BridgeError("invalid_params", "id is the run's number");
       return host.hub.run(intParam(params, "id", 0, 1, Number.MAX_SAFE_INTEGER));
+    case "records.list":
+    case "records.get":
+    case "records.put":
+    case "records.delete":
+      return host.hub.records(recordsCall(method, params));
     case "plans.list": {
       const area = params.area;
       if (area !== undefined && area !== "active" && area !== "completed") {

@@ -42,6 +42,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.review import PRODUCT
+from evo_agents.hub.self_managed import ProjectScope, state_of
 from evo_agents.hub.server import notifications
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.agent_types import enabled_type
@@ -129,7 +130,8 @@ async def _tell_approvers(
     by: str = f"@{TYPE}",
 ) -> int:
     admins = config.admins if config is not None else frozenset()
-    told = await proposals.approvers(conn, access, change.kind, admins)
+    own = await proposals.own_install(conn, access, change.kind, change.sets)
+    told = await proposals.approvers(conn, access, change.kind, admins, own)
     for user_id in told:
         await notifications.notify(
             conn,
@@ -184,7 +186,9 @@ async def _propose_for_review(
     told = await _tell_approvers(conn, access, change, proposal_id, run, link, context.config, by=CURATOR)
     await proposals.record_proposal(conn, owner, access, proposal_id, run)
     log.info("builder proposal made", extra={"proposal": proposal_id, "kind": change.kind, "run_id": run.run_id})
-    approver = proposals.approver_words(change.kind, access.name)
+    approver = proposals.approver_words(
+        change.kind, access.name, await proposals.own_install(conn, access, change.kind, change.sets)
+    )
     return (
         f"Proposal {proposal_id} waits for {approver}: the hub told {told} member(s) in their Inbox. Nothing is "
         "applied until an admin approves it; record no finding to repeat it."
@@ -205,7 +209,9 @@ async def _propose(conn: AsyncConnection, change: proposals.Change, context: Cor
     target = await proposals.locate(conn, access, change)
     await proposals.check(conn, access, change, target, __version__)
     proposal_id = await proposals.store(conn, access, change, target, run)
-    approver = proposals.approver_words(change.kind, access.name)
+    approver = proposals.approver_words(
+        change.kind, access.name, await proposals.own_install(conn, access, change.kind, change.sets)
+    )
     shown = proposals.thread_text(proposal_id, change, target, approver)
     message_id = await hub_reply(conn, run.chat_id, run.root_id, shown)
     await proposals.shown_at(conn, proposal_id, message_id)
@@ -279,8 +285,8 @@ async def answer_as(
 def installer(hub: Installing, transport=None) -> plugin_changes.Install:
     """Installing a GitHub release with what ``hub`` holds, reading GitHub through ``transport``."""
 
-    async def install(user: Principal, body: GitHubInstallIn):
-        return await install_github(hub, transport, user, body)
+    async def install(user: Principal, body: GitHubInstallIn, scope: ProjectScope | None = None):
+        return await install_github(hub, transport, user, body, scope)
 
     return install
 
@@ -288,13 +294,13 @@ def installer(hub: Installing, transport=None) -> plugin_changes.Install:
 def _context_installer(context: CoreContext) -> plugin_changes.Install:
     """Installing a GitHub release from the event's context, as the worker's jobs install one."""
 
-    async def install(user: Principal, body: GitHubInstallIn):
+    async def install(user: Principal, body: GitHubInstallIn, scope: ProjectScope | None = None):
         store = BlobStore.from_config(context.config)
         if store is None:
             missing = ", ".join(context.config.blob_store_missing())
             raise ProposalError(503, f"the blob store is not configured on this hub: set {missing}")
         hub = Installing(context.engine, context.config, default_sigstore(), __version__, store)
-        return await install_github(hub, None, user, body)
+        return await install_github(hub, None, user, body, scope)
 
     return install
 
@@ -374,9 +380,9 @@ async def _say_in_thread(conn: AsyncConnection, proposal_id: int, found: Builder
 
 
 def _request_installer(request: Request) -> plugin_changes.Install:
-    async def install(user: Principal, body: GitHubInstallIn):
+    async def install(user: Principal, body: GitHubInstallIn, scope: ProjectScope | None = None):
         hub = Installing.of(request)
-        return await installer(hub, getattr(request.app.state, "market_transport", None))(user, body)
+        return await installer(hub, getattr(request.app.state, "market_transport", None))(user, body, scope)
 
     return install
 
@@ -413,8 +419,12 @@ async def waiting_proposals(
     reader, and the agent of a run, none."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
+        self_managed = (await state_of(conn, access.project_id)).enabled
         decides = [
-            k for k in PROPOSAL_KINDS if kind in (None, k) and not proposals.refusal(user, access, k, "deciding")
+            k
+            for k in PROPOSAL_KINDS
+            if kind in (None, k)
+            and not proposals.refusal(user, access, k, "deciding", own=self_managed and k == proposals.PLUGIN_INSTALL)
         ]
         return await proposals.listed(conn, access.project_id, proposals.PENDING, kinds=decides) if decides else []
 

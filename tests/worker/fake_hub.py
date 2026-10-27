@@ -290,31 +290,31 @@ class FakeHub:
         **extra,
     ) -> int:
         held = self.plans[plan_id]
-        return self.queue_run(
-            kind="plan",
-            project=self.project,
-            plan_id=plan_id,
-            step_key=None,
-            title=held["body"].get("title") or plan_id,
-            plan_revision=held["revision"],
-            attempt=1,
-            max_attempts=3,
-            parent_run_id=None,
-            resume_of_run_id=resume_of,
-            session_id=session_id,
-            runtime="claude-code",
-            model=None,
-            mode="headless",
-            approval="auto",
-            timeout_min=120,
-            repo=None,
-            branch=None,
-            repos=repos,
-            lease_expires_at=_now(),
-            prompt=runs.build_plan_prompt(held["body"], repos),
-            plan={"revision": held["revision"], "body": copy.deepcopy(held["body"])},
-            **extra,
-        )
+        spec = {
+            "kind": "plan",
+            "project": self.project,
+            "plan_id": plan_id,
+            "step_key": None,
+            "title": held["body"].get("title") or plan_id,
+            "plan_revision": held["revision"],
+            "attempt": 1,
+            "max_attempts": 3,
+            "parent_run_id": None,
+            "resume_of_run_id": resume_of,
+            "session_id": session_id,
+            "runtime": "claude-code",
+            "model": None,
+            "mode": "headless",
+            "approval": "auto",
+            "timeout_min": 120,
+            "repo": None,
+            "branch": None,
+            "repos": repos,
+            "lease_expires_at": _now(),
+            "prompt": runs.build_plan_prompt(held["body"], repos),
+            "plan": {"revision": held["revision"], "body": copy.deepcopy(held["body"])},
+        }
+        return self.queue_run(**(spec | extra))  # ``extra`` may name the attempt, as the next one of a lost run
 
     def queue_step_run(self, plan_id: str, key: str, repo: str, branch: str) -> int:
         held = self.plans[plan_id]
@@ -786,6 +786,11 @@ class FakeHub:
             self._move(run_id, "done")
         else:
             run["finish"] = True
+
+    def lose(self, run_id: int) -> None:
+        """What the reaper does to a held run whose lease ran out: it is lost, and its worker lets it go."""
+        assert self.runs[run_id]["state"] in runs.HELD_STATES, self.runs[run_id]["state"]
+        self._move(run_id, "lost")
 
     def park(self, run_id: int) -> None:
         """What the reaper does to a run that waited too long for its owner."""

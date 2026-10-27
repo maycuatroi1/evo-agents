@@ -12,7 +12,7 @@ that says why, and a plugin that declares no egress is refused, for the writes t
 tools of the graph read through a sink: a node above its clearance is not there.
 
 The writes act as the plugin, never as a member: a decision or a dismissal names the plugin as its actor
-(migration 0169) and the audit row names it. A cause is changed only when the hub guessed it (a worker's cause is never
+(migration 0174) and the audit row names it. A cause is changed only when the hub guessed it (a worker's cause is never
 overwritten), the run's event says by which plugin, model and confidence and from which cause, and the cause stays
 a guess. Writers undo each of them from the web and the CLI (``evo_agents.hub.server.kg_decisions``,
 ``kg_review`` and ``run_cause``). Private to ``core_plugin_api``.
