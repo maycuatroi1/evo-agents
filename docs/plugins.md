@@ -448,7 +448,7 @@ a hub admin in Features or by an admin of the project on its Plugins page, where
 on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
 `project_plugins` that 0147 kept in `retired_project_plugins`.
 
-telegram, chats, crm, pm, marketing and editorial are core plugins of another repository,
+telegram, chats, crm, pm, marketing, editorial and okr are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
 the distribution `evo-agents-core-plugins` (package `evo_core_plugins`). `deploy/hub/core-plugins.txt` pins the release
 of it that matches the API of each commit of evo-agents, by version and wheel hash, and the hub's image installs it
