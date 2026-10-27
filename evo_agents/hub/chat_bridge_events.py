@@ -5,7 +5,8 @@ A bridge's plugin gets one delivery per bridge, in the transaction that wrote wh
 
 - ``message``: a new message of the chat, whoever wrote it, except to the bridge it came in by (no echo);
 - ``progress``: a chat run that a message carried by the bridge started moved to a new state;
-- ``reaction``: an emoji put on or taken off a message the bridge carried, in or out.
+- ``reaction``: an emoji put on or taken off a message the bridge carried, in or out, with who did it: ``by_kind``
+  (``person``, ``agent`` or ``hub``) and ``by`` (a person's login, an agent's handle; None for the hub).
 
 The payload carries ids and states, as every event does (``plugin_events``): the bridge, the chat, the message, the
 run, the emoji. The plugin reads the message through the API (``core_plugin_api.bridge_message``), which checks the
@@ -76,10 +77,22 @@ async def message(
     return await _emit(conn, chat_id, bridges, {"what": "message", **said}, projects)
 
 
-async def reaction(conn: AsyncConnection, chat_id: int, message_id: int, emoji: str, *, added: bool, count: int) -> int:
-    """An emoji put on (``added``) or taken off message ``message_id``, to each bridge that carried it."""
+async def reaction(
+    conn: AsyncConnection,
+    chat_id: int,
+    message_id: int,
+    emoji: str,
+    *,
+    added: bool,
+    count: int,
+    by_kind: str = "hub",
+    by: str | None = None,
+) -> int:
+    """An emoji put on (``added``) or taken off message ``message_id`` by ``by`` (a person's login or an agent's
+    handle, ``by_kind`` saying which), to each bridge that carried it."""
     bridges = await _bridges(conn, chat_id, carried=message_id)
     payload = {"what": "reaction", "message_id": message_id, "emoji": emoji, "added": added, "count": count}
+    payload |= {"by_kind": by_kind, "by": by}
     return await _emit(conn, chat_id, bridges, payload)
 
 

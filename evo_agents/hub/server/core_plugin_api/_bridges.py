@@ -14,16 +14,18 @@ from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import attachments, blob_gc, chats, outputs
-from evo_agents.hub.blobs import BlobStoreUnavailable
+from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server import attachment_store, chat_bridges, member_channels
-from evo_agents.hub.server.blobs import blob_store, put_bytes
+from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.chat_access import agent_projects, channel_cleared, chat_access
 from evo_agents.hub.server.chat_views import message_rows, profiles_by_id
 from evo_agents.hub.server.chats import ChatMessageIn, deliver_message
 from evo_agents.hub.server.core_plugin_api._acts import NO_PROJECT, READS, WRITES, _chat_grants, _feature_on, _granting
+from evo_agents.hub.server.core_plugin_api._base import Context, transaction
 from evo_agents.hub.server.core_plugin_api._types import (
     Bridge,
+    BridgeFile,
     BridgeMessage,
     LinkCode,
     Member,
@@ -43,6 +45,8 @@ from evo_agents.hub.server.core_plugin_api._types import (
 
 NOT_LINKED = "bridge {bridge} is not linked: a chat admin bridges the chat again"
 UNAVAILABLE = "the hub's blob store does not answer now: send the file again later"
+UNREADABLE = "the hub's blob store does not answer now: read the file again later"
+NO_STORE = "the blob store is not configured on this hub"
 
 
 def _bridge(row) -> Bridge:
@@ -168,15 +172,8 @@ async def bridge_set_state(conn: AsyncConnection, plugin: Plugin, bridge_id: int
 # Out to the group
 
 
-async def bridge_message(
-    conn: AsyncConnection, plugin: Plugin, bridge_id: int, message_id: int
-) -> BridgeMessage | None:
-    """Message ``message_id`` of the bridge's chat as its group may read it: None unless the sink of kind channel of
-    the bridge's kind allows its label in every project the label names (none: nothing goes out), or for a message
-    of another chat; 403 unless the project of every agent of the chat grants the plugin chats:read. Its text goes
-    through the hub's redaction, and it carries no file: neither what its author attached nor a run's outputs, so a
-    tool's source never leaves this way. ``reply_to`` is the group's message its thread started from, when the bridge
-    carried that one."""
+async def _going_out(conn: AsyncConnection, plugin: Plugin, bridge_id: int, message_id: int):
+    """(the ``BridgeMessage``, the rows of its files with their SHA-256) of ``bridge_message``, or None."""
     own_plugin(plugin)
     row = await _own_bridge(conn, plugin.id, bridge_id)
     found = await message_rows(conn, row.chat_id, [message_id]) if isinstance(message_id, int) else []
@@ -198,7 +195,9 @@ async def bridge_message(
         author_kind, author = "person", message.author_login
     root = message.thread_root_id
     reply_to = None if root is None else await chat_bridges.group_message(conn, row.id, root)
-    return BridgeMessage(
+    attached = (await attachment_store.of_messages(conn, [message.id])).get(message.id, [])
+    files = tuple(BridgeFile(f.id, f.name, f.media_type, f.size) for f in attached)
+    read = BridgeMessage(
         id=message.id,
         chat_id=message.chat_id,
         bridge_id=row.id,
@@ -211,7 +210,48 @@ async def bridge_message(
         reply_to=reply_to,
         link=chats.chat_link(message.chat_id, message.id),
         created_at=message.created_at,
+        files=files,
     )
+    return read, attached
+
+
+async def bridge_message(
+    conn: AsyncConnection, plugin: Plugin, bridge_id: int, message_id: int
+) -> BridgeMessage | None:
+    """Message ``message_id`` of the bridge's chat as its group may read it: None unless the sink of kind channel of
+    the bridge's kind allows its label in every project the label names (none: nothing goes out), or for a message
+    of another chat; 403 unless the project of every agent of the chat grants the plugin chats:read. Its text goes
+    through the hub's redaction. ``files`` are the files its author attached to it, which ``bridge_file`` reads under
+    the same checks; a run's outputs never go this way, so neither does a tool's source. ``reply_to`` is the group's
+    message its thread started from, when the bridge carried that one."""
+    found = await _going_out(conn, plugin, bridge_id, message_id)
+    return None if found is None else found[0]
+
+
+async def bridge_file(context: Context, plugin: Plugin, bridge_id: int, message_id: int, file_id: int) -> bytes | None:
+    """The bytes of file ``file_id``, one of the ``files`` of message ``message_id`` as ``bridge_message`` reads it,
+    under its checks again: None when the message does not go out to the bridge's group now or the file is not one of
+    its own, or its bytes are gone from the blob store. 503 when the hub has no blob store or it does not answer. Its
+    own transaction, on the engine of ``context``; the store is read once the transaction ended."""
+    own_plugin(plugin)
+    if isinstance(file_id, bool) or not isinstance(file_id, int):
+        raise ValueError("a file id is an integer")
+    async with transaction(context) as conn:
+        found = await _going_out(conn, plugin, bridge_id, message_id)
+    if found is None:
+        return None
+    wanted = next((f for f in found[1] if f.id == file_id), None)
+    if wanted is None:
+        return None
+    store = BlobStore.from_config(context.config) if context.config is not None else None
+    if store is None:
+        raise Refused(503, NO_STORE)
+    try:
+        return await asyncio.to_thread(fetch_bytes, store, wanted.sha256, wanted.size)
+    except BlobStoreUnavailable:
+        raise Refused(503, UNREADABLE) from None
+    finally:
+        store.close()
 
 
 async def bridge_sent(

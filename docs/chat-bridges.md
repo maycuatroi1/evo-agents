@@ -47,12 +47,16 @@ Every new message of the chat, whoever wrote it, is the event `chat.bridge` (`wh
 except to the bridge it came in by: no echo. The event carries ids alone; the plugin reads the message with
 `bridge_message`, which answers None unless every project the message's label names has a sink of kind channel for the
 bridge's kind that clears it (`knowledge.yaml`, `docs/notifications.md`): no such sink, nothing goes out. The text goes
-through the hub's redaction, and no file goes out, neither an attachment nor a run's output. `reply_to` is the group's
+through the hub's redaction. Its `files` are what its author attached to the message (id, name, media type, size), and
+`bridge_file(context, plugin, bridge_id, message_id, file_id)` reads the bytes of one of them from the hub's blob store,
+under the same checks again: None once the message does not go out or for a file that is not its own, 503 without a
+blob store. A run's outputs never go out this way, so neither does a file a tool read. `reply_to` is the group's
 message its thread started from, so replies thread in the group too; `bridge_sent` records the group's id of what went
 out. `bridged_to` on each message of the chat names the bridges that carried it.
 
 A chat run that a message carried by the bridge started sends its state as `what: progress`, and an emoji put on or
-taken off a message the bridge carried as `what: reaction`.
+taken off a message the bridge carried as `what: reaction`, with who did it: `by_kind` (`person`, `agent` or `hub`)
+and `by` (a person's login, an agent's handle, null for the hub), so a plugin can let out an agent's reactions alone.
 
 The event is stored for the bridge's plugin alone, in the first project of the chat's agents that enables it and grants
 `chats:read`; with none, nothing goes out, and delivering it checks the grant again.

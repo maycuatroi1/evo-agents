@@ -15,8 +15,8 @@
   sends ``/bridge <code>`` in the group; ``/unbridge`` there takes it off, and so does a hub admin. A linked member's
   message in the group goes to the hub's chat as theirs (``hub.bridge_send``), a reply in the thread of the message it
   answers, a file with it; the hub's chat's new messages come back as the event ``chat.bridge`` and go to the group,
-  as far as the project's sink of kind channel ``northwind`` lets them (``hub.bridge_message``), a run's progress and
-  a reaction as a line.
+  as far as the project's sink of kind channel ``northwind`` lets them (``hub.bridge_message``), with the files their
+  author attached (``hub.bridge_file``); a run's progress and a reaction, with who put it, as a line.
 - Any chat user, linked or not, asks the agent type helpdesk of a project ``/ask <project> <question>``
   (``hub.ask_agent_type``); the answer comes back as the event ``agent.answer`` and goes to the chat that asked, whose
   ids its ref holds.
@@ -81,13 +81,21 @@ class Service:
         self.token = values.get("token")
 
     async def send(
-        self, group_id: str, user_id: str, text: str, buttons: list | None = None, reply_to: str | None = None
+        self,
+        group_id: str,
+        user_id: str,
+        text: str,
+        buttons: list | None = None,
+        reply_to: str | None = None,
+        files: list | None = None,
     ) -> str:
         if not self.token:
             raise hub.Undeliverable("Northwind Chat is not set up: a hub admin sets the plugin's token")
         body = {"group_id": group_id, "user_id": user_id, "text": text, "buttons": buttons or []}
         if reply_to is not None:
             body["reply_to"] = reply_to
+        if files:
+            body["files"] = files
         async with httpx.AsyncClient(transport=TRANSPORT, timeout=10) as client:
             answer = await client.post(
                 f"{self.url}/messages", json=body, headers={"Authorization": f"Bearer {self.token}"}
@@ -455,37 +463,44 @@ async def on_agent_answer(params: dict, context: hub.Context) -> dict:
     return {}
 
 
-async def _bridge_line(conn, bridge: hub.Bridge, payload: dict) -> tuple[str | None, str | None]:
-    """The line event ``payload`` sends the group of ``bridge``, and the group's message it replies to; None when
-    nothing goes."""
+async def _bridge_line(conn, bridge: hub.Bridge, payload: dict) -> tuple[str | None, str | None, tuple]:
+    """The line event ``payload`` sends the group of ``bridge``, the group's message it replies to and the files of the
+    hub's message that go with it; None when nothing goes."""
     what = payload.get("what")
     if what == "message":
         read = await hub.bridge_message(conn, plugin(), bridge.id, payload["message_id"])
         if read is None or bridge.state.get("last_sent", 0) >= read.id:
-            return None, None
+            return None, None, ()
         await hub.bridge_set_state(conn, plugin(), bridge.id, {**bridge.state, "last_sent": read.id})
-        return f"{read.author or 'hub'}: {read.body}", read.reply_to
+        return f"{read.author or 'hub'}: {read.body}", read.reply_to, read.files
     if what == "progress":
-        return f"run {payload['run_id']}: {payload['state']}", None
+        return f"run {payload['run_id']}: {payload['state']}", None, ()
     if what == "reaction":
         sign = "+" if payload.get("added") else "-"
-        return f"{sign}{payload['emoji']} on message {payload['message_id']}", None
-    return None, None
+        who = f"{payload.get('by_kind')} {payload.get('by') or 'hub'}"
+        return f"{sign}{payload['emoji']} on message {payload['message_id']} by {who}", None, ()
+    return None, None, ()
 
 
 async def on_chat_bridge(params: dict, context: hub.Context) -> dict:
-    """What a bridged chat of the hub carries out to its group: a new message (once, as far as the hub lets it out),
-    a run's progress and a reaction to a message the bridge carried, each a line."""
+    """What a bridged chat of the hub carries out to its group: a new message (once, as far as the hub lets it out)
+    with the files its author attached, a run's progress and a reaction to a message the bridge carried (and who put
+    it), each a line."""
     payload = params["payload"]
     async with hub.transaction(context) as conn:
         bridge = await hub.bridge_read(conn, plugin(), payload["bridge_id"])
         if bridge is None:
             return {}
         settings = await hub.plugin_config(conn, plugin(), context.config)
-        text, reply_to = await _bridge_line(conn, bridge, payload)
+        text, reply_to, attached = await _bridge_line(conn, bridge, payload)
     if text is None:
         return {}
-    sent = await Service(settings.values).send(bridge.external_id, EVERYONE, text, reply_to=reply_to)
+    files = []
+    for found in attached:
+        data = await hub.bridge_file(context, plugin(), bridge.id, payload["message_id"], found.id)
+        if data is not None:
+            files.append({"name": found.name, "size": found.size, "data": base64.b64encode(data).decode()})
+    sent = await Service(settings.values).send(bridge.external_id, EVERYONE, text, reply_to=reply_to, files=files)
     if payload["what"] == "message":
         async with hub.transaction(context) as conn:
             await hub.bridge_sent(conn, plugin(), bridge.id, payload["message_id"], sent)

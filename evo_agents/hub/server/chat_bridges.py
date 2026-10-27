@@ -11,7 +11,8 @@ chat admin), from the group (the plugin, ``via`` bot) or by a hub admin; each li
 
 What a bridge carries: a message of the chat goes out (``chat_bridge_events``) when the sink of kind channel of the
 bridge's kind allows its label in every project the label names (``chat_access.channel_cleared``), its text redacted
-and without files; a message of the group comes in as the member the plugin finds for its sender, through the code of
+and with the files its author attached alone, never a run's outputs; a message of the group comes in as the member the
+plugin finds for its sender, through the code of
 POST /v1/chats/{id}/messages, with ``via`` the bridge's kind. ``chat_bridge_messages`` maps the ids both ways, so a
 reply threads in the group and in the chat.
 """
