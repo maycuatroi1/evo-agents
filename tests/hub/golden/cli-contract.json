@@ -15395,8 +15395,7 @@
           "created_at",
           "title",
           "description",
-          "tier",
-          "project"
+          "tier"
         ],
         "schema": "Plugin",
         "with": {
@@ -15449,8 +15448,7 @@
           "created_at",
           "title",
           "description",
-          "tier",
-          "project"
+          "tier"
         ],
         "schema": "Plugin",
         "with": {
@@ -15669,8 +15667,7 @@
           "created_at",
           "title",
           "description",
-          "tier",
-          "project"
+          "tier"
         ],
         "schema": "Plugin"
       }
@@ -15782,7 +15779,6 @@
           "title",
           "description",
           "tier",
-          "project",
           "manifest",
           "versions"
         ],
@@ -15834,8 +15830,7 @@
           "created_at",
           "title",
           "description",
-          "tier",
-          "project"
+          "tier"
         ],
         "schema": "Plugin"
       }
@@ -24225,7 +24220,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.49.1"
+      "version": "0.49.2"
     },
     "paths": {
       "/v1/health": {
