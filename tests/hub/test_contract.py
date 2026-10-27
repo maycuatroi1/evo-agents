@@ -52,7 +52,7 @@ def golden() -> dict:
 # `hub <plugin>`. The golden copy is printed with it installed, as the Linux jobs have it; the macOS and Windows jobs
 # install '.[test,graphify]' alone, where the CLI has none of those commands.
 CORE_PLUGINS_PACKAGE = "evo_core_plugins"
-ITS_PLUGINS = {"chats", "crm", "editorial", "marketing", "pm", "telegram"}
+ITS_PLUGINS = {"chats", "crm", "editorial", "marketing", "okr", "pm", "telegram"}
 
 
 def golden_commands() -> dict:
