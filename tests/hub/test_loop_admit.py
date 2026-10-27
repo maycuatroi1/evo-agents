@@ -14,8 +14,8 @@ import pytest
 
 pytest.importorskip("sqlalchemy")
 
-from evo_agents.hub.autonomy import effective
-from evo_agents.hub.server.loop.admit import Capacity, LoopWorker, open_repos, refusal
+from evo_agents.hub.autonomy import effective, problems
+from evo_agents.hub.server.loop.admit import Capacity, LoopWorker, open_repos, policy_selector, refusal
 from evo_agents.hub.server.loop.caps import run_budget, timeout_s
 from evo_agents.hub.server.loop.model import ItemView
 from evo_agents.hub.server.runs.models import RunBudget
@@ -124,3 +124,16 @@ def test_loop_caps_author_and_plan_runs_carry_the_turns_and_minutes_of_the_polic
     assert timeout_s("deliver", tight) == 5700
     # the shape a claim hands the worker: Claude Code stops at the turns, Codex at the time, nothing at a cost
     assert RunBudget(**run_budget("build", tight)) == RunBudget(max_usd=None, max_turns=50, max_seconds=1800)
+
+
+def test_loop_admission_loop_pool_and_loop_labels_make_the_selector_and_loop_worker_stays_without_them():
+    assert policy_selector(POLICY) == ()
+    assert policy_selector(policy(pool="ci", labels=["GPU", "zone=eu"])) == ("pool=ci", "gpu", "zone=eu")
+    assert policy_selector(policy(labels=["gpu"])) == ("gpu",)
+    nobody = capacity(worker=LoopWorker("pool=ci", down="no live worker holding pool=ci", selector=("pool=ci",)))
+    assert refusal(item("build"), (), nobody, policy(pool="ci")) == (
+        "worker",
+        {"worker": "pool=ci", "why": "no live worker holding pool=ci"},
+    )
+    assert problems({"loop": {"pool": "ci", "labels": ["gpu"]}}, {}) == []
+    assert problems({"loop": {"labels": ["no spaces"]}}, {})[0].startswith("loop.labels: a list of at most 10 labels")

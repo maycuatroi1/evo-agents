@@ -377,6 +377,59 @@ def test_loop_dispatch_hands_out_no_author_run_while_no_project_lists_an_origin_
     assert (run["kind"], run["repos"][0]["repo"]) == ("author", HARNESS)
 
 
+def test_loop_dispatch_loop_labels_replace_the_pinned_worker_and_a_plans_worker_labels_narrow_its_plan_run(
+    client, hub, hub_db, tmp_path
+):
+    harness_listed(client, hub)
+    studio, frame_id, frame = frame_ready(client, hub, hub_db, tmp_path)
+    patched = client.patch(f"/v1/workers/{studio['id']}", json={"labels": ["gpu"]}, headers=hub["owner"])
+    assert patched.status_code == 200, patched.text
+    policy(client, hub, {"enabled": True, "labels": ["gpu"]})  # no loop.worker: the labels pick the worker
+
+    # the author run pins no worker: it carries the selector, and goes in the name of the owner of the worker found
+    assert ticked(client, hub_db)["dispatched"] == 1
+    build = item(hub_db, f"build:{FRAME}")
+    run = run_of(hub_db, build["run_id"])
+    assert (run["kind"], run["owner"], run["pinned_worker_id"], run["selector"]) == ("author", OWNER, None, ["gpu"])
+    moved(client, studio, claim(client, studio)["id"], "running")
+    body = {**plan_body(), "worker_labels": ["fast"]}
+    assert put(client, studio, run["id"], body).status_code == 200
+    said(client, studio, run["id"], f"Put plan {PLAN} at revision 1.")
+    moved(client, studio, run["id"], "waiting")
+    moved(client, studio, run["id"], "running", "verifying", "done", summary=f"Wrote plan {PLAN}.")
+
+    # the plan asks for fast, which no worker holds: the deliver waits on worker
+    ticked(client, hub_db)
+    deliver = item(hub_db, f"deliver:{PLAN}")
+    assert (deliver["state"], deliver["reason"], deliver["run_id"]) == ("queued", "worker", None)
+    why = waits(hub_db, f"deliver:{PLAN}")[-1][2]["why"]
+    assert "gpu" in why and "fast" in why
+
+    # a worker that holds both takes it, as the run's selector says
+    patched = client.patch(f"/v1/workers/{studio['id']}", json={"labels": ["gpu", "fast"]}, headers=hub["owner"])
+    assert patched.status_code == 200, patched.text
+    assert ticked(client, hub_db)["dispatched"] == 1
+    plan_run = run_of(hub_db, item(hub_db, f"deliver:{PLAN}")["run_id"])
+    assert (plan_run["kind"], plan_run["pinned_worker_id"], plan_run["selector"]) == ("plan", None, ["gpu", "fast"])
+
+
+def test_loop_dispatch_a_plans_worker_labels_stop_the_pinned_worker_that_lacks_them(client, hub, hub_db, tmp_path):
+    harness_listed(client, hub)
+    studio, frame_id, frame = frame_ready(client, hub, hub_db, tmp_path)  # loop.worker studio, no labels
+    assert ticked(client, hub_db)["dispatched"] == 1
+    run = run_of(hub_db, item(hub_db, f"build:{FRAME}")["run_id"])
+    assert (run["pinned_worker_id"], run["selector"]) == (studio["id"], [])
+    moved(client, studio, claim(client, studio)["id"], "running")
+    assert put(client, studio, run["id"], {**plan_body(), "worker_labels": ["fast"]}).status_code == 200
+    said(client, studio, run["id"], f"Put plan {PLAN} at revision 1.")
+    moved(client, studio, run["id"], "waiting")
+    moved(client, studio, run["id"], "running", "verifying", "done", summary=f"Wrote plan {PLAN}.")
+    ticked(client, hub_db)
+    deliver = item(hub_db, f"deliver:{PLAN}")
+    assert (deliver["state"], deliver["reason"]) == ("queued", "worker")
+    assert "lacks the label fast" in waits(hub_db, f"deliver:{PLAN}")[-1][2]["why"]
+
+
 def test_loop_dispatch_a_claim_validated_makes_no_build_and_a_card_past_its_deadline_no_decision(client, hub, hub_db):
     policy(client, hub, {"enabled": True})
     edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
