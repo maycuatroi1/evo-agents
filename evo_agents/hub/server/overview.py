@@ -581,14 +581,12 @@ def _parks_at(state: str, waiting_since: datetime | None, parked_at: datetime | 
 
 def parks_at(fields: dict, wait: timedelta) -> datetime | None:
     """When the run of a decision parks for want of an answer, from its row's ``run_kind``, ``run_state``,
-    ``waiting_since`` and ``parked_at``, which it takes out of ``fields``: ``wait`` after it started waiting (a chat
-    run's sooner), when it parked, or None while its agent works and for a local run."""
+    ``waiting_since`` and ``parked_at``, which it takes out of ``fields``: ``wait`` after it started waiting, when it
+    parked, or None while its agent works and for a local run."""
     waiting_since, parked_at = fields.pop("waiting_since"), fields.pop("parked_at")
     kind = fields.pop("run_kind")
     if kind == "local":  # no worker holds it and nothing parks it: it waits as long as it takes
         return None
-    if kind == "chat":  # the hub parks a chat run sooner, so a worker's slot is not held for long
-        wait = min(wait, timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS))
     return _parks_at(fields["run_state"], waiting_since, parked_at, wait)
 
 

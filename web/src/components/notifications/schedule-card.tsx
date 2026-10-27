@@ -106,7 +106,7 @@ function TimeField({
 
 /**
  * Quiet hours, the time zone and the summary push, saved together: push of the interrupt tier waits for the end of the
- * quiet hours (but a question whose run parks within two hours), and the summary of Today comes once a day at its
+ * quiet hours, a question's too, and the summary of Today comes once a day at its
  * time when the member was away. A time zone the member never chose starts as this browser's, said under the field,
  * and saving keeps it. Nothing goes out while a field is wrong; the hub's refusal (a time zone Postgres does not know)
  * shows above the buttons.

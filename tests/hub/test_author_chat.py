@@ -23,7 +23,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from evo_agents.hub import author, tables
+from evo_agents.hub import author, runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
@@ -210,8 +210,8 @@ def test_an_author_run_waits_for_a_reply_without_a_decision_and_the_wait_does_no
     assert 1800 <= spent <= 1860
     shown = run_view(client, hub["owner"], run_id)
     assert shown["waiting_since"] is not None and shown["state"] == "waiting"
-    # nearly a day of waiting, with heartbeats, keeps the slot and uses none of the run's time
-    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(hours=23))
+    # nearly all the minutes a run waits before it parks, with heartbeats, keep the slot and use none of the run's time
+    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(seconds=runs.DECISION_WAIT_SECONDS - 60))
     (control_,) = beat(client, worker, runs_held=[run_id])["runs"]
     assert (control_["held"], control_["state"], control_["park"], control_["finish"]) == (
         True,
@@ -230,7 +230,7 @@ def test_an_author_run_waits_for_a_reply_without_a_decision_and_the_wait_does_no
     assert moved(client, worker, run_id, "running")["state"] == "running"
 
 
-def test_the_reaper_parks_an_author_run_waiting_a_day_and_a_reply_resumes_it_in_its_session_on_the_same_worker(
+def test_the_reaper_parks_an_author_run_waiting_ten_minutes_and_a_reply_resumes_it_in_its_session_on_the_same_worker(
     client, hub, hub_db, tmp_path
 ):
     worker, parked_id = running(client, hub, tmp_path)
@@ -239,7 +239,7 @@ def test_the_reaper_parks_an_author_run_waiting_a_day_and_a_reply_resumes_it_in_
     assert recover(client) == {**NOTHING_RECOVERED, "parked": 1}
     assert state_of(hub_db, parked_id) == "parked"
     assert moves(hub_db, parked_id)[-1][1:] == ("waiting", "parked", "reaper")
-    assert last_reason(hub_db, parked_id) == [("nobody replied in its chat within 24 hours",)]
+    assert last_reason(hub_db, parked_id) == [("nobody replied in its chat within 10 minutes",)]
     (control_,) = beat(client, worker, runs_held=[parked_id])["runs"]
     assert (control_["held"], control_["state"], control_["cancel"], control_["park"]) == (False, "parked", False, True)
     assert chat(client, hub["owner"], parked_id)["status"] == "waiting"

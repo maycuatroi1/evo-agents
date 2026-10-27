@@ -3,7 +3,7 @@ notifications are pushed by default (a decision asked of the member, a run_faile
 that went wrong, merge_paused) and which are brief, a kind added later included; a tier the member chose for a kind,
 which holds for every notification of it; the settings that read and set them, with the quiet hours, the time zone
 (the hub's web time zone until the member chooses one) and the time of the summary push; quiet hours that hold a push
-until they end, but not one of a decision whose run parks within two hours; and the Inbox and the bell, which get every
+until they end, a decision's too, whenever its run parks; and the Inbox and the bell, which get every
 notification whatever its tier.
 
 The push service is the fake of tests/hub/test_push.py."""
@@ -358,21 +358,9 @@ def test_quiet_hours_are_the_members_time_zones(client, hub, hub_db, service):
     assert pushes_of(hub_db) == {"Held in Tokyo": ["delivered"]}
 
 
-def test_quiet_hours_hold_a_decision_until_they_end_when_its_run_parks_a_day_later(client, hub, hub_db, service):
-    added(client, hub["owner"], browser("laptop").body())
-    quiet_now(client, hub["owner"])
-    asked_decision(client, hub)
-    deliver(client)
-    ((state, _, wait, _),) = device_rows(hub_db)
-    assert state == "pending" and 3 * 3600 - 120 < wait <= 3 * 3600 and service.pushes == []
-
-
-@pytest.mark.parametrize(("wait_hours", "held_hours"), [(1, None), (4, 2), (4.5, 2.5)])
-def test_quiet_hours_send_a_decision_whose_run_parks_within_two_hours_and_hold_another_until_then(
-    hub_db, tmp_path, github, service, wait_hours, held_hours
-):
-    changes = {"vapid_private_key": VAPID_KEY, "decision_wait_seconds": int(wait_hours * 3600)}
-    with make_client(hub_db, tmp_path, github, **changes) as client:
+def test_quiet_hours_hold_a_decision_until_they_end_when_its_run_parks_in_minutes(hub_db, tmp_path, github, service):
+    # the run parks long before the quiet hours end, and the answer resumes it then: nothing is lost by waiting
+    with make_client(hub_db, tmp_path, github, vapid_private_key=VAPID_KEY, decision_wait_seconds=60) as client:
         headers = members(client, github)
         push(client, headers["owner"], plan_body())
         added(client, headers["owner"], browser("laptop").body())
@@ -380,11 +368,7 @@ def test_quiet_hours_send_a_decision_whose_run_parks_within_two_hours_and_hold_a
         asked_decision(client, headers)
         deliver(client)
         ((state, _, wait, _),) = device_rows(hub_db)
-        if held_hours is None:
-            assert state == "delivered" and len(service.pushes) == 1, "its run parks within two hours"
-        else:
-            assert state == "pending" and service.pushes == []
-            assert held_hours * 3600 - 60 < wait <= held_hours * 3600, "until two hours before its run parks"
+        assert state == "pending" and 5 * 3600 - 120 < wait <= 5 * 3600 and service.pushes == []
 
 
 def test_a_held_push_of_a_decision_answered_meanwhile_is_not_sent(client, hub, hub_db, service):
