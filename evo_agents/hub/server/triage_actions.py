@@ -8,7 +8,8 @@ chat run does, and the hub checks the frame again on each call, so an agent that
 
 - POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on a worker, runtime or
   account that is a fit candidate (``candidates.candidates_of``), for the causes of ``triage_rules.RERUN_CAUSES``, within
-  the chain cap.
+  the chain cap. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
+  run act as them.
 - POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
   the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
   own rule that decides (``chat_members.put_agent``): the owner needs the writer role there, and a label of the chat that
@@ -350,7 +351,9 @@ async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, 
         run_id=failed.id,
     )
     worker_id, runtime = _unfit(found, options, failed)
-    body = Rerun(account=options.account) if options.account else None
+    # the agent of the triage reruns the step as a run of the owner's that does not run as them: only the owner lets
+    # a run act as them (``run_access``), never an agent on their behalf
+    body = Rerun(account=options.account, as_me=False)
     view = await rerun_in(conn, frame.owner, frame.project, failed.id, body, worker_id=worker_id, runtime=runtime)
     t = tables.run_triage
     await conn.execute(update(t).where(t.c.id == frame.triage_id).values(auto_reruns=t.c.auto_reruns + 1))

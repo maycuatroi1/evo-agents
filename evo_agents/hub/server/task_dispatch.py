@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import plugin_calls, plugin_events, profiles, runs, tables, task_runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, pull_trailers, run_autonomy
+from evo_agents.hub.server import audit, pull_trailers, run_access_rules, run_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_types import contributed, enabled_type, type_spend
 from evo_agents.hub.server.chat_agents import open_draft
@@ -348,7 +348,11 @@ async def hand_own_task(
     transaction: (the task run, None), or (None, why it was not dispatched) for each refusal of the API's route but
     the token's and the grant's. ``task`` is cut to MAX_TASK_BYTES; ``for_id``, the person the run is for (``_queue``);
     ``repo`` and ``branch``, the branch of one repo the run works on, and ``minutes``, its agent time (``TaskIn``).
+    A request that carries a run's token dispatches none (``run_access_rules.new_run_refusal``).
     """
+    refusal = run_access_rules.new_run_refusal()
+    if refusal is not None:
+        return None, refusal
     enabled = await plugin_calls.enabled_in(conn, plugin, project_id)
     if enabled is None:
         return None, f"plugin {plugin} is not enabled in the project, or it is turned off"

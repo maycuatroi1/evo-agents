@@ -780,7 +780,7 @@ class After:
 
 
 def admin_only(user, access) -> None:
-    if user.scope is not None or not has_role(access.role, "admin"):
+    if user.acts_for_run is not None or not has_role(access.role, "admin"):
         raise HTTPException(403, f"this needs the admin role on project {access.name}")
 
 

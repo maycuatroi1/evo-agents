@@ -75,7 +75,7 @@ from evo_agents.hub.server.runs.models.attachment_parts import Attachment, Attac
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.controls import owned_run, web_only_steering
 from evo_agents.hub.server.runs.service.views import readable_run
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, still_live
 
 log = logging.getLogger(__name__)
 
@@ -577,13 +577,16 @@ async def _streamed_run(
 async def stream(
     request: Request,
     followed: Annotated[int, Depends(_streamed_run)],
+    user: CurrentUser,
     last_event_id: Annotated[
         int | None, Header(alias="Last-Event-ID", ge=0, le=MAX_SEQ, description="sent by a reconnecting client")
     ] = None,
     after: Annotated[int, Query(ge=0, le=MAX_SEQ, description="where a first connection starts")] = 0,
 ) -> AsyncIterable[ServerSentEvent]:
     """The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final
-    and every event was sent; a ``: ping`` comment keeps an idle stream open."""
+    and every event was sent; a ``: ping`` comment keeps an idle stream open. The stream of a run's token
+    (``run_access``) stops once the token no longer holds, which each look checks (``security.still_live``), and the
+    client that connects again is answered 401."""
     streams: RunStreams = request.app.state.run_streams
     streams.start()
     engine = request.app.state.engine
@@ -591,6 +594,8 @@ async def stream(
     with streams.subscribe(followed) as wakeup:
         while True:
             async with engine.begin() as conn:
+                if not await still_live(conn, user):
+                    return
                 # The state first: when it is final, the move's own event is committed already and read below.
                 state, _ = await _progress(conn, followed)
                 rows = (await conn.execute(_events_after(followed, seen, [], STREAM_BATCH))).all()

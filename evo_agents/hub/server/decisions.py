@@ -17,7 +17,7 @@ decision without a plan names the author run and its title instead. A run has at
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
 their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
-of the decision's own run that runs as its owner (``run_access``), and someone without a grant on the project 404. A
+of any run that runs as its owner (``run_access``), and someone without a grant on the project 404. A
 machine token also gets 403 when the run is on a worker set to take runs dispatched from the web only, held, pinned or
 parked there (``runs.web_only_steering``): its answer would steer that worker's agent, or resume the parked run on it.
 A decision that is no longer open gets 409. The answer names an option of the decision, gives text of the owner's own
@@ -69,7 +69,7 @@ from sqlalchemy.sql import Select
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, principals
+from evo_agents.hub.server import audit, principals, run_access_rules
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.decision_models import AnswerIn as AnswerIn
@@ -550,7 +550,9 @@ async def resume_parked(
     the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
     parked, which its agent reads in the new run's first turn. ``woken_by``, the answer or the message that resumes
     it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title.
-    ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``)."""
+    ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``). A request that
+    carries a run's token resumes none (``run_access_rules.refuse_new_run``)."""
+    run_access_rules.refuse_new_run()
     token_id = None if user is None else user.token_id
     kind = (await conn.execute(select(tables.runs.c.kind).where(tables.runs.c.id == parked_id))).scalar_one()
     if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
@@ -630,6 +632,12 @@ async def answer_decision(
     The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer through it;
     it raises the HTTPException the route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
+    if user.acts_for_run is not None:  # a run's token acts as the owner, but answers no decision (run_access)
+        raise HTTPException(
+            403,
+            f"decision {decision_id} is a question to a member, and a run's token (evr_...) answers no decision of any "
+            "run: the owner answers with their own sign-in",
+        )
     d, r, u = tables.decisions, tables.runs, tables.users
     query = (
         select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
@@ -645,12 +653,6 @@ async def answer_decision(
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
     run_id, run_state, kind = await lock_run_of(conn, access.project_id, plan_id, decision_id)
-    if user.run_id is not None and user.run_id == run_id:  # a run's token, which acts as the owner (run_access)
-        raise HTTPException(
-            403,
-            f"decision {decision_id} is a question of run {run_id} to its owner, and that run's token never answers "
-            "it: the owner answers with their own sign-in",
-        )
     locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
     state, category, question, options = (await conn.execute(locked.with_for_update())).one()
     if state != "open":

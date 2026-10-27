@@ -879,15 +879,45 @@ owner's `--revoke`, `hub token revoke` of that token, the lost grant or the revo
 later call gets 401. A run that resumes gets a new token at its first ask.
 
 **What it never reaches.** Each path of these groups answers 403 with the reason (`run_access_rules.py`), whatever
-the method, and a route added later under one of their prefixes is refused with the group: secrets and everything
-that holds a credential's value (`/v1/secrets`, `/v1/shares`, the accounts and provider accounts, browser identities,
-a run's credentials), tokens, invite links and signing in (`/v1/auth/*` but `whoami`), workers with their pools, the
-terminal and the live view of a run, and the access of any run, its own included, so no run grants running as its owner
-onward. Writes of the owner's autonomy (`/v1/autonomy*`, `/v1/org/ceilings`, a project's policy) are refused, reads
-are not. On the routes open to it, the token may not answer a decision of its own run, nor send `as_me` with a
-dispatch, a plan run or a rerun. Each write made with it, refused or not, adds the audit row `run_access.write` naming
-the run, the method, the path and the status; `run_access.grant` and `run_access.revoke` record each change of the
-choice, and the `credential.lease` row names the token by id. No log line, event, audit row or error holds its value.
+the method, and a route added later under one of their prefixes is refused with the group:
+
+- secrets and everything that holds a credential's value: `/v1/secrets`, `/v1/shares`, the accounts and provider
+  accounts, an agent's accounts, browser identities, a run's credentials and accounts;
+- tokens, invite links and signing in: `/v1/tokens`, `/v1/admin/tokens`, the invites, `/v1/auth/*` but `whoami`, a
+  project's signal ingest keys;
+- workers with their pools, the terminal, the live view, takeover and handback of a run;
+- the access of any run, its own included, so no run grants running as its owner onward.
+
+These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
+
+- grants: `/v1/admin/projects/{p}/grants/*` and `/v1/admin/users/*`, an access that would outlive the run;
+- the owner's autonomy: `/v1/autonomy*`, the whole org chart `/v1/org*` (seats, units, ceilings), a project's policy,
+  its agent profiles (`/v1/projects/{p}/agents*`) and agent types;
+- runs: a dispatch (`POST /v1/projects/{p}/runs`), a plan run, an author run, a rerun, a message to a run or to a
+  local run's inbox, a release run or schedule, an editorial post's run. No run starts from it, with or without
+  `as_me`: the owner's account would go on into work the owner never chose, with the accounts, browser identities or
+  worker the request names;
+- decisions: the answer to a decision of any run, a local run's decision marked answered, the approval of a run in
+  review, the merge queue's answers, the reset of the Loop's breaker, the answers and rollbacks of `@builder`;
+- the Curator: its charter, proposals, changes, probes and builds.
+
+Behind the groups, every rule of the form "the agent of a run never does X" takes the run's token as it takes the agent
+of a run on `/mcp` (`Principal.acts_for_run`): it writes no goal, opportunity or problem, answers no decision, approves
+or returns no SRS version, decides no item of a canvas baseline, claims no post of a marketing channel's browser
+session, whose answer carries the session's cookies (`session_run` of the core plugin API), reads no probe's verify,
+uses no invite's right to register a project, and the K8 and K12 classes of its run's autonomy hold its writes
+(`route_autonomy`). And no run starts while a request of its token is answered (`run_access_rules.ACTING_RUN`), whatever
+route it took: a message it posts in a chat stays, and its mention of an agent is refused in the thread, with no run
+and nothing in a run's inbox; a core plugin's task is not handed. The rerun the agent of a triage thread makes never
+runs as the owner, whatever the failed run did. A stream of a run's log or of a chat the token opened looks at each
+turn, at most every 5 seconds, whether the token is still live, and stops once it is not.
+
+What stays open is the owner's ordinary work: plans and their steps, memories, chats, their messages, labels and
+people (`hub chat label`), Telegram's webhook (`hub admin telegram`), a project's registration and sinks, plugins and
+reading everything the owner reads. Each write made with it, refused or not, adds the audit row `run_access.write`
+naming the run, the method, the path and the status; `run_access.grant` and `run_access.revoke` record each change of
+the choice, and the `credential.lease` row names the token by id. No log line, event, audit row or error holds its
+value.
 
 **How the daemon hands it over.** The daemon puts the token into the agent's environment as `EVO_HUB_TOKEN` and the
 hub's URL as `EVO_HUB_URL`: the URL the daemon itself reaches the hub at, the one the token was made through, else the
@@ -910,10 +940,13 @@ before.
 
 **The risk.** For as long as the run holds the token, whatever steers its agent acts as the owner on the hub, within
 the groups above: a prompt injected through a page, an issue or a file the agent reads can read every project the
-owner reads, dispatch runs as the owner and change plans, memories and decisions of other runs. Let a run run as you
-only when its work needs your account, and cut it with `evo-agents hub run access RUN --revoke`, `evo-agents hub run
-cancel RUN`, or `evo-agents hub token revoke ID` of the token `hub token list` shows with host `run:<id>`; the audit
-rows `run_access.write` say what it wrote.
+owner reads, and change plans, memories, chats and their labels, a project's sinks and plugins, and, when the owner is a
+hub admin, what a hub admin changes outside the groups (features, branding, market sources). It cannot start a run,
+answer a decision, change a grant or anyone's autonomy, nor reach a secret or a token. A chat label it changes moves
+which members read a chat, and a sink it changes moves where a project's messages may go: both are written in the audit
+as `run_access.write`. Let a run run as you only when its work needs your account, and cut it with `evo-agents hub run
+access RUN --revoke`, `evo-agents hub run cancel RUN`, or `evo-agents hub token revoke ID` of the token `hub token list`
+shows with host `run:<id>`; the audit rows `run_access.write` say what it wrote.
 
 ## Who may hand a worker its work
 

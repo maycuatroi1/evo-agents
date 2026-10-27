@@ -540,7 +540,7 @@ async def import_canvas(
 
 
 def _no_run(user, what: str) -> None:
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise CanvasError(403, f"the agent of a run never {what}: a member of the project does")
 
 
@@ -564,7 +564,7 @@ async def _baseline_model(conn, access: ProjectAccess, user, canvas: CanvasRow, 
         wanted = set(item.evidence_ids) | {piece.id for piece in evidence[item.claim_id] if piece.withdrawn_at is None}
         pieces = [piece for piece in evidence[item.claim_id] if piece.id in wanted]
         shown = [piece for piece in pieces if store.visible(access, piece.label, sink)]
-        decides = _may_decide(access, user.user_id, row, item, barred[item.id]) if user.scope is None else []
+        decides = _may_decide(access, user.user_id, row, item, barred[item.id]) if user.acts_for_run is None else []
         models.append(item_model(item, shown, len(pieces) - len(shown), names, decides, barred[item.id]))
     snapshot = [CanvasSnapshotClaim(**entry) for entry in row.snapshot] if row.snapshot is not None else None
     approved_by = sorted({item.decided_by for item in found if item.decided_by}) if row.status == "approved" else []

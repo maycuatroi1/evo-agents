@@ -38,7 +38,7 @@ from evo_agents.hub import chat_bridge_events, chats, profiles, runs, tables
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
-from evo_agents.hub.server import attachment_store, autonomy_hold, gateway_accounts, run_autonomy
+from evo_agents.hub.server import attachment_store, autonomy_hold, gateway_accounts, run_access_rules, run_autonomy
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
@@ -299,6 +299,7 @@ async def _missed(conn: AsyncConnection, previous_id: int, hand: Hand) -> list[H
 async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
     """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title;
     ``autonomy_hold.Stopped`` while a stop of autonomy holds its principal."""
+    run_access_rules.refuse_new_run()
     await autonomy_hold.hold_run(conn, previous.id)
     values = {
         "dispatched_by": hand.owner_id,
@@ -328,6 +329,7 @@ async def go_on_parked(
     run still open and the messages of its inbox the worker has not handed to the agent go to it. ``why`` ends the
     new run's first event, such as "as owner answered decision #3", and ``woken_by``, the answer or the message that
     made it go on, is its title (the parked run's when None)."""
+    run_access_rules.refuse_new_run()
     r = tables.runs
     row = (
         await conn.execute(
@@ -484,7 +486,11 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
     """(the run the mention reached, None) or (None, why it reached none), in the caller's transaction: the session's
     run that is queued or held takes the message in its inbox; one that ended done, or failed because the remote
     declined its push, is gone on from; else a new session starts on a worker of the dispatcher, or of the run_as of
-    the agent's type when it routes its chat runs there (see the module's docstring)."""
+    the agent's type when it routes its chat runs there (see the module's docstring). A message sent with a run's token
+    hands no work and reaches no run's inbox (``run_access_rules.new_run_refusal``)."""
+    refusal = run_access_rules.new_run_refusal()
+    if refusal is not None:
+        return None, refusal
     refusal = await _writer_refusal(conn, hand) or await _seat_refusal(conn, hand.dispatcher_id, hand.dispatcher)
     if refusal is not None:
         return None, refusal

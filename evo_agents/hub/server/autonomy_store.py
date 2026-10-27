@@ -47,7 +47,7 @@ def _words(classes: dict[str, str], reset: bool) -> str:
 
 async def write_pref(conn: AsyncConnection, user: Principal, body: PrefSet) -> PrefWritten:
     """The next revision of the caller's own preference, with its audit row; the agent of a run is refused."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise HTTPException(403, "the agent of a run never changes an autonomy preference")
     if body.level is None and not body.classes and not body.reset:
         raise HTTPException(422, "a preference sets a level, a class or a reset; nothing changed")
