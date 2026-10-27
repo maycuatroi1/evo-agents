@@ -444,10 +444,12 @@ def create_app(config: HubConfig) -> FastAPI:
         plugin_host,
         plugin_notify,
         plugin_publishers,
+        plugin_records_api,
         plugin_ui,
         plugins,
         problem_evidence,
         problems,
+        project_admin,
         project_plugins,
         provider_accounts,
         rate_limits,
@@ -490,6 +492,8 @@ def create_app(config: HubConfig) -> FastAPI:
         browser_local.upload_router,
         task_dispatch.router,
         plugin_notify.router,
+        plugin_records_api.backend,
+        plugin_records_api.members,
         task_dispatch.worker_router,
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,
@@ -512,6 +516,8 @@ def create_app(config: HubConfig) -> FastAPI:
         market.router,
         seller.router,
         seller_api.router,
+        project_admin.admin_router,  # /v1/admin/projects/{p}: self-managed state
+        project_admin.router,  # a self-managed project's admins: grants, invites, plugins
         project_plugins.router,
         plugin_ui.router,
         plugin_cli.router,

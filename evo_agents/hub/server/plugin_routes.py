@@ -43,10 +43,12 @@ from evo_agents.hub.plugin_calls import (
     PluginHostUnavailable,
     call,
     core_registry,
+    effective_grant,
     enabled_in,
     load,
     manifest_of,
 )
+from evo_agents.hub.server import plugin_delegation
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.projects import ProjectAccess, not_found, project_access
 from evo_agents.hub.server.security import HOOKS_PREFIX, CurrentUser, Principal
@@ -193,9 +195,17 @@ def answer(plugin: str, result: dict) -> Response:
     return Response(content=body, status_code=status, headers=headers)
 
 
+async def _delegation(conn, row, access: ProjectAccess, user: Principal) -> str | None:
+    """The delegation of the call (``plugin_delegation``) when the project granted the plugin ``records:use``."""
+    if row.tier != "isolated" or plugin_delegation.PERMISSION not in effective_grant(row):
+        return None
+    return await plugin_delegation.mint(conn, row.id, access, user, None, ROUTE_TIMEOUT)
+
+
 async def _proxy(request: Request, user: Principal, plugin: str, project: str, route: str, rest: str) -> Response:
     async with request.app.state.engine.begin() as conn:
         access, row = await enabled_for(conn, user, plugin, project)
+        lease = await _delegation(conn, row, access, user)
     item = manifest_of(row).contribution("routes", route) if row.tier == "isolated" else None
     if item is None:
         raise HTTPException(404, f"plugin {plugin} has no route {route}")
@@ -212,7 +222,10 @@ async def _proxy(request: Request, user: Principal, plugin: str, project: str, r
         "headers": {name: request.headers[name] for name in FORWARDED_HEADERS if name in request.headers},
         "body": base64.b64encode(body).decode(),
     }
-    params = {"route": route, "request": sent, "caller": {"login": user.login, "project": project, "role": access.role}}
+    caller = {"login": user.login, "project": project, "role": access.role}
+    if lease is not None:
+        caller["token"] = lease
+    params = {"route": route, "request": sent, "caller": caller}
     context = CoreContext(plugin, request.app.state.engine, request.app.state.config, project, access.project_id)
     try:
         result = await call(

@@ -17,6 +17,9 @@ Checks, in order:
   and the result checked against the method's schema;
 - ``unknown-method``: a method plugin/1 lacks gets error -32601, and the backend serves on;
 - ``malformed-line``: a line that is not JSON gets error -32700 with id null, or nothing, and the backend serves on;
+- ``records``: a stand-in hub (``evo_agents.plugins.fake_hub``) answers the records API on 127.0.0.1; a plugin that
+  asks for records without ``records:use`` in its permissions, for another project's, or on behalf of a person
+  with a delegation the call did not carry fails here;
 - ``stdout``: nothing but plugin/1 responses on stdout, logs going to stderr;
 - ``shutdown``: it answers ``shutdown`` and exits within the grace period.
 
@@ -42,24 +45,32 @@ from evo_agents.plugins.environment import (
     placement,
     prepare_data,
 )
+from evo_agents.plugins.fake_hub import RECORDS, FakeHub
 from evo_agents.plugins.manifest import MANIFEST_FILE, Manifest, ManifestError, read_manifest
 from evo_agents.plugins.process import BackendGone, BackendProcess, BackendTimeout
 
 DEFAULT_TIMEOUT = 10.0  # seconds for each answer
 PROJECT = "conformance"
-HUB_URL = "http://127.0.0.1:9/"  # nothing listens there: a backend that calls the hub during the checks fails
+DELEGATION = "evd_conformance-delegation-not-valid-on-any-hub-0000"
 TOKEN = "evp_conformance-token-not-valid-on-any-hub-0000000"
 SECRET = "conformance-secret-value"
+
+
+def _caller(manifest: Manifest) -> dict:
+    caller = {"login": "conformance", "project": PROJECT}
+    return {**caller, "token": DELEGATION} if RECORDS in manifest.permissions else caller
+
+
 SMALLEST = {
-    "route": lambda name: {
+    "route": lambda name, caller: {
         "route": name,
         "request": {"method": "GET", "path": "/", "query": {}, "headers": {}, "body": ""},
-        "caller": {"login": "conformance", "project": PROJECT},
+        "caller": caller,
     },
-    "tool": lambda name: {"tool": name, "arguments": {}, "caller": {"login": "conformance", "project": PROJECT}},
-    "job": lambda name: {"job": name},
-    "event": lambda name: {"event": name, "project": PROJECT, "payload": {}},
-    "channel": lambda name: {"channel": name, "project": PROJECT, "notification": {"title": "conformance"}},
+    "tool": lambda name, caller: {"tool": name, "arguments": {}, "caller": caller},
+    "job": lambda name, caller: {"job": name},
+    "event": lambda name, caller: {"event": name, "project": PROJECT, "payload": {}},
+    "channel": lambda name, caller: {"channel": name, "project": PROJECT, "notification": {"title": "conformance"}},
 }
 
 
@@ -90,7 +101,7 @@ class Report:
         return {"ok": self.ok, "checks": [check.__dict__ for check in self.checks]}
 
 
-def initialize_params(manifest: Manifest) -> dict:
+def initialize_params(manifest: Manifest, hub_url: str = "http://127.0.0.1:9/") -> dict:
     """What ``initialize`` gives the backend during the checks: the config's defaults, a stand-in for each secret,
     every permission it asks for granted on one project, and a hub that does not answer."""
     config = defaults(manifest.config)
@@ -98,7 +109,7 @@ def initialize_params(manifest: Manifest) -> dict:
     return {
         "protocol": protocol.PROTOCOL,
         "plugin": {"id": manifest.id, "version": manifest.version},
-        "hub": {"url": HUB_URL, "token": TOKEN, "version": "0.0.0"},
+        "hub": {"url": hub_url, "token": TOKEN, "version": "0.0.0"},
         "config": {"instance": config, "projects": {PROJECT: config}},
         "grants": {PROJECT: list(manifest.permissions)},
     }
@@ -133,8 +144,8 @@ def _initialize_problems(manifest: Manifest, result: dict) -> list[str]:
 class Session:
     """The checks that need the backend running."""
 
-    def __init__(self, manifest: Manifest, process: BackendProcess, report: Report, timeout: float):
-        self.manifest, self.process, self.report, self.timeout = manifest, process, report, timeout
+    def __init__(self, manifest: Manifest, process: BackendProcess, report: Report, timeout: float, hub: FakeHub):
+        self.manifest, self.process, self.report, self.timeout, self.hub = manifest, process, report, timeout, hub
 
     async def ask(self, method: str, params: dict) -> tuple[object, list[str]]:
         try:
@@ -143,7 +154,7 @@ class Session:
             return None, [f"{method}: {exc}"]
 
     async def initialize(self) -> bool:
-        result, problems = await self.ask("initialize", initialize_params(self.manifest))
+        result, problems = await self.ask("initialize", initialize_params(self.manifest, self.hub.url))
         if not problems:
             problems = _initialize_problems(self.manifest, result)
         return self.report.add("initialize", problems, [f"{protocol.PROTOCOL}, {self.manifest.id}"])
@@ -153,7 +164,7 @@ class Session:
             method = protocol.POINT_METHODS[point]
             problems = []
             for item in self.manifest.contributions(point):
-                result, failed = await self.ask(method, SMALLEST[method](item["name"]))
+                result, failed = await self.ask(method, SMALLEST[method](item["name"], _caller(self.manifest)))
                 problems += failed or [f"{item['name']}: {p}" for p in protocol.result_problems(method, result)]
             self.report.add(point, problems, [f"{len(self.manifest.contributions(point))} answered"])
 
@@ -193,6 +204,13 @@ class Session:
 
 
 async def _run_backend(manifest: Manifest, root: Path, report: Report, timeout: float) -> None:
+    with FakeHub(project=PROJECT, token=TOKEN, delegation=DELEGATION, permissions=manifest.permissions) as hub:
+        await _run_backend_on(manifest, root, report, timeout, hub)
+    calls = [c for c in hub.calls if "/records" in c]
+    report.add("records", hub.violations, [f"{len(calls)} calls to the records API"])
+
+
+async def _run_backend_on(manifest: Manifest, root: Path, report: Report, timeout: float, hub: FakeHub) -> None:
     where = placement(root, manifest.id, manifest.version)
     # The author's own plugin, under the caller's user: root too (CI runs this as root in the hub's image), which the
     # trampoline refuses unless told, so that the plugin host never runs a backend as root by mistake.
@@ -203,7 +221,7 @@ async def _run_backend(manifest: Manifest, root: Path, report: Report, timeout: 
     except OSError as exc:
         report.add("initialize", [f"cannot start {where.python}: {exc}"])
         return
-    session = Session(manifest, process, report, timeout)
+    session = Session(manifest, process, report, timeout, hub)
     try:
         if await session.initialize():
             report.add("ping", (await session.ask("ping", {}))[1])
