@@ -43,7 +43,15 @@ SRS_APPROVED = "srs.version.approved"  # a version of an SRS document, approved 
 SRS_USE_CASE_APPROVED = "srs.use_case.approved"  # one use case of a version in review, approved (core plugin srs)
 TASK_STATUS = "tasks.status"  # a task's status, set or changed (``evo_agents.hub.task_status``)
 PLAN_STEP = "plan.step"  # a step's status of a plan, set or changed (``evo_agents.hub.plan_step_status``)
-KINDS = (CLAIM, BASELINE, SIGNALS, SRS_APPROVED, TASK_STATUS, PLAN_STEP, SRS_USE_CASE_APPROVED)  # what this release writes
+KINDS = (
+    CLAIM,
+    BASELINE,
+    SIGNALS,
+    SRS_APPROVED,
+    TASK_STATUS,
+    PLAN_STEP,
+    SRS_USE_CASE_APPROVED,
+)  # what this release writes
 KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 OWN_PREFIX = "plugin."  # a kind a core plugin's Loop rule records of its own: plugin.<id, - made _>.<name>
 OWN_KIND = re.compile(r"^plugin\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]{0,40}$")

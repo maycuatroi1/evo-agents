@@ -42,6 +42,7 @@ PLUGIN_KEYS = (
     "disabled_at",
     "latest_version",
     "upgrade_to",
+    "project",
     "created_at",
     "title",
     "description",
