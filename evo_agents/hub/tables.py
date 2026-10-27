@@ -55,6 +55,7 @@ from evo_agents.hub import (
     tables_org,
     tables_outputs,
     tables_plugin_notices,
+    tables_plugin_records,
     tables_plugins,
     tables_pools,
     tables_problems,
@@ -1039,6 +1040,7 @@ curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposal
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
+plugin_records, plugin_record_leases = tables_plugin_records.plugin_record_tables(metadata)  # 0169
 # the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)
 org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_shares = tables_org.org_tables(
     metadata, runs, secrets

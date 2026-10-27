@@ -444,6 +444,7 @@ def create_app(config: HubConfig) -> FastAPI:
         plugin_host,
         plugin_notify,
         plugin_publishers,
+        plugin_records_api,
         plugin_ui,
         plugins,
         problem_evidence,
@@ -490,6 +491,8 @@ def create_app(config: HubConfig) -> FastAPI:
         browser_local.upload_router,
         task_dispatch.router,
         plugin_notify.router,
+        plugin_records_api.backend,
+        plugin_records_api.members,
         task_dispatch.worker_router,
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,

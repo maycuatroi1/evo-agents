@@ -154,6 +154,7 @@ TABLES |= pg.TODAY_TABLES  # migration 0158
 TABLES |= pg.SELLER_TABLES  # migration 0159
 TABLES |= pg.DOCS_TABLES  # migration 0163
 TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
+TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -244,8 +245,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_three_tables(hub_db):
-    assert len(TABLES) == 203  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_five_tables(hub_db):
+    assert len(TABLES) == 205  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -3641,9 +3642,8 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
         )
         layer = {"kind": "features", "project_id": ids["project"], "changed_by": user}
         conn.execute(insert(settings).values(layer | {"version": 1, "values": {"chats": False}}))
-    before = query(
-        hub_db, select(*(pp.c[name] for name in sorted(pp.c.keys()))).order_by(pp.c.project_id, pp.c.plugin_id)
-    )
+    old_columns = [name for name in sorted(pp.c.keys()) if name != "records_level"]  # 0169 adds it
+    before = query(hub_db, select(*(pp.c[name] for name in old_columns)).order_by(pp.c.project_id, pp.c.plugin_id))
     move_to(hub_db, "0147")
     assert {"retired_project_plugins"} <= tables(hub_db) and "builtin" in columns(hub_db, "plugins")
     builtin = select(plugins.c.name).where(plugins.c.builtin).order_by(plugins.c.name)
@@ -3673,9 +3673,7 @@ def test_0147_turns_canvas_srs_and_tasks_into_features_and_going_back_restores_t
         conn.execute(insert(settings).values(layer | {"version": 3, "values": {"chats": True, "canvas": True}}))
     move_to(hub_db, "0146", down=True)
     assert "retired_project_plugins" not in tables(hub_db) and "builtin" not in columns(hub_db, "plugins")
-    after = query(
-        hub_db, select(*(pp.c[name] for name in sorted(pp.c.keys()))).order_by(pp.c.project_id, pp.c.plugin_id)
-    )
+    after = query(hub_db, select(*(pp.c[name] for name in old_columns)).order_by(pp.c.project_id, pp.c.plugin_id))
     assert after == before  # each row back with the permissions it had
     assert query(hub_db, select(settings.c.project_id, settings.c.version, settings.c["values"])) == [
         (ids["project"], 1, {"chats": False}),
@@ -4583,3 +4581,70 @@ def test_0168_says_since_when_a_run_runs_as_its_owner_and_going_back_drops_it(hu
     move_to(hub_db, "0167", down=True)
     assert "as_owner_since" not in columns(hub_db, "runs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0168") :]
+
+
+def test_0169_keeps_a_plugins_records_with_their_levels_and_leases_and_going_back_drops_them_and_the_grant(hub_db):
+    move_to(hub_db, "0168")
+    t = hub_tables
+    assert "records_level" not in columns(hub_db, "project_plugins")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="vault", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "enabled_by": ids["user"]}
+        granted |= {"granted_by": ids["user"], "permissions": ["runs:read"]}
+        conn.execute(insert(t.project_plugins).values(granted))
+        with pytest.raises(errors.CheckViolation):  # 0168 knows no records:use
+            conn.execute(update(t.project_plugins).values(permissions=["records:use"]))
+    move_to(hub_db, "0169")
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0169",)]
+    assert {"plugin_records", "plugin_record_leases"} <= {
+        row[0] for row in query(hub_db, select(INFO_TABLES.c.table_name))
+    }
+    row = {"project_id": ids["project"], "plugin_id": plugin_id, "collection": "notes", "key": "a", "level": "internal"}
+    row |= {"body": {"text": "x"}, "created_by": ids["user"], "updated_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(t.project_plugins).values(permissions=["runs:read", "records:use"], records_level="public"))
+        conn.execute(insert(t.plugin_records).values(row))
+        conn.execute(insert(t.plugin_records).values({**row, "key": "job", "created_by": None, "updated_by": None}))
+        conn.execute(
+            insert(t.plugin_record_leases).values(
+                token_hash="c" * 64,
+                plugin_id=plugin_id,
+                project_id=ids["project"],
+                user_id=ids["user"],
+                max_level="internal",
+                expires_at=func.now() + timedelta(minutes=1),
+            )
+        )
+    assert query(hub_db, select(t.plugin_records.c.key, t.plugin_records.c.revision).order_by("key")) == [
+        ("a", 1),
+        ("job", 1),
+    ]
+    for bad in (
+        {"key": ""},
+        {"key": "k" * 201},
+        {"collection": "Bad Name"},
+        {"revision": 0},
+        {"body": [1]},
+        {"level": None},
+    ):
+        with live.connect(hub_db) as conn, pytest.raises((errors.CheckViolation, errors.NotNullViolation)):
+            conn.execute(insert(t.plugin_records).values({**row, "key": "z", **bad}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):  # records are kept, not cascaded
+        conn.execute(t.plugins.delete().where(t.plugins.c.id == plugin_id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(
+            insert(t.plugin_record_leases).values(
+                token_hash="c" * 64,
+                plugin_id=plugin_id,
+                project_id=ids["project"],
+                user_id=ids["user"],
+                expires_at=func.now(),
+            )
+        )
+    move_to(hub_db, "0168", down=True)
+    assert "records_level" not in columns(hub_db, "project_plugins")
+    assert not pg.PLUGIN_RECORD_TABLES & tables(hub_db)
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)], "records:use goes from grants"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0169") :]
