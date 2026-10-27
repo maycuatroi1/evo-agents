@@ -144,7 +144,7 @@ def set_run(hub_db, run_id: int, **values) -> None:
 
 
 def park(hub_db, run_id: int) -> None:
-    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(hours=24, seconds=1))
+    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(seconds=runs.DECISION_WAIT_SECONDS + 1))
 
 
 def last_reason(hub_db, run_id: int) -> list[tuple]:
@@ -482,8 +482,8 @@ def test_waiting_does_not_count_toward_the_timeout(client, hub, hub_db):
     moved(client, worker, run_id, "waiting")
     spent = run_view(client, hub["owner"], run_id)["run_seconds"]
     assert 3600 <= spent <= 3660
-    # nearly a day of waiting, with heartbeats, uses none of the two hours
-    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(hours=23))
+    # nearly all the minutes a run waits before it parks, with heartbeats, use none of the two hours
+    set_run(hub_db, run_id, waiting_since=func.now() - timedelta(seconds=runs.DECISION_WAIT_SECONDS - 60))
     beat(client, worker, runs_held=[run_id])
     assert recover(client) == NOTHING_RECOVERED
     assert run_view(client, hub["owner"], run_id)["run_seconds"] == spent
@@ -503,7 +503,7 @@ def test_waiting_does_not_count_toward_the_timeout(client, hub, hub_db):
 # Parking
 
 
-def test_the_reaper_parks_a_run_waiting_a_day_and_cancels_one_parked_a_week(client, hub, hub_db):
+def test_the_reaper_parks_a_run_waiting_ten_minutes_and_cancels_one_parked_a_week(client, hub, hub_db):
     worker, run, found = waiting(client, hub)
     run_id = run["id"]
     assert recover(client) == NOTHING_RECOVERED
@@ -513,7 +513,7 @@ def test_the_reaper_parks_a_run_waiting_a_day_and_cancels_one_parked_a_week(clie
     assert (parked["state"], parked["lease_expires_at"], parked["waiting_since"]) == ("parked", None, None)
     assert parked["parked_at"] is not None and parked["session_id"] == SESSION
     assert moves(hub_db, run_id)[-1][1:] == ("waiting", "parked", "reaper")
-    assert last_reason(hub_db, run_id) == [("nobody answered its decision within 24 hours",)]
+    assert last_reason(hub_db, run_id) == [("nobody answered its decision within 10 minutes",)]
     # the heartbeat lets the worker go of it without cancelling, and its slot is free for another run
     (control_,) = beat(client, worker, runs_held=[run_id])["runs"]
     assert {key: control_[key] for key in ("held", "state", "cancel", "park", "decisions")} == {
@@ -752,7 +752,7 @@ def test_a_token_cannot_steer_a_run_on_a_worker_that_takes_runs_from_the_web_onl
 
 
 def test_the_decision_limits_are_the_models():
-    assert (runs.DECISION_WAIT_SECONDS, runs.PARKED_DAYS, runs.MAX_ANSWER_BYTES) == (24 * 3600, 7, 4 * 1024)
+    assert (runs.DECISION_WAIT_SECONDS, runs.PARKED_DAYS, runs.MAX_ANSWER_BYTES) == (10 * 60, 7, 4 * 1024)
 
 
 def test_evo_hub_decision_wait_seconds_sets_how_long_a_run_waits_before_the_reaper_parks_it():

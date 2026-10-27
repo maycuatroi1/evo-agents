@@ -36,21 +36,23 @@ new run for the same step (attempt + 1), or ``failed`` when it was the last of M
 the worker that lost the run only once the worker is steady (STEADY_SECONDS of heartbeats, none STEADY_GAP_SECONDS
 late); any other worker that may take it takes it at once.
 
-A plan run's agent may ask its owner a decision of DECISION_CATEGORIES. When its turn ends with a decision still
-open, the run is ``waiting``: the worker keeps it, with its slot and lease, and hands the answer to the agent in the
-same session, and the run is ``running`` again. A run that waited DECISION_WAIT_SECONDS is ``parked``: the worker lets
-it go and frees the slot, and keeps the agent's session and the worktrees. An answer then queues a new plan run on the
-same worker that goes on in that session (the run it resumes is ``done``), and a run parked PARKED_DAYS is
-``cancelled``. Neither waiting nor parked counts toward the run's timeout: ``run_seconds`` counts only CLOCK_STATES.
-A chat run's agent asks its owner decisions of CHAT_DECISION_CATEGORY too, and the run waits for the answers as a
-plan run does, but is parked after CHAT_DECISION_WAIT_SECONDS; a chat run that asked none ends done with its turn.
-An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat
-(``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done`` when its owner ends
-the chat (the control ``finish``). On a daemon that lists AUTHOR_DECISIONS among its ``features``, an author run's
-agent asks decisions too (its prompt names ``scope`` and ``architecture``), before its run has a plan (the decision's
-``plan_id`` is then null) or after; a turn that ends with one of them open waits until each is answered, the owner
-replies in the chat or ends it, so one answer alone does not wake the agent, and a parked author run resumes only once
-none of its decisions is open, or on a reply. A plan run wakes at the first answer, as before.
+A plan run's agent may ask its owner a decision of DECISION_CATEGORIES. When its turn ends with a decision still open,
+the run is ``waiting``: the worker keeps it, with its slot and lease, and hands an answer that comes within
+DECISION_WAIT_SECONDS to the agent in the same session, and the run is ``running`` again. A run that waited longer is
+``parked``, and one whose open decisions are all waits for a time or an event of the hub (WAIT_DECISION_CATEGORY) that
+wake later than that at once, since nobody answers those: the worker lets it go and frees the slot, and keeps the
+agent's session and the worktrees, so no wait holds a worker. An answer, or a wait that wakes, then queues a new plan
+run on the same worker that goes on in that session (the run it resumes is ``done``), and a run parked PARKED_DAYS is
+``cancelled``. Neither waiting nor parked counts toward the run's timeout: ``run_seconds`` counts only CLOCK_STATES. A
+chat run's agent asks its owner decisions of CHAT_DECISION_CATEGORY too, and the run waits for the answers and is parked
+as a plan run is; a chat run that asked none ends done with its turn. An author run waits the same way after each turn
+of its agent, for its owner's reply in the run's chat (``evo_agents.hub.author``), is parked and resumed the same way
+(RESUME_KINDS), and ends ``done`` when its owner ends the chat (the control ``finish``). On a daemon that lists
+AUTHOR_DECISIONS among its ``features``, an author run's agent asks decisions too (its prompt names ``scope`` and
+``architecture``), before its run has a plan (the decision's ``plan_id`` is then null) or after; a turn that ends with
+one of them open waits until each is answered, the owner replies in the chat or ends it, so one answer alone does not
+wake the agent, and a parked author run resumes only once none of its decisions is open, or on a reply. A plan run wakes
+at the first answer, as before.
 
 TRANSITIONS names, for each move, who may do it: the ``worker`` that holds the run, the ``owner`` (the member who
 dispatched it, who is the owner of the worker), or the ``reaper``, the hub itself acting on an expired lease, a revoked
@@ -257,11 +259,10 @@ APPROVALS = ("auto", "review")
 # an author run's chat (finish), how many inbox messages and open decisions it has; for the worker, whether to drain.
 CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish", "inbox", "decisions", "drain")
 
-DECISION_WAIT_SECONDS = 24 * 3600  # a run waiting this long for its owner's answer is parked
+# a run waiting this long for its owner's answer is parked, so a worker's slot is held only while an answer may come
+# at once; one that waits only for a time or an event of the hub, later than this, is parked at once
+DECISION_WAIT_SECONDS = 10 * 60
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
-# a chat run waits only for the answer to a decision its agent asked (category CHAT_DECISION_CATEGORY): the hub parks
-# it after CHAT_DECISION_WAIT_SECONDS, not DECISION_WAIT_SECONDS, so a worker's slot is not held for long
-CHAT_DECISION_WAIT_SECONDS = 10 * 60
 RESUME_KINDS = ("plan", "author", "chat")  # the kinds of run that wait for their owner, are parked and resumed
 # the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id); a chat run that
 # waits for nothing ends done with its turn, and its next turn is a new run too (``evo_agents.hub.chat_runs``)
@@ -300,7 +301,7 @@ TRANSITIONS: dict[str, dict[str, frozenset[str]]] = {
     "running": {"interactive": _W, "verifying": _W, "waiting": _W, **_HELD_EXITS},
     "interactive": {"running": _W, "verifying": _W, **_HELD_EXITS},
     "verifying": {"done": _W, "review": _W, **_HELD_EXITS},
-    # the agent's turn ended with a decision open: the answer sets it going again, DECISION_WAIT_SECONDS parks it
+    # the agent's turn ended with a decision open: an answer sets it going again, DECISION_WAIT_SECONDS parks it
     "waiting": {"running": _W, "parked": _R, **_HELD_EXITS},
     "review": {"done": _O, "cancelled": _O},
     # no worker holds it: the owner's answer queues the run that resumes it, and this one is done, as does the reaper

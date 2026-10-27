@@ -118,7 +118,7 @@ says "you said not yet" on the open card.
 | `open` | `running` | the agent asked and goes on with work that does not depend on the answer |
 | `open` | `waiting` | the agent's turn ended with the decision still open; the worker keeps the run, its slot and its lease |
 | `answered` | `running` | the owner answered; the answer reached the agent in the same session |
-| `open` | `parked` | nobody answered for 24 hours (`DECISION_WAIT_SECONDS`); the worker stopped the agent at the end of its turn, freed the slot, and kept the session and the worktrees |
+| `open` | `parked` | nobody answered for 10 minutes (`DECISION_WAIT_SECONDS`), or the run waits only for a time or an event of the hub; the worker stopped the agent at the end of its turn, freed the slot, and kept the session and the worktrees |
 | `answered` | `done`, and a new run `queued` | the owner answered a parked run: the hub queues a plan run pinned to the same worker that resumes the same session in the same worktrees (`resume_of_run_id` names the parked run), and the parked run is done with the note `resumed as #N` |
 | `expired` | `cancelled` | the run stayed parked for 7 days (`PARKED_DAYS`) |
 | `cancelled` | `cancelled`, `failed` or `lost` | the run ended another way; a decision without its run cannot be answered |
@@ -154,7 +154,7 @@ is 422 for a chat run, and `triage` is 422 for any other run. A turn that ends w
 leaves the run `waiting`, which keeps its slot and its lease; a chat run with no decision ends after its turn as
 before. The answer goes to the run's inbox and starts the next turn in the same session, once none of the run's
 decisions is open or the owner writes in the thread. The reaper parks a waiting chat run after 10 minutes
-(`CHAT_DECISION_WAIT_SECONDS`, not the 24 hours of a plan run, so a slot is not held for a day); an answer or a reply
+(`DECISION_WAIT_SECONDS`, as any run, so a slot is not held for long); an answer or a reply
 in the thread then queues a chat run pinned to the same worker that goes on in the same session, worktrees and branch
 (`resume_of_run_id` names the parked run, which is `done`), with the decisions still open and the unread inbox moved to
 it. When the run ends otherwise, its open decisions are `cancelled`. The Inbox, the web and Telegram answer such a
@@ -223,11 +223,13 @@ is open returns the open decision. A run that cannot wait (a step run) gets no d
 ### A wait
 
 The agent of a plan run that needs a time, or something that happens on the hub, waits for it rather than asking its
-owner to say when it came: `evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE --step
-KEY` (POST /v1/worker/runs/{id}/waits, `evo_agents.hub.server.run_waits`). It stores a decision of category `wait`
-whose question is the reason, whose context says what the run waits for, and whose options are `now` (Go on now) and
-`stop` (Stop waiting). It notifies nobody, since it asks nobody anything, and intern escalation leaves it alone; it is
-open like any decision, so the run is `waiting` at the end of the agent's turn and the reaper parks it after a day.
+owner to say when it came: `evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE --step KEY`
+(POST /v1/worker/runs/{id}/waits, `evo_agents.hub.server.run_waits`). It stores a decision of category `wait` whose
+question is the reason, whose context says what the run waits for, and whose options are `now` (Go on now) and `stop`
+(Stop waiting). It notifies nobody, since it asks nobody anything, and intern escalation leaves it alone; it is open
+like any decision, so the run is `waiting` at the end of the agent's turn, and the reaper parks it at its next pass,
+unless it wakes within 10 minutes (`DECISION_WAIT_SECONDS`), so the wait holds no worker: the run that wakes resumes it
+in its session on the same worker.
 
 `wake_at` is when it wakes at the latest: `--until` (a time with a timezone, or a span such as `+6h`), at most
 `MAX_WAIT_DAYS` (7) days ahead, and that far when only `--on` is given. `wake_on` is the event that wakes it sooner: an
@@ -484,13 +486,12 @@ A member may set quiet hours, `start` to `end` in `HH:MM`, past midnight when th
 time zone: an IANA name that Postgres knows, checked as the Curator's charter checks its own, and the hub's
 `EVO_HUB_WEB_TIME_ZONE` (default `Asia/Ho_Chi_Minh`) until they choose one; the web offers the browser's. The job
 `hub.deliver_notifications` checks them as it takes each delivery to a device, not when the notification is stored, so
-quiet hours set meanwhile hold. Inside them a push waits until they end, without counting a try, with one exception: a
-decision whose run parks for want of an answer within two hours is pushed at once, and one whose run parks later waits
-at most until two hours before it parks. A run parks `EVO_HUB_DECISION_WAIT_SECONDS` after it starts waiting (a chat
-run after 10 minutes); a run still working counts as if it started waiting now, and a local run, a parked run and an
-ended one park no more. A push of a decision that was answered or closed by the time it would go out is not sent
-(`notifications.DECISION_CLOSED`), so a push held overnight never asks a question nobody asks any more. A test push
-ignores quiet hours. A time zone Postgres no longer knows counts as UTC, with a warning in the log.
+quiet hours set meanwhile hold. Inside them a push waits until they end, without counting a try, a decision's too: its
+run parks after `EVO_HUB_DECISION_WAIT_SECONDS` (10 minutes) whatever the hour, and the answer resumes it in its
+session, so a decision held overnight loses nothing. A push of a decision that was answered or closed by the time it
+would go out is not sent (`notifications.DECISION_CLOSED`), so a push held overnight never asks a question nobody asks
+any more. A test push ignores quiet hours. A time zone Postgres no longer knows counts as UTC, with a warning in the
+log.
 
 ### What a push says
 

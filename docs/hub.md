@@ -3081,8 +3081,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
-  queued again, or fail on their third attempt; runs past their timeout fail; a plan run that waited 24 hours for an
-  answer is parked, and one parked for 7 days cancelled (`docs/workers.md`).
+  queued again, or fail on their third attempt; runs past their timeout fail; a run that waited 10 minutes for an
+  answer, or waits only for a time or an event of the hub, is parked, and one parked for 7 days cancelled
+  (`docs/workers.md`).
 - `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, or
   to the sender of its push device after the member's quiet hours, and tries a failing one again with a backoff,
   failing it after 5 tries (`docs/notifications.md`).
@@ -3302,7 +3303,7 @@ environment, never in a committed file.
 | `EVO_HUB_SIGNAL_DAYS` | api, worker | days a signal is kept after it was measured before the daily `hub.prune_signals` deletes it; a batch item measured earlier is refused; default `400`, from `30` to `3650` (`docs/signals.md`) |
 | `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
 | `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
-| `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a plan run waits for its owner's answer before the reaper parks it; default `86400` (a day), from `1` to `604800` (the end-to-end tests shorten it) |
+| `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a run waits for its owner's answer, holding its worker's slot, before the reaper parks it; default `600` (10 minutes), from `1` to `604800` (the end-to-end tests shorten it) |
 | `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
 | `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
 | `EVO_HUB_CURATOR_APP_ID`, `EVO_HUB_CURATOR_APP_PRIVATE_KEY` | api, worker | the Curator's own GitHub App, evo-agents-curator, as the two above: every run of the Curator gets its GitHub token from it alone, and the hub checks with it that each repo's ruleset keeps it off the default branch; both or neither, and without them no run of the Curator gets a GitHub token (`docs/curator.md`) |

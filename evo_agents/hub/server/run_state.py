@@ -53,8 +53,9 @@ cancelled when its cancel was asked for, and is not tried again. Of the runs who
 asked for is cancelled, the last attempt fails, and any other run is lost, with its next attempt queued for the same
 step (``parent_run_id`` pointing back, the attempt one higher, the runtime the dispatch asked for) and the channel
 RUNS_CHANNEL notified with the new run's id. A run ``waiting`` for DECISION_WAIT is ``parked`` (cancelled instead
-when its cancel was asked for): the worker's next heartbeat says park, and the slot is free; an author run waiting
-for its owner's reply in its chat is parked the same way. A run ``parked`` for
+when its cancel was asked for), and one whose open decisions are all waits for a time or an event of the hub that
+wake later than that at the first pass, so no wait holds a worker: the worker's next heartbeat says park, and the
+slot is free; an author run waiting for its owner's reply in its chat is parked the same way. A run ``parked`` for
 PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fails the runs pinned to it, held or
 queued, since no other worker may claim them, and cancels the runs parked on it, since only it has their session; an
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
@@ -80,7 +81,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
-from sqlalchemy import Integer, case, cast, delete, exists, extract, func, insert, null, or_, select, update
+from sqlalchemy import Integer, and_, case, cast, delete, exists, extract, func, insert, null, or_, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -107,7 +108,6 @@ MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting this long for an answer is parked
-CHAT_DECISION_WAIT = timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS)  # the same for a chat run: its slot is short
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
 # The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error
 CAUSED_KINDS = ("step", "plan", "author", "chat")
@@ -771,30 +771,29 @@ async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None
             ended[new] += 1
 
 
-async def park_waiting(
-    engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter, chat_wait: timedelta | None = None
-) -> None:
-    """Park every run that has waited ``wait`` for its owner's answer (a chat run ``chat_wait``, which is ``wait``
-    when none is given), or cancel it when its cancel was asked for, each in a transaction of its own; count them in
-    ``ended``."""
-    r = tables.runs
-    chat_wait = wait if chat_wait is None else chat_wait
+async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter) -> None:
+    """Park every run that has waited ``wait`` for its owner's answer, or whose open decisions are all waits for a
+    time or an event of the hub none of which wakes within ``wait`` (nobody answers those, so it parks at once), or
+    cancel it when its cancel was asked for, each in a transaction of its own; count them in ``ended``."""
+    r, d = tables.runs, tables.decisions
+    open_of_run = (d.c.run_id == r.c.id, d.c.state == "open")
+    is_wait = d.c.category == runs.WAIT_DECISION_CATEGORY
+    waits = exists().where(*open_of_run, is_wait)
+    asks = exists().where(*open_of_run, ~is_wait)
+    wakes_soon = exists().where(*open_of_run, is_wait, d.c.wake_at <= func.now() + wait)
+    only_waits = and_(r.c.kind != "author", waits, ~asks, ~wakes_soon)  # an author run waits for a reply in its chat
     waited_long = (
         r.c.state == "waiting",
         r.c.kind != "local",
-        r.c.waiting_since < func.now() - case((r.c.kind == "chat", chat_wait), else_=wait),
+        or_(r.c.waiting_since < func.now() - wait, only_waits),
     )
     async with engine.begin() as conn:
         query = select(r.c.id).where(*waited_long).order_by(r.c.waiting_since).limit(batch)
         waited = (await conn.execute(query)).scalars().all()
     for run_id in waited:
         async with engine.begin() as conn:
-            d = tables.decisions
-            waits = exists().where(
-                d.c.run_id == r.c.id, d.c.state == "open", d.c.category == runs.WAIT_DECISION_CATEGORY
-            )
             lock = (
-                select(r.c.cancel_requested_at.is_not(None).label("cancel"), r.c.kind, waits.label("waits"))
+                select(r.c.cancel_requested_at.is_not(None).label("cancel"), r.c.kind, only_waits.label("waits"))
                 .where(r.c.id == run_id, *waited_long)
                 .with_for_update(of=r, skip_locked=True)
             )
@@ -804,9 +803,9 @@ async def park_waiting(
             if row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
                 reason = f"nobody replied in its chat within {_hours(wait)}"
             elif row.waits:  # it waits for a time or an event of the hub (``run_waits``), which resumes it
-                reason = f"its wait for a time or an event of the hub went on past {_hours(wait)}"
+                reason = "it waits for a time or an event of the hub, which resumes it"
             else:
-                reason = f"nobody answered its decision within {_hours(chat_wait if row.kind == 'chat' else wait)}"
+                reason = f"nobody answered its decision within {_hours(wait)}"
             new = "cancelled" if row.cancel else "parked"
             await move_run(conn, run_id, "waiting", new, "reaper", reason=reason)
             ended[new] += 1
@@ -877,7 +876,8 @@ async def recover_runs(
 ) -> dict:
     """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
     whose lease ran out ends as ``end_held`` says, the waits whose time or event came wake their runs
-    (``run_waits.wake_waits``), a run that waited ``decision_wait`` for an answer is parked and one parked for
+    (``run_waits.wake_waits``), a run that waited ``decision_wait`` for an answer, or waits only for a time or an
+    event of the hub, is parked and one parked for
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
@@ -922,7 +922,7 @@ async def recover_runs(
     from evo_agents.hub.server import run_waits  # it moves runs through this module
 
     await run_waits.wake_waits(engine, batch)  # first, so a wait that came wakes before its run is parked or expires
-    await park_waiting(engine, batch, decision_wait, ended, min(decision_wait, CHAT_DECISION_WAIT))
+    await park_waiting(engine, batch, decision_wait, ended)
     await expire_parked(engine, batch, parked_for, ended)
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 

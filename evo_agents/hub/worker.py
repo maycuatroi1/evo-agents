@@ -27,7 +27,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   newest leave the bucket (``evo_agents.hub.kg_prune``).
 - ``hub.recover_runs``, every minute: runs whose worker stopped extending the lease become lost, and the next attempt
   of their step is queued, or fail on their last attempt; runs past their timeout fail; a plan run that waited
-  EVO_HUB_DECISION_WAIT_SECONDS (24 hours by default) for an answer is parked, and one parked for 7 days cancelled
+  EVO_HUB_DECISION_WAIT_SECONDS (10 minutes by default) for an answer, or waits only for a time or an event of the hub,
+  is parked, and one parked for 7 days cancelled
   (``evo_agents.hub.server.run_state``). The runs that end give back their leases, and the GitHub tokens of every lease
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute: the notification deliveries that are due, each handed to its
