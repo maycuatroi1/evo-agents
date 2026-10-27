@@ -71,6 +71,7 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         Column("direct_profile_id", BigInteger),  # 0050
         Column("image_sha256", Text),  # 0051
         Column("image_size", BigInteger),  # 0051
+        Column("label_override", JSONB),  # 0164: the level a project admin set, and the projects it lowers
         _fk("chats", "created_by", "users.id", ondelete="RESTRICT"),
         _fk("chats", "direct_user_id", "users.id", ondelete="RESTRICT"),
         _fk("chats", "direct_profile_id", "agent_profiles.id", ondelete="RESTRICT"),

@@ -502,3 +502,144 @@ def test_chat_no_mention_message_makes_no_run_and_asks_no_model(client, hub, hub
     mentioned = sent(client, hub["owner"], chat["id"], "@reviewer what do you think?")
     assert [(m["via"], m["run_id"]) for m in mentioned["mentions"]] == [("handle", None)]
     assert counted(hub_db, tables.runs) == 0 and counted(hub_db, tables.chat_messages) == 5
+
+
+# The level of a chat's label (criterion a2 of chat-bridges)
+
+
+def set_label(client, headers, chat_id: int, level: str | None):
+    if level is None:
+        return client.delete(f"/v1/chats/{chat_id}/label", headers=headers)
+    return client.put(f"/v1/chats/{chat_id}/label", json={"level": level}, headers=headers)
+
+
+def test_a_project_admin_sets_a_chats_label_level_new_messages_carry_it_and_old_ones_keep_theirs(client, hub, hub_db):
+    chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer"])
+    assert (chat["label_level"], chat["label_levels"], chat["label_admin"]) == (None, ["public", "internal"], True)
+    assert client.get(f"/v1/chats/{chat['id']}", headers=hub["other"]).json()["label_admin"] is False
+    before = sent(client, hub["owner"], chat["id"], "internal work")
+
+    lowered = set_label(client, hub["owner"], chat["id"], "public")
+    assert lowered.status_code == 200, lowered.text
+    view = lowered.json()
+    assert view["label_level"] == "public" and [i["level"] for i in view["label"]] == ["public"]
+    assert view["label"][0]["projects"] == [PROJECT]
+    after = sent(client, hub["owner"], chat["id"], "public now")
+    assert [i["level"] for i in after["label"]] == ["public"]
+    kept = {m["id"]: m["label"][0]["level"] for m in page(client, hub["owner"], chat["id"])["messages"]}
+    assert kept == {before["id"]: "internal", after["id"]: "public"}
+    assert set_label(client, hub["owner"], chat["id"], "public").json()["label_level"] == "public"  # no change
+
+    # who may be in the chat reads the new label: someone cleared for public alone may join now
+    joined = client.put(f"/v1/chats/{chat['id']}/people/{PUBLIC_READER}", headers=hub["owner"])
+    assert joined.status_code == 200, joined.text
+    assert [m["id"] for m in page(client, hub["public"], chat["id"])["messages"]] == [after["id"]]
+    # unsetting would raise the label past them: refused, naming who
+    raised = set_label(client, hub["owner"], chat["id"], None)
+    assert raised.status_code == 409 and PUBLIC_READER in raised.json()["message"], raised.text
+    assert client.delete(f"/v1/chats/{chat['id']}/people/{PUBLIC_READER}", headers=hub["owner"]).status_code == 204
+    unset = set_label(client, hub["owner"], chat["id"], None)
+    assert unset.status_code == 200, unset.text
+    assert unset.json()["label_level"] is None and unset.json()["label"] == chat["label"]
+    assert [i["level"] for i in sent(client, hub["owner"], chat["id"], "internal again")["label"]] == ["internal"]
+
+    target = f"chat:{chat['id']}"
+    assert [(a, t) for a, t, *_ in audit_rows(hub_db, "chat") if a == "chat.label"] == [
+        ("chat.label", f"{target} label:public"),
+        ("chat.label", f"{target} label:default"),
+    ]
+
+
+def test_setting_a_chats_label_level_is_403_to_a_non_admin_and_422_above_a_default(client, hub, hub_db):
+    chat = created(client, hub["owner"], people=[OTHER, READER], agents=["reviewer"])
+    for headers in (hub["other"], hub["reader"]):
+        for level in ("public", None):
+            refused = set_label(client, headers, chat["id"], level)
+            assert refused.status_code == 403 and "needs the admin role" in refused.json()["message"], refused.text
+    for level, why in (("customer", "above the default level 'internal'"), ("galactic", "has no level 'galactic'")):
+        refused = set_label(client, hub["owner"], chat["id"], level)
+        assert refused.status_code == 422 and why in refused.json()["message"], refused.text
+    assert set_label(client, hub["owner"], chat["id"], "bad level!").status_code == 422
+    assert set_label(client, hub["stranger"], chat["id"], "public").status_code == 404
+    people = created(client, hub["owner"], people=[OTHER])
+    assert set_label(client, hub["owner"], people["id"], "public").status_code == 409, "no agent: no project"
+    assert [a for a, *_ in audit_rows(hub_db, "chat") if a == "chat.label"] == []
+
+
+def test_a_chats_label_level_needs_an_admin_of_every_project_and_sits_at_or_below_each_default(client, hub):
+    lumen = registration(OPEN_SINKS)
+    lumen["default_label"] = {"level": "customer", "location": "any", "integrity": "U"}
+    lumen["sinks"] = [{**s, "clearance": {"level": "customer", "location": "any"}} for s in OPEN_SINKS]
+    assert client.put("/v1/projects/lumen", json=lumen, headers=hub["admin"]).status_code == 200
+    for login, grant in (
+        (OWNER, {"role": "admin", "max_level": "customer"}),
+        (OTHER, {"role": "reader", "max_level": "customer"}),
+    ):
+        assert (
+            client.put(f"/v1/admin/projects/lumen/grants/{login}", json=grant, headers=hub["admin"]).status_code == 200
+        )
+    granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OTHER}", json=ADMIN_GRANT, headers=hub["admin"])
+    assert granted.status_code == 200, granted.text
+    agent(client, hub["owner"], "scout", project="lumen")
+    chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer", "scout"])
+    assert chat["label_levels"] == ["public", "internal"] and chat["label_admin"] is True
+
+    assert set_label(client, hub["other"], chat["id"], "public").status_code == 403, "admin of evo-agents alone"
+    above = set_label(client, hub["owner"], chat["id"], "customer")
+    assert above.status_code == 422 and f"default level 'internal' of project {PROJECT}" in above.json()["message"]
+    lowered = set_label(client, hub["owner"], chat["id"], "internal")
+    assert lowered.status_code == 200, lowered.text
+    assert {i["projects"][0]: i["level"] for i in lowered.json()["label"]} == {"lumen": "internal", PROJECT: "internal"}
+
+    # another agent of a project the level lowers keeps it; a project that joins later keeps its default
+    agent(client, hub["owner"], "fixer")
+    added = client.put(f"/v1/chats/{chat['id']}/agents/fixer", headers=hub["owner"])
+    assert added.status_code == 200 and added.json()["label_level"] == "internal", added.text
+    assert {i["projects"][0]: i["level"] for i in added.json()["label"]} == {"lumen": "internal", PROJECT: "internal"}
+
+
+def test_the_chat_label_command_sets_and_unsets_the_level_and_chat_show_json_has_the_label(
+    client, hub, monkeypatch, capsys
+):
+    import argparse
+    import json
+
+    from evo_agents.hub import cli_chats
+    from evo_agents.hub.client import HubError
+
+    class Hub:
+        def __init__(self, headers):
+            self.headers = headers
+
+        def call(self, method, path, body=None):
+            answer = client.request(method, path, json=body, headers=self.headers)
+            if answer.status_code >= 400:
+                raise HubError(answer.json()["message"], answer.status_code, answer.json()["error"])
+            return answer.json()
+
+    def as_(headers):
+        monkeypatch.setattr(cli_chats, "signed_in", lambda: (Hub(headers), None))
+
+    chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer"])
+
+    def label(*argv: str, json_out: bool = True) -> int:
+        args = argparse.Namespace(chat=chat["id"], level=None, default=False, json=json_out)
+        for value in argv:
+            if value == "--default":
+                args.default = True
+            else:
+                args.level = value
+        return cli_chats.cmd_label(args)
+
+    as_(hub["owner"])
+    assert label() == 2 and label("public", "--default") == 2
+    assert "LEVEL, or --default" in capsys.readouterr().err
+    assert label("public") == 0
+    assert json.loads(capsys.readouterr().out)["label_level"] == "public"
+    shown = argparse.Namespace(chat=chat["id"], thread=None, limit=5, json=True)
+    assert cli_chats.cmd_show(shown) == 0
+    assert [i["level"] for i in json.loads(capsys.readouterr().out)["chat"]["label"]] == ["public"]
+    assert label("internal", json_out=False) == 0 and "internal" in capsys.readouterr().out
+    assert label("--default") == 0 and json.loads(capsys.readouterr().out)["label_level"] is None
+    as_(hub["other"])
+    assert label("public") != 0 and "needs the admin role" in capsys.readouterr().err

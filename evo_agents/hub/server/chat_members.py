@@ -28,7 +28,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, chat_access, projects_by_id, uncleared
+from evo_agents.hub.server.chat_access import (
+    ChatAccess,
+    agent_projects,
+    chat_access,
+    projects_by_id,
+    uncleared,
+    with_override,
+)
 from evo_agents.hub.server.chat_notices import notice_added
 from evo_agents.hub.server.chat_store import add_member, member_event, remove_member
 from evo_agents.hub.server.chat_views import Chat, agent_author, chat_view, person_author
@@ -144,7 +151,7 @@ async def label_problems(conn: AsyncConnection, chat: ChatAccess, profile: Profi
     people, agents = await _members(conn, chat.chat_id)
     if profile.handle in agents:
         return []
-    projects = [*chat.projects, *await projects_by_id(conn, [profile.project_id])]
+    projects = with_override([*chat.projects, *await projects_by_id(conn, [profile.project_id])], chat.label_override)
     return await uncleared(conn, people, projects)
 
 
@@ -157,7 +164,7 @@ async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, pr
     refuse_clash(people.values(), [profile.handle])
     if len(agents) >= chats.MAX_AGENTS:
         raise HTTPException(409, f"chat {chat.chat_id} has {len(agents)} agents, the most a chat holds")
-    projects = [*chat.projects, *await projects_by_id(conn, [profile.project_id])]
+    projects = with_override([*chat.projects, *await projects_by_id(conn, [profile.project_id])], chat.label_override)
     refuse_uncleared(await uncleared(conn, people, projects), f"adding @{profile.handle} of {profile.project}")
     added_at = await add_member(conn, chat.chat_id, profile_id=profile.id, added_by=user.user_id)
     if added_at is None:

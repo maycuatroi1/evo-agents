@@ -203,6 +203,25 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     }
 
 
+def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_prints_the_label():
+    """Criterion a2 of chat-bridges: ``hub chat label CHAT LEVEL``, ``--default`` to unset; ``hub chat show --json``
+    has chat.label, as the Chat it prints."""
+    pytest.importorskip("fastapi")
+    from evo_agents.hub import cli_chats
+    from evo_agents.hub.openapi import document
+
+    printed = commands()
+    label = printed["hub chat label"]
+    assert [(p["name"], p["required"]) for p in label["positionals"]] == [("chat", True), ("level", False)]
+    assert {o["flags"][0] for o in label["options"]} == {"--default", "--json"}
+    assert label["json"]["schema"] == "Chat" and {"label", "label_level", "label_levels"} <= set(label["json"]["keys"])
+    assert printed["hub chat show"]["json"]["schema"] == "ChatPage"
+    schemas = document()["components"]["schemas"]
+    assert schemas["ChatPage"]["properties"]["chat"]["$ref"].endswith("/Chat")
+    assert {"label", "label_level"} <= set(schemas["Chat"]["properties"])
+    assert "label" in cli_chats.CHAT_KEYS
+
+
 def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     printed = commands()
     assert sorted(key for key in printed if not key.startswith("hub ")) == [

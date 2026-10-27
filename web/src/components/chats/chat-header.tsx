@@ -17,6 +17,7 @@ import { agentAuthor, type Chat, type ChatAgent, chatsHref } from "@/lib/chats";
 import { AgentMenu } from "./agent-menu";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatImageControl } from "./chat-image-control";
+import { ChatLabelControl } from "./chat-label-control";
 
 /** The levels of a chat's label, each once, as the hub sends them: every member clears them all. */
 function levelsOf(chat: Pick<Chat, "label">): string[] {
@@ -38,7 +39,8 @@ function BackLink() {
 /**
  * The head of a chat (web/DESIGN.md, Chats), its title the page's h1 beside its face, the visibility its agents'
  * projects give it. A group chat's face is a button that changes or removes its image (`ChatImageControl`), and its
- * head says who is in it, with Members, which opens the sheet that adds and takes them out. A direct chat's head is its
+ * head says who is in it, with Members, which opens the sheet that adds and takes them out, and to an admin of every
+ * project of its agents the level of its label, which they set (`ChatLabelControl`). A direct chat's head is its
  * agent's, laid out as a messenger's: its avatar, its name on one line with Direct, under the name its @handle linking
  * to the agent's page, its project and the visibility, and Details at the end of the name's row, which opens the same
  * sheet without adding or taking out anyone; its face and its name open the agent's menu (`AgentMenu`), as a group
@@ -54,7 +56,13 @@ export function ChatHeader({ chat, me, onMembers }: { chat: Chat; me: string | n
       {agent ? (
         <DirectHead chat={chat} agent={agent} onDetails={onMembers} />
       ) : (
-        <GroupHead chat={chat} me={me} onMembers={onMembers} image={<ChatImageControl chat={chat} me={me} onProblem={setProblem} />} />
+        <GroupHead
+          chat={chat}
+          me={me}
+          onMembers={onMembers}
+          image={<ChatImageControl chat={chat} me={me} onProblem={setProblem} />}
+          label={<ChatLabelControl chat={chat} onProblem={setProblem} />}
+        />
       )}
       {problem ? (
         <div data-testid="chat-image-problem">
@@ -65,7 +73,7 @@ export function ChatHeader({ chat, me, onMembers }: { chat: Chat; me: string | n
   );
 }
 
-function GroupHead({ chat, me, onMembers, image }: { chat: Chat; me: string | null; onMembers: () => void; image: ReactNode }) {
+function GroupHead({ chat, me, onMembers, image, label }: { chat: Chat; me: string | null; onMembers: () => void; image: ReactNode; label: ReactNode }) {
   const t = useTranslations("chats.header");
   const format = useFormatter();
   const agents = chat.agents.filter((agent) => !agent.deleted);
@@ -96,6 +104,7 @@ function GroupHead({ chat, me, onMembers, image }: { chat: Chat; me: string | nu
               ))}
             </span>
           ) : null}
+          {label}
           <Button type="button" variant="outline" size="sm" onClick={onMembers} data-testid="chat-members-open">
             <Users aria-hidden="true" />
             <span className="tabular-nums">{t("members", { count: chat.people.length + chat.agents.length })}</span>

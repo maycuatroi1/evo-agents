@@ -614,6 +614,23 @@ def test_a_project_declares_one_hub_sink(harness: Path):
     assert any("are all of kind hub" in i.message for i in errors(knowledge.issues))
 
 
+CHANNEL_SINK = "    - id: telegram\n      kind: channel\n      clearance: {level: public}\n"
+
+
+def test_a_channel_sink_named_by_a_kind_of_channel_validates(harness: Path):
+    add_hub_sink(harness, HUB_SINK + CHANNEL_SINK)
+    knowledge = report(harness, "knowledge")
+    assert knowledge.ok and not errors(knowledge.issues), [str(i) for i in knowledge.issues]
+
+
+@pytest.mark.parametrize("sink_id", ["web", "Telegram", "'1telegram'"])
+def test_a_channel_sink_not_named_by_a_kind_of_channel_is_an_error(harness: Path, sink_id: str):
+    add_hub_sink(harness, HUB_SINK + CHANNEL_SINK.replace("id: telegram", f"id: {sink_id}"))
+    knowledge = report(harness, "knowledge")
+    found = [(i.path, i.message) for i in errors(knowledge.issues) if "kind of channel" in i.message]
+    assert len(found) == 1 and found[0][0].startswith("policy.sinks[") and found[0][0].endswith("].id"), found
+
+
 def test_harness_and_knowledge_must_agree_on_the_hub_project(harness: Path):
     manifest = harness / "harness.yaml"
     manifest.write_text(manifest.read_text() + "hub: {project: other}\n", encoding="utf-8")

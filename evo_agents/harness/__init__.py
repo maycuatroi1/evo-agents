@@ -24,6 +24,7 @@ from evo_agents.kg.policy import Policy
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds, validate_ontology
 from evo_agents.plugins.core import python_contributions
+from evo_agents.plugins.manifest import CHANNEL_KIND
 from evo_agents.schema import Issue, errors, validate
 
 MANIFEST = "harness.yaml"
@@ -347,6 +348,19 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
     return issues
 
 
+def channel_sink_problem(value) -> str:
+    """Why ``value`` is no id of a sink of kind channel (``channel_sink_id``)."""
+    return (
+        f"{value!r}: a sink of kind channel is named by the kind of channel of a core plugin it lets a chat's "
+        f"messages out to, such as telegram ({CHANNEL_KIND}, not web)"
+    )
+
+
+def channel_sink_id(value) -> bool:
+    """Whether ``value`` names a kind of channel of a core plugin, as the id of a sink of kind channel must."""
+    return isinstance(value, str) and re.fullmatch(CHANNEL_KIND, value) is not None and value != "web"
+
+
 def _hub_semantics(data: dict, manifest: dict | None) -> list[Issue]:
     """The hub keys: one sink of kind hub at most (its clearance bounds what may be pushed), the project
     harness.yaml names under hub is the one knowledge.yaml declares, and memories and plans, which default
@@ -357,6 +371,9 @@ def _hub_semantics(data: dict, manifest: dict | None) -> list[Issue]:
     if len(hub_sinks) > 1:
         names = ", ".join(repr(s.get("id")) for s in hub_sinks)
         issues.append(Issue("policy.sinks", f"sinks {names} are all of kind hub: declare one, it bounds every push"))
+    for i, sink in enumerate(policy.get("sinks") or []):
+        if isinstance(sink, dict) and sink.get("kind") == "channel" and not channel_sink_id(sink.get("id")):
+            issues.append(Issue(f"policy.sinks[{i}].id", channel_sink_problem(sink.get("id"))))
     project = data.get("project")
     hub = (manifest or {}).get("hub")
     named = hub.get("project") if isinstance(hub, dict) else None

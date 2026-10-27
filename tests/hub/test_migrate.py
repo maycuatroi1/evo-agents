@@ -4367,3 +4367,42 @@ def test_0163_makes_the_tables_of_the_feature_docs_and_going_back_drops_them(hub
     move_to(hub_db, "0162", down=True)
     assert not pg.DOCS_TABLES & tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0163") :]
+
+
+def test_0164_chat_label_adds_the_chats_level_and_sinks_of_kind_channel_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0163")
+    t = hub_tables
+    assert "label_override" not in columns(hub_db, "chats")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Bridged", created_by=ids["user"]).returning(t.chats.c.id))
+    telegram = {
+        "project_id": ids["project"],
+        "sink_id": "telegram",
+        "kind": "channel",
+        "clearance": {"level": "public"},
+    }
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0001 knows no sink of kind channel
+        conn.execute(insert(t.project_sinks).values(telegram))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0164")
+    assert "label_override" in columns(hub_db, "chats")
+    chats = t.chats
+    override = {"level": "public", "projects": ["demo"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.project_sinks).values(telegram))
+        conn.execute(update(chats).values(label_override=override).where(chats.c.id == chat_id))
+        assert one(conn, select(chats.c.label_override).where(chats.c.id == chat_id)) == override
+        with pytest.raises(errors.CheckViolation):  # the level and the projects it lowers: an object
+            conn.execute(update(chats).values(label_override=["public"]).where(chats.c.id == chat_id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # a kind the schema does not know
+        conn.execute(insert(t.project_sinks).values({**telegram, "sink_id": "fax", "kind": "fax"}))
+    # Going back deletes the sinks of kind channel and drops the column: every chat's label is the default again.
+    move_to(hub_db, "0163", down=True)
+    assert "label_override" not in columns(hub_db, "chats")
+    sinks = select(t.project_sinks.c.sink_id).where(t.project_sinks.c.kind == "channel")
+    assert query(hub_db, sinks) == []
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.project_sinks).values(telegram))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0164") :]
