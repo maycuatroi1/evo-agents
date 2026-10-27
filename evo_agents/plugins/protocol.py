@@ -47,7 +47,8 @@ BACKEND_POINTS = tuple(POINT_METHODS)  # the extension points an isolated plugin
 # what an events contribution may take (``on``); task.result goes only to the plugin of the task's agent type; the
 # next three (plan living-lean-canvas) are a claim's rev, an approved baseline of a canvas, and a batch of signals; the
 # next two (plan loop-engine) an approved version of an SRS document and a task's status set or changed; agent.answer
-# goes to the core plugin that asked; chat.bridge (plan chat-bridges) to the core plugin of a chat's bridge alone
+# goes to the core plugin that asked; chat.bridge (plan chat-bridges) to the core plugin of a chat's bridge alone;
+# srs.use_case.approved (plan srs-backlog-loop) is one use case of a version in review, approved
 EVENT_KINDS = (
     "run.state",
     "chat.message",
@@ -60,6 +61,7 @@ EVENT_KINDS = (
     "tasks.status",
     "agent.answer",
     "chat.bridge",
+    "srs.use_case.approved",
 )
 NAME = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,62}$"}
 PROJECT = {"type": "string", "minLength": 1, "maxLength": 100}
