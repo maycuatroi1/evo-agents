@@ -61,8 +61,8 @@ principal, and acts once they approve; only that principal answers it (`docs/aut
 | `live_migration` | a migration, backfill or bulk change on real data rather than a test database |
 | `external_send` | sending anything to a service outside the machine and the repos' own remotes: mail, chat, issues, third-party APIs |
 | `spend_money` | anything that costs money beyond the runtime's own usage: paid APIs, cloud resources, purchases |
-| `architecture` | an architectural choice the plan leaves open |
-| `scope` | a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers |
+| `architecture` | a design choice the plan leaves open that would change a contract it fixes (a schema, an API, a CLI surface, a seam) or cannot be undone; any other choice of design is the agent's |
+| `scope` | a change to what the plan delivers that no route avoids (an acceptance criterion, an invariant or a non-goal), or a block only the owner can lift; a choice the agent can undo with a commit, that changes no real data and spends nothing beyond the runtime, is the agent's |
 | `merge` | merging into a repo's default branch or the target branch of a pull or merge request (K5) |
 | `credential` | creating, rotating or revoking a credential: a token, a key, a secret, an account's password (K8) |
 | `access` | changing grants, autonomy ceilings or preferences, policies or agent profiles (K12) |
