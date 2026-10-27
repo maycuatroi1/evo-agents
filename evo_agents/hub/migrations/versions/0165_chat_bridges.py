@@ -105,8 +105,8 @@ def upgrade() -> None:
         sa.Column("unlinked_by", sa.BigInteger()),
         sa.Column("unlinked_via", sa.Text()),
         _fk("chat_bridges", "chat_id", "chats.id", "CASCADE"),
-        _fk("chat_bridges", "linked_by", "users.id", "SET NULL"),
-        _fk("chat_bridges", "unlinked_by", "users.id", "SET NULL"),
+        _fk("chat_bridges", "linked_by", "users.id", ondelete="SET NULL"),
+        _fk("chat_bridges", "unlinked_by", "users.id", ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id", name="chat_bridges_pkey"),
         sa.CheckConstraint(
             sa.and_(
@@ -120,7 +120,7 @@ def upgrade() -> None:
             name="chat_bridges_check",
         ),
     )
-    linked = sa.text("unlinked_at IS NULL")
+    linked = sa.column("unlinked_at").is_(None)
     op.create_index(
         "chat_bridges_external_key", "chat_bridges", ["kind", "external_id"], unique=True, postgresql_where=linked
     )
