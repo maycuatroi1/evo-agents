@@ -628,3 +628,38 @@ test("a direct chat reads as a chat app: the member's messages on the right, the
   await expect(followUp).toHaveAttribute("data-highlighted", "true");
   await expect(followUp).toBeFocused();
 });
+
+test("threads: the column beside the chat widens with its bar and keeps its width, and Expand gives it the whole view", async ({ page, member }, info) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const mai = await signedInPerson("mai", [project]);
+  const chat = await createChatByApi(me, { title: "Release notes", people: [mai.login], agents: [project] });
+  const root = await sendByApi(me, chat.id, "Who writes the release notes of 3.2?");
+  await sendByApi(mai, chat.id, "I take it: the changelog first, then the upgrade steps.", root.id);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await open(page, `${chatPath(chat.id)}?thread=${root.id}`);
+  const thread = page.getByTestId("chat-thread");
+  await expect(thread).toHaveAttribute("data-state", "ready");
+  await page.screenshot({ path: info.outputPath("thread-column.png") });
+
+  // The bar: Left widens the column, the width is kept for the next visit.
+  const bar = page.getByTestId("chat-thread-resize");
+  const before = (await thread.boundingBox())!.width;
+  await bar.focus();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(async () => (await thread.boundingBox())!.width).toBeGreaterThan(before + 50);
+  const widened = (await thread.boundingBox())!.width;
+  await page.reload();
+  await expect(thread).toHaveAttribute("data-state", "ready");
+  await expect.poll(async () => Math.round((await thread.boundingBox())!.width)).toBe(Math.round(widened));
+
+  // Expand: the thread takes the whole view, the chat's messages hide, and Collapse puts it back.
+  await thread.getByTestId("chat-thread-expand").click();
+  await expect(main(page).getByTestId("chat-composer-text")).toBeHidden();
+  await expect(bar).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("thread-expanded.png") });
+  await thread.getByTestId("chat-thread-expand").click();
+  await expect(main(page).getByTestId("chat-composer-text")).toBeVisible();
+  await expect(bar).toBeVisible();
+});
