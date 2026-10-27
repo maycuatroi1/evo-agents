@@ -242,14 +242,28 @@ in its session on the same worker.
 
 `wake_at` is when it wakes at the latest: `--until` (a time with a timezone, or a span such as `+6h`), at most
 `MAX_WAIT_DAYS` (7) days ahead, and that far when only `--on` is given. `wake_on` is the event that wakes it sooner: an
-event of the run's project in hub_events of kind `--on` (`canvas.claim`, `canvas.baseline`, `signal.posted`,
-`srs.version.approved`, `tasks.status`, or a kind a core plugin records of its own) whose payload contains each
-`--contains` pair (JSONB containment), written after the wait was asked. On each pass, every minute, the reaper answers
-every open wait whose event or time came, before it parks or expires runs: the decision is `answered` by nobody
-(`answered_by` null, which only a wait may be; migration 0140), its `answer_text` the message the agent gets, which
-names the decision, the event with its payload or the time, and the reason. A parked run is resumed by the reaper, as an
-answer resumes it, and a parked run whose wait has not come is not cancelled at `PARKED_DAYS`. The person asked may
-answer a wait sooner like any decision.
+event of the run's project in hub_events of kind `--on` (`plan.step`, `canvas.claim`, `canvas.baseline`,
+`signal.posted`, `srs.version.approved`, `tasks.status`, or a kind a core plugin records of its own) whose payload
+contains each `--contains` pair (JSONB containment), written after the wait was asked.
+
+`plan.step` is a step's status of a plan set or changed on the hub, whatever wrote it: `evo-agents hub plan step`, the
+MCP tool `plan_step`, `evo-agents worker step`, a PUT that imports or edits the plan, or a complete that marks the steps
+left done (`mark_steps_done`; `evo_agents.hub.plan_step_status`). Its payload names the plan (`plan`, and `plan_id` as
+plugins read it), the step as `--step` names it (`step`: its id, else its order, else its position), the new status
+(`status`, and `to`), the one before (`from`, null for a step new in the revision) and the plan's `revision`. A run that
+needs another plan's step done waits on it, and wakes as soon as the step is done rather than when a timer runs out:
+
+```bash
+evo-agents worker wait --reason "Step 8 of northwind-launch ships the API this step calls" \
+  --on plan.step --contains plan=northwind-launch --contains step=8 --contains status=done --until +12h --step 3
+```
+
+The hub reads `plan` and `step` of a `plan.step` wait as text, so `step=8` matches the step whose id is 8. On each pass,
+every minute, the reaper answers every open wait whose event or time came, before it parks or expires runs: the decision
+is `answered` by nobody (`answered_by` null, which only a wait may be; migration 0140), its `answer_text` the message
+the agent gets, which names the decision, the event with its payload or the time, and the reason. A parked run is
+resumed by the reaper, as an answer resumes it, and a parked run whose wait has not come is not cancelled at
+`PARKED_DAYS`. The person asked may answer a wait sooner like any decision.
 
 ## Notices
 
