@@ -6499,6 +6499,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/okr/{project}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tree
+         * @description The tree from its business lines down, each item with its roll-up and links, and the gaps.
+         */
+        get: operations["tree_v1_x_okr__project__tree_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/okr/{project}/items/{item}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Item
+         * @description One item with its parents, children, links, roll-up and gaps.
+         */
+        get: operations["show_item_v1_x_okr__project__items__item__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Item
+         * @description Change an item's fields or parents (writer); 409 for an item a source writes.
+         */
+        patch: operations["set_item_v1_x_okr__project__items__item__patch"];
+        trace?: never;
+    };
+    "/v1/x/okr/{project}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Item
+         * @description A new item under its parents, with the next code of its kind (writer).
+         */
+        post: operations["add_item_v1_x_okr__project__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/okr/{project}/items/{item}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link
+         * @description Link the item to a task, use case, plan or goal the project holds (writer); 200 when it was linked already.
+         */
+        post: operations["link_v1_x_okr__project__items__item__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/okr/{project}/items/{item}/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink
+         * @description Take a link off the item (writer); an item a source writes keeps its links editable.
+         */
+        delete: operations["unlink_v1_x_okr__project__items__item__links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/okr/{project}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Bundle
+         * @description Upsert a source's items by ref and add their links (writer); dry_run writes nothing and answers the same.
+         */
+        post: operations["import_bundle_v1_x_okr__project__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/pm/{project}/daily": {
         parameters: {
             query?: never;
@@ -23594,6 +23718,591 @@ export interface components {
              * @description the Claude account's address
              */
             email?: string | null;
+        };
+        /** OkrGap */
+        OkrGap: {
+            /**
+             * Kind
+             * @description no_link, no_goal, no_kr, late or gone
+             */
+            kind: string;
+            /**
+             * Item
+             * @description the item's code
+             */
+            item: string;
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+        };
+        /** OkrGoal */
+        OkrGoal: {
+            /**
+             * Code
+             * @description G-<n>
+             */
+            code: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Status
+             * @description the goal's own status: active, paused or closed
+             */
+            status: string;
+            /**
+             * Metric
+             * @description how its metric reads, such as `search.zero_rate p50 over 30 days <= 0.05`
+             */
+            metric: string;
+            /**
+             * Value
+             * @description the latest value of its signal the caller may see
+             */
+            value: number | null;
+            /** Measured At */
+            measured_at: string | null;
+            /**
+             * State
+             * @description met, not_met, no_signal or no_metric: the latest value against the target
+             */
+            state: string;
+        };
+        /**
+         * OkrImportIn
+         * @description A bundle of a source: its items, upserted by ref, and their links, added. ``file`` is the same bundle as the
+         *     text of a JSON file (the command line sends it so); ``dry_run`` and ``prune`` given beside it win when true.
+         */
+        OkrImportIn: {
+            /**
+             * Source
+             * @description the source's name; required
+             */
+            source?: string | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Prune
+             * @description archive the items of the source the bundle no longer lists
+             * @default false
+             */
+            prune: boolean;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["OkrImportItem"][];
+            /**
+             * Links
+             * @default []
+             */
+            links: components["schemas"]["OkrImportLink"][];
+            /**
+             * File
+             * @description the bundle as JSON text, in place of the fields above
+             */
+            file?: string | null;
+        };
+        /** OkrImportItem */
+        OkrImportItem: {
+            /** Ref */
+            ref: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "business_line" | "objective" | "key_result" | "deliverable";
+            /** Title */
+            title: string;
+            /**
+             * Body Md
+             * @description the item's text, in Markdown
+             */
+            body_md?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "draft" | "active" | "done" | "dropped" | "archived";
+            /**
+             * Owner
+             * @description the login of who answers for it
+             */
+            owner?: string | null;
+            /**
+             * Period
+             * @description free text, such as 2026-Q4
+             */
+            period?: string | null;
+            /**
+             * Due
+             * @description YYYY-MM-DD
+             */
+            due?: string | null;
+            /** Baseline */
+            baseline?: string | null;
+            /** Target */
+            target?: string | null;
+            /**
+             * Parents
+             * @description refs in the bundle or on the hub
+             * @default []
+             */
+            parents: string[];
+            /** Source Url */
+            source_url?: string | null;
+            /** Source Rev */
+            source_rev?: string | null;
+        };
+        /** OkrImportLink */
+        OkrImportLink: {
+            /**
+             * Item
+             * @description the item's ref (or code)
+             */
+            item: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "task" | "use_case" | "plan" | "goal";
+            /** Target */
+            target: string;
+        };
+        /** OkrImported */
+        OkrImported: {
+            /** Source */
+            source: string;
+            /**
+             * Dry Run
+             * @description true: nothing was written, and this is what the import would do
+             */
+            dry_run: boolean;
+            /** Prune */
+            prune: boolean;
+            /** Created */
+            created: components["schemas"]["OkrImportedItem"][];
+            /** Updated */
+            updated: components["schemas"]["OkrImportedItem"][];
+            /** Unchanged */
+            unchanged: components["schemas"]["OkrImportedItem"][];
+            /**
+             * Missing
+             * @description the source's items the bundle no longer lists
+             */
+            missing: components["schemas"]["OkrImportedItem"][];
+            /** Links */
+            links: components["schemas"]["OkrImportedLink"][];
+        };
+        /** OkrImportedItem */
+        OkrImportedItem: {
+            /** Ref */
+            ref: string;
+            /**
+             * Code
+             * @description the code it has, or takes once the import is written
+             */
+            code: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Fields
+             * @description updated: what changed
+             * @default []
+             */
+            fields: string[];
+            /**
+             * Archived
+             * @description missing: archived by prune
+             * @default false
+             */
+            archived: boolean;
+        };
+        /** OkrImportedLink */
+        OkrImportedLink: {
+            /** Item */
+            item: string;
+            /** Kind */
+            kind: string;
+            /** Target */
+            target: string;
+            /**
+             * Result
+             * @description added, exists, not_found or refused
+             */
+            result: string;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Id
+             * @description the link's id once written
+             */
+            id?: number | null;
+        };
+        /** OkrItem */
+        OkrItem: {
+            /** Code */
+            code: string;
+            /** Ref */
+            ref: string | null;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body Md */
+            body_md: string | null;
+            /** Status */
+            status: string;
+            /** Owner */
+            owner: string | null;
+            /** Period */
+            period: string | null;
+            /** Due */
+            due: string | null;
+            /** Baseline */
+            baseline: string | null;
+            /** Target */
+            target: string | null;
+            /**
+             * Source
+             * @description the import that writes it; its fields then change only there
+             */
+            source: string | null;
+            /** Source Url */
+            source_url: string | null;
+            /** Source Rev */
+            source_rev: string | null;
+            /** Parents */
+            parents: components["schemas"]["OkrItemRef"][];
+            /** Children */
+            children: components["schemas"]["OkrItemRef"][];
+            /** Links */
+            links: components["schemas"]["OkrLink"][];
+            rollup: components["schemas"]["OkrRollup"];
+            /** Gaps */
+            gaps: components["schemas"]["OkrGap"][];
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated By */
+            updated_by: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** OkrItemIn */
+        OkrItemIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "business_line" | "objective" | "key_result" | "deliverable";
+            /** Title */
+            title: string;
+            /**
+             * Ref
+             * @description the id a source outside the hub gave it, unique in the project
+             */
+            ref?: string | null;
+            /**
+             * Body Md
+             * @description the item's text, in Markdown
+             */
+            body_md?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "draft" | "active" | "done" | "dropped" | "archived";
+            /**
+             * Owner
+             * @description the login of who answers for it
+             */
+            owner?: string | null;
+            /**
+             * Period
+             * @description free text, such as 2026-Q4
+             */
+            period?: string | null;
+            /**
+             * Due
+             * @description YYYY-MM-DD
+             */
+            due?: string | null;
+            /** Baseline */
+            baseline?: string | null;
+            /**
+             * Target
+             * @description a key result's target, such as `30 % of searches answered`
+             */
+            target?: string | null;
+            /**
+             * Parents
+             * @description codes or refs of its parents
+             * @default []
+             */
+            parents: string[];
+        };
+        /**
+         * OkrItemPatch
+         * @description What to change of an item: a field left out stays, null (or an empty string) clears one of CLEARABLE, and
+         *     ``parents`` replaces the parents. An item an import wrote refuses every field (409): its source owns them.
+         */
+        OkrItemPatch: {
+            /** Title */
+            title?: string | null;
+            /**
+             * Ref
+             * @description the id a source outside the hub gave it, unique in the project
+             */
+            ref?: string | null;
+            /**
+             * Body Md
+             * @description the item's text, in Markdown
+             */
+            body_md?: string | null;
+            /** Status */
+            status?: ("draft" | "active" | "done" | "dropped" | "archived") | null;
+            /**
+             * Owner
+             * @description the login of who answers for it
+             */
+            owner?: string | null;
+            /**
+             * Period
+             * @description free text, such as 2026-Q4
+             */
+            period?: string | null;
+            /**
+             * Due
+             * @description YYYY-MM-DD
+             */
+            due?: string | null;
+            /** Baseline */
+            baseline?: string | null;
+            /** Target */
+            target?: string | null;
+            /**
+             * Parents
+             * @description codes or refs
+             */
+            parents?: string[] | null;
+        };
+        /** OkrItemRef */
+        OkrItemRef: {
+            /** Code */
+            code: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+        };
+        /** OkrLink */
+        OkrLink: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description task, use_case, plan or goal
+             */
+            kind: string;
+            /**
+             * Target
+             * @description T-12, <document>:<code>, a plan's slug or G-3
+             */
+            target: string;
+            /**
+             * Gone
+             * @description the hub no longer holds the target
+             */
+            gone: boolean;
+            /**
+             * Visible
+             * @description false: the caller may not read its title; it still counts
+             */
+            visible: boolean;
+            /** Title */
+            title?: string | null;
+            /**
+             * Status
+             * @description a task's status, a use case's state (draft, in_review, approved, retired), a plan's status, a goal's state (met, not_met, no_signal, no_metric)
+             */
+            status?: string | null;
+            /**
+             * Done
+             * @description a task 1 or 0, a use case's done tasks, a plan's done steps
+             */
+            done?: number | null;
+            /**
+             * Total
+             * @description a task 1 (0 cancelled), a use case's tasks, a plan's steps
+             */
+            total?: number | null;
+            /**
+             * Share
+             * @description what it counts for in the deliverable's progress
+             */
+            share?: number | null;
+            /**
+             * Late
+             * @default false
+             */
+            late: boolean;
+            /**
+             * Blocked
+             * @default false
+             */
+            blocked: boolean;
+            /** Created By */
+            created_by?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** OkrLinkIn */
+        OkrLinkIn: {
+            /**
+             * Kind
+             * @description a deliverable's task, use_case or plan; a key result's goal
+             * @enum {string}
+             */
+            kind: "task" | "use_case" | "plan" | "goal";
+            /** Target */
+            target: string;
+        };
+        /** OkrLinkMade */
+        OkrLinkMade: {
+            /**
+             * Made
+             * @description false: the item linked the target already
+             */
+            made: boolean;
+            /**
+             * Item
+             * @description the item's code
+             */
+            item: string;
+            link: components["schemas"]["OkrLink"];
+        };
+        /** OkrNode */
+        OkrNode: {
+            /** Code */
+            code: string;
+            /** Ref */
+            ref: string | null;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Owner */
+            owner: string | null;
+            /** Period */
+            period: string | null;
+            /** Due */
+            due: string | null;
+            /** Baseline */
+            baseline: string | null;
+            /** Target */
+            target: string | null;
+            /** Source */
+            source: string | null;
+            rollup: components["schemas"]["OkrRollup"];
+            /** Links */
+            links: components["schemas"]["OkrLink"][];
+            /**
+             * Children
+             * @description a deliverable under two key results is under each
+             */
+            children: components["schemas"]["OkrNode"][];
+        };
+        /** OkrRollup */
+        OkrRollup: {
+            /**
+             * Progress
+             * @description 0 to 1, computed on read; null when nothing below counts
+             */
+            progress: number | null;
+            /**
+             * Deliverables
+             * @description the distinct open deliverables it counts
+             */
+            deliverables: number;
+            /** Tasks Done */
+            tasks_done: number;
+            /**
+             * Tasks Total
+             * @description the distinct tasks its deliverables link, cancelled ones left out
+             */
+            tasks_total: number;
+            /**
+             * Tasks Late
+             * @description due before today and not done
+             */
+            tasks_late: number;
+            /**
+             * Tasks Blocked
+             * @description not done, with an open blocker or an open decision of a run
+             */
+            tasks_blocked: number;
+            /** Krs Met */
+            krs_met: number;
+            /**
+             * Krs Total
+             * @description the open key results at or below it
+             */
+            krs_total: number;
+            /** @description a key result's goal */
+            goal?: components["schemas"]["OkrGoal"] | null;
+        };
+        /** OkrTree */
+        OkrTree: {
+            /** Project */
+            project: string;
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /**
+             * Counts
+             * @description kind -> how many items the tree shows
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Roots
+             * @description the business lines, then the objectives without one
+             */
+            roots: components["schemas"]["OkrNode"][];
+            /** Gaps */
+            gaps: components["schemas"]["OkrGap"][];
+        };
+        /** OkrUnlinked */
+        OkrUnlinked: {
+            /** Deleted */
+            deleted: boolean;
+            /** Item */
+            item: string;
+            /** @description the link as it was */
+            link: components["schemas"]["OkrLink"];
         };
         /**
          * OpportunityEvidence
@@ -62434,6 +63143,540 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketingDone"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    tree_v1_x_okr__project__tree_get: {
+        parameters: {
+            query?: {
+                /** @description items of this status and those above */
+                status?: ("draft" | "active" | "done" | "dropped" | "archived") | null;
+                /** @description one business line, by its code or ref */
+                line?: string | null;
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrTree"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_item_v1_x_okr__project__items__item__get: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the item's code (KR-3) or its ref */
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrItem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_item_v1_x_okr__project__items__item__patch: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the item's code (KR-3) or its ref */
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OkrItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrItem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_item_v1_x_okr__project__items_post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OkrItemIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrItem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    link_v1_x_okr__project__items__item__links_post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the item's code (KR-3) or its ref */
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OkrLinkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrLinkMade"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_v1_x_okr__project__items__item__links__link_id__delete: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the item's code (KR-3) or its ref */
+                item: string;
+                /** @description the link's id, as the item shows it */
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrUnlinked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_bundle_v1_x_okr__project__import_post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub okr` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OkrImportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkrImported"];
                 };
             };
             /** @description Unauthorized */

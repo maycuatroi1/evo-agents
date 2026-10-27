@@ -3,7 +3,7 @@
 # of evo_agents.plugins.core_install. `pip hash <wheel>` gives the hash. A hub's own plugins go in the build argument
 # EVO_HUB_EXTRA_CORE_PLUGINS instead (docs/hub-deployment.md, section Core plugins in the image).
 #
-# evo-agents-core-plugins: telegram, chats, crm, pm and marketing, of the repository maycuatroi1/evo-agents-core-plugins. Its release
+# evo-agents-core-plugins: telegram, chats, crm, pm, marketing, editorial and okr, of the repository maycuatroi1/evo-agents-core-plugins. Its release
 # workflow writes this line, with the sha256 of the wheel it publishes, to the run's summary; CI's job
 # core-plugins-suite runs the tests of the tag v<version>.
-evo-agents-core-plugins==2.2.0 --hash=sha256:a6bb45e70765fcc2c73066ca6d24b0ec37f74166b84b8878273240ce99bb3ab0
+evo-agents-core-plugins==2.3.0 --hash=sha256:6ba66b5a97696a40d5aed269743b46ef3fbba1fff810e2d46e35fd82cd3b1e63
