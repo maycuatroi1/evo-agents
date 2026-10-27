@@ -155,7 +155,7 @@ TABLES |= pg.SELLER_TABLES  # migration 0159
 TABLES |= pg.DOCS_TABLES  # migration 0163
 TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
-TABLES |= {"srs_delivery", "srs_baselines"}  # migrations 0172 and 0173
+TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migrations 0172, 0173 and 0175
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -4823,3 +4823,42 @@ def test_0174_lets_a_core_plugin_be_the_actor_of_a_decision_or_a_dismissal_and_g
     assert query(hub_db, select(func.count()).select_from(dismissals)) == [(1,)], "the plugin's dismissal goes"
     assert query(hub_db, select(func.count()).select_from(e)) == [(2,)], "its step of the history stays"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0174") :]
+
+
+def test_0175_adds_the_ledger_of_loaded_answers_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0174")
+    assert "context_answer_loads" not in tables(hub_db)
+    move_to(hub_db, "0175")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run = {
+            "project_id": ids["project"],
+            "kind": "judge",  # a run on no plan: the schema alone is under test
+            "dispatched_by": ids["user"],
+            "dispatched_via": "machine",
+            "requested_runtime": "claude-code",
+            "runtime": "claude-code",
+            "mode": "headless",
+            "approval": "auto",
+            "timeout_s": 600,
+            "repos": [{"repo": "lumen", "branch": "plan/report"}],
+        }
+        run_id = one(conn, insert(t.runs).values(run).returning(t.runs.c.id))
+        row = {
+            "run_id": run_id,
+            "project_id": ids["project"],
+            "source": "decision",
+            "source_id": 7,
+            "scope_key": "repo:lumen",
+        }
+        conn.execute(insert(t.context_answer_loads).values(row))
+        conn.execute(insert(t.context_answer_loads).values({**row, "source": "memory"}))
+        with pytest.raises(errors.UniqueViolation):  # a run loads an answer once
+            conn.execute(insert(t.context_answer_loads).values(row))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.context_answer_loads).values({**row, "source": "chat"}))
+    assert query(hub_db, select(func.count()).select_from(t.context_answer_loads)) == [(2,)]
+    move_to(hub_db, "0174", down=True)
+    assert "context_answer_loads" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0175") :]

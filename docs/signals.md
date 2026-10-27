@@ -207,6 +207,20 @@ for a member to accept or reject (later on the weekly baseline); a newer result 
 claim stale. The rules of status hold as on every path, so `validated` is never proposed without real evidence that
 supports the claim.
 
+## Answers loaded
+
+The hub posts one signal itself. `context.answer_reuse` (unit `uses`) is the number of confirmed answers loaded into
+the prompts of a project's runs (policy key `context.answers`, `docs/hub.md`, Confirmed answers in a run's prompt) on a
+day. The daily job `hub.context_answer_reuse`, at 00:09 UTC, posts it for the day before, measured at the start of that
+day (UTC), through the project's ingest key `context-answers` (made on first use, owned by the project's first admin),
+with the external id `context.answer_reuse:YYYY-MM-DD`, so a rerun stores nothing twice. A project whose policy leaves
+`context.answers` off gets nothing, and a day with no load on a project that has it on gets 0. The key must be in the
+project's registry (the evo-agents project has it; elsewhere an admin adds it with `signal keys add`): where it
+is not, the hub refuses the signal and logs it, and the table `context_answer_loads` still holds the figures.
+
+For the weeks, `evo-agents hub context answers --project <project> --weeks 8` (`GET /v1/projects/{project}/context-answers`)
+prints the runs queued, the runs that loaded at least one answer and the answers loaded, week by week from Monday UTC.
+
 ## Retention
 
 The hub keeps a signal for 400 days after it was measured, by default. `EVO_HUB_SIGNAL_DAYS` changes that, from 30 to
