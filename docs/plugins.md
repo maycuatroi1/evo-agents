@@ -360,7 +360,9 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
   task (section Agent types), `agent.answer` (a question run ended: the question, its state, the answer and its
   label), which only a core plugin asks for and takes, without a grant, only for its own agent type's question
-  (section Agent types, Questions of a core plugin), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
+  (section Agent types, Questions of a core plugin), `chat.bridge` with `chats:read` (what a group chat's bridge
+  carries out to its group: a message, a run's progress or a reaction), only to the core plugin of that bridge
+  (`docs/chat-bridges.md`), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
   claim's id and code, the rev, its cell, the kind of change, the status before and after, who wrote it and the run),
   `canvas.baseline` with `canvas:read` (a baseline of a canvas approved: its number and kind, who decided, and each
   change of status that took effect with its evidence), `signal.posted` with `signals:read` (a batch of signals:
@@ -661,7 +663,7 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.4, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.5, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service; `tests/fixtures/core_plugins/northwind_ledger`
@@ -674,7 +676,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.5; this hub serves 1.4"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.6; this hub serves 1.5"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -698,6 +700,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.35.1 | 1.2.0 |
 | 1.3 | the pull request of branch `feat/lean-core-features` (plan plugin-market): a plugin's own tables (`plugin_metadata`, `adopt_tables`, `own_tables`, `HUB_KEYS`, `PluginSchemaError`), a caller's access (`project_access`, `has_role`, `ROLES`, `ProjectRef`), the hub's reads (`read_*`, `step_key` and their refs), writes (`emit_event`, `push_signal`, `create_invite`, `queue_kg_build`, `notify`), agents and chat runs (`enabled_agent_type`, `hand_task`, `chat_run_of`, `run_session`, `reply_in_chat`), `project_configs`, `Session.machine` | the release after 0.44.2 | none yet: 1.2.0 does not load on 1.3 |
 | 1.4 | the pull request of branch `feat/editorial-api` (plan editorial-on-hub): a task's branch and agent time (`hand_task(repo=, branch=, minutes=)`, `MAX_TASK_MINUTES`), the probes of a plugin's own rules (`add_probe`, `remove_probe`, `MAX_PROBE_REF_CHARS`) | the release after the one that carries 1.3 | none yet: a plugin of 1.3 does not load on 1.4 |
+| 1.5 | the pull request of branch `feat/chat-bridges` (plan chat-bridges): a group chat's bridges to a group of a plugin's channel (`bridge_code`, `bridge_link`, `bridge_find`, `bridge_read`, `bridge_unlink`, `bridge_move`, `bridge_set_state`, `bridge_message`, `bridge_file`, `bridge_sent`, `bridge_send`, `bridge_attach`, `Bridge`, `BridgeMessage`, `BridgeFile`, `BRIDGE_EVENT`) | the release after the one that carries 1.4 | none yet: a plugin of 1.4 does not load on 1.5 |
 
 **A plugin of the market (1.3).** Each function takes the connection of the caller's transaction and the plugin's
 handle (`plugin(__name__)`), and works only in a project that enables the plugin: another project, or one that does not
@@ -800,6 +803,24 @@ core plugin). Both functions run in the plugin's transaction; neither needs a me
 | `ask_agent_type(conn, plugin, project, agent_type, question, *, asker, ref, cleared)` | queues a question run of the plugin's agent type `agent_type` in `project` and gives `AgentQuestion(question_id, run_id, project, agent_type, ref, made)`. `asker` names the person as the plugin knows them, `ref` is the plugin's key of the question, unique per message it answers, and `cleared` the `Clearance` of the place the answer goes. Checks, in order: 422 for a `question` empty once stripped, longer than `MAX_QUESTION_BYTES` (4096) bytes of UTF-8 or holding NUL, and an `asker` or `ref` that is not one line of 1 to `MAX_ASKER_CHARS` or `MAX_REF_CHARS` (200) characters; 404 for a project that does not enable the plugin, or a type it did not enable, turned off or that the plugin's version does not contribute; a `ref` the plugin asked before in the project gives that question back with `made` False, whatever the question or the type, and checks nothing more; 409 for a deleted profile or a `run_as` who no longer holds writer, and when no worker of `run_as` the type may run on takes question runs now (each worker's reasons; one that is only busy takes it); 403 for a project kept from `cleared`, as `restricted` reads it; 429 once the runs of the type reached its cap. Audited `<plugin>.ask`, `run_as` its actor, the target naming the question, the run and the asker |
 | `read_agent_answer(conn, plugin, question_id)` | `AgentAnswer(question_id, ref, project, agent_type, run_id, state, text, label, failure_cause)` of a question of the plugin, as it stands: `state` is `pending` until the run ended, then `done` (`text` the answer, at most `MAX_ANSWER_CHARS`, 8000), `failed` (`failure_cause` why), `cancelled`, or `refused`, with no text, when the project is kept from the question's `cleared` now: the hub checks it again at every read. `label` is the project's default label naming the project, the label the answer carries, read only. 404, the same words, for another plugin's question and for none; the plugin need not still be enabled |
 | `ANSWER_EVENT` | `agent.answer`, the event the plugin gets when a question run of its agent type ends (section Agent types) |
+
+**Bridges of group chats (1.5).** A plugin that contributes a channel bridges a group of it to a group chat of the
+hub, both ways, with these functions; `docs/chat-bridges.md` has the whole design. Each takes the plugin's connection
+and handle; a bridge of another plugin reads as none (404 where it is refused).
+
+| Name | What it does and refuses |
+| --- | --- |
+| `bridge_code(conn, plugin, session, kind, chat_id)` | a one-time code (`LinkCode`) that bridges the chat to a group of `kind`, made from a live web session of a chat admin: an admin of every project of the chat's agents, each of which enables the plugin with `chats:read` and `chats:write`; the hub's route `POST /v1/chats/{id}/bridges/code` makes the same |
+| `bridge_link(conn, plugin, kind, code, external_id, *, config=None)` | the code redeemed from the group `external_id`: the `Bridge(id, chat_id, kind, external_id, config, state)`, or None for a code that is wrong, used, expired or whose session ended. 409 when the group bridges a chat already; the checks of `bridge_code` run again. Audited `chat.bridge` |
+| `bridge_find(conn, plugin, kind, external_id)`, `bridge_read(conn, plugin, bridge_id)` | the linked bridge of a group, or by id; None otherwise |
+| `bridge_unlink(conn, plugin, bridge_id, *, by="bot", actor=None)` | takes it off, `by` bot from the group or admin with the `HubAdmin` session as `actor`; whether it was linked. Audited `chat.unbridge` with `via=<by>` |
+| `bridge_move(conn, plugin, bridge_id, external_id)`, `bridge_set_state(conn, plugin, bridge_id, state)` | the group's new id when the service moved it (409 when that id bridges another chat); the plugin's own state of the bridge, a JSON object |
+| `bridge_message(conn, plugin, bridge_id, message_id)` | a message of the bridge's chat as its group may read it (`BridgeMessage`): None unless the project's sink of kind channel for the bridge's kind clears its label (fail closed); its text redacted; `files` the files its author attached (`BridgeFile(id, name, media_type, size)`), never a run's outputs; `reply_to` the group's message its thread started from. 403 unless every project of the chat's agents grants `chats:read` |
+| `bridge_file(context, plugin, bridge_id, message_id, file_id)` | the bytes of one of the `files` of `bridge_message`, under its checks again, in a transaction of its own on the context's engine: None once the message does not go out or for a file that is not its own; 503 when the hub has no blob store or it does not answer |
+| `bridge_sent(conn, plugin, bridge_id, message_id, external_id)` | records the group's id of a message that went out, so replies there thread under it |
+| `bridge_send(conn, member, bridge_id, body, *, external_id, reply_to=None, attachment_ids=())` | a group's message into the chat as the linked `member`, through the hub's chat path (its checks, mentions and runs), `via` the bridge's kind; once per `external_id`; `reply_to` a group's id the bridge carried. 403 when the member may not write to the chat or a project does not grant `chats:write` |
+| `bridge_attach(request, member, bridge_id, name, data, media_type=None)` | a file of a group's message stored as the member's attachment, for `bridge_send`; 503 without a blob store |
+| `BRIDGE_EVENT` | `chat.bridge`, the event the bridge's plugin gets (`what`: `message`, `progress` or `reaction`, a reaction with `by_kind` and `by`, who put it or took it off), never for a message that came in by that bridge |
 
 **A class of channel that does not load** (its import or its `__init__` raises) fails the deliveries of its own kind
 at once, with the reason in `last_error`; the web's and every other kind's go on.

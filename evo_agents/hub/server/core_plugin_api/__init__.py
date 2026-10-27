@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.4: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.5: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -47,6 +47,13 @@ Version 1.4 added the keywords ``repo``, ``branch`` and ``minutes`` of ``hand_ta
 that is no default branch, pushed back to it, with up to ``MAX_TASK_MINUTES`` of agent time), and ``add_probe``,
 ``remove_probe`` and ``MAX_PROBE_REF_CHARS`` for the probes of a plugin's own rules.
 
+Version 1.5 added the bridges of group chats to groups of a channel of the plugin, each function named ``bridge_``:
+``bridge_code`` (from a web session of a chat admin), ``bridge_link``, ``bridge_find``, ``bridge_read``,
+``bridge_unlink``, ``bridge_move``, ``bridge_set_state``, ``bridge_message``, ``bridge_file`` and ``bridge_sent`` for
+what goes out to the group, ``bridge_send`` and ``bridge_attach`` for what comes in, with ``Bridge``, ``BridgeMessage``,
+``BridgeFile`` and ``BRIDGE_EVENT``, the event a plugin's manifest names to get a bridged chat's new messages, run progress and reactions
+(``docs/chat-bridges.md``).
+
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
 plugin out with that reason. A change that only adds to the surface takes the next minor version, one that removes or
@@ -61,6 +68,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from evo_agents.hub.chat_bridge_events import EVENT as BRIDGE_EVENT
 from evo_agents.hub.server.admin import Login
 from evo_agents.hub.server.core_plugin_api._access import ROLES, chat_run_of, has_role, project_access, run_session
 from evo_agents.hub.server.core_plugin_api._acts import (
@@ -89,6 +97,20 @@ from evo_agents.hub.server.core_plugin_api._base import (
     transaction,
     web_session,
     web_url,
+)
+from evo_agents.hub.server.core_plugin_api._bridges import (
+    bridge_attach,
+    bridge_code,
+    bridge_file,
+    bridge_find,
+    bridge_link,
+    bridge_message,
+    bridge_move,
+    bridge_read,
+    bridge_send,
+    bridge_sent,
+    bridge_set_state,
+    bridge_unlink,
 )
 from evo_agents.hub.server.core_plugin_api._channels import (
     delivered_notification,
@@ -199,6 +221,9 @@ from evo_agents.hub.server.core_plugin_api._tasks import (
 from evo_agents.hub.server.core_plugin_api._types import (
     AgentRef,
     AgentTypeRef,
+    Bridge,
+    BridgeFile,
+    BridgeMessage,
     ChatMessage,
     ChatRunRef,
     ClaimRef,
@@ -256,7 +281,7 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 4)
+API_VERSION: tuple[int, int] = (1, 5)
 
 WebSession = Annotated[Session, Depends(web_session)]
 Caller = Annotated[Session, Depends(caller)]
@@ -277,10 +302,14 @@ def require(major: int, minor: int) -> None:
 __all__ = [
     "ANSWER_EVENT",
     "API_VERSION",
+    "BRIDGE_EVENT",
     "AgentAnswer",
     "AgentQuestion",
     "AgentRef",
     "AgentTypeRef",
+    "Bridge",
+    "BridgeFile",
+    "BridgeMessage",
     "Caller",
     "Channel",
     "ChannelGone",
@@ -373,6 +402,18 @@ __all__ = [
     "ask_agent_type",
     "audit",
     "begin",
+    "bridge_attach",
+    "bridge_code",
+    "bridge_file",
+    "bridge_find",
+    "bridge_link",
+    "bridge_message",
+    "bridge_move",
+    "bridge_read",
+    "bridge_send",
+    "bridge_sent",
+    "bridge_set_state",
+    "bridge_unlink",
     "chat_history_items",
     "chat_run_of",
     "create_invite",

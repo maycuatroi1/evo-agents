@@ -21,6 +21,13 @@ Revision 0050 gives chats ``kind`` (``chats.CHAT_KINDS``: group, or direct) and,
 gives a group chat its image: the SHA-256 and the size of a blob of the blob store (``image_sha256``, ``image_size``),
 which the chat's row refers to, as ``blob_gc`` counts it, so that the collection of unreferenced blobs leaves it.
 Revision 0072 drops ``budget_usd``, the cost a chat's runs could reach in 24 hours, which 0032 gave chats.
+Revision 0164 gives chats ``label_override``, the level a project admin set for its label (``chat_labels``).
+
+Revision 0165 bridges a group chat to groups of a core plugin's channel (``evo_agents.hub.server.chat_bridges``):
+chat_bridges holds each link (the plugin, the kind of channel, the group's id there, the config and state the plugin
+keeps, who linked it and who unlinked it, from where), chat_bridge_codes the one-time codes a chat admin links one
+with, chat_bridge_messages the group's id of each message a bridge carried in or out; chat_messages takes ``via``, the
+kind of channel a message came in by. ``bridge_tables`` adds them.
 """
 
 from __future__ import annotations
@@ -71,6 +78,7 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         Column("direct_profile_id", BigInteger),  # 0050
         Column("image_sha256", Text),  # 0051
         Column("image_size", BigInteger),  # 0051
+        Column("label_override", JSONB),  # 0164: the level a project admin set, and the projects it lowers
         _fk("chats", "created_by", "users.id", ondelete="RESTRICT"),
         _fk("chats", "direct_user_id", "users.id", ondelete="RESTRICT"),
         _fk("chats", "direct_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
@@ -117,6 +125,7 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         Column("body", Text, nullable=False),
         Column("label", JSONB, nullable=False),
         _stamp("created_at"),
+        Column("via", Text),  # 0165: the kind of channel it came in by, from a bridged group
         _fk("chat_messages", "chat_id", "chats.id", ondelete="CASCADE"),
         _fk("chat_messages", "thread_root_id", "chat_messages.id", ondelete="CASCADE"),
         _fk("chat_messages", "author_user_id", "users.id", ondelete="RESTRICT"),
@@ -201,3 +210,64 @@ def chat_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, T
     found = (*_chats(metadata), *_messages(metadata), *_reactions(metadata))
     _chat_runs(runs)
     return found
+
+
+def bridge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
+    """(chat_bridges, chat_bridge_codes, chat_bridge_messages) of revision 0165, added to ``metadata``."""
+    bridges = Table(
+        "chat_bridges",
+        metadata,
+        _id(),
+        Column("chat_id", BigInteger, nullable=False),
+        Column("plugin", Text, nullable=False),  # the id of the core plugin that contributes the kind
+        Column("kind", Text, nullable=False),
+        Column("external_id", Text, nullable=False),  # the group's id in the channel
+        Column("config", JSONB, nullable=False, server_default="{}"),
+        Column("state", JSONB, nullable=False, server_default="{}"),
+        Column("linked_by", BigInteger),
+        _stamp("linked_at"),
+        Column("unlinked_at", DateTime(timezone=True)),
+        Column("unlinked_by", BigInteger),
+        Column("unlinked_via", Text),  # web, cli, bot or admin
+        _fk("chat_bridges", "chat_id", "chats.id", ondelete="CASCADE"),
+        _fk("chat_bridges", "linked_by", "users.id", ondelete="SET NULL"),
+        _fk("chat_bridges", "unlinked_by", "users.id", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="chat_bridges_pkey"),
+    )
+    linked = bridges.c.unlinked_at.is_(None)
+    Index("chat_bridges_external_key", bridges.c.kind, bridges.c.external_id, unique=True, postgresql_where=linked)
+    Index("chat_bridges_chat_idx", bridges.c.chat_id, postgresql_where=linked)
+    codes = Table(
+        "chat_bridge_codes",
+        metadata,
+        _id(),
+        Column("chat_id", BigInteger, nullable=False),
+        Column("user_id", BigInteger, nullable=False),
+        Column("token_id", BigInteger, nullable=False),  # the web session that made it
+        Column("kind", Text, nullable=False),
+        Column("code_hash", Text, nullable=False),
+        _stamp("created_at"),
+        Column("expires_at", DateTime(timezone=True), nullable=False),
+        Column("used_at", DateTime(timezone=True)),
+        _fk("chat_bridge_codes", "chat_id", "chats.id", ondelete="CASCADE"),
+        _fk("chat_bridge_codes", "user_id", "users.id", ondelete="CASCADE"),
+        _fk("chat_bridge_codes", "token_id", "tokens.id", ondelete="CASCADE"),
+        PrimaryKeyConstraint("id", name="chat_bridge_codes_pkey"),
+        UniqueConstraint("code_hash", name="chat_bridge_codes_code_hash_key"),
+    )
+    Index("chat_bridge_codes_user_idx", codes.c.user_id)
+    carried = Table(
+        "chat_bridge_messages",
+        metadata,
+        Column("bridge_id", BigInteger, nullable=False),
+        Column("message_id", BigInteger, nullable=False),
+        Column("direction", Text, nullable=False),  # in: it came from the group; out: it went there
+        Column("external_id", Text, nullable=False),  # the group's id of the message
+        _stamp("created_at"),
+        _fk("chat_bridge_messages", "bridge_id", "chat_bridges.id", ondelete="CASCADE"),
+        _fk("chat_bridge_messages", "message_id", "chat_messages.id", ondelete="CASCADE"),
+        PrimaryKeyConstraint("bridge_id", "message_id", "direction", name="chat_bridge_messages_pkey"),
+        UniqueConstraint("bridge_id", "external_id", name="chat_bridge_messages_external_key"),
+    )
+    Index("chat_bridge_messages_message_idx", carried.c.message_id)
+    return bridges, codes, carried

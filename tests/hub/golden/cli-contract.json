@@ -4162,11 +4162,73 @@
           "people",
           "agents",
           "label",
+          "label_level",
+          "label_levels",
+          "label_admin",
           "restricted",
           "last_seq",
           "last_read_seq",
           "kind",
-          "image_url"
+          "image_url",
+          "bridges"
+        ],
+        "schema": "Chat"
+      }
+    },
+    "hub chat label": {
+      "positionals": [
+        {
+          "name": "chat",
+          "metavar": "CHAT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--default"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "title",
+          "created_by",
+          "created_at",
+          "people",
+          "agents",
+          "label",
+          "label_level",
+          "label_levels",
+          "label_admin",
+          "restricted",
+          "last_seq",
+          "last_read_seq",
+          "kind",
+          "image_url",
+          "bridges"
         ],
         "schema": "Chat"
       }
@@ -4263,7 +4325,9 @@
           "created_at",
           "progress",
           "outputs",
-          "attachments"
+          "attachments",
+          "via",
+          "bridged_to"
         ],
         "schema": "GroupMessage"
       }
@@ -4336,7 +4400,9 @@
           "created_at",
           "progress",
           "outputs",
-          "attachments"
+          "attachments",
+          "via",
+          "bridged_to"
         ],
         "schema": "GroupMessage"
       }
@@ -4386,6 +4452,56 @@
           "more"
         ],
         "schema": "ChatPage"
+      }
+    },
+    "hub chat unbridge": {
+      "positionals": [
+        {
+          "name": "chat",
+          "metavar": "CHAT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "bridge",
+          "metavar": "BRIDGE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "title",
+          "created_by",
+          "created_at",
+          "people",
+          "agents",
+          "label",
+          "label_level",
+          "label_levels",
+          "label_admin",
+          "restricted",
+          "last_seq",
+          "last_read_seq",
+          "kind",
+          "image_url",
+          "bridges"
+        ],
+        "schema": "Chat"
       }
     },
     "hub contract check": {
@@ -72138,6 +72254,373 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/label": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Put Label",
+          "description": "Set the chat's level, at or below the default level of every project of its agents: a message sent from now\non carries it. Needs the admin role on every one of those projects.",
+          "operationId": "put_label_v1_chats__chat_id__label_put",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatLabelIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Delete Label",
+          "description": "Take the chat's level off: its label is its projects' default again, for the messages sent from now on.",
+          "operationId": "delete_label_v1_chats__chat_id__label_delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/bridges/code": {
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Post Bridge Code",
+          "description": "A one-time code that bridges the group chat to a group of ``kind``: the group's plugin takes it there within ten\nminutes. From a web session of an admin of every project of the chat's agents, each of which enables the kind's\nplugin with chats:read and chats:write.",
+          "operationId": "post_bridge_code_v1_chats__chat_id__bridges_code_post",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatBridgeCodeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatBridgeCode"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/bridges/{bridge_id}": {
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Delete Bridge",
+          "description": "Take bridge ``bridge_id`` of the chat off: nothing goes to its group or comes from it any more. A chat admin\ndoes it from the web or the CLI, a hub admin from either.",
+          "operationId": "delete_bridge_v1_chats__chat_id__bridges__bridge_id__delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "bridge_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Bridge Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/events": {
         "get": {
           "tags": [
@@ -89661,6 +90144,24 @@
           "title": "BreakerReset",
           "description": "A breaker an admin reset, and the merge requests waiting for their turn again."
         },
+        "BridgedTo": {
+          "properties": {
+            "bridge_id": {
+              "type": "integer",
+              "title": "Bridge Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "bridge_id",
+            "kind"
+          ],
+          "title": "BridgedTo"
+        },
         "BriefSummary": {
           "properties": {
             "id": {
@@ -95352,7 +95853,41 @@
               },
               "type": "array",
               "title": "Label",
-              "description": "the labels of its agents' projects: every person in it clears them"
+              "description": "the labels of its agents' projects, at the level set for the chat if any: every person in it clears them, and a message sent now carries them"
+            },
+            "label_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label Level",
+              "description": "the level an admin of every project of its agents set for the chat, below or at each one's default; null when its label is its projects' default"
+            },
+            "label_levels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Label Levels",
+              "description": "the levels the chat may be set to, lowest first: on every project's ladder, at or below each one's default; empty for a direct chat or a chat without agents"
+            },
+            "label_admin": {
+              "type": "boolean",
+              "title": "Label Admin",
+              "description": "whether the reader is an admin of every project of its agents, so may set its level",
+              "default": false
+            },
+            "bridges": {
+              "items": {
+                "$ref": "#/components/schemas/ChatBridge"
+              },
+              "type": "array",
+              "title": "Bridges",
+              "description": "the groups of a core plugin's channel the chat is bridged to, oldest first"
             },
             "restricted": {
               "type": "boolean",
@@ -95582,6 +96117,91 @@
           "title": "ChatAuthor",
           "description": "Who wrote a message or put a reaction: a person, an agent or the hub itself."
         },
+        "ChatBridge": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "the kind of channel of the group, as its core plugin names it"
+            },
+            "external_id": {
+              "type": "string",
+              "title": "External Id",
+              "description": "the group's id on that channel"
+            },
+            "linked_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Linked By",
+              "description": "the chat admin whose code bridged it"
+            },
+            "linked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Linked At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "external_id",
+            "linked_by",
+            "linked_at"
+          ],
+          "title": "ChatBridge"
+        },
+        "ChatBridgeCode": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "the one-time code the group's plugin takes, shown once"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "ten minutes after it was made"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "kind",
+            "expires_at"
+          ],
+          "title": "ChatBridgeCode"
+        },
+        "ChatBridgeCodeIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+              "title": "Kind",
+              "description": "the kind of channel of the group, as a core plugin names it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "ChatBridgeCodeIn"
+        },
         "ChatCandidate": {
           "properties": {
             "login": {
@@ -95799,6 +96419,21 @@
             "by"
           ],
           "title": "ChatImageChange"
+        },
+        "ChatLabelIn": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+              "title": "Level",
+              "description": "the chat's level: on the ladder of every project of its agents, at or below each one's default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level"
+          ],
+          "title": "ChatLabelIn"
         },
         "ChatLastMessage": {
           "properties": {
@@ -103577,6 +104212,26 @@
               "type": "array",
               "title": "Attachments",
               "description": "the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes"
+            },
+            "via": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Via",
+              "description": "the kind of channel it came in by, from a group bridged to the chat; null when sent here"
+            },
+            "bridged_to": {
+              "items": {
+                "$ref": "#/components/schemas/BridgedTo"
+              },
+              "type": "array",
+              "title": "Bridged To",
+              "description": "the bridges it went out on, to their groups, oldest first"
             }
           },
           "type": "object",
@@ -137359,7 +138014,8 @@
                 "llm-backend",
                 "writeback-target",
                 "cli",
-                "hub"
+                "hub",
+                "channel"
               ],
               "title": "Kind"
             },

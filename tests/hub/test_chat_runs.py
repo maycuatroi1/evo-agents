@@ -1221,3 +1221,35 @@ def test_who_may_not_read_a_chat_run_sees_nothing_more_of_it_in_the_thread(clien
     events = client.get(f"/v1/chats/{chat['id']}/events", params={"progress": True}, headers=hub["other"]).json()
     assert events["progress"] == []
     assert next(e for e in events["events"] if e["kind"] == "message")["message"]["progress"] == []
+
+
+# The level of a chat's label in the prompt of its chat runs (criterion a3 of chat-bridges)
+
+LABEL_RULE = (
+    f"- This chat's label is public, below the default label internal of project {PROJECT}: what is said in it may "
+    "leave the hub at level public"
+)
+
+
+def test_a_chat_run_of_a_chat_whose_label_is_below_its_projects_default_gets_the_level_and_the_rule(client, hub):
+    studio = chat_worker(client, hub["owner"], "studio", slots=3)
+    plain = created(client, hub["owner"], title="Default label")
+    sent(client, hub["owner"], plain["id"], "@reviewer look at it")
+    assert LABEL_RULE[:40] not in claim(client, studio)["prompt"]
+
+    chat = created(client, hub["owner"], title="Bridged")
+    lowered = client.put(f"/v1/chats/{chat['id']}/label", json={"level": "public"}, headers=hub["owner"])
+    assert lowered.status_code == 200, lowered.text
+    sent(client, hub["owner"], chat["id"], "@reviewer look at it")
+    prompt = claim(client, studio)["prompt"]
+    assert LABEL_RULE in prompt
+    assert (
+        "Do not paste into the chat documents, secrets, names or data of customers of a level above public; say what "
+        "they are and where they are on the hub instead."
+    ) in prompt
+    assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
+
+    # the level taken off, the next run's prompt has no rule
+    assert client.delete(f"/v1/chats/{chat['id']}/label", headers=hub["owner"]).status_code == 200
+    sent(client, hub["owner"], chat["id"], "@reviewer again")
+    assert LABEL_RULE[:40] not in claim(client, studio)["prompt"]

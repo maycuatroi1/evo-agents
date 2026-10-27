@@ -714,7 +714,9 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
   `{"restricted": true}` alone, so a `run_outputs` notice goes out as the project, the words of its kind (the hub's
   and those of the core plugin telegram from 1.1.0 are `Files from a run`) and the link. It fails closed: a project with
   no hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
-  `domestic-only`) and a clearance above its lowest rung, is restricted too;
+  `domestic-only`) and a clearance above its lowest rung, is restricted too. A sink of kind `channel` (`docs/hub.md`,
+  Sinks of kind channel) bounds what of a project's chats goes to a group of a channel and changes none of this: the
+  restricted rule reads the hub sink alone;
 - no image taken out of a tool's result (an output of source `tool`), whatever the project, even when a question
   carries it: the web shows it;
 - no token, pairing code or link code, ever;

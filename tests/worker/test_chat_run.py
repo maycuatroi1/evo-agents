@@ -610,3 +610,31 @@ def test_repo_open_refuses_outside_a_chat_run_and_a_task_run_still_prepares_ever
         assert opened_repos(hub) == []
 
     with_daemon(machine, body)
+
+
+def test_the_agent_of_a_chat_run_in_a_chat_whose_label_is_lowered_gets_its_level_and_rule_verbatim(machine):  # noqa: F811
+    """Criterion a3 of chat-bridges: the hub's prompt of a run in a chat set to public, below the default internal of
+    the project, names the level and the rule, and the worker gives it to the agent as it came."""
+    machine.scenarios({"chat": [{"say": "Noted."}]})
+    trigger = {"id": 5, "author": "owner", "body": "@reviewer what broke?", "created_at": "2026-10-27T09:00:00Z"}
+    prompt = chat_runs.build_chat_prompt(
+        agent={"handle": "reviewer", "name": "Reviewer", "project": PROJECT, "description": "Reviews diffs."},
+        chat={"id": 7, "title": "Northwind bridge", "people": ["owner"], "agents": ["reviewer"]},
+        trigger=trigger,
+        login="owner",
+        hop=1,
+        branch="chat/1",
+        blocks=[],
+        label={"level": "public", "default": "internal"},
+    )
+    rule = chat_runs.label_lines({"level": "public", "default": "internal"}, PROJECT)[0]
+    assert rule in prompt and "of a level above public" in rule
+    assert not chat_runs.label_lines(None, PROJECT)
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"], prompt)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        (start,) = machine.starts()
+        assert start["prompt"] == prompt
+
+    with_daemon(machine, body)

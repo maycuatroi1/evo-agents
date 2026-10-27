@@ -183,6 +183,14 @@ CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 # A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
 CHAT_IMAGE = "chat.image"
+# An admin of every project of a chat's agents set the level of its label, or took it off: "chat:<id> label:<level>" or
+# "chat:<id> label:default" (evo_agents.hub.server.chat_labels).
+CHAT_LABEL = "chat.label"
+# A group chat was bridged to a group of a core plugin's channel, by the code of a chat admin's web session, or the
+# bridge was taken off: "chat:<id> bridge:<id> kind:<kind>", an unlink followed by `` via=<web|cli|bot|admin>``
+# (evo_agents.hub.server.chat_bridges).
+CHAT_BRIDGE = "chat.bridge"
+CHAT_UNBRIDGE = "chat.unbridge"
 # The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
 # "plugin:<name>@<version>", never a manifest, a bundle or a signature.
 PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds

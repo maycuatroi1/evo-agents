@@ -119,7 +119,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read`, `GET` and `PUT /v1/me/notification-settings` (the notices you turned off, the tier of each kind, quiet hours, time zone, the time of the summary push, Hide details) |
 | push | `GET /v1/push/config`, public: the VAPID key a browser subscribes with and which senders are on; `GET` and `POST /v1/me/push/devices`, `DELETE /v1/me/push/devices/{id}`, `POST /v1/me/push/devices/{id}/test`: your push devices, a browser's Web Push subscription, an APNs or an FCM token (`docs/notifications.md`, Push to devices) |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `PUT` and `DELETE .../label`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/waiting`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides, or a writer for a problem or an opportunity (`docs/plugins.md`, section Builder) |
@@ -388,6 +388,15 @@ integrity, projects}`, and two rules decide everything:
 - **Pushing.** The member needs the writer role, and L must be below the clearance of the project's sink of kind
   `hub`. A project whose `knowledge.yaml` declares no such sink takes no push at all.
 
+**Sinks of kind channel.** A sink of kind `channel` names, by its id, a kind of channel of a core plugin (`telegram`,
+say: a channel kind as `evo_agents/plugins/manifest.py` reads it, never `web`), and its clearance bounds what of the
+project's chats may go out to a group of that channel: a message whose label's part for the project is below the
+clearance (`evo_agents.hub.server.chat_access.channel_allows`). The hub stores it at register, refusing an id that is
+no channel kind (422), and `hub project list --json` prints it among the sinks. It fails closed: a project without a
+sink of kind channel for a kind lets nothing of its chats out to that channel, and neither does a message with an
+empty label or one naming a project the hub does not know. Whether a 1:1 private channel gets minimal messages reads
+the hub sink alone, as before (`docs/notifications.md`).
+
 Both rules fail closed: a level the ladder lacks counts as the highest, and a label the hub cannot read hides its
 object. Something you may not see answers exactly like something that does not exist. A hub admin without a grant
 on a project manages it (registration, grants) but reads and pushes nothing in it.
@@ -594,6 +603,31 @@ it was sent, as a run's events read as its project's: once an agent left and the
 since does not read what was written before. A chat is restricted when a project of its agents is (its hub sink cleared
 at or above `customer` or `domestic-only`, as Telegram reads it: `docs/notifications.md`).
 
+**The chat's own level.** An admin of every project with an agent in a group chat may set the chat's level, at or below
+each project's default level and on each one's ladder (`PUT /v1/chats/{id}/label` with `level`,
+`evo-agents hub chat label CHAT LEVEL`, or Chat level in the chat's head on the web), and take it off again
+(`DELETE .../label`, `hub chat label CHAT --default`): the label is then its projects' default again
+(`evo_agents/hub/server/chat_labels.py`, the column `chats.label_override` of migration 0164). Anyone else gets 403, a
+level above a project's default or off its ladder 422, a direct chat or a chat without agents 409. The level names
+the projects it lowers; a project whose agent joins later keeps its default. Messages sent from then on carry the new
+label, those sent before keep theirs, and who may be in the chat reads the new label: taking the level off, or raising
+it, past someone in the chat is refused (409, naming who), as adding an agent is. The chat (`hub chat show --json`,
+`chat`) has `label`, as it is now, `label_level` (null at the default), `label_levels`, the levels it may be set to,
+and `label_admin`, whether the reader may set it. Each change is audited as `chat.label`, its target
+`chat:<id> label:<level>` or `label:default`. A chat run in a chat whose level is below its project's default gets the
+level in its prompt, and the rule not to paste documents, secrets, names or customer data above it into the chat.
+
+**Bridges.** A group chat with agents may be bridged to a group of a channel a core plugin contributes (a group of a
+chat service), both ways (`docs/chat-bridges.md`, `evo_agents/hub/server/chat_bridges.py`, migration 0165). A chat
+admin, as above, makes a one-time code from a web session (`POST /v1/chats/{id}/bridges/code` with `kind`; a machine
+token gets 403) and the plugin redeems it from the group. A linked member's message in the group comes into the chat
+as theirs, `via` the kind; the chat's messages go out to the group as far as each project's sink of kind channel for
+that kind clears their label, redacted and without files, with a run's progress and reactions. The chat (`chat`) has
+`bridges`, and each message `via` and `bridged_to`. A chat admin takes a bridge off with
+`DELETE /v1/chats/{id}/bridges/{bridge}` or `hub chat unbridge CHAT BRIDGE`, the group with its plugin's command; a
+hub admin in the chat does it the same way, and any hub admin through the plugin's admin route. Each link and unlink is audited, `chat.bridge` and `chat.unbridge`, the
+target `chat:<id> bridge:<id> kind:<kind>`, an unlink with `via=<web|cli|bot|admin>`.
+
 **Messages and mentions.** A message has at most 16 KiB of UTF-8; `reply_to` puts it in the thread of the message it
 answers, and a thread has one level: `thread_root_id` always names its first message. The hub reads a message's
 mentions once, when it is sent, and keeps them with it (at most 20 names): `@` then `[a-z0-9-]`, not right after a
@@ -767,6 +801,9 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
 | `PUT .../image` (`data`, base64), `DELETE .../image`, `GET .../image`: a group chat's image | | a member |
+| `PUT .../label` (`level`), `DELETE .../label`: a group chat's own level | `hub chat label CHAT LEVEL`, `hub chat label CHAT --default` | an admin of every project of its agents |
+| `POST .../bridges/code` (`kind`): a one-time code that bridges a group chat to a group of a channel | | an admin of every project of its agents, from a web session |
+| `DELETE .../bridges/{bridge}`: takes a bridge off | `hub chat unbridge CHAT BRIDGE` | an admin of every project of its agents, or a hub admin in the chat |
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |

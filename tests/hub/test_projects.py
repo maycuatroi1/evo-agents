@@ -659,6 +659,49 @@ def test_projects_are_listed_to_their_members_only(client, github, hub_db):
     assert hidden.json()["message"].replace("other", "X") == missing.json()["message"].replace("nope", "X")
 
 
+TELEGRAM_SINK = {"id": "telegram", "kind": "channel", "clearance": {"level": "public", "location": "any"}}
+
+
+@needs_pg
+def test_a_channel_sink_is_stored_at_register_and_listed_by_project_list_json(
+    client, github, hub_db, monkeypatch, capsys
+):
+    from evo_agents.hub import cli_client
+
+    who = users(client, github)
+    sinks = [*body()["sinks"], TELEGRAM_SINK]
+    registered = client.put("/v1/projects/demo", json=body(sinks=sinks), headers=who["admin"])
+    assert registered.status_code == 200, registered.text
+    assert registered.json()["sinks"][-1] == TELEGRAM_SINK
+    assert content_rows(hub_db)["project_sinks"] == 3
+    grant(client, who["admin"], "member", "reader", "internal")
+
+    class Hub:
+        def call(self, method, path):
+            return client.request(method, path, headers=who["member"]).json()
+
+    monkeypatch.setattr(cli_client, "_signed_in", lambda: (Hub(), None))
+    assert cli_client.cmd_project_list(type("Args", (), {"json": True})()) == 0
+    (listed,) = json.loads(capsys.readouterr().out)
+    assert [s for s in listed["sinks"] if s["kind"] == "channel"] == [TELEGRAM_SINK]
+
+    # without it again, the project has no channel sink: no channel gets anything of its chats
+    again = client.put("/v1/projects/demo", json=body(), headers=who["admin"])
+    assert again.status_code == 200 and all(s["kind"] != "channel" for s in again.json()["sinks"])
+
+
+@needs_pg
+@pytest.mark.parametrize("sink_id", ["web", "Telegram", "tele gram", "-telegram"])
+def test_a_channel_sink_not_named_by_a_kind_of_channel_is_422(client, github, hub_db, sink_id):
+    admin = users(client, github)["admin"]
+    before = content_rows(hub_db)
+    sinks = [*body()["sinks"], {**TELEGRAM_SINK, "id": sink_id}]
+    response = client.put("/v1/projects/demo", json=body(sinks=sinks), headers=admin)
+    assert response.status_code == 422, response.text
+    assert "a sink of kind channel is named by the kind of channel" in response.json()["message"]
+    assert content_rows(hub_db) == before
+
+
 @needs_pg
 @pytest.mark.parametrize(
     "changes, message",

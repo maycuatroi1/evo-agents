@@ -3833,6 +3833,14 @@
       "removing": "Removing…",
       "cancel": "Cancel"
     },
+    "labelLevel": {
+      "menu": "Chat level: {level}",
+      "default": "Default of its projects",
+      "defaultLevel": "default",
+      "hint": "The level of what is said in the chat from now on, at or below its projects' default. A message keeps the level it was sent at.",
+      "changed": "Chat level set to {level}",
+      "removed": "Chat level is its projects' default again"
+    },
     "messages": {
       "log": "Messages of {title}",
       "older": "Show earlier messages",

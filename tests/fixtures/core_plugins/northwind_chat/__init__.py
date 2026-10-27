@@ -3,13 +3,14 @@
 (``evo_agents.hub.server.core_plugin_api``), as a plugin of another repository would be.
 
 Its entry point names ``manifest``, which asks for the version of the API it was written for: a hub that serves
-another leaves the plugin out with that reason. ``server`` holds its channel, its routes and its events; its agent
-type helpdesk answers the questions a chat user asks with ``/ask``.
+another leaves the plugin out with that reason. ``server`` holds its channel, its routes and its events, and the bridge
+of a group of Northwind Chat to a group chat of the hub (API 1.5); its agent type helpdesk answers the questions a chat
+user asks with ``/ask``.
 """
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 4)  # the version of the API this plugin is written for
+API = (1, 5)  # the version of the API this plugin is written for
 SERVER = "northwind_chat.server"
 KIND = "northwind"
 
@@ -48,6 +49,7 @@ MANIFEST = {
         "events": [
             {"name": "replies", "on": ["chat.message"], "python": f"{SERVER}:on_chat_message"},
             {"name": "answers", "on": ["agent.answer"], "python": f"{SERVER}:on_agent_answer"},
+            {"name": "bridge", "on": ["chat.bridge"], "python": f"{SERVER}:on_chat_bridge"},
         ],
         "agent_types": [
             {
