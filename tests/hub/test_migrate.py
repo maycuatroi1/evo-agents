@@ -153,6 +153,7 @@ TABLES |= pg.PUSH_TABLES  # migration 0156
 TABLES |= pg.TODAY_TABLES  # migration 0158
 TABLES |= pg.SELLER_TABLES  # migration 0159
 TABLES |= pg.DOCS_TABLES  # migration 0163
+TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -243,8 +244,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_tables(hub_db):
-    assert len(TABLES) == 200  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_three_tables(hub_db):
+    assert len(TABLES) == 203  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4367,3 +4368,106 @@ def test_0163_makes_the_tables_of_the_feature_docs_and_going_back_drops_them(hub
     move_to(hub_db, "0162", down=True)
     assert not pg.DOCS_TABLES & tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0163") :]
+
+
+def test_0164_chat_label_adds_the_chats_level_and_sinks_of_kind_channel_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0163")
+    t = hub_tables
+    assert "label_override" not in columns(hub_db, "chats")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Bridged", created_by=ids["user"]).returning(t.chats.c.id))
+    telegram = {
+        "project_id": ids["project"],
+        "sink_id": "telegram",
+        "kind": "channel",
+        "clearance": {"level": "public"},
+    }
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0001 knows no sink of kind channel
+        conn.execute(insert(t.project_sinks).values(telegram))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0164")
+    assert "label_override" in columns(hub_db, "chats")
+    chats = t.chats
+    override = {"level": "public", "projects": ["demo"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.project_sinks).values(telegram))
+        conn.execute(update(chats).values(label_override=override).where(chats.c.id == chat_id))
+        assert one(conn, select(chats.c.label_override).where(chats.c.id == chat_id)) == override
+        with pytest.raises(errors.CheckViolation):  # the level and the projects it lowers: an object
+            conn.execute(update(chats).values(label_override=["public"]).where(chats.c.id == chat_id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # a kind the schema does not know
+        conn.execute(insert(t.project_sinks).values({**telegram, "sink_id": "fax", "kind": "fax"}))
+    # Going back deletes the sinks of kind channel and drops the column: every chat's label is the default again.
+    move_to(hub_db, "0163", down=True)
+    assert "label_override" not in columns(hub_db, "chats")
+    sinks = select(t.project_sinks.c.sink_id).where(t.project_sinks.c.kind == "channel")
+    assert query(hub_db, sinks) == []
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.project_sinks).values(telegram))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0164") :]
+
+
+def test_0165_chat_bridges_adds_bridges_their_codes_and_messages_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0164")
+    t = hub_tables
+    assert not pg.CHAT_BRIDGE_TABLES & tables(hub_db)
+    assert "via" not in columns(hub_db, "chat_messages")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Bridged", created_by=ids["user"]).returning(t.chats.c.id))
+        said = {"chat_id": chat_id, "seq": 1, "author_user_id": ids["user"], "body": "hi", "label": []}
+        message_id = one(conn, insert(t.chat_messages).values(said).returning(t.chat_messages.c.id))
+        plugin_id = one(conn, insert(t.plugins).values(name="northwind", publisher="acme").returning(t.plugins.c.id))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "chat.bridge", "contribution": "b"}
+        delivery["payload"] = {"bridge_id": 1, "what": "message", "message_id": message_id}
+        with pytest.raises(errors.CheckViolation):  # 0164 knows no event chat.bridge
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0165")
+    assert pg.CHAT_BRIDGE_TABLES <= tables(hub_db)
+    assert "via" in columns(hub_db, "chat_messages")
+    b, codes, carried = t.chat_bridges, t.chat_bridge_codes, t.chat_bridge_messages
+    bridge = {"chat_id": chat_id, "plugin": "northwind-chat", "kind": "northwind", "external_id": "g-100"}
+    with live.connect(hub_db) as conn:
+        bridge_id = one(conn, insert(b).values({**bridge, "linked_by": ids["user"]}).returning(b.c.id))
+        assert one(conn, select(b.c.config).where(b.c.id == bridge_id)) == {}
+        conn.execute(insert(t.plugin_deliveries).values(delivery))
+        conn.execute(update(t.chat_messages).values(via="northwind").where(t.chat_messages.c.id == message_id))
+        out = {"bridge_id": bridge_id, "message_id": message_id, "direction": "out", "external_id": "m-1"}
+        conn.execute(insert(carried).values(out))
+        code = {"chat_id": chat_id, "user_id": ids["user"], "token_id": ids["token"], "kind": "northwind"}
+        code |= {"code_hash": "c" * 64, "expires_at": func.now() + timedelta(minutes=10)}
+        conn.execute(insert(codes).values(code))
+        for table, bad in (
+            (b, {**bridge, "external_id": "g-101", "kind": "North wind"}),  # a kind of channel as a manifest names one
+            (b, {**bridge, "external_id": ""}),
+            (b, {**bridge, "external_id": "x" * 201}),
+            (b, {**bridge, "external_id": "g-102", "config": ["a"]}),  # an object
+            (b, {**bridge, "external_id": "g-103", "unlinked_via": "fax", "unlinked_at": func.now()}),
+            (b, {**bridge, "external_id": "g-104", "unlinked_at": func.now()}),  # unlinked from somewhere
+            (carried, {**out, "direction": "sideways", "external_id": "m-2"}),
+            (codes, {**code, "code_hash": "d" * 64, "kind": "North wind"}),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(table).values(bad))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(update(t.chat_messages).values(via="Not a kind").where(t.chat_messages.c.id == message_id))
+        with pytest.raises(errors.UniqueViolation):  # a group bridges one chat while it is linked
+            conn.execute(insert(b).values(bridge))
+        with pytest.raises(errors.UniqueViolation):  # a group's message maps once per bridge
+            conn.execute(insert(carried).values({**out, "direction": "in"}))
+        gone = {"unlinked_at": func.now(), "unlinked_via": "bot"}
+        conn.execute(update(b).values(gone).where(b.c.id == bridge_id))
+        conn.execute(insert(b).values(bridge))  # unlinked, the group links again
+    # Going back deletes the deliveries of chat.bridge and drops the tables and the column; the message stays.
+    move_to(hub_db, "0164", down=True)
+    assert not pg.CHAT_BRIDGE_TABLES & tables(hub_db)
+    assert "via" not in columns(hub_db, "chat_messages")
+    assert query(hub_db, select(func.count()).select_from(t.plugin_deliveries)) == [(0,)]
+    assert query(hub_db, select(t.chat_messages.c.body)) == [("hi",)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.plugin_deliveries).values(delivery))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0165") :]

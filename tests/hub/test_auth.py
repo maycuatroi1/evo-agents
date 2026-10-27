@@ -128,6 +128,7 @@ HUB_TABLES |= pg.PUSH_TABLES  # migration 0156
 HUB_TABLES |= pg.TODAY_TABLES  # migration 0158
 HUB_TABLES |= pg.SELLER_TABLES  # migration 0159
 HUB_TABLES |= pg.DOCS_TABLES  # migration 0163
+HUB_TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 

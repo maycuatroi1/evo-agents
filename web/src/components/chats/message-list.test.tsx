@@ -44,6 +44,7 @@ function chat(kind: Chat["kind"]): Chat {
     last_read_seq: 9,
     kind,
     image_url: null,
+    label_admin: false,
   };
 }
 

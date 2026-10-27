@@ -167,6 +167,49 @@ class LinkCode:
     expires_at: datetime
 
 
+@dataclass(frozen=True)
+class Bridge:
+    """A group chat of the hub bridged to a group of the plugin's channel (API 1.5)."""
+
+    id: int
+    chat_id: int
+    kind: str
+    external_id: str  # the group's id on the channel
+    config: Mapping[str, Any]  # what the plugin linked it with
+    state: Mapping[str, Any]  # what the plugin keeps of it, ``bridge_set_state``
+
+
+@dataclass(frozen=True)
+class BridgeFile:
+    """A file a member attached to a message of a bridged chat (API 1.5): ``bridge_file`` reads its bytes. Never a
+    run's output or a file a tool read."""
+
+    id: int
+    name: str
+    media_type: str
+    size: int  # in bytes
+
+
+@dataclass(frozen=True)
+class BridgeMessage:
+    """A message of a bridged chat as its group may read it (API 1.5): the text redacted, with the files its author
+    attached to it (``files``), never a run's outputs."""
+
+    id: int
+    chat_id: int
+    bridge_id: int
+    thread_root_id: int | None
+    author_kind: Literal["person", "agent", "hub"]
+    author: str | None  # a person's login, an agent's handle; None for the hub
+    body: str
+    run_id: int | None
+    via: str | None  # the kind of channel it came in by, None when sent on the hub
+    reply_to: str | None  # the group's message its thread started from, when the bridge carried it
+    link: str  # the message's page on the hub, a path: ``web_url`` makes it absolute, for what the group does not carry
+    created_at: datetime
+    files: tuple[BridgeFile, ...] = ()  # what its author attached, in the order uploaded; ``bridge_file`` reads each
+
+
 class _KgSourceItems(TypedDict):
     items: list
     identifiers: list

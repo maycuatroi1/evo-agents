@@ -1,7 +1,7 @@
 {
   "api_version": [
     1,
-    4
+    5
   ],
   "names": {
     "ANSWER_EVENT": {
@@ -139,6 +139,143 @@
           "name": "enabled",
           "annotation": "bool",
           "default": null
+        }
+      ]
+    },
+    "BRIDGE_EVENT": {
+      "kind": "constant",
+      "value": "'chat.bridge'"
+    },
+    "Bridge": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "config",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ]
+    },
+    "BridgeFile": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "media_type",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "size",
+          "annotation": "int",
+          "default": null
+        }
+      ]
+    },
+    "BridgeMessage": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "thread_root_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "author_kind",
+          "annotation": "Literal['person', 'agent', 'hub']",
+          "default": null
+        },
+        {
+          "name": "author",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "body",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "via",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "reply_to",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "link",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "files",
+          "annotation": "tuple[BridgeFile, ...]",
+          "default": "()"
         }
       ]
     },
@@ -2760,6 +2897,426 @@
         }
       ],
       "returns": "AbstractAsyncContextManager[AsyncConnection]"
+    },
+    "bridge_attach": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "request",
+          "kind": "positional_or_keyword",
+          "annotation": "Request",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "name",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "data",
+          "kind": "positional_or_keyword",
+          "annotation": "bytes",
+          "default": null
+        },
+        {
+          "name": "media_type",
+          "kind": "positional_or_keyword",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "int"
+    },
+    "bridge_code": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "session",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "LinkCode"
+    },
+    "bridge_file": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "context",
+          "kind": "positional_or_keyword",
+          "annotation": "Context",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "message_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "file_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "bytes | None"
+    },
+    "bridge_find": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "positional_or_keyword",
+          "annotation": "str | int",
+          "default": null
+        }
+      ],
+      "returns": "Bridge | None"
+    },
+    "bridge_link": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "code",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "positional_or_keyword",
+          "annotation": "str | int",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "keyword_only",
+          "annotation": "Mapping[str, Any] | None",
+          "default": "None"
+        }
+      ],
+      "returns": "Bridge | None"
+    },
+    "bridge_message": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "message_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "BridgeMessage | None"
+    },
+    "bridge_move": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "positional_or_keyword",
+          "annotation": "str | int",
+          "default": null
+        }
+      ],
+      "returns": "bool"
+    },
+    "bridge_read": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "Bridge | None"
+    },
+    "bridge_send": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "body",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "keyword_only",
+          "annotation": "str | int",
+          "default": null
+        },
+        {
+          "name": "reply_to",
+          "kind": "keyword_only",
+          "annotation": "str | int | None",
+          "default": "None"
+        },
+        {
+          "name": "attachment_ids",
+          "kind": "keyword_only",
+          "annotation": "Sequence[int]",
+          "default": "()"
+        }
+      ],
+      "returns": "SentMessage"
+    },
+    "bridge_sent": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "message_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "positional_or_keyword",
+          "annotation": "str | int",
+          "default": null
+        }
+      ],
+      "returns": "None"
+    },
+    "bridge_set_state": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "state",
+          "kind": "positional_or_keyword",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ],
+      "returns": "bool"
+    },
+    "bridge_unlink": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "by",
+          "kind": "keyword_only",
+          "annotation": "Literal['bot', 'admin']",
+          "default": "'bot'"
+        },
+        {
+          "name": "actor",
+          "kind": "keyword_only",
+          "annotation": "Session | None",
+          "default": "None"
+        }
+      ],
+      "returns": "bool"
     },
     "chat_history_items": {
       "kind": "async function",

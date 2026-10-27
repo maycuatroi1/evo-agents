@@ -421,6 +421,7 @@ def build_chat_prompt(
     listing: list[dict] | None = None,
     harness: str | None = None,
     ships: bool = False,
+    label: dict | None = None,
 ) -> str:
     """The prompt of a chat run of ``agent`` ({handle, name, project, description}) in ``chat`` ({id, title, people,
     agents, and kind: ``chats.DIRECT`` or ``chats.SETTLE`` for those}), woken by message ``trigger`` (as
@@ -431,7 +432,9 @@ def build_chat_prompt(
     project instead, and its rules tell the agent to open a repo with OPEN_COMMAND before it reads or changes its code,
     and that the harness.yaml of ``harness``, the project's harness, says what each repo is for. With ``ships``
     (``autonomy_card.ships``: K5 and K6 auto for the run's principal), its rules let the agent push its branch and merge
-    its pull request itself."""
+    its pull request itself. With ``label`` ({level, default}: the chat's level set below the default level of the
+    agent's project), its rules say messages of the chat may leave the hub at that level, so nothing above it goes
+    into them (``label_lines``)."""
     handle = agent.get("handle") or "agent"
     people = ", ".join(chat.get("people") or []) or "none"
     agents = ", ".join(f"@{name}" for name in chat.get("agents") or []) or "none"
@@ -452,6 +455,7 @@ def build_chat_prompt(
         f"evo-agents hub, in {where} (#{chat.get('id')}). {about}".rstrip(),
         "",
         *_rules(handle, login, branch, hop, lazy, harness, direct, settle, ships),
+        *label_lines(label, agent.get("project")),
         "",
         f"People of the chat: {people}. Agents: {agents}.",
         "",
@@ -462,6 +466,20 @@ def build_chat_prompt(
         lines += ["", "# The chat, shortened", *blocks]
     lines += ["", "# The message to answer", render_message(trigger, MAX_MESSAGE_BYTES * 2), *_files_line(trigger)]
     return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
+
+
+def label_lines(label: dict | None, project) -> list[str]:
+    """The rule of a chat whose level was set below the default level of the agent's project (``label``: {level,
+    default}), as the prompt says it; none otherwise."""
+    if not isinstance(label, dict) or not label.get("level"):
+        return []
+    level, default = label["level"], label.get("default") or "its default"
+    return [
+        f"- This chat's label is {level}, below the default label {default} of project {project}: what is said in "
+        f"it may leave the hub at level {level}, to a group of a chat app bridged to it, say, that anyone in that "
+        f"group reads. Do not paste into the chat documents, secrets, names or data of customers of a level above "
+        f"{level}; say what they are and where they are on the hub instead."
+    ]
 
 
 def _files_line(trigger: dict) -> list[str]:

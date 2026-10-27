@@ -3833,6 +3833,14 @@
       "removing": "Đang bỏ…",
       "cancel": "Huỷ"
     },
+    "labelLevel": {
+      "menu": "Mức của chat: {level}",
+      "default": "Mặc định của các project",
+      "defaultLevel": "mặc định",
+      "hint": "Mức của những gì nói trong chat từ giờ, bằng hoặc dưới mức mặc định của các project. Tin đã gửi giữ mức lúc gửi.",
+      "changed": "Đã đặt mức của chat là {level}",
+      "removed": "Mức của chat lại là mặc định của các project"
+    },
     "messages": {
       "log": "Tin nhắn của {title}",
       "older": "Hiện tin cũ hơn",

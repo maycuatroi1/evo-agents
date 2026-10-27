@@ -34,6 +34,8 @@ from evo_agents.kg.policy import TOP_AUDIENCE, Clearance, Label, Policy
 
 ROLES = ("reader", "writer", "admin")  # each role may do what the ones before it may
 HUB_KIND = "hub"
+# A sink of a kind of channel of a core plugin, named by its id: what a chat may send out to a group of that channel
+CHANNEL_KIND = "channel"
 INTEGRITIES = ("T", "U")
 UNTRUSTED = "U"  # a grant or a clearance says nothing about integrity, so it admits both
 

@@ -11,6 +11,12 @@
   direct chat with it, ``/agents`` lists the agents to talk to.
 - An agent's message in that direct chat comes back as the event ``chat.message``; the plugin reads it as the member
   and sends it to the chat, once.
+- A group of Northwind Chat bridges to a group chat of the hub (API 1.5): a chat admin makes a code on the hub and
+  sends ``/bridge <code>`` in the group; ``/unbridge`` there takes it off, and so does a hub admin. A linked member's
+  message in the group goes to the hub's chat as theirs (``hub.bridge_send``), a reply in the thread of the message it
+  answers, a file with it; the hub's chat's new messages come back as the event ``chat.bridge`` and go to the group,
+  as far as the project's sink of kind channel ``northwind`` lets them (``hub.bridge_message``), with the files their
+  author attached (``hub.bridge_file``); a run's progress and a reaction, with who put it, as a line.
 - Any chat user, linked or not, asks the agent type helpdesk of a project ``/ask <project> <question>``
   (``hub.ask_agent_type``); the answer comes back as the event ``agent.answer`` and goes to the chat that asked, whose
   ids its ref holds.
@@ -18,6 +24,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -34,6 +42,7 @@ TRANSPORT: httpx.AsyncBaseTransport | None = None  # the tests put the fake Nort
 LINK_PATH = "/v1/northwind-chat/link"
 CODE_PATH = "/v1/northwind-chat/code"
 ADMIN_PATH = "/v1/northwind-chat/admin/users/{user_id}"
+BRIDGE_ADMIN_PATH = "/v1/northwind-chat/admin/bridges/{bridge_id}"
 MAX_UPDATE_BYTES = 64 * 1024
 KEEP_SENT = 50  # ids of agents' messages the channel remembers it sent
 NOT_LINKED = "This chat is not linked to the hub: send /link and confirm it on the hub."
@@ -42,6 +51,8 @@ HELP = (
     "/ask <project> <question>."
 )
 HELPDESK = "helpdesk"
+EVERYONE = "*"  # the user_id of a message to the whole group
+NOT_BRIDGED = "This group is not bridged to a chat of the hub."
 ANSWERS = ("accept", "reject", "defer")
 
 router = APIRouter(include_in_schema=False)  # the hub's OpenAPI document stays the same with or without the plugin
@@ -69,10 +80,22 @@ class Service:
         self.url = str(values.get("api_url", "")).rstrip("/")
         self.token = values.get("token")
 
-    async def send(self, group_id: str, user_id: str, text: str, buttons: list | None = None) -> str:
+    async def send(
+        self,
+        group_id: str,
+        user_id: str,
+        text: str,
+        buttons: list | None = None,
+        reply_to: str | None = None,
+        files: list | None = None,
+    ) -> str:
         if not self.token:
             raise hub.Undeliverable("Northwind Chat is not set up: a hub admin sets the plugin's token")
         body = {"group_id": group_id, "user_id": user_id, "text": text, "buttons": buttons or []}
+        if reply_to is not None:
+            body["reply_to"] = reply_to
+        if files:
+            body["files"] = files
         async with httpx.AsyncClient(transport=TRANSPORT, timeout=10) as client:
             answer = await client.post(
                 f"{self.url}/messages", json=body, headers={"Authorization": f"Bearer {self.token}"}
@@ -186,6 +209,14 @@ async def unlink_member(request: Request, user_id: int, admin: hub.HubAdmin) -> 
     return {"unlinked": gone}
 
 
+@router.delete(BRIDGE_ADMIN_PATH)
+async def unbridge_group(request: Request, bridge_id: int, admin: hub.HubAdmin) -> dict:
+    """A hub admin takes a group's bridge off, in any chat."""
+    async with hub.begin(request) as conn:
+        gone = await hub.bridge_unlink(conn, plugin(), bridge_id, by="admin", actor=admin)
+    return {"unbridged": gone}
+
+
 # The webhook
 
 
@@ -240,6 +271,15 @@ class Updates:
                 if member is not None:
                     await hub.unlink_channel(conn, plugin(), KIND, member.user_id, by="bot")
             return "unlinked", "This chat is unlinked from the hub."
+        if text.startswith("/bridge "):
+            return await self.bridge(text.removeprefix("/bridge ").strip())
+        if text == "/unbridge":
+            return await self.unbridge()
+        if text and not text.startswith("/") or update.get("file"):
+            async with hub.begin(self.request) as conn:
+                bridge = await hub.bridge_find(conn, plugin(), KIND, self.chat[0])
+            if bridge is not None:
+                return await self.bridged(bridge, update, text)
         if text == "/agents":
             return await self.acting(self.agents)
         if update.get("reply_to") and text:
@@ -270,6 +310,60 @@ class Updates:
         except hub.Refused as exc:
             return "refused", f"The hub did not take that: {exc.detail}"
         return "asked", f"Asked the help desk of {asked.project} (question {asked.question_id})."
+
+    async def bridge(self, code: str) -> tuple[str, str | None]:
+        """Bridge this group to the hub's chat a chat admin made ``code`` for."""
+        try:
+            async with hub.begin(self.request) as conn:
+                found = await hub.bridge_link(conn, plugin(), KIND, code, self.chat[0], config={"by": self.chat[1]})
+        except hub.Refused as exc:
+            return "refused", f"The hub did not take that: {exc.detail}"
+        if found is None:
+            return "bridge_failed", "That code did not work: make a new one on the hub."
+        return "bridged", f"This group is bridged to chat {found.chat_id} of the hub."
+
+    async def unbridge(self) -> tuple[str, str | None]:
+        async with hub.begin(self.request) as conn:
+            found = await hub.bridge_find(conn, plugin(), KIND, self.chat[0])
+            if found is None:
+                return "not_bridged", NOT_BRIDGED
+            await hub.bridge_unlink(conn, plugin(), found.id, by="bot")
+        return "unbridged", "This group is no longer bridged to the hub."
+
+    async def bridged(self, bridge: hub.Bridge, update: dict, text: str) -> tuple[str, str | None]:
+        """A message of the bridged group, from the member its sender linked (their own chat with the bot): it goes
+        to the hub's chat as theirs; a sender who linked nothing is told how, and nothing goes in."""
+        message_id = str(update.get("message_id") or "")
+        if not message_id:
+            return "ignored", None
+        match = {"user_id": self.chat[1]}
+        async with hub.begin(self.request) as conn:
+            member = await hub.find_member(conn, plugin(), KIND, match)
+        if member is None:
+            return "not_linked", NOT_LINKED
+        try:
+            files = []
+            attached = update.get("file")
+            if isinstance(attached, dict):
+                data = base64.b64decode(str(attached.get("data") or ""), validate=True)
+                name = str(attached.get("name") or "file")
+                files.append(await hub.bridge_attach(self.request, member, bridge.id, name, data))
+            async with hub.begin(self.request) as conn:
+                reply_to = update.get("reply_to")
+                await hub.bridge_send(
+                    conn,
+                    member,
+                    bridge.id,
+                    text,
+                    external_id=message_id,
+                    reply_to=None if reply_to is None else str(reply_to),
+                    attachment_ids=files,
+                )
+        except (binascii.Error, ValueError):
+            return "ignored", None
+        except hub.Refused as exc:
+            return "refused", f"The hub did not take that: {exc.detail}"
+        return "bridged_in", None
 
     async def start(self, code: str) -> tuple[str, str | None]:
         async with hub.begin(self.request) as conn:
@@ -366,4 +460,48 @@ async def on_agent_answer(params: dict, context: hub.Context) -> dict:
     else:
         text = f"The help desk of {found.project} gave no answer ({found.state})."
     await Service(settings.values).send(group_id, user_id, text)
+    return {}
+
+
+async def _bridge_line(conn, bridge: hub.Bridge, payload: dict) -> tuple[str | None, str | None, tuple]:
+    """The line event ``payload`` sends the group of ``bridge``, the group's message it replies to and the files of the
+    hub's message that go with it; None when nothing goes."""
+    what = payload.get("what")
+    if what == "message":
+        read = await hub.bridge_message(conn, plugin(), bridge.id, payload["message_id"])
+        if read is None or bridge.state.get("last_sent", 0) >= read.id:
+            return None, None, ()
+        await hub.bridge_set_state(conn, plugin(), bridge.id, {**bridge.state, "last_sent": read.id})
+        return f"{read.author or 'hub'}: {read.body}", read.reply_to, read.files
+    if what == "progress":
+        return f"run {payload['run_id']}: {payload['state']}", None, ()
+    if what == "reaction":
+        sign = "+" if payload.get("added") else "-"
+        who = f"{payload.get('by_kind')} {payload.get('by') or 'hub'}"
+        return f"{sign}{payload['emoji']} on message {payload['message_id']} by {who}", None, ()
+    return None, None, ()
+
+
+async def on_chat_bridge(params: dict, context: hub.Context) -> dict:
+    """What a bridged chat of the hub carries out to its group: a new message (once, as far as the hub lets it out)
+    with the files its author attached, a run's progress and a reaction to a message the bridge carried (and who put
+    it), each a line."""
+    payload = params["payload"]
+    async with hub.transaction(context) as conn:
+        bridge = await hub.bridge_read(conn, plugin(), payload["bridge_id"])
+        if bridge is None:
+            return {}
+        settings = await hub.plugin_config(conn, plugin(), context.config)
+        text, reply_to, attached = await _bridge_line(conn, bridge, payload)
+    if text is None:
+        return {}
+    files = []
+    for found in attached:
+        data = await hub.bridge_file(context, plugin(), bridge.id, payload["message_id"], found.id)
+        if data is not None:
+            files.append({"name": found.name, "size": found.size, "data": base64.b64encode(data).decode()})
+    sent = await Service(settings.values).send(bridge.external_id, EVERYONE, text, reply_to=reply_to, files=files)
+    if payload["what"] == "message":
+        async with hub.transaction(context) as conn:
+            await hub.bridge_sent(conn, plugin(), bridge.id, payload["message_id"], sent)
     return {}
