@@ -30,7 +30,7 @@ from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.merge_gate import GITLAB_STATE, MERGE_SHA
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
-from evo_agents.hub.server.loop import backlog
+from evo_agents.hub.server.loop import backlog, baseline
 from evo_agents.hub.server.loop.model import (
     ACTIVE,
     ALWAYS,
@@ -41,6 +41,7 @@ from evo_agents.hub.server.loop.model import (
     DRAFT,
     FINISHED,
     RUN_ENDED,
+    SRS_BUILD,
     USE_CASE,
     ApprovalView,
     ClaimView,
@@ -144,6 +145,7 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
             r.c.owner_id,
             r.c.problem_id,
             r.c.opportunity_id,
+            r.c.srs_document_id,
         )
         .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
         .where(g.c.project_id == project_id)
@@ -163,8 +165,26 @@ async def _goals(conn: AsyncConnection, project_id: int, now: datetime) -> dict[
             row.owner_id,
             row.problem_id,
             row.opportunity_id,
+            row.srs_document_id,
         )
     return found
+
+
+async def _backlogs(conn: AsyncConnection, held: Mapping[int, GoalView]) -> dict[int, tuple]:
+    """The groups of the backlog of each active goal that aims at an SRS document whose baseline an admin confirmed:
+    until then the Loop makes no build for the goal, and a use case the baseline left unknown is in no backlog."""
+    found = {}
+    for goal in held.values():
+        if goal.status == ACTIVE and goal.srs_document_id is not None and await baseline.confirmed(conn, goal.id):
+            found[goal.id] = tuple(await backlog.groups_of(conn, goal.id))
+    return found
+
+
+async def _srs_keys(conn: AsyncConnection, project_id: int) -> frozenset[str]:
+    """The keys of the builds of groups of a backlog the project made, in any state."""
+    i = tables.loop_items
+    query = select(i.c.key).where(i.c.project_id == project_id, i.c.key.like(SRS_BUILD + "%"))
+    return frozenset((await conn.execute(query)).scalars())
 
 
 # Work items
@@ -671,10 +691,11 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
     by_id, by_key = await _tasks(conn, project_id, items, plugin)
     runs = await _runs(conn, project_id, items)
     manual, released = await _delivery(conn, project_id, effective, items)
+    goals_now = await _goals(conn, project_id, now)
     return View(
         now=now,
         policy=policy,
-        goals=await _goals(conn, project_id, now),
+        goals=goals_now,
         claims=claims,
         items=items,
         keys=keys,
@@ -693,6 +714,8 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
         manual=manual,
         released=released,
         use_cases=await use_cases(conn, project_id, policy),
+        backlogs=await _backlogs(conn, goals_now),
+        srs_keys=await _srs_keys(conn, project_id),
     )
 
 

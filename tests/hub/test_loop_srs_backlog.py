@@ -20,6 +20,8 @@ import pytest
 
 from evo_agents.hub import cli_goals, srs_backlog
 from evo_agents.hub.contract import commands
+from evo_agents.hub.server.loop import srs_rules
+from evo_agents.hub.server.loop.model import GoalView, ItemView, View
 from evo_agents.hub.srs_backlog import DELIVERED, DELIVERING, UNDELIVERED, UNKNOWN, UseCase, backlog, groups
 from tests.hub import pg
 
@@ -108,6 +110,51 @@ def test_goal_set_takes_the_srs_document_and_its_heading_and_clears_them_togethe
     printed = commands()["hub goal set"]["options"]
     flags = {flag for option in printed for flag in option["flags"]}
     assert {"--srs-document", "--no-srs-document", "--srs-heading", "--no-srs-heading"} <= flags
+
+
+# The Loop's rule (plan srs-backlog-loop, criterion a3): one build for each group, a round for each build of a group
+
+NOW = datetime(2026, 10, 28, 9, 0, tzinfo=UTC)
+GROUPS = tuple(
+    groups([case("UC A-1", None, "Orders"), case("UC A-2", None, "Orders"), case("UC B-1", None, "Returns")])
+)
+
+
+def srs_view(**changes) -> View:
+    goal = GoalView(1, "G-1", 1, "active", True, False, None, 1, 7, srs_document_id=42)
+    return View(now=NOW, policy={}, **({"goals": {1: goal}, "backlogs": {1: GROUPS}} | changes))
+
+
+def test_each_group_of_the_backlog_gets_one_build_with_its_use_cases_and_a_key_by_document_group_and_round():
+    found = srs_rules.srs_builds(srs_view())
+    assert [(spec.kind, spec.key, spec.state, spec.srs_document_id) for spec in found] == [
+        ("build", "build:srs:42:heading:orders:1", "queued", 42),
+        ("build", "build:srs:42:heading:returns:1", "queued", 42),
+    ]
+    first = found[0].detail["backlog"]
+    assert (first["group"], first["title"], first["round"]) == ("heading:orders", "Orders", 1)
+    assert [case["code"] for case in first["use_cases"]] == ["UC A-1", "UC A-2"]
+    assert all(case.keys() == {"code", "title", "version"} for case in first["use_cases"])
+
+
+def test_a_group_built_before_gets_the_next_round_and_the_work_items_of_a_frame_task_are_not_its_builds():
+    keys = frozenset(
+        {"build:srs:42:heading:orders:1", "build:srs:42:heading:orders:2", "build:srs:43:heading:returns:1"}
+    )
+    found = srs_rules.srs_builds(srs_view(srs_keys=keys))
+    assert [spec.key for spec in found] == ["build:srs:42:heading:orders:3", "build:srs:42:heading:returns:1"]
+    frame = ItemView(5, "build", "build:srs:demo-shop:1:UC A-1", "queued", None, 1)
+    group = ItemView(6, "build", found[0].key, "queued", None, 1, detail=dict(found[0].detail))
+    assert (frame.from_srs, group.from_srs) == (False, True)
+
+
+def test_no_build_is_made_for_a_goal_without_a_confirmed_backlog_a_paused_goal_or_an_empty_one():
+    assert srs_rules.srs_builds(srs_view(backlogs={})) == []
+    assert srs_rules.srs_builds(srs_view(backlogs={1: ()})) == []
+    paused = GoalView(1, "G-1", 1, "paused", True, False, None, 1, 7, srs_document_id=42)
+    assert srs_rules.srs_builds(srs_view(goals={1: paused})) == []
+    plain = GoalView(1, "G-1", 1, "active", True, False, None, 1, 7)
+    assert srs_rules.srs_builds(srs_view(goals={1: plain})) == []
 
 
 # On the hub

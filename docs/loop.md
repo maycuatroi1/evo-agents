@@ -137,6 +137,22 @@ a core plugin's rule makes carries the problem of its goal too. The key forms of
 from the cursor `rules/1` left and makes no work item again, and the work items `rules/1` made move as `rules/1` moves
 them; a work item made of one of them carries the problem of its goal.
 
+### A goal that aims at an SRS document
+
+A goal that aims at an SRS document (plan srs-backlog-loop) goes from its backlog, not from claims: it makes no
+`brainstorm`. When an admin confirmed its baseline, each tick (the clock step) reads the backlog in groups
+(`srs_backlog.groups`, by the claim field of a use case, else its parent heading) and makes a `build` for each group:
+key `build:srs:<document id>:<group>:<round>`, `srs_document_id` the document, `detail.backlog` the group and its use
+cases (code, title, version). The round is one more than the builds of that group made before, so a use case approved
+into a group while its build runs goes into the next round. Until the baseline is confirmed the Loop makes no build for
+the goal, so a Loop turned on late reads what was approved before, once it is. The author run takes every use case of
+the group with the goal, its problem and the document (`texts.srs_request`) and writes one plan that names each code;
+the `deliver` of that plan is rows 9 to 11. The ledger of delivery (`srs_delivery`) follows the work item: its use
+cases are `delivering` from the moment the build is made (they leave the backlog), `delivered` when its deliver is
+done (source `deliver`, evidence `plan`, `merges`, `after_sha`, `build`, `deliver`), and `undelivered` again when the
+build or deliver is cancelled (`srs_ledger.sync`). The key form `build:srs:` and `detail.backlog` were added to loop/1;
+the build of a frame task has `build:srs:<slug>:<version>:<code>` and no `backlog`.
+
 ### Keys
 
 A key is built from stable ids of the objects and of the moment that made the work (a goal's revision, an ISO week, a

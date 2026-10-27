@@ -40,7 +40,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, tables
-from evo_agents.hub.server.loop import breaker, stall
+from evo_agents.hub.server.loop import breaker, srs_ledger, stall
 from evo_agents.hub.server.loop.admit import Dispatch, admit
 from evo_agents.hub.server.loop.dispatch import hand_out
 from evo_agents.hub.server.loop.model import (
@@ -49,6 +49,7 @@ from evo_agents.hub.server.loop.model import (
     FINISHED,
     NOTED,
     PLUGIN_KINDS,
+    SRS_BUILD,
     Effect,
     Engine,
     Event,
@@ -121,6 +122,12 @@ async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id
     if item_id is None:
         return False
     await _ledger(conn, item_id, CREATED, spec.state, spec.reason, {"key": values["key"]}, event_id)
+    srs = spec.detail.get("backlog") if spec.key.startswith(SRS_BUILD) else None
+    if srs and spec.srs_document_id is not None:  # the use cases of a group are in no backlog while the build is
+        codes = [case["code"] for case in srs["use_cases"]]
+        await srs_ledger.hold(
+            conn, project_id, spec.srs_document_id, codes, item_id, spec.goal_id, {"key": values["key"]}
+        )
     return True
 
 
@@ -231,6 +238,7 @@ async def _clock_and_reconcile(
         move = ruled.reconcile(item, view) if item.kind in PLUGIN_KINDS else rules.reconcile(item, view)
         if move is not None:
             report["changed"] += await apply(conn, project_id, move, None, rules.name)
+    report["changed"] += await srs_ledger.sync(conn, project_id)
 
 
 async def _stalls(conn: AsyncConnection, project_id: int, *, report: Counter) -> None:
