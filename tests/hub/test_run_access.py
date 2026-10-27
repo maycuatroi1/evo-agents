@@ -420,7 +420,7 @@ def test_the_groups_refused_take_every_path_under_their_prefix(method, path):
         ("GET", "/v1/workersx"),  # a prefix is a path segment, not a string's start
         ("GET", "/v1/secretsfoo"),
         ("POST", "/v1/projects/p/runsx"),
-        # the owner's ordinary work in run 320 of meridai: a chat's label, Telegram's webhook, the project's sinks
+        # the owner's ordinary work in a deploy run of northwind: a chat's label, Telegram's webhook, the project's sinks
         ("PUT", "/v1/chats/3/label"),
         ("POST", "/v1/admin/telegram/webhook"),
         ("PUT", "/v1/projects/p"),
