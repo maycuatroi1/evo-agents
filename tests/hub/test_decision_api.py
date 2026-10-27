@@ -1,4 +1,4 @@
-"""The decision API of core plugins (API 1.6, ``evo_agents.hub.server.core_plugin_api._decision``), with the sample
+"""The decision API of core plugins (API 1.7, ``evo_agents.hub.server.core_plugin_api._decision``), with the sample
 plugin northwind-scribe (tests/fixtures/core_plugins/northwind_scribe), which declares an egress sink in its manifest.
 
 - egress: a text read returns only what the project's policy lets the plugin's sink read, under the rule the judges
@@ -423,6 +423,34 @@ def test_decision_api_reads_the_open_review_items_with_a_snippet_and_dismisses_a
     with pytest.raises(hub_api.Refused) as refused:
         on_hub(client, lambda conn: decision.dismiss_review_item(conn, scribe, PROJECT, config, "r:nope", "x"))
     assert refused.value.status_code == 404 or refused.value.status_code == 403
+
+
+def test_decision_api_reads_the_review_queue_of_the_named_rules_and_the_limit_counts_after_the_filter(
+    scribe, client, graph, monkeypatch
+):
+    config = client.app.state.config
+
+    def item(rule, n):
+        return {**QUEUE["items"][1], "rule": rule, "fingerprint": f"r:{rule}{n}", "nodes": []}
+
+    queue = [item("dangling_mention", n) for n in range(4)] + [item("possible_duplicate", n) for n in range(3)]
+    monkeypatch.setitem(QUEUE, "items", queue)
+
+    def read(**kwargs):
+        return on_hub(client, lambda conn: decision.read_review_queue(conn, scribe, PROJECT, config, **kwargs))
+
+    found = read(rules=("possible_duplicate",), limit=2)  # the first two items overall are another rule's
+    assert [(i.rule, i.fingerprint) for i in found.items] == [
+        ("possible_duplicate", "r:possible_duplicate0"),
+        ("possible_duplicate", "r:possible_duplicate1"),
+    ]
+    assert len(read(rules=["possible_duplicate"]).items) == 3
+    assert {i.rule for i in read(rules=("possible_duplicate", "bulk_noise")).items} == {"possible_duplicate"}
+    assert len(read().items) == 7  # no rules: the whole queue, as before
+    assert len(read(rules=None, limit=5).items) == 5
+    for bad in (("no_such_rule",), ("possible_duplicate", "nope"), (), "possible_duplicate", [3]):
+        with pytest.raises(ValueError, match="rules"):
+            read(rules=bad)
 
 
 def test_decision_api_takes_a_decision_on_the_graph_as_the_plugin_and_a_writer_undoes_it(

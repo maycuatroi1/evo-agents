@@ -670,7 +670,7 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.6, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.7, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service; `tests/fixtures/core_plugins/northwind_ledger`
@@ -683,7 +683,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.7; this hub serves 1.6"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.8; this hub serves 1.7"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -709,6 +709,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | 1.4 | the pull request of branch `feat/editorial-api` (plan editorial-on-hub): a task's branch and agent time (`hand_task(repo=, branch=, minutes=)`, `MAX_TASK_MINUTES`), the probes of a plugin's own rules (`add_probe`, `remove_probe`, `MAX_PROBE_REF_CHARS`) | the release after the one that carries 1.3 | none yet: a plugin of 1.3 does not load on 1.4 |
 | 1.5 | the pull request of branch `feat/chat-bridges` (plan chat-bridges): a group chat's bridges to a group of a plugin's channel (`bridge_code`, `bridge_link`, `bridge_find`, `bridge_read`, `bridge_unlink`, `bridge_move`, `bridge_set_state`, `bridge_message`, `bridge_file`, `bridge_sent`, `bridge_send`, `bridge_attach`, `Bridge`, `BridgeMessage`, `BridgeFile`, `BRIDGE_EVENT`) | the release after the one that carries 1.4 | none yet: a plugin of 1.4 does not load on 1.5 |
 | 1.6 | the pull request of branch `feat/decision-plugin-api` (plan jev-decisions): the manifest key `egress`, label-gated reads of a project's text (`read_run_failure`, `read_review_queue`, `read_corrections`, `read_accepted_rules`), writes as the plugin (`classify_run_failure`, `decide_graph`, `dismiss_review_item`), `EgressSink`, `Cleared` and the result types | the release after the one that carries 1.5 | none yet: a plugin of 1.5 does not load on 1.6 |
+| 1.7 | the pull request of branch `feat/review-queue-rules`: `read_review_queue(..., rules=)` keeps only the items of the review rules named (`evo_agents.kg.review.RULES`, at least one, else ValueError) and `limit` counts after that filter | the release after the one that carries 1.6 | none yet: a plugin of 1.6 does not load on 1.7 |
 
 **A plugin of the market (1.3).** Each function takes the connection of the caller's transaction and the plugin's
 handle (`plugin(__name__)`), and works only in a project that enables the plugin: another project, or one that does not
@@ -836,7 +837,7 @@ project. A project without the sink gets a `Cleared` with no items and `why` say
 | Name | What it does and refuses |
 | --- | --- |
 | `read_run_failure(conn, plugin, project, run_id, *, sink=None)` | `Cleared` holding one `RunFailure`: sanitized error, `failure_cause`, `failure_cause_inferred` and the last events of the log (at most `MAX_TAIL_BYTES`), read at the label of the run's plan. 404 for a run the project has not |
-| `read_review_queue(conn, plugin, project, config, *, sink=None, limit=100)` | `Cleared` of `ReviewItemText`, the open items of the knowledge graph's review queue, read through the sink's ceiling |
+| `read_review_queue(conn, plugin, project, config, *, sink=None, limit=100, rules=None)` | `Cleared` of `ReviewItemText`, the open items of the knowledge graph's review queue, read through the sink's ceiling |
 | `read_corrections(conn, plugin, project, *, since, until=None, sink=None, limit=200)`, `read_accepted_rules(conn, plugin, project, *, sink=None, limit=100)` | `Cleared` of `CorrectionText`, what people corrected in sessions of the range; `Cleared` of `AcceptedRule`, the rules the project accepted |
 | `classify_run_failure(conn, plugin, project, run_id, cause, *, model, confidence)` | sets the cause of a failed run only when the hub guessed it (409 for a worker's cause), keeps it a guess, writes the run event `cause_classification` (plugin, model, confidence, `previous_cause`) and audits `run.cause`. Undo: `POST /v1/projects/{project}/runs/{run_id}/cause/restore`, `hub run-cause restore RUN --project P` (writer) |
 | `decide_graph(conn, plugin, project, config, kind, src, *, rel=None, dst=None, reason, propose=False, sink=None)` | a decision on the graph with the plugin as its actor (`actor_plugin`, migration 0174). Undo: the decision's own undo, web and `hub kg decisions undo` |

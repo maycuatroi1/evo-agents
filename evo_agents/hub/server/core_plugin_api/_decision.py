@@ -1,4 +1,4 @@
-"""What a core plugin that sends a project's text out reads and writes (API 1.6): why a run failed, the open items of
+"""What a core plugin that sends a project's text out reads and writes (API 1.6, the review queue's ``rules`` 1.7): why a run failed, the open items of
 the knowledge graph's review queue, what people corrected in their sessions, and the rules the project accepted, and,
 in return, the cause of a failed run, a decision on the graph and the dismissal of a review item.
 
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -47,6 +47,7 @@ from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs
 from evo_agents.hub.server.run_cause import CAUSE_KEY, CLASSIFIED, classified
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.signals import project_rules
+from evo_agents.kg.review import RULES as REVIEW_RULES
 from evo_agents.kg.schema import known_relations
 
 MAX_TEXT_CHARS = 2000  # a sanitized text of one item: an error, a turn, a summary, a snippet
@@ -236,6 +237,15 @@ def _limit(limit: int) -> int:
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_READ_ITEMS:
         raise ValueError(f"a read's limit is from 1 to {MAX_READ_ITEMS}")
     return limit
+
+
+def _rules(rules: Sequence[str] | None) -> frozenset[str] | None:
+    """The review rules a read keeps, or None for all: a non-empty sequence of names the hub's review queue knows."""
+    if rules is None:
+        return None
+    if isinstance(rules, str) or not rules or any(not isinstance(r, str) or r not in REVIEW_RULES for r in rules):
+        raise ValueError(f"a read's rules are one or more of {', '.join(REVIEW_RULES)}")
+    return frozenset(rules)
 
 
 # Why a run failed
@@ -526,11 +536,16 @@ async def read_review_queue(
     *,
     sink: str | None = None,
     limit: int = 100,
+    rules: Sequence[str] | None = None,
 ) -> Cleared:
     """The open items of ``project``'s review queue (those no one dismissed) in its newest graph, most important first,
     as ``sink`` may read them: each with the nodes it is about, their kind and name, and a redacted snippet of the
-    text that made the rule find it. ``config`` is the hub's (``hub_config(request)`` or ``Context.config``)."""
+    text that made the rule find it. ``rules`` (API 1.7) keeps only the items found by those review rules (names of
+    ``evo_agents.kg.review.RULES``, at least one, else ValueError), and ``limit`` counts after that filter: the queue is
+    in the hub's rule order, so without it a plugin never reaches the later rules. ``config`` is the hub's
+    (``hub_config(request)`` or ``Context.config``)."""
     limit = _limit(limit)
+    kept = _rules(rules)
     project_id, rules, chosen, why = await _gate(conn, plugin, project, sink)
     if why is not None:
         return Cleared(chosen, (), 0, why)
@@ -551,7 +566,7 @@ async def read_review_queue(
             _snippet(item, props),
         )
         for item in data["items"]
-        if item["fingerprint"] not in dismissed
+        if item["fingerprint"] not in dismissed and (kept is None or item["rule"] in kept)
     ]
     return Cleared(chosen, tuple(items[:limit]), 0, None if items else "no open item")
 
