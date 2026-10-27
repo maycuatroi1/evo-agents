@@ -9524,7 +9524,8 @@
           "required": false,
           "repeatable": false,
           "choices": [
-            "dismiss"
+            "dismiss",
+            "undismiss"
           ]
         },
         {
@@ -9620,6 +9621,14 @@
               "build_id"
             ],
             "schema": "Dismissal"
+          },
+          "undismiss": {
+            "kind": "object",
+            "keys": [
+              "fingerprint",
+              "was_by"
+            ],
+            "schema": "Undismissed"
           }
         }
       }
@@ -23963,6 +23972,54 @@
         }
       ],
       "json": null
+    },
+    "hub run-cause": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "restore"
+          ]
+        },
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "failure_cause",
+          "was"
+        ],
+        "schema": "CauseRestored"
+      }
     }
   },
   "openapi": {
@@ -31730,6 +31787,110 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/Dismissal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Undismiss Item",
+          "description": "Take a dismissal of an item of the review queue you can see back: the item is open again.",
+          "operationId": "undismiss_item_v1_kg__project__review__fingerprint__dismiss_delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "fingerprint",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^r:[0-9a-f]{16}$",
+                "description": "an item's fingerprint",
+                "title": "Fingerprint"
+              },
+              "description": "an item's fingerprint"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Undismissed"
                   }
                 }
               }
@@ -84016,6 +84177,69 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/runs/{run_id}/cause/restore": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Restore Cause",
+          "description": "Give a failed run back the cause it had before a core plugin classified it; the run's log says who did.",
+          "operationId": "restore_cause_v1_projects__project__runs__run_id__cause_restore_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CauseRestored"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -98094,7 +98318,7 @@
             "by": {
               "type": "string",
               "title": "By",
-              "description": "the login of the writer who dismissed it"
+              "description": "the login of the writer who dismissed it; plugin:<id> for a core plugin"
             },
             "at": {
               "type": "string",
@@ -104267,7 +104491,7 @@
             "by": {
               "type": "string",
               "title": "By",
-              "description": "the login of the member, or of the agent's owner, who took the step"
+              "description": "the login of the member, or of the agent's owner, who took the step; plugin:<id> for a core plugin that took it as itself"
             },
             "at": {
               "type": "string",
@@ -144424,6 +144648,64 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
+        },
+        "CauseRestored": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause",
+              "description": "the cause the run has now: the one the hub had guessed"
+            },
+            "was": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Was",
+              "description": "the cause the plugin had given it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "failure_cause",
+            "was"
+          ],
+          "title": "CauseRestored"
+        },
+        "Undismissed": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint"
+            },
+            "was_by": {
+              "type": "string",
+              "title": "Was By",
+              "description": "who had dismissed it: a login, or plugin:<id> for a core plugin"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "was_by"
+          ],
+          "title": "Undismissed"
         }
       }
     }

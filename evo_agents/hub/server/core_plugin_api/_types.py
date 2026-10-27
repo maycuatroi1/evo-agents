@@ -32,12 +32,24 @@ class NotACorePlugin(LookupError):  # noqa: N818
     """The module that asked is in no core plugin's package."""
 
 
+@dataclass(frozen=True)
+class EgressSink:
+    """A sink the plugin's manifest declares (key ``egress``, API 1.6): the id a project's policy declares it by, its
+    kind and the host the project's text goes to."""
+
+    id: str
+    kind: str
+    host: str
+
+
 @dataclass(frozen=True, eq=False)
 class Plugin:
-    """A core plugin, as ``plugin(__name__)`` gives it: its id and the kinds of channel its manifest contributes."""
+    """A core plugin, as ``plugin(__name__)`` gives it: its id, the kinds of channel its manifest contributes and, from
+    API 1.6, the sinks it declares to send a project's text out through (``egress``)."""
 
     id: str
     kinds: tuple[str, ...]
+    egress: tuple[EgressSink, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -467,12 +479,12 @@ _MEMBERS: weakref.WeakSet[Member] = weakref.WeakSet()
 _PRINCIPALS: weakref.WeakKeyDictionary[Session, Principal] = weakref.WeakKeyDictionary()  # as the hub checks them
 
 
-def issue_plugin(plugin_id: str, kinds: tuple[str, ...]) -> Plugin:
-    """The handle of core plugin ``plugin_id``: the one given before while its kinds are the same."""
+def issue_plugin(plugin_id: str, kinds: tuple[str, ...], egress: tuple[EgressSink, ...] = ()) -> Plugin:
+    """The handle of core plugin ``plugin_id``: the one given before while its kinds and sinks are the same."""
     known = _PLUGINS.get(plugin_id)
-    if known is not None and known.kinds == kinds:
+    if known is not None and known.kinds == kinds and known.egress == egress:
         return known
-    made = _PLUGINS[plugin_id] = Plugin(plugin_id, kinds)
+    made = _PLUGINS[plugin_id] = Plugin(plugin_id, kinds, egress)
     return made
 
 

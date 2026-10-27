@@ -132,6 +132,7 @@ CORE_ONLY_TEXT = {
 CORE_ONLY_KEYS = {
     "schema": "only a core plugin carries tables and a chain of migrations of its own",
     "ui": "only a core plugin names a directory of its package for its pages; an isolated plugin's are in its bundle",
+    "egress": "only a core plugin declares the sinks it sends a project's text out through, in the hub's process",
 }
 
 
@@ -202,6 +203,11 @@ class Manifest:
         return self.data.get("ui")
 
     @property
+    def egress(self) -> tuple[dict, ...]:
+        """The sinks a core plugin sends project text out through (root key ``egress``): id, kind and host each."""
+        return tuple(self.data.get("egress") or ())
+
+    @property
     def plugin_schema(self) -> dict | None:
         """A core plugin's own tables and chain of migrations (root key ``schema``), or None."""
         return self.data.get("schema")
@@ -213,13 +219,18 @@ class Manifest:
 
 def is_per_project(data: dict) -> bool:
     """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
-    takes a config, or contributes an MCP tool, a job, an event, a page, an agent pack, an agent type, an ACP runtime,
+    takes a config, declares an egress sink (it reads a project's text only where the project enabled it), or contributes an MCP tool, a job, an event, a page, an agent pack, an agent type, an ACP runtime,
     an environment, a source of the knowledge graph or a route under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of
     members and routes of its own) runs hub-wide wherever it is installed: the hub's store lists it, installed with
     the image, and no project enables it. ``data`` is a manifest that was read once (the store keeps it so), not
     checked again here."""
     contributes = data.get("contributes") or {}
-    if data.get("tier", "isolated") == "isolated" or data.get("permissions") or data.get("config"):
+    if (
+        data.get("tier", "isolated") == "isolated"
+        or data.get("permissions")
+        or data.get("config")
+        or data.get("egress")
+    ):
         return True
     if any(contributes.get(point) for point in PROJECT_POINTS):
         return True
@@ -243,6 +254,9 @@ def _semantics(data: dict) -> list[str]:
     for key, text in CORE_ONLY_KEYS.items():
         if key in data and not core:
             found.append(f"{key}: {text}")
+    sinks = [item["id"] for item in data.get("egress") or ()]
+    for sink in sorted({sink for sink in sinks if sinks.count(sink) > 1}):
+        found.append(f"egress: sink {sink!r} is listed twice")
     for index, item in enumerate((data.get("contributes") or {}).get("pages") or ()):
         if core and "entry" in item and "ui" not in data:
             found.append(
