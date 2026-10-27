@@ -83,6 +83,7 @@ from evo_agents.hub.kg_graph import (
     GraphUnavailable,
     UnknownRefs,
     answer,
+    mentioning,
     unknown,
 )
 from evo_agents.hub.kg_ingest import (
@@ -103,6 +104,7 @@ from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.kg.policy import Label, Policy
+from evo_agents.kg.serve import ToolError
 
 log = logging.getLogger(__name__)
 
@@ -950,6 +952,37 @@ async def unknown_refs(
         return UnknownRefs(*every, str(exc))
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return UnknownRefs(*every, str(exc))
+
+
+async def delivery_evidence(
+    state, user: Principal, project: str, codes: list[str]
+) -> tuple[dict[str, list] | None, str | None]:
+    """(what the project's latest readable graph shows of the delivery of each use case code of ``codes``, why not):
+    ``mentioning`` as ``user`` reads it through the project's hub sink (``evo_agents.hub.kg_graph.HubSession.mentions``),
+    for the baseline of a goal. Never raises for the graph: with no grant, no graph yet, none readable now or a graph
+    of an older schema, the evidence is None and the reason says so."""
+    if not codes:
+        return {}, None
+    async with state.engine.begin() as conn:
+        try:
+            access = await project_access(conn, user, project)
+            _member(access)
+        except HTTPException as exc:
+            return None, str(exc.detail)
+        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
+        audience = await reader_audience(conn, user) if graphs else frozenset()
+    if not graphs:
+        return None, f"project {project} has no knowledge graph on the hub yet"
+    through = access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK
+    ceiling = access.rules.ceiling(access.max_level, _read_sink(access, through), audience)
+    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, codes)
+    try:
+        return await asyncio.to_thread(mentioning, *looked), None
+    except GraphOutdated as exc:
+        await rebuild_outdated(state, access.project_id, project)
+        return None, str(exc)
+    except (GraphUnavailable, ArtifactMismatch, ToolError) as exc:
+        return None, str(exc)
 
 
 @router.post("/{project}/tools/{tool}", response_model=ToolResult, responses=REFUSALS | {502: {"model": ErrorBody}})

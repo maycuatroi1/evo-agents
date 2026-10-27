@@ -154,6 +154,7 @@ TABLES |= pg.TODAY_TABLES  # migration 0158
 TABLES |= pg.SELLER_TABLES  # migration 0159
 TABLES |= pg.DOCS_TABLES  # migration 0163
 TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
+TABLES |= {"srs_delivery", "srs_baselines"}  # migrations 0170 and 0171
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -244,8 +245,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_three_tables(hub_db):
-    assert len(TABLES) == 203  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_five_tables(hub_db):
+    assert len(TABLES) == 205  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4637,3 +4638,28 @@ def test_0170_adds_the_srs_scope_of_a_goal_and_the_ledger_of_delivery_and_going_
     assert not {"srs_document_id", "srs_heading"} & columns(hub_db, "goal_revisions")
     assert "srs_delivery" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0170") :]
+
+
+def test_0171_adds_the_confirmed_baselines_of_goals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0170")
+    assert "srs_baselines" not in tables(hub_db)
+    move_to(hub_db, "0171")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = insert(t.srs.documents).values(
+            project_id=ids["project"], slug="demo-shop", title="Demo Shop", label={}, created_by=ids["user"]
+        )
+        document_id = one(conn, document.returning(t.srs.documents.c.id))
+        goal_id = one(
+            conn,
+            insert(t.goals).values(project_id=ids["project"], number=1, revision=1).returning(t.goals.c.id),
+        )
+        row = {"goal_id": goal_id, "project_id": ids["project"], "document_id": document_id}
+        conn.execute(insert(t.srs_baselines).values(row))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(t.srs_baselines).values(row))
+    assert query(hub_db, select(t.srs_baselines.c.counts)) == [({},)]
+    move_to(hub_db, "0170", down=True)
+    assert "srs_baselines" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0171") :]
