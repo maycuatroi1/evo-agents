@@ -93,7 +93,7 @@ async def _ledger(
 # Writing what the engine returns
 
 
-async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id: int | None, engine: str) -> bool:
+async def make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id: int | None, engine: str) -> bool:
     i = tables.loop_items
     values = {
         "project_id": project_id,
@@ -114,6 +114,7 @@ async def _make(conn: AsyncConnection, project_id: int, spec: WorkSpec, event_id
         "owner": spec.owner,
         "engine": engine,
         "event_id": event_id,
+        "finished_at": func.now() if spec.state in FINISHED else None,
         "problem_id": spec.problem_id,
         "opportunity_id": spec.opportunity_id,
     }
@@ -149,7 +150,7 @@ async def _move(conn: AsyncConnection, project_id: int, move: Transition, event_
         return False
     await _ledger(conn, move.item_id, move.event, move.state, move.reason, move.detail, event_id)
     for spec in move.spawn:
-        await _make(conn, project_id, spec, event_id, engine)
+        await make(conn, project_id, spec, event_id, engine)
     return True
 
 
@@ -173,7 +174,7 @@ async def _note(conn: AsyncConnection, project_id: int, note: Note, event_id: in
 async def apply(conn: AsyncConnection, project_id: int, effect: Effect, event_id: int | None, engine: str) -> bool:
     """Write ``effect`` of the engine named ``engine``; whether it changed anything."""
     if isinstance(effect, WorkSpec):
-        return await _make(conn, project_id, effect, event_id, engine)
+        return await make(conn, project_id, effect, event_id, engine)
     if isinstance(effect, Transition):
         return await _move(conn, project_id, effect, event_id, engine)
     return await _note(conn, project_id, effect, event_id)

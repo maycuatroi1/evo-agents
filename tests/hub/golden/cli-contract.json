@@ -9447,6 +9447,65 @@
       ],
       "json": null
     },
+    "hub loop adopt": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--goal"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--use-cases"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "goal",
+          "plan",
+          "item",
+          "state",
+          "reason",
+          "use_cases",
+          "delivered"
+        ],
+        "schema": "LoopAdopted"
+      }
+    },
     "hub loop baseline": {
       "positionals": [],
       "options": [
@@ -80862,6 +80921,100 @@
           }
         }
       },
+      "/v1/projects/{project}/loop/adopt": {
+        "post": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Adopt Plan",
+          "description": "Adopt a plan of the project as a deliver for use cases of a goal's document (an admin of the project, or the\nwriter who owns the goal): the use cases are being delivered, and delivered at once for a plan already completed.",
+          "operationId": "adopt_plan_v1_projects__project__loop_adopt_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoopAdopt"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LoopAdopted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/merge-queue": {
         "get": {
           "tags": [
@@ -103934,6 +104087,97 @@
           },
           "type": "object",
           "title": "LocalState"
+        },
+        "LoopAdopt": {
+          "properties": {
+            "plan": {
+              "type": "string",
+              "title": "Plan",
+              "description": "the id of a plan of the project, active or completed"
+            },
+            "goal": {
+              "type": "string",
+              "title": "Goal",
+              "description": "the code or alias of a goal that aims at an SRS document"
+            },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "minItems": 1,
+              "title": "Use Cases",
+              "description": "the codes the plan delivers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan",
+            "goal",
+            "use_cases"
+          ],
+          "title": "LoopAdopt"
+        },
+        "LoopAdopted": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "goal": {
+              "type": "string",
+              "title": "Goal"
+            },
+            "plan": {
+              "type": "string",
+              "title": "Plan"
+            },
+            "item": {
+              "type": "integer",
+              "title": "Item",
+              "description": "the id of the deliver"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Use Cases"
+            },
+            "delivered": {
+              "type": "boolean",
+              "title": "Delivered",
+              "description": "the plan was completed: the use cases are delivered now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "goal",
+            "plan",
+            "item",
+            "state",
+            "reason",
+            "use_cases",
+            "delivered"
+          ],
+          "title": "LoopAdopted"
         },
         "LoopChainClaim": {
           "properties": {

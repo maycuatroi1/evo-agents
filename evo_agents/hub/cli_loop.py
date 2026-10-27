@@ -1,5 +1,6 @@
-"""``evo-agents hub loop status|resume|baseline``: the Loop of a project (plan loop-engine), over GET /v1/projects/{p}/loop and
-POST .../loop/resume; ``baseline`` is the baseline of a goal that aims at an SRS document (plan srs-backlog-loop).
+"""``evo-agents hub loop status|resume|baseline|adopt``: the Loop of a project (plan loop-engine), over GET /v1/projects/{p}/loop and
+POST .../loop/resume; ``baseline`` is the baseline of a goal that aims at an SRS document (plan srs-backlog-loop);
+``adopt PLAN --goal G-n --use-cases CODE...`` makes a plan of the hub a deliver of the Loop for those use cases.
 
 ``status`` prints whether the Loop is on, its breaker, its cursor and last tick, and its work items by state; every
 member of the project reads it. ``resume`` resets a breaker that tripped on too many work items in an hour, which takes
@@ -56,6 +57,7 @@ BASELINE_KEYS = (
     "counts",
     "items",
 )
+ADOPT_KEYS = ("project", "goal", "plan", "item", "state", "reason", "use_cases", "delivered")
 SHOWN_EVIDENCE = 3  # lines of evidence printed under a use case
 
 
@@ -175,6 +177,22 @@ def cmd_baseline(args) -> int:
     return 0
 
 
+@client_command
+def cmd_adopt(args) -> int:
+    hub, _ = signed_in()
+    project = _project(args)
+    body = {"plan": args.plan, "goal": args.goal, "use_cases": args.use_cases}
+    found = hub.call("POST", _path(project, "/adopt"), body)
+    if args.json:
+        print_json(found)
+    else:
+        print(f"adopted plan {found['plan']} for goal {found['goal']} as work item #{found['item']} ({found['state']})")
+        print(
+            "use cases: " + ", ".join(found["use_cases"]) + (" (delivered)" if found["delivered"] else " (delivering)")
+        )
+    return 0
+
+
 def register_loop(hsub) -> None:
     loop = hsub.add_parser(
         "loop", help="the Loop of a project: its state, the reset of its breaker and the baseline of a goal"
@@ -207,3 +225,13 @@ def register_loop(hsub) -> None:
     base.add_argument("--project", help=PROJECT_HELP)
     json_option(base, returns_object(*BASELINE_KEYS, schema="SrsBaseline"))
     base.set_defaults(func=cmd_baseline)
+
+    adopt = lsub.add_parser(
+        "adopt", help="adopt a plan of the project as a deliver of the Loop for use cases of a goal's SRS document"
+    )
+    adopt.add_argument("plan", help="the id of a plan on the hub, active or completed")
+    adopt.add_argument("--goal", required=True, metavar="G-N", help="the goal's code (G-<number>) or alias")
+    adopt.add_argument("--use-cases", nargs="+", required=True, metavar="CODE", help="the use cases the plan delivers")
+    adopt.add_argument("--project", help=PROJECT_HELP)
+    json_option(adopt, returns_object(*ADOPT_KEYS, schema="LoopAdopted"))
+    adopt.set_defaults(func=cmd_adopt)
