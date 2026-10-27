@@ -227,6 +227,7 @@ project is what the project granted that its installed version still asks for, c
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
 | `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed | the `srs.version.approved` events |
 | `tasks:read` | read the project's tasks: each status a task takes, with what the task links to | the `tasks.status` events |
+| `records:use` | keep records of its own in the project, for the people it serves | the plugin's records (section Records): `/v1/plugin-api/projects/{project}/records/...` for its backend, the bridge's `records.*` for its pages |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -1190,6 +1191,65 @@ and when it delivers the event: kept, the state is `refused` and the text goes n
 `agent_questions` (migration 0100) with its outcome, its answer and its label, and the audit log keeps `<plugin>.ask`
 with `run_as` as its actor and the asker in its target.
 
+## Records
+
+An isolated plugin keeps its state on the hub as records, in Postgres, instead of in its backend's data directory. A
+record is a JSON object (at most 64 KiB as compact JSON) under a `key` of a `collection`, in one project, for one plugin:
+no plugin reaches another plugin's records, and no project another project's. The table is `plugin_records` (schema
+0169). Records sit in the hub's `pg_dump` and survive deleting `data/<name>/` of the plugin host and restarting the
+backend; `plugins-cache` holds only code and environments, which the host places again (`docs/hub.md`, Backup).
+
+A collection is lowercase letters, digits, `-` and `_`, starting with a letter (63 characters at most). A key is 1 to 200
+characters of letters, digits and `. _ ~ : @ = + -`. Each record carries:
+
+- `revision`, 1 when created and plus one at each write. A write that names `revision` (`0` for a new record, `n` for
+  the very revision) answers 409 when the record is not at it; without `revision` the write goes through.
+- `level`, a level of the project's ladder (`docs/hub.md`, Access labels). A new record takes the level of the project's
+  default label unless the writer names one; the writer may name only a level their call reaches (403 above it).
+- `audience`: `everyone` (default), whom the level reaches, or `writer`, the person who wrote it, who alone sees it.
+- `created_by`, `updated_by` (logins; none when a job or an event wrote it) and `created_at`, `updated_at`.
+
+### Whom a call is for
+
+A backend touches records only on behalf of the caller of the call it is serving, within that caller's grant.
+
+- When the hub hands a backend a route or a tool call from a member who holds a grant, and the project granted the
+  plugin `records:use`, `caller.token` of the call (plugin/1) is a delegation of the hub, a random token `evd_...`, valid
+  for the call's time and a minute. The backend sends it as `X-Evo-On-Behalf-Of` together with its own plugin token
+  (`Authorization: Bearer evp_...`). The hub keeps only its hash, with the person, the project, the plugin, the sink
+  the call came through and the highest level the person reached. The backend cannot make one, and a delegation opens
+  nothing for another plugin, another project or after it expired (403). The hub reads the person's grant again at each
+  use: the call reaches the lower of the delegation's level and the grant's now, and a revoked grant is a 403.
+- A call with no caller (a job, an event) sends no delegation. It reaches the levels up to `records_level`, which the
+  admin of the project sets when enabling the plugin (`POST .../plugins/{name}/enable` with `records_level`, a level of
+  the ladder; left out, what is set stays, and none at first, which refuses such calls with a 403). It has no writer, so
+  it cannot name `writer` as an audience, and no audience filter applies to it.
+- A header that is not a live delegation is a 403; the call never falls back to one with no caller.
+- Writing needs the writer role of the person the call is for (a call with no caller: `records_level`).
+
+### What a call sees
+
+A record is visible when its level is within the call's reach and, for a call for a person, its audience names that
+person or everyone. The reach is the read rule of the project's ladder (`docs/hub.md`, Access labels): through the
+sink of an agent (a tool call of an agent session, an agent's run) the lower of the person's grant and the sink's
+clearance; for a member on the web, their grant alone. The agent of a chat run is cleared for both people the run is
+cleared for, so a record whose audience is one of them is hidden from it. A record the call does not see answers as a
+record that does not exist: a GET, a PUT over it with a `revision` and a DELETE answer 404 with the same message
+for a key nobody wrote, and a list leaves it out. A PUT that asks for a new record (or none in particular) over a key held
+by a record the call cannot see answers 409, so a plugin that wants to be sure never meets that should use generated
+keys.
+
+### The API
+
+For the backend, under `/v1/plugin-api/projects/{project}/records/{collection}`, with the plugin token and, for a call
+with a caller, `X-Evo-On-Behalf-Of`: `GET` lists (`limit` up to 200, `after` the last key of the page before, `next_after`
+in the answer), `GET .../{key}` reads, `PUT .../{key}` with `{body, level?, audience?, revision?}` writes (201 new, 200
+updated), `DELETE .../{key}` (`?revision=`) deletes (204). For a member, a page or an agent with their own credential,
+the same under `/v1/projects/{project}/plugins/{plugin}/records/{collection}`; the page's bridge (section Pages)
+calls them as `records.list`, `records.get`, `records.put` and `records.delete`, and reaches only the records of its own
+plugin. All of them need `records:use` in what the project granted the plugin (404 on the member's routes when the plugin
+is not enabled there, 403 for the backend).
+
 ## Pages
 
 A plugin adds pages to the part of the web of a project that enabled it, at `/p/<project>/x/<id>/<name>`, each with
@@ -1263,7 +1323,7 @@ images and fonts from the bundle's `pages/` by relative URL, and may write them 
 
   Errors: `unsupported_bridge` (another version), `invalid_request`, `unknown_method`, `not_granted`,
   `invalid_params`, `too_large`, `busy`, `hub_refused` (the hub's refusal, with its status and message) and
-  `hub_unavailable`. `chats:*`, `runs:dispatch` and `notifications:send` open no method of the bridge: they serve the
+  `hub_unavailable`. `records:use` opens `records.list`, `records.get`, `records.put` and `records.delete`, which call the member routes above with the viewer's session; `chats:*`, `runs:dispatch` and `notifications:send` open no method of the bridge: they serve the
   plugin's backend.
 
 A minimal page:
@@ -1330,7 +1390,10 @@ files are in the bundle; its virtual environment builds; started with an environ
 `initialize` naming plugin/1 and listing exactly the MCP tools the manifest contributes; it answers `ping`; each
 contribution answers its call with a result that fits the method's schema; an unknown method gets `-32601` and the
 backend serves on; a line that is not JSON gets `-32700` with id null, or nothing, and the backend serves on; nothing
-but plugin/1 responses appear on stdout; and it answers `shutdown` and exits. The sample plugin
+but plugin/1 responses appear on stdout; it answers `shutdown` and exits; and, with a stand-in hub on 127.0.0.1
+(`evo_agents/plugins/fake_hub.py`) answering the records API (section Records), every records call the backend made
+was for the project it serves, within `records:use` of its manifest and, when it sent `X-Evo-On-Behalf-Of`, with the
+delegation of the call it was serving (check `records`). The sample plugin
 `tests/fixtures/plugins/sample` passes every check.
 
 ### Signing in CI

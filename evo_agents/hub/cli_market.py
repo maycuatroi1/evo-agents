@@ -24,7 +24,7 @@ client.
 from __future__ import annotations
 
 import sys
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import HubError
@@ -258,6 +258,9 @@ def install_github(args) -> int:
     hub, _ = signed_in()
     repo, _, tag = args.github.partition("@")
     body = {"repo": repo, "tag": tag or None, "signer": args.signer}
+    if args.project:  # a self-managed project's admin: the plugin is the project's alone
+        path = f"/v1/projects/{quote(args.project, safe='')}/plugins/install-github"
+        return _print_installed(args, hub.call("POST", path, body))
     return _print_installed(args, installed(hub, "/v1/plugins/install-github", body, args))
 
 

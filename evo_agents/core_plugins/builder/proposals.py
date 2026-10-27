@@ -70,6 +70,7 @@ from evo_agents.hub import autonomy, branding, chats, features, goals, tables
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
+from evo_agents.hub.self_managed import SelfManaged, state_of
 from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs, problem_evidence
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import problems as project_problems
@@ -209,16 +210,37 @@ def _select():
     b, p, u = tables.builder_proposals, tables.projects, tables.users
     proposer, decider = u.alias("proposer"), u.alias("decider")
     return (
-        select(b, p.c.name.label("project"), proposer.c.login.label("proposer"), decider.c.login.label("decider"))
+        select(
+            b,
+            p.c.name.label("project"),
+            p.c.self_managed,
+            p.c.trusted_owners,
+            proposer.c.login.label("proposer"),
+            decider.c.login.label("decider"),
+        )
         .join_from(b, p, p.c.id == b.c.project_id)
         .join(proposer, proposer.c.id == b.c.proposed_by)
         .outerjoin(decider, decider.c.id == b.c.decided_by)
     )
 
 
-def approver_of(kind: str) -> str:
-    """Who may decide a proposal of ``kind``: a hub admin, a writer of the project or an admin of it."""
+def approver_of(kind: str, own: bool = False) -> str:
+    """Who may decide a proposal of ``kind``: a hub admin, a writer of the project or an admin of it. ``own``: the
+    install of a repo of an owner its self-managed project trusts, which an admin of the project decides."""
+    if own:
+        return "project_admin"
     return "hub_admin" if kind in HUB_WIDE else "project_writer" if kind in BY_WRITERS else "project_admin"
+
+
+def is_own(kind: str, sets: Mapping, state: SelfManaged) -> bool:
+    """Whether a proposal of ``kind`` setting ``sets`` is the install of a repo ``state`` trusts: its project's admins
+    decide it, and the plugin is the project's alone."""
+    return kind == PLUGIN_INSTALL and state.trusts_repo(sets.get("repo"))
+
+
+async def own_install(conn: AsyncConnection, access: ProjectAccess, kind: str, sets: Mapping) -> bool:
+    """``is_own`` for the project of ``access``."""
+    return kind == PLUGIN_INSTALL and is_own(kind, sets, await state_of(conn, access.project_id))
 
 
 def view(row) -> BuilderProposal:
@@ -232,7 +254,10 @@ def view(row) -> BuilderProposal:
         summary=row.summary,
         base_version=row.base_version,
         state=row.state,
-        approver=approver_of(row.kind),
+        approver=approver_of(
+            row.kind,
+            is_own(row.kind, row.change.get("set", {}), SelfManaged(row.self_managed, tuple(row.trusted_owners))),
+        ),
         proposed_by=row.proposer,
         proposed_at=row.proposed_at,
         decided_by=row.decider,
@@ -970,11 +995,14 @@ async def roll_back(
 # Deciding
 
 
-def refusal(user: Principal, access: ProjectAccess, kind: str, doing: str) -> str | None:
-    """Why ``user`` may not do ``doing`` to a proposal of ``kind``; None when they may."""
+def refusal(user: Principal, access: ProjectAccess, kind: str, doing: str, own: bool = False) -> str | None:
+    """Why ``user`` may not do ``doing`` to a proposal of ``kind``; None when they may. ``own`` (``is_own``): a hub
+    admin or an admin of the project may."""
     if user.acts_for_run is not None:
         return f"{doing} is for an admin, never for the agent of a run"
-    if kind in HUB_WIDE:
+    if own and user.admin:
+        return None
+    if kind in HUB_WIDE and not own:
         return None if user.admin else f"{doing} needs a hub admin, and {user.login} is none"
     role = "writer" if kind in BY_WRITERS else "admin"
     if has_role(access.role, role):
@@ -1012,7 +1040,8 @@ async def decide(
     of kind plugin_install."""
     row = await _locked(conn, access, proposal_id)
     doing = f"{'approving' if answer == APPROVE else 'rejecting'} proposal {proposal_id}"
-    refused = refusal(user, access, row.kind, doing)
+    own = await own_install(conn, access, row.kind, row.change.get("set", {}))
+    refused = refusal(user, access, row.kind, doing, own)
     if refused is not None:
         raise ProposalError(403, refused)
     if row.state != PENDING:
@@ -1022,7 +1051,7 @@ async def decide(
         await plugin_changes.ready(conn, user, row)
         try:
             async with conn.begin_nested():
-                done = await plugin_changes.apply(conn, user, access, row, row.change["set"], install)
+                done = await plugin_changes.apply(conn, user, access, row, row.change["set"], install, own)
             values |= {"state": APPLIED, "applied_version": plugin_changes.DONE}
             values |= {"opened_run_id": done.run_id, "outcome": done.outcome}
         except (HTTPException, ProposalError) as exc:
@@ -1120,17 +1149,21 @@ ACTION_WORDS = {
 }
 
 
-def approver_words(kind: str, project: str) -> str:
+def approver_words(kind: str, project: str, own: bool = False) -> str:
+    if own:
+        return f"an admin of project {project} (or a hub admin)"
     if kind in HUB_WIDE:
         return "a hub admin"
     return f"a writer of project {project}" if kind in BY_WRITERS else f"an admin of project {project}"
 
 
-async def approvers(conn: AsyncConnection, access: ProjectAccess, kind: str, admins: frozenset[str]) -> list[int]:
+async def approvers(
+    conn: AsyncConnection, access: ProjectAccess, kind: str, admins: frozenset[str], own: bool = False
+) -> list[int]:
     """The members who may decide a proposal of ``kind`` in the project: the hub admins who signed in, the project's
-    writers and admins for a kind of BY_WRITERS, or the project's admins."""
+    writers and admins for a kind of BY_WRITERS, or the project's admins; for an ``own`` install, the project's admins."""
     u, g = tables.users, tables.grants
-    if kind in HUB_WIDE:
+    if kind in HUB_WIDE and not own:
         logins = literal(sorted(admins), ARRAY(Text))
         query = select(u.c.id).where(func.lower(u.c.login) == any_(logins))
     else:

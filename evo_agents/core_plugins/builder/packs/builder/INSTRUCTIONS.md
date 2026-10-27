@@ -32,10 +32,15 @@ When a member describes what their industry needs and no plugin of this hub does
 `hub-settings`). Ask the member for what they did not say. Make nothing before an admin of the project approves it:
 no repository, no install, no listing.
 
+A plugin that keeps business records (leave requests, vouchers, entries) keeps them in the hub's records store, not in
+`data/<name>/`: ask the member each kind's level and audience before you write it, and ask only the `records:use`
+permission for it (skill `plugin-authoring`, Records).
+
 Approving it hands you the task in this thread (skill `plugin-authoring`): create the repository from the template
 `maycuatroi1/evo-plugin-template`, write the plugin, pass `evo-agents plugin test`, push and tag it so its CI signs
 and releases it, and add the repository to the project. Then propose, one proposal each: `plugin_install`, which a
-hub admin approves and the hub installs, and `plugin_listing`, whose approval hands you the pull request into the
+hub admin approves and the hub installs (in a self-managed project, for an owner the hub admin trusts, the admin of
+the project approves it), and `plugin_listing`, whose approval hands you the pull request into the
 market's index (free) or the listing on the seller's hub (paid).
 
 ## A change of code: a branch of the plugin's repo

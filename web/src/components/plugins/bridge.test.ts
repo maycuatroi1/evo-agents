@@ -60,6 +60,7 @@ function host(): TestHost {
       plan: record("plan"),
       memories: record("memories"),
       route: record("route", { status: 200, body: { hello: "world" } }) as Host["hub"]["route"],
+      records: record("records", { records: [], next_after: null }),
     },
   };
   return page;
@@ -250,5 +251,36 @@ describe("bridge evo-plugin/1", () => {
     for (const params of bad) expect((await refusal(ask(page, request("toast", params), []))).code).toBe("invalid_params");
     expect(page.toast).toHaveBeenCalledTimes(3);
     expect(page.reads).toBe(0);
+  });
+
+  it("opens the records methods with records:use and checks their names before the hub", async () => {
+    expect(allowedMethods(["records:use"])).toEqual([
+      ...["context", "resize", "route", "navigate", "toast"],
+      ...["records.list", "records.get", "records.put", "records.delete"],
+    ]);
+    const page = host();
+    expect((await refusal(ask(page, request("records.list", { collection: "notes" }), ["runs:read"]))).code).toBe("not_granted");
+    await ask(page, request("records.list", { collection: "notes", after: "a", limit: 10 }), ["records:use"]);
+    await ask(page, request("records.get", { collection: "notes", key: "a.b" }), ["records:use"]);
+    await ask(page, request("records.put", { collection: "notes", key: "a", body: { x: 1 }, audience: "writer", revision: 2 }), ["records:use"]);
+    await ask(page, request("records.delete", { collection: "notes", key: "a", revision: 3 }), ["records:use"]);
+    expect(page.calls).toEqual([
+      'records [{"op":"list","collection":"notes","after":"a","limit":10}]',
+      'records [{"op":"get","collection":"notes","key":"a.b"}]',
+      'records [{"op":"put","collection":"notes","key":"a","body":{"x":1},"audience":"writer","revision":2}]',
+      'records [{"op":"delete","collection":"notes","key":"a","revision":3}]',
+    ]);
+    const bad: [string, Record<string, unknown>][] = [
+      ["records.list", { collection: "Notes" }],
+      ["records.list", { collection: "notes", limit: 500 }],
+      ["records.get", { collection: "notes", key: "../x" }],
+      ["records.put", { collection: "notes", key: "a", body: [1] }],
+      ["records.put", { collection: "notes", key: "a", body: {}, audience: "nobody" }],
+      ["records.delete", { collection: "notes", key: "a", revision: -1 }],
+    ];
+    for (const [method, params] of bad) {
+      expect((await refusal(ask(page, request(method, params), ["records:use"]))).code).toBe("invalid_params");
+    }
+    expect(page.calls).toHaveLength(4);
   });
 });

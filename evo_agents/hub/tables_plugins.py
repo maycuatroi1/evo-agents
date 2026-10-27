@@ -108,7 +108,9 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("disabled_at", DateTime(timezone=True)),
         _stamp("created_at"),
         Column("builtin", Boolean, nullable=False, server_default=false()),  # a feature of the hub (0147)
+        Column("project_id", BigInteger),  # the one project it is installed for, null for the hub's (0170)
         ForeignKeyConstraint(["installed_by"], ["users.id"], ondelete="RESTRICT", name="plugins_installed_by_fkey"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="plugins_project_id_fkey"),
         ForeignKeyConstraint(
             ["id", "installed_version"],
             ["plugin_versions.plugin_id", "plugin_versions.version"],
@@ -155,6 +157,7 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         Column("project_id", BigInteger, nullable=False),
         Column("plugin_id", BigInteger, nullable=False),
         Column("permissions", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("records_level", Text),  # 0169: the highest level a call with no caller touches records at
         Column("enabled_by", BigInteger, nullable=False),
         _stamp("enabled_at"),
         Column("granted_by", BigInteger, nullable=False),

@@ -33,7 +33,7 @@ import logging
 from dataclasses import dataclass
 from functools import cache
 
-from sqlalchemy import ARRAY, Text, literal, select, union_all
+from sqlalchemy import ARRAY, Text, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
@@ -252,7 +252,7 @@ def enabled_query():
         .join_from(e, p, p.c.id == e.c.plugin_id)
         .join(v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
         .join(projects, projects.c.id == e.c.project_id)
-        .where(p.c.disabled_reason.is_(None))
+        .where(p.c.disabled_reason.is_(None), or_(p.c.project_id.is_(None), p.c.project_id == e.c.project_id))
     )
 
 

@@ -20,7 +20,9 @@ Methods, each with the schema of its params and of its result (``PARAMS``, ``RES
   adds keys without a new major. A ``job`` names the projects that enable the plugin (``projects``); an ``event``
   names its kind (one of EVENT_KINDS) and an ``event`` or ``channel`` the hub's id of the delivery (``delivery``),
   which stays the same when the hub delivers it again: the hub delivers at least once, so a backend that must act
-  once keeps the ids it has seen;
+  once keeps the ids it has seen. A ``route`` or ``tool`` call whose project granted ``records:use`` carries a
+  ``caller.token``, the delegation for that call alone: sent as ``X-Evo-On-Behalf-Of`` with the plugin's token to the
+  records API, it makes the backend act as the caller; a call without it acts for no person (docs/plugins.md, Records);
 - ``shutdown``: an empty object back, then the backend exits; the host kills it when it does not.
 
 Errors are JSON-RPC's: -32700 for a line that is not JSON, -32600 for a message that is not a request, -32601 for a
@@ -65,7 +67,14 @@ NAME = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,62}$"}
 PROJECT = {"type": "string", "minLength": 1, "maxLength": 100}
 CALLER = {
     "type": "object",
-    "properties": {"login": {"type": "string"}, "project": PROJECT},
+    "properties": {
+        "login": {"type": "string"},
+        "project": PROJECT,
+        "role": {"type": "string"},
+        # the delegation of the call, only when the project granted records:use: the header X-Evo-On-Behalf-Of of the
+        # backend's calls to the records API (docs/plugins.md, Records)
+        "token": {"type": "string"},
+    },
 }
 
 _OBJECT = {"type": "object"}
