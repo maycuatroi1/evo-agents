@@ -44,7 +44,7 @@ VISIBLE, HIDDEN, ABSENT = "visible", "hidden", "absent"
 
 
 def plugin_actor(plugin_id: str) -> str:
-    """How a history or a dismissal names a core plugin that acted as itself (migration 0169): ``plugin:<id>``."""
+    """How a history or a dismissal names a core plugin that acted as itself (migration 0174): ``plugin:<id>``."""
     return f"plugin:{plugin_id}"
 
 

@@ -12,7 +12,16 @@ first, before its agent starts, and the hub queues no next attempt of a failed r
   itself, as cheaply as git can: ``git ls-remote origin HEAD`` to read, ``git push --dry-run`` of the checkout's HEAD to
   a branch no run pushes to push, which sends nothing. Only a refusal for want of a credential (``refused``) fails the
   run; a remote that does not answer, or any other trouble, is the fetch's to report. An origin that is a path on this
-  machine takes no credential and is not asked.
+  machine takes no credential and is not asked. For a repo on github.com whose branch the run's agent lands through a
+  pull request it opens itself (``runner.access.opens_pull``), no credential the agent has can open one there:
+  ``pull_refusal`` asks GitHub with each token, the one gh takes in the agent's environment (``gh_token``) and the
+  run's git lease. A user's token (gh's login, a personal access token) is asked for the repo, ``GET
+  /repos/{owner}/{repo}``, read only: its user may push there (``permissions.push``), and a classic or OAuth token has
+  the scope repo (public_repo for a public repo, X-OAuth-Scopes). No route shows an installation token of a GitHub App
+  (``ghs_``) its own permissions, and its ``permissions`` on the repo read all false, so it is asked to open a pull
+  request with an empty body: GitHub answers 403 when the token lacks pull_requests: write and 422 when it has it, and
+  opens nothing. Only a clear refusal counts (401, 403, 404, no push, a scope or a permission missing); GitHub not
+  answering, or answering anything else, is ``Unclear`` and fails nothing.
 - ``missing_tool``: a program a verify command calls (``evo_agents.hub.judge.programs``) is not on the run's PATH, or
   the verify is not runnable as a shell command at all (``evo_agents.hub.verify_words.shell_problem``: a quote left
   open, or prose whose words are no command names), which says so and lists those words instead of blaming the PATH.
@@ -25,19 +34,31 @@ first, before its agent starts, and the hub queues no next attempt of a failed r
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import os
 import re
 import shutil
+import urllib.error
+import urllib.request
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents import __version__
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.hub.judge import programs
 from evo_agents.hub.verify_words import COMMAND_NAME, shell_problem
 from evo_agents.worker import gitops
 
 PROBE_TIMEOUT = 60.0  # seconds git has to answer one question to a remote
+GITHUB_API_URL = "https://api.github.com"
+GITHUB_TIMEOUT = 20.0  # seconds GitHub has to answer one call of the pull request check
+GH_TIMEOUT = 10.0  # seconds `gh auth token` has to answer
+TOKEN_VARIABLES = ("GH_TOKEN", "GITHUB_TOKEN")  # what gh takes for github.com before its own login, in its order
+INSTALLATION_TOKEN = "ghs_"  # how an installation token of a GitHub App starts
+PULL_PERMISSION = "pull_requests: write"
 PROBE_BRANCH = "refs/heads/evo-run/preflight-{id}"  # where a dry-run push would go: a branch nothing pushes to
 # What git prints when the remote refused it for want of a credential, or a credential it does not take: gitops'
 # AUTH_FAILURE, SSH without a key the host takes, a token that may not push, and a repo the credential does not see.
@@ -84,6 +105,156 @@ async def can_reach(checkout: Path, run_id: int, *, push: bool, env: Mapping[str
         if code != 0 and refused(said):
             return what, _tail(said)
     return None
+
+
+# Pull requests on GitHub
+
+
+class Unclear(Exception):
+    """gh or GitHub gave no clear answer to the pull request check: the run goes on, with a note saying so."""
+
+
+async def gh_token(env: Mapping[str, str], *, login: bool = True) -> tuple[str | None, str]:
+    """The token gh takes for github.com with ``env``, and where it comes from: GH_TOKEN, else GITHUB_TOKEN, else (with
+    ``login``) gh's own login on this machine, ``gh``; (None, why gh has none) without one. Unclear when gh did not
+    answer. The token never leaves this function but in its result."""
+    for name in TOKEN_VARIABLES:
+        value = (env.get(name) or "").strip()
+        if value:
+            return value, name
+    unset = "neither GH_TOKEN nor GITHUB_TOKEN is set"
+    if not login:
+        return None, f"{unset}, and the agent's gh sees no login of this machine (its config dir is its own)"
+    gh = shutil.which("gh", path=env.get("PATH") or os.defpath)
+    if gh is None:
+        return None, f"{unset}, and gh is not on the run's PATH"
+    try:
+        process = await asyncio.create_subprocess_exec(
+            gh,
+            "auth",
+            "token",
+            "--hostname",
+            "github.com",
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**env, "GH_PROMPT_DISABLED": "1"},
+        )
+    except OSError as exc:
+        raise Unclear(f"gh did not start: {exc}") from None
+    try:
+        out, _ = await asyncio.wait_for(process.communicate(), GH_TIMEOUT)
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        await process.wait()
+        raise Unclear(f"`gh auth token` did not answer within {GH_TIMEOUT:g}s") from None
+    value = out.decode("utf-8", errors="replace").strip()
+    if process.returncode == 0 and value:
+        return value, "gh"
+    return None, f"{unset}, and gh on this worker is not signed in to github.com"
+
+
+async def pull_refusal(owner: str, repo: str, token: str) -> str | None:
+    """What keeps ``token`` from opening a pull request in ``owner/repo`` on GitHub, as a message goes on after the
+    token's name; None when it can. Unclear when GitHub gave no clear answer. An installation token of a GitHub App is
+    asked to open one with an empty body, which GitHub refuses with 403 for want of pull_requests: write and with 422
+    when the token has it; any other token is asked for the repo, read only (see the module's docstring)."""
+    where = f"{owner}/{repo}"
+    if token.startswith(INSTALLATION_TOKEN):
+        status, headers, body = await github_call("POST", f"/repos/{owner}/{repo}/pulls", token, {})
+        if status == 422:
+            return None
+        if status == 403 and not _rate_limited(headers, body):
+            needed = headers.get("x-accepted-github-permissions") or "pull_requests=write"
+            return f"lacks {PULL_PERMISSION} on {where} (GitHub answered 403: {_said(body)}; it accepts {needed})"
+        return _refusal(status, headers, body, where)
+    status, headers, body = await github_call("GET", f"/repos/{owner}/{repo}", token)
+    if status != 200:
+        return _refusal(status, headers, body, where)
+    if not isinstance(body, dict):
+        raise Unclear(f"GitHub's answer for {where} is not a repository")
+    scopes = headers.get("x-oauth-scopes")
+    if scopes is not None:  # a classic or OAuth token, gh's login among them; a fine-grained one has no scopes
+        held = {scope.strip() for scope in scopes.split(",") if scope.strip()}
+        needed = "repo" if body.get("private") is not False else "public_repo"
+        if "repo" not in held and needed not in held:
+            return f"lacks the scope {needed} (it has {', '.join(sorted(held)) or 'none'})"
+    permissions = body.get("permissions")
+    if not isinstance(permissions, dict):
+        raise Unclear(f"GitHub did not say what the token's user may do in {where}")
+    if permissions.get("push") is not True:
+        return f"belongs to a user who may not push to {where} (GitHub's permissions.push is false)"
+    return None
+
+
+def _refusal(status: int, headers: Mapping[str, str], body, where: str) -> str:
+    """What a refusal of GitHub says the token lacks; Unclear for any answer that is not one."""
+    if status == 401:
+        return f"is not valid (GitHub answered 401: {_said(body)})"
+    if status == 404:
+        return f"does not see {where} (GitHub answered 404: {_said(body)})"
+    if status == 403 and not _rate_limited(headers, body):
+        return f"is refused {where} (GitHub answered 403: {_said(body)})"
+    raise Unclear(f"GitHub answered {status} for {where}: {_said(body)}")
+
+
+def _rate_limited(headers: Mapping[str, str], body) -> bool:
+    return headers.get("x-ratelimit-remaining") == "0" or "rate limit" in _said(body).lower()
+
+
+def _said(body) -> str:
+    message = body.get("message") if isinstance(body, dict) else None
+    return _tail(message, 200) if isinstance(message, str) and message.strip() else "no message"
+
+
+async def github_call(
+    method: str, path: str, token: str, body: dict | None = None
+) -> tuple[int, dict[str, str], object]:
+    """GitHub's answer to one call of its API at ``path`` with ``token``: the status, the headers (names in lower case)
+    and the body read as JSON (None when it is not); Unclear when GitHub did not answer. The token goes only into the
+    Authorization header of a request to GITHUB_API_URL, and a redirect is not followed."""
+    return await asyncio.to_thread(_github_call, method, path, token, body)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # the Authorization header must not follow a redirect to another host
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _github_call(method: str, path: str, token: str, body: dict | None) -> tuple[int, dict[str, str], object]:
+    request = urllib.request.Request(
+        f"{GITHUB_API_URL}{path}",
+        data=None if body is None else json.dumps(body).encode("utf-8"),
+        method=method,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": f"evo-agents/{__version__}",
+            **({"Content-Type": "application/json"} if body is not None else {}),
+        },
+    )
+    try:
+        with _OPENER.open(request, timeout=GITHUB_TIMEOUT) as response:
+            status, headers, raw = response.status, response.headers, response.read()
+    except urllib.error.HTTPError as exc:
+        status, headers = exc.code, exc.headers
+        try:
+            raw = exc.read()
+        except OSError:
+            raw = b""
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", None) or type(exc).__name__
+        raise Unclear(f"GitHub did not answer: {reason}") from None
+    try:
+        payload = json.loads(raw.decode("utf-8")) if raw else None
+    except ValueError:
+        payload = None
+    return status, {name.lower(): value for name, value in (headers or {}).items()}, payload
 
 
 def missing_programs(commands: Iterable[str], path: str | None) -> list[tuple[str, str]]:

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
-import { loopKeys, resumeLoop, setLoopEnabled } from "@/lib/loop-queries";
+import { confirmBaseline, loopKeys, resumeLoop, setLoopEnabled } from "@/lib/loop-queries";
 import { mergeKeys } from "@/lib/merge-queue";
 import { whoamiQuery } from "@/lib/queries";
 
@@ -46,6 +46,21 @@ export function useLoopResume(project: string) {
   return useMutation({
     mutationFn: () => resumeLoop(browserApi(), project),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: loopKeys.all(project) }),
+    onError: signInAgainOn401,
+  });
+}
+
+/** The baseline of a goal confirmed by an admin; then the baseline, the board and the Loop are read again. A 409 means a use case has no state yet. */
+export function useConfirmBaseline(project: string, goal: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => confirmBaseline(browserApi(), project, goal),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: loopKeys.baseline(project, goal) }),
+        queryClient.invalidateQueries({ queryKey: loopKeys.board(project) }),
+        queryClient.invalidateQueries({ queryKey: loopKeys.all(project) }),
+      ]),
     onError: signInAgainOn401,
   });
 }

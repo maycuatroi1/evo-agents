@@ -142,7 +142,7 @@ async def enable_plugin(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_admin(access, f"enabling plugin {name}")
-        await enable(conn, user, access, name, body.permissions)
+        await enable(conn, user, access, name, body.permissions, body.records_level)
         return await project_plugin(conn, access, name, _secret(request))
 
 

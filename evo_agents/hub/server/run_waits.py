@@ -10,7 +10,10 @@ slot as a decision does that long. ``wake_at`` is when it wakes at the latest: `
 only ``on`` is given, and never later than that, so a parked run is still there (``run_state.expire_parked`` leaves a
 run alone while a wait of it has not come). ``wake_on`` is the event that wakes it sooner: an event of the run's project
 in hub_events of kind ``on`` (``hub_events.KINDS``, or a kind a core plugin records of its own) whose payload contains
-``contains``, written after the wait was asked (``after`` is the project's last event then).
+``contains``, written after the wait was asked (``after`` is the project's last event then). A wait on another plan's
+step names ``plan.step`` (``evo_agents.hub.plan_step_status``) with the plan, the step and the status, such as
+``{"plan": "northwind-launch", "step": "8", "status": "done"}``; the payload holds a plan's id and a step as text, so a
+number given for one of TEXT_KEYS is taken as its text (``--contains step=8`` reads 8 as JSON).
 
 ``wake_waits``, on each pass of the reaper (``run_state.recover_runs``), answers every open wait whose event or time
 came, each in a transaction of its own under the locks an answer takes (``decisions.lock_run_of``): the decision is
@@ -53,6 +56,7 @@ MAX_REASON_CHARS = 1000
 MAX_CONTAINS_BYTES = 2048  # what a wait's event must contain, as JSON
 PAYLOAD_IN_MESSAGE = 2048  # bytes of the event's payload the message that wakes the agent repeats
 MAX_WAIT = timedelta(days=runs.MAX_WAIT_DAYS)
+TEXT_KEYS = {hub_events.PLAN_STEP: ("plan", "plan_id", "step")}  # keys of the payload of a kind that hold text
 GO_ON, STOP = "now", "stop"
 OPTIONS = (
     (GO_ON, "Go on now", "What the run waits for came, or it need not wait: the agent goes on at once."),
@@ -92,6 +96,10 @@ class WaitIn(BaseModel):
         if self.on is not None and self.on not in hub_events.KINDS and not hub_events.OWN_KIND.fullmatch(self.on):
             kinds = ", ".join(hub_events.KINDS)
             raise ValueError(f"on is a kind of hub event: one of {kinds}, or plugin.<plugin>.<name>")
+        for key in TEXT_KEYS.get(self.on, ()):
+            value = self.contains.get(key)
+            if isinstance(value, int | float) and not isinstance(value, bool):
+                self.contains[key] = str(value)
         if len(json.dumps(self.contains, ensure_ascii=False).encode()) > MAX_CONTAINS_BYTES:
             raise ValueError(f"contains takes at most {MAX_CONTAINS_BYTES} bytes of JSON")
         return self

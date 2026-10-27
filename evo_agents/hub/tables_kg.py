@@ -191,10 +191,10 @@ def review_dismissals(metadata: MetaData) -> Table:
         Column("fingerprint", Text, nullable=False),
         Column("rule", Text, nullable=False),
         Column("reason", Text, nullable=False),
-        Column("dismissed_by", BigInteger),  # a member; NULL when a core plugin dismissed it (0169)
+        Column("dismissed_by", BigInteger),  # a member; NULL when a core plugin dismissed it (0174)
         _stamp("dismissed_at"),
         Column("build_id", BigInteger),
-        Column("dismissed_by_plugin", Text),  # the id of the core plugin that dismissed it, else NULL (0169)
+        Column("dismissed_by_plugin", Text),  # the id of the core plugin that dismissed it, else NULL (0174)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_review_dismissals_project_id_fkey"
         ),
@@ -234,11 +234,11 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("rev", Integer, nullable=False),
         Column("decision_id", BigInteger, nullable=False),
         Column("action", Text, nullable=False),
-        Column("actor_id", BigInteger),  # a member; NULL when a core plugin took the step (0169)
+        Column("actor_id", BigInteger),  # a member; NULL when a core plugin took the step (0174)
         _stamp("at"),
         Column("reason", Text, nullable=False),
         Column("build_id", BigInteger),
-        Column("actor_plugin", Text),  # the id of the core plugin that took it, else NULL (0169)
+        Column("actor_plugin", Text),  # the id of the core plugin that took it, else NULL (0174)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_decision_events_project_id_fkey"
         ),

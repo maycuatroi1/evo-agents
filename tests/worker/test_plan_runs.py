@@ -1126,6 +1126,95 @@ def test_a_parked_run_keeps_its_worktrees_and_the_run_that_resumes_it_goes_on_in
     assert any(f"Goes on from parked run #{parked}" in text for text in hub.texts(resumed))
 
 
+# The next attempt of a run the hub lost
+
+
+def lost_then_next(machine: Machine, lost_of=None) -> dict:
+    """A plan run whose agent writes alpha/a.txt and is cut off before it reports step 1, which the hub then loses (its
+    lease ran out) and queues again as attempt 2 naming it in ``lost_attempt``, its run id ``lost_of(first)`` when given;
+    the agent of an attempt that starts afresh writes the file again and reports the step once ``go`` exists."""
+    reached, go = machine.tmp / "reached", machine.tmp / "go"
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"write": {"alpha/a.txt": "half\n"}},
+                {"touch": str(reached)},
+                {"wait_for": str(go)},
+                {"cli": ["step", "1", "done", "--verify", "test -f a.txt"]},
+                {"result": {"summary": "Started again and done."}},
+            ],
+            f"plan:{PLAN}/resume": [
+                {"sh": "pwd -P; echo $EVO_RUN_ID; git -C alpha symbolic-ref --short HEAD; cat alpha/a.txt"},
+                {"cli": ["step", "1", "done", "--verify", "test -f a.txt"]},
+                {"result": {"summary": "Went on and done."}},
+            ],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        first = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        await wait_for(reached.exists, "the agent of the first attempt to start writing")
+        await wait_for(lambda: hub.runs[first].get("session_id"), "the first attempt to report its session")
+        reached.unlink()
+        hub.lose(first)  # its worker stopped extending the lease
+        await wait_for(lambda: first not in daemon.runs, "the lost attempt to end on the worker")
+        lost = {"run_id": lost_of(first) if lost_of else first, "session_id": hub.runs[first]["session_id"]}
+        second = hub.queue_plan_run(PLAN, run_repos(plan_body()), attempt=2, parent_run_id=first, lost_attempt=lost)
+        await wait_for(lambda: reached.exists() or hub.runs[second]["state"] in ("done", "failed"), "attempt 2")
+        go.touch()
+        assert await hub.wait_state(second, "done", "failed") == "done", (hub.runs[second], hub.texts(second))
+        found.update(first=first, second=second, hub=hub, session=lost["session_id"])
+
+    with_daemon(machine, run_it)
+    return found
+
+
+def test_the_next_attempt_of_a_lost_run_goes_on_in_its_session_and_worktrees_on_the_same_worker(machine):
+    machine.env["EVO_FAKE_SESSIONS"] = str(machine.tmp / "sessions")
+    found = lost_then_next(machine)
+    first, second, hub = found["first"], found["second"], found["hub"]
+    directory = machine.directory(first)
+    assert hub.runs[first]["state"] == "lost" and hub.runs[second]["state"] == "done"
+    start, again = machine.starts()
+    assert start["session"] == found["session"] and again["resume"] == found["session"], "the same session"
+    assert again["run"] == second and Path(again["cwd"]) == directory, "the same directory and worktrees"
+    assert f"the hub lost run #{first}" in again["prompt"] and f"goes on now as run #{second}" in again["prompt"]
+    assert "`git status`" in again["prompt"], "the agent checks what was left half done"
+    looked = machine.commands()[0]["stdout"].splitlines()
+    assert looked == [str(directory.resolve()), str(second), "feat/alpha", "half"], "on its branch again, edits kept"
+    assert machine.origin("alpha", "log", "--format=%s", "-1", "feat/alpha") == f"run #{second} step 1: Alpha file"
+    old, new = machine.home.load_run(first), machine.home.load_run(second)
+    assert old["resumed_by"] == second and old["dir"] is None and old["repos"] == [], "the cleanup leaves them alone"
+    assert new["dir"] == str(directory) and [item["repo"] for item in new["repos"]] == ["alpha", "beta"]
+    assert not machine.directory(second).exists()
+    assert any(f"Goes on from run #{first}, which the hub lost" in text for text in hub.texts(second))
+
+
+@pytest.mark.parametrize(
+    ("sessions", "lost_of", "why"),
+    [
+        (False, None, "claude-code has no record of its session"),
+        (True, lambda first: first + 100, "it did not run on this worker"),
+    ],
+    ids=["no-session-record", "lost-elsewhere"],
+)
+def test_the_next_attempt_of_a_lost_run_starts_afresh_without_its_session_or_worktrees_here(
+    machine, sessions, lost_of, why
+):
+    if sessions:
+        machine.env["EVO_FAKE_SESSIONS"] = str(machine.tmp / "sessions")
+    found = lost_then_next(machine, lost_of)
+    first, second, hub = found["first"], found["second"], found["hub"]
+    start, again = machine.starts()
+    assert again["run"] == second and again["resume"] is None and again["session"] != start["session"]
+    assert Path(again["cwd"]) == machine.directory(second) and "hub lost run" not in again["prompt"]
+    assert machine.origin("alpha", "log", "--format=%s", "-1", "feat/alpha") == f"run #{second} step 1: Alpha file"
+    assert machine.home.load_run(first).get("resumed_by") is None
+    lost = next(text for text in hub.texts(second) if "which the hub lost" in text)
+    assert why in lost and "The agent starts a new session in new worktrees." in lost
+
+
 BUDGET = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800, "spent_usd": 0.0, "spent_seconds": 0}
 
 

@@ -77,9 +77,10 @@ ever added to. Its kinds are `created`, `ready`, `admitted`, `dispatched`, `wait
 
 The engine of this release is `rules/2`: the table of `rules/1` below with the changes of the next section. The engine
 `rules/1` reads three sources of change: the rows of `hub_events` past the Loop's cursor, the clock, and
-what each unfinished work item waits on, read again on each tick. Runs, plan steps and merge requests are not events:
-the Loop reads them from their tables when it reconciles a work item, so it needs no event kind beyond
-`srs.version.approved` and `tasks.status` (`docs/plugins.md`).
+what each unfinished work item waits on, read again on each tick. Runs, plan steps and merge requests are not events to
+the Loop: it reads them from their tables when it reconciles a work item, so it needs no event kind beyond
+`srs.version.approved` and `tasks.status` (`docs/plugins.md`). `plan.step` is in `hub_events` for the waits of plan
+runs (`docs/notifications.md`, A wait); it only brings the next tick sooner.
 
 | # | Change | When | What the Loop does | Key |
 | --- | --- | --- | --- | --- |
@@ -94,7 +95,7 @@ the Loop reads them from their tables when it reconciles a work item, so it need
 | 9 | the `build`'s author run wrote a plan and ended (the clock) | | the `build` done; a `deliver` of that plan | `deliver:<plan id>` |
 | 10 | the plan's merge requests in the merge queue (the clock) | each one through (`done`, `merged` where the repo names no check job, or `closed` because a person merged it on GitLab, as the queue's ledger says), each repo the queue does not merge marked merged in the plan | the `deliver` done; the release noted in the chain | |
 | 11 | a merge request of the chain reverted | | a failure of the `deliver` | |
-| 12 | `tasks.status`, `canvas.claim`, `signal.posted`, any other version approved | | nothing; the canvas's value check runs on signals by itself | |
+| 12 | `tasks.status`, `plan.step`, `canvas.claim`, `signal.posted`, any other version approved | | nothing; the canvas's value check runs on signals by itself | |
 | 13 | a test card past its deadline | | nothing; the canvas's baseline asks to extend or retire it | |
 | 14 | a goal paused or closed; the Loop turned off | | its unfinished work items cancelled; runs in flight finish and make nothing more | |
 
@@ -137,6 +138,22 @@ a core plugin's rule makes carries the problem of its goal too. The key forms of
 from the cursor `rules/1` left and makes no work item again, and the work items `rules/1` made move as `rules/1` moves
 them; a work item made of one of them carries the problem of its goal.
 
+### A goal that aims at an SRS document
+
+A goal that aims at an SRS document (plan srs-backlog-loop) goes from its backlog, not from claims: it makes no
+`brainstorm`. When an admin confirmed its baseline, each tick (the clock step) reads the backlog in groups
+(`srs_backlog.groups`, by the claim field of a use case, else its parent heading) and makes a `build` for each group:
+key `build:srs:<document id>:<group>:<round>`, `srs_document_id` the document, `detail.backlog` the group and its use
+cases (code, title, version). The round is one more than the builds of that group made before, so a use case approved
+into a group while its build runs goes into the next round. Until the baseline is confirmed the Loop makes no build for
+the goal, so a Loop turned on late reads what was approved before, once it is. The author run takes every use case of
+the group with the goal, its problem and the document (`texts.srs_request`) and writes one plan that names each code;
+the `deliver` of that plan is rows 9 to 11. The ledger of delivery (`srs_delivery`) follows the work item: its use
+cases are `delivering` from the moment the build is made (they leave the backlog), `delivered` when its deliver is
+done (source `deliver`, evidence `plan`, `merges`, `after_sha`, `build`, `deliver`), and `undelivered` again when the
+build or deliver is cancelled (`srs_ledger.sync`). The key form `build:srs:` and `detail.backlog` were added to loop/1;
+the build of a frame task has `build:srs:<slug>:<version>:<code>` and no `backlog`.
+
 ### Keys
 
 A key is built from stable ids of the objects and of the moment that made the work (a goal's revision, an ISO week, a
@@ -146,6 +163,39 @@ transaction that moves the cursor: reading the same events again, or one event t
 longer than 500 characters is cut with the start of its SHA-256 (`tick.fit_key`). The key of a cancelled work item
 stays taken, so the same change coming again does not make it again; a person who wants it done again answers the
 work item's decision with retry.
+
+## SRS là nguồn
+
+A project that develops by an SRS lets the document, not the claims, drive the Loop (plan srs-backlog-loop). The goal
+names the document; the Loop reads what is approved and not yet delivered and hands it out group by group.
+
+- **The goal.** `evo-agents hub goal set --srs-document SLUG [--srs-heading HEADING]` aims a goal at an SRS document of
+  the project, or at the use cases under one heading of it (`--no-srs-document`, `--no-srs-heading` clear them). The
+  metric `srs.backlog.open` is the hub's own: it counts the approved use cases of the scope not delivered yet, takes no
+  signal and is `<= 0` for a goal that is done; it needs `srs_document`.
+- **The backlog.** A use case is in the backlog when it is approved (in the approved version, or told by the event
+  `srs.use_case.approved`, `docs/srs-plugin.md`) and its state in the ledger of delivery is `undelivered`. Each tick
+  groups the backlog by the `claim` field of the use case, else its parent heading, and makes one `build` for each
+  group (`build:srs:<document id>:<group>:<round>`, section A goal that aims at an SRS document). The author run
+  writes one plan for the group and a plan run delivers it; when the deliver is done its use cases are `delivered`.
+- **The baseline.** What was delivered before the Loop began is not in the backlog. The hub proposes it from the
+  knowledge graph (`GET /v1/projects/{p}/goals/{ref}/baseline`; commits, pull requests, completed plans and code
+  comments that name a use case code, `docs/kg.md`): each approved use case is `delivered`, `undelivered` or
+  `unknown`, with its evidence. An admin fixes it by code or by heading and confirms it once:
+  `evo-agents hub loop baseline --goal G-1` previews, `--set UC-1=delivered`, `--heading Cart=undelivered` and
+  `--unknown undelivered` fix, `--confirm` confirms. Until then the Loop makes no build for the goal, a use case left
+  `unknown` never enters the backlog, and the decision board lists the goal at gate 3 (`srs_baseline`); the web shows
+  it on the Decisions page with a preview and the confirmation, and the Goals page and the Loop page show the backlog.
+- **Adopt.** A plan written by hand joins the Loop with
+  `evo-agents hub loop adopt PLAN --goal G-1 --use-cases UC-1 UC-2` (`POST /v1/projects/{p}/loop/adopt`; an admin, or
+  the writer who owns the goal): a `deliver` with key `deliver:<plan>`, no build above it, whose use cases are
+  `delivering` at once so no build takes them. It goes through admission, the caps and the merge queue as any deliver; a
+  plan already completed makes the deliver `done` and the use cases `delivered` with the plan and its merge requests as
+  evidence. It needs no confirmed baseline.
+- **Pool and labels.** `loop.pool` and `loop.labels` (The policy's keys) send the author and plan runs of the Loop to a
+  pool of workers holding the labels, in place of the pinned `loop.worker`; a plan's `worker_labels` narrow its plan run
+  further. The worker found must be live, ready, serving the project and owned by a writer. A deliver no worker fits
+  stays queued with the reason `worker`.
 
 ## The tick
 
@@ -310,6 +360,8 @@ writes as a revision (`evo-agents hub policy`, `docs/merge-queue.md`). A key a r
 | --- | --- | --- |
 | `loop.enabled` | false | the Loop makes work items and hands out their runs |
 | `loop.worker` | null | the worker of the Loop's author and plan runs; null: none run |
+| `loop.pool` | null | the pool the author and plan runs go to, in place of `loop.worker` (a selector `pool=<name>`, no pinned worker); null: `loop.worker` |
+| `loop.labels` | `[]` | labels a worker of those runs holds, with `loop.pool`; a plan's `worker_labels` add to them for its plan run. The worker found must be live, ready, serving the project and owned by a writer; the runs go in its owner's name |
 | `loop.timezone` | null | the zone of the Loop's schedule; null: the charter's, else UTC |
 | `loop.business.max_running` | 2 | work items of the business cycle running at once |
 | `loop.development.max_running` | 1 | work items of the development cycle running at once |
@@ -337,7 +389,8 @@ evo-agents hub loop resume --project demo     # an admin resets the breaker that
 `GET /v1/projects/{p}/loop` is the Loop's state; `GET .../loop/items` its work items (`?state=`, `?kind=`, `?goal=`,
 `?problem=`, `?open=true`, `?limit=`), each with the problem it goes from (`problem`); `GET .../loop/items/{id}` one
 work item with its chain, the stages from the problem and the goal to the release, and its ledger; `GET .../loop/goals`
-each goal's metric now against its target with its work items by state; `POST .../loop/resume` the admin's reset.
+each goal's metric now against its target with its work items by state; `POST .../loop/resume` the admin's reset, `POST .../loop/adopt` the adoption of a plan and
+`GET .../goals/{ref}/baseline` with `POST .../baseline/fix` and `.../baseline/confirm` the baseline of a goal (section SRS là nguồn).
 Reading needs a grant on the project; each ancestor shows as its own route shows it, and one the reader may not read is
 named in `hidden`. The web has the pages Problems (`/p/{p}/problems`, a problem's page with the chains that go from
 it), Goals (`/p/{p}/goals`), Loop (`/p/{p}/loop`, by state or by chain, each chain's rail starting from its problem)

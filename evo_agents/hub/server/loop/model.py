@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Protocol
 
+from evo_agents.hub.srs_backlog import Group
+
 ENGINES = ("rules/1", "rules/2")  # loop_items.engine of the core work items, oldest first
 RULES_1, RULES_2 = ENGINES
 ENGINE = RULES_2  # the engine of this release (plan problem-oriented-hub): it goes from the problem a goal answers
@@ -113,6 +115,9 @@ USE_CASE_MODES = ("always", "never", "auto")
 ALWAYS, NEVER, AUTO_MODE = USE_CASE_MODES
 ACT_KEY = "act:"  # the start of the key of an act: ``act:<canvas>:<claim>:b<baseline>`` (loop/1 addition, rules/2)
 CLAIM_BUILD = "build:claim:"  # the start of the key of a build rules/2 made straight from a claim
+SRS_BUILD = (
+    "build:srs:"  # the start of the key of a build made of one group of an SRS goal's backlog (plan srs-backlog-loop)
+)
 
 # Claims, goals, tasks and runs as the engine reads them
 TESTING, VALIDATED, INVALIDATED, RETIRED = "testing", "validated", "invalidated", "retired"
@@ -146,7 +151,8 @@ class Event:
 class GoalView:
     """A goal at its newest revision: ``reached`` is whether its metric meets its target now (None: no metric, or no
     signal in its window); ``problem_id`` the problem of the project it answers (plan problem-oriented-hub),
-    ``opportunity_id`` the opportunity it answers (plan opportunity-intake; never both), None for none."""
+    ``opportunity_id`` the opportunity it answers (plan opportunity-intake; never both), None for none;
+    ``srs_document_id`` the SRS document it aims at (plan srs-backlog-loop), None for none."""
 
     id: int
     code: str
@@ -159,6 +165,7 @@ class GoalView:
     owner_id: int
     problem_id: int | None = None
     opportunity_id: int | None = None
+    srs_document_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -211,6 +218,13 @@ class ItemView:
     def from_claim(self) -> bool:
         """Whether it is a build rules/2 made straight from a claim, with no use case and no frame task."""
         return self.kind == BUILD and self.key.startswith(CLAIM_BUILD)
+
+    @property
+    def from_srs(self) -> bool:
+        """Whether it is a build of one group of the backlog of a goal that aims at an SRS document: no use case of
+        its own, no frame task, its group and use cases in ``detail["backlog"]``. A build of a frame task shares the
+        start of its key (``build:srs:<slug>:<version>:<code>``), so the detail tells them apart."""
+        return self.kind == BUILD and self.key.startswith(SRS_BUILD) and isinstance(self.detail.get("backlog"), dict)
 
 
 @dataclass(frozen=True)
@@ -332,6 +346,8 @@ class View:
     manual: frozenset[str] = frozenset()
     released: Mapping[str, frozenset[str]] = field(default_factory=dict)
     use_cases: bool = True
+    backlogs: Mapping[int, tuple[Group, ...]] = field(default_factory=dict)
+    srs_keys: frozenset[str] = frozenset()
 
     def goal_of_canvas(self, canvas_id: int) -> GoalView | None:
         """The active goal with a metric that a claim of canvas ``canvas_id`` serves: the first by rank among those

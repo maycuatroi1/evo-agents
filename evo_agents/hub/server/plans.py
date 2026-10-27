@@ -6,7 +6,8 @@ plan.schema.json and ``plan_semantics`` (repos against the repos registered for 
 422, a semantic finding a warning in the answer), refuses with a 422 a verify new in the write that cannot be one shell
 command line on a step not done (``evo_agents.hub.plans.unrunnable_verify``), refuses with a 422 a problem the write
 names anew that the project does not have (``plan_problems``), writes the plan and its revision, and adds one audit
-row naming the plan and the revision, never its content, all in one transaction. A PUT that writes a plan or a
+row naming the plan and the revision, never its content, all in one transaction, with the event ``plan.step`` of each
+step whose status the write sets or changes (``evo_agents.hub.plan_step_status``). A PUT that writes a plan or a
 revision whose body names no problem says so in its warnings, and stores it all the same.
 
 - PUT creates a plan, or replaces it when ``if_revision`` is the revision the hub holds; anything else is a 409
@@ -49,7 +50,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
-from evo_agents.hub import plugin_events, tables
+from evo_agents.hub import plan_step_status, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, build_handoff
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
@@ -533,8 +534,9 @@ async def _store(
     Curator made that names another repo or branch, or changes more than the progress of its steps, and a new plan
     with an id of the Curator's that the hub does not make from a proposal (``made_by_curator``), are a 409
     (``changes.plan_write_refusal``). A verify that is new against ``held`` and cannot be one shell command line, on a
-    step not done, is a 422 (``plans.unrunnable_verify``): every write of a plan comes through here. ``run_id`` is the
-    run that writes it, an author run's, recorded on the revision."""
+    step not done, is a 422 (``plans.unrunnable_verify``): every write of a plan comes through here, so here each step
+    whose status the write sets or changes emits ``plan.step`` (``evo_agents.hub.plan_step_status``). ``run_id`` is
+    the run that writes it, an author run's, recorded on the revision."""
     from evo_agents.hub.server.changes import plan_write_refusal  # it reads plans through this module
 
     unrunnable = unrunnable_verify(None if held is None else held.body, body)
@@ -612,6 +614,8 @@ async def _store(
     )
     target = f"{access.name}/{body['id']}@{revision}"
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+    before = None if held is None else held.body
+    await plan_step_status.emit(conn, access.project_id, body["id"], revision, before, body)
     return Held(body["id"], area, label, stored, revision, digest, created_at, updated_at, user.login)
 
 
@@ -848,11 +852,6 @@ async def apply_patch(
         run_id=run_id,
     )
     _logged(access.name, stored, "patched", user)
-    if section == "steps" and "status" in updates and old.get("status") != updates["status"]:
-        moved = {"from": old.get("status"), "to": updates["status"], "revision": stored.revision}
-        step_id = body["steps"][position].get("id")
-        step_key = None if step_id is None else str(step_id)  # as a run names its step
-        await plugin_events.emit(conn, "plan.step", access.project_id, {"plan_id": plan_id, "step": step_key, **moved})
     return stored, True, warnings
 
 

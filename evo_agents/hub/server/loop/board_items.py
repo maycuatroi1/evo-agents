@@ -32,7 +32,7 @@ GOAL, CANVAS, POLICY, EXCEPTION, SRS = GROUPS
 KINDS_OF = {
     GOAL: ("goal_review", "goal_overdue"),
     CANVAS: ("baseline", "claim_proposal"),
-    POLICY: ("policy_proposal", "goal_proposal", "merge_breaker", "loop_breaker"),
+    POLICY: ("policy_proposal", "goal_proposal", "merge_breaker", "loop_breaker", "srs_baseline"),
     EXCEPTION: ("loop_decision", "run_decision", "author_question", "merge_held", "merge_manual", "merge_sample"),
     SRS: ("srs_review", "srs_finding"),
 }

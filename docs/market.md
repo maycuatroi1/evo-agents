@@ -132,6 +132,11 @@ evo-agents hub plugin publisher list
 evo-agents hub plugin publisher remove 4
 ```
 
+The admin of a self-managed project installs from a GitHub release too, without a hub admin, when the repository's
+owner is one the hub admin trusts for that project: `hub plugin install --github OWNER/REPO --project PROJECT` (see
+`docs/hub.md`, section A self-managed project). The signer must be a workflow of that repository, it is trusted for that
+release alone, and the plugin is that project's alone.
+
 A refusal says why, and installs nothing:
 - 409 for a signer the hub does not trust and was not asked to trust, a locked list, a core or paid plugin, or a
   release older than the installed version;

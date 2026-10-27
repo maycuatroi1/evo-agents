@@ -14,6 +14,10 @@ the run that resumes it, claimed with ``resume_of_run_id``, goes on in them (``C
 for no reply, only for the answer to a decision of its agent, as a plan run does (``wait_for_owner``), and is parked the
 same way. One that asked none ends done with its turn, and the run that goes on in
 its session adopts them the same way.
+
+The next attempt of a plan run the hub lost on this worker (``lost_attempt`` of its claim) goes on in the lost attempt's
+session and worktrees too, once they are all still here (``Conversation.adopt_lost``); its agent is told its process
+was interrupted, and to check each worktree before it goes on (LOST_PROMPT). Otherwise it starts as any attempt does.
 """
 
 from __future__ import annotations
@@ -65,6 +69,18 @@ RESUME_PROMPT = (
 )
 
 
+# And when the attempt before this one was lost and this one goes on in its session and worktrees, on the same worker.
+LOST_PROMPT = (
+    "The agent of this plan run was interrupted: the hub lost run #{lost} when its worker stopped extending the lease, "
+    "and the plan run goes on now as run #{id}, its next attempt, in the same session and the same worktrees; "
+    "EVO_RUN_ID names the new run, and the commands of `evo-agents worker` use it. What you were doing when it stopped "
+    "may be half done: before you go on, check the state of each worktree (`git status`, `git diff`, and the commits "
+    "not pushed yet), finish or undo an edit left half-written, and run again a command or a verify that did not "
+    "complete. Then go on with the plan from where you stopped: read the plan as the hub holds it now with "
+    "`evo-agents worker plan` first; the steps it holds as done stay done."
+)
+
+
 def read_asked(home, run_id: int) -> set[int]:
     """The decisions the agent of plan run or author run ``run_id`` asked, as ``evo-agents worker ask`` noted them."""
     asked: set[int] = set()
@@ -101,7 +117,8 @@ async def post_last_message(run: Run) -> str | None:
 
 class Conversation:
     """The session of the run's agent across its turns (``session_id``), the parked run it goes on from
-    (``resume_of``), and what starts each next turn: ``after_turn``, the decisions the run waits for unless the kind
+    (``resume_of``) or the lost attempt whose session it goes on in (``lost_of``, once ``goes_on_lost``), and what
+    starts each next turn: ``after_turn``, the decisions the run waits for unless the kind
     brings its own, and the prompt it starts with, ``reply_prompt`` (or what ``prompt_for`` makes of the messages)
     then the owner's messages."""
 
@@ -120,6 +137,10 @@ class Conversation:
         spec = run.spec
         self.resume_of = int(spec["resume_of_run_id"]) if spec.get("resume_of_run_id") else None
         self.session_id: str | None = spec.get("session_id") or None
+        lost = spec.get("lost_attempt") if isinstance(spec.get("lost_attempt"), dict) else {}
+        self.lost_of = int(lost["run_id"]) if lost.get("run_id") else None
+        self.lost_session: str | None = lost.get("session_id") or None
+        self.goes_on_lost = False  # adopt_lost took the session and worktrees of the lost attempt
         self.reply_prompt = reply_prompt
         self.resume_prompt = resume_prompt
         self.after_turn = after_turn or self.wait_for_decisions
@@ -164,6 +185,87 @@ class Conversation:
         names = ", ".join(self.directory.workspaces) or "no repo"
         run.note(f"Goes on from {before} #{old_id} in {directory}, with its worktrees of {names}.")
 
+    async def adopt_lost(self, cls) -> bool:
+        """Go on in the session and the worktrees of the attempt before this one, which the hub lost on this worker
+        (``lost_of``, ``lost_session``), when they are still here as that attempt left them (``_lost_here``): take over
+        its directory and worktrees, each on its branch again, as ``adopt`` does those of a parked run. Otherwise note
+        why not, and the run starts as any other attempt does, in a new session and new worktrees. Whether it goes
+        on."""
+        run, old_id = self.run, self.lost_of
+        if old_id is None or not self.lost_session:
+            return False
+        found = await self._lost_here(cls, old_id)
+        if isinstance(found, str):
+            run.note(
+                f"The run does not go on in the session of run #{old_id}, which the hub lost: {found}. The agent starts "
+                "a new session in new worktrees."
+            )
+            return False
+        record, directory, workspaces = found
+        for workspace in workspaces:
+            self.directory.workspaces[workspace.repo] = workspace
+        self.directory.path = directory
+        self.session_id = self.lost_session
+        self.goes_on_lost = True
+        self._adopt_pushes(old_id)
+        record.update({"resumed_by": run.id, "dir": None, "repos": [], "moved_to": str(directory)})
+        run.daemon.home.save_run(record)
+        names = ", ".join(self.directory.workspaces)
+        run.note(
+            f"Goes on from run #{old_id}, which the hub lost, in its session {self.session_id} and in {directory}, with "
+            f"its worktrees of {names}."
+        )
+        return True
+
+    async def _lost_here(self, cls, old_id: int) -> tuple[dict, Path, list[gitops.Workspace]] | str:
+        """The record, directory and worktrees of lost attempt ``old_id`` when this run may go on in them and in its
+        session: the attempt is over here (``finished_at``, and no longer the daemon's), was a plan run of this run's
+        runtime on this machine's host, and nothing went on from it yet; its directory and every worktree in it are
+        still here, each on its branch or detached at that branch's tip (the end of a run leaves its plan's branches,
+        ``RunDirectory.release``), and checked out on it again here; and the runtime ``cls`` finds the record of the
+        session (``Adapter.has_session``), in the environment its agent would have there. Else why not."""
+        run = self.run
+        if run.spec.get("environment"):
+            return "the run's agent runs in a container, which keeps no session"
+        if old_id in run.daemon.runs:
+            return "it has not ended on this worker yet"
+        record = run.daemon.home.load_run(old_id)
+        if record is None:
+            return "it did not run on this worker"
+        if record.get("kind") != "plan" or record.get("runtime") != run.runtime:
+            return f"it was not a plan run of {run.runtime}"
+        if not record.get("finished_at") or record.get("resumed_by"):
+            return "it is not over on this worker, or a run went on from it already"
+        directory = Path(record["dir"]) if record.get("dir") else None
+        workspaces = []
+        for item in record.get("repos") or []:
+            try:
+                workspaces.append(gitops.Workspace.from_record(item))
+            except ValueError:
+                return "its record names a worktree this worker cannot read"
+        if directory is None or not directory.is_dir() or not workspaces:
+            return "its worktrees are not on this worker any more"
+        for workspace in workspaces:
+            if not workspace.worktree.is_dir():
+                return f"its worktree of {workspace.repo} is not on this worker any more"
+        if not cls.has_session(self._env_in(directory), self.lost_session):
+            return f"{run.runtime} has no record of its session {self.lost_session} on this worker"
+        for workspace in workspaces:
+            refused = await _on_branch(workspace)
+            if refused is not None:
+                return refused
+        return record, directory, workspaces
+
+    def _env_in(self, directory: Path) -> dict[str, str]:
+        """The environment the run's agent would have with ``directory`` as its own: a Claude Code config dir of the
+        run's own lives in it (``claude_home``)."""
+        run = self.run
+        before, run.worktree = run.worktree, directory
+        try:
+            return run.agent.env()
+        finally:
+            run.worktree = before
+
     def _adopt_decisions(self, record: dict, old_id: int) -> None:
         """The decisions the parked run's agent asked and has no answer to yet are this run's to wait for, worktrees
         or none: an author run waits again for the rest of them after its first turn."""
@@ -192,17 +294,22 @@ class Conversation:
                     handle.write(pushes if pushes.endswith("\n") else pushes + "\n")
 
     async def first_turn(self, prompt: str) -> tuple[str, str | None]:
-        """The prompt and session of the agent's first turn: ``prompt`` in a new session, or, for a run that resumes a
-        parked one, the owner's messages in that run's session."""
+        """The prompt and session of the agent's first turn: ``prompt`` in a new session; for a run that resumes a
+        parked one, the owner's messages in that run's session; for one that goes on from a lost attempt
+        (``adopt_lost``), LOST_PROMPT and the owner's messages in the lost attempt's session."""
         run = self.run
-        if self.resume_of is None:
+        if self.resume_of is None and not self.goes_on_lost:
             return prompt, None
         messages = await run.inbox.unread()
         said = await run.inbox.take(messages) if messages else ""
         if self.session_id is None:  # the parked run never told its session: start again, with the messages
             run.note("The parked run left no session to go on with: the agent starts a new one.")
             return runs.clip(prompt + ("\n\n" + said if said else ""), runs.MAX_PROMPT_BYTES), None
-        resumed = self.resume_prompt.format(id=run.id) + ("\n\n" + said if said else "")
+        if self.goes_on_lost:
+            opening = LOST_PROMPT.format(id=run.id, lost=self.lost_of)
+        else:
+            opening = self.resume_prompt.format(id=run.id)
+        resumed = opening + ("\n\n" + said if said else "")
         return runs.clip(resumed, runs.MAX_PROMPT_BYTES), self.session_id
 
     async def turns(self, cls, prompt: str, session_id: str | None) -> None:
@@ -339,3 +446,22 @@ class Conversation:
         )
         run.ended = True
         log.info("run parked", extra={"run_id": run.id, "session_id": self.session_id})
+
+
+async def _on_branch(workspace: gitops.Workspace) -> str | None:
+    """Check worktree ``workspace`` out on its branch again when it is detached at that branch's tip, as the end of a run
+    leaves it, keeping what is not committed; None once it is on its branch, else why it cannot be."""
+    worktree, branch = workspace.worktree, workspace.local_branch
+    try:
+        current = await gitops.current_branch(worktree)
+        if current == branch:
+            return None
+        if current is not None:
+            return f"its worktree of {workspace.repo} is on {current}, not {branch}"
+        head, tip = await gitops.rev(worktree, "HEAD"), await gitops.rev(worktree, gitops.branch_ref(branch))
+        if head is None or head != tip:
+            return f"its worktree of {workspace.repo} is no longer at the tip of {branch}"
+        await gitops.attach(worktree, branch)
+    except (gitops.GitError, OSError) as exc:
+        return f"its worktree of {workspace.repo} was not checked out on {branch} again: {exc}"
+    return None

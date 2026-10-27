@@ -1476,7 +1476,11 @@ export interface paths {
          * @description Dismiss an item of the review queue you can see, with a reason; it stays dismissed in later builds.
          */
         post: operations["dismiss_item_v1_kg__project__review__fingerprint__dismiss_post"];
-        delete?: never;
+        /**
+         * Undismiss Item
+         * @description Take a dismissal of an item of the review queue you can see back: the item is open again.
+         */
+        delete: operations["undismiss_item_v1_kg__project__review__fingerprint__dismiss_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1520,6 +1524,26 @@ export interface paths {
          * @description Accept or reject a proposal, or undo an active decision, with a reason.
          */
         post: operations["step_decision_v1_kg__project__decisions__number___step__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/cause/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Cause
+         * @description Give a failed run back the cause it had before a core plugin classified it; the run's log says who did.
+         */
+        post: operations["restore_cause_v1_projects__project__runs__run_id__cause_restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6108,6 +6132,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/jev/{project}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description Whether Jev is set up in the project, what its features do and what it spent today.
+         */
+        get: operations["status_v1_x_jev__project__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/jev/{project}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Usage
+         * @description The cost of the last 24 hours and 7 days, by feature, against the daily budget.
+         */
+        get: operations["usage_v1_x_jev__project__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/jev/{project}/acts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Acts
+         * @description What Jev decided, newest first, each with the hub's command that undoes it when the plugin applied it.
+         */
+        get: operations["acts_v1_x_jev__project__acts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/jev/{project}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Matches
+         * @description The corrections that repeat an earlier one or a rule the project accepted, newest first.
+         */
+        get: operations["matches_v1_x_jev__project__matches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/jev/{project}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Put the questions about the state to Jev, in one request (writer); the answers, the tokens and the cost.
+         */
+        post: operations["ask_v1_x_jev__project__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/marketing/{project}/channels": {
         parameters: {
             query?: never;
@@ -8351,6 +8475,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugin-api/projects/{project}/records/{collection}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a collection's records */
+        get: operations["backend_list_v1_plugin_api_projects__project__records__collection__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/records/{collection}/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a record */
+        get: operations["backend_show_v1_plugin_api_projects__project__records__collection___key__get"];
+        /** Write a record */
+        put: operations["backend_put_v1_plugin_api_projects__project__records__collection___key__put"];
+        post?: never;
+        /** Delete a record */
+        delete: operations["backend_delete_v1_plugin_api_projects__project__records__collection___key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plugins/{plugin}/records/{collection}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a plugin's records of a collection */
+        get: operations["member_list_v1_projects__project__plugins__plugin__records__collection__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plugins/{plugin}/records/{collection}/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a record of a plugin */
+        get: operations["member_show_v1_projects__project__plugins__plugin__records__collection___key__get"];
+        /** Write a record of a plugin */
+        put: operations["member_put_v1_projects__project__plugins__plugin__records__collection___key__put"];
+        post?: never;
+        /** Delete a record of a plugin */
+        delete: operations["member_delete_v1_projects__project__plugins__plugin__records__collection___key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/task/pulls": {
         parameters: {
             query?: never;
@@ -9701,6 +9897,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/projects/{project}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Project
+         * @description The project's self-managed state, trusted owners, ladder and grants.
+         */
+        get: operations["show_project_v1_admin_projects__project__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/projects/{project}/self-managed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Self Managed
+         * @description Turn the project's self-managed state on with the GitHub owners hub admins trust, or off.
+         */
+        put: operations["set_self_managed_v1_admin_projects__project__self_managed_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Own Project
+         * @description The self-managed state, trusted owners, ladder and grants of a project, for its admins and hub admins.
+         */
+        get: operations["show_own_project_v1_projects__project__admin_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/admin/grants/{login}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Grant
+         * @description Give ``login`` a role on the project, or change the one it has, up to the admin's own role and max level.
+         */
+        put: operations["put_grant_v1_projects__project__admin_grants__login__put"];
+        post?: never;
+        /**
+         * Delete Grant
+         * @description Take back the grant of ``login`` on the project, if it is not above the admin's own role and max level.
+         */
+        delete: operations["delete_grant_v1_projects__project__admin_grants__login__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Invite
+         * @description Make a one-time link that joins the project with a role and max level up to the admin's own.
+         */
+        post: operations["make_invite_v1_projects__project__admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plugins/install-github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install For Project
+         * @description Install, or upgrade, the plugin of the release of a trusted owner's repository, for this project alone.
+         */
+        post: operations["install_for_project_v1_projects__project__plugins_install_github_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plugins/{name}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove For Project
+         * @description Remove the installed version of a plugin this project installed; every version stays in the store.
+         */
+        post: operations["remove_for_project_v1_projects__project__plugins__name__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plugins": {
         parameters: {
             query?: never;
@@ -11035,6 +11375,89 @@ export interface paths {
         get: operations["decision_board_v1_projects__project__decision_board_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Baseline
+         * @description The baseline of a goal that aims at an SRS document: what the hub proposes of each approved use case, with its
+         *     evidence, and whether an admin confirmed it.
+         */
+        get: operations["show_baseline_v1_projects__project__goals__ref__baseline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/baseline/fix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fix Baseline
+         * @description Set use cases of the baseline to delivered or undelivered by code, by heading, or the unknown ones as a whole (an
+         *     admin of the project); answers the baseline as it stands.
+         */
+        post: operations["fix_baseline_v1_projects__project__goals__ref__baseline_fix_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/baseline/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Baseline
+         * @description Confirm the baseline of a goal, once (an admin of the project): the Loop then makes builds for its backlog.
+         */
+        post: operations["confirm_baseline_v1_projects__project__goals__ref__baseline_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Plan
+         * @description Adopt a plan of the project as a deliver for use cases of a goal's document (an admin of the project, or the
+         *     writer who owns the goal): the use cases are being delivered, and delivered at once for a plan already completed.
+         */
+        post: operations["adopt_plan_v1_projects__project__loop_adopt_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12882,6 +13305,67 @@ export interface components {
              */
             fresh: boolean;
         };
+        /** BaselineEvidence */
+        BaselineEvidence: {
+            /**
+             * Kind
+             * @description plan_completed, step_done, commit_merged, pr_merged or code_comment
+             */
+            kind: string;
+            /**
+             * Ref
+             * @description the id of the node of the graph it is read from
+             */
+            ref: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BaselineFix
+         * @description What an admin sets: use cases by code, by heading (every use case under it) and the unknown ones as a whole.
+         */
+        BaselineFix: {
+            /** Codes */
+            codes?: {
+                [key: string]: "delivered" | "undelivered";
+            };
+            /** Headings */
+            headings?: {
+                [key: string]: "delivered" | "undelivered";
+            };
+            /**
+             * Unknown
+             * @description every use case still unknown becomes this
+             */
+            unknown?: ("delivered" | "undelivered") | null;
+        };
+        /**
+         * BaselineItem
+         * @description An approved use case of the goal's scope with its state in the baseline.
+         */
+        BaselineItem: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /** Heading */
+            heading: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "delivered" | "undelivered" | "unknown" | "delivering";
+            /**
+             * Source
+             * @description proposal: the hub's proposal, not in the ledger yet; kg, admin and deliver: the ledger row's
+             * @enum {string}
+             */
+            source: "kg" | "admin" | "deliver" | "proposal";
+            /** Reason */
+            reason: string;
+            /** Evidence */
+            evidence: components["schemas"]["BaselineEvidence"][];
+        };
         /** Blob */
         Blob: {
             /** Sha256 */
@@ -12911,7 +13395,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
+            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "srs_baseline" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
             /**
              * Title
              * @description what waits, in one line
@@ -15015,6 +15499,21 @@ export interface components {
             license: string;
             /** Copyright */
             copyright: string;
+        };
+        /** CauseRestored */
+        CauseRestored: {
+            /** Run Id */
+            run_id: number;
+            /**
+             * Failure Cause
+             * @description the cause the run has now: the one the hub had guessed
+             */
+            failure_cause: string | null;
+            /**
+             * Was
+             * @description the cause the plugin had given it
+             */
+            was: string | null;
         };
         /**
          * CeilingSet
@@ -17376,7 +17875,7 @@ export interface components {
             reason: string;
             /**
              * By
-             * @description the login of the writer who dismissed it
+             * @description the login of the writer who dismissed it; plugin:<id> for a core plugin
              */
             by: string;
             /**
@@ -19704,6 +20203,12 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /**
+             * Reranked
+             * @description a ranker of a plugin the project enabled put the hits of this page in a new order; each hit's rank is still the ts_rank of its words
+             * @default false
+             */
+            reranked: boolean;
         };
         /** HistorySessionItem */
         HistorySessionItem: {
@@ -20453,6 +20958,227 @@ export interface components {
              */
             token: string;
         };
+        /** JevAct */
+        JevAct: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Feature */
+            feature: string;
+            /** Target */
+            target: string;
+            /** Outcome */
+            outcome: string;
+            /** Model */
+            model: string;
+            /** Confidence */
+            confidence: number | null;
+            /** Applied */
+            applied: boolean;
+            /** Undone */
+            undone: boolean;
+            /** Undone At */
+            undone_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            undo: components["schemas"]["JevUndo"] | null;
+        };
+        /** JevActs */
+        JevActs: {
+            /** Project */
+            project: string;
+            /** Acts */
+            acts: components["schemas"]["JevAct"][];
+        };
+        /** JevAnswer */
+        JevAnswer: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "choice" | "noul" | "score";
+            /** Choice */
+            choice?: string | null;
+            /** Noul */
+            noul?: number | null;
+            /** Score */
+            score?: number | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Legend */
+            legend?: string | null;
+            /** Probabilities */
+            probabilities?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
+        };
+        /** JevAskIn */
+        JevAskIn: {
+            /**
+             * State
+             * @description what the questions are about: text, or JSON
+             */
+            state: string | {
+                [key: string]: unknown;
+            } | unknown[];
+            /** Questions */
+            questions: {
+                [key: string]: components["schemas"]["JevQuestion"];
+            };
+        };
+        /** JevAsked */
+        JevAsked: {
+            /** Project */
+            project: string;
+            /** Model */
+            model: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Answers */
+            answers: {
+                [key: string]: components["schemas"]["JevAnswer"];
+            };
+        };
+        /** JevFeature */
+        JevFeature: {
+            /** Name */
+            name: string;
+            /** Mode */
+            mode: string;
+            /** Threshold */
+            threshold?: number | null;
+            /** Noul Yes */
+            noul_yes?: number | null;
+            /** Noul No */
+            noul_no?: number | null;
+            /** Cap */
+            cap?: number | null;
+            /** Applied Today */
+            applied_today?: number | null;
+        };
+        /** JevMatch */
+        JevMatch: {
+            /** Id */
+            id: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Evidence */
+            evidence: string;
+            /** Candidate */
+            candidate: string;
+            /** Model */
+            model: string;
+            /** Confidence */
+            confidence: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "match" | "suggestion";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** JevMatches */
+        JevMatches: {
+            /** Project */
+            project: string;
+            /** Matches */
+            matches: components["schemas"]["JevMatch"][];
+        };
+        /** JevQuestion */
+        JevQuestion: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "choice" | "noul" | "score";
+            /** Instructions */
+            instructions?: string | null;
+            /** Criteria */
+            criteria?: {
+                [key: string]: string;
+            } | string[] | null;
+        };
+        /** JevStatus */
+        JevStatus: {
+            /** Project */
+            project: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Configured */
+            configured: boolean;
+            /** Key Set */
+            key_set: boolean;
+            /** Model */
+            model: string | null;
+            /** Base Url */
+            base_url: string;
+            /** Sink */
+            sink: string;
+            /** Sink Declared */
+            sink_declared: boolean;
+            /** Price Usd Per Million Tokens */
+            price_usd_per_million_tokens: number;
+            /** Daily Usd */
+            daily_usd: number;
+            /** Spent Today Usd */
+            spent_today_usd: number;
+            /** Features */
+            features: components["schemas"]["JevFeature"][];
+            /** Problems */
+            problems: string[];
+        };
+        /** JevUndo */
+        JevUndo: {
+            /** Command */
+            command: string;
+            /** Method */
+            method: string;
+            /** Path */
+            path: string;
+        };
+        /** JevUsage */
+        JevUsage: {
+            /** Project */
+            project: string;
+            /** Model */
+            model: string | null;
+            /** Price Usd Per Million Tokens */
+            price_usd_per_million_tokens: number;
+            /** Daily Usd */
+            daily_usd: number;
+            /** Spent Today Usd */
+            spent_today_usd: number;
+            last_24h: components["schemas"]["JevWindow"];
+            last_7d: components["schemas"]["JevWindow"];
+        };
+        /** JevWindow */
+        JevWindow: {
+            /** Calls */
+            calls: number;
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** By Feature */
+            by_feature: {
+                [key: string]: unknown;
+            }[];
+        };
         /** Job */
         Job: {
             /** Job Id */
@@ -20695,7 +21421,7 @@ export interface components {
             action: "propose" | "decide" | "accept" | "reject" | "undo";
             /**
              * By
-             * @description the login of the member, or of the agent's owner, who took the step
+             * @description the login of the member, or of the agent's owner, who took the step; plugin:<id> for a core plugin that took it as itself
              */
             by: string;
             /**
@@ -21519,6 +22245,49 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** LoopAdopt */
+        LoopAdopt: {
+            /**
+             * Plan
+             * @description the id of a plan of the project, active or completed
+             */
+            plan: string;
+            /**
+             * Goal
+             * @description the code or alias of a goal that aims at an SRS document
+             */
+            goal: string;
+            /**
+             * Use Cases
+             * @description the codes the plan delivers
+             */
+            use_cases: string[];
+        };
+        /** LoopAdopted */
+        LoopAdopted: {
+            /** Project */
+            project: string;
+            /** Goal */
+            goal: string;
+            /** Plan */
+            plan: string;
+            /**
+             * Item
+             * @description the id of the deliver
+             */
+            item: number;
+            /** State */
+            state: string;
+            /** Reason */
+            reason: string | null;
+            /** Use Cases */
+            use_cases: string[];
+            /**
+             * Delivered
+             * @description the plan was completed: the use cases are delivered now
+             */
+            delivered: boolean;
+        };
         /** LoopChainClaim */
         LoopChainClaim: {
             /** Canvas */
@@ -21894,6 +22663,23 @@ export interface components {
              * @description the version of the document it was read from
              */
             version: number | null;
+        };
+        /**
+         * LostAttempt
+         * @description The attempt before a plan run that the hub lost on the worker claiming the run, whose agent's session the run
+         *     may go on in.
+         */
+        LostAttempt: {
+            /**
+             * Run Id
+             * @description the lost attempt, whose worktrees the worker may still have
+             */
+            run_id: number;
+            /**
+             * Session Id
+             * @description the session of its agent, as its worker reported it
+             */
+            session_id: string;
         };
         /** MapNode */
         MapNode: {
@@ -26153,6 +26939,11 @@ export interface components {
              */
             upgrade_to: string | null;
             /**
+             * Project
+             * @description the one project an admin of it installed the plugin for, which no other project sees or enables; null for a plugin the hub admins installed
+             */
+            project?: string | null;
+            /**
              * Created At
              * Format: date-time
              */
@@ -26282,6 +27073,11 @@ export interface components {
              */
             upgrade_to: string | null;
             /**
+             * Project
+             * @description the one project an admin of it installed the plugin for, which no other project sees or enables; null for a plugin the hub admins installed
+             */
+            project?: string | null;
+            /**
              * Created At
              * Format: date-time
              */
@@ -26306,6 +27102,11 @@ export interface components {
              * @description the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it
              */
             permissions: string[];
+            /**
+             * Records Level
+             * @description a level of the project's ladder: the highest its jobs and events, which have no caller, reach in the plugin's records; left out, what is set stays (none at first)
+             */
+            records_level?: string | null;
         };
         /** PluginInstallIn */
         PluginInstallIn: {
@@ -28222,6 +29023,31 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ProjectAdminView */
+        ProjectAdminView: {
+            /** Name */
+            name: string;
+            /**
+             * Self Managed
+             * @description whether the project's admins install plugins and give grants themselves
+             */
+            self_managed: boolean;
+            /**
+             * Trusted Owners
+             * @description the GitHub owners whose releases they install plugins from
+             */
+            trusted_owners: string[];
+            /**
+             * Levels
+             * @description the project's label ladder, lowest first
+             */
+            levels: string[];
+            /**
+             * Grants
+             * @description every grant of the project, by login
+             */
+            grants: components["schemas"]["ProjectGrant"][];
+        };
         /** ProjectFailedBuilds */
         ProjectFailedBuilds: {
             /** Project */
@@ -28304,6 +29130,16 @@ export interface components {
              */
             opportunity?: string | null;
             /**
+             * Srs Document
+             * @description the slug of the SRS document whose approved use cases the goal delivers; null: none
+             */
+            srs_document?: string | null;
+            /**
+             * Srs Heading
+             * @description the code or title of a heading of that document the goal is limited to; null: all
+             */
+            srs_heading?: string | null;
+            /**
              * Rank
              * @description its place among the project's goals, 1 first
              */
@@ -28380,6 +29216,16 @@ export interface components {
              */
             opportunity?: string | null;
             /**
+             * Srs Document
+             * @description the slug of a document of the project, not archived, whose approved use cases the goal delivers; null: none. The metric srs.backlog.open needs one
+             */
+            srs_document?: string | null;
+            /**
+             * Srs Heading
+             * @description the code or title of a heading of that document to limit the goal to; null: all. Not without a document
+             */
+            srs_heading?: string | null;
+            /**
              * Rank
              * @description null: kept, or after the project's other goals for a new one
              */
@@ -28451,6 +29297,16 @@ export interface components {
              */
             opportunity?: string | null;
             /**
+             * Srs Document
+             * @description the slug of the SRS document whose approved use cases the goal delivers; null: none
+             */
+            srs_document?: string | null;
+            /**
+             * Srs Heading
+             * @description the code or title of a heading of that document the goal is limited to; null: all
+             */
+            srs_heading?: string | null;
+            /**
              * Rank
              * @description its place among the project's goals, 1 first
              */
@@ -28488,6 +29344,28 @@ export interface components {
              */
             changed: boolean;
         };
+        /** ProjectGrant */
+        ProjectGrant: {
+            /** Login */
+            login: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "reader" | "writer" | "admin";
+            /** Max Level */
+            max_level: string;
+            /**
+             * Granted By
+             * @description the login of whoever gave or last changed the grant
+             */
+            granted_by: string | null;
+            /**
+             * Granted At
+             * Format: date-time
+             */
+            granted_at: string;
+        };
         /** ProjectGrantCounts */
         ProjectGrantCounts: {
             /** Project */
@@ -28498,6 +29376,41 @@ export interface components {
             writers: number;
             /** Readers */
             readers: number;
+        };
+        /** ProjectInstallIn */
+        ProjectInstallIn: {
+            /**
+             * Repo
+             * @description OWNER/REPO of a trusted owner
+             */
+            repo: string;
+            /**
+             * Tag
+             * @description the release's tag; the latest if left out
+             */
+            tag?: string | null;
+            /**
+             * Signer
+             * @description a workflow of the repo that signs its releases; its ci.yml when left out
+             */
+            signer?: string | null;
+        };
+        /** ProjectInviteIn */
+        ProjectInviteIn: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "reader" | "writer" | "admin";
+            /** Max Level */
+            max_level: string;
+            /** For Login */
+            for_login?: string | null;
+            /**
+             * Days
+             * @default 7
+             */
+            days: number;
         };
         /**
          * ProjectLoop
@@ -28959,6 +29872,11 @@ export interface components {
              * @description asked for and not granted, after an upgrade asked for more: enable it again to grant them
              */
             pending: string[];
+            /**
+             * Records Level
+             * @description the highest level of the project's ladder its jobs and events, which have no caller, reach in its records (records:use); none: they reach none
+             */
+            records_level?: string | null;
             /**
              * Config Schema
              * @description the JSON Schema of its config, secret fields marked x-secret
@@ -30582,6 +31500,78 @@ export interface components {
              * @description every step of the plan, in plan order
              */
             steps: components["schemas"]["StepReadiness"][];
+        };
+        /** RecordIn */
+        RecordIn: {
+            /**
+             * Body
+             * @description a JSON object, at most 64 KiB
+             */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * Level
+             * @description a level of the project's ladder; default: its default label's
+             */
+            level?: string | null;
+            /**
+             * Audience
+             * @description writer: only the person who writes it sees it; default: everyone the level reaches
+             */
+            audience?: ("writer" | "everyone") | null;
+            /**
+             * Revision
+             * @description 0: a new record; n: the record at revision n; none: either
+             */
+            revision?: number | null;
+        };
+        /** RecordOut */
+        RecordOut: {
+            /** Collection */
+            collection: string;
+            /** Key */
+            key: string;
+            /** Revision */
+            revision: number;
+            /** Level */
+            level: string;
+            /**
+             * Audience
+             * @enum {string}
+             */
+            audience: "writer" | "everyone";
+            /** Body */
+            body: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @description the login of the writer; none for a job or an event
+             */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated By */
+            updated_by: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RecordPage */
+        RecordPage: {
+            /** Records */
+            records: components["schemas"]["RecordOut"][];
+            /**
+             * Next After
+             * @description the key to pass as `after` for the next page; none at the end
+             */
+            next_after: string | null;
         };
         /** RecordedOutputs */
         RecordedOutputs: {
@@ -33164,6 +34154,8 @@ export interface components {
              * @description the agent session to resume; null for a new one
              */
             session_id?: string | null;
+            /** @description a plan run's attempt before this one, which the hub lost on this same worker (it stopped extending the lease), on the same runtime: the worker goes on in its agent's session and worktrees when it still has both, else starts as for any other attempt; null for any other run */
+            lost_attempt?: components["schemas"]["LostAttempt"] | null;
             /**
              * Runtime
              * @description a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration
@@ -33907,6 +34899,16 @@ export interface components {
              * @description false when a secret of this name was replaced
              */
             created: boolean;
+        };
+        /** SelfManagedIn */
+        SelfManagedIn: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Trusted Owners
+             * @description GitHub owners (users or organisations); at least one to turn on
+             */
+            trusted_owners?: string[];
         };
         /**
          * SelfUpdateReport
@@ -34877,6 +35879,45 @@ export interface components {
              * @description the commit on its forge, when the repo's origin is on one
              */
             url: string | null;
+        };
+        /**
+         * SrsBaseline
+         * @description The baseline of a goal that aims at an SRS document: proposed until an admin confirms it.
+         */
+        SrsBaseline: {
+            /** Project */
+            project: string;
+            /** Goal */
+            goal: string;
+            /** Document */
+            document: string;
+            /** Heading */
+            heading: string | null;
+            /**
+             * Confirmed
+             * @description an admin confirmed it: the Loop makes builds for the goal's backlog
+             */
+            confirmed: boolean;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /**
+             * Graph
+             * @description whether the knowledge graph could be read for the evidence
+             */
+            graph: boolean;
+            /**
+             * Why
+             * @description why the graph could not be read
+             */
+            why: string | null;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["BaselineItem"][];
         };
         /**
          * SrsChange
@@ -38133,6 +39174,16 @@ export interface components {
             added_at: string;
             /** Note */
             note?: string | null;
+        };
+        /** Undismissed */
+        Undismissed: {
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Was By
+             * @description who had dismissed it: a login, or plugin:<id> for a core plugin
+             */
+            was_by: string;
         };
         /** UnitCreate */
         UnitCreate: {
@@ -44518,6 +45569,84 @@ export interface operations {
             };
         };
     };
+    undismiss_item_v1_kg__project__review__fingerprint__dismiss_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description an item's fingerprint */
+                fingerprint: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Undismissed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_decisions_v1_kg__project__decisions_get: {
         parameters: {
             query?: {
@@ -44784,6 +45913,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    restore_cause_v1_projects__project__runs__run_id__cause_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CauseRestored"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -61791,6 +62961,409 @@ export interface operations {
             };
         };
     };
+    status_v1_x_jev__project__status_get: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub jev` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JevStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    usage_v1_x_jev__project__usage_get: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub jev` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JevUsage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    acts_v1_x_jev__project__acts_get: {
+        parameters: {
+            query?: {
+                /** @description how many, newest first */
+                limit?: number;
+                /** @description text: the words `evo-agents hub jev` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JevActs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    matches_v1_x_jev__project__matches_get: {
+        parameters: {
+            query?: {
+                /** @description how many, newest first */
+                limit?: number;
+                /** @description text: the words `evo-agents hub jev` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JevMatches"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_v1_x_jev__project__ask_post: {
+        parameters: {
+            query?: {
+                /** @description text: the words `evo-agents hub jev` prints, as {text}, instead of the answer */
+                render?: "text" | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JevAskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JevAsked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_channels_v1_x_marketing__project__channels_get: {
         parameters: {
             query?: {
@@ -71135,6 +72708,614 @@ export interface operations {
             };
         };
     };
+    backend_list_v1_plugin_api_projects__project__records__collection__get: {
+        parameters: {
+            query?: {
+                /** @description list the records after this key */
+                after?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                collection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    backend_show_v1_plugin_api_projects__project__records__collection___key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                collection: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    backend_put_v1_plugin_api_projects__project__records__collection___key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                collection: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    backend_delete_v1_plugin_api_projects__project__records__collection___key__delete: {
+        parameters: {
+            query?: {
+                /** @description delete only the record at this revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                collection: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    member_list_v1_projects__project__plugins__plugin__records__collection__get: {
+        parameters: {
+            query?: {
+                /** @description list the records after this key */
+                after?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                plugin: string;
+                collection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPage"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    member_show_v1_projects__project__plugins__plugin__records__collection___key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plugin: string;
+                collection: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    member_put_v1_projects__project__plugins__plugin__records__collection___key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plugin: string;
+                collection: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    member_delete_v1_projects__project__plugins__plugin__records__collection___key__delete: {
+        parameters: {
+            query?: {
+                /** @description delete only the record at this revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                plugin: string;
+                collection: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     pushed_v1_worker_runs__run_id__task_pulls_post: {
         parameters: {
             query?: never;
@@ -76246,6 +78427,650 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_project_v1_admin_projects__project__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectAdminView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_self_managed_v1_admin_projects__project__self_managed_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfManagedIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectAdminView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_own_project_v1_projects__project__admin_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectAdminView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_grant_v1_projects__project__admin_grants__login__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Grant"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_grant_v1_projects__project__admin_grants__login__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    make_invite_v1_projects__project__admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectInviteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    install_for_project_v1_projects__project__plugins_install_github_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectInstallIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketInstalled"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_for_project_v1_projects__project__plugins__name__remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -81405,6 +84230,285 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_baseline_v1_projects__project__goals__ref__baseline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fix_baseline_v1_projects__project__goals__ref__baseline_fix_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineFix"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_baseline_v1_projects__project__goals__ref__baseline_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_plan_v1_projects__project__loop_adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoopAdopt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopAdopted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

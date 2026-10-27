@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import dispatch_credential
+from evo_agents.hub.self_managed import ProjectScope, own_signer
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
 from evo_agents.hub.server.chat_store import insert_mentions
@@ -73,7 +74,7 @@ FIELDS = {  # kind -> (the fields it needs, those it may set)
     PLUGIN_LISTING: (("repo", "tag", "price", "industries"), ("categories", "seller", "index")),
 }
 
-Install = Callable[[Principal, GitHubInstallIn], Awaitable[MarketInstalled]]
+Install = Callable[[Principal, GitHubInstallIn, ProjectScope | None], Awaitable[MarketInstalled]]
 
 
 @dataclass(frozen=True)
@@ -189,7 +190,9 @@ async def check(conn: AsyncConnection, access: ProjectAccess, kind: str, sets: M
         raise ProposalError(409, f"this hub has a plugin {name} already: name the new one otherwise; {NOTHING}")
     taken = select(r.c.name).where(r.c.project_id == access.project_id, func.lower(r.c.name) == repo.lower())
     if (await conn.execute(taken)).first() is not None:
-        raise ProposalError(409, f"project {access.name} has a repo {repo} already: name the new one otherwise; {NOTHING}")
+        raise ProposalError(
+            409, f"project {access.name} has a repo {repo} already: name the new one otherwise; {NOTHING}"
+        )
 
 
 # Approving
@@ -297,20 +300,35 @@ async def _hand(conn: AsyncConnection, user: Principal, access: ProjectAccess, r
 
 
 async def apply(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, row, sets: Mapping, install: Install | None
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    row,
+    sets: Mapping,
+    install: Install | None,
+    own: bool = False,
 ) -> Done:
-    """Do approved action ``row`` once, for ``user``: hand @builder its task, or install the release."""
+    """Do approved action ``row`` once, for ``user``: hand @builder its task, or install the release. ``own``: a project
+    admin approved a plugin_install of a trusted owner's repo, so the plugin is installed for this project alone, with
+    the repo's own workflow as signer and no trust kept for the publisher."""
     if row.kind in RUNS:
         if row.kind == PLUGIN:
             await check(conn, access, row.kind, sets)
         return await _hand(conn, user, access, row, sets)
     if install is None:
         raise ProposalError(503, f"this hub cannot install a plugin from here: approve it with the route; {NOTHING}")
+    signer = sets.get("signer")
+    if own and own_signer(sets["repo"], signer) is None:
+        raise ProposalError(
+            422,
+            f"a self-managed project installs plugins signed by a workflow of the repo itself, not {signer}; {NOTHING}",
+        )
     try:
-        body = GitHubInstallIn(repo=sets["repo"], tag=sets.get("tag"), signer=sets.get("signer"), trust_publisher=True)
+        body = GitHubInstallIn(repo=sets["repo"], tag=sets.get("tag"), signer=signer, trust_publisher=not own)
     except ValidationError as exc:
         raise ProposalError(422, f"{exc.errors()[0]['msg']}; {NOTHING}") from None
-    done = await install(user, body)
+    done = await install(user, body, ProjectScope(access.project_id, access.name) if own else None)
     plugin = done.plugin
     trusted = " and trusts its signer for its publisher from now on" if done.trusted_publisher else ""
-    return Done(_said(f"the hub installed plugin {plugin.name} {plugin.installed_version}{trusted}"))
+    mine = f" for project {access.name} alone" if own else ""
+    return Done(_said(f"the hub installed plugin {plugin.name} {plugin.installed_version}{mine}{trusted}"))

@@ -5,7 +5,9 @@ repo (each repo of a task run or a chat run, an author run's but its harness) th
 that the project lists no origin for, is left out of it, noted and named in its prompt (``leaves_out``); the run goes
 on without it. Then, before anything is fetched or the agent starts, it checks what it needs
 (``preflight``): the project lists an origin for each of its repos, git reads it (and pushes to it, for a repo the run
-pushes) with what the run holds, each program its verify commands call is on the run's PATH, and the environment its
+pushes) with what the run holds, a credential its agent has opens a pull request in each repo on GitHub whose branch
+it lands through one it opens itself (``opens_pull``: a plan run's repo whose branch in the plan is not a default
+branch), each program its verify commands call is on the run's PATH, and the environment its
 claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
 plugin's environment), and for a run dispatched with browser, Chromium on this worker and node on the run's PATH
 (``browser_problems``). The origins of the run's repos are asked several at a time (``parallel``). A check that does
@@ -32,12 +34,14 @@ import contextlib
 from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING
 
-from evo_agents.worker import gitops, preflight
+from evo_agents.hub.credentials import github_repo
+from evo_agents.worker import credentials, gitops, preflight
 from evo_agents.worker.browser import install as browser_install
 from evo_agents.worker.environments import Container
 from evo_agents.worker.runner import clones, parallel
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.transitions import MAX_ERROR_CHARS
+from evo_agents.worker.runtimes import claude_home
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -113,16 +117,18 @@ async def check(
     *,
     path: str | None,
     pushes: Collection[str] = (),
+    pulls: Collection[str] = (),
     verify: Collection[str | tuple[str | None, str]] = (),
     hidden: list[str] | None = None,
     fetched: Collection[str] = (),
 ) -> None:
     """The preflight of the run (``preflight``): each of ``repos`` has an origin in the project and one git reads with
-    what the run holds, and pushes to for those of ``pushes``; each program ``verify`` and ``hidden`` (a judge run's
-    hidden checks) call is on ``path``, a verify being a command or a (step key, command) pair whose problem names the
-    step. The origins are asked several at a time (``parallel.each``), each problem in the order of ``repos``; those
-    of ``fetched`` are not asked, the fetch of their worktrees reads them. RunFailed with every problem found, the
-    cause of the first: the agent does not start."""
+    what the run holds, and pushes to for those of ``pushes``; for those of ``pulls`` on GitHub that git reaches, a
+    credential the agent has opens a pull request there (``opens_pull``), a guarded run's never asked; each program
+    ``verify`` and ``hidden`` (a judge run's hidden checks) call is on ``path``, a verify being a command or a (step
+    key, command) pair whose problem names the step. The origins are asked several at a time (``parallel.each``), each
+    problem in the order of ``repos``; those of ``fetched`` are not asked, the fetch of their worktrees reads them.
+    RunFailed with every problem found, the cause of the first: the agent does not start."""
     names = repo_names(repos)
     problems: list[preflight.Problem] = []
     unlisted = run.credentials.unlisted
@@ -138,6 +144,13 @@ async def check(
     asked = [name for name in names if name not in unlisted and name not in fetched]
     reached = await parallel.each(run, asked, lambda name: reach(run, name, push=name in pushes))
     problems += [found for found in reached if found is not None]
+    opens = [
+        name
+        for name, found in zip(asked, reached, strict=True)
+        if found is None and name in pulls and not run.credentials.guarded and on_github(run, name) is not None
+    ]
+    opened = await parallel.each(run, opens, lambda name: opens_pull(run, name))
+    problems += [found for found in opened if found is not None]
     problems += preflight.verify_problems(verify, path)
     problems += preflight.hidden_problems(hidden or [], path)
     problems += await environment_problems(run, names)
@@ -150,6 +163,8 @@ async def check(
     left = sum(1 for name in names if name in fetched)
     if left:
         checked[0] += f" ({left} left to their fetch: the run goes on in their worktrees)"
+    if opens:
+        checked.append(f"the pull requests of {len(opens)} repo(s) on GitHub")
     if verify or hidden:
         checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
     if run.agent.environment.container:
@@ -215,3 +230,87 @@ async def reach(run: Run, name: str, *, push: bool) -> preflight.Problem | None:
         if name not in run.credentials.unleased:
             why = "with this machine's own credentials (no lease of the run covers it)"
     return preflight.Problem("credentials", f"git cannot {verb} {name} at {urls[0]} {why}: {said}")
+
+
+def on_github(run: Run, name: str) -> tuple[str, str, str] | None:
+    """The URL of the origin of ``name``'s checkout here on github.com, with the repo's owner and name there; None for
+    an origin anywhere else (GitLab, another host, a path on this machine), whose pull requests are not checked."""
+    for url in run.credentials.origins.get(name) or []:
+        found = github_repo(url)
+        if found is not None:
+            return url, *found
+    return None
+
+
+async def opens_pull(run: Run, name: str) -> preflight.Problem | None:
+    """The problem the run's agent has opening a pull request in ``name`` on GitHub, or None (``preflight``,
+    ``preflight.pull_refusal``). GitHub is asked with each token the agent may open one with, in the order it would
+    take them: the one gh takes in its environment (GH_TOKEN, else GITHUB_TOKEN, else this machine's own gh login,
+    which an agent with a config dir of its own does not see, ``claude_home.wanted``), then the run's git lease that
+    covers the repo's origin (the GitHub App token the hub leased it). The first that can open one passes the check,
+    with a note naming those refused before it; an answer that is not clear (``preflight.Unclear``: gh or GitHub not
+    answering) passes it too, noted. A problem with cause credentials only when each token was refused, naming each
+    and what it lacks, or when the agent holds none."""
+    found = on_github(run, name)
+    if found is None:
+        return None
+    url, owner, repo = found
+    env = run.agent.env()
+    held = run.credentials
+    tokens: list[tuple[str, str]] = []  # (what the token is, as a message names it; its value)
+    none: list[str] = []  # why the agent holds no token of a kind
+    unclear: list[str] = []
+    login = not claude_home.wanted(run.spec, run.runtime, held.gateway is not None)
+    try:
+        value, source = await preflight.gh_token(env, login=login)
+    except preflight.Unclear as exc:
+        unclear.append(f"this machine's gh: {exc}")
+    else:
+        if value is None:
+            none.append(source)
+        elif source == "gh":
+            tokens.append(("this machine's own gh login", value))
+        elif source in held.agent_vars:
+            tokens.append((f"the {source} the hub leased the run", value))
+        else:
+            tokens.append((f"this machine's {source}", value))
+    lease = None
+    if name not in held.unleased:
+        lease = next(
+            filter(None, (credentials.covering(held.leases, item) for item in held.origins.get(name) or [])), None
+        )
+    if lease is None:
+        reason = held.unleased.get(name)
+        none.append(
+            f"the hub leased the run no credential for it: {reason}" if reason else "no lease of the run covers it"
+        )
+    elif all(lease.value != value for _, value in tokens):
+        if lease.provider == "github-app":
+            tokens.append((f"the GitHub App token the hub leased the run ({lease.name})", lease.value))
+        else:
+            tokens.append((f"the git secret {lease.name} the hub leased the run", lease.value))
+    refusals: list[str] = []
+    for what, value in tokens:
+        try:
+            why = await preflight.pull_refusal(owner, repo, value)
+        except preflight.Unclear as exc:
+            unclear.append(f"{what}: {exc}")
+            continue
+        if why is None:
+            if refusals:
+                run.note(f"Preflight: {'; '.join(refusals)}; {what} can open a pull request in {name}.")
+            return None
+        refusals.append(f"{what} {why}")
+    if unclear:
+        run.note(
+            f"Preflight: whether the run can open a pull request in {name} is not known "
+            f"({'; '.join([*refusals, *unclear])}): the agent starts all the same."
+        )
+        return None
+    if refusals:
+        said = "; ".join([*refusals, *none])
+        return preflight.Problem("credentials", f"the run cannot open a pull request in {name} at {url}: {said}")
+    return preflight.Problem(
+        "credentials",
+        f"the run holds no credential to open a pull request in {name} at {url} with: {'; '.join(none)}",
+    )

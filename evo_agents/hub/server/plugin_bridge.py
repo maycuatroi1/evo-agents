@@ -9,6 +9,8 @@ the header PLUGIN_HEADER, and the hub checks that call again, as it arrives, on 
 - a read of ``bridge_reads`` needs the plugin installed on the hub, turned on, enabled in the project the route names,
   and the permission it needs in what the project granted that the installed version still asks for
   (``plugin_calls.effective_grant``, as the extension points check it);
+- the records of the plugin itself (``plugin_records_api.members``), read or written, need the permission ``records:use``
+  as a read does, and only under the plugin's own name: a page reaches no other plugin's records;
 - anything else is a 403, before the route runs.
 
 The web checks the same before it calls, from what it read of the plugin a moment ago; the hub's check is of now, so a
@@ -51,6 +53,15 @@ def bridge_reads() -> dict[Callable, str]:
     }
 
 
+@cache
+def bridge_records() -> dict[Callable, str]:
+    """The routes of a plugin's own records, which a page reads and writes with any method, and the permission they need."""
+    from evo_agents.hub.server import plugin_records_api as api
+
+    handlers = (api.member_list, api.member_show, api.member_put, api.member_delete)
+    return dict.fromkeys(handlers, "records:use")
+
+
 def _refused(message: str) -> HTTPException:
     return HTTPException(403, message)
 
@@ -74,12 +85,17 @@ async def bridge_gate(connection: HTTPConnection) -> None:
         if path.startswith(f"{PLUGIN_ROUTES}{plugin}/"):
             return  # the plugin's own route, which checks that the project enables it
         raise _refused(f"a page of plugin {plugin} reaches only its own routes under {PLUGIN_ROUTES}{plugin}/")
-    needs = bridge_reads().get(connection.scope.get("endpoint")) if connection.scope.get("method") == "GET" else None
+    endpoint = connection.scope.get("endpoint")
+    needs = bridge_reads().get(endpoint) if connection.scope.get("method") == "GET" else None
+    if needs is None and endpoint in bridge_records():
+        if connection.path_params.get("plugin") != plugin:
+            raise _refused(f"a page of plugin {plugin} reaches only the records of plugin {plugin}")
+        needs = bridge_records()[endpoint]
     project = _project_of(connection, needs) if needs else None
     if needs is None or not project:
         raise _refused(
-            f"a page of plugin {plugin} reads runs, plans and the project's memories through the bridge, and nothing "
-            "else of the hub"
+            f"a page of plugin {plugin} reads runs, plans and the project's memories and keeps its own records "
+            "through the bridge, and nothing else of the hub"
         )
     query = enabled_query().where(tables.plugins.c.name == plugin, tables.projects.c.name == project)
     async with connection.app.state.engine.begin() as conn:

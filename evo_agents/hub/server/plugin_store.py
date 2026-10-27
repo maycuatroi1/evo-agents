@@ -116,6 +116,11 @@ class Plugin(BaseModel):
     disabled_at: datetime | None
     latest_version: str
     upgrade_to: str | None = Field(description="the newest version above the installed one that runs on this hub")
+    project: str | None = Field(
+        None,
+        description="the one project an admin of it installed the plugin for, which no other project sees or enables; "
+        "null for a plugin the hub admins installed",
+    )
     created_at: datetime
 
 
@@ -248,7 +253,7 @@ def _versions_query():
 
 
 def _plugins_query():
-    p, u = tables.plugins, tables.users
+    p, u, scope = tables.plugins, tables.users, tables.projects
     return (
         select(
             p.c.id,
@@ -260,8 +265,11 @@ def _plugins_query():
             p.c.disabled_reason,
             p.c.disabled_at,
             p.c.created_at,
+            p.c.project_id,
+            scope.c.name.label("project"),
         )
         .outerjoin_from(p, u, u.c.id == p.c.installed_by)
+        .outerjoin(scope, scope.c.id == p.c.project_id)
         .order_by(p.c.name)
     )
 
@@ -322,6 +330,7 @@ def plugin_model(row, versions: list[PluginVersion], manifest: dict) -> dict:
         "disabled_at": row.disabled_at,
         "latest_version": versions[0].version,
         "upgrade_to": _upgrade_to(row.installed_version, versions),
+        "project": row.project,
         "created_at": row.created_at,
     }
 
@@ -502,8 +511,11 @@ def check_placeable(row, version) -> None:
         )
 
 
-async def set_installed(conn: AsyncConnection, user: Principal, row, version: str, *, upgrade: bool) -> None:
-    """Install ``version`` of plugin ``row``, turned on, with its audit row."""
+async def set_installed(
+    conn: AsyncConnection, user: Principal, row, version: str, *, upgrade: bool, project_id: int | None = None
+) -> None:
+    """Install ``version`` of plugin ``row``, turned on, with its audit row, in project ``project_id`` when an admin of
+    that self-managed project does it."""
     plugins = tables.plugins
     await conn.execute(
         update(plugins)
@@ -518,10 +530,12 @@ async def set_installed(conn: AsyncConnection, user: Principal, row, version: st
     )
     action = audit.PLUGIN_UPGRADE if upgrade else audit.PLUGIN_INSTALL
     target = f"plugin:{row.name}@{version}"
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+    await audit.record(
+        conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target, project_id=project_id
+    )
 
 
-async def set_removed(conn: AsyncConnection, user: Principal, row) -> None:
+async def set_removed(conn: AsyncConnection, user: Principal, row, *, project_id: int | None = None) -> None:
     plugins = tables.plugins
     cleared = {"installed_version": None, "installed_by": None, "installed_at": None}
     await conn.execute(
@@ -529,7 +543,14 @@ async def set_removed(conn: AsyncConnection, user: Principal, row) -> None:
     )
     await revoke_tokens(conn, row.id)  # its backend's token stops working now, not when the host next pulls
     target = f"plugin:{row.name}@{row.installed_version}"
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.PLUGIN_REMOVE, target=target)
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.PLUGIN_REMOVE,
+        target=target,
+        project_id=project_id,
+    )
 
 
 # At every start

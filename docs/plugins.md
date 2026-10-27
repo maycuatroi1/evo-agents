@@ -225,8 +225,9 @@ project is what the project granted that its installed version still asks for, c
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
-| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed | the `srs.version.approved` events |
+| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed, and each use case approved | the `srs.version.approved` and `srs.use_case.approved` events |
 | `tasks:read` | read the project's tasks: each status a task takes, with what the task links to | the `tasks.status` events |
+| `records:use` | keep records of its own in the project, for the people it serves | the plugin's records (section Records): `/v1/plugin-api/projects/{project}/records/...` for its backend, the bridge's `records.*` for its pages |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -357,7 +358,8 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
 - **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
-  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision),
+  `plan.step` with `plans:read` (a step's status set or changed, by whatever wrote the plan: the plan, the step, the
+  statuses and the revision; `evo_agents.hub.plan_step_status`),
   `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
   task (section Agent types), `agent.answer` (a question run ended: the question, its state, the answer and its
   label), which only a core plugin asks for and takes, without a grant, only for its own agent type's question
@@ -373,11 +375,15 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   added, changed and dropped since that one, by kind), and `tasks.status` with `tasks:read` (a task's status set or
   changed: the task's id, number and ref, the status and its group before (none for a new task) and after, a member or
   the hub with the member's login, the cause (`create`, `edit`, `import`, `srs_approval`, `steps_done`) with the ids
-  of what made it, the parent, and the SRS items and plan steps it links). The core plugin srs takes
+  of what made it, the parent, and the SRS items and plan steps it links), `srs.use_case.approved` with `srs:read` (one
+  use case of a version approved, by a review of it or of its version: the document's slug and id, the version's number
+  and id, the use case's code and key, the code or title of its parent item, its `claim` field and the approver's login;
+  emitted once for a use case of a version). The core plugin srs takes
   `srs.version.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
   and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last
-  five carry `v`, the version of their shape, and the hub also writes each into its own table `hub_events`, in the
-  same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
+  five and `plan.step` carry `v`, the version of their shape, and the hub also writes each into its own table
+  `hub_events`, in the same transaction, which the Loop reads by cursor and the wait of a plan run wakes on
+  (`evo_agents.hub.hub_events`, `docs/notifications.md`, A wait).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
   the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
@@ -833,7 +839,7 @@ project. A project without the sink gets a `Cleared` with no items and `why` say
 | `read_review_queue(conn, plugin, project, config, *, sink=None, limit=100)` | `Cleared` of `ReviewItemText`, the open items of the knowledge graph's review queue, read through the sink's ceiling |
 | `read_corrections(conn, plugin, project, *, since, until=None, sink=None, limit=200)`, `read_accepted_rules(conn, plugin, project, *, sink=None, limit=100)` | `Cleared` of `CorrectionText`, what people corrected in sessions of the range; `Cleared` of `AcceptedRule`, the rules the project accepted |
 | `classify_run_failure(conn, plugin, project, run_id, cause, *, model, confidence)` | sets the cause of a failed run only when the hub guessed it (409 for a worker's cause), keeps it a guess, writes the run event `cause_classification` (plugin, model, confidence, `previous_cause`) and audits `run.cause`. Undo: `POST /v1/projects/{project}/runs/{run_id}/cause/restore`, `hub run-cause restore RUN --project P` (writer) |
-| `decide_graph(conn, plugin, project, config, kind, src, *, rel=None, dst=None, reason, propose=False, sink=None)` | a decision on the graph with the plugin as its actor (`actor_plugin`, migration 0169). Undo: the decision's own undo, web and `hub kg decisions undo` |
+| `decide_graph(conn, plugin, project, config, kind, src, *, rel=None, dst=None, reason, propose=False, sink=None)` | a decision on the graph with the plugin as its actor (`actor_plugin`, migration 0174). Undo: the decision's own undo, web and `hub kg decisions undo` |
 | `dismiss_review_item(conn, plugin, project, config, fingerprint, reason, *, sink=None)` | dismisses a review item as the plugin (`dismissed_by_plugin`). Undo: `DELETE /v1/kg/{project}/review/{fingerprint}/dismiss`, `hub kg review undismiss` (writer) |
 
 The `run.state` event of a failed move carries `failure_cause` and `failure_cause_inferred` (1.6, additive).
@@ -1222,6 +1228,65 @@ and when it delivers the event: kept, the state is `refused` and the text goes n
 `agent_questions` (migration 0100) with its outcome, its answer and its label, and the audit log keeps `<plugin>.ask`
 with `run_as` as its actor and the asker in its target.
 
+## Records
+
+An isolated plugin keeps its state on the hub as records, in Postgres, instead of in its backend's data directory. A
+record is a JSON object (at most 64 KiB as compact JSON) under a `key` of a `collection`, in one project, for one plugin:
+no plugin reaches another plugin's records, and no project another project's. The table is `plugin_records` (schema
+0169). Records sit in the hub's `pg_dump` and survive deleting `data/<name>/` of the plugin host and restarting the
+backend; `plugins-cache` holds only code and environments, which the host places again (`docs/hub.md`, Backup).
+
+A collection is lowercase letters, digits, `-` and `_`, starting with a letter (63 characters at most). A key is 1 to 200
+characters of letters, digits and `. _ ~ : @ = + -`. Each record carries:
+
+- `revision`, 1 when created and plus one at each write. A write that names `revision` (`0` for a new record, `n` for
+  the very revision) answers 409 when the record is not at it; without `revision` the write goes through.
+- `level`, a level of the project's ladder (`docs/hub.md`, Access labels). A new record takes the level of the project's
+  default label unless the writer names one; the writer may name only a level their call reaches (403 above it).
+- `audience`: `everyone` (default), whom the level reaches, or `writer`, the person who wrote it, who alone sees it.
+- `created_by`, `updated_by` (logins; none when a job or an event wrote it) and `created_at`, `updated_at`.
+
+### Whom a call is for
+
+A backend touches records only on behalf of the caller of the call it is serving, within that caller's grant.
+
+- When the hub hands a backend a route or a tool call from a member who holds a grant, and the project granted the
+  plugin `records:use`, `caller.token` of the call (plugin/1) is a delegation of the hub, a random token `evd_...`, valid
+  for the call's time and a minute. The backend sends it as `X-Evo-On-Behalf-Of` together with its own plugin token
+  (`Authorization: Bearer evp_...`). The hub keeps only its hash, with the person, the project, the plugin, the sink
+  the call came through and the highest level the person reached. The backend cannot make one, and a delegation opens
+  nothing for another plugin, another project or after it expired (403). The hub reads the person's grant again at each
+  use: the call reaches the lower of the delegation's level and the grant's now, and a revoked grant is a 403.
+- A call with no caller (a job, an event) sends no delegation. It reaches the levels up to `records_level`, which the
+  admin of the project sets when enabling the plugin (`POST .../plugins/{name}/enable` with `records_level`, a level of
+  the ladder; left out, what is set stays, and none at first, which refuses such calls with a 403). It has no writer, so
+  it cannot name `writer` as an audience, and no audience filter applies to it.
+- A header that is not a live delegation is a 403; the call never falls back to one with no caller.
+- Writing needs the writer role of the person the call is for (a call with no caller: `records_level`).
+
+### What a call sees
+
+A record is visible when its level is within the call's reach and, for a call for a person, its audience names that
+person or everyone. The reach is the read rule of the project's ladder (`docs/hub.md`, Access labels): through the
+sink of an agent (a tool call of an agent session, an agent's run) the lower of the person's grant and the sink's
+clearance; for a member on the web, their grant alone. The agent of a chat run is cleared for both people the run is
+cleared for, so a record whose audience is one of them is hidden from it. A record the call does not see answers as a
+record that does not exist: a GET, a PUT over it with a `revision` and a DELETE answer 404 with the same message
+for a key nobody wrote, and a list leaves it out. A PUT that asks for a new record (or none in particular) over a key held
+by a record the call cannot see answers 409, so a plugin that wants to be sure never meets that should use generated
+keys.
+
+### The API
+
+For the backend, under `/v1/plugin-api/projects/{project}/records/{collection}`, with the plugin token and, for a call
+with a caller, `X-Evo-On-Behalf-Of`: `GET` lists (`limit` up to 200, `after` the last key of the page before, `next_after`
+in the answer), `GET .../{key}` reads, `PUT .../{key}` with `{body, level?, audience?, revision?}` writes (201 new, 200
+updated), `DELETE .../{key}` (`?revision=`) deletes (204). For a member, a page or an agent with their own credential,
+the same under `/v1/projects/{project}/plugins/{plugin}/records/{collection}`; the page's bridge (section Pages)
+calls them as `records.list`, `records.get`, `records.put` and `records.delete`, and reaches only the records of its own
+plugin. All of them need `records:use` in what the project granted the plugin (404 on the member's routes when the plugin
+is not enabled there, 403 for the backend).
+
 ## Pages
 
 A plugin adds pages to the part of the web of a project that enabled it, at `/p/<project>/x/<id>/<name>`, each with
@@ -1295,7 +1360,7 @@ images and fonts from the bundle's `pages/` by relative URL, and may write them 
 
   Errors: `unsupported_bridge` (another version), `invalid_request`, `unknown_method`, `not_granted`,
   `invalid_params`, `too_large`, `busy`, `hub_refused` (the hub's refusal, with its status and message) and
-  `hub_unavailable`. `chats:*`, `runs:dispatch` and `notifications:send` open no method of the bridge: they serve the
+  `hub_unavailable`. `records:use` opens `records.list`, `records.get`, `records.put` and `records.delete`, which call the member routes above with the viewer's session; `chats:*`, `runs:dispatch` and `notifications:send` open no method of the bridge: they serve the
   plugin's backend.
 
 A minimal page:
@@ -1362,7 +1427,10 @@ files are in the bundle; its virtual environment builds; started with an environ
 `initialize` naming plugin/1 and listing exactly the MCP tools the manifest contributes; it answers `ping`; each
 contribution answers its call with a result that fits the method's schema; an unknown method gets `-32601` and the
 backend serves on; a line that is not JSON gets `-32700` with id null, or nothing, and the backend serves on; nothing
-but plugin/1 responses appear on stdout; and it answers `shutdown` and exits. The sample plugin
+but plugin/1 responses appear on stdout; it answers `shutdown` and exits; and, with a stand-in hub on 127.0.0.1
+(`evo_agents/plugins/fake_hub.py`) answering the records API (section Records), every records call the backend made
+was for the project it serves, within `records:use` of its manifest and, when it sent `X-Evo-On-Behalf-Of`, with the
+delegation of the call it was serving (check `records`). The sample plugin
 `tests/fixtures/plugins/sample` passes every check.
 
 ### Signing in CI

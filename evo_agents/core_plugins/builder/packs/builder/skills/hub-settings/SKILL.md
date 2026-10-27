@@ -33,7 +33,7 @@ the thread with its number and tells the members who may approve it. It applies 
 | `problem` | `{"problem": "P-<number>"}`, or `{}` for a new problem | `statement`, `who`, `when`, `workaround`, `metric`, `rank`, `owner`, `status`, `close_reason` | a writer of the project |
 | `goal` | `{"goal": "G-<number>"}`, or `{}` for a new goal | `statement`, `metric`, `deadline`, `canvas`, `problem`, `rank`, `owner`, `status`, `close_reason` | an admin of the project |
 | `plugin` | `{}` | `name`, `industry`, `need`, `owner`, `visibility`, `price`; `repo`, `categories` optional | an admin of the project |
-| `plugin_install` | `{}` | `repo`; `tag`, `signer` optional | a hub admin |
+| `plugin_install` | `{}` | `repo`; `tag`, `signer` optional | a hub admin; the admin of the project, in a self-managed project when `repo`'s owner is one it trusts |
 | `plugin_listing` | `{}` | `repo`, `tag`, `price`, `industries`; `categories`, `seller`, `index` optional | an admin of the project |
 
 - **branding.** `colors` is `{"light": {...}, "dark": {...}}`, each mapping the tokens `brand`, `brand-hover`,
@@ -81,7 +81,10 @@ the thread with its number and tells the members who may approve it. It applies 
   it hands you the task of making it (skill `plugin-authoring`). `plugin_install` names `repo` as `OWNER/REPO`, with a
   release's `tag` (the latest when left out) and its `signer`
   (`sigstore:OWNER/REPO/.github/workflows/ci.yml` when left out): approved by a hub admin, the hub trusts the signer
-  for the plugin's publisher and installs the release. `plugin_listing` names `repo` as `OWNER/REPO`, the release's
+  for the plugin's publisher and installs the release. In a self-managed project (`self_managed` and `trusted_owners`
+  in `evo-agents hub admin project show PROJECT --json`) the admin of the project approves it when `repo`'s owner is
+  on `trusted_owners`: the plugin installs for that project alone, and the signer is trusted for this release only. A
+  repository of any other owner still waits for a hub admin; say which one will answer. `plugin_listing` names `repo` as `OWNER/REPO`, the release's
   `tag`, the `price`, the `industries` (at least one) and optional `categories`, `seller` (the seller's id in the
   market, for a paid plugin) and `index` (`OWNER/REPO` of the market, `maycuatroi1/evo-agents-market` when left out):
   approving it hands you the pull request into the index, or the listing on the seller's hub.
