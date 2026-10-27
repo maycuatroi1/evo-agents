@@ -225,7 +225,7 @@ project is what the project granted that its installed version still asks for, c
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
-| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed | the `srs.version.approved` events |
+| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed, and each use case approved | the `srs.version.approved` and `srs.use_case.approved` events |
 | `tasks:read` | read the project's tasks: each status a task takes, with what the task links to | the `tasks.status` events |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
@@ -372,7 +372,10 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   added, changed and dropped since that one, by kind), and `tasks.status` with `tasks:read` (a task's status set or
   changed: the task's id, number and ref, the status and its group before (none for a new task) and after, a member or
   the hub with the member's login, the cause (`create`, `edit`, `import`, `srs_approval`, `steps_done`) with the ids
-  of what made it, the parent, and the SRS items and plan steps it links). The core plugin srs takes
+  of what made it, the parent, and the SRS items and plan steps it links), `srs.use_case.approved` with `srs:read` (one
+  use case of a version approved, by a review of it or of its version: the document's slug and id, the version's number
+  and id, the use case's code and key, the code or title of its parent item, its `claim` field and the approver's login;
+  emitted once for a use case of a version). The core plugin srs takes
   `srs.version.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
   and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last
   five carry `v`, the version of their shape, and the hub also writes each into its own table `hub_events`, in the

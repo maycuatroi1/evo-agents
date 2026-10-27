@@ -20,6 +20,7 @@ import {
 
 import type { StatusLook } from "@/components/status/status-badge";
 import {
+  type BaselineItem,
   type BoardGroup,
   type BoardItem,
   type GoalMetric,
@@ -234,4 +235,34 @@ export function boardGroups(items: readonly BoardItem[]): Map<BoardGroup, BoardI
   const groups = new Map<BoardGroup, BoardItem[]>();
   for (const item of items) groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
   return groups;
+}
+
+/** The states of a use case in a baseline, the open ones first: what the Loop still has to deliver comes before what is done. */
+export const BASELINE_STATES = ["undelivered", "delivering", "unknown", "delivered"] as const satisfies readonly BaselineItem["state"][];
+
+export type BacklogGroup = { heading: string | null; items: BaselineItem[]; counts: Record<BaselineItem["state"], number> };
+
+/**
+ * The use cases of a baseline by their heading, in the order they first appear; one without a heading is the last
+ * group (heading null). The backlog of the Loop is the undelivered ones of each group; the counts say the rest.
+ */
+export function backlogGroups(items: readonly BaselineItem[]): BacklogGroup[] {
+  const found = new Map<string | null, BacklogGroup>();
+  for (const item of items) {
+    const heading = item.heading || null;
+    let group = found.get(heading);
+    if (!group) {
+      group = { heading, items: [], counts: { undelivered: 0, delivering: 0, unknown: 0, delivered: 0 } };
+      found.set(heading, group);
+    }
+    group.items.push(item);
+    group.counts[item.state] += 1;
+  }
+  const groups = [...found.values()];
+  return [...groups.filter((group) => group.heading !== null), ...groups.filter((group) => group.heading === null)];
+}
+
+/** The size of the backlog now: the use cases still undelivered. */
+export function backlogOpen(items: readonly BaselineItem[]): number {
+  return items.filter((item) => item.state === "undelivered").length;
 }

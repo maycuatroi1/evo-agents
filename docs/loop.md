@@ -163,6 +163,39 @@ longer than 500 characters is cut with the start of its SHA-256 (`tick.fit_key`)
 stays taken, so the same change coming again does not make it again; a person who wants it done again answers the
 work item's decision with retry.
 
+## SRS là nguồn
+
+A project that develops by an SRS lets the document, not the claims, drive the Loop (plan srs-backlog-loop). The goal
+names the document; the Loop reads what is approved and not yet delivered and hands it out group by group.
+
+- **The goal.** `evo-agents hub goal set --srs-document SLUG [--srs-heading HEADING]` aims a goal at an SRS document of
+  the project, or at the use cases under one heading of it (`--no-srs-document`, `--no-srs-heading` clear them). The
+  metric `srs.backlog.open` is the hub's own: it counts the approved use cases of the scope not delivered yet, takes no
+  signal and is `<= 0` for a goal that is done; it needs `srs_document`.
+- **The backlog.** A use case is in the backlog when it is approved (in the approved version, or told by the event
+  `srs.use_case.approved`, `docs/srs-plugin.md`) and its state in the ledger of delivery is `undelivered`. Each tick
+  groups the backlog by the `claim` field of the use case, else its parent heading, and makes one `build` for each
+  group (`build:srs:<document id>:<group>:<round>`, section A goal that aims at an SRS document). The author run
+  writes one plan for the group and a plan run delivers it; when the deliver is done its use cases are `delivered`.
+- **The baseline.** What was delivered before the Loop began is not in the backlog. The hub proposes it from the
+  knowledge graph (`GET /v1/projects/{p}/goals/{ref}/baseline`; commits, pull requests, completed plans and code
+  comments that name a use case code, `docs/kg.md`): each approved use case is `delivered`, `undelivered` or
+  `unknown`, with its evidence. An admin fixes it by code or by heading and confirms it once:
+  `evo-agents hub loop baseline --goal G-1` previews, `--set UC-1=delivered`, `--heading Cart=undelivered` and
+  `--unknown undelivered` fix, `--confirm` confirms. Until then the Loop makes no build for the goal, a use case left
+  `unknown` never enters the backlog, and the decision board lists the goal at gate 3 (`srs_baseline`); the web shows
+  it on the Decisions page with a preview and the confirmation, and the Goals page and the Loop page show the backlog.
+- **Adopt.** A plan written by hand joins the Loop with
+  `evo-agents hub loop adopt PLAN --goal G-1 --use-cases UC-1 UC-2` (`POST /v1/projects/{p}/loop/adopt`; an admin, or
+  the writer who owns the goal): a `deliver` with key `deliver:<plan>`, no build above it, whose use cases are
+  `delivering` at once so no build takes them. It goes through admission, the caps and the merge queue as any deliver; a
+  plan already completed makes the deliver `done` and the use cases `delivered` with the plan and its merge requests as
+  evidence. It needs no confirmed baseline.
+- **Pool and labels.** `loop.pool` and `loop.labels` (The policy's keys) send the author and plan runs of the Loop to a
+  pool of workers holding the labels, in place of the pinned `loop.worker`; a plan's `worker_labels` narrow its plan run
+  further. The worker found must be live, ready, serving the project and owned by a writer. A deliver no worker fits
+  stays queued with the reason `worker`.
+
 ## The tick
 
 A tick is the job `hub.loop_tick` of one project, with lock and queueing lock `loop:<project id>`: one runs at a time
@@ -355,7 +388,8 @@ evo-agents hub loop resume --project demo     # an admin resets the breaker that
 `GET /v1/projects/{p}/loop` is the Loop's state; `GET .../loop/items` its work items (`?state=`, `?kind=`, `?goal=`,
 `?problem=`, `?open=true`, `?limit=`), each with the problem it goes from (`problem`); `GET .../loop/items/{id}` one
 work item with its chain, the stages from the problem and the goal to the release, and its ledger; `GET .../loop/goals`
-each goal's metric now against its target with its work items by state; `POST .../loop/resume` the admin's reset.
+each goal's metric now against its target with its work items by state; `POST .../loop/resume` the admin's reset, `POST .../loop/adopt` the adoption of a plan and
+`GET .../goals/{ref}/baseline` with `POST .../baseline/fix` and `.../baseline/confirm` the baseline of a goal (section SRS là nguồn).
 Reading needs a grant on the project; each ancestor shows as its own route shows it, and one the reader may not read is
 named in `hidden`. The web has the pages Problems (`/p/{p}/problems`, a problem's page with the chains that go from
 it), Goals (`/p/{p}/goals`), Loop (`/p/{p}/loop`, by state or by chain, each chain's rail starting from its problem)
