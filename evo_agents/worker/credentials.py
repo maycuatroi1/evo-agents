@@ -42,6 +42,12 @@
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
   closes the socket and forgets the values, in the redaction too.
 
+A credential request the agent asked (``evo-agents worker ask --category credential --env-var NAME --hub-account``,
+``evo_agents.hub.credential_requests``) is noted as one in the run's file of decisions (``credential_asks``). When the
+owner's answer to it reaches the run, before the agent gets it, the daemon asks for the run's leases again (``swap``):
+the secret the owner pasted and the run's token of the hub come with them, ``evo-agents worker env --run N`` prints
+them, and the agent's next start has them in its environment (``Agent.credentials_answered``).
+
 The other side of the socket, ``evo-agents worker git-credential --run N get|store|erase`` (git's credential
 protocol; store and erase do nothing), ``evo-agents worker env --run N`` and the asks of a Builder's push and of a chat
 run's ``repo open``, is ``evo_agents.worker.credential_commands``, over ``ask``. This module is standard library only,
@@ -88,6 +94,7 @@ from typing import TypeVar
 from urllib.parse import urlsplit
 
 from evo_agents.hub.client import HubError, check_url
+from evo_agents.hub.credential_requests import NOTED
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
     HUB_KIND,
@@ -255,6 +262,19 @@ def run_access_env(leases: Iterable[Lease], hub_url: str | None, *, guarded: boo
     except HubError as exc:
         return {}, str(exc)
     return {HUB_TOKEN_ENV: lease.value, HUB_URL_ENV: url}, None
+
+
+def credential_asks(home: WorkerHome, run_id: int) -> set[int]:
+    """The decisions of run ``run_id`` that are credential requests, as ``evo-agents worker ask`` noted them in the
+    run's file of decisions (``WorkerHome.decisions_path``)."""
+    found: set[int] = set()
+    with contextlib.suppress(OSError):
+        for line in home.decisions_path(run_id).read_text(encoding="utf-8").splitlines():
+            with contextlib.suppress(ValueError, TypeError, AttributeError):
+                noted = json.loads(line)
+                if isinstance(noted.get("id"), int) and noted.get(NOTED) is True:
+                    found.add(noted["id"])
+    return found
 
 
 # Values out of logs and events

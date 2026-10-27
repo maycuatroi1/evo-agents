@@ -593,6 +593,8 @@ decisions = Table(
     Column("reversible", Boolean),  # whether the act it asks about can be undone (0155)
     Column("undo", Text),  # and how (0155)
     Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0155)
+    # what a decision of category credential asks for: env_var, secret_name, hub_account; never a value (0167)
+    Column("credential_request", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),

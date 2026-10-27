@@ -6683,6 +6683,14 @@
         },
         {
           "flags": [
+            "--secret"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--project"
           ],
           "value": "string",
@@ -6729,7 +6737,8 @@
           "held_at",
           "wake_at",
           "wake_on",
-          "outputs"
+          "outputs",
+          "credential_request"
         ],
         "schema": "Decision"
       }
@@ -6872,7 +6881,8 @@
           "held_at",
           "wake_at",
           "wake_on",
-          "outputs"
+          "outputs",
+          "credential_request"
         ],
         "schema": "Decision"
       }
@@ -22361,8 +22371,32 @@
             "--option"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": true
+        },
+        {
+          "flags": [
+            "--env-var"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--secret-name"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--hub-account"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
         },
         {
           "flags": [
@@ -36480,7 +36514,7 @@
             "runs"
           ],
           "summary": "Stream",
-          "description": "The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final\nand every event was sent; a ``: ping`` comment keeps an idle stream open.",
+          "description": "The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final\nand every event was sent; a ``: ping`` comment keeps an idle stream open. The stream of a run's token\n(``run_access``) stops once the token no longer holds, which each look checks (``security.still_live``), and the\nclient that connects again is answered 401.",
           "operationId": "stream_v1_projects__project__runs__run_id__stream_get",
           "parameters": [
             {
@@ -74557,7 +74591,7 @@
             "chats"
           ],
           "summary": "Stream",
-          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too\n(``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages\nchanged.",
+          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too\n(``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages\nchanged. The stream of a run's token (``run_access``) ends once the token no longer holds, which each look checks\n(``security.still_live``).",
           "operationId": "stream_v1_chats__chat_id__stream_get",
           "parameters": [
             {
@@ -90336,6 +90370,22 @@
               ],
               "title": "Text",
               "description": "the owner's own words, at most 4 KiB"
+            },
+            "secret": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "format": "password",
+                  "writeOnly": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Secret",
+              "description": "a credential request's variable: its value, which the hub keeps as the owner's secret of kind env for the run's project and never shows again; with option value or both, which it stands for when left out"
             }
           },
           "type": "object",
@@ -99976,6 +100026,47 @@
           "title": "CredentialLease",
           "description": "One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."
         },
+        "CredentialRequest": {
+          "properties": {
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "the variable of the agent's environment the run needs, such as an API key; never one that steers the shell, git or the worker (EVO_*, GIT_* ...)"
+            },
+            "secret_name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Secret Name",
+              "description": "the name of the owner's secret that keeps its value; the variable in lower case with - for _ when left out"
+            },
+            "hub_account": {
+              "type": "boolean",
+              "title": "Hub Account",
+              "description": "whether the run asks to run as its owner on the hub",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "CredentialRequest",
+          "description": "What a decision of category credential asks the run's owner for; never a value."
+        },
         "CredentialShare": {
           "properties": {
             "id": {
@@ -101137,6 +101228,17 @@
               "type": "array",
               "title": "Outputs",
               "description": "the files of its run it carries, oldest first, each with the decision's URL of its bytes"
+            },
+            "credential_request": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CredentialRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what a decision of category credential asks the run's owner for: a variable's value, kept as their secret secret_name, their hub account, or both; null for any other decision"
             }
           },
           "type": "object",
@@ -101211,8 +101313,8 @@
               },
               "type": "array",
               "maxItems": 6,
-              "minItems": 2,
-              "title": "Options"
+              "title": "Options",
+              "description": "2 to 6; none for a credential request, which takes the hub's"
             },
             "recommended": {
               "anyOf": [
@@ -101304,13 +101406,23 @@
               "maxItems": 20,
               "title": "Output Ids",
               "description": "outputs of the run the question carries, such as the screenshot it is about"
+            },
+            "credential_request": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CredentialRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options"
             }
           },
           "type": "object",
           "required": [
             "category",
-            "question",
-            "options"
+            "question"
           ],
           "title": "DecisionAsk"
         },
@@ -110818,8 +110930,8 @@
               },
               "type": "array",
               "maxItems": 6,
-              "minItems": 2,
-              "title": "Options"
+              "title": "Options",
+              "description": "2 to 6; none for a credential request, which takes the hub's"
             },
             "recommended": {
               "anyOf": [
@@ -110911,12 +111023,22 @@
               "maxItems": 20,
               "title": "Output Ids",
               "description": "outputs of the run the question carries, such as the screenshot it is about"
+            },
+            "credential_request": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CredentialRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options"
             }
           },
           "type": "object",
           "required": [
-            "question",
-            "options"
+            "question"
           ],
           "title": "LocalDecisionAsk"
         },

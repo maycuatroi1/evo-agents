@@ -317,27 +317,46 @@ async def change_access(engine, user: Principal, project: str, run_id: int, body
     run_access.refuse_onward(user, True)
     async with engine.begin() as conn:
         access, row = await owned_run(conn, user, project, run_id, "change the access of")
-        state, plan_id, key, kind = row[2], row[3], row[4], row.kind
+        plan_id, key = row[3], row[4]
         r = tables.runs
         now = bool((await conn.execute(select(r.c.as_owner).where(r.c.id == run_id))).scalar_one())
         if body.as_me == now:
             return await run_view(conn, run_id)
         if body.as_me:
-            check_dispatcher(access)
-            await check_seat(conn, user, "letting a run run as you")
-            from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes of this package
-
-            curator = await curator_policy(conn, access.project_id, kind, plan_id) is not None
-            refusal = run_access.may_run_as_owner(kind, curator)
-            if refusal is not None:
-                raise HTTPException(409, f"run {run_id} cannot run as you: {refusal}")
-            if state not in runs.ACTIVE_STATES:
-                raise HTTPException(409, f"run {run_id} is {state}, which is final: it has no agent to run as you")
-            await web_only_steering(conn, user, run_id, "let it run as you", "do it on the web", "changed")
-        await conn.execute(update(r).values(as_owner=body.as_me).where(r.c.id == run_id))
-        ended = 0 if body.as_me else await run_access.end_access(conn, run_id)
-        done = run_target(project, plan_id, key, run_id) + " by=access" + ("" if body.as_me else f" tokens={ended}")
-        await run_access.record(conn, user, access.project_id, done, granted=body.as_me)
+            await let_run_as_owner(conn, user, access, project, run_id, "by=access")
+        else:
+            await conn.execute(update(r).values(as_owner=False).where(r.c.id == run_id))
+            ended = await run_access.end_access(conn, run_id)
+            done = run_target(project, plan_id, key, run_id) + f" by=access tokens={ended}"
+            await run_access.record(conn, user, access.project_id, done, granted=False)
         view = await run_view(conn, run_id)
     log.info("run access changed", extra={"run_id": run_id, "as_owner": body.as_me, "login": user.login})
     return view
+
+
+async def let_run_as_owner(conn: AsyncConnection, user: Principal, access, project: str, run_id: int, how: str) -> bool:
+    """Let run ``run_id`` of ``project``, which ``user`` dispatched and whose row the caller holds locked, run as them
+    (``run_access``), in the caller's transaction; whether its row changed (false when it ran as them already). Only a
+    run of a kind that may (409) that has not ended (409), from a web session when the run is on a worker that takes runs
+    dispatched from the web only. The audit row run_access.grant ends its target with ``how``, such as ``by=access``
+    or ``by=decision:12``."""
+    r = tables.runs
+    found = select(r.c.as_owner, r.c.state, r.c.kind, r.c.plan_id, r.c.step_key).where(r.c.id == run_id)
+    row = (await conn.execute(found)).one()
+    if row.as_owner:
+        return False
+    check_dispatcher(access)
+    await check_seat(conn, user, "letting a run run as you")
+    from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes of this package
+
+    curator = await curator_policy(conn, access.project_id, row.kind, row.plan_id) is not None
+    refusal = run_access.may_run_as_owner(row.kind, curator)
+    if refusal is not None:
+        raise HTTPException(409, f"run {run_id} cannot run as you: {refusal}")
+    if row.state not in runs.ACTIVE_STATES:
+        raise HTTPException(409, f"run {run_id} is {row.state}, which is final: it has no agent to run as you")
+    await web_only_steering(conn, user, run_id, "let it run as you", "do it on the web", "changed")
+    await conn.execute(update(r).values(as_owner=True).where(r.c.id == run_id))
+    done = f"{run_target(project, row.plan_id, row.step_key, run_id)} {how}"
+    await run_access.record(conn, user, access.project_id, done, granted=True)
+    return True

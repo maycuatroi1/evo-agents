@@ -296,7 +296,10 @@ relative path is refused, because hooks start in whatever directory the session 
 `EVO_HUB_TOKEN` and `EVO_HUB_URL`, both set and not blank, come before any login on disk, `EVO_HUB_HOME`'s included:
 the worker daemon sets them for the agent of a run its owner lets run as them, so `evo-agents hub ...` in that run
 acts as the owner with no login on the worker ([credentials.md](credentials.md#a-run-that-runs-as-its-owner)). One of
-them alone changes nothing, and `hub logout` refuses while they are set.
+them alone changes nothing, and `hub logout` refuses while they are set. A run that lacks them, or an API key, asks
+its owner with a credential request rather than for a login on the worker: the owner answers with `evo-agents hub
+decision answer ID --secret` or `--option as_me`, and the run goes on with what it gave
+([credentials.md](credentials.md#a-run-that-asks-for-a-credential)).
 
 In the browser, the web sends you to GitHub (`/v1/auth/web/login`, with state and PKCE), and the callback sets the
 session cookie (HttpOnly, Secure, SameSite=Lax), then sends you back to the page named by `?next=` on the login

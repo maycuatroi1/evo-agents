@@ -5,6 +5,12 @@ Besides its question and options, a question may carry why the agent recommends 
 only with ``recommended``), whether the act it asks about can be undone (``reversible``) and how (``undo``, only when
 it can), and the refs of what it rests on (``evidence``, each in a form of ``evo_agents.hub.decision_asks``); a ref in
 no such form is 422. A decision asked without them shows null and an empty list.
+
+A decision of category credential may carry a request (``credential_request``, ``evo_agents.hub.credential_requests``):
+the variable the run needs, the name of the secret that keeps its value and whether it asks for the owner's account on
+the hub. Such a decision takes no options of the agent's: the hub gives it those of ``credential_requests.options``.
+The answer to it may carry the variable's value (``AnswerIn.secret``), which no view of the decision, no error and no
+message ever shows.
 """
 
 from __future__ import annotations
@@ -13,9 +19,10 @@ import json
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from evo_agents.hub import decision_asks, outputs, runs
+from evo_agents.hub import credential_requests, decision_asks, outputs, runs
+from evo_agents.hub.credentials import MAX_SECRET_BYTES
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
 
@@ -44,13 +51,47 @@ class OptionIn(BaseModel):
     )
 
 
+class CredentialRequest(BaseModel):
+    """What a decision of category credential asks the run's owner for; never a value."""
+
+    env_var: str | None = Field(
+        None,
+        min_length=1,
+        max_length=credential_requests.MAX_ENV_VAR_CHARS,
+        description="the variable of the agent's environment the run needs, such as an API key; never one that steers "
+        "the shell, git or the worker (EVO_*, GIT_* ...)",
+    )
+    secret_name: str | None = Field(
+        None,
+        min_length=1,
+        max_length=64,
+        description="the name of the owner's secret that keeps its value; the variable in lower case with - for _ "
+        "when left out",
+    )
+    hub_account: bool = Field(False, description="whether the run asks to run as its owner on the hub")
+
+    @model_validator(mode="after")
+    def _askable(self):
+        refusal = credential_requests.request_refusal(self.env_var, self.secret_name, self.hub_account)
+        if refusal is not None:
+            raise ValueError(refusal)
+        if self.env_var is not None and self.secret_name is None:
+            self.secret_name = credential_requests.default_secret_name(self.env_var)
+        return self
+
+
 class DecisionAsk(BaseModel):
     category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")
     question: str = Field(min_length=1, max_length=runs.MAX_QUESTION_CHARS)
     context: str | None = Field(
         None, min_length=1, max_length=runs.MAX_DECISION_CONTEXT_BYTES, description="markdown, at most 16 KiB of UTF-8"
     )
-    options: list[OptionIn] = Field(min_length=runs.DECISION_OPTIONS[0], max_length=runs.DECISION_OPTIONS[1])
+    options: list[OptionIn] = Field(
+        default_factory=list,
+        max_length=runs.DECISION_OPTIONS[1],
+        description=f"{runs.DECISION_OPTIONS[0]} to {runs.DECISION_OPTIONS[1]}; none for a credential request, which "
+        "takes the hub's",
+    )
     recommended: OptionKey | None = Field(None, description="the key of the option the agent recommends")
     recommended_reason: str | None = Field(
         None, min_length=1, max_length=decision_asks.MAX_REASON_CHARS, description=REASON
@@ -68,6 +109,11 @@ class DecisionAsk(BaseModel):
         max_length=outputs.MAX_ATTACHED,
         description="outputs of the run the question carries, such as the screenshot it is about",
     )
+    credential_request: CredentialRequest | None = Field(
+        None,
+        description="category credential only: what the run needs of its owner, a variable's value, their hub account "
+        "or both; the hub gives the decision its options",
+    )
 
     @field_validator("evidence")
     @classmethod
@@ -80,6 +126,7 @@ class DecisionAsk(BaseModel):
             raise ValueError("a decision needs a question")
         if self.context is not None and len(self.context.encode()) > runs.MAX_DECISION_CONTEXT_BYTES:
             raise ValueError(f"a decision's context is at most {runs.MAX_DECISION_CONTEXT_BYTES} bytes of UTF-8")
+        self._requested_options()
         keys = [option.key for option in self.options]
         if len(set(keys)) != len(keys):
             raise ValueError("each option of a decision needs a key of its own")
@@ -91,6 +138,21 @@ class DecisionAsk(BaseModel):
         if len(json.dumps(self.stored_options(), ensure_ascii=False).encode()) > MAX_OPTIONS_BYTES:
             raise ValueError(f"the options of a decision take at most {MAX_OPTIONS_BYTES} bytes of JSON")
         return self
+
+    def _requested_options(self) -> None:
+        """A credential request gets the hub's options; any other decision brings 2 to 6 of its own."""
+        request = self.credential_request
+        if request is None:
+            fewest, most = runs.DECISION_OPTIONS
+            if not fewest <= len(self.options) <= most:
+                raise ValueError(f"a decision offers {fewest} to {most} options")
+            return
+        if self.category != credential_requests.CATEGORY:
+            raise ValueError(f"a credential request is a decision of category {credential_requests.CATEGORY}")
+        if self.options:
+            raise ValueError("a credential request takes the hub's options: leave out options")
+        given = credential_requests.options(request.env_var, request.secret_name, request.hub_account)
+        self.options = [OptionIn(**option) for option in given]
 
     def _extras_consistent(self) -> None:
         if self.recommended_reason is not None:
@@ -118,12 +180,15 @@ class DecisionAsk(BaseModel):
         return stored
 
     def stored_extras(self) -> dict:
-        """The columns of the decision's reason, reversibility and evidence: NULL for what the agent left out."""
+        """The columns of the decision's reason, reversibility, evidence and credential request: NULL for what the
+        agent left out."""
+        request = self.credential_request
         return {
             "recommended_reason": self.recommended_reason,
             "reversible": self.reversible,
             "undo": self.undo,
             "evidence": self.evidence or None,
+            "credential_request": None if request is None else request.model_dump(),
         }
 
 
@@ -187,6 +252,11 @@ class Decision(BaseModel):
         default_factory=list,
         description="the files of its run it carries, oldest first, each with the decision's URL of its bytes",
     )
+    credential_request: CredentialRequest | None = Field(
+        None,
+        description="what a decision of category credential asks the run's owner for: a variable's value, kept as "
+        "their secret secret_name, their hub account, or both; null for any other decision",
+    )
 
 
 class DecisionList(BaseModel):
@@ -201,6 +271,14 @@ class AnswerIn(BaseModel):
     text: str | None = Field(
         None, min_length=1, max_length=runs.MAX_ANSWER_BYTES, description="the owner's own words, at most 4 KiB"
     )
+    secret: SecretStr | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_SECRET_BYTES,
+        description="a credential request's variable: its value, which the hub keeps as the owner's secret of kind "
+        "env for the run's project and never shows again; with option value or both, which it stands for when left "
+        "out",
+    )
 
     @model_validator(mode="after")
     def _something(self):
@@ -208,6 +286,6 @@ class AnswerIn(BaseModel):
             raise ValueError("an answer's text needs some words")
         if self.text is not None and len(self.text.encode()) > runs.MAX_ANSWER_BYTES:
             raise ValueError(f"an answer's text is at most {runs.MAX_ANSWER_BYTES} bytes of UTF-8")
-        if self.option is None and self.text is None:
+        if self.option is None and self.text is None and self.secret is None:
             raise ValueError("an answer names an option, gives text, or both")
         return self

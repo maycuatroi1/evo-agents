@@ -948,6 +948,62 @@ as `run_access.write`. Let a run run as you only when its work needs your accoun
 access RUN --revoke`, `evo-agents hub run cancel RUN`, or `evo-agents hub token revoke ID` of the token `hub token list`
 shows with host `run:<id>`; the audit rows `run_access.write` say what it wrote.
 
+## A run that asks for a credential
+
+A run that lacks a credential asks its owner for it with a decision, rather than for a login on the worker's machine
+or a value in `evo cred` there; the plan run's prompt tells its agent so. The request names a variable of the agent's
+environment the run needs, such as an API key, the owner's account on the hub, or both in one decision:
+
+```sh
+evo-agents worker ask --category credential --question "The deploy needs its key and the hub." \
+  --env-var NORTHWIND_DEPLOY_KEY --secret-name northwind-deploy --hub-account --step 3
+```
+
+The request goes with the decision as `credential_request` (`{env_var, secret_name, hub_account}`,
+`evo_agents/hub/credential_requests.py`), and `--secret-name` defaults to the variable in lower case with `-` for `_`.
+The hub refuses a variable no secret may set (`EVO_`, `GIT_`, `LD_`, `DYLD_`, `PYTHON...`, `PATH`, `HOME` and the
+others of `env_name_refusal`), and gives the decision its own options, never the agent's: `value` (paste the value),
+`as_me` (let the run use my hub account), `both`, and `refuse`, as the request asks. It is asked of the run's owner
+whoever the run's principal reports to, since what it asks for is the owner's alone to give.
+
+**Answering it.** The owner pastes the value, never on a command line:
+
+```sh
+evo-agents hub decision show 91                                # what it asks for, and the secret it would fill
+pbpaste | evo-agents hub decision answer 91 --secret           # option value: the value from stdin
+evo-agents hub decision answer 91 --secret --option both       # asked for without echo in a terminal, and as_me
+evo-agents hub decision answer 91 --option as_me               # the hub account alone
+evo-agents hub decision answer 91 --option refuse              # nothing
+```
+
+`--secret` sends the value as `secret` in `POST /v1/projects/{p}/decisions/{id}/answer`, which the web's password
+field sends too; a value with no option stands for `value`. The hub keeps it as the owner's secret of kind `env` for
+that variable, under the rules of `PUT /v1/secrets` (at most 16 KiB, no NUL, at most 200 secrets, the hub's key; 503
+without it): the owner's live env secret for that variable bound to the run's project has its value replaced, the one
+of the proposed name first, so no second one is made; with none, the secret of the proposed name is made, bound to the
+run's project and, when the run is on a worker of the owner's, to that worker. A proposed name the owner holds for
+something else is 409 and changes nothing. `as_me` and `both` let the run run as its owner as `hub run access --as-me`
+does (a run of the Curator or a release run never does; 409), with the audit row `run_access.grant` ending
+`by=decision:<id>`. Only the member who dispatched the run gives either (403 for a lead the decision escalated to, who
+may still refuse); a run's token answers no decision at all.
+
+The decision's answer carries a sentence of the hub's after the owner's words: which secret keeps the value, by name,
+and whether the run now runs as its owner, never the value. The value is in no decision, answer, inbox message, event,
+log line, audit row or error: the audit row `secret.put` names the secret by id and the decision (`secret:<id>
+decision:<id>`), a 422 never echoes a request's input, and an answer whose words hold the value it pastes is refused.
+
+**Going on.** The run goes on without being dispatched again. A parked run is resumed by the answer, and the run that
+resumes it is leased the new secret and, with `as_me`, a token of its own from its start. A run still waiting gets the
+answer in its inbox; `worker ask` noted the decision as a credential request in the run's file of decisions, so the
+daemon asks for the run's leases again before it hands the answer to the agent (`Agent.credentials_answered`). The
+agent reads what came with `eval "$(evo-agents worker env --run "$EVO_RUN_ID")"` before the command that needs it,
+and its next start has it in its environment; the run's log says the leases were taken again, never their values. A
+worker older than this release takes nothing again: the run gets what was given when it is leased next, at its resume.
+
+**The risk.** A pasted value is a secret like any other: every run of the owner's on that project is leased it, on that
+worker or on any of theirs, until the owner deletes it (`evo-agents hub secret delete NAME`). The account on the hub
+holds the risk of "A run that runs as its owner" above for as long as the run holds its token.
+
 ## Who may hand a worker its work
 
 `dispatch_from` is a switch per worker: `any` (the default) or `web`. A worker set to `web` claims only runs
