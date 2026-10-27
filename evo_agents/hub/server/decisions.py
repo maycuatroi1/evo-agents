@@ -16,14 +16,15 @@ decision without a plan names the author run and its title instead. A run has at
 (409).
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
-their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/), and someone
-without a grant on the project 404. A machine token also gets 403 when the run is on a worker set to take runs
-dispatched from the web only, held, pinned or parked there (``runs.web_only_steering``): its answer would steer that
-worker's agent, or resume the parked run on it. A decision that is no longer open gets 409. The answer names an
-option of the decision, gives text of the owner's own (at most 4 KiB), or both. Under the plan's dispatch lock (for a
-decision with a plan) and the run's row lock, the decision is answered, its notification read, and the answer goes to
-a run's inbox as a message that names the decision (``run_inbox.decision_id``), with a ``user_message`` event, so the
-heartbeat counts it and the worker hands it to the agent like any message of the owner's:
+their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
+of any run that runs as its owner (``run_access``), and someone without a grant on the project 404. A
+machine token also gets 403 when the run is on a worker set to take runs dispatched from the web only, held, pinned or
+parked there (``runs.web_only_steering``): its answer would steer that worker's agent, or resume the parked run on it.
+A decision that is no longer open gets 409. The answer names an option of the decision, gives text of the owner's own
+(at most 4 KiB), or both. Under the plan's dispatch lock (for a decision with a plan) and the run's row lock, the
+decision is answered, its notification read, and the answer goes to a run's inbox as a message that names the decision
+(``run_inbox.decision_id``), with a ``user_message`` event, so the heartbeat counts it and the worker hands it to the
+agent like any message of the owner's:
 
 - a run that is queued or held (``runs.MESSAGE_STATES``, waiting included) gets it in its own inbox;
 - a parked plan run is resumed: the hub queues a new plan run pinned to the parked run's worker, with
@@ -35,6 +36,14 @@ heartbeat counts it and the worker hands it to the agent like any message of the
   message of that inbox the worker has not handed to an agent, so the agent reads them all in its first turn.
 
 The audit row decision.answer names the decision, its run and the option, never the text.
+
+A credential request (a decision of category credential that carries ``credential_request``,
+``evo_agents.hub.credential_requests``) is asked of the run's owner whoever the run's principal reports to, and takes
+the hub's options. Its answer may carry the value of the variable it asks for (``AnswerIn.secret``):
+``credential_answers`` keeps it as the owner's secret of kind env for the run's project and lets the run run as them
+when the option says so, for the run's owner alone, before a parked run is resumed, so the run that resumes it is
+leased both. The decision's answer text, and the inbox message, carry the hub's sentence of what was given, by name,
+never the value.
 
 An option the agent marks ``waits`` says not yet (``worker ask --wait-option``): choosing it leaves the decision open
 with ``held_at`` set and its notification read, and sends nothing to the agent, so the run goes on waiting, or parked,
@@ -68,7 +77,7 @@ from sqlalchemy.sql import Select
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, principals
+from evo_agents.hub.server import audit, credential_answers, principals, run_access_rules
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.decision_models import AnswerIn as AnswerIn
@@ -90,6 +99,7 @@ from evo_agents.hub.server.runs.service.controls import web_only_steering
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.runs.service.views import lock_plan, sees_unplanned, visible_plans
+from evo_agents.hub.server.sealing import Sealer
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -151,6 +161,7 @@ def _decisions():
         d.c.held_at,
         d.c.wake_at,
         d.c.wake_on,
+        d.c.credential_request,
     ).select_from(
         d.join(p, p.c.id == d.c.project_id)
         .join(r, r.c.id == d.c.run_id)
@@ -391,7 +402,8 @@ async def store_decision(
             f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
         )
     key = await _step_of_run(conn, run_id, row, body.step_key)
-    asked = await principals.asked_of(conn, run_id)
+    # A credential request asks the run's owner for what is theirs alone to give: a value, their account.
+    asked = row.dispatched_by if body.credential_request is not None else await principals.asked_of(conn, run_id)
     stored = (
         insert(d)
         .values(
@@ -471,7 +483,8 @@ def _resume_run(new_id: int, parked_id: int):
     ``new_id``, of its kind: pinned to its worker, in its session, with the agent time it used and the credential it
     was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is gone; none for
     an author run that has put no plan); a run the night shift queued keeps its schedule, night and caps, an author
-    run its request, a plan run its session per step, and every run its agent profile and version."""
+    run its request, a plan run its session per step, and every run its agent profile and version, and whether it runs
+    as its owner (``run_access``), with a token of its own."""
     r, pl = tables.runs, tables.plans
     source = _OverridingSystemValue(
         literal(new_id, BigInteger).label("id"),
@@ -505,6 +518,8 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.profile_version,
         r.c.principal_id,
         r.c.autonomy,
+        r.c.as_owner,
+        r.c.as_owner_since,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
@@ -547,7 +562,9 @@ async def resume_parked(
     the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
     parked, which its agent reads in the new run's first turn. ``woken_by``, the answer or the message that resumes
     it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title.
-    ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``)."""
+    ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``). A request that
+    carries a run's token resumes none (``run_access_rules.refuse_new_run``)."""
+    run_access_rules.refuse_new_run()
     token_id = None if user is None else user.token_id
     kind = (await conn.execute(select(tables.runs.c.kind).where(tables.runs.c.id == parked_id))).scalar_one()
     if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
@@ -620,13 +637,27 @@ class Answered:
 
 
 async def answer_decision(
-    conn: AsyncConnection, user: Principal, project: str, decision_id: int, body: AnswerIn, *, via: str | None = None
+    conn: AsyncConnection,
+    user: Principal,
+    project: str,
+    decision_id: int,
+    body: AnswerIn,
+    *,
+    via: str | None = None,
+    sealer: Sealer | None = None,
 ) -> Answered:
     """Answer decision ``decision_id`` of ``project`` as ``user``, in the caller's transaction: the checks, the answer,
-    its notification read, the inbox message, a parked run resumed and the audit row, as the module's docstring says.
-    The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer through it;
-    it raises the HTTPException the route answers with."""
+    its notification read, the inbox message, a parked run resumed and the audit row, as the module's docstring says;
+    for a credential request, what the answer gives the run too (``credential_answers``), its value sealed with
+    ``sealer``. The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer
+    through it; it raises the HTTPException the route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
+    if user.acts_for_run is not None:  # a run's token acts as the owner, but answers no decision (run_access)
+        raise HTTPException(
+            403,
+            f"decision {decision_id} is a question to a member, and a run's token (evr_...) answers no decision of any "
+            "run: the owner answers with their own sign-in",
+        )
     d, r, u = tables.decisions, tables.runs, tables.users
     query = (
         select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
@@ -642,16 +673,19 @@ async def answer_decision(
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
     run_id, run_state, kind = await lock_run_of(conn, access.project_id, plan_id, decision_id)
-    locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
-    state, category, question, options = (await conn.execute(locked.with_for_update())).one()
+    locked = select(d.c.state, d.c.category, d.c.question, d.c.options, d.c.credential_request)
+    state, category, question, options, request = (
+        await conn.execute(locked.where(d.c.id == decision_id).with_for_update())
+    ).one()
     if state != "open":
         raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
+    asked = credential_answers.checked(decision_id, request, body)
     chosen = None
-    if body.option is not None:
-        chosen = next((option for option in options if option["key"] == body.option), None)
+    if asked.option is not None:
+        chosen = next((option for option in options if option["key"] == asked.option), None)
         if chosen is None:
             keys = ", ".join(option["key"] for option in options)
-            raise HTTPException(422, f"decision {decision_id} has no option {body.option!r}; its options are {keys}")
+            raise HTTPException(422, f"decision {decision_id} has no option {asked.option!r}; its options are {keys}")
     if category in runs.HUB_DECISION_CATEGORIES:
         return await _answer_hub(conn, user, project, decision_id, run_id, category, chosen, body, via)
     if kind == "local":  # the session takes the answer at its next turn, whatever it does now, but not once it is over
@@ -665,12 +699,16 @@ async def answer_decision(
     if chosen is not None and chosen.get("waits") is True:
         target = answer_target(project, plan_id, key, decision_id, run_id, body.option, kind) + " held"
         return await _hold(conn, user, access.project_id, decision_id, run_id, chosen, body, target, via)
+    words = body.text
+    if credential_answers.acts(request, asked):  # before a resume, which copies what the run may do
+        given = await credential_answers.give(conn, user, sealer, access, project, decision_id, run_id, request, asked)
+        words = credential_answers.with_sentence(body.text, given)
     await conn.execute(
         update(d)
         .values(
             state="answered",
-            answer_option=body.option,
-            answer_text=body.text,
+            answer_option=asked.option,
+            answer_text=words,
             answered_by=user.user_id,
             answered_at=func.now(),
         )
@@ -687,7 +725,7 @@ async def answer_decision(
         if (await conn.execute(still_open)).scalar_one() == 0:
             await conn.execute(update(r).values(state="running", waiting_since=None).where(r.c.id == run_id))
     resumes = await _resumes(conn, run_id, run_state, kind)
-    text = answer_message(decision_id, category, question, chosen, body.text)
+    text = answer_message(decision_id, category, question, chosen, words)
     inbox_run = await _resume(conn, user, run_id, decision_id, text) if resumes else run_id
     i = tables.run_inbox
     left = (
@@ -696,7 +734,7 @@ async def answer_decision(
     message_id = (await conn.execute(left)).scalar_one()
     event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
     await write_user_message(conn, inbox_run, event)
-    target = answer_target(project, plan_id, key, decision_id, run_id, body.option, kind)
+    target = answer_target(project, plan_id, key, decision_id, run_id, asked.option, kind)
     if inbox_run != run_id:
         target += f" resumed as run:{inbox_run}"
     if via is not None:
@@ -828,7 +866,7 @@ async def answer(
     """Answer a decision of a run one dispatched: the answer goes to the agent through the run's inbox, and a parked
     run is resumed on its worker in its session."""
     async with request.app.state.engine.begin() as conn:
-        answered = await answer_decision(conn, user, project, decision_id, body)
+        answered = await answer_decision(conn, user, project, decision_id, body, sealer=request.app.state.sealer)
     log.info(
         "decision answered",
         extra={

@@ -57,6 +57,7 @@ class Inbox:
                             last = message_id  # in the prompt the agent started on already
                             continue
                         await agent.login_answered([message])
+                        await agent.credentials_answered([message])
                         await adapter.send(await self.text_of(message))
                         last = message_id
                         self.handed([message])

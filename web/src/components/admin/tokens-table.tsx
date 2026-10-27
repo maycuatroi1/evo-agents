@@ -227,7 +227,9 @@ export function TokensTable({ tokens, caption, showLogin = true, onNotice, testI
                   ? tRevoke("machine", { host: target.host ?? "" })
                   : target.kind === "worker"
                     ? tRevoke("worker", { host: target.host ?? "" })
-                    : tRevoke("web")}
+                    : target.kind === "run"
+                      ? tRevoke("run", { host: target.host ?? "", login: target.login })
+                      : tRevoke("web")}
               </p>
               {target.current ? <p className="font-medium text-danger">{tRevoke("current")}</p> : null}
               <p>{tRevoke("audit")}</p>

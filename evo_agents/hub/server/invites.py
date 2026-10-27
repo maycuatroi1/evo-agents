@@ -406,7 +406,7 @@ async def _give_grant(conn: AsyncConnection, row: Row, user: Principal) -> None:
 )
 async def accept(request: Request, body: InviteAccept, user: CurrentUser) -> InviteRow:
     """Accept an invite link: a join link gives its grant, a register link the right to register one project."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise HTTPException(403, "the agent of a run accepts no invite link")
     invites = tables.invites
     async with request.app.state.engine.begin() as conn:
@@ -433,7 +433,7 @@ async def accept(request: Request, body: InviteAccept, user: CurrentUser) -> Inv
 async def register_right(conn: AsyncConnection, user: Principal) -> Row | None:
     """The oldest right to register a project that ``user`` holds and has not used, its row locked; None without one.
     The agent of a run holds none."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         return None
     invites = tables.invites
     found = await conn.execute(

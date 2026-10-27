@@ -181,7 +181,9 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     assert printed["hub run plan"]["json"]["schema"] == printed["hub run dispatch"]["json"]["schema"] == "Run"
     assert "--model" in {o["flags"][0] for o in printed["hub run dispatch"]["options"]}
     answer = {o["flags"][0] for o in printed["hub decision answer"]["options"]}
-    assert answer == {"--option", "--text", "--project", "--json"}
+    assert answer == {"--option", "--text", "--secret", "--project", "--json"}
+    secret = next(o for o in printed["hub decision answer"]["options"] if o["flags"] == ["--secret"])
+    assert secret["value"] is None, "the value is never on the command line: stdin, or asked for without echo"
     notifications = printed["hub notifications"]
     assert notifications["positionals"] == []
     assert {o["flags"][0] for o in notifications["options"]} == {
@@ -201,6 +203,22 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
         "schema": "NotificationList",
         "with": {"--read": {"kind": "object", "keys": ["read", "unread"], "schema": "ReadResult"}},
     }
+
+
+def test_as_me_on_dispatch_and_plan_and_run_access_are_in_the_contract():
+    """Criterion a4 of owner-run-access: ``hub run dispatch|plan --as-me``, ``hub run access RUN --as-me|--revoke``
+    printing the Run, and ``as_owner`` among the keys of every command that prints one."""
+    printed = commands()
+    for name in ("hub run dispatch", "hub run plan"):
+        flags = {o["flags"][0]: o for o in printed[name]["options"]}
+        assert flags["--as-me"]["value"] is None and not flags["--as-me"]["required"], name
+    access = printed["hub run access"]
+    assert [(p["name"], p["value"], p["required"]) for p in access["positionals"]] == [("run", "integer", True)]
+    assert {o["flags"][0] for o in access["options"]} == {"--as-me", "--revoke", "--project", "--json"}
+    assert access["json"]["schema"] == "Run" and "as_owner" in access["json"]["keys"]
+    for name in ("hub run show", "hub run plan", "hub run rerun", "hub run dispatch"):
+        assert "as_owner" in printed[name]["json"]["keys"], name
+    assert "--as-me" not in {o["flags"][0] for o in printed["hub run rerun"]["options"]}, "a rerun keeps the choice"
 
 
 def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_prints_the_label():
@@ -271,7 +289,11 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     wait = next(o for o in step["options"] if o["flags"] == ["--wait"])
     assert wait["value"] == "number" and not wait["repeatable"] and not wait["required"]
     ask = {o["flags"][0]: o for o in printed["worker ask"]["options"]}
-    assert ask["--category"]["required"] and ask["--option"]["required"] and ask["--option"]["repeatable"]
+    # a credential request takes the hub's options, so --option is not required of every ask (owner-run-access a5)
+    assert ask["--category"]["required"] and not ask["--option"]["required"] and ask["--option"]["repeatable"]
+    assert (
+        ask["--env-var"]["value"] == ask["--secret-name"]["value"] == "string" and ask["--hub-account"]["value"] is None
+    )
     assert ask["--attach"]["repeatable"] and not ask["--attach"]["required"]
     output = printed["worker output"]
     assert [(p["name"], p["repeatable"]) for p in output["positionals"]] == [("files", True)]

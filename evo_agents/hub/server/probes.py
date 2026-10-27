@@ -162,7 +162,7 @@ class ProbeList(BaseModel):
 
 def verify_shown(access: ProjectAccess, user: Principal) -> bool:
     """Whether ``user`` reads the verify of the project's probes: an admin of it, and not the agent of a run."""
-    return has_role(access.role, "admin") and user.scope is None
+    return has_role(access.role, "admin") and user.acts_for_run is None
 
 
 def query():

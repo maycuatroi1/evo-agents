@@ -975,7 +975,8 @@
       "kinds": {
         "machine": "Token máy",
         "web": "Phiên web",
-        "worker": "Token worker"
+        "worker": "Token worker",
+        "run": "Token của run"
       },
       "state": "Trạng thái",
       "states": {
@@ -1012,6 +1013,7 @@
       "machine": "Máy {host} sẽ nhận 401 ở yêu cầu kế tiếp và phải chạy lại evo-agents hub login.",
       "web": "Phiên web này sẽ bị đăng xuất ở yêu cầu kế tiếp.",
       "worker": "Worker {host} dừng ngay: thu hồi token này cũng thu hồi worker, và các run nó đang giữ quay lại queue.",
+      "run": "Run giữ token này ({host}) thôi chạy như {login} ngay, và vẫn chạy tiếp với các credential khác.",
       "current": "Đây là phiên bạn đang dùng: thu hồi sẽ đăng xuất bạn ngay.",
       "audit": "Thao tác không hoàn tác được và được ghi vào audit.",
       "cancel": "Huỷ",
@@ -5460,7 +5462,8 @@
         "empty": "Run này không nhận credential nào từ hub.",
         "provider": {
           "secret": "Secret của bạn",
-          "githubApp": "GitHub App"
+          "githubApp": "GitHub App",
+          "runAccess": "Tài khoản hub"
         },
         "state": {
           "out": "Đang dùng",
@@ -5780,6 +5783,30 @@
         "boundedLabel": "Các lớp không tự động",
         "allAuto": "Mọi lớp đều tự động.",
         "showAll": "{count, plural, other {Xem cả # lớp}}"
+      },
+      "access": {
+        "title": "Quyền trên hub",
+        "active": "Chạy như {login}",
+        "ended": "Đã chạy như {login}",
+        "textOwner": "Agent gọi API của hub dưới tên bạn: đúng quyền của bạn ở mọi dự án, không bao giờ chạm tới secrets, tokens hay workers của bạn.",
+        "textOther": "Agent gọi API của hub dưới tên {login}: đúng quyền của người đó ở mọi dự án, không bao giờ chạm tới secrets, tokens hay workers.",
+        "grantedBy": "Người cấp",
+        "since": "Từ lúc",
+        "sinceUnknown": "không ghi nhận",
+        "ends": "Kết thúc",
+        "endsOwner": "khi run dừng, hoặc khi bạn thu hồi",
+        "endsOther": "khi run dừng, hoặc khi {login} thu hồi",
+        "endsDone": "đã kết thúc cùng run",
+        "revoke": "Thu hồi",
+        "revokeLabel": "Thu hồi quyền trên hub của run #{id}",
+        "confirmTitle": "Dừng run #{id} chạy như bạn?",
+        "confirmText": "Token của run hết hiệu lực ngay: lần gọi hub kế tiếp của agent nhận 401. Run vẫn chạy tiếp với các credential khác.",
+        "confirmAgain": "Muốn cho run chạy như bạn lại: <code>evo-agents hub run access {id} --as-me</code>",
+        "confirm": "Thu hồi quyền",
+        "pending": "Đang thu hồi…",
+        "cancel": "Huỷ",
+        "revoked": "Run #{id} không còn chạy như bạn",
+        "revokedText": "Token của run đã hết hiệu lực; lần gọi hub kế tiếp của agent nhận 401."
       }
     },
     "diff": {
@@ -6029,6 +6056,11 @@
         "needs_login": "cần đăng nhập",
         "disabled": "đã tắt"
       }
+    },
+    "asMe": {
+      "label": "Chạy như tôi trên hub",
+      "hint": "Agent gọi API của hub dưới tên bạn: đúng quyền của bạn ở mọi dự án, cả quyền hub admin nếu bạn có, nhưng không bao giờ chạm tới secrets, tokens hay workers của bạn. Quyền này hết khi run dừng.",
+      "warning": "Bất cứ thứ gì agent đọc, như một trang web, một issue hay một file, đều có thể lái nó trong lúc nó giữ quyền của bạn. Bạn thu hồi được bất cứ lúc nào trên trang của run."
     },
     "progress": {
       "label": "Tiến độ plan",
@@ -6807,6 +6839,28 @@
       "footHub": "Hub làm điều phương án nói ngay khi bạn trả lời.",
       "takeOver": "Tiếp quản",
       "takeOverLabel": "Tiếp quản run #{run} trong terminal"
+    },
+    "credential": {
+      "asksValue": "Run xin <code>{name}</code>, để lưu thành secret <code>{secret}</code> của {owner}.",
+      "asksAccount": "Run xin dùng tài khoản hub của {owner}: đúng quyền của người đó ở mọi dự án, không bao giờ chạm tới secrets, tokens hay workers.",
+      "asksBoth": "Run xin <code>{name}</code>, để lưu thành secret <code>{secret}</code> của {owner}, và xin dùng tài khoản hub của {owner}.",
+      "value": "Giá trị của <code>{name}</code>",
+      "valueHint": "Lưu thành secret <code>{secret}</code> của bạn cho dự án {project}. Hub không bao giờ hiện lại giá trị này, và ô này được xoá ngay khi bạn gửi.",
+      "problem": {
+        "missing": "Hãy dán giá trị của {name}, hoặc chọn phương án khác.",
+        "long": "Giá trị của secret tối đa {max} byte UTF-8.",
+        "nul": "Giá trị của secret không được chứa ký tự NUL.",
+        "inWords": "Ghi chú của bạn chứa giá trị này, mà agent đọc được ghi chú. Hãy bỏ giá trị ra khỏi ghi chú."
+      },
+      "forgotten": "Ô đã được xoá khi bạn gửi. Hãy dán lại giá trị để trả lời.",
+      "accountNote": "Agent của run sẽ gọi hub dưới tên bạn ở mọi dự án bạn vào được, cả với quyền hub admin nếu bạn là admin, nhưng không bao giờ dùng secrets, tokens hay workers của bạn. Bất cứ thứ gì nó đọc đều có thể lái nó dùng quyền đó, cho tới khi run kết thúc hoặc bạn thu hồi trên trang của run.",
+      "sendValue": "Gửi giá trị",
+      "sendAccount": "Cho dùng tài khoản của tôi",
+      "sendBoth": "Gửi giá trị và cho dùng tài khoản",
+      "sendRefuse": "Từ chối",
+      "footValue": "Giá trị vào secrets của bạn, không bao giờ nằm trong câu trả lời mà agent đọc. Run nhận được nó ngay khi bạn trả lời.",
+      "footAccount": "Run chạy như bạn ngay khi bạn trả lời, tới khi run kết thúc hoặc bạn thu hồi.",
+      "footBoth": "Giá trị vào secrets của bạn, không bao giờ nằm trong câu trả lời mà agent đọc, và run chạy như bạn ngay khi bạn trả lời."
     },
     "errors": {
       "forbidden": "Hub từ chối: chỉ {owner}, người đã giao run #{run}, mới trả lời được, và chỉ khi còn quyền ghi trên {project}.",

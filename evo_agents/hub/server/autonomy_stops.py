@@ -83,7 +83,7 @@ router = APIRouter(prefix="/v1/autonomy/stops", tags=["autonomy"], responses={40
 
 async def _subject(conn: AsyncConnection, body: StopSet, user: Principal):
     """(user_id, unit) the stop names, once ``user`` may stop or lift it; 403, 404 or 422 otherwise."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise HTTPException(403, "the agent of a run never stops autonomy nor lifts a stop")
     chart, day = await org_store.load(conn), await org_store.today(conn)
     user_id, unit, login = None, None, body.login

@@ -432,7 +432,7 @@ async def _next_rank(conn: AsyncConnection, project_id: int) -> int:
 
 def refusal(user: Principal, access: ProjectAccess) -> str | None:
     """Why ``user`` may not write the project's problems; None when they may."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         return "the agent of a run never writes a problem: @builder proposes one, which a writer approves"
     if has_role(access.role, "writer"):
         return None

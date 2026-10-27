@@ -972,7 +972,7 @@ async def roll_back(
 
 def refusal(user: Principal, access: ProjectAccess, kind: str, doing: str) -> str | None:
     """Why ``user`` may not do ``doing`` to a proposal of ``kind``; None when they may."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         return f"{doing} is for an admin, never for the agent of a run"
     if kind in HUB_WIDE:
         return None if user.admin else f"{doing} needs a hub admin, and {user.login} is none"

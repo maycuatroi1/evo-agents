@@ -986,6 +986,58 @@ def test_a_wait_for_a_time_or_an_event_takes_the_run_to_waiting_until_the_hub_wa
     assert second["resume"] == first["session"] and "Answer to decision #1 (wait)" in second["prompt"]
 
 
+def test_credential_request_answered_takes_the_leases_again_before_the_agents_next_turn(machine):
+    """Plan owner-run-access, step 3: the agent asks for a variable it lacks; once the owner answered, the daemon asks
+    for the run's leases again before the next turn, which has the value in its environment."""
+    key = "deploy-key-" + secrets.token_hex(16)
+    request = ["ask", "--category", "credential", "--question", "The deploy needs its key.", "--step", "1"]
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"sh": 'test -z "$NORTHWIND_DEPLOY_KEY" && echo none'},
+                {"cli": [*request, "--env-var", "NORTHWIND_DEPLOY_KEY", "--recommended", "value"]},
+            ],
+            f"plan:{PLAN}/2": [
+                {"sh": 'test -n "$NORTHWIND_DEPLOY_KEY" && echo leased'},
+                {"cli": ["step", "1", "done", "--verify", "true"]},
+                {"result": {"summary": "Step 1 done with the key the owner gave."}},
+            ],
+        }
+    )
+    lease = Lease(1, "env", "secret", "northwind-deploy-key", env_var="NORTHWIND_DEPLOY_KEY", value=key)
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        assert await hub.wait_state(run_id, "waiting", "done", "failed") == "waiting", hub.texts(run_id)
+        decision = hub.decisions[1]
+        assert decision["credential_request"] == {
+            "hub_account": False,
+            "env_var": "NORTHWIND_DEPLOY_KEY",
+            "secret_name": "northwind-deploy-key",
+        }
+        assert [option["key"] for option in decision["options"]] == ["value", "refuse"]
+        asks = hub.credential_calls.count(("ask", run_id))
+        hub.leases[run_id] = {"leases": [lease.to_json()], "missing": []}  # the hub keeps what the owner pasted
+        hub.answer(1, "value")
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub, asks=asks)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    assert hub.credential_calls.count(("ask", run_id)) == found["asks"] + 1, "asked again once, on the answer"
+    before, asked, after = machine.commands()[:3]
+    assert (before["stdout"].strip(), after["stdout"].strip()) == ("none", "leased"), machine.commands()
+    assert asked["exit"] == 0 and "worker env --run" in asked["stdout"], asked
+    noted = json.loads(machine.home.decisions_path(run_id).read_text(encoding="utf-8"))
+    assert noted["id"] == 1 and noted["credential"] is True
+    assert [start["leased"] for start in machine.starts()] == [[], ["NORTHWIND_DEPLOY_KEY"]]
+    assert any(
+        "Credential request #1 was answered: the run took its leases again" in text for text in hub.texts(run_id)
+    )
+    assert key not in json.dumps(hub.runs[run_id]["events"]), "the value never reaches the log"
+
+
 def test_what_the_runtime_leaves_out_for_a_leased_oauth_token_is_noted_once_a_run_of_two_turns(machine):
     """The daemon's side of step 9 of the worker-credentials plan: the agent's context names what the leases set, and
     the runtime's notes of the agent's environment (``Adapter.environment_notes``; Claude Code's API_KEY_NOTE) reach

@@ -37,7 +37,7 @@ import time
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
-from evo_agents.hub.client import Hub, HubError, load_credentials
+from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.kg_push import push_all, push_project
 
@@ -586,7 +586,7 @@ def open_session(backend: str, project: str | None, sink: str):
 
     if backend == "local":
         return make_session(project, sink)
-    from evo_agents.hub.mcp_proxy import run_credentials
+    from evo_agents.hub.mcp_proxy import run_credentials, session_credentials
 
     run = run_credentials()
     if run is not None:  # the hub knows the run's project; a worker token reads no build list to probe
@@ -598,7 +598,7 @@ def open_session(backend: str, project: str | None, sink: str):
         if name is None:
             return make_session(project, sink) if backend == "auto" else Session(None, sink, error=str(exc))
     try:
-        credentials = load_credentials()
+        credentials = session_credentials()  # never a run's token of the hub, which /mcp does not take
         hub = Hub(credentials.url, credentials.token)
         if backend == "auto" and not hub_has_graph(Hub(hub.url, hub.token, timeout=PROBE_TIMEOUT), name):
             return make_session(project, sink)

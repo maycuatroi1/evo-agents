@@ -8,7 +8,9 @@ one the caller may read (``runs.readable_run``: 404 otherwise); another member, 
 the leases name the owner's secrets as GET /v1/secrets does to the owner alone. A lease of an account of the run's
 agent (``agent_accounts``) is named ``@<handle>:<name>``, which no secret of the owner can be. A run on a provider
 account's model (``evo_agents.hub.gateway_runs``) shows provider and kind ``gateway``: its key of the gateway as
-``gateway:<model>``, and each provider account that key reaches by the account's name, the target being the model. Each
+``gateway:<model>``, and each provider account that key reaches by the account's name, the target being the model. A
+run that runs as its owner shows the lease of its token of the hub as ``run-access:<owner>``, provider run-access and
+kind hub (``run_access``). Each
 lease names the agent profile and version it was handed out under (``evo_agents.hub.profiles``), null for one from
 before schema 0030.
 """
@@ -24,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from evo_agents.hub import tables
-from evo_agents.hub.credentials import LEASED_KINDS, PROVIDERS, agent_lease_name, github_repo
+from evo_agents.hub.credentials import HUB_KIND, LEASED_KINDS, PROVIDERS, RUN_ACCESS, agent_lease_name, github_repo
 from evo_agents.hub.gateway_runs import GATEWAY
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -46,15 +48,16 @@ class RunLease(BaseModel):
         "gateway:<model> for a run's key of the model gateway, or the provider account's name that key reaches"
     )
 
-    provider: Literal[(*PROVIDERS, GATEWAY)] = Field(
-        description="secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's"
+    provider: Literal[(*PROVIDERS, GATEWAY, RUN_ACCESS)] = Field(
+        description="secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's; "
+        "run-access: the run's own token of the hub, as its owner (evo_agents.hub.server.run_access)"
     )
-    kind: Literal[(*LEASED_KINDS, GATEWAY)] = Field(
+    kind: Literal[(*LEASED_KINDS, GATEWAY, HUB_KIND)] = Field(
         description="env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the "
-        "model gateway, or a provider account it reaches"
+        "model gateway, or a provider account it reaches; hub: the run's token of the hub"
     )
     target: str = Field(
-        description="kind env: the variable it set; kind git: the origins of the run's repos it answered for, "
+        description="kind env and hub: the variable it set; kind git: the origins of the run's repos it answered for, "
         "space-separated, in the form of normalize_origin; kind gateway: the model"
     )
     worker: str = Field(description="the worker it was leased to")
@@ -114,9 +117,11 @@ def _token_name(target: str) -> str:
     return f"github-app:{found[0]}" if found else "github-app"
 
 
-def _lease_name(row) -> str:
+def _lease_name(row, owner: str) -> str:
     if row.provider == GATEWAY:
         return row.secret or f"{GATEWAY}:{row.target}"
+    if row.provider == RUN_ACCESS:
+        return f"{RUN_ACCESS}:{owner}"
     if row.provider != "secret":
         return _token_name(row.target)
     return row.secret if row.agent is None else agent_lease_name(row.agent, row.secret)
@@ -125,6 +130,8 @@ def _lease_name(row) -> str:
 def _lease_kind(row) -> str:
     if row.provider == GATEWAY:
         return GATEWAY
+    if row.provider == RUN_ACCESS:
+        return HUB_KIND
     return row.secret_kind if row.provider == "secret" else "git"
 
 
@@ -146,7 +153,7 @@ async def run_credentials(
     return [
         RunLease(
             id=row.id,
-            name=_lease_name(row),
+            name=_lease_name(row, owner),
             provider=row.provider,
             kind=_lease_kind(row),
             target=row.target,

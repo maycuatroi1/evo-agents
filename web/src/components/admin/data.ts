@@ -35,7 +35,7 @@ export const PAGE_SIZES = [25, 50, 100] as const;
 export type PageSize = (typeof PAGE_SIZES)[number];
 export const DEFAULT_PAGE_SIZE: PageSize = 50;
 
-export const TOKEN_KINDS = ["machine", "web", "worker"] as const;
+export const TOKEN_KINDS = ["machine", "web", "worker", "run"] as const;
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 /**
  * The token list's state filter. Besides a token's own state: `expiring`, live ones that expire within

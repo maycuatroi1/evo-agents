@@ -185,8 +185,26 @@ describe("DispatchDialog", () => {
       approval: "auto",
       timeout_min: 120,
       worker_id: 7,
+      as_me: false,
     });
     expect(dispatched).toHaveBeenCalledWith([queued(41, "4"), queued(42, "2")]);
+  });
+
+  it("lets the runs act as the visitor on the hub only when asked, and then says the risk", async () => {
+    const user = userEvent.setup();
+    api.answer = answer(() => json([queued(41, "4")], 201));
+    renderVi(<Harness onDispatched={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Dispatch run" });
+    await waitFor(() => expect(within(dialog).getByRole("checkbox", { name: /Docs/ })).toBeChecked());
+    const asMe = within(dialog).getByRole("checkbox", { name: /Chạy như tôi trên hub/ });
+    expect(asMe).not.toBeChecked();
+    expect(asMe).toHaveAccessibleDescription(/không bao giờ chạm tới secrets, tokens hay workers của bạn/);
+    expect(within(dialog).queryByTestId("dispatch-as-me-warning")).toBeNull();
+    await user.click(asMe);
+    expect(within(dialog).getByTestId("dispatch-as-me-warning")).toHaveTextContent("Bạn thu hồi được bất cứ lúc nào trên trang của run.");
+    await user.click(within(dialog).getByRole("button", { name: "Dispatch 1 run" }));
+    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
+    expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.as_me).toBe(true);
   });
 
   it("keeps the dialog open and says why when the hub refuses a step that stopped being ready", async () => {

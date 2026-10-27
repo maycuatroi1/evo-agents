@@ -898,6 +898,18 @@ WAIT_RULE = (
 )
 
 
+# How the agent of a plan run asks for a credential it lacks (``credential_requests``), rather than asking the owner to
+# sign in on the worker's machine or to run `evo cred` there (plan owner-run-access).
+CREDENTIAL_RULE = (
+    "- When a command lacks a credential, a variable such as an API key or a sign-in to the hub (`evo-agents hub` "
+    "says not signed in), never ask the owner to sign in on this machine or to put it into `evo cred` here: ask for "
+    "it with `evo-agents worker ask --category credential --question TEXT --env-var NAME --hub-account --step "
+    "{step}`, --env-var for the variable, --hub-account for the owner's account on the hub, or both in one decision. "
+    'The hub gives the decision its options. Once the owner answered, read what it gave with `eval "$(evo-agents '
+    'worker env --run "$EVO_RUN_ID")"` before the command that needs it.'
+)
+
+
 def _plan_rules(autonomy) -> list[str]:
     fewest, most = DECISION_OPTIONS
     return [
@@ -916,12 +928,13 @@ def _plan_rules(autonomy) -> list[str]:
         "and the time you wait does not count toward the run's timeout.",
         ASK_RULE,
         WAIT_RULE.format(step="KEY"),
+        CREDENTIAL_RULE.format(step="KEY"),
         RELAY_RULE,
         ATTACH_RULE,
-        "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
-        "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
-        "what the owner must do, with a way around the block among the options when there is one, and end your "
-        "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
+        "- A step blocked by what only the owner can change (a permission of the GitHub App, access to a service, a "
+        "push the remote refuses; a credential it lacks is asked as above) is a scope decision, not a stop: ask it, "
+        "naming what the owner must do, with a way around the block among the options when there is one, and end "
+        "your turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _push_rule(autonomy),
         OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
@@ -1054,6 +1067,7 @@ def _step_session_rules(key: str, autonomy) -> list[str]:
         "decision's id, and the time you wait does not count toward the run's timeout.",
         ASK_RULE,
         WAIT_RULE.format(step=key),
+        CREDENTIAL_RULE.format(step=key),
         RELAY_RULE,
         ATTACH_RULE,
         _push_rule(autonomy),

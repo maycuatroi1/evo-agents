@@ -53,7 +53,7 @@ router = APIRouter(
 
 def actor(user: Principal) -> org.Actor:
     """Who writes, as the rules of the chart see them; the agent of a run is refused."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise HTTPException(403, "the agent of a run never changes the org chart")
     return org.Actor(user_id=user.user_id, login=user.login, admin=user.admin)
 

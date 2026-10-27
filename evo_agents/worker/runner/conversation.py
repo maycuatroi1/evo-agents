@@ -26,7 +26,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import author, runs
+from evo_agents.hub.credential_requests import NOTED
 from evo_agents.worker import gitops
+from evo_agents.worker.credentials import credential_asks
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner.common import (
     HARD_STOP_TRIES,
@@ -169,7 +171,13 @@ class Conversation:
         run.inbox.answered |= {item for item in record.get("answered") or [] if isinstance(item, int)}
         still_open = sorted(read_asked(home, old_id) - run.inbox.answered)
         if still_open:
-            lines = "".join(json.dumps({"id": decision_id}) + "\n" for decision_id in still_open)
+            requests = credential_asks(
+                home, old_id
+            )  # a credential request stays one: its answer takes the leases again
+            lines = "".join(
+                json.dumps({"id": decision_id} | ({NOTED: True} if decision_id in requests else {})) + "\n"
+                for decision_id in still_open
+            )
             with open(home.decisions_path(run.id), "a", encoding="utf-8") as handle:
                 handle.write(lines)
 
@@ -231,6 +239,7 @@ class Conversation:
             if not messages:
                 return
             await run.agent.login_answered(messages)
+            await run.agent.credentials_answered(messages)
             prompt = runs.clip(
                 self.prompt_for(messages) + "\n\n" + await run.inbox.take(messages), runs.MAX_PROMPT_BYTES
             )

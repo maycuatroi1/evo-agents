@@ -246,6 +246,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A plan's steps as Board, List, Graph | `Columns3`, `LayoutList`, `Waypoints` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
+| Run as me on the hub, a run that runs as its owner, its Hub account lease; Revoke that access; a run token | `UserRoundKey`; `ShieldOff`; `Activity` |
 | Org chart; New unit, Add seat, Edit, Set ceiling, End seat, Archive unit; a unit's row that opens | `Building2`; `FolderPlus`, `UserPlus`, `Pencil`, `SlidersHorizontal`, `UserMinus`, `Archive`; `ChevronRight` |
 | A seat's primary mark, an agent's seat, a seat that ends within 7 days, a person's runs at work | `Star`, `Bot`, `Hourglass`, `Activity` |
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
@@ -1135,6 +1136,17 @@ Shared pieces built on them:
   branch the hub recorded for it (`task/<id of the run the dispatch made>`, a later attempt's too), which the hub opens
   as a draft pull request, and the runs list shows it with that tag and "A task a plugin handed to @handle, on branch
   task/N", linked to the run's page.
+- Dispatch and Run plan end with "Run as me on the hub" (`runs/as-me-field.tsx`, `UserRoundKey`), a checkbox card off
+  by default whose line says what the agent gets (the owner's access on every project, hub admin when they have it)
+  and never gets (their secrets, tokens and workers), and that it ends with the run; checked, a warning on
+  `attention-soft` says the risk (what the agent reads may steer it with that access) and where to revoke it. The body
+  sends `as_me` either way. A run that runs as its owner shows, first in the side column, a Hub access card
+  (`runs/run-access.tsx`) to everyone who reads the run: "Runs as octo" as an `info` pill ("Ran as octo", neutral,
+  once it ended), what the agent may do, who let it (the owner, the one member who may), since when
+  (`as_owner_since`) and when it ends; the owner alone gets Revoke (`quiet-danger`, `ShieldOff`) while the run is
+  active, through `ConfirmAction` that says the token ends at once and the command that lets it again, then a toast.
+  The run's head carries the same pill while the run is active, and the Credentials card names the run's own token
+  Hub account (`UserRoundKey`) with the variable it sets.
 - The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
   the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
   picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are
@@ -1324,6 +1336,20 @@ Shared pieces built on them:
   above the session, or at the top of the side column once Details is open (`runs/run-decisions.tsx`, "Waiting for
   your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
   found answered after a 409, stays with its answer until the visitor leaves.
+- `components/inbox/credential-decisions.tsx`, a credential request (a decision of category credential that asks the
+  run's owner for a variable's value, their hub account or both; docs/credentials.md, "A run that asks for a
+  credential"): its grounds open with what it asks for (`KeyRound`, the variable and the secret that will keep it in
+  mono, the owner's hub account), to anyone who reads it. The owner's form opens on the value when the request names a
+  variable, never on the account (picked on purpose), and under the options shows what the option chosen needs: the
+  variable's value in a password field (`LockKeyhole` inside it, mono, no `name`, never filled by the page, 16 px and
+  44 px on the phone's screen) with where the value goes, and for the account a warning on `attention-soft`
+  (`ShieldAlert`) that the agent will act as the owner until the run ends or they revoke it. The field is read when the
+  answer is sent and emptied at that moment whatever the hub answers, as the Secrets page's; after a refusal it says to
+  paste the value again. The answer that carries a value goes through plain state (`useAnswerWithSecret`, beside
+  the form), never a TanStack mutation whose cache would keep the body. A missing value, one over 16 KiB, a NUL
+  or the value inside the note is refused beside the field before anything leaves. The send button names what the
+  answer gives (Give the value, Let it use my account, Give the value and my account, Refuse) and the footer where the
+  value goes.
 - `components/runs`, a run's page (`/p/{project}/runs/{id}`): the trace is what the page is for, and everything else
   waits to be asked for (the design and its sources: the harness report "Thiết kế trang run cao cấp"). The head
   (`run-header.tsx`) is one line of 13 px over the trace, flat on the paper: the plan and its step in progress as links

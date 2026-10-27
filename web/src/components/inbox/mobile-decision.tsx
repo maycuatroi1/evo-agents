@@ -331,7 +331,7 @@ function AnswerScreen({
       >
         {form.terminalHref ? <TakeOverButton decision={decision} href={form.terminalHref} className="h-11 flex-1 text-[15px]" /> : null}
         <Button type="submit" form={formId} busy={form.pending} className="h-11 flex-1 text-[15px]" data-testid="decision-send">
-          {form.pending ? t("sending") : t("send")}
+          {form.pending ? t("sending") : form.sendLabel}
         </Button>
       </div>
     </>

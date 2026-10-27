@@ -1,7 +1,8 @@
 """K8 and K12 at the routes (plan autonomy-levels, criterion a6): a write to a route that keeps credentials (secrets,
 accounts: K8) or rules (grants, policies, agent profiles, the org and its ceilings: K12), made with the credential of a
-run (the agent of a run on /mcp, ``security.RunScope``), reads the mode of the run's principal for the class, the
-stricter of the run's snapshot and the value now (``run_autonomy.recheck``).
+run (the agent of a run on /mcp, ``security.RunScope``, or a run's token on the REST API, ``run_access``:
+``Principal.acts_for_run``), reads the mode of the run's principal for the class, the stricter of the run's snapshot
+and the value now (``run_autonomy.recheck``).
 
 - deny: 403, naming the class, the mode and its source.
 - ask: 403 too, telling the agent to ask its principal (ask_member), who makes the change themself.
@@ -31,18 +32,19 @@ ASK_HINT = (
 
 async def held(request: Request, user: Principal, klass: str) -> None:
     """403 when ``klass`` keeps the run of ``user`` from this write; nothing for a caller that is no run's agent."""
-    if user.scope is None or request.method in READS:
+    run_id = user.acts_for_run
+    if run_id is None or request.method in READS:
         return
     route = getattr(request.scope.get("route"), "path", request.url.path)
     engine = request.app.state.engine
     async with engine.begin() as conn:  # the audit row stays: the refusal is raised once it is written
-        found = await run_autonomy.recheck(conn, user.scope.run_id)
+        found = await run_autonomy.recheck(conn, run_id)
         choice = None if found is None else found.classes[klass]
         if choice is None:
             return
         act = f"{request.method} {route}"
         result = ALLOWED if choice.mode in ACTING else REFUSED
-        await autonomy_ledger.record(conn, user.scope.run_id, klass, choice.mode, result, act, token_id=user.token_id)
+        await autonomy_ledger.record(conn, run_id, klass, choice.mode, result, act, token_id=user.token_id)
         if choice.mode in ACTING:
             return
         await audit.record(
@@ -50,8 +52,7 @@ async def held(request: Request, user: Principal, klass: str) -> None:
             actor_id=user.user_id,
             token_id=user.token_id,
             action=audit.AUTONOMY_REFUSED,
-            target=f"run:{user.scope.run_id} {klass} {request.method} {route} mode={choice.mode} "
-            f"source={choice.source}",
+            target=f"run:{run_id} {klass} {request.method} {route} mode={choice.mode} source={choice.source}",
         )
     why = f"{request.method} {route}: {refusal(klass, choice.mode, choice)}"
     raise HTTPException(403, f"{why}; {ASK_HINT}" if choice.mode == ASK else why)
