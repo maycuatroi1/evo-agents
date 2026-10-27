@@ -22111,6 +22111,23 @@ export interface components {
              */
             version: number | null;
         };
+        /**
+         * LostAttempt
+         * @description The attempt before a plan run that the hub lost on the worker claiming the run, whose agent's session the run
+         *     may go on in.
+         */
+        LostAttempt: {
+            /**
+             * Run Id
+             * @description the lost attempt, whose worktrees the worker may still have
+             */
+            run_id: number;
+            /**
+             * Session Id
+             * @description the session of its agent, as its worker reported it
+             */
+            session_id: string;
+        };
         /** MapNode */
         MapNode: {
             /** Id */
@@ -33554,6 +33571,8 @@ export interface components {
              * @description the agent session to resume; null for a new one
              */
             session_id?: string | null;
+            /** @description a plan run's attempt before this one, which the hub lost on this same worker (it stopped extending the lease), on the same runtime: the worker goes on in its agent's session and worktrees when it still has both, else starts as for any other attempt; null for any other run */
+            lost_attempt?: components["schemas"]["LostAttempt"] | null;
             /**
              * Runtime
              * @description a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration

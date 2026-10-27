@@ -2181,3 +2181,22 @@ def test_selftest_of_an_unavailable_runtime_says_why(monkeypatch, capsys, tmp_pa
     monkeypatch.setenv("PATH", str(tmp_path))
     assert main(["worker", "selftest", "--runtime", "opencode"]) == 1
     assert "error: opencode is unavailable here: opencode is not on PATH" in capsys.readouterr().err
+
+
+def test_has_session_finds_the_record_of_a_session_only_for_a_runtime_that_keeps_one_here(tmp_path):
+    """The next attempt of a plan run the hub lost goes on in the lost attempt's session only when its runtime finds the
+    session's record on this machine: Claude Code's transcript in its config dir, Codex's rollout in its home. opencode
+    keeps its sessions behind its server and a plugin's runtime behind its agent, so neither can tell: a new session."""
+    session = "6f1c2a7e-0b4d-4a51-9a63-2f0e5d8c1b47"
+    env = {"HOME": str(tmp_path), "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"), "CODEX_HOME": str(tmp_path / "codex")}
+    assert not ClaudeCodeAdapter.has_session(env, session) and not CodexAdapter.has_session(env, session)
+    transcript = tmp_path / "claude" / "projects" / "-Users-northwind-worktrees-demo-41"
+    transcript.mkdir(parents=True)
+    (transcript / f"{session}.jsonl").write_text("{}\n", encoding="utf-8")
+    rollout = tmp_path / "codex" / "sessions" / "2026" / "10" / "28"
+    rollout.mkdir(parents=True)
+    (rollout / f"rollout-2026-10-28T13-04-00-{session}.jsonl").write_text("{}\n", encoding="utf-8")
+    assert ClaudeCodeAdapter.has_session(env, session) and CodexAdapter.has_session(env, session)
+    assert not ClaudeCodeAdapter.has_session({"HOME": str(tmp_path)}, session), "another config dir holds none"
+    assert not ClaudeCodeAdapter.has_session(env, "another-session")
+    assert not OpencodeAdapter.has_session(env, session) and not Adapter.has_session(env, session)

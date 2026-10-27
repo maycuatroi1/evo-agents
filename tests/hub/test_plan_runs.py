@@ -802,3 +802,30 @@ def test_a_lost_plan_run_is_tried_again_as_a_plan_run_and_the_last_attempt_gives
     back = fleet_step(client, hub["owner"], 2)  # reported by the first attempt, given back by the last
     assert (back["status"], back["note"]) == ("pending", f"run #{third} failed: {error}")
     assert ready(client, hub["reader"])["plan_run"] is None
+
+
+def test_the_next_attempt_of_a_lost_plan_run_names_its_session_to_the_worker_that_lost_it_alone(client, hub, hub_db):
+    """Attempt 1 started step 2 and was lost; the worker that lost it claims attempt 2, which names attempt 1 and its
+    agent's session for the worker to go on in; attempt 2 is lost too, and another worker takes attempt 3 at once,
+    named nothing: the next attempt is never pinned to the worker that lost the run."""
+    worker, run = started(client, hub)
+    first = run["id"]
+    moved(client, worker, first, "running", session_id="northwind-session-1")
+    reported(client, worker, first, 2, "in_progress")
+    expire(hub_db, first)
+    assert recover(client)["lost"] == 1
+    r = tables.runs
+    ((second, pinned),) = sql(hub_db, select(r.c.id, r.c.pinned_worker_id).where(r.c.parent_run_id == first))
+    assert pinned is None
+    steady(hub_db, worker)
+    spec = claim(client, worker)
+    assert (spec["id"], spec["attempt"]) == (second, 2)
+    assert spec["lost_attempt"] == {"run_id": first, "session_id": "northwind-session-1"}
+    assert spec["resume_of_run_id"] is None and spec["session_id"] is None, "not a run that resumes a parked one"
+    moved(client, worker, second, "running", session_id="northwind-session-1")
+    other = fleet_worker(client, hub["owner"], "mac-studio")
+    expire(hub_db, second)
+    assert recover(client)["lost"] == 1
+    third = claim(client, other)
+    assert third["attempt"] == 3 and third["parent_run_id"] == second
+    assert third["lost_attempt"] is None, "another worker has neither the session nor the worktrees"

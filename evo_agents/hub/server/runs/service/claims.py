@@ -11,7 +11,9 @@ names no environment its project still registers fails at the claim, saying why.
 packs goes only to a worker whose daemon builds them and whose owner accepted each pack's plugin, with a presigned GET
 of the bundle of each at the version the profile pins (``agent_packs.tickets``); one the hub cannot hand a pack fails
 at the claim, saying why. A claim records the plugins of the run's project, each with its version and the digest of
-the run's effective config (``plugin_configs.record_run_plugins``)."""
+the run's effective config (``plugin_configs.record_run_plugins``). The next attempt of a plan run the hub lost, claimed
+by the worker that lost it, names that attempt and its agent's session (``lost_attempt``), for the worker to go on in
+when it still has them; claimed by any other worker, it starts afresh."""
 
 from __future__ import annotations
 
@@ -40,6 +42,7 @@ from evo_agents.hub.server.runs.models import (
     Claim,
     ClaimedBudget,
     CuratorSpec,
+    LostAttempt,
     PlanCopy,
     PluginRuntime,
     Run,
@@ -761,6 +764,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         parent_run_id=view.parent_run_id,
         resume_of_run_id=view.resume_of_run_id,
         session_id=view.session_id,
+        lost_attempt=await _lost_attempt(conn, view),
         runtime=view.runtime,
         model=view.model,
         mode=view.mode,
@@ -816,6 +820,29 @@ async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> Cu
     if found is not None and view.kind == "history":
         found.update(await history_claim(conn, view.id))
     return None if found is None else CuratorSpec(**found)
+
+
+async def _lost_attempt(conn: AsyncConnection, view: Run) -> LostAttempt | None:
+    """The attempt before plan run ``view`` when the hub lost it (its worker stopped extending the lease) on the worker
+    that claims ``view`` now, on the same runtime, with its agent's session known: that worker goes on in the session
+    and its worktrees when it still has both. None for any other run, for one with a session for each step, and for one
+    with a budget, whose caps count each attempt's agent from nothing."""
+    if view.kind != "plan" or view.parent_run_id is None or view.session_per_step or view.budget is not None:
+        return None
+    r, lost = tables.runs, tables.runs.alias("lost_attempt")
+    query = (
+        select(lost.c.id, lost.c.session_id)
+        .join_from(r, lost, lost.c.id == r.c.parent_run_id)
+        .where(
+            r.c.id == view.id,
+            lost.c.state == "lost",
+            lost.c.worker_id == r.c.worker_id,
+            lost.c.runtime == r.c.runtime,
+            lost.c.session_id.is_not(None),
+        )
+    )
+    row = (await conn.execute(query)).first()
+    return None if row is None else LostAttempt(run_id=row.id, session_id=row.session_id)
 
 
 async def _claimed_budget(conn: AsyncConnection, view: Run) -> ClaimedBudget | None:

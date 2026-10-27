@@ -26,6 +26,14 @@ class ClaimedBudget(RunBudget):
     spent_seconds: int = Field(0, description="the agent time it used so far")
 
 
+class LostAttempt(BaseModel):
+    """The attempt before a plan run that the hub lost on the worker claiming the run, whose agent's session the run
+    may go on in."""
+
+    run_id: int = Field(description="the lost attempt, whose worktrees the worker may still have")
+    session_id: str = Field(description="the session of its agent, as its worker reported it")
+
+
 class RunRepo(BaseModel):
     """A repo of a plan run, with the branch the plan names for it."""
 

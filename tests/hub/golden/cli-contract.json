@@ -114469,6 +114469,27 @@
           ],
           "title": "LoopUseCaseRef"
         },
+        "LostAttempt": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the lost attempt, whose worktrees the worker may still have"
+            },
+            "session_id": {
+              "type": "string",
+              "title": "Session Id",
+              "description": "the session of its agent, as its worker reported it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "session_id"
+          ],
+          "title": "LostAttempt",
+          "description": "The attempt before a plan run that the hub lost on the worker claiming the run, whose agent's session the run\nmay go on in."
+        },
         "MapNode": {
           "properties": {
             "id": {
@@ -140485,6 +140506,17 @@
               ],
               "title": "Session Id",
               "description": "the agent session to resume; null for a new one"
+            },
+            "lost_attempt": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LostAttempt"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a plan run's attempt before this one, which the hub lost on this same worker (it stopped extending the lease), on the same runtime: the worker goes on in its agent's session and worktrees when it still has both, else starts as for any other attempt; null for any other run"
             },
             "runtime": {
               "type": "string",

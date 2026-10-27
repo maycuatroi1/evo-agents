@@ -693,6 +693,13 @@ class ClaudeCodeAdapter(QueueAdapter):
         return ClaudeCodeTui(context, session_id)
 
     @classmethod
+    def has_session(cls, env: Mapping[str, str], session_id: str) -> bool:
+        """Whether Claude Code's transcript of the session is in the config dir of ``env``, which ``--resume`` loads."""
+        from evo_agents.worker.interactive import claude_transcript
+
+        return claude_transcript(env, session_id) is not None
+
+    @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
         return auth_notes(context) + profiles.claude_notes(profiles.profile_of(context))
 

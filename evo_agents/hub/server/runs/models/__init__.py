@@ -23,6 +23,7 @@ from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, Brow
 from evo_agents.hub.server.runs.models.placement import PlacementFields, RunPlacement
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
+    LostAttempt,
     PlanCopy,
     PluginRuntime,
     ReleaseSpec,
@@ -544,6 +545,12 @@ class RunSpec(BaseModel):
         None, description="the parked plan run this one goes on from: reuse its worktrees and resume its session"
     )
     session_id: str | None = Field(None, description="the agent session to resume; null for a new one")
+    lost_attempt: LostAttempt | None = Field(
+        None,
+        description="a plan run's attempt before this one, which the hub lost on this same worker (it stopped "
+        "extending the lease), on the same runtime: the worker goes on in its agent's session and worktrees when it "
+        "still has both, else starts as for any other attempt; null for any other run",
+    )
     runtime: str = Field(description="a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
     mode: Literal[runs.MODES]
