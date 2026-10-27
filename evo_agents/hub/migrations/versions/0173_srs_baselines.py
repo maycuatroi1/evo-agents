@@ -36,10 +36,10 @@ def upgrade() -> None:
         sa.Column("confirmed_by", sa.BigInteger()),
         sa.Column("counts", postgresql.JSONB(), server_default="{}", nullable=False),
         sa.Column("confirmed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        _key("goal_id", "goals", "CASCADE"),
-        _key("project_id", "projects", "CASCADE"),
-        _key("document_id", "srs_documents", "CASCADE"),
-        _key("confirmed_by", "users", "SET NULL"),
+        _key("goal_id", "goals", ondelete="CASCADE"),
+        _key("project_id", "projects", ondelete="CASCADE"),
+        _key("document_id", "srs_documents", ondelete="CASCADE"),
+        _key("confirmed_by", "users", ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("goal_id", name="srs_baselines_pkey"),
     )
 
