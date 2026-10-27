@@ -235,6 +235,10 @@ def _register_client_commands(hsub) -> None:
 
     register_signals(hsub)
 
+    from evo_agents.hub.cli_context import register_context
+
+    register_context(hsub)
+
     from evo_agents.hub.cli_sessions import register_sessions
 
     register_sessions(hsub)

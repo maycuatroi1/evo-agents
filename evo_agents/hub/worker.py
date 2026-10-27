@@ -81,6 +81,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.context_answer_reuse``, daily at 00:09: the answers loaded into prompts the day before, posted as the signal
+  ``context.answer_reuse`` of each project whose policy sets ``context.answers`` (``server.context_answer_reuse``).
 - ``hub.memory_upkeep``, daily: the memories of agent profiles nobody opened for 30 days archived, and those citing
   code the project's knowledge graph no longer has marked stale (``evo_agents.hub.server.memory_upkeep``), handed
   down by the ``hub worker`` command (``HubContext.memory_upkeep``), as the release pass is.
@@ -532,6 +534,15 @@ async def memory_upkeep(context: JobContext, timestamp: int | None = None) -> di
         log.warning("no memory upkeep was handed to this worker: no agent's memory is archived or marked stale")
         return {"no_memory_upkeep": 1}
     return await kept(found.engine, found.blobs, found.data_dir)
+
+
+@queue.periodic(cron="9 0 * * *")
+@queue.task(name=jobs.CONTEXT_ANSWER_REUSE, pass_context=True, queueing_lock=jobs.CONTEXT_ANSWER_REUSE)
+async def context_answer_reuse(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.context_answer_reuse import push
+
+    found = hub(context)
+    return await push(found.engine, found.config)
 
 
 @queue.periodic(cron="3 5 * * *")

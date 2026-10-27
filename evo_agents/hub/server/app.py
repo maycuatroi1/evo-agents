@@ -430,6 +430,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_people,
         chat_read,
         chats,
+        context_answer_reuse,
         credential_shares,
         credentials,
         features,
@@ -536,6 +537,7 @@ def create_app(config: HubConfig) -> FastAPI:
         gateway_proxy.router,  # /v1/messages and the like: a run's token to the model gateway
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
+        context_answer_reuse.router,  # GET .../context-answers: the answers loaded by week
         signal_keys.router,
         autonomy_policies.router,
         goals.router,

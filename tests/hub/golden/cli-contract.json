@@ -4755,6 +4755,46 @@
         "schema": "Chat"
       }
     },
+    "hub context answers": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--weeks"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "enabled",
+          "since",
+          "until",
+          "weeks"
+        ],
+        "schema": "ContextAnswerWeeks"
+      }
+    },
     "hub contract check": {
       "positionals": [
         {
@@ -85865,6 +85905,93 @@
           }
         }
       },
+      "/v1/projects/{project}/context-answers": {
+        "get": {
+          "tags": [
+            "context"
+          ],
+          "summary": "Read Weeks",
+          "description": "By week (UTC): the runs of the project, those that loaded at least one confirmed answer, and the answers loaded.",
+          "operationId": "read_weeks_v1_projects__project__context_answers_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "weeks",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 52,
+                "minimum": 1,
+                "description": "how many weeks, the current one included",
+                "default": 8,
+                "title": "Weeks"
+              },
+              "description": "how many weeks, the current one included"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ContextAnswerWeeks"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/signal-keys": {
         "get": {
           "tags": [
@@ -103789,6 +103916,73 @@
             "email"
           ],
           "title": "Contact"
+        },
+        "ContextAnswerWeek": {
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Start"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs"
+            },
+            "runs_with_loads": {
+              "type": "integer",
+              "title": "Runs With Loads"
+            },
+            "answers": {
+              "type": "integer",
+              "title": "Answers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "start",
+            "runs",
+            "runs_with_loads",
+            "answers"
+          ],
+          "title": "ContextAnswerWeek"
+        },
+        "ContextAnswerWeeks": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "until": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Until"
+            },
+            "weeks": {
+              "items": {
+                "$ref": "#/components/schemas/ContextAnswerWeek"
+              },
+              "type": "array",
+              "title": "Weeks"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "enabled",
+            "since",
+            "until",
+            "weeks"
+          ],
+          "title": "ContextAnswerWeeks"
         },
         "CredentialLease": {
           "properties": {

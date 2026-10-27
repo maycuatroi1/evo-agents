@@ -12,6 +12,8 @@ an author run works in the repo aud-harness), with decisions written straight in
   showed an audience the run's agent does not hold; a memory whose label the agent's sink does not reach, whose audience
   the agent does not hold, someone else's feedback;
 - a3: each answer loaded is a row of context_answer_loads, once for a run claimed again, and counted by day and week;
+- a6 (reuse): the daily job posts context.answer_reuse for the projects with the key on, once a day, and the weeks are
+  read by route and command;
 - a4: the key is false by default, the policy revision that sets it is listed, and with it off the prompt of every run is
   as it was, byte for byte.
 """
@@ -29,10 +31,13 @@ if not pg.DSN:
 
 from sqlalchemy import insert, select, update
 
-from evo_agents.hub import tables
-from evo_agents.hub.server import context_answers
+from evo_agents.hub import jobs, tables
+from evo_agents.hub.contract import commands
+from evo_agents.hub.server import context_answer_reuse, context_answers
 from evo_agents.hub.server.runs.service import claims
+from evo_agents.hub.worker import queue
 from tests.hub import live
+from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_kg_audience import A, B, done, on_hub, user_id
 from tests.hub.test_memory_agents import (  # noqa: F401 (hub and agents are fixtures)
     a_run,
@@ -278,3 +283,90 @@ def test_each_answer_loaded_is_recorded_once_and_counted_by_day_and_week(hub, ag
     assert on_hub(hub, lambda conn: context_answers.load_counts(conn, project_id(hub, B), start, end)) == []
     with pytest.raises(ValueError):
         on_hub(hub, lambda conn: context_answers.load_counts(conn, pid, start, end, "month"))
+
+
+# the daily signal and the weekly read
+
+
+def reuse_signals(hub) -> list[tuple]:
+    s, k = tables.signals, tables.signal_keys
+    query = select(k.c.name, s.c.value, s.c.external_id, s.c.measured_at).join(k, k.c.id == s.c.key_id)
+    return live.sql(hub.db, query.order_by(s.c.id))
+
+
+def push_reuse(hub) -> dict:
+    state = hub.client.app.state
+    return hub.client.portal.call(
+        context_answer_reuse.push, state.engine, state.config, datetime.now(UTC) + timedelta(days=1)
+    )
+
+
+def register_key(hub) -> dict:
+    """An admin of the project, and the key context.answer_reuse in its registry."""
+    done(
+        hub.client.put(
+            f"/v1/admin/projects/{A}/grants/boss", json={"role": "admin", "max_level": "internal"}, headers=hub.admin
+        )
+    )
+    boss = live.bearer(live.insert_token(hub.db, "boss"))
+    body = {"name": "context.answer_reuse", "kind": "number", "unit": "uses"}
+    done(hub.client.post(f"/v1/projects/{A}/signal-keys", json=body, headers=boss), 201)
+    return boss
+
+
+def test_reuse_is_posted_daily_for_a_project_with_answers_on_and_never_twice(hub, agents, run):  # noqa: F811
+    cites = f"{REPO}:src/app/main.py"
+    decide(hub, run, "first", cites)
+    feedback(hub, "orbit-rule", cites)
+    assert push_reuse(hub)["projects"] == 0  # the key is off: nothing is posted, nothing is created
+    turn_on(hub)
+    prompt(hub, run)
+    register_key(hub)
+    first = push_reuse(hub)
+    assert (first["projects"], first["pushed"], first["refused"], first["failed"]) == (1, 1, [], [])
+    [(name, value, external_id, measured_at)] = reuse_signals(hub)
+    day = datetime.now(UTC).date().isoformat()
+    assert (name, value, external_id) == ("context.answer_reuse", 2, f"context.answer_reuse:{day}")
+    assert measured_at.astimezone(UTC).isoformat().startswith(day)
+    again = push_reuse(hub)
+    assert (again["pushed"], again["duplicates"]) == (0, 1) and len(reuse_signals(hub)) == 1
+
+
+def test_reuse_refused_where_the_key_is_not_registered_leaves_the_table_and_posts_nothing(hub, agents, run):  # noqa: F811
+    turn_on(hub)
+    decide(hub, run, "first", f"{REPO}:src/app/main.py")
+    prompt(hub, run)
+    done(
+        hub.client.put(
+            f"/v1/admin/projects/{A}/grants/boss", json={"role": "admin", "max_level": "internal"}, headers=hub.admin
+        )
+    )
+    refused = push_reuse(hub)
+    assert refused["pushed"] == 0 and refused["failed"] == [] and "context.answer_reuse" in refused["refused"][0]
+    assert reuse_signals(hub) == [] and len(loads(hub)) == 1
+
+
+def test_reuse_runs_daily_once():
+    periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
+    assert periodic[jobs.CONTEXT_ANSWER_REUSE].cron == "9 0 * * *"
+    assert queue.tasks[jobs.CONTEXT_ANSWER_REUSE].queueing_lock == jobs.CONTEXT_ANSWER_REUSE
+
+
+def test_reuse_is_read_by_week_by_a_member_and_the_command_is_in_the_contract(hub, agents, run):  # noqa: F811
+    turn_on(hub)
+    decide(hub, run, "first", f"{REPO}:src/app/main.py")
+    prompt(hub, run)
+    other = a_run(hub, agents.studio, "alice")  # queued, never claimed: no answer loaded
+    assert other != run
+    read = hub.client.get(f"/v1/projects/{A}/context-answers?weeks=3", headers=hub.carol)
+    found = done(read)
+    assert_json_keys("hub context answers", found)
+    assert found["project"] == A and found["enabled"] is True and len(found["weeks"]) == 3
+    *before, current = found["weeks"]
+    assert [(w["runs"], w["runs_with_loads"], w["answers"]) for w in before] == [(0, 0, 0)] * 2
+    assert current["runs"] >= 2 and (current["runs_with_loads"], current["answers"]) == (1, 1)
+    assert hub.client.get(f"/v1/projects/{A}/context-answers?weeks=0", headers=hub.carol).status_code == 422
+    stranger = live.bearer(live.insert_token(hub.db, "stranger"))
+    assert hub.client.get(f"/v1/projects/{A}/context-answers", headers=stranger).status_code == 404
+    printed = commands()["hub context answers"]
+    assert printed["json"]["schema"] == "ContextAnswerWeeks"
