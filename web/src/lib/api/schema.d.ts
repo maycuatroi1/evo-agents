@@ -2422,7 +2422,9 @@ export interface paths {
         /**
          * Stream
          * @description The run's events as server-sent events, each with its seq as id, then an ``end`` event once the run is final
-         *     and every event was sent; a ``: ping`` comment keeps an idle stream open.
+         *     and every event was sent; a ``: ping`` comment keeps an idle stream open. The stream of a run's token
+         *     (``run_access``) stops once the token no longer holds, which each look checks (``security.still_live``), and the
+         *     client that connects again is answered 401.
          */
         get: operations["stream_v1_projects__project__runs__run_id__stream_get"];
         put?: never;
@@ -8698,7 +8700,8 @@ export interface paths {
          * @description The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no
          *     longer read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too
          *     (``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages
-         *     changed.
+         *     changed. The stream of a run's token (``run_access``) ends once the token no longer holds, which each look checks
+         *     (``security.still_live``).
          */
         get: operations["stream_v1_chats__chat_id__stream_get"];
         put?: never;

@@ -44,8 +44,10 @@ admin when the owner is one, while its lease is out (``run_access``): the run is
 its owner lets it run as them and still holds writer on its project, and neither the token nor its worker is revoked;
 otherwise it gets the same 401 as any other credential. It never works under WORKER_PREFIX, is refused the paths of
 ``run_access_rules`` with 403 and the reason, and every write made with it, refused or not, adds an audit row naming
-the run. The gateway route's token of a run (``gateway_leases``) shares the prefix and is a credential of those routes
-alone: here it is unknown.
+the run. While it is answered, ``run_access_rules.ACTING_RUN`` names the run, so no run starts from it; its principal
+acts for the run (``Principal.acts_for_run``) as the agent of a run on /mcp does, for the rules of the routes open to
+it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The gateway route's
+token of a run (``gateway_leases``) shares the prefix and is a credential of those routes alone: here it is unknown.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
 one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the two ends of the web terminal, see
@@ -186,11 +188,10 @@ def _authenticate():
 AUTHENTICATE = _authenticate()
 
 
-def _authenticate_run():
-    """One statement: find the live token of a run, its hash ``:digest``, while its lease is out (``run_access``): the
-    lease is not given back, the run is held by the worker it was leased to and its owner lets it run as them, the
-    owner dispatched it and still holds writer on its project, and the worker is not revoked; push the token's expiry
-    as ``_authenticate`` does. The owner is not marked seen: the run is not them at their keyboard."""
+def _live_run_token(match):
+    """The live token of a run that ``match`` names, while its lease is out (``run_access``): the lease is not given
+    back, the run is held by the worker it was leased to and its owner lets it run as them, the owner dispatched it and
+    still holds writer on its project, and the worker is not revoked."""
     tokens, users, cl, r, w, g = (
         tables.tokens,
         tables.users,
@@ -199,7 +200,7 @@ def _authenticate_run():
         tables.workers,
         tables.grants,
     )
-    found = (
+    return (
         select(tokens.c.id, tokens.c.user_id, users.c.login, cl.c.run_id)
         .join_from(tokens, users, users.c.id == tokens.c.user_id)
         .join(cl, cl.c.token_id == tokens.c.id)
@@ -207,7 +208,7 @@ def _authenticate_run():
         .join(w, w.c.id == cl.c.worker_id)
         .join(g, and_(g.c.project_id == r.c.project_id, g.c.user_id == tokens.c.user_id))
         .where(
-            tokens.c.token_hash == bindparam("digest"),
+            match,
             tokens.c.kind == RUN,
             tokens.c.revoked_at.is_(None),
             tokens.c.expires_at > func.now(),
@@ -219,8 +220,14 @@ def _authenticate_run():
             w.c.revoked_at.is_(None),
             g.c.role.in_(WRITER_ROLES),
         )
-        .cte("found")
     )
+
+
+def _authenticate_run():
+    """One statement: find the live token of a run, its hash ``:digest`` (``_live_run_token``), and push its expiry as
+    ``_authenticate`` does. The owner is not marked seen: the run is not them at their keyboard."""
+    tokens = tables.tokens
+    found = _live_run_token(tokens.c.token_hash == bindparam("digest")).cte("found")
     touched = (
         update(tokens)
         .values(last_used_at=func.now(), expires_at=func.now() + TOKEN_TTL)
@@ -235,6 +242,7 @@ def _authenticate_run():
 
 
 AUTHENTICATE_RUN = _authenticate_run()
+RUN_TOKEN_LIVE = _live_run_token(tables.tokens.c.id == bindparam("token_id")).with_only_columns(tables.tokens.c.id)
 
 
 @dataclass(frozen=True)
@@ -280,6 +288,15 @@ class Principal:
         run = self.scope.run_id if self.scope is not None else self.run_id
         shown = "" if run is None else f", run={run}"
         return f"Principal(login={self.login!r}, token_id={self.token_id}, kind={self.kind!r}{shown})"
+
+    @property
+    def acts_for_run(self) -> int | None:
+        """The run whose agent makes the request: the run of a ``RunScope`` on /mcp, or the run of a run's token
+        (RUN, ``run_access``) on the REST API; None for a member's own credential. A rule of the form "the agent of a
+        run never does X" tests this, not ``scope``, which /mcp alone sets."""
+        if self.scope is not None:
+            return self.scope.run_id
+        return self.run_id if self.kind == RUN else None
 
     @property
     def run_project(self) -> str | None:
@@ -415,6 +432,15 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
     return Principal(user_id, login, admin, token_id, kind, digest, run_id=run[0] if run else None)
 
 
+async def still_live(conn: AsyncConnection, principal: Principal) -> bool:
+    """Whether the credential of ``principal`` still holds, for an answer that outlives the check at its start (a
+    stream): a run's token (RUN) while its lease is out, as ``_authenticate_run`` finds it; any other credential is not
+    looked at again here."""
+    if principal.kind != RUN:
+        return True
+    return (await conn.execute(RUN_TOKEN_LIVE, {"token_id": principal.token_id})).first() is not None
+
+
 def is_public(path: str) -> bool:
     """Whether a request to ``path`` needs no credential of the hub: PUBLIC_PATHS, and PUBLIC_PREFIXES."""
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
@@ -469,15 +495,22 @@ class Authenticate:
             refusal = await self._check(request, worker_route)
         answer = self.app if refusal is None else refusal
         principal = getattr(request.state, "principal", None)
-        if principal is None or principal.kind != RUN or request.method not in UNSAFE_METHODS:
+        if principal is None or principal.kind != RUN:
             await answer(scope, receive, send)
             return
-        watched = _Status(send)
+        acting = run_access_rules.ACTING_RUN.set(principal.run_id)  # no run starts while it answers
         try:
-            await answer(scope, receive, watched)
+            if request.method not in UNSAFE_METHODS:
+                await answer(scope, receive, send)
+                return
+            watched = _Status(send)
+            try:
+                await answer(scope, receive, watched)
+            finally:
+                engine = request.app.state.engine
+                await run_access_rules.record_write(engine, principal, request.method, path, watched.status)
         finally:
-            engine = request.app.state.engine
-            await run_access_rules.record_write(engine, principal, request.method, path, watched.status)
+            run_access_rules.ACTING_RUN.reset(acting)
 
     async def _check(self, request: Request, worker_route: bool) -> Response | None:
         config = request.app.state.config

@@ -19,10 +19,13 @@ the run (``end_access``) and when the owner revokes the token itself (DELETE /v1
 that resumes gets a token of its own at its first ask. A worker of an older release reads the lease, masks its value and
 puts nothing of it into the agent's environment, which takes kind env alone.
 
-What the token never reaches is ``run_access_rules``'s; what it may not do on the routes open to it: answer a decision
-of its own run (``decisions.answer_decision``) or let any run run as its owner (``refuse_onward``). Each grant and
-each stop is an audit row run_access.grant or run_access.revoke, each token a lease names is in the credential.lease
-row (``run-access=token:<id>``), and no log line, event, audit row or error holds the token.
+What the token never reaches is ``run_access_rules``'s, and on the routes open to it every rule of the agent of a run
+holds (``Principal.acts_for_run``): it answers no decision (``decisions.answer_decision``), starts no run and hands no
+agent work (``run_access_rules.refuse_new_run``), approves nothing and lets no run run as its owner
+(``refuse_onward``). The rerun the agent of a triage makes never runs as its owner (``triage_actions``), and a stream
+the token opened stops at its next look once the token ended (``security.still_live``). Each grant and each stop is an
+audit row run_access.grant or run_access.revoke, each token a lease names is in the credential.lease row
+(``run-access=token:<id>``), and no log line, event, audit row or error holds the token.
 """
 
 from __future__ import annotations

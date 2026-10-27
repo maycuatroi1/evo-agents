@@ -576,8 +576,9 @@ The agent talks to the hub through four commands that use the worker's token and
 token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outside a run they refuse to run. A run its
 owner lets run as them (`--as-me` on `hub run dispatch` and `hub run plan`, or `hub run access RUN --as-me`) also
 gets a token of its own in `EVO_HUB_TOKEN`, with the hub's URL in `EVO_HUB_URL`, so `evo-agents hub ...` acts as the
-owner on the hub's REST API, secrets, tokens and workers aside, with no login on the worker; those four commands keep
-the worker's token ([credentials.md](credentials.md#a-run-that-runs-as-its-owner)).
+owner on the hub's REST API, secrets, tokens and workers aside, with no login on the worker; it starts no run, answers
+no decision and changes no grant or autonomy, and those four commands keep the worker's token
+([credentials.md](credentials.md#a-run-that-runs-as-its-owner)).
 
 `POST /v1/projects/{p}/plan-runs` (writer) takes `plan_id`, `worker_id` (optional, one of the caller's own workers:
 403 for any other id, 409 for a revoked worker, one that does not serve the project, or one that could never claim

@@ -54,10 +54,11 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, still_live
 
 STREAM_POLL_SECONDS = 5.0  # a stream looks again this often, notification or not
 STREAM_BATCH = 200  # events a stream reads at a time
+STREAM_TOKEN_ENDED = "the run's token that opened this stream is revoked or its run is no longer held"
 MAX_EVENTS_PAGE = 500
 MESSAGE_EVENTS = ("message", chats.MESSAGE_CHANGED)  # each carries its message as it reads now
 REACTION_EVENTS = ("reaction_added", "reaction_removed")
@@ -186,7 +187,8 @@ async def stream(
     """The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no
     longer read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too
     (``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages
-    changed."""
+    changed. The stream of a run's token (``run_access``) ends once the token no longer holds, which each look checks
+    (``security.still_live``)."""
     chat_id, user = followed
     streams: ChatStreams = request.app.state.chat_streams
     streams.start()
@@ -200,6 +202,8 @@ async def stream(
             refusal, now = None, None
             async with engine.begin() as conn:
                 try:
+                    if not await still_live(conn, user):
+                        raise HTTPException(401, STREAM_TOKEN_ENDED)
                     chat = await chat_access(conn, user, chat_id)
                     events, last, now = await events_after(conn, chat, user, seen, STREAM_BATCH)
                     if progress and now is None:

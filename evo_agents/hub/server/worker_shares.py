@@ -90,7 +90,7 @@ async def _one(conn: AsyncConnection, worker_id: int) -> WorkerShares:
 
 
 def _writer(user: Principal) -> None:
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise HTTPException(403, "the agent of a run never changes whom a worker is shared with")
 
 

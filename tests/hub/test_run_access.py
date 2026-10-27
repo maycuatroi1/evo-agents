@@ -14,8 +14,10 @@ Step 2 adds the worker and the command line: what the daemon puts into the agent
 (a1), and ``hub run dispatch|plan --as-me`` and ``hub run access`` (a4). The command line runs in this process, its
 requests sent to the in-process hub (``through``)."""
 
+import asyncio
 import json
 import os
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,16 +29,49 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+from fastapi import HTTPException
 from sqlalchemy import func, select, update
 
 from evo_agents.cli import main
+from evo_agents.core_plugins.builder import errors as builder_errors
+from evo_agents.core_plugins.builder import proposals as builder_proposals
+from evo_agents.core_plugins.builder import server as builder_server
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import runs, tables
 from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, RUN_ACCESS, Lease, env_name_refusal
-from evo_agents.hub.server import run_access_rules
+from evo_agents.hub.server import (
+    autonomy_policies,
+    autonomy_stops,
+    autonomy_store,
+    chat_events,
+    core_plugin_api,
+    goals,
+    invites,
+    opportunities,
+    post_merge,
+    probes,
+    problems,
+    route_autonomy,
+    run_access,
+    run_access_rules,
+    run_events,
+    task_dispatch,
+    worker_shares,
+)
+from evo_agents.hub.server import org as org_routes
+from evo_agents.hub.server.canvas import content as canvas_content
+from evo_agents.hub.server.canvas import server as canvas_server
+from evo_agents.hub.server.loop import breaker as loop_breaker
+from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.runs.service import dispatch
+from evo_agents.hub.server.security import RUN, Principal
+from evo_agents.hub.server.srs import doc as srs_doc
+from evo_agents.hub.server.srs import reviews as srs_reviews
 from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import ADMIN, bearer, sql, table_dump
+from tests.hub.test_chat_runs import ADMIN_GRANT, chat_worker
+from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_credentials_api import (
     DISPATCHED,
     OTHER,
@@ -55,6 +90,8 @@ from tests.hub.test_credentials_api import (
     step_run,
     worker_of,
 )
+from tests.hub.test_opportunities import DEPOT as OPPORTUNITY
+from tests.hub.test_problems import NIGHT as PROBLEM
 from tests.hub.test_runs import claim, expire, moved, report, state_of, steady
 
 app_key, config, client, hub = (
@@ -73,6 +110,17 @@ QUESTION = {
     "options": [{"key": "sqlite", "label": "Keep SQLite"}, {"key": "postgres", "label": "Move to Postgres"}],
     "recommended": "postgres",
     "step_key": "1",
+}
+
+
+GOAL = {"statement": "Fewer searches find nothing"}
+NOTE = {
+    "scope": "project",
+    "project": PROJECT,
+    "location": "harness",
+    "name": "roadmap.md",
+    "type": "project",
+    "body": "---\nname: Roadmap\n---\nthe roadmap\n",
 }
 
 
@@ -183,13 +231,13 @@ def test_a_run_dispatched_as_me_acts_as_owner_on_every_project(client, hub, hub_
     for project in (PROJECT, SECOND):
         plans = client.get(f"/v1/projects/{project}/plans", headers=as_run(token))
         assert plans.status_code == 200, plans.text
-    # it writes as the owner: a run of another step, dispatched by the owner through the run's token
-    other = worker_of(client, hub["owner"], "desk")
-    body = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]], "worker_id": other["id"]}
-    dispatched = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=as_run(token))
-    assert dispatched.status_code == 201, dispatched.text
-    (queued,) = dispatched.json()
-    assert (queued["dispatched_by"], queued["dispatched_via"], queued["as_owner"]) == (OWNER, "machine", False)
+    # it writes as the owner: a memory of the project, under the owner's name
+    written = client.put("/v1/memories", params={"sink": "hub"}, json=NOTE, headers=as_run(token))
+    assert written.status_code == 200, written.text
+    m = tables.memories
+    assert sql(hub_db, select(m.c.updated_by).where(m.c.id == written.json()["id"])) == sql(
+        hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER)
+    )
     # but never a hub admin's routes, as the owner is none
     assert client.get("/v1/admin/users", headers=as_run(token)).status_code == 403
     # asking again hands the same token back
@@ -267,6 +315,39 @@ REFUSED = [
     ("POST", "/v1/autonomy/stops/lift"),
     ("PUT", "/v1/org/ceilings"),
     ("PUT", f"/v1/projects/{PROJECT}/policy"),
+    # the fix round: grants and users, the org chart and agent profiles, runs and their messages, decisions and
+    # approvals, the Curator
+    ("PUT", f"/v1/admin/projects/{PROJECT}/grants/{OTHER}"),
+    ("DELETE", f"/v1/admin/projects/{PROJECT}/grants/{OTHER}"),
+    ("DELETE", f"/v1/admin/users/{OTHER}/telegram"),
+    ("POST", "/v1/org/seats"),
+    ("PATCH", "/v1/org/seats/1"),
+    ("POST", "/v1/org/units"),
+    ("PATCH", "/v1/org/units/ops"),
+    ("POST", f"/v1/projects/{PROJECT}/agents"),
+    ("PATCH", f"/v1/projects/{PROJECT}/agents/reviewer"),
+    ("DELETE", f"/v1/projects/{PROJECT}/agents/reviewer"),
+    ("PUT", f"/v1/projects/{PROJECT}/agent-types/builder/builder"),
+    ("POST", f"/v1/projects/{PROJECT}/runs"),
+    ("POST", f"/v1/projects/{PROJECT}/plan-runs"),
+    ("POST", f"/v1/projects/{PROJECT}/author-runs"),
+    ("POST", f"/v1/projects/{PROJECT}/runs/{{run}}/rerun"),
+    ("POST", f"/v1/projects/{PROJECT}/runs/{{run}}/messages"),
+    ("POST", f"/v1/projects/{PROJECT}/local-runs/{{run}}/inbox"),
+    ("POST", f"/v1/projects/{PROJECT}/releases/run"),
+    ("PUT", f"/v1/projects/{PROJECT}/releases/schedule"),
+    ("POST", f"/v1/x/editorial/{PROJECT}/posts/launch/run"),
+    ("POST", f"/v1/projects/{PROJECT}/decisions/1/answer"),
+    ("POST", f"/v1/projects/{PROJECT}/local-runs/{{run}}/decisions/1/answered"),
+    ("POST", f"/v1/projects/{PROJECT}/runs/{{run}}/approve"),
+    ("POST", f"/v1/projects/{PROJECT}/merge-queue/1/pass"),
+    ("POST", f"/v1/projects/{PROJECT}/merge-queue/1/release"),
+    ("POST", f"/v1/projects/{PROJECT}/merge-queue/repos/notes/resume"),
+    ("POST", f"/v1/projects/{PROJECT}/loop/resume"),
+    ("POST", f"/v1/x/builder/{PROJECT}/proposals/1/answer"),
+    ("PUT", f"/v1/projects/{PROJECT}/curator/charter"),
+    ("POST", f"/v1/projects/{PROJECT}/curator/plans/{PLAN}/build"),
+    ("POST", f"/v1/projects/{PROJECT}/curator/proposals/1/answer"),
 ]
 
 
@@ -303,6 +384,10 @@ def test_a_runs_token_is_refused_secrets_tokens_workers_and_the_owners_autonomy(
         ("DELETE", "/v1/autonomy/anything"),
         ("GET", "/v1/projects/p/runs/9/terminal"),
         ("GET", "/v1/projects/p/runs/9/browser"),
+        ("POST", "/v1/projects/p/plan-runs/later"),
+        ("POST", "/v1/projects/p/curator/new-route"),
+        ("PUT", "/v1/admin/projects/p/grants/alice"),
+        ("POST", "/v1/org/anything-new"),
     ],
 )
 def test_the_groups_refused_take_every_path_under_their_prefix(method, path):
@@ -315,19 +400,31 @@ def test_the_groups_refused_take_every_path_under_their_prefix(method, path):
         ("GET", "/v1/auth/whoami"),
         ("GET", "/v1/autonomy/settings"),
         ("GET", "/v1/projects/p/policy"),
-        ("POST", "/v1/projects/p/runs"),
+        ("GET", "/v1/projects/p/runs"),  # listing runs is not starting one
         ("GET", "/v1/projects/p/runs/9"),
+        ("POST", "/v1/projects/p/runs/9/cancel"),
+        ("GET", "/v1/projects/p/decisions/3"),
+        ("GET", "/v1/org"),
+        ("GET", "/v1/projects/p/agents"),
         ("GET", "/v1/workersx"),  # a prefix is a path segment, not a string's start
         ("GET", "/v1/secretsfoo"),
-        ("POST", "/v1/admin/projects/p/grants/alice"),
+        ("POST", "/v1/projects/p/runsx"),
+        # the owner's ordinary work in run 320 of meridai: a chat's label, Telegram's webhook, the project's sinks
+        ("PUT", "/v1/chats/3/label"),
+        ("POST", "/v1/admin/telegram/webhook"),
+        ("PUT", "/v1/projects/p"),
+        ("PUT", "/v1/projects/p/plans/rollout"),
+        ("PUT", "/v1/memories"),
+        ("POST", "/v1/chats/3/messages"),
     ],
 )
 def test_paths_outside_the_groups_are_not_refused(method, path):
     assert run_access_rules.refusal(method, path) is None
 
 
-def test_a_runs_token_is_refused_answering_its_own_runs_decision(client, hub, hub_db):
-    worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
+def asked_decision(client, hub, worker: dict) -> tuple[int, str, int]:
+    """A plan run that runs as its owner, claimed and running on ``worker``, that asked QUESTION: (its id, its token,
+    the decision's id)."""
     response = client.post(
         f"/v1/projects/{PROJECT}/plan-runs",
         json={"plan_id": PLAN, "worker_id": worker["id"], "as_me": True},
@@ -339,47 +436,318 @@ def test_a_runs_token_is_refused_answering_its_own_runs_decision(client, hub, hu
     moved(client, worker, run_id, "running")
     asked = client.post(f"/v1/worker/runs/{run_id}/decisions", json=QUESTION, headers=worker["headers"])
     assert asked.status_code == 201, asked.text
-    decision_id = asked.json()["id"]
+    return run_id, token, asked.json()["id"]
+
+
+def test_a_runs_token_is_refused_answering_any_decision_its_own_or_another_runs(client, hub, hub_db):
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
+    # another run of the owner's that runs as them: a step of another plan
+    later = {**credentials_api.plan_body(), "id": "credentials-later"}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/credentials-later", json={"body": later}, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    body = {"plan_id": "credentials-later", "steps": [STEPS["notes"]], "worker_id": worker["id"], "as_me": True}
+    made = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"])
+    assert made.status_code == 201, made.text
+    other_id = claim(client, worker)["id"]
+    other_token = run_token(client, worker, other_id)
+    run_id, token, decision_id = asked_decision(client, hub, worker)
     answer = {"option": "postgres"}
     url = f"/v1/projects/{PROJECT}/decisions/{decision_id}/answer"
-    refused = client.post(url, json=answer, headers=as_run(token))
-    assert refused.status_code == 403, refused.text
-    assert refused.json()["message"] == (
-        f"decision {decision_id} is a question of run {run_id} to its owner, and that run's token never answers it: "
-        "the owner answers with their own sign-in"
-    )
+    for used in (token, other_token):
+        refused = client.post(url, json=answer, headers=as_run(used))
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["message"] == run_access_rules.refusal("POST", url)
+        assert "(group decisions)" in refused.json()["message"]
+    d = tables.decisions
+    assert sql(hub_db, select(d.c.state).where(d.c.id == decision_id)) == [("open",)]
     # it reads the decision as the owner does, and the owner answers it
     assert client.get(f"/v1/projects/{PROJECT}/decisions/{decision_id}", headers=as_run(token)).status_code == 200
     answered = client.post(url, json=answer, headers=hub["owner"])
     assert answered.status_code == 200 and answered.json()["state"] == "answered"
+    assert run_id != other_id
 
 
-def test_a_runs_token_is_refused_letting_any_run_run_as_owner(client, hub, hub_db):
+START_RUN = "(group runs)"
+
+
+def test_a_runs_token_is_refused_starting_any_run_with_or_without_the_owners_account(client, hub, hub_db):
     worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
     run_id, token = as_me_run(client, hub, worker)
-    onward = (
-        "a run's token (evr_...) never lets a run run as its owner, so no run passes the owner's account on: ask with "
-        "as_me false, or let the owner choose with their own sign-in"
-    )
-    body = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]], "worker_id": worker["id"], "as_me": True}
-    for path, sent in (("runs", body), ("plan-runs", {"plan_id": PLAN, "worker_id": worker["id"], "as_me": True})):
-        refused = client.post(f"/v1/projects/{PROJECT}/{path}", json=sent, headers=as_run(token))
-        assert refused.status_code == 403, refused.text
-        assert refused.json()["message"] == onward
-    # a run of the owner's that ran as them: its rerun keeps that unless told otherwise, which the token must say
     ended = step_run(client, hub["owner"], "lumen-kb-docs", worker, as_me=True)
     assert report(client, worker, ended, "failed", error="the agent gave up").status_code == 200
-    rerun = f"/v1/projects/{PROJECT}/runs/{ended}/rerun"
-    refused = client.post(rerun, headers=as_run(token))
-    assert refused.status_code == 403 and refused.json()["message"] == onward
-    plain = client.post(rerun, json={"as_me": False}, headers=as_run(token))
-    assert plain.status_code == 201, plain.text
-    assert plain.json()["as_owner"] is False
+    r = tables.runs
+    before = sql(hub_db, select(func.count()).select_from(r))
+    step = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]], "worker_id": worker["id"]}
+    plan = {"plan_id": PLAN, "worker_id": worker["id"]}
+    author = {"request": "Plan the dashboard's move to Postgres", "worker_id": worker["id"]}
+    for as_me in ({}, {"as_me": False}, {"as_me": True}):
+        for path, body in (("runs", step), ("plan-runs", plan), (f"runs/{ended}/rerun", {}), ("author-runs", author)):
+            sent = {**body, **as_me} if path != "author-runs" else body
+            refused = client.post(f"/v1/projects/{PROJECT}/{path}", json=sent, headers=as_run(token))
+            assert refused.status_code == 403, (path, refused.text)
+            assert START_RUN in refused.json()["message"], path
+    assert sql(hub_db, select(func.count()).select_from(r)) == before, "no run was queued"
     assert state_of(hub_db, run_id) == "leased"
     assert audit_of(hub_db, "run_access.grant") == [
         (f"{PROJECT}/{PLAN}#4 run:{run_id} by=dispatch", OWNER, PROJECT, "machine"),
         (f"{PROJECT}/{PLAN}#2 run:{ended} by=dispatch", OWNER, PROJECT, "machine"),
     ]
+    # the owner's own sign-in still dispatches, and a dispatch's as_me from a run's token is refused by its route too
+    assert client.post(f"/v1/projects/{PROJECT}/runs/{ended}/rerun", headers=hub["owner"]).status_code == 201
+    with pytest.raises(HTTPException) as onward:
+        run_access.refuse_onward(run_principal(hub_db, run_id), True)
+    assert onward.value.status_code == 403 and onward.value.detail == run_access.ONWARD
+
+
+# The fix round of step 1: the rules of the form "the agent of a run never does X" take a run's token too
+
+
+def run_principal(db, run_id: int) -> Principal:
+    """The principal the live token of run ``run_id`` is, as ``security.authenticate`` makes it."""
+    t, cl = tables.tokens, tables.credential_leases
+    ((token_id, user_id),) = sql(
+        db,
+        select(t.c.id, t.c.user_id)
+        .join_from(cl, t, t.c.id == cl.c.token_id)
+        .where(cl.c.run_id == run_id, cl.c.revoked_at.is_(None)),
+    )
+    return Principal(user_id, OWNER, False, token_id, RUN, "0" * 64, run_id=run_id)
+
+
+def owner_admin(client, hub) -> None:
+    """Owner becomes an admin of the project, which lets everyone's messages out (a chat may hold its agents), with
+    the agent @reviewer."""
+    body = {**registration(DISPATCHED), "sinks": OPEN_SINKS}
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=hub["admin"])
+    assert granted.status_code == 200, granted.text
+    made = client.post(
+        f"/v1/projects/{PROJECT}/agents", json={"handle": "reviewer", "name": "Reviewer"}, headers=hub["owner"]
+    )
+    assert made.status_code == 201, made.text
+
+
+def test_a_runs_token_is_refused_writing_goals_opportunities_and_problems_as_the_agent_of_a_run(client, hub, hub_db):
+    owner_admin(client, hub)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    _, token = as_me_run(client, hub, worker)
+    writes = (
+        ("goals/G-1", GOAL, "the agent of a run never writes a goal"),
+        ("opportunities/O-1", OPPORTUNITY, "the agent of a run never writes an opportunity"),
+        ("problems/P-1", PROBLEM, "the agent of a run never writes a problem"),
+    )
+    for path, body, why in writes:
+        url = f"/v1/projects/{PROJECT}/{path}"
+        refused = client.put(url, json=body, headers=as_run(token))
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["message"].startswith(why), refused.text
+        assert client.put(url, json=body, headers=hub["owner"]).status_code == 200, "the owner's own sign-in writes it"
+
+
+def test_a_runs_token_is_refused_the_browser_session_of_a_marketing_channel(client, hub, hub_db):
+    owner_admin(client, hub)
+    body = {"permissions": []}
+    enabled = client.post(f"/v1/projects/{PROJECT}/plugins/marketing/enable", json=body, headers=hub["owner"])
+    assert enabled.status_code == 200, enabled.text
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    _, token = as_me_run(client, hub, worker)
+    url = f"/v1/x/marketing/{PROJECT}/browser/claim"
+    refused = client.post(url, headers=as_run(token))
+    assert refused.status_code == 403, refused.text
+    assert "claiming a post for the browser is not for an agent" in refused.text
+    assert client.post(url, headers=hub["owner"]).status_code == 200, "the owner's own sign-in claims it"
+
+
+GUARDED = (
+    ("goals", lambda user, access: goals.refusal(user, access)),
+    ("opportunities", lambda user, access: opportunities.refusal(user, access)),
+    ("problems", lambda user, access: problems.refusal(user, access)),
+    ("policy", lambda user, access: autonomy_policies.refusal(user, access)),
+    ("builder", lambda user, access: builder_proposals.refusal(user, access, "skill", "approving a proposal")),
+    ("probe verify", lambda user, access: None if probes.verify_shown(access, user) else "hidden"),
+)
+RAISING = (
+    ("builder answer", lambda user, access: builder_server.answer_as(None, user, PROJECT, 1, "approve", "0")),
+    ("srs review", lambda user, access: srs_reviews._may_review(None, access, user, None, None, None)),
+    ("canvas decide", lambda user, access: canvas_server._no_run(user, "decides an item of a baseline")),
+    ("merge queue", lambda user, access: post_merge.admin_only(user, access)),
+    ("loop breaker", lambda user, access: loop_breaker.resume(None, user, access)),
+    ("org chart", lambda user, access: org_routes.actor(user)),
+    ("autonomy preference", lambda user, access: autonomy_store.write_pref(None, user, None)),
+    ("autonomy stop", lambda user, access: autonomy_stops._subject(None, None, user)),
+    ("worker shares", lambda user, access: worker_shares._writer(user)),
+)
+
+
+def _outcome(call, user, access):
+    """What ``call`` does for ``user``: None when it lets them, else (status, message)."""
+    try:
+        made = call(user, access)
+        if asyncio.iscoroutine(made):
+            made = asyncio.run(made)
+    except (HTTPException, srs_doc.SrsError, canvas_content.CanvasError, builder_errors.ProposalError) as exc:
+        status = getattr(exc, "status_code", None) or exc.status
+        return status, str(getattr(exc, "detail", None) or exc)
+    return made
+
+
+def test_a_runs_token_is_refused_each_rule_the_agent_of_a_run_keeps_on_the_rest_api(client, hub, hub_db):
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, _ = as_me_run(client, hub, worker)
+    run = run_principal(hub_db, run_id)
+    member = replace(run, kind="machine", run_id=None)
+    assert (run.acts_for_run, member.acts_for_run) == (run_id, None)
+    admin = ProjectAccess(1, SimpleNamespace(name=PROJECT), "admin", "internal")
+    for name, call in GUARDED:
+        assert call(run, admin) is not None, name
+        assert call(member, admin) is None, name
+    for name, call in RAISING:
+        refused = _outcome(call, run, admin)
+        assert refused is not None and refused[0] == 403, (name, refused)
+        assert "agent" in refused[1] or "admin role" in refused[1], (name, refused)
+    # the core plugins' own test (marketing's _no_agent, say) reads the run of the session
+    session = core_plugin_api.caller(run)
+    assert core_plugin_api.session_run(session) == run_id
+    assert core_plugin_api.session_run(core_plugin_api.caller(member)) is None
+    # an invite's right to register a project is not the run's to use
+    assert asyncio.run(invites.register_right(None, run)) is None
+
+
+def test_a_runs_token_is_refused_by_the_autonomy_of_its_run_on_the_routes_of_rules(client, hub, hub_db):
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, _ = as_me_run(client, hub, worker)
+    run = run_principal(hub_db, run_id)
+    request = SimpleNamespace(
+        method="PUT",
+        scope={"route": SimpleNamespace(path="/v1/rules/{name}")},
+        url=SimpleNamespace(path="/v1/rules/x"),
+        app=client.app,
+    )
+
+    async def held():
+        try:
+            await route_autonomy.held(request, run, "K12")
+        except HTTPException as exc:
+            return exc.status_code
+        return None
+
+    status = client.portal.call(held)
+    (decided,) = [
+        row[0]
+        for row in audit_of(hub_db, "autonomy.decided")
+        if row[0].startswith(f"run:{run_id} ") and row[0].endswith(" PUT /v1/rules/{name}")
+    ]
+    assert f" principal={OWNER} " in decided and " K12 mode=" in decided
+    assert status == (403 if " result=refused " in decided else None)
+
+
+def test_a_runs_token_is_refused_handing_an_agent_work_in_a_chat_and_its_message_stays(client, hub, hub_db):
+    owner_admin(client, hub)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    _, token = as_me_run(client, hub, worker)
+    made = client.post(
+        "/v1/chats", json={"title": "Release talk", "people": [], "agents": ["reviewer"]}, headers=as_run(token)
+    )
+    assert made.status_code == 201, made.text
+    chat_id = made.json()["id"]
+    r = tables.runs
+    before = sql(hub_db, select(func.count()).select_from(r))
+    sent = client.post(f"/v1/chats/{chat_id}/messages", json={"body": "@reviewer read the diff"}, headers=as_run(token))
+    assert sent.status_code == 201, sent.text
+    assert sql(hub_db, select(func.count()).select_from(r)) == before, "no chat run, no inbox of one"
+    listed = client.get(f"/v1/chats/{chat_id}/messages", params={"limit": 50}, headers=hub["owner"])
+    bodies = [message["body"] for message in listed.json()["messages"]]
+    assert "@reviewer read the diff" in bodies
+    assert any(run_access_rules.NEW_RUN in body for body in bodies), bodies
+
+
+def test_a_runs_token_is_refused_any_new_run_whatever_route_would_queue_it():
+    assert run_access_rules.new_run_refusal() is None
+    run_access_rules.refuse_new_run()  # nothing while no run's token is being answered
+    acting = run_access_rules.ACTING_RUN.set(7)
+    try:
+        assert run_access_rules.new_run_refusal() == run_access_rules.NEW_RUN
+        with pytest.raises(HTTPException) as refused:
+            run_access_rules.refuse_new_run()
+        assert refused.value.status_code == 403 and refused.value.detail == run_access_rules.NEW_RUN
+        made = asyncio.run(task_dispatch.hand_own_task(None, "pm", 1, "pm", "a task"))
+        assert made == (None, run_access_rules.NEW_RUN)
+        with pytest.raises(HTTPException):
+            asyncio.run(dispatch.insert_run(None, {"project_id": 1}))
+    finally:
+        run_access_rules.ACTING_RUN.reset(acting)
+
+
+def test_lifecycle_the_triage_rerun_of_a_run_that_ran_as_its_owner_does_not(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    run_id = step_run(client, hub["owner"], "lumen-kb-docs", worker, as_me=True)
+    failed = report(client, worker, run_id, "failed", error="exec: ruff: not found", failure_cause="missing_tool")
+    assert failed.status_code == 200, failed.text
+    agent = triage_agent_of(client, worker, run_id, hub_db)
+    done = client.post(
+        f"/v1/worker/runs/{agent}/triage/rerun",
+        json={"reason": "the program is installed now"},
+        headers=worker["headers"],
+    )
+    assert done.status_code == 201, done.text
+    new_id = done.json()["run_id"]
+    r = tables.runs
+    assert sql(hub_db, select(r.c.parent_run_id, r.c.as_owner).where(r.c.id == new_id)) == [(run_id, False)]
+    assert audit_of(hub_db, "run_access.grant") == [
+        (f"{PROJECT}/{PLAN}#2 run:{run_id} by=dispatch", OWNER, PROJECT, "machine")
+    ]
+
+
+def triage_agent_of(client, worker, run_id: int, hub_db) -> int:
+    """The chat run of the triage of ``run_id``, claimed and running on ``worker``."""
+    t = tables.run_triage
+    ((agent_run,),) = sql(hub_db, select(t.c.agent_run_id).where(t.c.run_id == run_id))
+    for _ in range(4):
+        spec = claim(client, worker)
+        if spec and spec["id"] == agent_run:
+            moved(client, worker, agent_run, "running")
+            return agent_run
+    raise AssertionError(f"chat run {agent_run} was not claimed")
+
+
+def test_lifecycle_an_open_run_stream_and_chat_stream_of_a_runs_token_stop_once_it_ends(
+    client, hub, hub_db, monkeypatch
+):
+    monkeypatch.setattr(run_events, "STREAM_POLL_SECONDS", 0.05)
+    monkeypatch.setattr(chat_events, "STREAM_POLL_SECONDS", 0.05)
+    owner_admin(client, hub)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, token = as_me_run(client, hub, worker)
+    moved(client, worker, run_id, "running")
+    made = client.post("/v1/chats", json={"title": "Release talk", "people": [OTHER]}, headers=hub["owner"])
+    assert made.status_code == 201, made.text
+    chat_id = made.json()["id"]
+    said = client.post(f"/v1/chats/{chat_id}/messages", json={"body": "the release is at noon"}, headers=hub["owner"])
+    assert said.status_code == 201, said.text
+    user = run_principal(hub_db, run_id)
+    request = SimpleNamespace(app=client.app)
+    runs_stream = run_events.stream(request, run_id, user, None, 0)
+    chats_stream = chat_events.stream(request, (chat_id, user), None, 0, False)
+
+    async def first(stream):
+        return await stream.__anext__()
+
+    async def rest(stream, limit: int = 50):
+        got = []
+        async for item in stream:
+            got.append(item)
+            if len(got) >= limit:
+                break
+        return got
+
+    assert client.portal.call(first, runs_stream).id is not None, "the run's events stream while its token lives"
+    assert client.portal.call(first, chats_stream) is not None
+    assert change(client, hub["owner"], run_id, False).status_code == 200  # the owner stops it: the token ends
+    left = client.portal.call(rest, runs_stream)
+    assert all(item.event != "end" for item in left) and len(left) < 50, "the run's stream stops, the run goes on"
+    (ended,) = [item for item in client.portal.call(rest, chats_stream) if item.event == "end"]
+    assert ended.data["reason"] == chat_events.STREAM_TOKEN_ENDED
+    assert state_of(hub_db, run_id) == "running"
 
 
 # a3: the life of the token, and the audit
@@ -486,9 +854,10 @@ def test_audit_names_each_grant_stop_and_write_of_a_runs_token_and_never_its_val
     (token_id,) = sql(hub_db, select(t.c.id).where(t.c.kind == "run"))[0]
     run = f"{PROJECT}/{PLAN}#4 run:{run_id}"
     # a write that passes, one the route refuses, and one the middleware refuses
-    message = client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/messages", json={"text": "hi"}, headers=as_run(token))
-    assert message.status_code in (200, 201), message.text
-    assert client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/approve", headers=as_run(token)).status_code == 409
+    written = client.put("/v1/memories", params={"sink": "hub"}, json=NOTE, headers=as_run(token))
+    assert written.status_code == 200, written.text
+    goal = client.put(f"/v1/projects/{PROJECT}/goals/G-1", json=GOAL, headers=as_run(token))
+    assert goal.status_code == 403, goal.text
     assert client.put("/v1/secrets/stolen", json={}, headers=as_run(token)).status_code == 403
     # reads are not audited
     assert client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=as_run(token)).status_code == 200
@@ -496,8 +865,8 @@ def test_audit_names_each_grant_stop_and_write_of_a_runs_token_and_never_its_val
 
     writes = audit_of(hub_db, "run_access.write")
     assert writes == [
-        (f"{run} POST /v1/projects/{PROJECT}/runs/{run_id}/messages {message.status_code}", OWNER, PROJECT, "run"),
-        (f"{run} POST /v1/projects/{PROJECT}/runs/{run_id}/approve 409", OWNER, PROJECT, "run"),
+        (f"{run} PUT /v1/memories 200", OWNER, PROJECT, "run"),
+        (f"{run} PUT /v1/projects/{PROJECT}/goals/G-1 403", OWNER, PROJECT, "run"),
         (f"{run} PUT /v1/secrets/stolen 403", OWNER, PROJECT, "run"),
     ]
     assert audit_of(hub_db, "run_access.grant") == [(f"{run} by=dispatch", OWNER, PROJECT, "machine")]

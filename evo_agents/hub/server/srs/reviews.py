@@ -104,7 +104,7 @@ async def _may_review(
 ) -> None:
     """Refuse ``user`` a review of ``held``: the agent of a run always, a member without writer, a version not in
     review, an author since the version approved last (unless ``settings.self_approval``)."""
-    if user.scope is not None:
+    if user.acts_for_run is not None:
         raise SrsError(403, "the agent of a run never approves or returns a version: a member of the project does")
     writer(access, "reviewing a version")
     if held.state != "in_review":

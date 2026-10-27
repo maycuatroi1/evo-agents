@@ -164,10 +164,9 @@ async def record_audit(
 
 
 def session_run(session: Session) -> int | None:
-    """The id of the run whose agent made the request of ``session``, with the scope of that run; None for a
-    member's own credential."""
-    scope = session_principal(own_session(session)).scope
-    return None if scope is None else scope.run_id
+    """The id of the run whose agent made the request of ``session``, with the scope of that run on /mcp or with the
+    run's token that acts as its owner (``run_access``); None for a member's own credential."""
+    return session_principal(own_session(session)).acts_for_run
 
 
 # Notices to the admins
