@@ -35,7 +35,7 @@ from typing import Annotated, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import features, tables
@@ -158,6 +158,7 @@ def _query(project_id: int):
             pp.c.records_level,
         )
         .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
+        .where(or_(p.c.project_id.is_(None), p.c.project_id == project_id))  # one installed for another is not seen
         .outerjoin(e, (e.c.plugin_id == p.c.id) & (e.c.project_id == project_id))
         .outerjoin(pp, (pp.c.plugin_id == p.c.id) & (pp.c.project_id == project_id))
         .outerjoin(enabler, enabler.c.id == pp.c.enabled_by)

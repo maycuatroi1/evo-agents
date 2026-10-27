@@ -4648,3 +4648,29 @@ def test_0169_keeps_a_plugins_records_with_their_levels_and_leases_and_going_bac
     assert not pg.PLUGIN_RECORD_TABLES & tables(hub_db)
     assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)], "records:use goes from grants"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0169") :]
+
+
+def test_0170_marks_a_project_self_managed_with_its_trusted_owners_and_scopes_a_plugin_to_one_project(hub_db):
+    move_to(hub_db, "0169")
+    t = hub_tables
+    assert "self_managed" not in columns(hub_db, "projects")
+    assert "project_id" not in columns(hub_db, "plugins")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="vault", publisher="acme").returning(t.plugins.c.id))
+    move_to(hub_db, "0170")
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0170",)]
+    p = t.projects
+    assert query(hub_db, select(p.c.self_managed, p.c.trusted_owners)) == [(False, [])], "no project is self-managed"
+    assert query(hub_db, select(t.plugins.c.project_id)) == [(None,)], "a plugin of the hub belongs to no project"
+    with live.connect(hub_db) as conn:
+        conn.execute(update(p).values(self_managed=True, trusted_owners=["bachtha"]))
+        conn.execute(update(t.plugins).values(project_id=ids["project"]).where(t.plugins.c.id == plugin_id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(update(t.plugins).values(project_id=ids["project"] + 1000))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(p.delete().where(p.c.id == ids["project"]))
+    move_to(hub_db, "0169", down=True)
+    assert "self_managed" not in columns(hub_db, "projects")
+    assert "project_id" not in columns(hub_db, "plugins")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0170") :]
