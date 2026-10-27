@@ -1390,7 +1390,10 @@ files are in the bundle; its virtual environment builds; started with an environ
 `initialize` naming plugin/1 and listing exactly the MCP tools the manifest contributes; it answers `ping`; each
 contribution answers its call with a result that fits the method's schema; an unknown method gets `-32601` and the
 backend serves on; a line that is not JSON gets `-32700` with id null, or nothing, and the backend serves on; nothing
-but plugin/1 responses appear on stdout; and it answers `shutdown` and exits. The sample plugin
+but plugin/1 responses appear on stdout; it answers `shutdown` and exits; and, with a stand-in hub on 127.0.0.1
+(`evo_agents/plugins/fake_hub.py`) answering the records API (section Records), every records call the backend made
+was for the project it serves, within `records:use` of its manifest and, when it sent `X-Evo-On-Behalf-Of`, with the
+delegation of the call it was serving (check `records`). The sample plugin
 `tests/fixtures/plugins/sample` passes every check.
 
 ### Signing in CI
