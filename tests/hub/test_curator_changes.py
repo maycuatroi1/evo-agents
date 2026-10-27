@@ -626,7 +626,7 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         item for item in leased(world.client, world.worker, run_id)["leases"] if item["provider"] == "github-app"
     )
     app, permissions = token_permissions(world.github, lease["value"])
-    assert app == "workers" and permissions == {"contents": "write", "metadata": "read"}
+    assert app == "workers" and permissions == {"contents": "write", "metadata": "read", "pull_requests": "write"}
 
 
 @contextmanager
