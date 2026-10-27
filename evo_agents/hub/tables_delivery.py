@@ -68,3 +68,25 @@ def delivery_table(metadata: MetaData) -> Table:
     )
     Index("srs_delivery_project_idx", table.c.project_id, table.c.state)
     return table
+
+
+def baseline_table(metadata: MetaData) -> Table:
+    """srs_baselines (0171), added to ``metadata``: the goals whose baseline an admin confirmed. One row per goal: the
+    document the baseline is of (a goal re-aimed at another document is unconfirmed again), who confirmed and when,
+    and the use cases of each state the ledger held then (``counts``)."""
+    name = "srs_baselines"
+    return Table(
+        name,
+        metadata,
+        Column("goal_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("document_id", BigInteger, nullable=False),
+        Column("confirmed_by", BigInteger),
+        Column("counts", JSONB, nullable=False, server_default="{}"),
+        _stamp("confirmed_at"),
+        _key(name, "goal_id", "goals", ondelete="CASCADE"),
+        _key(name, "project_id", "projects", ondelete="CASCADE"),
+        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        _key(name, "confirmed_by", "users", ondelete="SET NULL"),
+        PrimaryKeyConstraint("goal_id", name="srs_baselines_pkey"),
+    )

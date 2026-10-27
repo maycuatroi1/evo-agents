@@ -1030,6 +1030,7 @@ opportunities, opportunity_revisions, opportunity_answers = tables_opportunities
 opportunity_evidence = tables_opportunities.evidence_table(metadata)  # the lines of evidence of an opportunity (0143)
 loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0093)
 srs_delivery = tables_delivery.delivery_table(metadata)  # what is delivered of an SRS document (0170)
+srs_baselines = tables_delivery.baseline_table(metadata)  # the goals whose baseline an admin confirmed (0171)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
 history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0059
 history_lines, history_indexed = tables_sessions.search_tables(metadata)  # the words of the history (0060)
