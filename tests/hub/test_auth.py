@@ -134,6 +134,7 @@ HUB_TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migra
 HUB_TABLES |= {"kg_query_labels"}  # migration 0177
 HUB_TABLES |= {"kg_eval_sets"}  # migration 0178
 HUB_TABLES |= {"kg_semantic"}  # migration 0180
+HUB_TABLES |= {"kg_optimize_runs"}  # migration 0181
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 

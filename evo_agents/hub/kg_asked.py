@@ -24,6 +24,7 @@ MAX_LABELS = 20_000  # the newest labels a build reads
 class Learned:
     labels: list[asked.Label] = field(default_factory=list)
     holdout: list[str] = field(default_factory=list)
+    weight: float | None = None  # the weight of an asked match the KG optimize loop left in effect; None: the default
 
 
 def graph_label(label, project: str, policy: Policy) -> tuple[int, int, str | None] | None:
@@ -72,7 +73,25 @@ async def read(conn: AsyncConnection, project_id: int, project: str, knowledge: 
         for q in latest or []
         if isinstance(q, dict) and q.get("id") is not None and split_of(str(q["id"])) == HOLDOUT
     ]
-    return Learned(labels, holdout)
+    return Learned(labels, holdout, await asked_weight(conn, project_id))
+
+
+async def asked_weight(conn: AsyncConnection, project_id: int) -> float | None:
+    """The weight of an asked match the project's newest KG optimize run that set one left in effect, unless it was
+    reverted or failed (kg_optimize_runs, ``evo_agents.hub.server.kg_optimize``); None: ``search.ASKED_WEIGHT``."""
+    t = tables.kg_optimize_runs
+    return (
+        await conn.execute(
+            select(t.c.asked_weight)
+            .where(
+                t.c.project_id == project_id,
+                t.c.asked_weight.is_not(None),
+                t.c.state.not_in(("reverted", "failed")),
+            )
+            .order_by(t.c.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
 
 
 def write(path: Path, learned: Learned, now: datetime | None = None) -> str | None:
@@ -87,7 +106,7 @@ def write(path: Path, learned: Learned, now: datetime | None = None) -> str | No
         if b is not None and learned.labels:
             nodes = asked.Nodes.of_store(store, b)
             rows = asked.rows(learned.labels, nodes, now or datetime.now(UTC), learned.holdout)
-        digest = store.write_asked(rows)
+        digest = store.write_asked(rows, learned.weight)
         store.leave_wal()
     finally:
         store.close()
