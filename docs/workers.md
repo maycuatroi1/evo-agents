@@ -843,7 +843,9 @@ failed runs of all the project's plans and its runs with no plan, whose first me
 and mentions the project's default agent, which makes a chat run for the run's owner
 (`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent, and neither does a
 run the hub stopped on a usage limit or a refused login while no account of its owner for that variable is ready: the
-thread says when the first is ready again). The agent reads
+thread says when the first is ready again). A run running or verifying with no event for 45 minutes while its worker
+still heartbeats, and one the reaper failed on its last attempt (`lease_lost`), open a thread too, with the diagnosis:
+the last event, the worker, the lease and the attempt (`docs/hub.md`, "Runs that stop moving"). The agent reads
 the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
 `evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
@@ -860,10 +862,12 @@ as they were.
 | --- | --- | --- |
 | `evo-agents worker triage rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a worker, runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, or the run was rerun by its agent; 404 for a run that is not the chat run of a triage thread |
 | `evo-agents worker triage plan STEP --if-revision N [--verify TEXT] [--what TEXT] --reason TEXT [--rerun]`, or `... plan --edits FILE --if-revision N --reason TEXT [--rerun]` | `POST .../triage/plan` | write a revision of the failed run's plan under the owner's name that changes the `verify` (no command fewer) or narrows the `what` of a step that is `pending` and of the run's repos; `--edits` (body `steps`) does it for several steps in one revision and one `Decision:` line, FILE (`-` for stdin) a JSON list of `{"step": ID, "verify": TEXT, "what": TEXT, "why": TEXT}` (`why` when a step needs a reason of its own), and the hub writes all of them or none; 422 for anything else (a step that is `done`, a key other than those two, `acceptance`, `goal`, `non_goals`, a step of another repo); with `--rerun` the rerun follows in the same transaction and a refused rerun leaves the plan as it was; `verify_failed` is rerun only this way |
+| `evo-agents worker triage cancel --reason TEXT` | `POST .../triage/cancel` | in the thread of a stale run (cause `stale`), ask its worker to stop it, for its owner, as their cancel of a held run does: 200 with `run_id` and the `Decision:` line's `message_id`; 409 in a failed run's thread, for a run its worker holds no more, or when a stop was asked already. Once the run has ended, `triage rerun` runs it again for the cause `stale` (409 while it is still held) |
 | `evo-agents worker triage invite HANDLE --reason TEXT` | `POST .../triage/invite` | invite the agent of another project that the failed run's error names (`rerun-candidates` lists it under `other_projects` with the owner's role there) into the thread's chat, so a mention (`worker chat mention`, hop 3 at most) hands it work; the owner needs the writer role on that project and every person in the chat must clear the label it brings (the group chat's own rule, 409), otherwise the hub says so in the thread, in the agent's name, and invites no one; 422 for an agent of a project the error does not name or the owner holds no grant on |
 
 Each success posts a line that starts with `Decision:` in the thread, in the agent's name, with the reason and how to
-undo it, and writes an audit row (`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`) that names the failed run, the agent and
+undo it, and writes an audit row (`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`,
+`run.triage_cancel`) that names the failed run, the agent and
 the chat run. The agent acts as the owner only: another member's chat run is refused (403).
 ## Task runs
 

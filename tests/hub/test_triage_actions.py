@@ -19,7 +19,7 @@ from evo_agents.hub import tables
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker, thread
 from tests.hub.test_runs import PLAN, PROJECT, claim, client, dispatched, hub, moved, plan, report  # noqa: F401
-from tests.hub.test_triage import failed_step, row_of
+from tests.hub.test_triage import failed_step, quiet_for, row_of, running_step, stale_pass
 
 OWNER_LOGIN = "owner"
 
@@ -263,3 +263,50 @@ def test_triage_rerun_on_a_worker_the_owner_does_not_have_is_refused(client, hub
     worker, run_id, agent = setup(client, hub, hub_db, cause="runtime")
     refused = rerun(client, worker, agent, **{"worker": "no-such-machine"})
     assert refused.status_code == 422 and "no worker no-such-machine" in refused.json()["message"]
+
+
+# The thread of a stale run (plan hub-attention-runtime, step 5): its agent asks the worker to stop the run, then runs
+# it again once it has ended, with the actions a failed run's thread has.
+
+
+def cancel(client, holder, agent_run: int, reason="it said nothing for an hour"):
+    return client.post(f"/v1/worker/runs/{agent_run}/triage/cancel", json={"reason": reason}, headers=holder["headers"])
+
+
+def test_triage_cancel_asks_the_worker_of_a_stale_run_to_stop_it_then_rerun_runs_it_again(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    run_id = running_step(client, hub, worker)
+    quiet_for(hub_db, run_id, 60)
+    assert stale_pass(client) == 1
+    agent = agent_of(client, worker, run_id, hub_db)
+    held = rerun(client, worker, agent)
+    assert held.status_code == 409 and "triage cancel" in held.json()["message"]
+    done = cancel(client, worker, agent)
+    assert done.status_code == 200, done.text
+    assert done.json()["run_id"] == run_id
+    r = tables.runs
+    ((state, asked),) = sql(hub_db, select(r.c.state, r.c.cancel_requested_at).where(r.c.id == run_id))
+    assert state == "running" and asked is not None  # the worker stops it, as on its owner's cancel
+    lines = said(client, hub, hub_db, run_id)
+    assert lines[-1].startswith(f"Decision: asked the worker of run #{run_id} to stop it (cause stale)")
+    (target,) = audited(hub_db, "run.triage_cancel")
+    assert f"run:{run_id}" in target and f"triage_run:{agent}" in target
+    again = cancel(client, worker, agent)
+    assert again.status_code == 409 and "already" in again.json()["message"]
+    moved(client, worker, run_id, "cancelled")
+    gone = cancel(client, worker, agent)
+    assert gone.status_code == 409 and "holds it no more" in gone.json()["message"]
+    ran = rerun(client, worker, agent, reason="the stuck run is stopped")
+    assert ran.status_code == 201, ran.text
+    new_id = ran.json()["run_id"]
+    assert sql(hub_db, select(r.c.parent_run_id, r.c.state).where(r.c.id == new_id)) == [(run_id, "queued")]
+    assert said(client, hub, hub_db, run_id)[-1].startswith(
+        f"Decision: ran run #{run_id} again as run #{new_id} (cause stale)"
+    )
+
+
+def test_triage_cancel_is_refused_in_the_thread_of_a_failed_run(client, hub, hub_db):
+    worker, run_id, agent = setup(client, hub, hub_db)
+    refused = cancel(client, worker, agent)
+    assert refused.status_code == 409 and "stale run" in refused.json()["message"]
+    assert audited(hub_db, "run.triage_cancel") == []

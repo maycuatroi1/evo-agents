@@ -880,7 +880,9 @@ async def recover_runs(
     (``run_waits.wake_waits``), a run that waited ``decision_wait`` for an answer, or waits only for a time or an
     event of the hub, is parked and one parked for
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
-    ``question_runs.QUEUE_SECONDS`` fails (no_worker), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
+    ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), and a queued
+    run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     r, w = tables.runs, tables.workers
@@ -931,6 +933,9 @@ async def recover_runs(
     from evo_agents.hub.server import question_dispatch  # it moves runs through this module
 
     await question_dispatch.expire_queued(engine, batch, ended)  # a question run no worker claimed in time
+    from evo_agents.hub.server import triage  # it reads runs through this module
+
+    await triage.open_stale(engine)  # a run that says nothing while its worker heartbeats gets its triage thread
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)
