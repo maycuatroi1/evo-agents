@@ -125,6 +125,9 @@ TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a brow
 TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
+# The hub (by=hub, as K12 of the run's principal is auto) or the owner's answer (by=owner) bound the owner's secret to
+# a run's project for its credential request: "secret:<id> run:<id> decision:<id> by=<hub|owner>", never its name.
+SECRET_BIND = "secret.bind"
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
 # A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
 # and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
