@@ -47,8 +47,12 @@ here.
   Should no turn open within ``follow_up_after`` seconds of that end, the adapter writes to the agent itself
   (FOLLOW_UP, with the CLI's summary and output file of each command). After a turn in which a background command
   ended, the CLI has ``turn_grace`` seconds to open a turn for its notification. A command that still runs
-  ``background_wait`` seconds after the turn ended is left: the input ends, and the CLI stops it and exits. Once the
-  agent has written ``.evo-run/result.json`` it has finished, and its ``result`` ends the input whatever still runs.
+  ``background_wait`` seconds after the turn ended is left: the input ends, and the CLI stops it and exits. A run with
+  a time cap waits for the command up to that cap instead, where ``QueueAdapter`` interrupts the agent: a shard of the
+  tests on a busy worker ran 46 and 57 minutes in release runs #1072 and #1069 of evo-agents, the input ended at 30,
+  and Claude Code 2.1.310 then kept the command running but refused the agent's next tool call ("The user doesn't
+  want to take this action right now"), so neither run wrote its result. Once the agent has written
+  ``.evo-run/result.json`` it has finished, and its ``result`` ends the input whatever still runs.
   A decision of a plan run left open is the daemon's, not the adapter's: the turn ends, and the daemon waits for the
   answer and hands it to a new adapter in the same session (``evo_agents.worker.adapter``).
 - ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, a
@@ -202,7 +206,7 @@ SKIPPED_SYSTEM = frozenset({"commands_changed", "hook_started", "thinking_tokens
 MODEL_HELP = re.compile(r"^\s*--model[ =<].*?(?=^\s*-|\Z)", re.M | re.S)
 MODEL_ALIAS = re.compile(r"'([A-Za-z][A-Za-z0-9._\[\]-]*)'")
 # Seconds the session stays open, once a turn has ended, while a command the agent started in the background still
-# runs; then the input ends, and the CLI stops the command and exits.
+# runs; then the input ends, and the CLI stops the command and exits. A run with a time cap waits up to that cap.
 BACKGROUND_WAIT = 30 * 60.0
 # Seconds the CLI has to open a turn by itself once a background command ended while no turn ran, before the adapter
 # writes to the agent (FOLLOW_UP). Claude Code 2.1.291 opens it at once.
@@ -923,7 +927,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         if self.stopping or self.interrupted or self._result_written():
             await self._close_input()
         elif self.background.pending:
-            self._arm(self.background_wait, self._leave_background)
+            if self._time_cap is None:  # a run's time cap ends the wait itself, by interrupting the agent
+                self._arm(self.background_wait, self._leave_background)
         elif ended_in_turn:
             self._arm(self.turn_grace, self._close_input)
         else:

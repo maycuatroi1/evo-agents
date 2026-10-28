@@ -988,6 +988,40 @@ def test_claude_leaves_a_background_command_that_runs_past_the_wait_and_ends_its
     assert outcome.completed and outcome.summary == "STARTED", "the agent's turn completed; the command was left"
 
 
+def test_claude_with_a_time_cap_waits_for_a_background_command_past_the_wait_and_goes_on_when_it_ends(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await asyncio.sleep(0.4)  # a test shard that runs past background_wait
+        _print(cli, background_end())
+        cli.print(INIT)
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    budget = {"max_usd": None, "max_seconds": 60, "spent_usd": 0.0, "spent_seconds": 0}
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": 0.1}, budget=budget)
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-3:] == [("result", "STARTED"), ("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None
+
+
+def test_claude_with_a_time_cap_ends_a_wait_for_a_background_command_at_the_cap(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await cli.input_closed.wait()  # a server, say: it never ends by itself
+        _print(cli, background_end(status="killed"))
+        cli.exit()
+
+    budget = {"max_usd": None, "max_seconds": 0.3, "spent_usd": 0.0, "spent_seconds": 0}
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": 0.1}, budget=budget)
+    began = time.monotonic()
+    events, outcome = asyncio.run(_collect(adapter))
+    assert time.monotonic() - began >= 0.3, "the session waited for the command up to the time cap"
+    assert adapter.cli.log[-3:] == [("result", "STARTED"), ("control", "interrupt"), ("end_input",)]
+    assert not outcome.completed and outcome.cap == "time"
+
+
 def test_claude_gives_the_cli_a_moment_after_a_turn_in_which_a_background_command_ended(tmp_path):
     def script(opens_a_turn: bool):
         async def behaviour(cli: FakeCLI) -> None:
