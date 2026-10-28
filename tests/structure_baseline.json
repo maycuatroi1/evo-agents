@@ -15,7 +15,7 @@
     "evo_agents/hub/curator_cli.py::register_curator": {"statements": 52},
     "evo_agents/hub/judge.py::ci_state": {"complexity": 18},
     "evo_agents/hub/judge.py::hack_signs": {"complexity": 23, "statements": 54},
-    "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},
+    "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 18},
     "evo_agents/hub/run_cli.py::_describe": {"complexity": 21, "statements": 58},
     "evo_agents/hub/run_cli.py::register_runs": {"statements": 58},
     "evo_agents/hub/server/app.py::create_app": {"statements": 94},

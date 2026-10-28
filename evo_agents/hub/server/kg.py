@@ -128,7 +128,7 @@ router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": Error
 
 class KgConfig(BaseModel):
     knowledge: dict = Field(
-        description="policy, identifiers, ontology file name and sources {id, connector, label, code}"
+        description="policy, identifiers, ontology file name and sources {id, connector, label, code, repo, ref}"
     )
     ontology: dict | None = Field(None, description="the ontology extension knowledge.yaml points at, if any")
 

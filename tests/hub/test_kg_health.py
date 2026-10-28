@@ -28,6 +28,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select
 
 from evo_agents.hub import tables
+from evo_agents.hub.kg_ingest import knowledge_config
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import kg_health
@@ -91,7 +92,7 @@ def project_id(db) -> int:
     return sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
 
 
-def graph_of(world, *, files: dict | None = None, commit_read: str = C1) -> int:
+def graph_of(world, *, files: dict | None = None, commit_read: str = C1, knowledge: dict = KNOWLEDGE) -> int:
     """The knowledge config of ``world``'s project, two successful builds (the second changing nothing) and the files
     its source code holds in the second; the id of that build."""
     db, pid = world.db, project_id(world.db)
@@ -99,7 +100,7 @@ def graph_of(world, *, files: dict | None = None, commit_read: str = C1) -> int:
     sql(
         db,
         insert(tables.kg_configs).values(
-            project_id=pid, digest="sha256:" + "0" * 64, knowledge=KNOWLEDGE, updated_by=owner
+            project_id=pid, digest="sha256:" + "0" * 64, knowledge=knowledge, updated_by=owner
         ),
     )
     b = tables.kg_builds
@@ -254,6 +255,25 @@ def test_the_hub_measures_each_git_source_of_a_charter_against_its_default_branc
     assert measured(world, MEASURED, tmp_path=tmp_path) == {"measured": 1}
     code = health_rows(world.db)[-1][2]["sources"][0]
     assert code["behind"] == 2 and code["missing"] is None and "GitHub cut the tree" in code["why"]
+
+
+def test_the_config_hub_kg_push_sends_names_the_repo_the_measure_reads(world, tmp_path):  # noqa: F811
+    harness = tmp_path / "harness"
+    write(
+        harness / "harness.yaml", "name: h\nknowledge_file: knowledge.yaml\nrepos:\n  - {name: evo-agents, path: x}\n"
+    )
+    sources = [
+        {"id": "code", "connector": "git", "repo": "evo-agents", "ref": "origin/main", "fetch": True},
+        {"id": "local", "connector": "git", "path": "../somewhere"},
+    ]
+    write(harness / "knowledge.yaml", json.dumps({"version": 1, "project": PROJECT, "sources": sources}))
+    pushed = knowledge_config(load_project_at(harness, tmp_path / "kg-home"))["knowledge"]
+    graph_of(world, knowledge=pushed)
+    assert measured(world, tmp_path=tmp_path) == {"measured": 1}
+    code, local = health_rows(world.db)[-1][2]["sources"]
+    assert code["why"] is None and code["repo"] == "evo-agents" and code["ref"] == "origin/main"
+    assert code["behind"] == 2 and code["missing"] == 1
+    assert local["why"] == kg_health.NO_REPO
 
 
 def test_a_commit_github_does_not_know_and_a_hub_without_its_app_say_why(world):  # noqa: F811
