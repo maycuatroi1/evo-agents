@@ -288,8 +288,9 @@ function InboxList({
 }) {
   const t = useTranslations("inbox");
   const timeZone = useTimeZone() ?? "UTC";
-  const { waiting, rest } = splitInbox(page.notifications);
+  const { waiting, rest, reports } = splitInbox(page.notifications);
   const days = groupInbox(rest, timeZone);
+  const reportDays = groupInbox(reports, timeZone);
   const filtered = isFiltered(filters);
   const props = (notification: Notification) => ({
     notification,
@@ -347,6 +348,11 @@ function InboxList({
           {rest.length > 0 ? (
             <ListSection title={waiting.length > 0 ? t("restTitle") : t("allTitle")} count={rest.length} testId="inbox-rest" list={false}>
               <InboxDays days={days} entry={entry} />
+            </ListSection>
+          ) : null}
+          {reports.length > 0 ? (
+            <ListSection title={t("reportsTitle")} count={reports.length} testId="inbox-reports" list={false}>
+              <InboxDays days={reportDays} entry={entry} idPrefix="inbox-report-day" />
             </ListSection>
           ) : null}
         </>

@@ -911,19 +911,42 @@ whose objects stay in the bucket with nothing referring to them. Schema 0070 add
 plugin srs. Going back to 0069 makes every settle chat a group chat of the same members, its agent no longer named on
 its row, reads a mention `via` settle as `via` thread, and drops the table.
 
+### Runs that stop moving
+
+Two runs that did not fail by their worker's word also get a triage thread, once a run (`run_triage` holds one row per
+run), in the same chat as a failed run's (`evo_agents/hub/server/triage.py`):
+
+- a run of kind step, plan or author that is `running` or `verifying` and has written no event for 45 minutes
+  (`triage.STALE_MINUTES`; its start counts when it wrote none) while its worker is not revoked and still sends
+  heartbeats (within `runs.OFFLINE_AFTER_SECONDS`), of a project with triage on. Each pass of the reaper (the job
+  `hub.recover_runs`, `triage.open_stale`) finds them, at most 50 a pass. The thread's cause is `stale`; the hub
+  stops nothing itself, and the run keeps its lease and its slot. A run that is `waiting` or `interactive` is not
+  stale, and one on a worker that stopped its heartbeats is the reaper's, as below;
+- a run the reaper ends on its last attempt because its worker stopped extending the lease: it fails with the error
+  "its worker NAME stopped extending the lease, and it was attempt N of N", whose cause the hub guesses as `lease_lost`,
+  and opens its thread as any failed run. A lost run with attempts left opens none: its next attempt is queued.
+
+The first message of both says the diagnosis after the facts of a failed run: the last event of the run (its sequence
+number, kind, time and text; the hub's own move to the end and what it wrote with it left out), the worker and its
+last heartbeat, the lease (held until when, or ended with the run) and the attempt (`N of M`, `(the last)` on the
+last). It mentions the project's default agent as for a failed run, unless the chain of reruns is full.
+
 ### What a triage agent may do on its own
 
-The agent of a failed run's triage thread acts for the run's owner through three worker routes,
-`POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan` and `.../triage/invite` (`evo_agents/hub/server/triage_actions.py`,
-`docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
+The agent of a failed run's triage thread acts for the run's owner through four worker routes,
+`POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan`, `.../triage/invite` and `.../triage/cancel`
+(`evo_agents/hub/server/triage_actions.py`, `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
 of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, and an edit of a plan only as a
 new revision that differs from the held one in the `verify` or `what` of pending steps of the run's repos, with no
 command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step that is done,
 `acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run dispatched by hand.
 When the error names another project, `.../triage/invite` puts the agent of that project in the chat by the rule of
 Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread), and the agent hands it
-work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row
-(`run.triage_rerun`, `run.triage_plan_edit`) in the same transaction.
+work by a mention, within the hop limit of 3. In the thread of a stale run, `.../triage/cancel` asks the run's worker
+to stop it, as the owner's cancel of a held run does (`runs.cancel_requested_at`; 409 for a failed run's thread, a run
+no longer held or a stop asked already), and `.../triage/rerun` runs it again once it has ended, for the cause `stale`
+on a fit worker (409 while it is still held). Every success posts a `Decision:` line and an audit row
+(`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`, `run.triage_cancel`) in the same transaction.
 
 ## Plans and their copies in git
 

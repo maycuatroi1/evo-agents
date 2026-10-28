@@ -9091,6 +9091,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/triage/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel
+         * @description Ask the worker of the stale run of this triage thread to stop it, for its owner, as their cancel of a held run
+         *     does; 409 for the thread of a failed run, a run that is no longer held, or a stop asked already.
+         */
+        post: operations["cancel_v1_worker_runs__run_id__triage_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/triage/plan": {
         parameters: {
             query?: never;
@@ -24701,6 +24722,12 @@ export interface components {
             /** Read At */
             read_at: string | null;
             /**
+             * Report
+             * @description a notice that only reports (a push or merge into a default branch, a plan finished, a run's files, asking nothing): stored read, sent to no channel (nor a device, unless you chose the interrupt tier for its kind), and counted in Today's summary
+             * @default false
+             */
+            report: boolean;
+            /**
              * Outputs
              * @description the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from
              */
@@ -38654,10 +38681,10 @@ export interface components {
         TodayItem: {
             /**
              * Kind
-             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer
+             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer; report: notices that only report, such as pushes, merges, plans finished and files of runs
              * @enum {string}
              */
-            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal";
+            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal" | "report";
             /** Title */
             title: string;
             /** Body */
@@ -39203,6 +39230,27 @@ export interface components {
              * @description the revision the edit wrote; null for a rerun alone
              */
             plan_revision: number | null;
+        };
+        /** TriageCancelIn */
+        TriageCancelIn: {
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** TriageCancelled */
+        TriageCancelled: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the stale run whose worker was asked to stop it
+             */
+            run_id: number;
         };
         /** TriageInviteIn */
         TriageInviteIn: {
@@ -75688,6 +75736,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TriageActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_v1_worker_runs__run_id__triage_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageCancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageCancelled"];
                 };
             };
             /** @description Unauthorized */

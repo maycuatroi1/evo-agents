@@ -1,4 +1,4 @@
-"""``evo-agents worker triage rerun|plan|invite``: what the agent of a triage thread does on its own for a failed run
+"""``evo-agents worker triage rerun|plan|invite|cancel``: what the agent of a triage thread does on its own for a failed run
 (``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules`` is the frame the hub enforces).
 
 - ``rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]``: run the failed run of
@@ -8,6 +8,9 @@
   ``plan --edits FILE ...`` does it for several steps at once, one revision and one ``Decision:`` line: FILE (``-``
   for stdin) is a JSON list of ``{"step": ID, "verify": TEXT, "what": TEXT, "why": TEXT}``, verify or what or both
   in each, and ``why`` when that step needs a reason of its own.
+
+- ``cancel --reason TEXT``: in the thread of a stale run (no event for ``triage.STALE_MINUTES`` while its worker
+  heartbeats), ask its worker to stop it, for its owner; ``rerun`` runs it again once it has ended.
 
 - ``invite HANDLE --reason TEXT``: invite the agent of another project, one the failed run's error names, into the
   chat, so a mention can hand it work; the hub refuses and says in the thread when the owner is no writer there or the
@@ -106,6 +109,17 @@ def cmd_invite(args) -> int:
     return 0
 
 
+@chat_command
+def cmd_cancel(args) -> int:
+    run = agent_run("triage cancel")
+    answer = call(run, "triage/cancel", {"reason": _text(args.reason)})
+    print(
+        f"Asked the worker of run #{answer['run_id']} to stop it; the Decision line is message #{answer['message_id']}. "
+        "Run it again with `evo-agents worker triage rerun` once it has ended."
+    )
+    return 0
+
+
 def _frame_options(parser) -> None:
     parser.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
     parser.add_argument("--worker", metavar="NAME", help="rerun on this worker of the owner, a fit candidate")
@@ -127,6 +141,9 @@ def register_triage(wsub) -> None:
     rerun = tsub.add_parser("rerun", help="run the failed run of the thread again for its owner")
     _frame_options(rerun)
     rerun.set_defaults(func=cmd_rerun)
+    cancel = tsub.add_parser("cancel", help="in a stale run's thread: ask its worker to stop it, for its owner")
+    cancel.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
+    cancel.set_defaults(func=cmd_cancel)
     invite = tsub.add_parser(
         "invite",
         help="invite the agent of another project the failed run's error names into this chat (the owner needs the "

@@ -4908,3 +4908,30 @@ def test_0176_drops_the_cost_cap_of_a_release_cycle_and_going_back_puts_the_defa
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0067's cap check is back
         conn.execute(update(s).values(cycle_budget_usd=0.5))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0176") :]
+
+
+def test_0177_lets_the_hub_answer_a_credential_request_and_going_back_names_its_owner_as_the_answerer(hub_db):
+    move_to(hub_db, "0176")
+    d = hub_tables.decisions
+    request = {"env_var": "NORTHWIND_DEPLOY_KEY", "secret_name": "northwind-deploy-key", "hub_account": False}
+    answered = {"state": "answered", "answer_option": "a", "answer_text": "Leased.", "answered_at": func.now()}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        asked = _decision_row(ids, run_id, "wait-helper").values(category="credential", credential_request=request)
+        decision_id = one(conn, asked)
+        with pytest.raises(errors.CheckViolation):  # only a wait was answered by nobody before 0177
+            conn.execute(update(d).values(answered).where(d.c.id == decision_id))
+    move_to(hub_db, "0177")
+    with live.connect(hub_db) as conn:
+        conn.execute(update(d).values(answered).where(d.c.id == decision_id))
+        plain = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="credential"))
+        scope = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        for other in (plain, scope):  # a decision that is no credential request still needs who answered it
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(d).values(answered).where(d.c.id == other))
+    move_to(hub_db, "0176", down=True)
+    assert query(hub_db, select(d.c.answered_by).where(d.c.id == decision_id)) == [(ids["user"],)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0140's check is back
+        conn.execute(update(d).values(answered_by=None).where(d.c.id == decision_id))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0177") :]

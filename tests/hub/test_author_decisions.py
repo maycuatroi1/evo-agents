@@ -198,6 +198,20 @@ def test_only_the_worker_holding_an_author_run_asks_a_decision_and_a_step_run_ge
 # Reading
 
 
+def test_prose_credential_an_author_run_asking_a_credentials_value_in_words_gets_422_and_keeps_nothing(
+    client, hub, hub_db, tmp_path
+):
+    worker, run_id = running(client, hub, tmp_path)
+    question = "Please paste the GitLab token so I can read the issues."
+    refused = ask(client, worker, run_id, category="scope", question=question)
+    assert refused.status_code == 422, refused.text
+    assert "evo-agents worker ask --category credential --env-var NAME" in refused.json()["message"]
+    assert sql(hub_db, select(func.count()).select_from(tables.decisions)) == [(0,)]
+    bodies = sql(hub_db, select(tables.run_events.c.body).where(tables.run_events.c.run_id == run_id))
+    assert not any(question in str(body) for (body,) in bodies)
+    asks(client, worker, run_id)  # a question of no credential is asked as before
+
+
 def test_whoever_reads_an_author_run_reads_its_decisions_on_the_list_the_page_home_and_mcp(
     client, hub, hub_db, tmp_path, github
 ):

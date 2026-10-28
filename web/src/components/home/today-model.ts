@@ -6,7 +6,7 @@ import type { Today, TodayItem } from "@/lib/notification-queries";
  */
 
 /** `today.ITEM_KINDS`, in the order the hub's summary names them. */
-export const ITEM_KINDS = ["release", "step_done", "run_failed", "run_parked", "problem", "cost", "proposal"] as const satisfies readonly TodayItem["kind"][];
+export const ITEM_KINDS = ["release", "step_done", "run_failed", "run_parked", "problem", "cost", "proposal", "report"] as const satisfies readonly TodayItem["kind"][];
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 /**
