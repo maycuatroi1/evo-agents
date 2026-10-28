@@ -25,6 +25,9 @@ test = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[serv
 graphify = ["graphifyy==0.9.73"]
 # Clusters of a knowledge graph's build (evo_agents.kg.clusters). Pinned: a build's content hash holds its clusters.
 clusters = ["graspologic-native==1.3.1"]
+# Search by meaning next to BM25 (evo_agents.kg.semantic): an embedding model run on this machine through ONNX Runtime,
+# no third party's API. 0.9: TextEmbedding.add_custom_model with local_files_only. docs/kg-semantic.md.
+semantic = ["fastembed>=0.9,<0.10", "numpy>=1.26"]
 hub-server = [
     "fastapi>=0.135",
     "uvicorn[standard]>=0.34",

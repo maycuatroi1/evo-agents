@@ -35,6 +35,7 @@ import uuid
 from collections import Counter, deque
 
 from evo_agents import __version__
+from evo_agents.kg import semantic
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
     CONTEXT_MIN_LINE,
@@ -102,6 +103,8 @@ class Session:
         self.read: Label | None = None  # join of the labels the current call reveals
         self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
+        # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
+        self.semantic: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -276,7 +279,8 @@ class Session:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
-        ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated)
+        vector = semantic.query_vector(store, query, self.semantic)
+        ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated, vector=vector)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]

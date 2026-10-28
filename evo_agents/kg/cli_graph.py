@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -40,6 +41,50 @@ def cmd_build(args) -> int:
         for err in report.errors[:20]:
             print(f"  error: {err}", file=sys.stderr)
     return 0 if report.ok else 1
+
+
+def cmd_semantic(args) -> int:
+    """Show or set whether the project's graph is searched by meaning too, and with ``--index`` write its vectors."""
+    from evo_agents.kg import semantic
+    from evo_agents.kg.cli import _print_json, _project
+
+    project = _project(args)
+    try:
+        settings = semantic.read_settings(project.root)
+        if args.mode or args.model:
+            settings = semantic.Settings(args.mode or settings.mode, args.model or settings.model)
+            semantic.write_settings(project.root, settings)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    path = project.root / "graph.sqlite"
+    indexed = None
+    if args.index and path.exists():
+
+        def progress(done: int, total: int) -> None:
+            if not args.json:
+                print(f"  embedded {done}/{total}", file=sys.stderr)
+
+        indexed = semantic.index_file(path, settings, progress=progress)
+    held = None
+    if path.exists():
+        with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as db:
+            held = semantic.info(db)
+    out = {
+        **settings.to_json(),
+        "graph": None if held is None else {"model": held.model, "mode": held.mode, "digest": held.digest},
+        "indexed": None
+        if indexed is None
+        else {"rows": indexed.rows, "embedded": indexed.embedded, "error": indexed.error},
+    }
+    if args.json:
+        _print_json(out)
+    else:
+        print(f"semantic {settings.mode}, model {settings.model}")
+        if indexed is not None:
+            print(indexed.line())
+        print(f"graph: {'no vectors' if held is None else f'vectors of {held.model}, mode {held.mode}'}")
+    return 1 if indexed is not None and indexed.error else 0
 
 
 def cmd_query(args) -> int:
@@ -107,9 +152,18 @@ def cmd_eval(args) -> int:
         if not questions:
             print(f"error: no question of type {', '.join(args.type)}", file=sys.stderr)
             return 2
+
+    def session_for(project):
+        session = open_session(args.backend, project or args.project, args.sink)
+        if args.search != "graph":
+            if not hasattr(session, "semantic"):
+                raise ValueError("--search bm25 or hybrid reads a graph on this machine: use --backend local")
+            session.semantic = args.search == "hybrid"
+        return session
+
     report = evaluate(
         questions,
-        session_for=lambda project: open_session(args.backend, project or args.project, args.sink),
+        session_for=session_for,
         checkouts_for=lambda project: project_checkouts(project or args.project, overrides),
         methods=[m for m in METHODS if m in args.method] if args.method else METHODS,
         limit=args.limit,
@@ -118,7 +172,7 @@ def cmd_eval(args) -> int:
         question_set=question_set,
         split=args.split,
     )
-    report.settings.update(backend=args.backend, sink=args.sink)
+    report.settings.update(backend=args.backend, sink=args.sink, search=args.search)
     if args.json:
         print(json.dumps(report.to_json(), ensure_ascii=False, indent=2))
     else:
@@ -219,6 +273,13 @@ def _register_eval(ksub, with_project) -> None:
         default="local",
         help="where the graph is read: this machine's store (default), the hub, or the hub when it has the project",
     )
+    run.add_argument(
+        "--search",
+        choices=["graph", "bm25", "hybrid"],
+        default="graph",
+        help="how kg_search ranks: as the graph's semantic mode says (default), by words only, or by words and meaning"
+        " fused (needs the graph's vectors; docs/kg-semantic.md)",
+    )
     run.set_defaults(func=cmd_eval)
 
     build = ksub.add_parser(
@@ -275,3 +336,13 @@ def register(ksub, with_project) -> None:
     serve.set_defaults(func=cmd_serve)
 
     _register_eval(ksub, with_project)
+
+    sem = with_project(
+        ksub.add_parser("semantic", help="show or set whether kg_search ranks by meaning too (docs/kg-semantic.md)")
+    )
+    sem.add_argument(
+        "--mode", choices=["off", "index", "on"], help="off: words only; index: write vectors; on: use them"
+    )
+    sem.add_argument("--model", help="embedding model (default BAAI/bge-m3)")
+    sem.add_argument("--index", action="store_true", help="write the vectors into the graph now (downloads the model)")
+    sem.set_defaults(func=cmd_semantic)

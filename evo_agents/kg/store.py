@@ -58,6 +58,7 @@ from pathlib import Path
 
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
+from evo_agents.kg import semantic
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -1131,6 +1132,7 @@ class Store:
         kinds: list[str] | None = None,
         any_word: bool = True,
         deprecated: bool = True,
+        vector=None,
     ) -> list[str]:
         """Ids of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
         query, then the full-text matches of all its words, of all its words as prefixes, and (``any_word``) of any
@@ -1138,7 +1140,9 @@ class Store:
         ``search.weight``: up when a word of the query names the node, down when it is background the query does not
         ask for (``evo_agents.kg.search``). A node a word names (``search.named_words``) that no text query found ranks
         as the best of them would. ``kinds`` keeps only nodes of those kinds; ``deprecated`` false leaves out the nodes
-        a decision deprecated before the list is cut, so they take no room."""
+        a decision deprecated before the list is cut, so they take no room. ``vector``, the query's embedding
+        (``evo_agents.kg.semantic.query_vector``), fuses this ranking by words with the graph's ranking by meaning,
+        weighed the same way; the exact hits stay first."""
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
         hits = self.exact(query, b, want, kinds)
@@ -1167,18 +1171,56 @@ class Store:
                 row = self._index_row(node_id)
                 if row[0] and (not kinds or row[0] in kinds):
                     scores[node_id], rows[node_id] = score, row
+        near = self._semantic_ranked(vector, kinds, set(hits)) if vector is not None else {}
+        for node_id in near.keys() - rows.keys():
+            rows[node_id] = self._index_row(node_id)
         closed = self._closed_plans(b, [i for i, row in rows.items() if row[0] in ("Plan", "PlanStep")])
         wanted = text_search.asked(query)
-        priors = self._asked_priors(list(scores))
+        priors = self._asked_priors(list(rows))
         for node_id, (kind, name, path) in rows.items():
-            scores[node_id] *= text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
-            scores[node_id] *= priors.get(node_id, 1.0)
+            factor = text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
+            factor *= priors.get(node_id, 1.0)
+            if node_id in scores:
+                scores[node_id] *= factor
+            if node_id in near:
+                near[node_id] *= factor
         ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
+        if near:
+            by_meaning = sorted(near, key=lambda node_id: (-near[node_id], node_id))
+            ranked = semantic.fuse([(1.0, ranked), (semantic.SEMANTIC_WEIGHT, by_meaning)], semantic.RRF_K)
         found = [*hits, *(h for h in ranked if h not in hits)]
         if not deprecated:
             gone = self._deprecated(found, b)
             found = [h for h in found if h not in gone]
         return found[:want]
+
+    # -- the ranking by meaning (evo_agents.kg.semantic) ------------------------------------------------------------
+
+    def vector_info(self) -> semantic.Info | None:
+        """What the graph's vectors are, None when it has none (a graph built without them, or by an older build)."""
+        if not hasattr(self, "_vectors"):
+            self._vectors = semantic.info(self.db)
+        return self._vectors
+
+    def _semantic_ranked(self, vector, kinds: list[str], hits: set[str]) -> dict[str, float]:
+        """Cosine of the SEMANTIC_POOL nodes nearest ``vector``, not of ``hits``, rows with an audience only within the
+        reader's; {} when the graph has no vectors or numpy is missing."""
+        found = self.vector_info()
+        if found is None:
+            return {}
+        try:
+            stat = self.path.stat()
+            key = (str(self.path.resolve()), stat.st_mtime_ns, stat.st_size, found.digest)
+            m = semantic.matrix(self.db, found, key)
+            reader = self.reader
+
+            def seen(aud: str) -> bool:
+                return bool(reader) and audience_below(stored_audience(aud), reader)
+
+            near = semantic.nearest(m, vector, semantic.SEMANTIC_POOL + len(hits), kinds, seen)
+        except (semantic.SemanticUnavailable, ValueError, OSError):
+            return {}
+        return {node_id: score for node_id, score in near if node_id not in hits and score > 0}
 
     # -- what agents asked before they read a node (evo_agents.kg.asked) -------------------------------------------
 
