@@ -11,7 +11,9 @@ A path written short is read, in order, from the directories above the document'
 its repo (a top-level Python package, a tsconfig ``baseUrl`` or ``paths`` target: ``hub/server/runs.py`` means
 ``evo_agents/hub/server/runs.py``), then of other repos, and last as the tail of one path of the project (its own
 repo first, then the files a commit or pull request changed). A path whose directory no repo holds is outside the
-project, like a URL, and is not counted. A plain lower-case word in backticks (```name```) is prose, not a symbol;
+project, like a URL, and is not counted. A path whose file name holds spaces (``reports/Backend cho agent.md``) and a
+document at a repo's root named in capitals (``CLUSTER.md``, of the plan step's repo, then of the item's) link only
+when they are files of the project, and are not counted otherwise. A plain lower-case word in backticks (```name```) is prose, not a symbol;
 a short name several symbols share goes to the one nearest the document: its repo, the files a commit changed,
 the directories it shares with the document, the topic its file name gives, and outside tests for a text that is
 not a test's. It stays ambiguous only when they tie.
@@ -59,13 +61,20 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "15"
+LINK_VERSION = "16"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
 QUALIFIED_SYMBOL = re.compile(r"(?<![\w/.-])(?:([A-Za-z0-9_.-]+):)?((?:[\w.-]+/)*[\w.-]+\.\w{1,6})::([A-Za-z_][\w.]*)")
 REPO_PATH = re.compile(r"(?<![\w/.:-])([A-Za-z0-9_.-]+):((?:[\w.-]+/)*[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])")
 PATH = re.compile(r"(?<![\w/.:@-])((?:[\w.-]+/)+[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])")
+# A path whose file name holds spaces (`reports/Backend tập trung cho agent.md`), up to its first extension: linked only
+# when it is a file of the project as written.
+SPACED_PATH = re.compile(
+    r"(?<![\w/.:@-])((?:[\w.-]+/)+[\w.-][^\n/`'\"()\[\]<>|*]{0,150}?\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])"
+)
+# A document at a repo's root named in capitals (CLUSTER.md, AGENTS.md): one of the step's or the item's repo.
+ROOT_DOC = re.compile(r"(?<![\w/.:@-])([A-Z][A-Z0-9_-]*\.md)(?![\w/])")
 DOI = re.compile(r"(?<![\w/.])10\.\d{4,9}/[^\s)\]>,;]+")
 MD_LINK = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 REPO_SHA = re.compile(r"(?<![\w/.-])([A-Za-z0-9_.-]+)@([0-9a-f]{7,40})\b")
@@ -917,6 +926,7 @@ class Linker:
         self, src: str, unit: str, text: str, field: str = "text", heading: str | None = None, repo: str | None = None
     ) -> None:
         taken: list[tuple[int, int]] = []
+        step_repo = repo  # the loop over REPO_PATH reuses the name
 
         def claim(m) -> bool:
             a, b = m.span()
@@ -989,6 +999,16 @@ class Linker:
 
         self._pulls(src, unit, text, field, claim, repo)
 
+        for m in SPACED_PATH.finditer(text):
+            if " " not in m.group(1):
+                continue
+            target, status = self.path_target(m.group(1), repo) if repo else (None, "dangling")
+            if target is None:
+                target, status = self.path_target(m.group(1), None)
+            if target and claim(m):
+                self._count("resolved")
+                self._link(src, target, unit, m.start(), status, "path", field)
+
         for m in REPO_PATH.finditer(text):
             repo, path = m.group(1), m.group(2)
             if repo not in self.index["repo"] or not claim(m):
@@ -1014,6 +1034,23 @@ class Linker:
                 self._link(src, target, unit, m.start(), status, "path", field)
             elif status != "outside":
                 self._count(status if status in ("ambiguous", "dangling") else "dangling", m.group(0))
+
+        for m in ROOT_DOC.finditer(text):
+            if any(m.start() < y and x < m.end() for x, y in taken):
+                continue
+            target = next(
+                (
+                    t
+                    for r in dict.fromkeys((step_repo, self.repo))
+                    if r
+                    for t in [self.path_target(m.group(1), r)[0]]
+                    if t
+                ),
+                None,
+            )
+            if target and claim(m):
+                self._count("resolved")
+                self._link(src, target, unit, m.start(), "resolved", "path", field)
 
         for m in BACKTICK.finditer(text):
             inner = m.group(1).strip().rstrip("()")
