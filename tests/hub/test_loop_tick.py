@@ -17,11 +17,15 @@ The engine is rules/2 (plan problem-oriented-hub, criterion a6): once G-1 answer
 P-1; in a project whose solutions skip use cases (``loop.use_cases`` never) CL-1 makes a build straight from the
 claim, a claim of the Problem cell a discover, and a claim of another cell no core work item; the routes name the
 problem of each work item and of a chain. rules/2 goes on from the cursor rules/1 left and makes no work item again.
+
+A deliver whose plan run merged the pull request of its branch on GitHub itself goes to done with no person: the tick
+reads the pull request with the workers' App and marks the repo merged in the plan as the run's dispatcher.
 """
 
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from importlib.metadata import EntryPoint
 from types import SimpleNamespace
@@ -48,6 +52,7 @@ from evo_agents.hub.worker import queue
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.fake_github import APP_PERMISSIONS, FakePull
 from tests.hub.live import sql
 from tests.hub.test_author_runs import HARNESS
 from tests.hub.test_ba_agent import (  # noqa: F401 (members is a fixture)
@@ -678,3 +683,89 @@ def test_loop_tick_a_goal_with_no_srs_document_and_a_project_with_the_loop_off_a
     ticked(client, hub_db)
     assert [row[:2] for row in items(hub_db)] == [("brainstorm:G-1:r1", "brainstorm")]
     assert ledger_of(hub_db) == {}
+
+
+GITHUB_PLAN = "pantry-reorder"
+GITHUB_BRANCH = "loop/pantry-reorder"
+
+
+def merged_pull(github, number: int, at: datetime, sha: str) -> None:
+    """Pull request ``number`` of GITHUB_BRANCH of evo-agents, merged at ``at`` as merge commit ``sha``."""
+    github.pulls[(credentials_api.MINE, "evo-agents", number)] = FakePull(
+        number,
+        credentials_api.MINE,
+        "evo-agents",
+        GITHUB_BRANCH,
+        "a" * 40,
+        "main",
+        state="closed",
+        merged=True,
+        merge_sha=sha,
+        merged_at=at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        merged_by="owner",
+    )
+
+
+def test_loop_tick_a_deliver_whose_plan_run_merged_its_pull_request_on_github_is_done_with_no_person(
+    client, hub, hub_db, github
+):
+    """evo-agents is on GitHub, a repo the queue does not merge. A deliver whose plan run is done waits for a person
+    while no pull request of the run's branch merged since the run was queued (one merged before is not the run's); the
+    tick that reads the run's pull request merged marks the repo merged in the plan as the run's dispatcher and moves
+    the deliver to done in the same tick, and the ticks after it read nothing more."""
+    policy(client, hub, {"enabled": True})
+    body = {
+        "id": GITHUB_PLAN,
+        "title": "Reorder from the order page",
+        "goal": "Corner shops reorder in one tap.",
+        "repos": [{"repo": "evo-agents", "branch": GITHUB_BRANCH}],
+        "steps": [{"id": 1, "title": "Reorder button", "repo": "evo-agents", "what": "the button", "status": "done"}],
+    }
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{GITHUB_PLAN}", json={"body": body}, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    github.add_repo(credentials_api.MINE, "evo-agents")
+    credentials_api.install(github, "evo-agents", permissions={**APP_PERMISSIONS, "pull_requests": "write"})
+    now = datetime.now(UTC)
+    owner = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == credentials_api.OWNER))[0][0]
+    r, i = tables.runs, tables.loop_items
+    run = {"project_id": project_id(hub_db), "kind": "plan", "plan_id": GITHUB_PLAN, "title": "Reorder button"}
+    run |= {"plan_revision": pushed.json()["revision"]}
+    run |= {"dispatched_by": owner, "requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless"}
+    run |= {"approval": "auto", "timeout_s": 3600, "state": "done", "queued_at": now - timedelta(hours=1)}
+    run |= {"repos": [{"repo": "evo-agents", "branch": GITHUB_BRANCH}], "finished_at": now}
+    run |= {"worker_id": credentials_api.worker_of(client, hub["owner"], "studio")["id"], "leased_at": now}
+    run_id = sql(hub_db, insert(r).values(run).returning(r.c.id))[0][0]
+    goal = sql(hub_db, select(tables.goals.c.id))[0][0]
+    deliver = {"project_id": project_id(hub_db), "kind": "deliver", "cycle": "development", "engine": "rules/2"}
+    deliver |= {"key": f"deliver:{GITHUB_PLAN}", "goal_id": goal, "plan_id": GITHUB_PLAN, "run_id": run_id}
+    sql(hub_db, insert(i).values(**deliver, state="running"))
+    merged_pull(github, 1, now - timedelta(hours=2), "b" * 40)  # an older pull request of the same branch
+
+    def tick_with_app() -> dict:
+        state = client.app.state
+        return client.portal.call(
+            partial(tick, state.engine, project_id(hub_db), dispatch=None, github_app=state.github_app)
+        )
+
+    def plan_repo() -> dict:
+        shown = client.get(f"/v1/projects/{PROJECT}/plans/{GITHUB_PLAN}", headers=hub["owner"])
+        assert shown.status_code == 200, shown.text
+        return shown.json()["body"]["repos"][0]
+
+    assert "merged" not in tick_with_app()
+    found = item(hub_db, f"deliver:{GITHUB_PLAN}")
+    assert (found["state"], found["reason"]) == ("waiting_human", "merge_manual"), "no pull request of the run merged"
+    assert "status" not in plan_repo()
+
+    merged_pull(github, 2, now, "c" * 40)
+    assert tick_with_app()["merged"] == 1
+    found = item(hub_db, f"deliver:{GITHUB_PLAN}")
+    assert (found["state"], found["reason"]) == ("done", None)
+    repo = plan_repo()
+    assert (repo["status"], repo["merged_at"]) == ("merged", now.date().isoformat())
+    assert repo["note"].startswith(f"PR {credentials_api.MINE}/evo-agents#2 (ccccccc), merged ")
+    assert repo["note"].endswith(f"read on GitHub by the Loop after plan run #{run_id}")
+    p = tables.plans
+    (updated_by,) = sql(hub_db, select(p.c.updated_by).where(p.c.plan_id == GITHUB_PLAN))[0]
+    assert updated_by == owner, "the plan is written as the run's dispatcher"
+    assert "merged" not in tick_with_app(), "a deliver done is read no more"
