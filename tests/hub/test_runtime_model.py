@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from evo_agents.hub import facets, ledger, review, runtime_metrics
 from evo_agents.hub.facet_readers import run_facet, session_facet
 from evo_agents.hub.runtime_metrics import Item, bucket_quantile, quantile
-from tests.hub.test_digest import answered, at, codex_rollout, result, tool_use
+from tests.hub.test_digest import answered, at, codex_rollout, result, said, tool_use
 from tests.hub.test_facets import claude_session, hooked, numbered, subagent
 
 MCP_TOOL = "mcp__plugin_evo-hub_evo-hub__plan_show"
@@ -69,6 +69,8 @@ def test_a_claude_code_facet_says_what_each_source_put_into_its_main_thread():
         "mcp_instructions": len(KG_BLOCK) + len(HUB_BLOCK),
         "skills": len(SKILLS),
         "hooks": sum(len(text) for text in HOOK_TEXTS),
+        "skills_again": 0,
+        "skill_bodies": 0,
     }, "the subagent's files are its own context, and a hook without content says nothing"
     assert body["loaded"] == [
         {"path": "~/github/app/AGENTS.md", "type": "Project", "chars": 4000, "loads": 2},
@@ -82,10 +84,118 @@ def test_a_claude_code_facet_says_what_each_source_put_into_its_main_thread():
 
 def test_a_session_without_attachments_counts_from_zero_and_what_the_facet_cannot_see_is_null():
     plain = session_facet([("main", numbered(claude_session()))])
-    assert plain["sources"] == dict.fromkeys(facets.CONTEXT_SOURCES, 0) and plain["loaded"] == []
+    assert plain["sources"] == dict.fromkeys(facets.FACET_SOURCES, 0) and plain["loaded"] == []
     codex = session_facet([("main", numbered(codex_rollout()))], "codex")
     assert (codex["sources"], codex["loaded"]) == (None, None), "a Codex rollout names no attachment"
     assert (facets.digest_facet({"messages": 3})["sources"], run_facet("claude-code", [])["sources"]) == (None, None)
+
+
+PLAN_SKILL = "Base directory for this skill: /Users/alice/.claude/skills/execute-plan\n\n# Execute plan\n" + "e" * 900
+HUB_SKILL = "Base directory for this skill: /Users/alice/.claude/plugins/evo-hub/skills/using-agent-hub\n" + "h" * 300
+SLOP_SKILL = "Base directory for this skill: /Users/alice/.claude/skills/stop-slop/\n" + "s" * 200
+
+
+def skill_text(text: str, second: int, **extra) -> dict:
+    return {**said(text, second), "isMeta": True, **extra}
+
+
+def compacted(second: int) -> dict:
+    return {"type": "system", "subtype": "compact_boundary", "uuid": f"c-{second}", "timestamp": at(second)}
+
+
+def test_a_whole_skill_list_that_comes_again_before_a_compaction_counts_as_again():
+    whole, added = "w" * 6000, "a" * 300
+    lines = [
+        attached("skill_listing", content=whole, isInitial=True, skillCount=40),
+        attached("skill_listing", content=added, isInitial=False, skillCount=1),
+        *claude_session()[:4],
+        attached("skill_listing", content=whole, isInitial=True, skillCount=40),  # a resume, same context
+        attached("skill_listing", content=whole[:5000], isInitial=True, skillCount=39),
+        compacted(50),
+        attached("skill_listing", content=whole, isInitial=True, skillCount=40),  # the compacted context needs it
+        said("<command-name>/clear</command-name>", 52),
+        attached("skill_listing", content=whole, skillCount=40),  # an older client says no isInitial
+    ]
+    body = session_facet([("main", numbered(lines))], "claude-code")
+    assert body["sources"]["skills"] == 4 * 6000 + 300 + 5000, "the list counts whole, every time it came"
+    assert body["sources"]["skills_again"] == 6000 + 5000, "only what came while the context already held a list"
+    assert body["sources"]["skill_bodies"] == 0
+
+
+def test_the_text_of_each_skill_loaded_counts_by_the_skill_its_call_named_and_not_in_a_subagent():
+    lines = [
+        answered("msg_k", 3, tool_use("toolu_k", "Skill", skill="evo-hub:using-agent-hub")),
+        result("toolu_k", 4, "Launching skill: evo-hub:using-agent-hub"),
+        skill_text(HUB_SKILL, 4, sourceToolUseID="toolu_k"),
+        said("<command-name>/execute-plan</command-name>", 5),
+        skill_text(PLAN_SKILL, 5),  # typed as /name: no call, named by its directory
+        skill_text("<local-command-caveat>Caveat: the messages below were generated locally</local-command-caveat>", 6),
+        compacted(7),
+        attached(
+            "invoked_skills",
+            skills=[{"name": "execute-plan", "path": "userSettings:execute-plan", "content": PLAN_SKILL}],
+        ),
+    ]
+    helper = [
+        answered("msg_h", 8, tool_use("toolu_h", "Skill", skill="stop-slop")) | {"isSidechain": True},
+        skill_text(SLOP_SKILL, 9, sourceToolUseID="toolu_h") | {"isSidechain": True},
+    ]
+    body = session_facet([("main", numbered(lines)), ("subagents/agent-a.jsonl", numbered(helper))], "claude-code")
+    assert body["sources"]["skill_bodies"] == len(HUB_SKILL) + 2 * len(PLAN_SKILL), "a subagent's skill is its own"
+    assert body["skills"] == [
+        {"skill": "evo-hub:using-agent-hub", "calls": 1, "returned": 0, "chars": len(HUB_SKILL)},
+        {"skill": "stop-slop", "calls": 1, "returned": 0, "chars": 0},
+        {"skill": "execute-plan", "calls": 0, "returned": 1, "chars": 2 * len(PLAN_SKILL)},
+    ]
+    assert not any(turn.startswith("Base directory") for turn in body["user_turns"]), "a skill's text is no turn"
+
+
+def test_the_harness_names_the_skill_list_again_and_the_skills_whose_text_filled_the_most():
+    sessions = [
+        harness_session(
+            "s-1",
+            {
+                "always_loaded": 400,
+                "mcp_instructions": 0,
+                "skills": 24_000,
+                "hooks": 0,
+                "skills_again": 16_000,
+                "skill_bodies": 12_000,
+            },
+            [],
+            [],
+        ),
+        harness_session("s-2", {"always_loaded": 400, "skills": 8000, "skill_bodies": 4000}, [], []),
+    ]
+    sessions[0].body["skills"] = [
+        {"skill": "create-exec-plan", "calls": 1, "returned": 0, "chars": 8000},
+        {"skill": "execute-plan", "calls": 1, "returned": 0, "chars": 4000},
+    ]
+    sessions[1].body["skills"] = [{"skill": "execute-plan", "calls": 0, "returned": 1, "chars": 4000}]
+    found = runtime_metrics.harness(sessions, [], None)
+    assert found["skill_list"] == {"tokens": 8000, "again_tokens": 4000, "again_share": 0.5, "sessions_again": 1}
+    assert found["skill_bodies"] == [
+        {"skill": "create-exec-plan", "chars": 8000, "tokens": 2000, "sessions": 1},
+        {"skill": "execute-plan", "chars": 8000, "tokens": 2000, "sessions": 2},
+    ], "the most text first, then by name"
+    sources = {entry["source"]: entry for entry in found["sources"]}
+    assert "skills_again" not in sources, "a part of the skill list, not a source of its own"
+    assert (sources["skill_bodies"]["tokens"], sources["skills"]["share"]) == (4000, 0.6557)
+    assert found["fixed_tokens"] == 8200, "the text of a skill is loaded on demand: not fixed"
+    assert found["heaviest"][0] == {
+        "session": "s-1",
+        "fixed_tokens": 6100,
+        "always_loaded_tokens": 100,
+        "mcp_instructions_tokens": 0,
+        "skills_tokens": 6000,
+        "hooks_tokens": 0,
+        "skill_bodies_tokens": 3000,
+        "skills_again_tokens": 4000,
+        "evidence": "session:s-1",
+    }
+    figures = {"harness": found}
+    assert ledger.read_metric(figures, "skill_list_again_tokens") == 4000.0
+    assert ledger.read_metric(figures, "skill_body_tokens") == 4000.0
 
 
 # The runtime
@@ -319,6 +429,7 @@ def test_the_harness_counts_each_source_in_tokens_and_the_always_loaded_files_by
         {"source": "mcp_instructions", "chars": 1600, "tokens": 400, "share": 0.0392, "sessions": 1},
         {"source": "skills", "chars": 16_000, "tokens": 4000, "share": 0.3922, "sessions": 2},
         {"source": "hooks", "chars": 400, "tokens": 100, "share": 0.0098, "sessions": 1},
+        {"source": "skill_bodies", "chars": 0, "tokens": 0, "share": 0.0, "sessions": 0},
         {"source": "mcp_output", "chars": 4000, "tokens": 1000, "share": 0.098, "sessions": 1},
         {"source": "tool_output", "chars": 9600, "tokens": 2400, "share": 0.2353, "sessions": 2},
     ]
@@ -385,7 +496,13 @@ def test_the_lenses_runtime_and_harness_have_their_figures_and_metrics_in_the_le
         "compactions",
         "hook_ms",
     )
-    assert ledger.LENS_METRICS["harness"] == ("always_loaded_tokens", "fixed_context_tokens", "tool_output_tokens")
+    assert ledger.LENS_METRICS["harness"] == (
+        "always_loaded_tokens",
+        "fixed_context_tokens",
+        "tool_output_tokens",
+        "skill_list_again_tokens",
+        "skill_body_tokens",
+    )
     before = night(4, cost=2.0, write=900, p95=150_000, loaded=1300, fixed=6800, hook_ms=7000)
     values = {key: ledger.read_metric(before, key) for key in (*runtime_metrics.METRICS,)}
     assert values == {
@@ -397,6 +514,8 @@ def test_the_lenses_runtime_and_harness_have_their_figures_and_metrics_in_the_le
         "always_loaded_tokens": 1300.0,
         "fixed_context_tokens": 6800.0,
         "tool_output_tokens": 500.0,
+        "skill_list_again_tokens": 0.0,
+        "skill_body_tokens": 0.0,
     }
     assert ledger.read_metric({}, "session_cost_usd") == 0.0 and ledger.read_metric({"runtime": None}, "hook_ms") == 0.0
     trigger = ledger.trigger_of(before, "harness", [], night="2026-10-19")
@@ -435,7 +554,13 @@ def test_a_level_compares_as_it_is_a_count_per_session_or_run_and_a_cost_from_ha
         item["key"]: item["change"]
         for item in ledger.outcome_of(ledger.trigger_of(before, "harness", []), busier)["metrics"]
     }
-    assert changes == {"always_loaded_tokens": "same", "fixed_context_tokens": "better", "tool_output_tokens": "better"}
+    assert changes == {
+        "always_loaded_tokens": "same",
+        "fixed_context_tokens": "better",
+        "tool_output_tokens": "better",
+        "skill_list_again_tokens": "same",
+        "skill_body_tokens": "same",
+    }
     longer = night(4, cost=2.0, write=900, p95=200_000, loaded=1800, fixed=6800)
     outcome = ledger.outcome_of(ledger.trigger_of(before, "runtime", []), longer)
     assert {item["key"]: item["change"] for item in outcome["metrics"]}["context_peak_p95"] == "worse"

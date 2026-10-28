@@ -152,7 +152,7 @@ def test_a_session_facet_holds_the_graph_context_compactions_cost_hooks_skills_a
     assert stop["ms"] == 414, "a version number does not split a hook"
     cancelled = hooks[("PreToolUse:Bash", "evo-agents kg hook pre-search")]
     assert (cancelled["timed_out"], cancelled["failed"], cancelled["max_ms"]) == (1, 0, 5367)
-    assert body["skills"] == [{"skill": "stop-slop", "calls": 1, "returned": 1}]
+    assert body["skills"] == [{"skill": "stop-slop", "calls": 1, "returned": 1, "chars": 0}]
     assert body["api_errors"] == [{"text": "429 rate_limit_error: slow down", "n": 1, "cause": "rate_limit"}]
 
 
