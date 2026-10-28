@@ -72,7 +72,6 @@ DEFAULTS = {
     "tag_pattern": "v*",
     "workflow": "release.yml",
     "paths": ["evo_agents/", "plugins/", "web/", ".claude-plugin/", "pyproject.toml", "uv.lock"],
-    "cycle_budget_usd": 200.0,
     "owner": OWNER,
     "paused_at": None,
     "paused_by": None,
@@ -155,7 +154,7 @@ def release_runs(db) -> list[dict]:
 def cycles(db) -> list[tuple]:
     c = tables.release_cycles
     columns = (c.c.id, c.c.state, c.c.start, c.c.local_day, c.c.base_tag, c.c.base_commit, c.c.target_commit)
-    return sql(db, select(*columns, c.c.changed_paths, c.c.budget_usd).order_by(c.c.id))
+    return sql(db, select(*columns, c.c.changed_paths).order_by(c.c.id))
 
 
 def checks(db) -> list[tuple]:
@@ -250,7 +249,7 @@ def test_an_admin_sets_the_schedule_with_its_defaults_and_becomes_its_owner(worl
         ({"repo": REPO, "at": "6:00"}, "pattern"),
         ({"repo": REPO, "paths": ["/abs"]}, "not relative"),
         ({"repo": REPO, "tag_pattern": "v"}, "pattern"),
-        ({"repo": REPO, "cycle_budget_usd": 0.5}, "greater than or equal"),
+        ({"repo": REPO, "cycle_budget_usd": 200}, "Extra inputs"),  # a cycle has no cost cap
         ({"repo": REPO, "workers": 2}, "Extra inputs"),
     ):
         response = world.client.put(path("schedule"), json=body, headers=world.headers["owner"])
@@ -262,13 +261,9 @@ def test_an_admin_sets_the_schedule_with_its_defaults_and_becomes_its_owner(worl
     next_check = datetime.fromisoformat(found["next_check_at"])
     assert next_check.astimezone(UTC).time().isoformat() == "23:00:00"  # 06:00 in Ho Chi Minh City
     assert_json_keys("hub release status", found)
-    again = set_schedule(world, at="05:30", paths=["evo_agents/", "uv.lock"], cycle_budget_usd=50)["schedule"]
-    assert (again["repo"], again["at"], again["paths"], again["cycle_budget_usd"]) == (
-        REPO,
-        "05:30",
-        ["evo_agents/", "uv.lock"],
-        50.0,
-    )
+    again = set_schedule(world, at="05:30", paths=["evo_agents/", "uv.lock"])["schedule"]
+    assert (again["repo"], again["at"], again["paths"]) == (REPO, "05:30", ["evo_agents/", "uv.lock"])
+    assert "cycle_budget_usd" not in again
     assert again["timezone"] == "Asia/Ho_Chi_Minh" and again["target_ref"] == "nightly"  # kept
     a = tables.audit
     targets = sql(world.db, select(a.c.target).where(a.c.action == "release.set").order_by(a.c.id))
@@ -300,11 +295,11 @@ def test_the_check_at_six_opens_one_cycle_and_queues_its_cut_run_as_the_owner(wo
         "timeout_s": releases.RUN_MINUTES * 60 + releases.GRACE_SECONDS,
         "max_attempts": 1,
         "repos": [{"repo": REPO}],
-        "budget": {"max_usd": 200.0, "max_seconds": releases.RUN_MINUTES * 60},
+        "budget": {"max_usd": None, "max_seconds": releases.RUN_MINUTES * 60},
         "schedule_id": None,
     }
     [cycle] = cycles(world.db)
-    assert cycle[1:] == ("open", "cut", DAY, "v0.24.0", BASE, HEAD, ["evo_agents/"], 200.0)
+    assert cycle[1:] == ("open", "cut", DAY, "v0.24.0", BASE, HEAD, ["evo_agents/"])
     rr = tables.release_runs
     assert sql(world.db, select(rr.c.run_id, rr.c.cycle_id, rr.c.mode)) == [(run["id"], cycle[0], "cut")]
     assert checks(world.db) == [("schedule", DAY, "opened")]
@@ -328,13 +323,13 @@ def test_the_check_at_six_opens_one_cycle_and_queues_its_cut_run_as_the_owner(wo
             **dict.fromkeys((*landed, "land_reason")),  # nothing pushed or landed yet
         }
     ]
-    assert (found["cycle"]["cost_usd"], found["cycle"]["budget_usd"]) == (0.0, 200.0)
+    assert found["cycle"]["cost_usd"] == 0.0 and "budget_usd" not in found["cycle"]
     a = tables.audit
     dispatched = sql(world.db, select(a.c.actor_id, a.c.token_id, a.c.target).where(a.c.action == "release.dispatch"))
     assert dispatched == [(owner, None, f"{PROJECT} cycle:{cycle[0]} run:{run['id']} mode=cut")]
     e = tables.run_events
     [event] = sql(world.db, select(e.c.body).where(e.c.run_id == run["id"], e.c.kind == "system"))
-    assert event[0]["cycle_id"] == cycle[0] and event[0]["max_usd"] == 200.0
+    assert event[0]["cycle_id"] == cycle[0] and event[0]["max_usd"] is None
     shown = world.client.get(f"/v1/projects/{PROJECT}/runs/{run['id']}", headers=world.headers["owner"])
     assert shown.status_code == 200, shown.text
     assert (shown.json()["kind"], shown.json()["dispatched_via"], shown.json()["dispatched_by"]) == (
@@ -580,16 +575,12 @@ def test_release_status_set_pause_resume_and_run_from_the_command_line(served, m
     assert "has no release schedule" in text
     refused = release_cli(served, monkeypatch, capsys, "other", "set", "--repo", REPO)
     assert refused.code == 1 and "needs the admin role" in refused.err
-    args = ("set", "--repo", REPO, "--at", "06:30", "--path", "evo_agents/", "--path", "uv.lock", "--budget", "150")
+    args = ("set", "--repo", REPO, "--at", "06:30", "--path", "evo_agents/", "--path", "uv.lock")
     printed = as_json(release_cli(served, monkeypatch, capsys, "owner", *args, "--json"))
     assert_json_keys("hub release set", printed)
-    assert (printed["schedule"]["at"], printed["schedule"]["paths"], printed["schedule"]["cycle_budget_usd"]) == (
-        "06:30",
-        ["evo_agents/", "uv.lock"],
-        150.0,
-    )
+    assert (printed["schedule"]["at"], printed["schedule"]["paths"]) == ("06:30", ["evo_agents/", "uv.lock"])
     shown = ok(release_cli(served, monkeypatch, capsys, "other", "status")).out
-    assert "06:30 Asia/Ho_Chi_Minh" in shown and "evo_agents/, uv.lock" in shown and "$150.00" in shown
+    assert "06:30 Asia/Ho_Chi_Minh" in shown and "evo_agents/, uv.lock" in shown and "no cost cap" in shown
     checked = as_json(release_cli(served, monkeypatch, capsys, "owner", "run", "--json"))
     assert_json_keys("hub release run", checked)
     assert checked["outcome"] == "opened" and checked["changed_paths"] == ["evo_agents/"]
@@ -630,7 +621,6 @@ def test_the_rows_of_0067_hold_together_and_it_goes_down_to_0066_and_up_again(wo
         {"paths": []},
         {"paths": [1]},
         {"paths": {"a": 1}},
-        {"cycle_budget_usd": 0.5},
         {"paused_at": func.now()},  # a pause names who paused
         {"tag_pattern": "v"},
         {"workflow": "release.sh"},

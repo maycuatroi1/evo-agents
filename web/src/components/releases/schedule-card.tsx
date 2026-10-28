@@ -5,7 +5,7 @@ import { useCallback, useMemo } from "react";
 
 import type { DataListRow } from "@/components/data/data-list";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
-import { Fact, Facts, useDay, useMoney } from "@/components/data/facts";
+import { Fact, Facts, useDay } from "@/components/data/facts";
 import { Identifier } from "@/components/data/identifier";
 
 import { OutcomeLine } from "./badges";
@@ -13,10 +13,9 @@ import { githubCommitUrl, githubRepoUrl, githubTagUrl, outcomeTone, shortCommit 
 import { FullTime, Panel, PanelLine, PathList, Relative } from "./parts";
 import type { ReleaseCheck, ReleaseSchedule, ReleaseStatus } from "./queries";
 
-/** The schedule as the hub keeps it: the repo, when it checks, what it ships, its paths, its cap and its owner. */
+/** The schedule as the hub keeps it: the repo, when it checks, what it ships, its paths and its owner. */
 export function ScheduleCard({ status, schedule }: { status: ReleaseStatus; schedule: ReleaseSchedule }) {
   const t = useTranslations("releases.schedule");
-  const money = useMoney();
   const repo = schedule.github_repo ?? schedule.repo;
   return (
     <Panel title={t("title")} testId="release-schedule">
@@ -47,9 +46,6 @@ export function ScheduleCard({ status, schedule }: { status: ReleaseStatus; sche
         </Fact>
         <Fact label={t("paths")}>
           <PathList paths={schedule.paths} empty="-" testId="release-paths" />
-        </Fact>
-        <Fact label={t("cap")} testId="release-cap">
-          {t("capValue", { budget: money(schedule.cycle_budget_usd) })}
         </Fact>
         <Fact label={t("owner")} testId="release-owner">
           <span className="font-mono text-xs">{schedule.owner}</span>

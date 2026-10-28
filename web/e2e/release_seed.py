@@ -59,7 +59,7 @@ async def _cycle(conn, row, day: date, **values) -> int:
 
     c = tables.release_cycles
     cycle = {"project_id": row.project_id, "schedule_id": row.id, "start": "cut", "owner_id": row.owner_id}
-    cycle |= {"local_day": day, "target_ref": row.target_ref, "budget_usd": float(row.cycle_budget_usd)}
+    cycle |= {"local_day": day, "target_ref": row.target_ref}
     cycle |= {"base_tag": "v0.23.0", "base_commit": BASE, "target_commit": TARGET, "changed_paths": ["web/"], **values}
     return (await conn.execute(insert(c).values(**cycle).returning(c.c.id))).scalar_one()
 

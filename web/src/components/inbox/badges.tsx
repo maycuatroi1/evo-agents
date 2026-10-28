@@ -65,7 +65,7 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   question: MessageCircleQuestionMark,
   // What the agent of a chat run asks while it triages a failed run.
   triage: MessageSquare,
-  // What a stopped release cycle asks its owner: go on with one more cap, close it, or pause the schedule.
+  // What a stopped release cycle asks its owner: go on, close it, or pause the schedule.
   release: Tags,
   // What the Loop asks a person after a work item failed a third time: retry it, drop it, or take it over.
   loop: IterationCw,

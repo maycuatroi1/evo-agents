@@ -33,7 +33,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
-from evo_agents.hub import judge, release_ci, release_runs, runs, tables
+from evo_agents.hub import judge, release_ci, release_runs, releases, runs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.release_check import release_pass
 from evo_agents.hub.server.release_watch import watch_releases
@@ -164,7 +164,7 @@ def tags(db) -> list[dict]:
 
 def cycle(db) -> dict:
     c = tables.release_cycles
-    names = ("id", "state", "stop_cause", "stop_reason", "budget_usd", "decision_id", "triage_chat_id", "ended_at")
+    names = ("id", "state", "stop_cause", "stop_reason", "decision_id", "triage_chat_id", "ended_at")
     row = sql(db, select(*(c.c[name] for name in names)).order_by(c.c.id.desc()).limit(1))[0]
     return dict(zip(names, row, strict=True))
 
@@ -375,7 +375,7 @@ def test_a_red_tag_queues_a_fix_run_with_its_failed_tests_and_the_end_of_their_l
     assert (mode, red) == ("fix", "v0.25.0")
     r = tables.runs
     [(budget, title)] = sql(world.db, select(r.c.budget, r.c.title).where(r.c.id == fix_id))
-    assert budget["max_usd"] == 200.0 and "fix v0.25.0 forward" in title
+    assert budget["max_usd"] is None and "fix v0.25.0 forward" in title
     spec = claimed(world)
     assert spec["id"] == fix_id
     assert spec["release"] | {"cycle_id": 0} == {
@@ -498,16 +498,18 @@ def test_another_test_red_at_the_next_tag_queues_the_next_fix(world):
     assert release_rows(world.db)[-1][1:] == ("fix", "v0.25.1"), "no limit on the tags of a cycle"
 
 
-def test_a_cap_left_under_the_least_a_run_takes_stops_the_cycle_on_its_budget(world):
+def test_a_cycle_has_no_cost_cap_so_what_its_runs_spent_never_stops_it(world):
     cut_id, merge = tagged(world)
     r = tables.runs
-    sql(world.db, update(r).where(r.c.id == cut_id).values(usage={"total_cost_usd": 199.995}))
+    sql(world.db, update(r).where(r.c.id == cut_id).values(usage={"total_cost_usd": 12_345.0}))
     ci(world, "v0.25.0", merge, "failure", red_jobs())
-    assert watch(world) == {"stopped": 1}
-    found = cycle(world.db)
-    assert found["stop_cause"] == "budget" and "$200.00" in found["stop_reason"]
-    assert len(release_rows(world.db)) == 1
-    assert status_of(world)["cycle"]["cost_usd"] == 199.995
+    assert watch(world) == {"fix": 1}
+    assert cycle(world.db)["state"] == "open"
+    fix_id = release_rows(world.db)[-1][0]
+    assert sql(world.db, select(r.c.budget).where(r.c.id == fix_id)) == [
+        ({"max_usd": None, "max_seconds": releases.RUN_MINUTES * 60},)
+    ]
+    assert status_of(world)["cycle"]["cost_usd"] == 12_345.0
 
 
 def test_a_stop_opens_a_thread_in_the_triage_chat_and_asks_the_owner_a_decision_of_three_options(world):
@@ -522,18 +524,18 @@ def test_a_stop_opens_a_thread_in_the_triage_chat_and_asks_the_owner_a_decision_
     )
     assert (run_id, category, state) == (spec["id"], "release", "open")
     assert [item["key"] for item in options] == ["continue", "close", "pause"]
-    assert "one more cap of $200.00" in options[0]["label"] and "the bump script failed" in question
+    assert options[0]["label"] == "Go on" and "cap" not in question and "the bump script failed" in question
     # the hub recommends closing it, which spends nothing and keeps the schedule, and says so
     assert [item["key"] for item in options if item.get("recommended")] == ["close"]
     reason = sql(world.db, select(d.c.recommended_reason).where(d.c.id == found["decision_id"]))[0][0]
-    assert reason.startswith("Closing spends nothing more of the cap")
+    assert reason.startswith("Closing spends nothing more and keeps the schedule")
     [(_, title, _, _, link, decision_id)] = notifications(world.db, "decision")
     assert decision_id == found["decision_id"] and link == f"/inbox?decision={decision_id}"
     assert f"Release cycle #{found['id']} of {PROJECT} stopped" in title
     tc = tables.triage_chats
     assert sql(world.db, select(tc.c.chat_id).where(tc.c.plan_id.is_(None))) == [(found["triage_chat_id"],)]
     [body] = thread_messages(world, found["triage_chat_id"])
-    for said in ("stopped (run_failed)", "the bump script failed", "Cost: $0.00 of the cycle's cap $200.00", "@"):
+    for said in ("stopped (run_failed)", "the bump script failed", "Cost so far: $0.00.", "@"):
         assert (said in body) is (said != "@"), said  # facts, and no agent mentioned: the owner decides
     assert f"decision #{decision_id}" in body and f"/inbox?decision={decision_id}" in body
     r = tables.runs
@@ -590,7 +592,7 @@ def test_a_stopped_cycle_with_a_run_active_or_no_newer_tag_stays_busy(world):
     assert sql(world.db, select(d.c.state).where(d.c.id == found["decision_id"])) == [("open",)]
 
 
-def test_the_decision_continue_reopens_the_cycle_with_one_more_cap_and_queues_the_next_fix(world):
+def test_the_decision_continue_reopens_the_cycle_and_queues_the_next_fix(world):
     _, fix_id = red_tag_fixing(world)
     assert fixed(world, fix_id) == {"tagged": 1}
     ci(world, "v0.25.1", tag_of(world.github, "v0.25.1")[0], "failure", red_jobs())
@@ -603,7 +605,7 @@ def test_the_decision_continue_reopens_the_cycle_with_one_more_cap_and_queues_th
     assert answered.status_code == 200, answered.text
     assert answered.json()["state"] == "answered" and answered.json()["answer_option"] == "continue"
     again = cycle(world.db)
-    assert (again["state"], again["budget_usd"], again["stop_cause"]) == ("open", 400.0, None)
+    assert (again["state"], again["stop_cause"]) == ("open", None)
     assert release_rows(world.db)[-1][1:] == ("fix", "v0.25.1")
     replies = thread_messages(world, found["triage_chat_id"])
     assert len(replies) == 2 and replies[1].startswith(f"{OWNER} chose continue: cycle #{found['id']} goes on")

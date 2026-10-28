@@ -53,10 +53,9 @@ test("an admin reads the cycle and the ones before it, pauses and resumes the sc
   await expect(runs.getByTestId("release-run-mode")).toHaveText(["Cut", "Fix of v0.25.0"]);
   await expect(runs.getByTestId("run-state")).toHaveText(["Done", "Queued"]);
   await expect(runs).toContainText("Tagged v0.25.0");
-  await expect(cycle.getByTestId("release-cycle-cost")).toContainText("$8.15 of $200.00, 4%");
+  await expect(cycle.getByTestId("release-cycle-cost")).toHaveText("$8.15");
 
   // The schedule, the newest check and those before it, and the cycles that ended.
-  await expect(main(page).getByTestId("release-cap")).toHaveText("$200.00");
   await expect(main(page).getByTestId("release-owner")).toHaveText(me.login);
   await expect(main(page).getByTestId("release-last-outcome")).toHaveText(`Opened cycle #${seeded.cycle}`);
   await expect(main(page).getByTestId("release-last-trigger")).toHaveText(/^The daily check of /);

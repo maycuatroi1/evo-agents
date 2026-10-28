@@ -1,10 +1,8 @@
-import type { MeterTone } from "@/components/data/meter";
-
 import type { CheckOutcome, ReleaseCheck, ReleaseCycle, ReleaseStatus, ReleaseTag } from "./queries";
 
 /**
- * The Releases page's pure parts: what the visitor may do, where a tag, a commit and a workflow lead on GitHub, how
- * much of a cycle's cap its runs spent, what went wrong that the page must say, and how a cycle that ended ended.
+ * The Releases page's pure parts: what the visitor may do, where a tag, a commit and a workflow lead on GitHub, what
+ * went wrong that the page must say, and how a cycle that ended ended.
  */
 
 /** The problem of a CI the hub could not read because the App's installation grants no actions (release_ci). */
@@ -37,18 +35,6 @@ export function githubCommitUrl(repo: string | null | undefined, commit: string 
 /** An address the page may link to: http or https only, so a value the hub stored never runs as script. */
 export function safeUrl(url: string | null | undefined): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null;
-}
-
-/** The share of the cap the runs spent, 0 to 1 (more when they went over it). */
-export function budgetShare(cost: number, budget: number): number {
-  return budget > 0 ? Math.max(cost, 0) / budget : 0;
-}
-
-/** The meter's tone for that share: the cap nearly spent asks for attention, spent is danger. */
-export function budgetTone(share: number): MeterTone {
-  if (share >= 0.9) return "danger";
-  if (share >= 0.75) return "warning";
-  return "normal";
 }
 
 /** Whether a tag's CI, or the newest check, could not be read because the App's installation grants no actions. */

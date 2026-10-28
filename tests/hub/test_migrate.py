@@ -45,7 +45,7 @@ from sqlalchemy import (
     union_all,
     update,
 )
-from sqlalchemy.dialects.postgresql import REGCLASS
+from sqlalchemy.dialects.postgresql import JSONB, REGCLASS
 
 from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub import tables as hub_tables
@@ -4862,3 +4862,49 @@ def test_0175_adds_the_ledger_of_loaded_answers_and_going_back_drops_it(hub_db):
     move_to(hub_db, "0174", down=True)
     assert "context_answer_loads" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0175") :]
+
+
+SCHEDULES_0067 = table(  # release_schedules as 0067 made it, cycle_budget_usd until 0176
+    "release_schedules",
+    *(column(name) for name in ("id", "project_id", "repo", "check_at", "timezone", "target_ref", "tag_pattern")),
+    column("paths", JSONB),
+    *(column(name) for name in ("workflow", "cycle_budget_usd", "owner_id", "updated_by")),
+)
+CYCLES_0067 = table(  # release_cycles as 0067 made it, budget_usd until 0176
+    "release_cycles",
+    *(column(name) for name in ("id", "project_id", "schedule_id", "start", "owner_id", "local_day", "target_ref")),
+    *(column(name) for name in ("budget_usd", "stop_cause")),
+)
+
+
+def test_0176_drops_the_cost_cap_of_a_release_cycle_and_going_back_puts_the_default_cap_back(hub_db):
+    move_to(hub_db, "0175")
+    s, c = SCHEDULES_0067, CYCLES_0067
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        schedule = {"project_id": ids["project"], "repo": "evo-agents", "check_at": "06:00", "timezone": "UTC"}
+        schedule |= {"target_ref": "nightly", "tag_pattern": "v*", "workflow": "release.yml", "paths": ["uv.lock"]}
+        schedule |= {"cycle_budget_usd": 150.0, "owner_id": ids["user"], "updated_by": ids["user"]}
+        schedule_id = one(conn, insert(s).values(schedule).returning(s.c.id))
+        cycle = {"project_id": ids["project"], "schedule_id": schedule_id, "start": "fix", "owner_id": ids["user"]}
+        cycle |= {"local_day": date(2026, 10, 28), "target_ref": "nightly", "budget_usd": 400.0, "stop_cause": "budget"}
+        conn.execute(insert(c).values(cycle))
+    move_to(hub_db, "0176")
+    assert "cycle_budget_usd" not in columns(hub_db, "release_schedules")
+    assert "budget_usd" not in columns(hub_db, "release_cycles")
+    t = hub_tables
+    assert query(hub_db, select(t.release_cycles.c.stop_cause)) == [("budget",)], "a stop of the cap stays readable"
+    for statement in (  # the rest of each check holds
+        update(t.release_schedules).values(check_at="25:00"),
+        update(t.release_schedules).values(paths=[]),
+        update(t.release_cycles).values(stop_cause="cap"),
+        update(t.release_cycles).values(state="lost"),
+    ):
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(statement)
+    move_to(hub_db, "0175", down=True)
+    assert query(hub_db, select(s.c.cycle_budget_usd)) == [(200.0,)]
+    assert query(hub_db, select(c.c.budget_usd)) == [(200.0,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0067's cap check is back
+        conn.execute(update(s).values(cycle_budget_usd=0.5))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0176") :]

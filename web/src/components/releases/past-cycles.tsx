@@ -85,9 +85,7 @@ function PastTable({ project, list, repo }: { project: string; list: ReleaseCycl
         cell: (info) => {
           const cycle = info.row.original;
           return (
-            <span className="tabular-nums" title={t("costOf", { budget: money(cycle.budget_usd) })}>
-              {money(cycle.cost_usd)}
-            </span>
+            <span className="tabular-nums">{money(cycle.cost_usd)}</span>
           );
         },
       }),
