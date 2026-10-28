@@ -21,10 +21,12 @@ config:
 
 and, once for the project, ``eval``: the retrieval evaluation of the latest build's graph (``kg_health_eval``), of the
 holdout part of the project's question set (``evo_agents.hub.server.kg_eval_sets``) and the plans the schedule's owner
-may read, asked as that owner reads the graph through the agent sink (``kg_health_eval.AGENT_SINK``) when the policy
-declares it, else the project's hub sink. The same questions of the same graph keep the score of the measure before, so
-a quiet day asks nothing again. Each measure whose eval has a score pushes the signals EVAL_SIGNALS,
-kg.retrieval.hit_at_5 and kg.retrieval.tokens_per_file, as that owner.
+may read, asked as that owner's agents read the graph: through the agent sink (``kg_health_eval.AGENT_SINK``) when
+the policy declares it, else the project's hub sink, with the owner's audience (``kg_audience.agent_audience``: the
+chats they are cleared for). The same questions of the same graph read with the same audience keep the score of the
+measure before, so a quiet day asks nothing again. Each measure whose eval has a score pushes the signals
+EVAL_SIGNALS, kg.retrieval.hit_at_5 and kg.retrieval.tokens_per_file, as that owner: the score of the holdout part of
+the set, the questions the plan's thresholds name, or of all the questions when the set has none.
 
 It also holds ``review``: per rule, the items of the latest build's review queue (``evo_agents.hub.kg_review``) open
 to that owner through the hub sink, those a writer dismissed aside, with the build they were counted in; or why there
@@ -47,6 +49,7 @@ latest measures, newest first, and the successful builds with what each covered 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -69,6 +72,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.kg import built_graphs
+from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
@@ -216,12 +220,28 @@ async def measure_source(app, source: dict, held, origin: str | None, now: datet
 # The evaluation
 
 
+def audience_digest(audience: frozenset[str]) -> str:
+    """A digest of an audience, which an eval keeps so that one read with another audience is asked again."""
+    return hashlib.sha256("\n".join(sorted(audience)).encode()).hexdigest()
+
+
 def _evaluate(
-    cache: GraphCache, blobs, project: str, access: ProjectAccess, sink: str, graphs, plans, previous, found_set=None
+    cache: GraphCache,
+    blobs,
+    project: str,
+    access: ProjectAccess,
+    sink: str,
+    graphs,
+    plans,
+    previous,
+    found_set=None,
+    audience: frozenset[str] = frozenset(),
 ):
-    """The eval of a measure (see the module), ``found_set`` the project's latest question set and its digest, if any.
+    """The eval of a measure (see the module), ``found_set`` the project's latest question set and its digest, if any,
+    read with ``audience``, the owner's (``kg_audience.agent_audience``), as the agents' kg_search reads the graph.
     Blocking: run it in a thread."""
-    ceiling = access.rules.ceiling(access.max_level, sink)
+    ceiling = access.rules.ceiling(access.max_level, sink, audience)
+    heard = audience_digest(audience)
     path, graph = cache.acquire(blobs, project, graphs)
     try:
         store = open_graph(path, project, graph)
@@ -241,7 +261,9 @@ def _evaluate(
                 and previous.get("content_hash") == graph.content_hash
                 and previous.get("digest") == digest
                 and previous.get("sink") == sink
+                and previous.get("audience") == heard
                 and previous.get("methods") is not None
+                and (previous.get("holdout") is not None or not holdout)
             ):
                 return {**previous, "build_id": graph.build_id}
             session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
@@ -258,8 +280,9 @@ def _evaluate(
                 sources=sources,
                 question_set=about,
                 sink=sink,
+                holdout=[q.id for q in holdout],
             )
-            return {**scored, "build_id": graph.build_id, "content_hash": graph.content_hash}
+            return {**scored, "audience": heard, "build_id": graph.build_id, "content_hash": graph.content_hash}
         finally:
             store.close()
     finally:
@@ -315,13 +338,14 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
         access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
         if why is not None:
             return {"why": why}
+        audience = await agent_audience(conn, row.owner_id, None, None)
         plans = await _plans(conn, access)
         previous = await _previous_eval(conn, row.project_id)
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
         return await asyncio.to_thread(
-            _evaluate, cache, blobs, row.project, access, sink, graphs, plans, previous, found_set
+            _evaluate, cache, blobs, row.project, access, sink, graphs, plans, previous, found_set, audience=audience
         )
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}
@@ -380,15 +404,17 @@ EVAL_SIGNALS = (
     (
         "kg.retrieval.hit_at_5",
         "percent",
-        "Of the retrieval questions the hub asks its latest graph (the holdout part of the project's question set and "
-        "the done plan steps), the percent whose answer kg_search puts in its first 5 results (kg_health.eval).",
+        "Of the holdout questions of the project's question set the hub asks its latest graph (all the questions it "
+        "asks, the done plan steps among them, when the set has none), the percent whose answer kg_search puts in its "
+        "first 5 results (kg_health.eval).",
         kg_health_eval.hit_percent,
     ),
     (
         "kg.retrieval.tokens_per_file",
         "tokens",
         "The tokens kg_search spends per answer file it finds in its first 5 results (its mean tokens over Recall@5) "
-        "on the retrieval questions the hub asks its latest graph (kg_health.eval).",
+        "on the holdout questions of the project's question set the hub asks its latest graph (all the questions it "
+        "asks when the set has none) (kg_health.eval).",
         kg_health_eval.tokens_per_file,
     ),
 )

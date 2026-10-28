@@ -130,13 +130,16 @@ the checkouts' history, nothing else.
 Every 6 hours the hub measures its latest graph of each project (`kg_health`, the `eval` key of a measure). It asks
 `kg_search` the holdout part of the project's latest set, then a `plan-step` question for each done step of the hub's
 plans whose id the set does not hold, through the agent sink `claude-code@anthropic` when the project's policy
-declares it (else the hub sink), as the charter's owner reads.
+declares it (else the hub sink), as the charter's owner's agents read: with the owner's audience, so the chats they
+are cleared for count, as they do in the agents' `kg_search`. The optimize loop reads the same way.
 
 The hub has no checkout, so a step's answers are the files of the graph its commits changed. When those commits were
 squashed away, the answers come from the pull request that merged the step's branch or that its evidence cites, then
 from the paths its evidence names. A step is left out only when it names no repo, when none of that finds a file, or
 when it has no title; `eval.skipped_by` counts the reasons and `eval.dropped` the share left out. A step whose work
-changed more than 20 files stays in. `eval.by_type` keeps the numbers per type.
+changed more than 20 files stays in. `eval.by_type` keeps the numbers per type, `eval.holdout` those of the
+holdout part of the set alone.
 
 After each measure with a score the hub pushes two signals as the owner: `kg.retrieval.hit_at_5` (percent) and
-`kg.retrieval.tokens_per_file`, both of `kg_search` over all the questions.
+`kg.retrieval.tokens_per_file`, both of `kg_search` over the holdout questions of the set, the questions the
+thresholds name; over all the questions when the set has none.
