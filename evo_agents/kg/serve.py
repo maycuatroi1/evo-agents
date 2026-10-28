@@ -62,6 +62,7 @@ CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude 
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
 WEAK_LIMIT = 5  # kg_search returns at most this many results when none holds every word of the query
+FULL_LINES = 5  # the results kg_search shows whole; those past them show their id alone (kg_node reads one)
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
@@ -310,9 +311,13 @@ class Session:
         lines = [head, *label_line]
         if partial:
             lines.append(f"no result holds all {words} words of the query")
-        for n in results:
+        for rank, n in enumerate(results, 1):
+            mark = "  mentions " if n["id"] in via else ""
+            if rank > FULL_LINES:
+                lines.append(f"{mark}[{readable(n['id'])}]")
+                continue
             m = matched.get(n["id"])
-            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared, (m or {}).get("lines"), status)
+            line = mark + self._line(n, shared, (m or {}).get("lines"), status)
             lines.append(line + (f" words={m['words']}/{words}" if m and m["words"] < words else ""))
             if m and m.get("snippet"):
                 lines.append(f"    > {m['snippet']}")
