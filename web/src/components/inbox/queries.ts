@@ -57,6 +57,7 @@ export const NOTICE_KINDS = [
   "opportunity_window",
   "market_install_request",
   "market_license_expiring",
+  "kg_optimize",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

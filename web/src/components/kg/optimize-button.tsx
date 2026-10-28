@@ -1,13 +1,15 @@
 "use client";
 
+import { useMutation } from "@tanstack/react-query";
 import { Gauge } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
 
 import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
+import { call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
+import { isApiError } from "@/lib/api/errors";
 
 /**
  * Asks the hub for a KG optimize run of the project now (POST /v1/kg/{project}/optimize, the writer role): 201 for a
@@ -15,29 +17,42 @@ import { csrfHeaders } from "@/lib/api/csrf";
  */
 export function OptimizeButton({ project }: { project: string }) {
   const t = useTranslations("kg.optimize");
-  const [busy, setBusy] = useState(false);
-  async function start() {
-    setBusy(true);
-    try {
-      const headers = await csrfHeaders(browserApi());
-      const response = await fetch(`/v1/kg/${encodeURIComponent(project)}/optimize`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { ...headers, accept: "application/json", "content-type": "application/json" },
-        body: "{}",
-      });
-      const body = (await response.json().catch(() => ({}))) as { id?: number; state?: string; message?: string };
-      if (response.status === 201) notify({ tone: "success", text: t("started", { id: body.id ?? 0 }) });
-      else if (response.ok) notify({ tone: "info", text: t("inFlight", { id: body.id ?? 0, state: body.state ?? "" }) });
-      else notify({ tone: "error", text: t("failed"), detail: body.message ?? null });
-    } catch {
-      notify({ tone: "error", text: t("failed") });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const start = useMutation({
+    mutationFn: async () => {
+      let created = false;
+      const run = await call(
+        browserApi()
+          .POST("/v1/kg/{project}/optimize", {
+            params: { path: { project } },
+            headers: await csrfHeaders(browserApi()),
+          })
+          .then((result) => {
+            created = result.response.status === 201;
+            return result;
+          }),
+      );
+      return { run, created };
+    },
+    onSuccess: ({ run, created }) =>
+      created
+        ? notify({ tone: "success", text: t("started", { id: run.id }) })
+        : notify({ tone: "info", text: t("inFlight", { id: run.id, state: run.state }) }),
+    onError: (error) =>
+      notify({
+        tone: "error",
+        text: t("failed"),
+        detail: isApiError(error) ? error.info.message : null,
+        requestId: isApiError(error) ? error.info.requestId : null,
+      }),
+  });
   return (
-    <Button variant="outline" size="sm" onClick={start} disabled={busy} data-testid="kg-optimize">
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => start.mutate()}
+      disabled={start.isPending}
+      data-testid="kg-optimize"
+    >
       <Gauge aria-hidden="true" />
       {t("label")}
     </Button>
