@@ -611,7 +611,8 @@ def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg
     result = session.call("kg_search", {"query": "Wire the server to search", "limit": 5})
     lines = result["content"][0]["text"].splitlines()
     assert lines[2].startswith("[plan:demo/step:2] PlanStep 'Server'")  # its words: the step first
-    assert lines[3] == "  mentions [app:app/server.py] File (parsed)"  # then the file its text names
+    assert lines[0].endswith(", status parsed")  # the status every result shares, printed once
+    assert lines[3] == "  mentions [app:app/server.py] File"  # then the file its text names
     data = result["structuredContent"]
     assert [r["id"] for r in data["results"]][:2] == ["plan:demo/step:2", SERVER_PY]
     assert data["mentioned_by"] == {SERVER_PY: "plan:demo/step:2"}
@@ -624,6 +625,40 @@ def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg
     hidden = narrow.call("kg_search", {"query": "Wire the server to search"})["structuredContent"]
     assert [r["id"] for r in hidden["results"]][:1] == ["plan:demo/step:2"]
     assert hidden["mentioned_by"] == {} and all(not r["id"].startswith("app:") for r in hidden["results"])
+
+
+def test_search_lines_say_once_what_every_result_shares_and_few_results_when_none_holds_the_query(tmp_path, kg_env):
+    session = Session(built(tmp_path, kg_env), "agent")
+    text = session.call("kg_search", {"query": "Wire the server to search"})["content"][0]["text"].splitlines()
+    assert text[0] == "10 result(s) in project demo (build 1), status parsed"  # the status every result shares
+    assert text[2] == "[plan:demo/step:2] PlanStep 'Server' status=pending"  # its number is in its id
+    assert "[app:app/server.py::Server] Symbol lines 4-6 words=1/3" in text  # no status, no label: both shared
+    weak = session.call("kg_search", {"query": "server search zebra", "limit": 10})
+    lines = weak["content"][0]["text"].splitlines()
+    assert lines[2] == "no result holds all 3 words of the query"
+    assert len(weak["structuredContent"]["results"]) == serve.WEAK_LIMIT  # none holds the query: the few best
+
+    step = {
+        "id": "plan:demo/step:3",
+        "kind": "PlanStep",
+        "name": "Wire",
+        "status": "resolved",
+        "label": (1, 0, "U"),
+        "props": {"status": "done", "number": 3},
+    }
+    assert session._line(step, "public,U", status="parsed") == (
+        "[plan:demo/step:3] PlanStep 'Wire' (resolved, internal,U) status=done"
+    )
+    assert session._line(step, "internal,U", status="resolved") == "[plan:demo/step:3] PlanStep 'Wire' status=done"
+    assert session._line(step, "internal,U") == "[plan:demo/step:3] PlanStep 'Wire' (resolved) status=done number=3"
+    section = {
+        **step,
+        "id": "app:file:docs/a.md#set-up",
+        "kind": "Section",
+        "name": "Set up",
+        "props": {"anchor": "set-up"},
+    }
+    assert session._line(section, "internal,U", status="resolved") == "[app:docs/a.md#set-up] Section"
 
 
 def test_search_says_how_many_words_each_result_holds_and_quotes_a_document(tmp_path, kg_env):
@@ -642,7 +677,7 @@ def test_search_says_how_many_words_each_result_holds_and_quotes_a_document(tmp_
     assert result["structuredContent"]["matched"]["app:file:docs/quarry.md"]["words"] == 2
     # every word held: no note; one word: no count, the document still quoted
     both = session.call("kg_search", {"query": "zephyr quarry"})["content"][0]["text"]
-    assert "no result holds" not in both and " words=2/2" in both
+    assert "no result holds" not in both and " words=" not in both  # a count only for a result short of words
     one = session.call("kg_search", {"query": "zephyr"})["content"][0]["text"].splitlines()
     assert not any("words=" in line for line in one) and "    > The zephyr quarry closed" in "\n".join(one)
 
@@ -763,9 +798,9 @@ def test_results_print_the_lines_of_a_section_a_symbol_and_the_passage_a_long_se
     assert found["structuredContent"]["matched"]["app:file:docs/long.md#long"]["lines"] == "lines 4-5"
 
     guide = session.call("kg_search", {"query": "rank_results internally"})["content"][0]["text"]
-    assert "[app:docs/guide.md#details] Section 'Details' (parsed) lines 9-12" in guide  # a short one: its own lines
+    assert "[app:docs/guide.md#details] Section lines 9-12" in guide  # a short one: its own lines; its anchor names it
     symbol = session.call("kg_search", {"query": "rank_results"})["content"][0]["text"]
-    assert "[app:app/search.py::rank_results] Symbol (parsed) lines 1-2" in symbol  # first and last line
+    assert "[app:app/search.py::rank_results] Symbol lines 1-2" in symbol  # first and last line
     node = session.call("kg_node", {"id": "app:file:docs/guide.md#details"})["content"][0]["text"]
     assert "lines 9-12" in node.splitlines()[0]
     context = session.call("kg_context", {"query": "rank_results", "budget_tokens": 4000})["content"][0]["text"]

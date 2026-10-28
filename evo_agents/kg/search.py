@@ -30,7 +30,9 @@ every word comes first at a like score, not whatever its score, since a long pag
 is often not what a question asks about. Words that only ask
 (``where``, ``does``, ``the``, ``của``...) are left out of a query that has other words. The any-word query also
 leaves out a word the index cannot tell from one of them once it folds accents: "án" of "Phương án" would match every
-English "an". ``kg_search`` then follows each step, section or document it found to what it mentions
+English "an". The score is then weighed by what the node is (``weight``): up when a word of the query names it
+(``named_words``), down when it is background, a test, a migration, a fixture, generated JSON or the history of closed
+work, that the query does not ask for (``background``, ``asked``). ``kg_search`` then follows each step, section or document it found to what it mentions
 (``with_mentions``).
 """
 
@@ -188,6 +190,108 @@ _PHRASE = re.compile(r'"(?:[^"]|"")*"\*?')
 def phrases(fts_query: str) -> list[str]:
     """The phrases of an FTS5 query of ``fts_queries``, once each: the quoted words, a prefix's star kept."""
     return list(dict.fromkeys(_PHRASE.findall(fts_query)))
+
+
+# -- what a node is, besides how well its text matches -----------------------------------------------------------
+
+# A node named by one word of the query as the query writes it (``store.py``, ``Store.search``, ``HUB_DEGREE``) is
+# what the question is about far more often than a node that only holds the words: its score is weighed up by
+# NAMED_WEIGHT, and Store.search looks each such word up by name too, so a symbol found by name and by no text query
+# still ranks. Only a word that reads as a name counts: one with ``_ . / :``, a digit, or camelCase, or a word in upper
+# case; a plain word ("hub", "plan") names a directory or a heading of every other page.
+NAMED_WEIGHT = 1.5
+NAMED_LOOKUPS = 8  # the words of a query looked up by name, at most
+_EDGE_PUNCT = "\"'`()[]{}<>,;!?*"
+# What a question seldom asks about but a search for its words finds all the same, weighed down by BACKGROUND_WEIGHT
+# unless the query names it (BACKGROUND_WORDS): a test, a migration, a fixture, a JSON file a tool writes (a golden
+# file, a bundle budget, a catalog, a baseline), and history: a closed plan (all its steps done) with its steps and its
+# file under plans/completed/, the report a plan leaves when it closes (reports/), and docs/history.md. It is still
+# returned, after what the question is about. Each kind is lifted only by words that ask for it: "đóng plan" (close
+# the plan) asks for no closed plan, and a step's title says so whenever its step is the last.
+BACKGROUND_WEIGHT = 0.6
+BACKGROUND_WORDS = {
+    "test": frozenset({"test", "tests", "pytest", "spec", "specs", "e2e", "testing", "kiểm thử"}),
+    "migration": frozenset({"migration", "migrations", "migrate", "alembic"}),
+    "fixture": frozenset({"fixture", "fixtures"}),
+    "generated": frozenset({"golden", "bundle budget", "catalog", "baseline", "snapshot"}),
+    "closed": frozenset({"completed", "closed", "đã đóng", "plan cũ", "old plan"}),
+    "report": frozenset({"report", "reports", "báo cáo"}),
+    "history": frozenset({"history", "lịch sử", "changelog"}),
+}
+_TEST_PATH = re.compile(r"(?:^|/)(?:tests?|__tests__|e2e)/|(?:^|/)test_[^/]*$|_test\.[a-z]+$|\.(?:test|spec)\.[a-z]+$")
+_MIGRATION_PATH = re.compile(r"(?:^|/)(?:migrations|alembic/versions)/")
+_FIXTURE_PATH = re.compile(r"(?:^|/)fixtures?/")
+_GENERATED_JSON = re.compile(r"(?:^|/)golden/[^/]*\.json$|bundle-budget\.json$|catalog[^/]*\.json$|_baseline\.json$")
+_CLOSED_PATH = re.compile(r"(?:^|/)plans/completed/")
+_REPORT_PATH = re.compile(r"(?:^|/)reports/")
+_HISTORY_PATH = re.compile(r"(?:^|/)(?:docs/history\.md|CHANGELOG\.md)$")
+
+
+def named_words(query: str) -> list[str]:
+    """The words of ``query`` that read as names (NAMED_WEIGHT), as written, once each, at most NAMED_LOOKUPS: split
+    at blanks, quotes, brackets and a trailing full stop or colon stripped."""
+    out: list[str] = []
+    for raw in fold(query).split():
+        word = raw.strip(_EDGE_PUNCT).rstrip(".:").strip(_EDGE_PUNCT)
+        if len(word) < 3 or word.lower() in STOP_WORDS or word in out:
+            continue
+        if any(ch in word for ch in "_./:") or any(ch.isdigit() for ch in word) and any(ch.isalpha() for ch in word):
+            out.append(word)
+        elif camel_parts(word) or (word.isupper() and word.isalpha()):
+            out.append(word)
+    return out[:NAMED_LOOKUPS]
+
+
+def names(node_id: str, name: str, path: str, words: list[str]) -> bool:
+    """Whether one of ``words`` (``named_words``) is the node's name, its path or its file's name, or ends its id
+    (``…::Store.search``, ``…/search.py``)."""
+    for word in words:
+        if word == name or word == path or path.endswith("/" + word):
+            return True
+        if node_id.endswith(("::" + word, "/" + word, "." + word)):
+            return True
+    return False
+
+
+def background(node_id: str, kind: str, path: str, closed_plan: bool = False) -> str | None:
+    """The kind of background a node is (BACKGROUND_WORDS), or None: by its path, and a plan or step of a closed
+    plan (``closed_plan``) as ``closed``."""
+    if path:
+        if _FIXTURE_PATH.search(path):
+            return "fixture"
+        if _TEST_PATH.search(path):
+            return "test"
+        if _MIGRATION_PATH.search(path):
+            return "migration"
+        if _GENERATED_JSON.search(path):
+            return "generated"
+        if _CLOSED_PATH.search(path):
+            return "closed"
+        if _REPORT_PATH.search(path):
+            return "report"
+        if _HISTORY_PATH.search(path):
+            return "history"
+    if closed_plan and kind in ("Plan", "PlanStep"):
+        return "closed"
+    return None
+
+
+def asked(query: str) -> set[str]:
+    """The kinds of background ``query`` names (BACKGROUND_WORDS), which it is then not weighed down for."""
+    text = f" {' '.join(w.lower() for w in _WORD.findall(fold(query)))} "
+    return {
+        kind for kind, triggers in BACKGROUND_WORDS.items() if any(f" {fold(trigger)} " in text for trigger in triggers)
+    }
+
+
+def weight(node_id: str, kind: str, name: str, path: str, named: list[str], wanted: set[str], closed: bool) -> float:
+    """What a node's text score is multiplied by: NAMED_WEIGHT when a word of the query names it, BACKGROUND_WEIGHT
+    when it is background the query does not ask for (``asked``)."""
+    w = NAMED_WEIGHT if named and names(node_id, name, path, named) else 1.0
+    found = background(node_id, kind, path, closed)
+    if found is not None and found not in wanted:
+        w *= BACKGROUND_WEIGHT
+    return w
 
 
 # -- what a hit mentions -----------------------------------------------------------------------------------------
