@@ -634,3 +634,38 @@ greps the same checkouts for comparison, and prints Recall@1 and @5, MRR, the sh
 of the hub's plans into questions whose answers are the files their commits changed. The command ships without
 questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
 tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.
+
+## The optimize loop
+
+Each project with a night shift and a knowledge config on the hub gets a KG optimize run a night, inside the charter's
+window, and one whenever a writer asks: `evo-agents hub kg optimize --project P`, the Optimize button of the web's KG
+pages, the MCP tool `kg_optimize` of evo-hub, or `POST /v1/kg/{project}/optimize`. A run asked for ignores the window
+and stays under the charter's review cost cap. One run of a project is in flight at a time: asking again answers with
+that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with their reports. The job
+`curator.collect` moves each run on once a minute (`evo_agents/hub/server/kg_optimize.py`, the table
+`kg_optimize_runs`, migration 0181):
+
+1. **Measure.** The holdout of the project's eval set is asked of the latest build by words and by meaning, the tune
+   split at each weight of the asked column (0, 0.5, 1, 2), with the open items of the review queue, the build's
+   coverage, and what real sessions got from `kg_search` since the last run (`click_rate`, the new labels).
+2. **Decide on the hub.** Search by meaning goes on only when hit@5 by meaning is at least 5 points above words
+   alone, the tokens per answer file do not rise and the p95 stays under 1 s (criterion a12); it goes back to `index`
+   when an `on` project fails the gate, and a graph without vectors keeps its mode. The weight of the asked column that
+   ranks the tune split best is kept on the run once 30 tune questions and 20 new labels back it; the next build writes
+   it into the graph.
+3. **Review run.** The worker on duty gets a review run through the `kg_health` lens: the night's run adds the lens to
+   the rotation's, an asked-for run looks through it alone. Its agent proposes fixes of the KG code, which the Builder
+   makes on a branch and the Judge checks before the auto-merge; a change that touches a protected path of the charter
+   stays an open pull request and goes into the report.
+4. **Apply and rebuild.** The fixes of the review queue become decisions through `POST /v1/kg/{project}/review/apply`
+   (origin `kg-optimize`, the review run), and a build is queued.
+5. **Measure again, or undo.** Once a newer build succeeded (or 6 hours passed), the holdout is asked again. A hit@5
+   lower than before by more than the eval's noise (two standard errors over the questions asked, at least one point),
+   or tokens per hit higher by more than the same share (at least 5%), undoes the run: its decisions are undone, each
+   change of the review run that merged gets a revert proposal in the owner's Inbox, search by meaning goes back to its
+   mode before and the asked column to its weight before. The run ends `reverted`; otherwise `done`.
+
+At the end the owner of the night shift (and whoever asked) gets the report as a notification of kind `kg_optimize`:
+the figures before and after, `click_rate` and the new labels, the semantic decision with its figures, the decisions
+applied and the pull requests merged or reverted. The next morning brief names it. The loop never turns on Jev's
+rerank.

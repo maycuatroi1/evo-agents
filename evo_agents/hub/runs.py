@@ -393,6 +393,7 @@ NOTICE_KINDS = (
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
     "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market_licenses``)
     "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
+    "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it

@@ -1175,14 +1175,15 @@ async def _writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
     return access
 
 
-async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=False, beside=False):
+async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=False, beside=False, on_demand=False):
     """(word, gate) for schedule ``due`` now, in the caller's transaction, under the schedule's row lock it takes: a
     ``collect.Gate`` when the night shift may queue a run now, else None and the word for the job's summary. Paused,
     the schedule's queued runs are cancelled; outside its window, those of the night alone (``shift_hours``), and with
     ``any_hour`` (the job hub.fire_schedules) the gate is for the Curator's changes, ``inside`` false; ``beside``
     (``build_now``) opens it though another run of the schedule is in flight. With
     ``figures_first`` (the job curator.collect), the night's figures are counted as soon as the window is open, before
-    a run of the schedule held now ends."""
+    a run of the schedule held now ends. With ``on_demand`` (a KG optimize run asked for, ``kg_optimize``) the window
+    is not asked and nothing is cancelled."""
     from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
     from evo_agents.hub.server.outcomes import check_circuit  # it pauses through this module
 
@@ -1198,7 +1199,7 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     if found.paused_at is not None:
         cancelled = await cancel_queued(conn, [due.id], f"the night shift of {due.project} is paused")
         return ("cancelled" if cancelled else "paused"), None
-    if not inside:
+    if not inside and not on_demand:
         why = f"the night shift of {due.project} is outside its window"
         cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
         if (cancelled and not beside) or not any_hour or not await changes_waiting(conn, due.project_id):

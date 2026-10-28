@@ -9773,6 +9773,76 @@
         "schema": "KgHealthView"
       }
     },
+    "hub kg optimize": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "via",
+          "state",
+          "night",
+          "agent_run_id",
+          "before_build_id",
+          "after_build_id",
+          "asked_weight",
+          "summary",
+          "report",
+          "error",
+          "created_at",
+          "updated_at",
+          "ended_at",
+          "body"
+        ],
+        "schema": "OptimizeRun",
+        "with": {
+          "--status": {
+            "kind": "object",
+            "keys": [
+              "active",
+              "runs"
+            ],
+            "schema": "OptimizeRuns"
+          }
+        }
+      }
+    },
     "hub kg prune": {
       "positionals": [],
       "options": [
@@ -32438,6 +32508,186 @@
                 }
               },
               "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/optimize": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Start Optimize",
+          "description": "Start a KG optimize run of the project now, at any hour, under the charter's review cost cap: 201 with the\nnew run, or 200 with the run in flight, as one runs at a time.",
+          "operationId": "start_optimize_v1_kg__project__optimize_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OptimizeRun"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "200": {
+              "description": "a run is in flight already: that run",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OptimizeRun"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Optimize",
+          "description": "The project's KG optimize runs, newest first, with the one in flight and each run's report.",
+          "operationId": "list_optimize_v1_kg__project__optimize_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "description": "the newest runs listed",
+                "default": 10,
+                "title": "Limit"
+              },
+              "description": "the newest runs listed"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OptimizeRuns"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
             },
             "422": {
               "description": "Validation Error",
@@ -122633,7 +122883,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 31,
+              "maxItems": 32,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -124479,6 +124729,198 @@
             "changed"
           ],
           "title": "OpportunityRevision"
+        },
+        "OptimizeRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "night",
+                "manual"
+              ],
+              "title": "Via"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "measuring",
+                "running",
+                "after",
+                "done",
+                "reverted",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "night": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Night"
+            },
+            "agent_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Run Id",
+              "description": "the review run given to the worker on duty"
+            },
+            "before_build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Build Id"
+            },
+            "after_build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Build Id"
+            },
+            "asked_weight": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asked Weight",
+              "description": "the weight of the asked column the run left in effect"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "report": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report",
+              "description": "the report the owner got, markdown; null until the run ends"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "what the run measured, decided and undid"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "via",
+            "state",
+            "night",
+            "agent_run_id",
+            "before_build_id",
+            "after_build_id",
+            "asked_weight",
+            "summary",
+            "report",
+            "error",
+            "created_at",
+            "updated_at",
+            "ended_at",
+            "body"
+          ],
+          "title": "OptimizeRun"
+        },
+        "OptimizeRuns": {
+          "properties": {
+            "active": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OptimizeRun"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/OptimizeRun"
+              },
+              "type": "array",
+              "title": "Runs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "active",
+            "runs"
+          ],
+          "title": "OptimizeRuns"
         },
         "OptionIn": {
           "properties": {
@@ -154443,7 +154885,8 @@
                 "opportunity_window",
                 "market_install_request",
                 "market_license_expiring",
-                "today"
+                "today",
+                "kg_optimize"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -154508,7 +154951,8 @@
                 "opportunity_window",
                 "market_install_request",
                 "market_license_expiring",
-                "today"
+                "today",
+                "kg_optimize"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

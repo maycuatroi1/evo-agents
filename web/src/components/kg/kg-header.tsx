@@ -13,7 +13,8 @@ export type KgTab = "explore" | "builds" | "review";
 
 /**
  * The head of the knowledge graph's pages and their tabs: the explorer (the graph itself, where the sidebar's entry
- * lands), the builds that made it, and the review queue. Read-only: nothing on these pages queues a build.
+ * lands), the builds that made it, and the review queue. Read-only, but for the builds page's Optimize button
+ * (`actions`), which asks the hub for a KG optimize run.
  */
 export function KgHeader({ project, current, actions }: { project: string; current: KgTab; actions?: ReactNode }) {
   const t = useTranslations("kg");
