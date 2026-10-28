@@ -42,6 +42,16 @@ one queued before schema 0113) lists all of them but `deploy` and the three of s
 decides everything else itself and writes each such choice, with why, into the evidence of its step on a line that
 starts with `Decision:`.
 
+The route also refuses, 409, a question of a plan run or an author run that its card leaves to the agent
+(`autonomy_card.left_to_agent`, called from `admit_ask`): category `merge` when K5 is auto, category `deploy` when K6
+is auto, and a `scope` question that asks leave (may I, ok to, permission, xin phép, cho phép and the like) to merge
+into a default branch (K5), or to deploy, publish or release (K6), when that class is auto. A K5 that asks on a risk
+path of the merge queue still takes `merge`. The reason quotes the card's line that leaves the class to the agent
+(`- Yours to do (auto): ...`, or at A5 the principal's line ending "Every class of action is yours to do.") and tells it
+to go on and write the choice on a `Decision:` line. The refused question is kept nowhere: no decision, notification,
+run event or audit row, and the log line names the run, the category and the class. A run without a snapshot asks as
+before.
+
 A decision goes to one person, `asked_of` (schema 0115, `principals.asked_of`): for a run whose principal is an intern,
 the person their seat reports to, and once it has been open 24 hours the leads of their unit too (the hourly job
 hub.expire_seats tells them, once each, and each may then answer); for a run the hub makes on its own, the sponsor of

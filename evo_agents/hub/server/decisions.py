@@ -14,7 +14,9 @@ and the outputs of the run it carries (``output_ids``, 422 for one of another ru
 for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
 ``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
 decision without a plan names the author run and its title instead. A run has at most MAX_OPEN_DECISIONS open at once
-(409).
+(409). A plan run or an author run whose autonomy card leaves merging (K5) or deploying and releasing (K6) to its
+agent gets 409 for a question of category merge or deploy, or a scope question asking leave to do it, and the reason
+quotes the card's rule (``admit_ask``, ``autonomy_card.left_to_agent``); a run without a snapshot asks as before.
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
 their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
@@ -79,7 +81,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
 
-from evo_agents.hub import credential_requests, runs, tables
+from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, runs, tables
 from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals, run_access_rules
@@ -451,23 +453,39 @@ def _in_its_category(run_id: int, kind: str, category: str) -> None:
         )
 
 
-# The kinds of run whose agent the hub holds to asking for a credential with a credential request: the agents that
-# follow a plan or write one. A chat run asks triage alone, and a local run asks on a route of its own (local_runs).
+# The kinds of run whose agent the hub holds to asking for a credential with a credential request, and to doing on its
+# own what its autonomy card leaves to it: the agents that follow a plan or write one. A chat run asks triage alone, and a local run asks on a route of its own (local_runs).
 CREDENTIAL_GATED_KINDS = ("plan", "author")
 
 
-def admit_ask(run_id: int, kind: str, body: DecisionAsk) -> None:
+def admit_ask(run_id: int, kind: str, body: DecisionAsk, card: autonomy_card.Card | None = None) -> None:
     """The gate of a decision the agent of a run of ``kind`` asks, before the hub stores anything of it: 422 for a
     category the run does not ask in (``_in_its_category``), and for a question of a plan run or an author run that
     asks in words for a credential's value (``credential_requests.prose_credential``), whose reason names the command
-    that asks it as a credential request. A refused question is kept nowhere: the reason repeats a variable's name at
-    most, and the log line says the run and the category alone."""
+    that asks it as a credential request; 409 for a question of such a run about a class its autonomy ``card`` leaves to
+    the agent (``autonomy_card.left_to_agent``), whose reason quotes the card's rule. A refused question is kept
+    nowhere: the reason repeats a variable's name or the card's line at most, and the log line says the run, the
+    category and the class alone."""
     _in_its_category(run_id, kind, body.category)
-    if kind in CREDENTIAL_GATED_KINDS and body.credential_request is None:
-        refusal = credential_requests.prose_credential(body.category, body.question, body.context)
-        if refusal is not None:
-            log.info("decision refused: credential in prose", extra={"run_id": run_id, "category": body.category})
-            raise HTTPException(422, f"run {run_id}: {refusal}")
+    if kind not in CREDENTIAL_GATED_KINDS or body.credential_request is not None:
+        return
+    refusal = credential_requests.prose_credential(body.category, body.question, body.context)
+    if refusal is not None:
+        log.info("decision refused: credential in prose", extra={"run_id": run_id, "category": body.category})
+        raise HTTPException(422, f"run {run_id}: {refusal}")
+    left = autonomy_card.left_to_agent(card, body.category, body.question)
+    if left is not None:
+        klass, rule = left
+        log.info(
+            "decision refused: autonomy leaves it to the agent",
+            extra={"run_id": run_id, "category": body.category, "class": klass},
+        )
+        raise HTTPException(
+            409,
+            f"run {run_id}: your autonomy card leaves {klass} ({autonomy_levels.CLASS_NAMES[klass]}) to you, so the "
+            f"hub takes no question of it; the card's rule: {rule!r}. Do it yourself without asking, and write the "
+            'choice, why and how to undo it on a line that starts with "Decision:" in the evidence of the step.',
+        )
 
 
 async def _ask_credential(conn: AsyncConnection, user: Principal, run_id: int, row, body: DecisionAsk) -> Decision:
@@ -558,7 +576,8 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
     """Ask the owner of a plan run, an author run or a chat run this worker holds a decision, and notify them."""
     async with request.app.state.engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RESUME_KINDS)
-        admit_ask(run_id, row.kind, body)
+        card = await principals.card(conn, run_id) if row.kind in CREDENTIAL_GATED_KINDS else None
+        admit_ask(run_id, row.kind, body, card)
         if body.credential_request is not None:
             view = await _ask_credential(conn, user, run_id, row, body)
         else:
