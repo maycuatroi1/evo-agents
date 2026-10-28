@@ -410,10 +410,14 @@ export type DecisionAsk = {
   credential_request?: { env_var?: string | null; secret_name?: string | null; hub_account?: boolean };
 };
 
-/** The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. */
+/**
+ * The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. By default a scope
+ * question, whether the checkpoint goes now or tomorrow: the plan runs of the specs run at A5, whose card leaves deploy
+ * (K6) to the agent, and the hub refuses a question in category deploy there with 409 (docs/autonomy.md).
+ */
 export async function askDecision(live: LiveWorker, runId: number, question: string, step = "3", ask: DecisionAsk = {}): Promise<number> {
   const decision = (await workerCall(live, `/v1/worker/runs/${runId}/decisions`, {
-    category: "deploy",
+    category: "scope",
     question,
     context: "The checkpoint deploys **staging**.",
     options: [
