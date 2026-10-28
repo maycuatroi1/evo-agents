@@ -27,6 +27,10 @@ AS_ME = "as_me"
 BOTH = "both"
 REFUSE = "refuse"
 KEYS = (BOTH, VALUE, AS_ME, REFUSE)
+# The option the hub adds when the owner holds a secret of kind env for the variable already (plan
+# hub-attention-runtime, a2; ``evo_agents.hub.server.credential_resolver``): the hub chose it when it answered the
+# request itself, and the owner chooses it to bind that secret to the run's project and lease it, nothing pasted.
+FOUND = "found"
 NOTED = "credential"  # the key `worker ask` sets in the run's file of decisions for a request, for the daemon
 # What the agent runs to read what the run's leases add to its environment once an answer gave it something.
 ENV_COMMAND = 'eval "$(evo-agents worker env --run "$EVO_RUN_ID")"'
@@ -97,6 +101,11 @@ def options(env_var: str | None, secret_name: str | None, hub_account: bool) -> 
 def gives_value(option: str | None) -> bool:
     """Whether choosing ``option`` gives the variable's value, which the answer carries."""
     return option in (VALUE, BOTH)
+
+
+def binds_found(option: str | None) -> bool:
+    """Whether choosing ``option`` binds the owner's secret the hub found for the variable (FOUND)."""
+    return option == FOUND
 
 
 def grants_account(option: str | None) -> bool:

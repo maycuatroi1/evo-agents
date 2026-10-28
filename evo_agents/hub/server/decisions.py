@@ -44,7 +44,10 @@ the hub's options. Its answer may carry the value of the variable it asks for (`
 ``credential_answers`` keeps it as the owner's secret of kind env for the run's project and lets the run run as them
 when the option says so, for the run's owner alone, before a parked run is resumed, so the run that resumes it is
 leased both. The decision's answer text, and the inbox message, carry the hub's sentence of what was given, by name,
-never the value.
+never the value. Before it is asked, the hub looks for the owner's env secret of that variable
+(``credential_resolver``): the run leased one, or one the hub may bind under K12 auto, and the hub answers the request
+itself, answered by nobody, with a notice to the owner; else the decision's context names the secret, and the option
+``found`` binds it when the owner chooses it.
 
 An option the agent marks ``waits`` says not yet (``worker ask --wait-option``): choosing it leaves the decision open
 with ``held_at`` set and its notification read, and sends nothing to the agent, so the run goes on waiting, or parked,
@@ -77,8 +80,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
 
 from evo_agents.hub import credential_requests, runs, tables
+from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, credential_answers, principals, run_access_rules
+from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals, run_access_rules
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.decision_models import AnswerIn as AnswerIn
@@ -388,13 +392,14 @@ async def _notify_asked(
 
 
 async def store_decision(
-    conn: AsyncConnection, run_id: int, row, body: DecisionAsk, *, wake: dict | None = None
+    conn: AsyncConnection, run_id: int, row, body: DecisionAsk, *, wake: dict | None = None, quiet: bool = False
 ) -> Decision:
     """Store the decision ``body`` asks for run ``run_id``, whose row the caller holds locked, in the caller's
     transaction, with the outputs of the run it names, notify the run's owner and log it: ``row`` is what
     ``held_plan_run`` reads, or for a local run (``local_runs``) the same columns. 409 past MAX_OPEN_DECISIONS open,
     422 for a step the plan does not have or an output of another run. A wait (``run_waits``) gives ``wake``, its
-    columns wake_at and wake_on, and notifies nobody: it asks nobody anything."""
+    columns wake_at and wake_on, and notifies nobody: it asks nobody anything. So does a credential request the hub
+    answers itself (``quiet``, ``_ask_credential``)."""
     d = tables.decisions
     opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
     if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
@@ -424,7 +429,7 @@ async def store_decision(
     )
     decision_id = (await conn.execute(stored)).scalar_one()
     await link_decision(conn, run_id, decision_id, body.output_ids)
-    if wake is None:
+    if wake is None and not quiet:
         await _notify_asked(conn, row, run_id, decision_id, key, body, asked)
     shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
     await write_event(
@@ -465,6 +470,84 @@ def admit_ask(run_id: int, kind: str, body: DecisionAsk) -> None:
             raise HTTPException(422, f"run {run_id}: {refusal}")
 
 
+async def _ask_credential(conn: AsyncConnection, user: Principal, run_id: int, row, body: DecisionAsk) -> Decision:
+    """Store credential request ``body`` of run ``run_id`` after the hub looked for what its owner holds already
+    (``credential_resolver``): answered by the hub when the run is leased the owner's secret for the variable, or once
+    the hub bound it as K12 of the run's principal lets it; else asked of the owner, its context naming what the hub
+    found and the command that binds it."""
+    request = body.credential_request.model_dump()
+    found = await credential_resolver.look(conn, user, run_id, request)
+    if found is None or not found.any:
+        return await store_decision(conn, run_id, row, body)
+    choice = await credential_resolver.k12(conn, run_id)
+    answers = credential_resolver.answerable(request) and (
+        found.leased or (found.bindable and choice is not None and choice.mode == AUTO)
+    )
+    if not answers:
+        if found.bindable:
+            body.options = [OptionIn(**credential_resolver.found_option(found, leased=False)), *body.options]
+        view = await store_decision(conn, run_id, row, body)
+        context = credential_resolver.with_context(
+            body.context, credential_resolver.inbox_context(found, view.id, None if choice is None else choice.mode)
+        )
+        d = tables.decisions
+        await conn.execute(update(d).values(context=context).where(d.c.id == view.id))
+        return await decision_view(conn, view.id)
+    bound = not found.leased
+    view = await store_decision(conn, run_id, row, body, quiet=True)
+    if bound:
+        name = await credential_resolver.bind_by_hub(conn, row, run_id, view.id, found, choice)
+        found.leased = [name]
+    option = credential_resolver.found_option(found, leased=True)
+    body.options = [OptionIn(**option), *body.options]
+    await _answer_by_hub(conn, run_id, row, view, body, found, option, bound=bound)
+    return await decision_view(conn, view.id)
+
+
+async def _answer_by_hub(conn: AsyncConnection, run_id: int, row, view: Decision, body, found, option, *, bound: bool):
+    """Answer credential request ``view`` of run ``run_id`` as the hub, with ``option`` naming the owner's secret
+    ``found`` leases to the run: answered by nobody, the answer in the run's inbox as an owner's would be, so the worker
+    takes the run's leases again, a notice to the owner instead of a decision, and the audit row decision.answer
+    ending by=hub."""
+    d, i = tables.decisions, tables.run_inbox
+    words = credential_resolver.answer_sentence(found, bound=bound)
+    await conn.execute(
+        update(d)
+        .values(
+            options=body.stored_options(),
+            state="answered",
+            answer_option=option["key"],
+            answer_text=words,
+            answered_at=func.now(),
+        )
+        .where(d.c.id == view.id)
+    )
+    text = answer_message(view.id, view.category, view.question, option, words)
+    left = insert(i).values(run_id=run_id, sent_by=row.dispatched_by, body=text, decision_id=view.id).returning(i.c.id)
+    message_id = (await conn.execute(left)).scalar_one()
+    event = {"text": text, "from": "hub", "message_id": message_id, "decision_id": view.id}
+    await write_user_message(conn, run_id, event)
+    name = found.leased[0]
+    await notify(
+        conn,
+        user_id=row.dispatched_by,
+        kind="notice",
+        notice_kind=runs.AUTONOMY_DECISION_CATEGORY,
+        project_id=row.project_id,
+        run_id=run_id,
+        details={"decision_id": view.id},
+        title=f"Run #{run_id} got {found.env_var} from your secret {name}",
+        body=f"{one_line(view.question)}\n\n{words}\n\nThe hub answered credential request #{view.id} itself: "
+        "nothing waits on you. Delete or rebind the secret with `evo-agents hub secret` to change what runs get.",
+        link=decision_link(view.id),
+    )
+    target = answer_target(row.name, row.plan_id, view.step_key, view.id, run_id, option["key"], row.kind) + " by=hub"
+    await audit.record(
+        conn, actor_id=None, token_id=None, action=audit.DECISION_ANSWER, target=target, project_id=row.project_id
+    )
+    log.info("credential request answered by the hub", extra={"run_id": run_id, "decision_id": view.id, "bound": bound})
+
+
 @worker_router.post(
     "/runs/{run_id}/decisions",
     status_code=201,
@@ -476,7 +559,10 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
     async with request.app.state.engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RESUME_KINDS)
         admit_ask(run_id, row.kind, body)
-        view = await store_decision(conn, run_id, row, body)
+        if body.credential_request is not None:
+            view = await _ask_credential(conn, user, run_id, row, body)
+        else:
+            view = await store_decision(conn, run_id, row, body)
     log.info("decision asked", extra={"run_id": run_id, "decision_id": view.id, "category": body.category})
     return view
 

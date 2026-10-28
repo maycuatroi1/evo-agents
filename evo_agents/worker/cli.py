@@ -774,7 +774,15 @@ def cmd_ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
 
-    decision_id = _noted_decision(agent, with_hub(agent, work), credential=request is not None)
+    answer = with_hub(agent, work)
+    decision_id = _noted_decision(agent, answer, credential=request is not None)
+    if request is not None and answer.get("state") == "answered":  # the hub found the owner's secret and answered
+        print(f"Decision #{decision_id} was answered by the hub at once: {answer.get('answer_text') or ''}".rstrip())
+        print(
+            "The worker takes the run's leases again as the answer reaches the run: read them with "
+            f"`{credential_requests.ENV_COMMAND}` before the command that needs them; nothing waits on the owner."
+        )
+        return 0
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
     if request is not None:
         print(
