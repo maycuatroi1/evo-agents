@@ -121,13 +121,22 @@ export function isWaiting(notification: Pick<Notification, "kind" | "decision_st
 
 /**
  * A page of notifications as the Inbox shows it: the decisions and the proposals still open first (the API sends them
- * first), then the notices and the decisions and proposals answered, expired or cancelled, newest first.
+ * first), then the notices and the decisions and proposals answered, expired or cancelled, newest first, and last the
+ * notices that only report (`report`: a push or merge into a default branch, a plan finished, a run's files, which the
+ * hub stores read and counts in Today), newest first.
  */
-export function splitInbox(notifications: readonly Notification[]): { waiting: Notification[]; rest: Notification[] } {
+export function splitInbox(notifications: readonly Notification[]): {
+  waiting: Notification[];
+  rest: Notification[];
+  reports: Notification[];
+} {
   const waiting: Notification[] = [];
   const rest: Notification[] = [];
-  for (const notification of notifications) (isWaiting(notification) ? waiting : rest).push(notification);
-  return { waiting, rest };
+  const reports: Notification[] = [];
+  for (const notification of notifications) {
+    (isWaiting(notification) ? waiting : notification.report ? reports : rest).push(notification);
+  }
+  return { waiting, rest, reports };
 }
 
 /** A day of the calendar of `timeZone` (the one the page formats dates in) as `YYYY-MM-DD`. */

@@ -600,6 +600,24 @@ def test_merge_gate_without_a_policy_or_a_forge_secret_nothing_changes(world):
     assert world.fake.requests == [] and listed(world) == []
 
 
+def test_merge_gate_a_merge_request_gitlab_will_not_open_blocks_its_row_and_is_asked_for_again_later(world):
+    plan_done(world)
+    del world.project.branches[BRANCH]  # merged by a person, and GitLab deleted the branch
+    assert gate_pass(world) == {"not_opened": 1}
+    entry = one(world)
+    assert (entry["state"], entry["iid"]) == ("blocked", None)
+    assert entry["reason"].startswith(f"GitLab did not open the merge request of {BRANCH}: ")
+    assert [event["kind"] for event in entry["events"]] == ["queued"]
+    assert gate_pass(world) == {}  # not before OPEN_RETRY
+
+    world.project.branches[BRANCH] = sha_of("work")
+    q = tables.merge_queue
+    sql(world.db, update(q).values(updated_at=datetime.now(UTC) - queue.OPEN_RETRY - timedelta(minutes=1)))
+    assert gate_pass(world) == {"opened": 1}
+    entry = one(world)
+    assert (entry["state"], entry["iid"]) == ("gating", 1)
+
+
 def test_merge_gate_a_plan_done_before_the_repo_went_auto_gets_no_merge_request(world):
     put_policy(world.client, world.headers["owner"], {})
     plan_done(world)

@@ -1,5 +1,5 @@
 """The labels of the knowledge graph's searches on the hub: each kg_search a session or a run made, as its facet read
-it (``evo_agents.hub.facets.QueryLabel``), in kg_query_labels (schema 0177).
+it (``evo_agents.hub.facets.QueryLabel``), in kg_query_labels (schema 0178).
 
 ``replace`` writes the labels of one facet in the transaction that writes the facet (``evo_agents.hub.facet_job``),
 in place of those the facet made before, so a facet made again leaves one row per search. Each row carries the

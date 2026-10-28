@@ -1193,13 +1193,13 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     missing = decisions_of(hub, monkeypatch, capsys, "reader", "show", "999999")
     assert missing.code == 1 and missing.err.startswith(f"error: project {PROJECT} has no decision 999999")
 
-    # the owner's notifications: the decision, then a notice of a push
+    # the owner's notifications: the decision, then a notice of a push, which only reports: read from the start,
+    # still listed (criterion a4 of plan hub-attention-runtime)
     pushed = notice(hub, worker, run_id)
     inbox = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--unread", "--json"))
     assert_json_keys("hub notifications", inbox)
     assert [(n["kind"], n["decision_id"], n["read_at"]) for n in inbox["notifications"]] == [
         ("decision", decision["id"], None),
-        ("notice", None, None),
     ]
     printed = ok(hub_of(hub, monkeypatch, capsys, "owner", "notifications")).out.splitlines()
     assert printed[0].split() == ["ID", "READ", "KIND", "PROJECT", "RUN", "TITLE", "WHEN", "(UTC)"]
@@ -1213,7 +1213,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     ]
     assert printed[2].split()[:7] == [
         f"#{pushed['id']}",
-        "unread",
+        "read",
         "push_default_branch",
         PROJECT,
         f"#{run_id}",
@@ -1221,7 +1221,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
         "main",
     ]
     assert printed[3:] == [
-        "2 of 2 notification(s); 2 unread in all, 1 decision(s) waiting for your answer",
+        "2 of 2 notification(s); 1 unread in all, 1 decision(s) waiting for your answer",
         "Mark them read with `evo-agents hub notifications --read all`, or --read with their ids.",
     ]
     assert as_json(hub_of(hub, monkeypatch, capsys, "reader", "notifications", "--json"))["total"] == 0
@@ -1231,7 +1231,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     assert [n["id"] for n in notices["notifications"]] == [pushed["id"]]
     marked = as_json(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--read", str(pushed["id"]), "--json"))
     assert_json_keys("hub notifications", marked, "--read")
-    assert marked == {"read": 1, "unread": 1}
+    assert marked == {"read": 0, "unread": 1}  # the notice of the push was read already
 
     # answering: another member, an option the decision does not have, then the owner
     other = decisions_of(hub, monkeypatch, capsys, "other", "answer", number, "--option", "postgres")

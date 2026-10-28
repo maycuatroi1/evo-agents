@@ -1,4 +1,4 @@
-"""Whether the hub's graph of a project is searched by meaning too (``evo_agents.hub.kg_semantic``, schema 0180): off
+"""Whether the hub's graph of a project is searched by meaning too (``evo_agents.hub.kg_semantic``, schema 0181): off
 without a row, set by the KG optimize loop, and the vectors a hub build puts into the graph it keeps out of WAL mode."""
 
 import asyncio

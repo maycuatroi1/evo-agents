@@ -658,7 +658,8 @@
         "run_parked": "Run đã park",
         "problem": "Metric thay đổi",
         "cost": "Chi phí",
-        "proposal": "Đề xuất"
+        "proposal": "Đề xuất",
+        "report": "Báo cáo"
       },
       "summary": {
         "asks": "{count, plural, =0 {Không có câu hỏi nào chờ bạn trả lời} other {# câu hỏi chờ bạn trả lời}}",
@@ -671,7 +672,8 @@
           "run_parked": "{count, plural, other {# run đã park}}",
           "problem": "{count, plural, other {# bài toán có metric thay đổi}}",
           "cost": "{count, plural, other {chi phí run của bạn ở # dự án}}",
-          "proposal": "{count, plural, other {# đề xuất chờ trả lời}}"
+          "proposal": "{count, plural, other {# đề xuất chờ trả lời}}",
+          "report": "{count, plural, other {# báo cáo về việc của bạn}}"
         }
       }
     }
@@ -6647,6 +6649,7 @@
     "waitingTitle": "Đang chờ bạn trả lời",
     "restTitle": "Thông báo, quyết định và đề xuất đã xong",
     "allTitle": "Thông báo",
+    "reportsTitle": "Chỉ để báo: push, merge, plan xong, file của run",
     "pagerLabel": "thông báo",
     "summary": {
       "all": "{count, plural, =0 {Chưa có thông báo nào.} other {# thông báo.}}",
@@ -10692,7 +10695,35 @@
       "open": "Mở",
       "openLabel": "Mở: {title}",
       "baselinePreview": "Xem trước bản nền",
-      "baselineHide": "Ẩn bản nền"
+      "baselineHide": "Ẩn bản nền",
+      "proposals": {
+        "summary": "{count, plural, other {# đề xuất claim}}",
+        "count": "{count, plural, other {# đề xuất}}",
+        "runs": "{count, plural, other {# run}}",
+        "metric": "Chỉ số: {metric}",
+        "noGoal": "Không theo goal",
+        "noGoalText": "Không do Loop brainstorm theo goal: brainstorm do thành viên yêu cầu, một agent, hoặc bước kiểm tra giá trị.",
+        "expand": "Hiện các đề xuất của {name}",
+        "collapse": "Ẩn các đề xuất của {name}",
+        "run": "Run",
+        "runLabel": "Run #{id}",
+        "noRun": "Không từ run nào",
+        "why": "Lý do: {reason}",
+        "newClaim": "Claim mới",
+        "change": "{claim}: {fields}",
+        "statusTo": "{claim} sang {status}",
+        "test": "Thẻ kiểm chứng:",
+        "open": "Mở",
+        "openLabel": "Mở đề xuất #{id} trên canvas {canvas}",
+        "rejectAll": "{count, plural, one {Từ chối} other {Từ chối cả #}}",
+        "rejectRun": "{count, plural, one {Từ chối đề xuất của run này} other {Từ chối # đề xuất của run này}}",
+        "rejectReason": "{count, plural, one {Lý do từ chối đề xuất này} other {Lý do từ chối # đề xuất này}}",
+        "rejectPlaceholder": "Lưu kèm từng đề xuất",
+        "rejectConfirm": "{count, plural, other {Từ chối # đề xuất}}",
+        "cancel": "Huỷ",
+        "rejected": "{count, plural, =0 {Không còn đề xuất nào mở} other {Đã từ chối # đề xuất}}",
+        "rejectedLeft": "{count, plural, =0 {Không từ chối đề xuất nào} other {Đã từ chối # đề xuất}}; {left, plural, other {# đề xuất đã được quyết trước đó}}"
+      }
     },
     "boardKind": {
       "goal_review": "Rà goal hằng tháng",

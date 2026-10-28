@@ -6,8 +6,9 @@ What never goes to Telegram) is the design.
 The files of sources sent and outputs it took (an image taken out of a tool's result never) become one notice of kind
 ``run_outputs`` to the run's owner, gathered a minute a run: the first files store the notification with its
 deliveries due OUTPUT_NOTICE_SECONDS later, and the files that come before any channel tried it join it (its details,
-title and body, unread again). Once a channel took it, or is sending it now (its delivery locked), the next files
-start a new notice, due a minute after they came, so no channel gets two notices of one run within a minute. A chat
+title and body). The notice only reports (``runs.REPORT_NOTICE_KINDS``): it is stored read and goes to the web
+alone, so the gathering holds its web delivery and no channel or device ever gets it. Once the web took it, or is
+taking it now (its delivery locked), the next files start a new notice, due a minute after they came. A chat
 run sends none: its files go under its messages in the thread. A file a question carries goes with the question:
 ``withdraw`` takes it out of the run's notice no channel tried yet, and drops a notice left with none. A member who
 turned the kind off (``muted``) gets no such notice; their decisions and every other notice still come.
@@ -344,7 +345,7 @@ async def _rewrite(conn: AsyncConnection, notification_id: int, run, files: list
         body=runs.clip(body, runs.MAX_NOTICE_BODY_BYTES),
         details={"outputs": [f.id for f in files]},
     )
-    await conn.execute(changed.values(read_at=None).where(n.c.id == notification_id))
+    await conn.execute(changed.where(n.c.id == notification_id))
 
 
 async def _run(conn: AsyncConnection, run_id: int):

@@ -313,6 +313,29 @@ def test_loop_rules_a_merge_request_a_person_merged_on_gitlab_counts_as_through(
     )
 
 
+def test_loop_rules_a_deliver_on_github_is_done_once_its_plan_marks_its_repo_merged(engine):
+    """A repo on GitHub is one the queue does not merge (``View.manual``): the deliver whose plan run is done waits for
+    a person (``merge_manual``) while its plan does not mark the repo merged, and is done once it does, at the end of
+    its run (the tick marked the pull request the run merged) or while it waits."""
+    item = replace(
+        ItemView(800, "deliver", "deliver:northwind-reorder", "running", None, 1, plan_id="northwind-reorder"),
+        run_id=900,
+    )
+    runs = {900: RunView(900, "plan", "done", "northwind-reorder", True, ("evo-agents",))}
+    manual, merged = frozenset({"evo-agents"}), {"northwind-reorder": frozenset({"evo-agents"})}
+    detail = {"run_id": 900, "repos": ["evo-agents"]}
+    assert engine.reconcile(item, view(runs=runs, manual=manual)) == Transition(
+        800, "waiting_human", "waiting", reason="merge_manual", detail=detail
+    )
+    done = Transition(800, "done", "done", detail={"after_sha": [], "released_at": None})
+    assert engine.reconcile(item, view(runs=runs, manual=manual, released=merged)) == done
+    waiting = replace(item, state="waiting_human", reason="merge_manual", detail=detail)
+    assert engine.reconcile(waiting, view(runs=runs, manual=manual)) is None, "merged by hand, not marked: it waits"
+    assert engine.reconcile(waiting, view(runs=runs, manual=manual, released=merged)) == done
+    other = {"northwind-reorder": frozenset({"lumen.docs"})}
+    assert engine.reconcile(item, view(runs=runs, manual=manual, released=other)).reason == "merge_manual"
+
+
 def test_loop_rules_replaying_a_chain_returns_the_same_keys(engine):
     """The engine is a function of the event and the view: the same chain gives the same work items, whose keys
     hold no id of a row of hub_events."""

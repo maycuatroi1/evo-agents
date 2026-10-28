@@ -185,6 +185,14 @@ K12 `access`; `architecture` and `scope` belong to no class. A plan run's prompt
 releasing are the agent's only when K5 and K6 are auto. A run without a snapshot gets the fixed list of categories, as
 before.
 
+What the card leaves to the agent, the hub does not ask a person (plan hub-attention-runtime, a3): the ask route
+answers 409 to a plan run or an author run asking category `merge` while K5 is auto, `deploy` while K6 is auto, or a
+`scope` question asking leave to merge into a default branch, deploy or release while that class is auto, and the
+reason quotes the card's rule for the class (`autonomy_card.left_to_agent`). An ask of a project policy shows as auto
+on the card, so it is refused too: the merge queue and the release hold it. A K5 that asks on a risk path keeps
+`merge`. This is a fixed rule, read from the run's snapshot; no model is asked. A run without a snapshot asks as before
+(`docs/notifications.md`, Decisions).
+
 A decision goes to one person (`decisions.asked_of`): for a run whose principal is an intern, the person their seat
 reports to, and the leads of their unit too once it has been open 24 hours; for a run the hub makes on its own, the
 sponsor of its agent; for any other run, its principal. An intern never answers a decision of their own run (403). A

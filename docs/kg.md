@@ -643,7 +643,7 @@ pages, the MCP tool `kg_optimize` of evo-hub, or `POST /v1/kg/{project}/optimize
 and stays under the charter's review cost cap. One run of a project is in flight at a time: asking again answers with
 that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with their reports. The job
 `curator.collect` moves each run on once a minute (`evo_agents/hub/server/kg_optimize.py`, the table
-`kg_optimize_runs`, migration 0181):
+`kg_optimize_runs`, migration 0182):
 
 1. **Measure.** The holdout of the project's eval set is asked of the latest build by words and by meaning, the tune
    split at each weight of the asked column (0, 0.5, 1, 2), with the open items of the review queue, the build's

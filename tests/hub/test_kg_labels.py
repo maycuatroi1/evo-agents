@@ -1,4 +1,4 @@
-"""The labels of the knowledge graph's searches on the hub (``evo_agents.hub.kg_labels``, schema 0177) and the night's
+"""The labels of the knowledge graph's searches on the hub (``evo_agents.hub.kg_labels``, schema 0178) and the night's
 signal kg.query.grep_after_rate.
 
 Step 1 of plan kg-retrieval-quality, criterion a1: each kg_search of a session becomes a query label kept on the hub

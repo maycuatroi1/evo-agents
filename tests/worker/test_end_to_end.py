@@ -825,16 +825,17 @@ def doing(key: int) -> list[dict]:
 
 
 def asking(step: int) -> dict:
-    """``evo-agents worker ask``: a deploy decision of step ``step``, two options, no recommended."""
+    """``evo-agents worker ask``: an architecture decision of step ``step``, two options, no recommended (a deploy
+    question is the agent's own at A5, which the hub refuses: test_decisions' autonomy_gate)."""
     return {
         "cli": [
             "ask",
             "--category",
-            "deploy",
+            "architecture",
             "--question",
-            "Deploy evo-cli from main now?",
+            "Split evo-cli's config into a file of its own?",
             "--option",
-            "yes=Deploy:to staging only",
+            "yes=Split:one file per repo",
             "--option",
             "no=Wait",
             "--recommended",
@@ -899,7 +900,7 @@ def test_a_plan_run_does_three_steps_over_two_repos_and_goes_on_once_the_owner_a
 
     # The owner has the decision in the notifications, and answers it through the API.
     (decision,) = world.decisions(run_id)
-    assert (decision["state"], decision["category"], decision["step_key"]) == ("open", "deploy", "2")
+    assert (decision["state"], decision["category"], decision["step_key"]) == ("open", "architecture", "2")
     assert [option["key"] for option in decision["options"]] == ["yes", "no"] and decision["recommended"] == "no"
     asked = [item for item in world.notifications("decision") if item["decision_id"] == decision["id"]]
     assert len(asked) == 1 and asked[0]["run_id"] == run_id and asked[0]["decision_state"] == "open"
@@ -923,8 +924,8 @@ def test_a_plan_run_does_three_steps_over_two_repos_and_goes_on_once_the_owner_a
     first, again = mac.starts()
     assert again["run"] == run_id and again["resume"] == first["session"]
     assert Path(again["cwd"]).resolve() == Path(first["cwd"]).resolve() == directory
-    assert f"Answer to decision #{decision['id']} (deploy)" in again["prompt"]
-    assert "Chosen option: yes, Deploy." in again["prompt"] and "Staging only, as the option says." in again["prompt"]
+    assert f"Answer to decision #{decision['id']} (architecture)" in again["prompt"]
+    assert "Chosen option: yes, Split." in again["prompt"] and "Staging only, as the option says." in again["prompt"]
     assert world.decisions(run_id)[0]["delivered_at"] is not None, "acknowledged once the agent had it"
 
     # Every step is done with the evidence of the run, each repo's branch on origin holds its steps, in order.
@@ -1030,7 +1031,7 @@ def test_a_plan_run_nobody_answers_in_time_is_parked_and_resumed_on_the_same_wor
     assert (again["run"], again["session"], again["resume"]) == (resumed_id, session, session)
     assert Path(again["cwd"]).resolve() == Path(first["cwd"]).resolve() == directory.resolve()
     assert f"goes on now as run #{resumed_id}" in again["prompt"]
-    assert f"Answer to decision #{decision['id']} (deploy)" in again["prompt"]
+    assert f"Answer to decision #{decision['id']} (architecture)" in again["prompt"]
     looked = next(item for item in mac.commands() if item["run"] == resumed_id)
     assert looked["stdout"].splitlines() == [
         str(directory.resolve()),

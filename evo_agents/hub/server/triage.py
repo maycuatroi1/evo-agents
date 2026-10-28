@@ -24,6 +24,12 @@ stop in its log) while no account of its owner for that variable is ready for th
 and no agent: the chat run of the agent would take the same accounts (``account_choice``) and fail at once. The thread
 says when the first of them is ready again.
 
+A run that stops moving gets a thread too, once (``run_triage`` holds it): one running or verifying that has written
+no event for STALE_MINUTES while its worker still heartbeats, which each pass of the reaper finds (``open_stale``), with
+the cause ``stale``; and one the reaper failed on its last attempt (cause ``lease_lost``), as any failed run. The first
+message of both adds the diagnosis (``_diagnosis``): the last event, the worker and its last heartbeat, the lease and
+the attempt. The agent of a stale run's thread may ask its worker to stop it (``triage_actions``, ``triage/cancel``).
+
 ``on_failed`` does it in a savepoint of the caller's transaction: whatever goes wrong inside (a label the owner does
 not clear, a full chat, a database error) rolls back to it and leaves the run failed with the notice it always had.
 
@@ -38,11 +44,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import case, exists, func, insert, select
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, features, runs, tables, triage_rules
 from evo_agents.hub.access import UNTRUSTED
@@ -55,7 +61,7 @@ from evo_agents.hub.server.chat_store import add_member, insert_mentions, insert
 from evo_agents.hub.server.chat_views import person_author
 from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.profile_store import by_id, ensure_default
-from evo_agents.hub.server.run_state import RunStep
+from evo_agents.hub.server.run_state import RunStep, run_step
 from evo_agents.hub.server.runs.service.candidates import candidates_of
 from evo_agents.hub.server.security import MACHINE, Principal
 
@@ -64,6 +70,11 @@ log = logging.getLogger(__name__)
 KINDS = ("step", "plan", "author")  # the kinds of run whose failure opens a thread
 ERROR_CHARS = 1200
 SHOWN = 3  # candidates of each sort the message names
+STALE_MINUTES = 45  # a run running or verifying with no event this long, while its worker heartbeats, opens a thread
+STALE_STATES = ("running", "verifying")  # the held states a stale run is in: a waiting or interactive run is not stuck
+STALE_CAUSE = "stale"  # the cause run_triage holds for the thread of a stale run
+STALE_BATCH = 50  # stale runs one pass of the reaper opens a thread for at most; the next pass takes the rest
+EVENT_CHARS = 300  # how much of the last event the diagnosis quotes
 
 
 @dataclass(frozen=True)
@@ -412,16 +423,23 @@ async def _role(conn: AsyncConnection, user_id: int, project_id: int) -> str | N
     ).scalar_one_or_none()
 
 
-def _head(found: RunStep, inferred: bool) -> list[str]:
+def _head(found: RunStep, inferred: bool, *, stale: bool = False) -> list[str]:
     what = {"plan": "Plan run", "author": "Author run"}.get(found.kind, "Run")
     where = (
         f" of step {found.step_key} of {found.plan_id}"
         if found.kind == "step"
         else (f" of {found.plan_id}" if found.plan_id else "")
     )
-    cause = found.failure_cause or "unknown"
-    guess = "guessed by the hub from the error" if inferred else "as the worker reported it"
-    lines = [f"{what} #{found.run_id}{where} failed.", f"Cause: {cause} ({guess})."]
+    if stale:
+        lines = [
+            f"{what} #{found.run_id}{where} has written no event for {STALE_MINUTES} minutes while its worker still "
+            "sends heartbeats.",
+            f"Cause: {STALE_CAUSE} (seen by the hub; the run still holds its worker).",
+        ]
+    else:
+        cause = found.failure_cause or "unknown"
+        guess = "guessed by the hub from the error" if inferred else "as the worker reported it"
+        lines = [f"{what} #{found.run_id}{where} failed.", f"Cause: {cause} ({guess})."]
     error = _line(found.error or "")
     if error:
         lines.append("Error: " + runs.clip(error, ERROR_CHARS))
@@ -433,6 +451,62 @@ def _head(found: RunStep, inferred: bool) -> list[str]:
     lines.append(f"Last verify: {_verify(found)}.")
     base = f"/v1/projects/{found.project}/runs/{found.run_id}"
     lines.append(f"Run: /p/{found.project}/runs/{found.run_id}, log: {base}/events, diff: {base}/diff")
+    return lines
+
+
+def _when(at: datetime | None, now: datetime) -> str:
+    if at is None:
+        return "never"
+    minutes = max(0, int((now - at).total_seconds() // 60))
+    return f"{at.astimezone(UTC):%Y-%m-%d %H:%M} UTC, {minutes} min ago"
+
+
+def _event_text(kind: str, body) -> str:
+    body = body if isinstance(body, dict) else {}
+    if kind == "state":
+        text = f"{body.get('from')} -> {body.get('to')}" + (f": {body['reason']}" if body.get("reason") else "")
+    else:
+        text = next((str(body[key]) for key in ("text", "message", "summary", "tool") if body.get(key)), "")
+    return runs.clip(_line(text), EVENT_CHARS)
+
+
+async def _diagnosis(conn: AsyncConnection, found: RunStep) -> list[str]:
+    """The lines of a run that stopped moving, stale or lost on its last attempt: its last event (the hub's own move to
+    the end it is in left out), its worker and that worker's last heartbeat, its lease and its attempt."""
+    r, w, e = tables.runs, tables.workers, tables.run_events
+    row = (
+        await conn.execute(
+            select(r.c.state, r.c.lease_expires_at, r.c.finished_at, w.c.last_heartbeat_at, func.now().label("now"))
+            .select_from(r.outerjoin(w, w.c.id == r.c.worker_id))
+            .where(r.c.id == found.run_id)
+        )
+    ).one()
+    events = select(e.c.seq, e.c.at, e.c.kind, e.c.body).where(e.c.run_id == found.run_id)
+    if row.state in runs.TERMINAL_STATES:  # the hub's move to that end, and what it wrote with it, left out
+        end = select(func.max(e.c.seq)).where(e.c.run_id == found.run_id, e.c.kind == "state").scalar_subquery()
+        events = events.where(e.c.seq < end)
+    tail = (await conn.execute(events.order_by(e.c.seq.desc()).limit(1))).all()
+    if tail:
+        last = tail[0]
+        said = _event_text(last.kind, last.body)
+        lines = [f"Last event: #{last.seq} {last.kind} at {_when(last.at, row.now)}" + (f": {said}" if said else "")]
+    else:
+        lines = ["Last event: none."]
+    if found.worker:
+        lines.append(f"Worker: {found.worker}, last heartbeat {_when(row.last_heartbeat_at, row.now)}.")
+    else:
+        lines.append("Worker: none.")
+    if row.state in runs.HELD_STATES:
+        until = (
+            "no end" if row.lease_expires_at is None else f"{row.lease_expires_at.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+        )
+        lines.append(f"Lease: held until {until}; the worker still extends it.")
+    else:
+        lines.append(
+            f"Lease: ended with the run at {_when(row.finished_at, row.now)}; the worker stopped extending it."
+        )
+    last_try = " (the last)" if found.attempt >= found.max_attempts else ""
+    lines.append(f"Attempt: {found.attempt} of {found.max_attempts}{last_try}.")
     return lines
 
 
@@ -481,21 +555,30 @@ async def _ask_agent(
     return next((mention.get("run_id") for mention in kept if mention.get("run_id")), None)
 
 
-async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
-    """Open the thread of failed run ``found`` (the caller holds its row locked, and a savepoint to undo this); the
-    thread it already has, or None when the run is not due one. A run that ends a chain of automatic reruns that is
-    full (``triage_rules.RERUN_CAP``) gets the thread and the facts, and no agent: the owner decides. So does one the
-    hub stopped on accounts of which none is ready (``_no_account``)."""
+async def open_thread(conn: AsyncConnection, found: RunStep, *, stale: bool = False) -> Thread | None:
+    """Open the thread of failed run ``found``, or of held run ``found`` that is ``stale`` (``open_stale``), the caller
+    holding its row locked and a savepoint to undo this; the thread it already has, or None when the run is not due
+    one. A run that ends a chain of automatic reruns that is full (``triage_rules.RERUN_CAP``) gets the thread and the
+    facts, and no agent: the owner decides. So does one the hub stopped on accounts of which none is ready
+    (``_no_account``). A stale run, and one the reaper failed on its last attempt (cause ``lease_lost``), also get the
+    diagnosis: the last event, the worker, the lease and the attempt (``_diagnosis``)."""
     existing = await thread_of(conn, found.run_id)
     if existing is not None or not await _due(conn, found.project_id):
         return existing
     owner = await _person(conn, found.dispatcher_id)
     chat, profile = await _chat(conn, found, owner)
-    inferred = await _inferred(conn, found.run_id)
+    inferred = False if stale else await _inferred(conn, found.run_id)
     depth, _ = await chain_of(conn, found.run_id)
     full = depth >= triage_rules.RERUN_CAP
-    waiting = None if full else await _no_account(conn, found)
-    lines = _head(found, inferred)
+    waiting = None if full or stale else await _no_account(conn, found)
+    lines = _head(found, inferred, stale=stale)
+    if stale or found.failure_cause == "lease_lost":
+        lines += await _diagnosis(conn, found)
+    if stale:
+        lines.append(
+            "The agent of this thread may ask its worker to stop it (`evo-agents worker triage cancel`) and, once it "
+            "has ended, run it again on a fit worker (`evo-agents worker triage rerun`)."
+        )
     lines += await _candidates(conn, found, await _role(conn, owner.user_id, found.project_id), chat)
     if full:
         lines.append(
@@ -513,11 +596,70 @@ async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
             run_id=found.run_id,
             chat_id=chat.chat_id,
             root_message_id=message_id,
-            cause=found.failure_cause,
+            cause=STALE_CAUSE if stale else found.failure_cause,
             cause_inferred=inferred,
             agent_run_id=agent_run,
             chain_depth=depth,
         )
     )
-    log.info("triage thread opened", extra={"run_id": found.run_id, "chat_id": chat.chat_id, "agent_run_id": agent_run})
+    log.info(
+        "triage thread opened",
+        extra={"run_id": found.run_id, "chat_id": chat.chat_id, "agent_run_id": agent_run, "stale": stale},
+    )
     return _thread(chat.chat_id, message_id)
+
+
+def _stale_runs():
+    """The runs of KINDS running or verifying on a live worker that still heartbeats (within
+    ``runs.OFFLINE_AFTER_SECONDS``), of a project with triage on, with no thread yet, whose last event, else start, is
+    more than STALE_MINUTES old."""
+    r, w, e, p, t = tables.runs, tables.workers, tables.run_events, tables.projects, tables.run_triage
+    last = select(e.c.at).where(e.c.run_id == r.c.id).order_by(e.c.seq.desc()).limit(1).scalar_subquery()
+    quiet = func.coalesce(last, r.c.started_at, r.c.leased_at)
+    return (
+        select(r.c.id)
+        .join_from(r, w, w.c.id == r.c.worker_id)
+        .join(p, p.c.id == r.c.project_id)
+        .where(
+            r.c.state.in_(STALE_STATES),
+            r.c.kind.in_(KINDS),
+            p.c.triage_enabled,
+            w.c.revoked_at.is_(None),
+            w.c.last_heartbeat_at > func.now() - timedelta(seconds=runs.OFFLINE_AFTER_SECONDS),
+            quiet < func.now() - timedelta(minutes=STALE_MINUTES),
+            ~exists().where(t.c.run_id == r.c.id),
+        )
+    )
+
+
+async def on_stale(conn: AsyncConnection, found: RunStep) -> Thread | None:
+    """The thread stale run ``found`` has, opened now unless it cannot be; in a savepoint, as ``on_failed``."""
+    if found.kind not in KINDS or found.project_id is None:
+        return None
+    try:
+        async with conn.begin_nested():
+            return await open_thread(conn, found, stale=True)
+    except Exception as exc:  # a thread is a help: nothing inside it may stop the reaper's pass
+        log.warning(
+            "stale triage thread not opened",
+            extra={"run_id": found.run_id, "error": f"{type(exc).__name__}: {exc}"},
+        )
+        return None
+
+
+async def open_stale(engine: AsyncEngine, batch: int = STALE_BATCH) -> int:
+    """One pass, of the reaper (``run_state.recover_runs``): a thread for each stale run (``_stale_runs``), each in a
+    transaction of its own that locks the run and checks again; a run has one thread, so it is opened once. How many
+    were opened."""
+    r = tables.runs
+    async with engine.connect() as conn:
+        found = (await conn.execute(_stale_runs().order_by(r.c.id).limit(batch))).scalars().all()
+    opened = 0
+    for run_id in found:
+        async with engine.begin() as conn:
+            lock = _stale_runs().where(r.c.id == run_id).with_for_update(of=r, skip_locked=True)
+            if (await conn.execute(lock)).one_or_none() is None:  # it moved, wrote an event or has a thread now
+                continue
+            thread = await on_stale(conn, await run_step(conn, run_id))
+            opened += thread is not None
+    return opened
