@@ -61,12 +61,13 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_coverage, kg_sources, tables
+from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_sources, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, load_project_at
+from evo_agents.kg.protocol import sha256 as sha256_of
 
 log = logging.getLogger(__name__)
 
@@ -313,11 +314,19 @@ def graph_reach(path: Path) -> dict | None:
 
 
 def build_in_cache(
-    store: BlobStore, data_dir: Path, name: str, config: dict, ingests: list[Ingest], sources: list | None = None
+    store: BlobStore,
+    data_dir: Path,
+    name: str,
+    config: dict,
+    ingests: list[Ingest],
+    sources: list | None = None,
+    learned: kg_asked.Learned | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
-    build covers with the files of each git source, which ``record`` keeps. Blocking."""
+    build covers with the files of each git source, which ``record`` keeps. With ``learned``, the graph gets the
+    asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
+    build whose graph is the same but whose index is not uploads its file. Blocking."""
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
@@ -325,13 +334,15 @@ def build_in_cache(
     kg_sources.keep_sources(project, sources)
     merged = prepare_corpus(store, project, ingests)
     path, report = build_graph(project)
+    asked = kg_asked.write(path, learned) if learned is not None else None
+    content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
     sha256 = _sha256(path)
     coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
     return Built(
         path,
         sha256,
         path.stat().st_size,
-        report.content_hash,
+        content_hash,
         report.nodes,
         report.edges,
         len(ingests),
@@ -551,8 +562,10 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             )
         config = {"knowledge": found[1], "ontology": found[2]}
         sources = await kg_sources.read_sources(engine, context.config, project_id, project, found[1])
+        async with engine.connect() as conn:
+            learned = await kg_asked.read(conn, project_id, project, found[1])
         built = await asyncio.to_thread(
-            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources
+            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop

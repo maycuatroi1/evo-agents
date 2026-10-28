@@ -16,16 +16,22 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 
-from evo_agents.hub import facets, kg_labels, tables
+from evo_agents.hub import facets, kg_asked, kg_labels, tables
 from evo_agents.hub.server.curator import _owner_access
 from evo_agents.hub.server.kg_labels import visible_labels
+from evo_agents.kg.build import build_project
+from evo_agents.kg.evaluate import HOLDOUT, split_of
+from evo_agents.kg.policy import Policy
+from evo_agents.kg.store import Store
+from evo_agents.kg.sync import sync_project
 from tests.hub.live import sql
 from tests.hub.test_digest import answered, result, session_lines, tool_use
 from tests.hub.test_facet_job import SESSION, analyzed, later, session_facet_of, user_of
 from tests.hub.test_runs import OWNER, PROJECT
 from tests.hub.test_session_transcripts import hub, parts_of, send, statuses, transcript  # noqa: F401 (hub: a fixture)
+from tests.kg.projects import make_project
 
 KG = "mcp__plugin_evo-hub_evo-hub__kg_search"
 FOUND = """2 result(s) for 'claim a job' in project evo-agents (build 3)
@@ -136,3 +142,93 @@ def test_the_nights_figures_push_the_share_of_chains_a_grep_followed_once_a_nigh
     ]
     assert call({**figures, "kg_health": {"retrieval": {"chains": 2, "grep_after_rate": 0.5}}}, date(2026, 10, 29))
     assert sql(hub.db, select(func.count()).select_from(s))[0][0] == 2, "one signal a night"
+
+
+EXPLORED = """4 result(s) for 'handle requests' in project evo-agents (build 3)
+[app:app/search.py::search] Symbol 'search' (parsed)
+[app:app/search.py::rank_results] Symbol 'rank_results' (parsed)
+[app:docs/guide.md#details] Section 'Details' (parsed)
+[app:app/server.py::Server.handle] Symbol 'Server.handle' (parsed)
+explored: rank 4, p=0.00125, [app:app/server.py::Server.handle]"""
+
+
+def explored_lines() -> list[dict]:
+    """session_lines, then a kg_search that explored, and the file of the explored result read."""
+    return [
+        *session_lines(),
+        answered("msg_e1", 16, tool_use("toolu_e1", KG, query="handle requests")),
+        result("toolu_e1", 17, EXPLORED),
+        answered("msg_e2", 18, tool_use("toolu_e2", "Read", file_path="/work/app/app/server.py")),
+        result("toolu_e2", 19, "class Server: ..."),
+    ]
+
+
+def holdout_id() -> str:
+    return next(f"q{n}" for n in range(1000) if split_of(f"q{n}") == HOLDOUT)
+
+
+def test_a_build_learns_the_searches_under_their_labels_and_keeps_the_chance_an_explored_result_had(
+    hub, tmp_path, monkeypatch
+):
+    path = transcript(hub.tmp_path, explored_lines())
+    assert statuses(send(hub, "owner", parts_of(hub, path))) == ["stored"]
+    assert analyzed(hub.client, later(hub.db)) == {"transcript": 1}
+    (stored,) = stored_labels(hub.db)
+    assert stored["results"][3] == {
+        "id": "app:app/server.py::Server.handle",
+        "rank": 4,
+        "path": "app/server.py",
+        "explored": 4,
+        "p": 0.00125,
+    }
+    assert all("p" not in item for item in stored["results"][:3])
+
+    project_id = sql(hub.db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    t = tables.kg_query_labels
+    other = {"project_id": project_id, "kind": "session", "session_id": "s-other", "seq": 0, "query": "elsewhere"}
+    other |= {"results": [], "clicks": [], "grep_after": True, "after_grep": ["app/server.py"]}
+    sql(hub.db, insert(t).values(other | {"label": {"level": "internal", "projects": ["another"]}}))
+    secret = other | {"session_id": "s-secret", "query": "server secrets", "label": {"level": "customer"}}
+    sql(hub.db, insert(t).values(secret))
+    held = {"id": holdout_id(), "question": "Where does the server keep its secrets?", "type": "x", "files": []}
+    sql(
+        hub.db,
+        insert(tables.kg_eval_sets).values(
+            project_id=project_id, version=1, name="set", questions=[held], digest="sha256:" + "0" * 64
+        ),
+    )
+
+    async def read():
+        async with hub.client.app.state.engine.connect() as conn:
+            return await kg_asked.read(conn, project_id, PROJECT, {})
+
+    learned = hub.client.portal.call(read)
+    policy = Policy(PROJECT, {})
+    assert sorted((label.query, label.level) for label in learned.labels) == [
+        ("handle requests", policy.levels.index("internal")),
+        ("server secrets", policy.levels.index("customer")),
+    ], "a label of another project stays out"
+    assert learned.holdout == ["Where does the server keep its secrets?"]
+
+    monkeypatch.setenv("EVO_KG_HOME", str(tmp_path / "kg-home"))
+    demo = make_project(tmp_path, tmp_path / "kg-home")
+    sync_project(demo)
+    assert build_project(demo).ok
+    graph = demo.root / "graph.sqlite"
+    assert kg_asked.write(graph, learned) is not None
+    store = Store.open_file(graph)
+    rows = store.db.execute("SELECT node_id, lvl FROM node_asked_rows ORDER BY node_id, lvl").fetchall()
+    assert rows == [
+        ("app:file:app/server.py", policy.levels.index("customer")),  # opened after the grep
+        ("symbol:app:app/server.py::Server.handle", policy.levels.index("internal")),  # the explored result read
+    ]
+    store.asked_clearance = (policy.levels.index("internal"), len(policy.locations) - 1)
+    assert store._asked_scores("server secrets") == {}, "an internal reader reads no customer row"
+    store.close()
+
+    too_alike = kg_asked.Learned(learned.labels, ["handle requests"])
+    assert kg_asked.write(graph, kg_asked.Learned([], [])) is None
+    assert kg_asked.write(graph, too_alike) is not None
+    store = Store.open_file(graph)
+    assert [r[0] for r in store.db.execute("SELECT node_id FROM node_asked_rows")] == ["app:file:app/server.py"]
+    store.close()
