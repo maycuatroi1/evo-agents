@@ -23,11 +23,15 @@ digest that the figures and the evidence read (``tools``, ``bash``, ``errors``, 
 - ``usage``: the tokens, cache reads and cache writes included (``digest.USAGE_KEYS``), and ``cost_usd``, null when
   the source says none;
 - ``hooks``: per hook (its name and its command), how many ran, their time and buckets, how many failed or timed out;
-- ``skills``: the skills the agent loaded (the Skill tool) or that came back into its context;
+- ``skills``: the skills the agent loaded (the Skill tool) or that came back into its context, and the characters of
+  their text that came into the main thread (``chars``: a load, by the Skill tool or typed as /name, or a compaction
+  bringing it back);
 - ``api_errors``: the errors of the model's API the runtime wrote, by text, each with its cause;
 - ``sources``: the characters each source of context (CONTEXT_SOURCES) put into the main thread of a Claude Code
   session: the always-loaded files (CLAUDE.md, AGENTS.md, a memory index), the instructions of MCP servers, the list of
-  skills, the text of hooks; the output of tools is ``tools[].output_chars``. ``loaded``: each always-loaded file, its
+  skills, the text of hooks; the output of tools is ``tools[].output_chars``. Besides them, ``skills_again``, the part of
+  ``skills`` that came as a whole list while the context, since its last compaction, already held one, and
+  ``skill_bodies``, the text of the skills loaded into the context, which none of them counts. ``loaded``: each always-loaded file, its
   path (a home directory as ``~/``), its type, its largest size in characters and how often it came. Both are null for
   a Codex session, a run and a digest, whose sources the facet does not see.
 
@@ -47,7 +51,7 @@ from datetime import UTC, datetime
 from evo_agents.hub import digest, review
 from evo_agents.hub.digest import MAX_COUNT, TOOL_NAME, USAGE_KEYS
 
-FACET_VERSION = 1
+FACET_VERSION = 2  # 2: sources.skills_again, sources.skill_bodies and skills[].chars
 KINDS = ("session", "run")
 SOURCES = ("transcript", "digest", "run_log", "events")
 WORK = "work"  # the cause of a failure of the work itself, not of its environment
@@ -75,6 +79,9 @@ TURN_CHARS = digest.USER_TURN_CHARS
 HOOK_CHARS = 200
 # The sources of context a Claude Code transcript names besides the output of tools (``Tally.context_text``).
 CONTEXT_SOURCES = ("always_loaded", "mcp_instructions", "skills", "hooks")
+SKILLS_AGAIN = "skills_again"  # of ``skills``: a whole list that came while the context already held one
+SKILL_BODIES = "skill_bodies"  # the text of the skills loaded into the context, on demand rather than fixed
+FACET_SOURCES = (*CONTEXT_SOURCES, SKILLS_AGAIN, SKILL_BODIES)  # the keys of a facet's ``sources``
 VERSION_NUMBER = re.compile(r"(?<=[=@v])\d+(?:\.\d+)+")
 HOME = re.compile(r"(?:/Users|/home)/[^/\s]+/")
 NODE_FILE = re.compile(r"^[^:\s]+:file:([^#]+)")
@@ -285,9 +292,10 @@ class Tally:
         self.usage = dict.fromkeys(USAGE_KEYS, 0)
         self.cost: float | None = None
         self.hooks: dict[tuple[str, str], Hook] = {}
-        self.skills: dict[str, list] = {}  # name: [calls, times it came back into the context]
+        self.skills: dict[str, list] = {}  # name: [calls, times it came back into the context, characters of its text]
         self.api_errors: Counter = Counter()
-        self.sources: Counter | None = None  # CONTEXT_SOURCES: characters; None until a Claude Code main thread came
+        self.sources: Counter | None = None  # FACET_SOURCES: characters; None until a Claude Code main thread came
+        self.listed = False  # the main thread's context holds a whole skill list, since its last compaction
         self.loaded: dict[str, list] = {}  # an always-loaded file's path: [its type, its largest size, how often]
         self.files: list[dict] = []
         self._open: dict[str, tuple[str, str | None, datetime | None, str | None]] = {}  # call: (tool, program, at, kg)
@@ -333,7 +341,7 @@ class Tally:
         ran = self._shell(tool, given, where)
         self._paths(tool, given)
         if tool == "Skill" and isinstance(given.get("skill"), str) and given["skill"]:
-            self.skills.setdefault(cut(given["skill"], MAX_NAME), [0, 0])[0] += 1
+            self.skills.setdefault(cut(given["skill"], MAX_NAME), [0, 0, 0])[0] += 1
         if tool in SEARCH_TOOLS or (ran is not None and ran in SEARCH_PROGRAMS):
             self.kg.search()
         if call_id:
@@ -404,10 +412,11 @@ class Tally:
 
     def skill_back(self, name) -> None:
         if isinstance(name, str) and name:
-            self.skills.setdefault(cut(name, MAX_NAME), [0, 0])[1] += 1
+            self.skills.setdefault(cut(name, MAX_NAME), [0, 0, 0])[1] += 1
 
     def compaction(self, ident: str, trigger, tokens=None) -> None:
         self.compactions[ident] = str(trigger or "auto")
+        self.listed = False
         tokens = count(tokens)
         if tokens:
             self.compacted_tokens = max(self.compacted_tokens or 0, tokens)
@@ -422,13 +431,34 @@ class Tally:
     def sees_context(self) -> None:
         """A Claude Code main thread came: its sources of context count, from 0."""
         if self.sources is None:
-            self.sources = Counter(dict.fromkeys(CONTEXT_SOURCES, 0))
+            self.sources = Counter(dict.fromkeys(FACET_SOURCES, 0))
 
     def context_text(self, source: str, text) -> None:
-        """``text`` came into the main thread's context from ``source`` (one of CONTEXT_SOURCES)."""
+        """``text`` came into the main thread's context from ``source`` (one of FACET_SOURCES)."""
         self.sees_context()
         if isinstance(text, str) and text:
             self.sources[source] = min(self.sources[source] + len(text), MAX_COUNT)
+
+    def skill_list(self, text, whole: bool) -> None:
+        """The skill list came into the main thread's context: ``whole``, or the skills added to it. A whole list while
+        the context, since its last compaction or a /clear, already held one counts in SKILLS_AGAIN too."""
+        self.context_text("skills", text)
+        if whole and isinstance(text, str) and text:
+            if self.listed:
+                self.context_text(SKILLS_AGAIN, text)
+            self.listed = True
+
+    def cleared(self) -> None:
+        """The person cleared the main thread's context (/clear)."""
+        self.listed = False
+
+    def skill_body(self, name, text) -> None:
+        """The text of skill ``name`` came into the main thread's context: loaded, or brought back by a compaction."""
+        if isinstance(text, str) and text:
+            self.context_text(SKILL_BODIES, text)
+            if isinstance(name, str) and name:
+                found = self.skills.setdefault(cut(name, MAX_NAME), [0, 0, 0])
+                found[2] = min(found[2] + len(text), MAX_COUNT)
 
     def load_file(self, path, kind, content) -> None:
         """An always-loaded file (CLAUDE.md, AGENTS.md, a memory index) came into the main thread's context."""
@@ -470,14 +500,16 @@ class Tally:
             "cost_usd": round(self.cost, 6) if self.cost is not None else None,
             "hooks": self._hooks(),
             "skills": [
-                {"skill": name, "calls": calls, "returned": back}
-                for name, (calls, back) in sorted(self.skills.items(), key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))
+                {"skill": name, "calls": calls, "returned": back, "chars": chars}
+                for name, (calls, back, chars) in sorted(
+                    self.skills.items(), key=lambda kv: (-kv[1][0], -kv[1][1], -kv[1][2], kv[0])
+                )
             ][:MAX_SKILLS],
             "api_errors": [
                 {"text": text, "n": n, "cause": review.environment_cause(text) or WORK}
                 for text, n in ranked(self.api_errors)[:MAX_ERRORS]
             ],
-            "sources": None if self.sources is None else {name: self.sources[name] for name in CONTEXT_SOURCES},
+            "sources": None if self.sources is None else {name: self.sources[name] for name in FACET_SOURCES},
             "loaded": None if self.sources is None else self._loaded(),
         }
 

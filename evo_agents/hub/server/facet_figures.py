@@ -42,8 +42,9 @@ SAMPLE_CHARS = 200
 LISTS = ("tools", "bash", "errors", "repeated_commands", "commands", "command_at", "user_turns", "kg")
 # The fields a digest counts its own way (friction.SkillTally): the facet's ``skills`` are the Skill calls it read.
 DIGEST_FIRST = frozenset({"skills"})
-# The parts of a facet the runtime and the harness of the figures read (evo_agents.hub.runtime_metrics).
-RUNTIME_PARTS = ("usage", "cost_usd", "context", "compactions", "compaction", "hooks", "sources", "loaded")
+# The parts of a facet the runtime and the harness of the figures read (evo_agents.hub.runtime_metrics); the harness
+# reads the characters of each skill's text from ``skills``, which the skills of the figures read from digests instead.
+RUNTIME_PARTS = ("usage", "cost_usd", "context", "compactions", "compaction", "hooks", "sources", "loaded", "skills")
 PARTS = (*LISTS, *RUNTIME_PARTS)
 WEEK_SUMS = (
     "messages",
