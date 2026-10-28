@@ -378,6 +378,12 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
         "kg_fallbacks": 1.0,
         "kg_misses": 1.0,
         **{f"kg_review_{rule}": 0.0 for rule in RULES},  # no blob store here: the queue is not counted
+        # what agents got from their lookups: no session read any here, so each level is 0
+        "kg_lookup_tokens_p50": 0.0,
+        "kg_lookup_tokens_p90": 0.0,
+        "kg_answer_tokens": 0.0,
+        "kg_grep_after": 0.0,
+        "kg_unclicked": 0.0,
     }
 
 
