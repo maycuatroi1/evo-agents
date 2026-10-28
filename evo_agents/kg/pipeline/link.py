@@ -18,6 +18,18 @@ a short name several symbols share goes to the one nearest the document: its rep
 the directories it shares with the document, the topic its file name gives, and outside tests for a text that is
 not a test's. It stays ambiguous only when they tie.
 
+A path ``x.py`` the project no longer holds names the package ``x/__init__.py`` when that one is there: the module
+became a package. A path still not found is not counted as dangling when the text says it is of another tree, or
+when it was a file the history read: in a shell command after ``cd ~/github/<name>`` (until the subshell closes),
+written next to a repo's name (``evo-cli `tests/x.py```, ``tests/x.py of evo-cli``), in a table row whose first
+cell is a repo, or in a plan step of a repo, it is read in that repo, and is outside when that repo is one
+harness.yaml declares but no source reads (a ``repo:path`` of such a repo is outside too, and ``name@repo:path``
+is a plugin id, not a repo path); a plan file moved between ``plans/active/`` and ``plans/completed/`` names its
+new path; a placeholder (``tests/test_x.py``, ``release/X.Y.Z``, ``images/name.png``) and a lockfile name no
+file the graph holds; the text of a test fixture describes a project of its own. A dated item (a commit, a pull
+request, a chat message, a plan or document under ``completed/`` or an archive directory) wrote of the tree as it
+was then: a path some commit read changed there is ``past``, not a missing file.
+
 A call into another file (a ``calls`` reference of the structure stage) links its caller to the symbol
 the file's imports name, ``resolved``: each ``via`` entry names the files to look in (a module, candidate
 paths, a package, a Go import path, a JS or TS specifier read through the nearest tsconfig) and the
@@ -61,12 +73,12 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "16"
+LINK_VERSION = "17"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
 QUALIFIED_SYMBOL = re.compile(r"(?<![\w/.-])(?:([A-Za-z0-9_.-]+):)?((?:[\w.-]+/)*[\w.-]+\.\w{1,6})::([A-Za-z_][\w.]*)")
-REPO_PATH = re.compile(r"(?<![\w/.:-])([A-Za-z0-9_.-]+):((?:[\w.-]+/)*[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])")
+REPO_PATH = re.compile(r"(?<![\w/.:@-])([A-Za-z0-9_.-]+):((?:[\w.-]+/)*[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])")
 PATH = re.compile(r"(?<![\w/.:@-])((?:[\w.-]+/)+[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])")
 # A path whose file name holds spaces (`reports/Backend tập trung cho agent.md`), up to its first extension: linked only
 # when it is a file of the project as written.
@@ -84,6 +96,26 @@ GITHUB_PULL = re.compile(r"(?<![\w/.-])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)\b
 PULL_WORD = re.compile(r"\b(?:PR|[Pp]ull [Rr]equest) ?#(\d+)\b")  # "PR #57" in the text of a step of that repo
 TOKEN = re.compile(r"(?<![\w.-])([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9])(?![\w-])")
 SYMBOLISH = re.compile(r"^[A-Za-z_][\w]*(?:\.[A-Za-z_]\w*)*(?:\(\))?$")
+# `cd ~/github/evo-cli`, `cd /srv/app`, `cd "$HOME/x"`: a shell command moving into a tree named by its last segment.
+CD = re.compile(r"(?<![\w-])cd\s+['\"]?((?:~|/|\$)[^\s;&|()'\"]*)")
+REPO_BEFORE = re.compile(r"([A-Za-z0-9_.-]+)(?:'s)?[\s`'\"]*$")  # `evo-cli tests/x.py`, evo-cli's `tests/x.py`
+REPO_AFTER = re.compile(r"^[`'\"]*\s+(?:of|in|from|của|trong)\s+[`'\"]?([A-Za-z0-9_.-]+)")  # tests/x.py of evo-cli
+PLACEHOLDERS = frozenset({"x", "xx", "xxx", "y", "z", "n", "foo", "bar", "baz", "name", "example", "placeholder"})
+# The directories of a dated plan or document: what sits there wrote of the tree as it was then.
+DATED_DIR = re.compile(r"(^|/)(completed|done|archive|archived)/", re.IGNORECASE)
+DATED_KINDS = frozenset({"commit", "pr", "message"})
+PLAN_FILE = re.compile(r"(^|/)plans/(active|completed)/([^/]+\.ya?ml)$")
+FIXTURE_DIRS = frozenset({"fixtures", "evals", "mocks"})  # test data and eval scenarios: a project of their own
+LOCKFILE = re.compile(
+    r"(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|uv\.lock|Cargo\.lock|go\.sum)$"
+)
+
+
+def is_placeholder(path: str) -> bool:
+    """Whether a path's file name is a placeholder: its words (split at ``.``, ``_``, ``-``, the extension too) are
+    ``test`` and placeholders such as ``x``, ``X.Y.Z``, ``name``, at least one a placeholder."""
+    words = [w.lower() for w in re.split(r"[._-]", posixpath.basename(path.rstrip("/"))) if w]
+    return any(w in PLACEHOLDERS for w in words) and all(w in PLACEHOLDERS or w == "test" for w in words[:-1])
 
 
 def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -> dict:
@@ -126,6 +158,8 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
     index["roots"] = _package_roots(index["path"], index["tsconfig"])
     index["pathsuffix"] = _path_suffixes(index["path"])
     index["dirsuffix"] = {"/".join(d.split("/")[i:]) for d in index["dir"] for i in range(d.count("/") + 1)}
+    index["read_repos"] = {e["repo"] for entries in index["path"].values() for e in entries if e.get("repo")}
+    index["past"] = _past_paths(index["commit"])
     # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
     index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
     index["identifiers"] = [
@@ -285,6 +319,18 @@ def _path_suffixes(paths: dict) -> dict[str, list[dict]]:
         segments = key.split("/")
         for i in range(1, len(segments) - 1):
             out["/".join(segments[i:])].extend({**e, "path": key} for e in entries)
+    return out
+
+
+def _past_paths(commits: dict[str, list[dict]]) -> set[str]:
+    """Every path a commit read changed, and each trailing run of two segments or more of it: the files the history
+    knows, written as a dated item may write them (``hub/server/runs.py``)."""
+    out: set[str] = set()
+    for entries in commits.values():
+        for e in entries:
+            for path in e["paths"]:
+                segments = path.split("/")
+                out.update("/".join(segments[i:]) for i in range(max(len(segments) - 1, 1)))
     return out
 
 
@@ -467,6 +513,8 @@ class Linker:
         self.base_dir = posixpath.dirname(path) if path else ""
         self.path = path or ""
         self.touched: frozenset[str] = frozenset()  # the files a commit changed: what its message most likely names
+        self.dated = bool(DATED_DIR.search(self.path))  # wrote of the tree as it was (``link_item`` sets it by kind)
+        self.fixture = bool(FIXTURE_DIRS & set(self.path.split("/")[:-1]))  # the text of a project of its own
         self.edges: dict[tuple, dict] = {}
         self.nodes: dict[str, dict] = {}
         self.stats = {
@@ -537,6 +585,62 @@ class Linker:
         return [], False
 
     def path_target(self, path: str, repo: str | None, guess: bool = False) -> tuple[str | None, str]:
+        """``_path_target``, and for a module ``x.py`` it finds nothing at, the package ``x/__init__.py`` it became."""
+        found = self._path_target(path, repo, guess)
+        if found[0] is None and path.endswith(".py") and posixpath.basename(path) != "__init__.py":
+            package = self._path_target(f"{path[:-3]}/__init__.py", repo, guess)
+            if package[0] is not None:
+                return package
+        return found
+
+    def unseen(self, path: str, text: str, span: tuple[int, int], step_repo: str | None) -> tuple[str | None, str]:
+        """What a path ``path_target`` found dangling names after all, by what the text around it says (the module
+        docstring): the file of the tree it is of, ``outside`` for a tree no source reads, a placeholder or a fixture's
+        text, ``past`` for a file the history read in a dated item; else still ``dangling``."""
+        tree = self.tree_of(text, span) or step_repo
+        if tree and tree != self.repo:
+            if tree not in self.index["read_repos"]:
+                return None, "outside"
+            found = self.path_target(path, tree)
+            if found[0] is not None:
+                return found
+        moved = PLAN_FILE.search(path)
+        if moved:  # a plan closed or reopened since: plans/active/x.yaml is now plans/completed/x.yaml
+            other = "completed" if moved.group(2) == "active" else "active"
+            found = self.path_target(f"{path[: moved.start(2)]}{other}/{moved.group(3)}", None)
+            if found[0] is not None:
+                return found
+        if self.fixture or is_placeholder(path) or LOCKFILE.search(path):
+            return None, "outside"
+        if self.dated and posixpath.normpath(path).lstrip("/") in self.index["past"]:
+            return None, "past"
+        return None, "dangling"
+
+    def tree_of(self, text: str, span: tuple[int, int]) -> str | None:
+        """The tree a path at ``span`` of ``text`` is written of: the last segment of the last ``cd`` before it whose
+        subshell is still open, else a repo of harness.yaml named next to it or in the first cell of its table row."""
+        before = text[: span[0]]
+        line = before[before.rfind("\n") + 1 :].lstrip()
+        if line.startswith("|"):
+            first = line.split("|")[1].strip().strip("`*").strip()
+            if first in self.index["repo"]:
+                return first
+        moves = list(CD.finditer(before))
+        if moves:
+            rest = before[moves[-1].end() :]
+            if rest.count(")") <= rest.count("("):
+                name = posixpath.basename(moves[-1].group(1).rstrip("/"))
+                if name and not name.startswith("$"):
+                    return name
+        for m in (
+            REPO_BEFORE.search(text, max(0, span[0] - 60), span[0]),
+            REPO_AFTER.match(text[span[1] : span[1] + 60]),
+        ):
+            if m and m.group(1) in self.index["repo"]:
+                return m.group(1)
+        return None
+
+    def _path_target(self, path: str, repo: str | None, guess: bool = False) -> tuple[str | None, str]:
         """The file or directory a path names, and how: ``parsed`` relative to this item's directory or with its repo,
         ``resolved`` as written from a repo's root, ``ambiguous`` or ``dangling`` when it finds two or none. With
         ``guess`` (a path in prose), a path not found as written is also tried ``resolved``: relative to a directory
@@ -949,10 +1053,13 @@ class Linker:
             if target is None and status == "dangling":
                 target, status = self.path_target(target_text, None, guess=True)
                 how = status
+            if target is None and status == "dangling":
+                target, status = self.unseen(target_text, text, span, step_repo)
+                how = status
             if target:
                 self._count("resolved")
                 self._link(src, target, unit, m.start(1), how, "md-link", field)
-            elif status != "outside":
+            elif status not in ("outside", "past"):
                 self._count(status if status in ("ambiguous", "dangling") else "dangling", target_text)
 
         for m in URL.finditer(text):
@@ -979,7 +1086,9 @@ class Linker:
             outcome = "ambiguous" if entries else "dangling"
             if not entries and not repo:  # `worker/cli.py::main`: the file written short
                 file, status = self.path_target(path, None, guess=True)
-                if status == "outside":
+                if file is None and status == "dangling":
+                    file, status = self.unseen(path, text, m.span(2), step_repo)
+                if status in ("outside", "past"):
                     continue
                 target, how = (self.index["def"].get(f"{file}::{qual}") if file else None), "resolved"
                 outcome = "ambiguous" if status == "ambiguous" else "dangling"
@@ -1013,6 +1122,8 @@ class Linker:
             repo, path = m.group(1), m.group(2)
             if repo not in self.index["repo"] or not claim(m):
                 continue
+            if repo not in self.index["read_repos"]:
+                continue  # a repo harness.yaml declares and no source reads: outside the project, not counted
             target, status = self.path_target(path, repo)
             if target:
                 self._count("resolved")
@@ -1029,10 +1140,12 @@ class Linker:
             target, status = self.path_target(rest if repo else path, repo, guess=not repo)
             if target is None and repo:
                 target, status = self.path_target(path, None, guess=True)
+            if target is None and status == "dangling":
+                target, status = self.unseen(path, text, m.span(1), step_repo)
             if target:
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), status, "path", field)
-            elif status != "outside":
+            elif status not in ("outside", "past"):
                 self._count(status if status in ("ambiguous", "dangling") else "dangling", m.group(0))
 
         for m in ROOT_DOC.finditer(text):
@@ -1120,6 +1233,7 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     props = record.get("props") or {}
     defined = frozenset((f["src"], f["dst"]) for f in structure if f["t"] == "edge" and f["rel"] == "defines")
     linker = Linker(index, item_id, props.get("repo"), props.get("path"), defined)
+    linker.dated = linker.dated or record["kind"] in DATED_KINDS
     linker.touched = frozenset(
         v for f in structure if f["t"] == "ref" and f["rel"] == "changes" for v in f["target"].get("values") or []
     )
