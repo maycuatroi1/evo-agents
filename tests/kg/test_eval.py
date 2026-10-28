@@ -56,6 +56,26 @@ def test_eval_names_every_bad_line_of_a_question_set():
         ev.parse_questions(["", "  "])
 
 
+def test_eval_reads_a_sets_header_and_splits_it_for_good_by_the_hash_of_each_id():
+    lines = ['{"set": "evo-agents", "version": 3}'] + [
+        json.dumps({"id": f"q{n}", "question": f"ask {n}", "type": "where", "files": ["a.py"]}) for n in range(200)
+    ]
+    found = ev.parse_set(lines)
+    assert (found.name, found.version, len(found.questions)) == ("evo-agents", 3, 200)
+    tune, holdout = found.part(ev.TUNE), found.part(ev.HOLDOUT)
+    assert len(tune) + len(holdout) == 200 and found.part("all") == found.part(None) == found.questions
+    assert 0.2 < len(holdout) / 200 < 0.4  # HOLDOUT_SHARE, 0.3
+    # the part is the id's alone: the same id falls in the same part in any set, at any place
+    again = ev.parse_set(list(reversed(lines[1:])))
+    assert {q.id for q in again.part(ev.HOLDOUT)} == {q.id for q in holdout} and again.name is None
+    assert all(q.split == ev.split_of(q.id) for q in found.questions)
+    assert ev.split_of("q0") == ev.split_of("q0") and {ev.split_of(f"q{n}") for n in range(20)} == set(ev.SPLITS)
+    with pytest.raises(ev.QuestionError, match="the header's version is a whole number"):
+        ev.parse_set(['{"set": "x", "version": 0}', lines[1]])
+    with pytest.raises(ev.QuestionError, match="line 2: not a JSON object|line 2: question is required"):
+        ev.parse_set([lines[1], '{"set": "late"}'])  # a header is the first line or no header
+
+
 # -- matching answers ----------------------------------------------------------------------------------------------
 
 SYMBOL = {
@@ -232,6 +252,21 @@ def test_eval_prints_the_numbers_of_each_method_per_question_type(checkout):
         assert got["correct_per_1k_tokens"] == round(1000 * found / tokens, 3), (kind, method)
         assert got["mean_tokens"] == round(tokens / n, 1) and got["skipped"] == 0
 
+    # hit@5: an answer in the first 5; capped Recall@5: those found there over min(5, answers)
+    hits = {
+        ("identifier", "kg_search"): (0.5, 0.5, 15.0, 15.0),
+        ("plan-step", "kg_search"): (1.0, 0.5, 20.0, 40.0),
+        ("plan-step", "kg_context"): (0.0, 0.0, None, None),
+        ("plan-step", "grep"): (1.0, 1.0, ev.estimate_tokens(grep_q3), ev.estimate_tokens(grep_q3)),
+        ("all", "kg_search"): (0.6667, 0.5, 17.5, 23.3),
+        ("all", "grep"): (0.6667, 0.6667, None, None),
+    }
+    for (kind, method), (hit, capped, per_hit, per_file) in hits.items():
+        got = row(report, kind, method)
+        assert (got["hit@5"], got["capped_recall@5"]) == (hit, capped), (kind, method)
+        if per_hit is not None or hit == 0:
+            assert (got["tokens_per_hit"], got["tokens_per_file"]) == (per_hit, per_file), (kind, method)
+
     table = ev.render(report).splitlines()
     assert table[0].split() == [
         "TYPE",
@@ -239,17 +274,37 @@ def test_eval_prints_the_numbers_of_each_method_per_question_type(checkout):
         "N",
         "R@1",
         "R@5",
+        "HIT@5",
+        "R@5",
+        "CAP",
         "MRR",
         "EMPTY",
         "OK/1K",
         "TOK",
         "MEAN",
         "TOK",
+        "TOK/HIT",
+        "TOK/FILE",
         "P95",
         "MS",
     ]
-    assert table[1].split()[:8] == ["identifier", "kg_search", "2", "0.000", "0.500", "0.250", "50%", "133.33"]
-    assert table[9].split()[:7] == ["all", "grep", "3", "0.167", "0.667", "0.500", "33%"]
+    assert table[1].split()[:13] == [
+        "identifier",
+        "kg_search",
+        "2",
+        "0.000",
+        "0.500",
+        "0.500",
+        "0.500",
+        "0.250",
+        "50%",
+        "133.33",
+        "8",
+        "15",
+        "15",
+    ]
+    assert table[9].split()[:9] == ["all", "grep", "3", "0.167", "0.667", "0.667", "0.667", "0.500", "33%"]
+    assert table[5].split()[10:13] == ["30", "-", "-"]  # plan-step kg_context found nothing: no tokens per hit
     assert "kg_context: 1 call(s) answered with an error; first, on q2: nothing visible matches" in table[-1]
     assert "3 question(s); kg_search limit 7, kg_context and grep within 1000 tokens" in "\n".join(table)
 
@@ -327,12 +382,38 @@ def test_eval_command_runs_the_fixture_set_on_a_built_graph(demo, capsys):
         assert got["empty"] == round(sum(1 for r in mine if r["count"] == 0) / len(mine), 4)
         assert got["correct_per_1k_tokens"] == round(1000 * sum(r["found"] for r in mine) / tokens, 3)
 
+        hit5 = sum(1 for r in mine if any(k and k <= 5 for k in r["ranks"])) / len(mine)
+        assert got["hit@5"] == round(hit5, 4) and got["capped_recall@5"] >= got["recall@5"]
+        assert got["tokens_per_file"] == (round(tokens / len(mine) / recall5, 1) if recall5 else None)
+    assert data["set"] is None and data["split"] == "all"
+
     assert main(["kg", "eval", str(FIXTURE), "--project", root, "--type", "identifier", "--method", "kg_search"]) == 0
     table = capsys.readouterr().out.splitlines()
     assert table[0].startswith("TYPE") and [line.split()[:3] for line in table[1:3]] == [
         ["identifier", "kg_search", "3"],
         ["all", "kg_search", "3"],
     ]
+    assert "HIT@5" in table[0] and "TOK/FILE" in table[0]
+
+
+def test_eval_command_asks_one_part_of_a_set_and_names_the_set(demo, tmp_path, capsys):
+    root = str(demo.harness.root)
+    lines = FIXTURE.read_text().splitlines()
+    named = tmp_path / "named.jsonl"
+    named.write_text("\n".join(['{"set": "demo", "version": 2}', *lines]) + "\n")
+    parts = {split: [q.id for q in ev.load_set(named).part(split)] for split in ev.SPLITS}
+    for split in ev.SPLITS:
+        if not parts[split]:
+            assert main(["kg", "eval", str(named), "--project", root, "--split", split]) == 2
+            assert f"no question of part {split}" in capsys.readouterr().err
+            continue
+        assert main(["kg", "eval", str(named), "--project", root, "--split", split, "--json"]) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert (data["set"], data["version"], data["split"]) == ("demo", 2, split)
+        assert sorted({r["id"] for r in data["results"]}) == sorted(parts[split])
+        assert {r["split"] for r in data["results"]} == {split}
+    assert main(["kg", "eval", str(named), "--project", root, "--method", "kg_search"]) == 0
+    assert f"set demo v2, {len(lines)} question(s);" in capsys.readouterr().out
 
 
 def test_eval_command_refuses_a_bad_set_and_fails_when_a_method_errs_on_every_question(demo, tmp_path, capsys):

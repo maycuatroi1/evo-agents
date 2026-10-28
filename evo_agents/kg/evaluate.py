@@ -11,6 +11,13 @@ entry is one answer. ``project`` picks the graph (default: the command's ``--pro
 current directory), ``repo`` keeps grep to one repo of the project, and ``id`` defaults to ``line N``. Other keys
 are kept for whoever wrote the set and not read.
 
+A set may open with a header line, ``{"set": "evo-agents", "version": 3}``: the set's name and version, which the report
+names. The hub keeps a project's versioned set (``evo-agents hub kg eval-set push|pull``), and ``pull`` writes that
+header. Each question falls in one part of the set by the hash of its id (``split_of``): HOLDOUT_SHARE of them in
+``holdout``, the rest in ``tune``, the same on every machine and on the hub. Ranking is tuned on ``tune``
+(``--split tune``); ``holdout`` is what the hub's nightly evaluation asks (``evo_agents.hub.kg_health_eval``), and the
+ranking code may not import this module (lint-imports, contract kg-ranking-not-eval).
+
 Each question goes through each method with the same fixed budget:
 
 - ``kg_search``: the question as the query, ``limit`` results, read in order.
@@ -26,16 +33,20 @@ that node. A file grep shows answers a file the same way, and a node whose id na
 ``R:file:P``) when that is the file: grep finds a symbol by the file that defines it.
 
 The report has, per question type and method: the questions run, Recall@1 and Recall@5 (the share of a question's
-answers in its first k results, averaged over the questions), MRR (one over the rank of the first answer found, 0
-when none is), the share of questions with no result (an error counts as none), the answers found anywhere in the
-output per 1,000 tokens of output (summed over the questions), the mean tokens of an output and the 95th percentile
-of the time a call took (nearest rank). Tokens are estimated as in the hub's handoff: UTF-8 bytes / 3, rounded up.
+answers in its first k results, averaged over the questions), hit@5 (the share of questions with an answer in the
+first 5), capped Recall@5 (the answers in the first 5 over min(5, the question's answers), averaged), MRR (one over the
+rank of the first answer found, 0 when none is), the share of questions with no result (an error counts as none), the
+answers found anywhere in the output per 1,000 tokens of output (summed over the questions), the mean tokens of an
+output, the tokens per hit (the mean tokens over hit@5) and per answer found (the mean tokens over Recall@5), None when
+nothing was found, and the 95th percentile of the time a call took (nearest rank). Tokens are estimated as in the
+hub's handoff: UTF-8 bytes / 3, rounded up.
 
 The command only reads: the graph through the tools of a local store or the hub, the checkouts through git.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -61,6 +72,10 @@ GREP_LINES_PER_FILE = 3
 GREP_LINE_CHARS = 200
 GREP_TIMEOUT = 60.0
 ALL_TYPES = "all"
+HIT_K = 5  # hit@5, capped Recall@5 and the tokens per hit and per answer found read the first HIT_K results
+TUNE, HOLDOUT = "tune", "holdout"
+SPLITS = (TUNE, HOLDOUT)
+HOLDOUT_SHARE = 0.3  # of the questions of a set, by the hash of their id: changing it moves questions between parts
 # `kg eval-questions` (evo_agents.hub.kg_eval): the type of its questions, what of a step asks, the most files a step
 # may change and still make one question. Here so that building the command line imports nothing of the hub.
 PLAN_STEP_TYPE = "plan-step"
@@ -94,6 +109,29 @@ class Question:
     def answers(self) -> int:
         return len(self.files) + len(self.nodes)
 
+    @property
+    def split(self) -> str:
+        return split_of(self.id)
+
+
+def split_of(question_id: str) -> str:
+    """The part of a set a question falls in, ``tune`` or ``holdout``, by the SHA-256 of its id: fixed for good."""
+    digest = hashlib.sha256(question_id.encode()).digest()
+    return HOLDOUT if int.from_bytes(digest[:8], "big") < HOLDOUT_SHARE * 2**64 else TUNE
+
+
+@dataclass(frozen=True)
+class QuestionSet:
+    """A question set as read: its questions, and its name and version when a header line gives them."""
+
+    questions: list[Question]
+    name: str | None = None
+    version: int | None = None
+
+    def part(self, split: str | None) -> list[Question]:
+        """The questions of ``split`` (``tune`` or ``holdout``); all of them for None or ``all``."""
+        return [q for q in self.questions if split in (None, ALL_TYPES) or q.split == split]
+
 
 @dataclass
 class Outcome:
@@ -112,8 +150,18 @@ class Outcome:
     def found(self) -> int:
         return sum(1 for rank in self.ranks if rank is not None)
 
+    def within(self, k: int) -> int:
+        return sum(1 for rank in self.ranks if rank is not None and rank <= k)
+
     def recall(self, k: int) -> float:
-        return sum(1 for rank in self.ranks if rank is not None and rank <= k) / max(len(self.ranks), 1)
+        return self.within(k) / max(len(self.ranks), 1)
+
+    def hit(self, k: int) -> bool:
+        return self.within(k) > 0
+
+    def capped_recall(self, k: int) -> float:
+        """The answers in the first ``k`` over min(k, the answers): 1.0 when the first k are all answers."""
+        return self.within(k) / max(min(k, len(self.ranks)), 1)
 
     def reciprocal_rank(self) -> float:
         best = min((rank for rank in self.ranks if rank is not None), default=None)
@@ -123,6 +171,7 @@ class Outcome:
         return {
             "id": self.question.id,
             "type": self.question.type,
+            "split": self.question.split,
             "project": self.question.project,
             "method": self.method,
             "ranks": self.ranks,
@@ -211,10 +260,29 @@ def parse_question(entry, number: int) -> tuple[Question | None, list[str]]:
     return question, []
 
 
-def parse_questions(lines: Iterable[str]) -> list[Question]:
+def is_header(entry) -> bool:
+    """Whether a line of a set is its header: an object with ``set`` and no ``question``."""
+    return isinstance(entry, dict) and "set" in entry and "question" not in entry
+
+
+def _header(entry: dict, problems: list[str]) -> tuple[str | None, int | None]:
+    name, version = entry.get("set"), entry.get("version")
+    if not isinstance(name, str) or not name.strip():
+        problems.append("line 1: the header's set is a non-empty string")
+        name = None
+    if version is not None and (type(version) is not int or version < 1):
+        problems.append("line 1: the header's version is a whole number from 1")
+        version = None
+    return (name.strip() if name else None), version
+
+
+def parse_set(lines: Iterable[str]) -> QuestionSet:
+    """A question set: an optional header line, then a question a line; QuestionError names every bad line."""
     questions: list[Question] = []
     problems: list[str] = []
     seen: set[str] = set()
+    name = version = None
+    first = True
     for number, line in enumerate(lines, 1):
         if not line.strip():
             continue
@@ -222,7 +290,13 @@ def parse_questions(lines: Iterable[str]) -> list[Question]:
             entry = json.loads(line)
         except json.JSONDecodeError as exc:
             problems.append(f"line {number}: not JSON ({exc.msg})")
+            first = False
             continue
+        if first and is_header(entry):
+            name, version = _header(entry, problems)
+            first = False
+            continue
+        first = False
         question, found = parse_question(entry, number)
         if question is not None and question.id in seen:
             found = [f"id {question.id!r} is used twice"]
@@ -235,15 +309,23 @@ def parse_questions(lines: Iterable[str]) -> list[Question]:
         raise QuestionError("the question set has problems:\n  " + "\n  ".join(shown))
     if not questions:
         raise QuestionError("the question set has no question")
-    return questions
+    return QuestionSet(questions, name, version)
 
 
-def load_questions(path: Path | str) -> list[Question]:
+def parse_questions(lines: Iterable[str]) -> list[Question]:
+    return parse_set(lines).questions
+
+
+def load_set(path: Path | str) -> QuestionSet:
     try:
         text = Path(path).expanduser().read_text(encoding="utf-8")
     except OSError as exc:
         raise QuestionError(f"cannot read {path}: {exc.strerror or exc}") from None
-    return parse_questions(text.splitlines())
+    return parse_set(text.splitlines())
+
+
+def load_questions(path: Path | str) -> list[Question]:
+    return load_set(path).questions
 
 
 # -- matching answers --------------------------------------------------------------------------------------------
@@ -458,11 +540,18 @@ def summarize(outcomes: list[Outcome], kind: str, method: str) -> dict:
     row = {"type": kind, "method": method, "n": n, "skipped": len(outcomes) - n}
     for k in KS:
         row[f"recall@{k}"] = round(sum(o.recall(k) for o in ran) / n, 4) if n else 0.0
+    hit = sum(1 for o in ran if o.hit(HIT_K)) / n if n else 0.0
+    recall = sum(o.recall(HIT_K) for o in ran) / n if n else 0.0
+    mean = tokens / n if n else 0.0
+    row[f"hit@{HIT_K}"] = round(hit, 4)
+    row[f"capped_recall@{HIT_K}"] = round(sum(o.capped_recall(HIT_K) for o in ran) / n, 4) if n else 0.0
     row["mrr"] = round(sum(o.reciprocal_rank() for o in ran) / n, 4) if n else 0.0
     row["empty"] = round(sum(1 for o in ran if o.count == 0) / n, 4) if n else 0.0
     row["errors"] = sum(1 for o in ran if o.error)
     row["correct_per_1k_tokens"] = round(1000 * sum(o.found for o in ran) / tokens, 3) if tokens else 0.0
-    row["mean_tokens"] = round(tokens / n, 1) if n else 0.0
+    row["mean_tokens"] = round(mean, 1)
+    row["tokens_per_hit"] = round(mean / hit, 1) if hit else None
+    row["tokens_per_file"] = round(mean / recall, 1) if recall else None
     row["p95_ms"] = round(p95([o.ms for o in ran]), 1)
     return row
 
@@ -488,9 +577,12 @@ def evaluate(
     limit: int = DEFAULT_LIMIT,
     budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     grep_ref: str | None = None,
+    question_set: QuestionSet | None = None,
+    split: str | None = None,
 ) -> Report:
     """Run every method on every question. ``session_for`` and ``checkouts_for`` take a question's project (None:
-    the default one) and are called once per project."""
+    the default one) and are called once per project. ``question_set`` and ``split`` are only named in the settings:
+    pass the questions of the split."""
     methods = tuple(methods)
     sessions: dict[str | None, object] = {}
     checkouts: dict[str | None, dict[str, Path]] = {}
@@ -511,6 +603,9 @@ def evaluate(
         "limit": limit,
         "budget_tokens": budget_tokens,
         "grep_ref": grep_ref,
+        "set": question_set.name if question_set else None,
+        "version": question_set.version if question_set else None,
+        "split": split or ALL_TYPES,
     }
     return Report(settings, report_rows(outcomes, methods), outcomes)
 
@@ -521,24 +616,34 @@ COLUMNS = (
     ("N", "n", "{}"),
     ("R@1", "recall@1", "{:.3f}"),
     ("R@5", "recall@5", "{:.3f}"),
+    ("HIT@5", f"hit@{HIT_K}", "{:.3f}"),
+    ("R@5 CAP", f"capped_recall@{HIT_K}", "{:.3f}"),
     ("MRR", "mrr", "{:.3f}"),
     ("EMPTY", "empty", "{:.0%}"),
     ("OK/1K TOK", "correct_per_1k_tokens", "{:.2f}"),
     ("MEAN TOK", "mean_tokens", "{:.0f}"),
+    ("TOK/HIT", "tokens_per_hit", "{:.0f}"),
+    ("TOK/FILE", "tokens_per_file", "{:.0f}"),
     ("P95 MS", "p95_ms", "{:.0f}"),
 )
+
+
+def _cell(value, fmt: str) -> str:
+    return "-" if value is None else fmt.format(value)
 
 
 def render(report: Report) -> str:
     """The rows as a table, then a line for each method that failed or skipped questions."""
     table = [[title for title, _, _ in COLUMNS]]
-    table += [[fmt.format(row[key]) for _, key, fmt in COLUMNS] for row in report.rows]
+    table += [[_cell(row[key], fmt) for _, key, fmt in COLUMNS] for row in report.rows]
     widths = [max(len(cells[i]) for cells in table) for i in range(len(COLUMNS))]
     lines = ["  ".join(c.ljust(w) for c, w in zip(cells, widths, strict=True)).rstrip() for cells in table]
     s = report.settings
+    named = f"set {s['set']}" + (f" v{s['version']}" if s.get("version") else "") + ", " if s.get("set") else ""
+    part = f" of part {s['split']}" if s.get("split", ALL_TYPES) != ALL_TYPES else ""
     lines.append(
-        f"{s['questions']} question(s); kg_search limit {s['limit']}, kg_context and grep within {s['budget_tokens']}"
-        f" tokens; grep on {s['grep_ref'] or 'the working tree'}"
+        f"{named}{s['questions']} question(s){part}; kg_search limit {s['limit']}, kg_context and grep within"
+        f" {s['budget_tokens']} tokens; grep on {s['grep_ref'] or 'the working tree'}"
     )
     for method in report.settings["methods"]:
         mine = [o for o in report.outcomes if o.method == method]

@@ -12,7 +12,8 @@ kg_review_dismissals (0141) holds the items of the review queue writers dismisse
 kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
 with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0177) holds each kg_search of a
 session or a run with what the agent opened after it, under the label of the session or the run
-(``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``.
+(``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``. kg_eval_sets (0178) holds each version of a project's
+retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``.
 """
 
 from __future__ import annotations
@@ -292,6 +293,28 @@ def query_labels(metadata: MetaData) -> Table:
         Index(f"{name}_session_idx", "project_id", "session_id"),
         Index(f"{name}_run_idx", "run_id"),
         Index(f"{name}_project_idx", "project_id", "searched_at"),
+    )
+
+
+def eval_sets(metadata: MetaData) -> Table:
+    """kg_eval_sets (0178), added to ``metadata``: each version of a project's question set for ``kg eval``, its
+    name, its questions as JSON objects (``evo_agents.kg.evaluate``), the digest of what they ask and answer, and who
+    put it."""
+    name = "kg_eval_sets"
+    return Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("version", Integer, nullable=False),
+        Column("name", Text, nullable=False),
+        Column("questions", JSONB, nullable=False),
+        Column("digest", Text, nullable=False),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
+        PrimaryKeyConstraint("project_id", "version", name=f"{name}_pkey"),
+        CheckConstraint("version >= 1", name=f"{name}_version_check"),
     )
 
 

@@ -90,13 +90,17 @@ def _repo_overrides(pairs: list[str] | None) -> dict[str, Path]:
 
 def cmd_eval(args) -> int:
     from evo_agents.hub.kg_cli import open_session
-    from evo_agents.kg.evaluate import METHODS, evaluate, load_questions, project_checkouts, render
+    from evo_agents.kg.evaluate import METHODS, evaluate, load_set, project_checkouts, render
 
     try:
         overrides = _repo_overrides(args.repo)
-        questions = load_questions(args.questions)
+        question_set = load_set(args.questions)
     except ValueError as exc:  # QuestionError is one
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    questions = question_set.part(args.split)
+    if not questions:
+        print(f"error: no question of part {args.split}", file=sys.stderr)
         return 2
     if args.type:
         questions = [q for q in questions if q.type in args.type]
@@ -111,6 +115,8 @@ def cmd_eval(args) -> int:
         limit=args.limit,
         budget_tokens=args.budget_tokens,
         grep_ref=args.grep_ref,
+        question_set=question_set,
+        split=args.split,
     )
     report.settings.update(backend=args.backend, sink=args.sink)
     if args.json:
@@ -177,9 +183,17 @@ def _register_eval(ksub, with_project) -> None:
     from evo_agents.kg import evaluate as ev
 
     run = with_project(
-        ksub.add_parser("eval", help="Recall@k, MRR and tokens of kg_search, kg_context and grep on a question set")
+        ksub.add_parser(
+            "eval", help="hit@5, Recall@k, MRR and tokens per hit of kg_search, kg_context and grep on a question set"
+        )
     )
     run.add_argument("questions", help="JSONL file, one question a line (docs/kg-eval.md)")
+    run.add_argument(
+        "--split",
+        choices=[ev.ALL_TYPES, *ev.SPLITS],
+        default=ev.ALL_TYPES,
+        help="only the questions of this part of the set, by the hash of their id (default all; tune ranking on tune)",
+    )
     run.add_argument("--method", action="append", choices=ev.METHODS, help="only this method (repeatable)")
     run.add_argument("--type", action="append", help="only questions of this type (repeatable)")
     run.add_argument(

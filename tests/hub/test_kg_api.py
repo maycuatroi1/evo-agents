@@ -91,7 +91,7 @@ def hub(pg_server, tmp_path_factory):
                 run_jobs(db, s3, base / "worker")
                 builds = client.get(f"/v1/kg/{PROJECT}/builds", headers=members["wendy"]).json()["builds"]
                 assert builds[0]["status"] == "succeeded", builds[0]
-                yield SimpleNamespace(client=client, db=db, admin=admin, build=builds[0], **members)
+                yield SimpleNamespace(client=client, db=db, admin=admin, build=builds[0], harness=harness, **members)
         assert pg.wait_no_backends(db.name) == 0
     finally:
         pg.drop_database(db)
@@ -179,6 +179,53 @@ def test_search_finds_the_fixture_node_as_kg_search_does(hub):
     assert sections["kinds"] == ["Section"] and sections["results"]
     assert {node["kind"] for node in sections["results"]} == {"Section"}
     assert len(ok(hub, "wendy", f"/v1/kg/{PROJECT}/nodes", q="note", limit=3)["results"]) == 3
+
+
+PARITY_QUERIES = ("runbook", "KB-01", "note", "acme-contract", "Hợp đồng", "deploy the hub", "nothing-matches-this")
+
+
+def test_search_parity_a_local_store_and_the_hub_api_rank_the_same_nodes_in_the_same_order(hub):
+    """a3, code part: the same questions asked of the same corpus built on this machine and on the hub."""
+    from evo_agents.kg import evaluate as ev
+    from evo_agents.kg.build import build_project
+    from evo_agents.kg.serve import Session
+
+    project = hub.harness.project()
+    local = build_project(project)
+    assert local.ok and local.content_hash == hub.build["content_hash"], "the same corpus builds the same graph"
+    session = Session(project, AGENT)
+    for query in PARITY_QUERIES:
+        for limit in (5, 25):
+            arguments = {"query": query, "limit": limit}
+            mine = session.call("kg_search", arguments)
+            assert not mine.get("isError"), mine
+            hubs = tool(hub, "wendy", "kg_search", arguments)
+            assert [n["id"] for n in mine["structuredContent"]["results"]] == [n["id"] for n in hubs["results"]], (
+                query,
+                limit,
+            )
+
+    class HubTool:
+        def call(self, name, arguments):
+            response = hub.client.post(
+                f"/v1/kg/{PROJECT}/tools/{name}", json={"arguments": arguments, "sink": AGENT}, headers=hub.wendy
+            )
+            assert response.status_code == 200, response.text
+            return response.json()
+
+    questions = ev.parse_questions(
+        [
+            f'{{"id": "{n}", "question": "{query}", "type": "words", "nodes": ["{RUNBOOK}"]}}'
+            for n, query in enumerate(PARITY_QUERIES)
+        ]
+    )
+    ranks = {}
+    for name, asked in (("local", session), ("hub", HubTool())):
+        report = ev.evaluate(
+            questions, session_for=lambda _, s=asked: s, checkouts_for=lambda _: {}, methods=["kg_search"]
+        )
+        ranks[name] = [(o.question.id, o.ranks, o.count) for o in report.outcomes]
+    assert ranks["local"] == ranks["hub"] and any(r[1] == [1] for r in ranks["hub"])
 
 
 def test_a_reader_whose_grant_stops_at_internal_never_receives_customer_nodes(hub):
