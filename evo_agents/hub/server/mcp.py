@@ -513,7 +513,12 @@ class HubMcp(MCPServer):
             return self.hub.state.kg_handles.call(session, caller.owner, name, arguments)
         if caller.project is None:
             return _error(NO_PROJECT)
-        return await kg.tool_result(self.hub.state, caller.user, caller.project, name, arguments, caller.sink)
+        scope = caller.user.scope
+        # an agent's search may explore the ranking (evo_agents.kg.explore); the loop's lookups never do
+        explore = name == "kg_search" and (scope is None or scope.kind not in runs.CURATOR_KINDS)
+        return await kg.tool_result(
+            self.hub.state, caller.user, caller.project, name, arguments, caller.sink, explore=explore
+        )
 
     # Projects
 

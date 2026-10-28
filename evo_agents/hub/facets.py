@@ -51,7 +51,7 @@ from datetime import UTC, datetime
 
 from evo_agents.hub import digest, review
 from evo_agents.hub.digest import MAX_COUNT, TOOL_NAME, USAGE_KEYS
-from evo_agents.kg import refs
+from evo_agents.kg import explore, refs
 
 FACET_VERSION = 3  # 2: sources.skills_again, sources.skill_bodies and skills[].chars; 3: kg read from text, labels
 KINDS = ("session", "run")
@@ -426,6 +426,10 @@ class KgTrail:
                 {"id": cut(ident, digest.PATH_CHARS), "rank": n, "path": path}
                 for n, (ident, path) in enumerate(nodes[:MAX_LABEL_RESULTS], start=1)
             ]
+            trial = explore.marked(text)  # a candidate exploration put at rank 4 or 5, and the chance it had
+            for item in results if trial is not None else ():
+                if item["id"] == trial[2]:
+                    item |= {"explored": trial[0], "p": trial[1]}
             label = QueryLabel(len(self.labels), at, when, query, results)
             self.labels.append(label)
             self._chain.append(label)
