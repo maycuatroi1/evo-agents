@@ -5,6 +5,7 @@ gets 403, a second answer gets 409; the answer goes to the run's inbox and the h
 use up the run's timeout; the reaper parks a run that waited 24 hours and cancels one parked 7 days; answering a parked
 run queues a run that resumes it, pinned to the same worker, with its session id."""
 
+import logging
 from datetime import timedelta
 
 import pytest
@@ -373,6 +374,97 @@ def test_only_the_worker_holding_a_plan_run_asks_and_a_run_keeps_at_most_twenty_
         asked(client, worker, run["id"], step_key=None)
     refused = ask(client, worker, run["id"])
     assert refused.status_code == 409 and "20 decisions open" in refused.json()["message"]
+
+
+# A credential asked in words (plan hub-attention-runtime, a1 and a6)
+
+CREDENTIAL_COMMAND = "evo-agents worker ask --category credential --env-var"
+PROSE_ASKS = [
+    pytest.param({"category": "scope", "question": "Please give me TELEGRAM_BOT_TOKEN so the bot can post."}, id="env"),
+    pytest.param(
+        {
+            "category": "architecture",
+            "question": "Which bot posts the release notes?",
+            "context": "It reads GITLAB_TOKEN.",
+        },
+        id="env-in-context",
+    ),
+    pytest.param({"category": "scope", "question": "Can you provide the OpenAI API key for the evals?"}, id="api-key"),
+    pytest.param({"category": "scope", "question": "Paste a GitLab token with api scope, please."}, id="token"),
+    pytest.param(
+        {"category": "architecture", "question": "Add the deploy ssh key to the box, or give me its value?"}, id="ssh"
+    ),
+    pytest.param(
+        {"category": "scope", "question": "Cần anh đăng nhập và cung cấp mật khẩu cho tài khoản bot."}, id="vi"
+    ),
+]
+
+
+@pytest.mark.parametrize("extra", PROSE_ASKS)
+def test_prose_credential_a_plan_run_asking_a_credentials_value_in_words_gets_422_naming_the_command(
+    client, hub, hub_db, caplog, extra
+):
+    caplog.set_level(logging.DEBUG)
+    worker, run = started(client, hub)
+    response = ask(client, worker, run["id"], **{"context": None, **extra})
+    assert response.status_code == 422, response.text
+    said = response.json()["message"]
+    assert CREDENTIAL_COMMAND in said and "evo-agents worker env" in said
+    if "TELEGRAM_BOT_TOKEN" in extra["question"]:
+        assert f"{CREDENTIAL_COMMAND} TELEGRAM_BOT_TOKEN`" in said
+    elif "GITLAB_TOKEN" in (extra.get("context") or ""):
+        assert f"{CREDENTIAL_COMMAND} GITLAB_TOKEN`" in said
+    else:
+        assert f"{CREDENTIAL_COMMAND} NAME`" in said
+    # a6: the refused question is kept nowhere, nor sent to anyone
+    for table in (tables.decisions, tables.notifications, tables.notification_deliveries):
+        assert sql(hub_db, select(func.count()).select_from(table)) == [(0,)]
+    kept = [
+        str(body)
+        for (body,) in sql(hub_db, select(tables.run_events.c.body).where(tables.run_events.c.run_id == run["id"]))
+    ]
+    kept += [str(row) for row in sql(hub_db, select(tables.audit))]
+    question = extra["question"]
+    assert not any(question in text for text in kept)
+    assert question not in caplog.text and question not in said
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param({}, id="no-credential"),
+        pytest.param({"question": "Should session tokens expire after a day or a week?"}, id="design-of-tokens"),
+        pytest.param({"question": "Key the cache on CACHE_KEY or on PRIMARY_KEY?"}, id="keys-of-data"),
+        pytest.param({"category": "deploy", "question": "Deploy with OPENAI_API_KEY set from the vault?"}, id="deploy"),
+        pytest.param(
+            {
+                "category": "credential",
+                "question": "The bot needs TELEGRAM_BOT_TOKEN.",
+                "options": [],
+                "recommended": None,
+                "credential_request": {"env_var": "TELEGRAM_BOT_TOKEN"},
+            },
+            id="credential-request",
+        ),
+    ],
+)
+def test_prose_credential_other_questions_of_a_plan_run_are_asked_as_before(client, hub, extra):
+    worker, run = started(client, hub)
+    asked(client, worker, run["id"], **extra)
+
+
+def test_prose_credential_the_gate_holds_plan_and_author_runs_alone():
+    from fastapi import HTTPException
+
+    from evo_agents.hub.server.decisions import DecisionAsk, admit_ask
+
+    body = DecisionAsk(category="scope", question="Please give me TELEGRAM_BOT_TOKEN.", options=OPTIONS)
+    for kind in ("plan", "author"):
+        with pytest.raises(HTTPException) as refused:
+            admit_ask(7, kind, body)
+        assert refused.value.status_code == 422 and f"{CREDENTIAL_COMMAND} TELEGRAM_BOT_TOKEN" in refused.value.detail
+    chat = DecisionAsk(category="triage", question="Retry, or give me TELEGRAM_BOT_TOKEN?", options=OPTIONS)
+    admit_ask(7, "chat", chat)  # a chat run asks triage as before
 
 
 # Answering

@@ -4,7 +4,8 @@
 
 POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run, an author run or a chat run
 (404 for any other run: a run of one step, a review run, a judge run): a category of ``runs.DECISION_CATEGORIES`` (a
-chat run's is ``triage`` alone, and ``triage`` is no other run's; 422 for any other), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
+chat run's is ``triage`` alone, and ``triage`` is no other run's; 422 for any other, and for a question of a plan run
+or an author run that asks for a credential's value in words, ``admit_ask``), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
 agent recommends, and optionally why, whether the act it asks about can be undone and how, and the refs of what it
 rests on (``decision_models``, which holds the models, 422 for a ref in no form ``decision_asks`` reads), the step it
 is about, which must be a step of the run's plan (422 for an author run that has put no plan yet, which has no steps),
@@ -75,7 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit, credential_answers, principals, run_access_rules
 from evo_agents.hub.server import plans as plan_routes
@@ -445,6 +446,25 @@ def _in_its_category(run_id: int, kind: str, category: str) -> None:
         )
 
 
+# The kinds of run whose agent the hub holds to asking for a credential with a credential request: the agents that
+# follow a plan or write one. A chat run asks triage alone, and a local run asks on a route of its own (local_runs).
+CREDENTIAL_GATED_KINDS = ("plan", "author")
+
+
+def admit_ask(run_id: int, kind: str, body: DecisionAsk) -> None:
+    """The gate of a decision the agent of a run of ``kind`` asks, before the hub stores anything of it: 422 for a
+    category the run does not ask in (``_in_its_category``), and for a question of a plan run or an author run that
+    asks in words for a credential's value (``credential_requests.prose_credential``), whose reason names the command
+    that asks it as a credential request. A refused question is kept nowhere: the reason repeats a variable's name at
+    most, and the log line says the run and the category alone."""
+    _in_its_category(run_id, kind, body.category)
+    if kind in CREDENTIAL_GATED_KINDS and body.credential_request is None:
+        refusal = credential_requests.prose_credential(body.category, body.question, body.context)
+        if refusal is not None:
+            log.info("decision refused: credential in prose", extra={"run_id": run_id, "category": body.category})
+            raise HTTPException(422, f"run {run_id}: {refusal}")
+
+
 @worker_router.post(
     "/runs/{run_id}/decisions",
     status_code=201,
@@ -455,7 +475,7 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
     """Ask the owner of a plan run, an author run or a chat run this worker holds a decision, and notify them."""
     async with request.app.state.engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RESUME_KINDS)
-        _in_its_category(run_id, row.kind, body.category)
+        admit_ask(run_id, row.kind, body)
         view = await store_decision(conn, run_id, row, body)
     log.info("decision asked", extra={"run_id": run_id, "decision_id": view.id, "category": body.category})
     return view

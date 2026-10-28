@@ -229,6 +229,17 @@ options (`value`, `as_me`, `both`, `refuse`), and the owner answers the value wi
 or the web's password field, never in words. Telegram answers it with `as_me` or `refuse` alone: an option that gives
 the value needs it pasted, and 422 says so.
 
+Asked in words instead, the value would come back in the answer's text. So the route refuses, 422, a decision of a plan
+run or an author run of category `scope`, `question` or `architecture` whose question or context asks for a
+credential's value (`credential_requests.prose_credential`): a variable named as an environment names it with a word
+of a credential (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, as in `TELEGRAM_BOT_TOKEN`; `PRIMARY_KEY` or `CACHE_KEY` is
+none), or an API key, a token, an ssh key, a password or a login named next to giving it (provide, give, paste, set,
+cung cấp, nhập and the like). The refusal names the command that asks it right,
+`evo-agents worker ask --category credential --env-var NAME`, with the variable for `NAME` when the text names one, so
+the agent asks again in the same turn. The hub keeps nothing of the refused question: no decision, notification,
+event or audit row, and its log line names the run and the category alone. A chat run, a local run and the hub's own
+decisions ask as before.
+
 ### A wait
 
 The agent of a plan run that needs a time, or something that happens on the hub, waits for it rather than asking its
