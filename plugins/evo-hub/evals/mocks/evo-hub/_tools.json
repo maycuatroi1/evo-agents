@@ -913,6 +913,28 @@
       }
     },
     {
+      "name": "kg_optimize",
+      "description": "Start a KG optimize run of the project (action start, the default; needs the writer role) or read its runs (status). The hub measures the graph, applies what the review queue fixes, gives a review run to the worker on duty under the charter's cost cap, and measures again after the next build, undoing what made the holdout worse; the owner gets the report. One run is in flight at a time: start returns it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "status"
+            ]
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "curator_figures",
       "description": "The figures the hub counted, without any model, for a night of the project's night shift: tool failures of sessions and runs, failures from the environment by cause, failed and lost runs by cause, repeated commands, corrections by the person, open items of plans, stuck steps, runs, sessions and decisions, each with evidence a finding can cite. The latest night, or night.",
       "inputSchema": {
