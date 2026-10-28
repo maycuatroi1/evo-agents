@@ -60,7 +60,9 @@ PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fai
 queued, since no other worker may claim them, and cancels the runs parked on it, since only it has their session; an
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
 deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed GitHub tokens past their end.
-A move to an end state writes the run's tool figures (``tool_stats.record``), which stay after its events go.
+A move to an end state writes the run's tool figures (``tool_stats.record``), which stay after its events go, and
+one of the reaper's to failed, lost or cancelled gives a run its worker left without a usage the usage its
+``usage_update`` events add up to (``reaped_usage``).
 
 A ``local`` run (``local_runs``) is none of this: no worker holds it, so it has no lease, timeout, slot or attempts,
 and none of the passes above takes it (each leaves ``kind = 'local'`` out); the reaper's one pass over it ends the ones
@@ -89,7 +91,7 @@ from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
-from evo_agents.hub.server import browser_holds
+from evo_agents.hub.server import browser_holds, reaped_usage
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_retry import next_attempt
@@ -238,6 +240,8 @@ async def move_run(
     row = (await conn.execute(_move(run_id, old, new, error, columns, lease))).one_or_none()
     if row is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
+    if actor == "reaper" and new in reaped_usage.ENDS:  # no report of its worker ends it, nor says what it spent
+        await reaped_usage.keep_usage(conn, run_id)
     await _insert_event(conn, run_id, row.seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
     cause, guessed = row.failure_cause, False
     if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
