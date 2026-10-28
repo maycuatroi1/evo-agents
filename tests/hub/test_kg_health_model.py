@@ -208,7 +208,25 @@ def kg_body(**numbers) -> dict:
 
 def test_retrieval_adds_up_what_the_facets_say_of_the_graphs_lookups():
     bodies = [
-        ("session:a", kg_body(calls=4, empty=2, searches=3, fallbacks=1, edited=2, in_results=2, in_top=1)),
+        (
+            "session:a",
+            kg_body(
+                calls=4,
+                empty=2,
+                searches=3,
+                fallbacks=1,
+                edited=2,
+                in_results=2,
+                in_top=1,
+                lookup_tokens=[100, 300, 50, 900],
+                answer={"lookups": 2, "tokens": 400},
+                chains=2,
+                grep_after=1,
+                queries=2,
+                clicked=1,
+                click_ranks={"1": 1},
+            ),
+        ),
         (
             "run:7:1",
             kg_body(
@@ -219,7 +237,21 @@ def test_retrieval_adds_up_what_the_facets_say_of_the_graphs_lookups():
                 tools=[{"tool": "kg_search", "calls": 2}, {"tool": "kg_status", "calls": 1}],
             ),
         ),
-        ("session:b", kg_body(calls=2, edited=1, in_results=1, in_top=1)),
+        (
+            "session:b",
+            kg_body(
+                calls=2,
+                edited=1,
+                in_results=1,
+                in_top=1,
+                lookup_tokens=[200, 20],
+                answer={"lookups": 1, "tokens": 200},
+                chains=1,
+                queries=1,
+                clicked=1,
+                click_ranks={"3": 1, "x": 4},
+            ),
+        ),
         ("session:c", None),  # a digest's facet knows nothing of kg
         ("session:d", kg_body()),  # no call of the graph
     ]
@@ -238,14 +270,31 @@ def test_retrieval_adds_up_what_the_facets_say_of_the_graphs_lookups():
         "in_top_rate": 0.5,
         "misses": 2,
         "evidence": ["session:a", "run:7:1"],
-    }
-    assert kg_coverage.retrieval([])["used"] == 0 and kg_coverage.retrieval([])["empty_rate"] == 0.0
+        "tokens_per_lookup": {"p50": 100, "p90": 900},  # of 20, 50, 100, 200, 300, 900
+        "answered": 2,
+        "tokens_to_answer": {"p50": 200, "p90": 400},
+        "lookups_to_answer": {"p50": 1, "p90": 2},
+        "chains": 3,
+        "grep_after": 1,
+        "queries": 3,
+        "clicked": 2,
+        "grep_after_rate": 0.3333,
+        "click_rate": 0.6667,
+        "click_ranks": {"1": 1, "3": 1},
+    }, "a facet before version 3 counts none of the labels' figures"
+    nothing = kg_coverage.retrieval([])
+    assert (
+        nothing["used"] == 0 and nothing["empty_rate"] == 0.0 and nothing["tokens_per_lookup"] == {"p50": 0, "p90": 0}
+    )
+    assert kg_coverage.percentile([5], 0.9) == 5 and kg_coverage.percentile([1, 2, 3, 4], 0.5) == 2
 
 
 # The lens and the ledger
 
 
-def health_figures(behind: int, missing: int, empty: int, fallbacks: int, edited: int, in_top: int) -> dict:
+def health_figures(
+    behind: int, missing: int, empty: int, fallbacks: int, edited: int, in_top: int, grep_after_rate: float = 0.25
+) -> dict:
     return {
         "sources": [
             {"source": "app", "behind": behind, "missing": missing, "stale": 1, "deleted": 0, "evidence": ["code:a:x"]},
@@ -257,6 +306,12 @@ def health_figures(behind: int, missing: int, empty: int, fallbacks: int, edited
             "edited": edited,
             "in_top": in_top,
             "misses": edited - in_top,
+            "tokens_per_lookup": {"p50": 400, "p90": 2000},
+            "tokens_to_answer": {"p50": 1200, "p90": 5000},
+            "chains": 8,
+            "grep_after_rate": grep_after_rate,
+            "queries": 4,
+            "click_rate": 0.5,
         },
     }
 
@@ -274,11 +329,17 @@ def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
         "kg_empty",
         "kg_fallbacks",
         "kg_misses",
+        "kg_lookup_tokens_p50",
+        "kg_lookup_tokens_p90",
+        "kg_answer_tokens",
+        "kg_grep_after",
+        "kg_unclicked",
         *queue,
     )
     before = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
     values = [ledger.read_metric(before, key) for key in ledger.LENS_METRICS["kg_health"]]
-    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, *[0.0] * len(RULES)]  # no review queue measured yet
+    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, 400.0, 2000.0, 1200.0, 25.0, 50.0, *[0.0] * len(RULES)]  # no queue yet
+    assert len(ledger.LENS_METRICS["kg_health"]) <= ledger.MAX_METRICS, "a trigger holds every metric of the lens"
     before["kg_health"]["review"] = {"build_id": 7, "open": {"dangling_mention": 2, "bulk_noise": 1}}
     assert ledger.read_metric(before, "kg_review_dangling_mention") == 2.0
     assert ledger.read_metric(before, "kg_review_bulk_noise") == 1.0
@@ -308,9 +369,17 @@ def test_a_level_of_the_graph_compares_as_it_is_and_a_count_per_session_or_run()
         "kg_empty": "better",  # 4 empty lookups over twice the sessions
         "kg_fallbacks": "better",
         "kg_misses": "better",
+        "kg_lookup_tokens_p50": "same",  # a size and a share compare as they are
+        "kg_lookup_tokens_p90": "same",
+        "kg_answer_tokens": "same",
+        "kg_grep_after": "same",
+        "kg_unclicked": "same",
         **{f"kg_review_{rule}": "same" for rule in RULES},
     }
     assert outcome["result"] == "keep"
+    grepping = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1, grep_after_rate=0.75)
+    changes = {item["key"]: item["change"] for item in ledger.outcome_of(trigger, grepping)["metrics"]}
+    assert changes["kg_grep_after"] == "worse", "three times the chains a grep followed"
     lagging = night(4, behind=9, missing=8, empty=4, fallbacks=2, edited=4, in_top=1)
     worse = ledger.outcome_of(trigger, lagging)
     assert worse["result"] == "revert" and "commits of the default branches" in worse["reason"]

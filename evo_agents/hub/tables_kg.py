@@ -10,7 +10,9 @@ say how healthy the graph is over time: what each build covers, the files each g
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
 kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``).
 kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
-with each step of their history (``evo_agents.hub.kg_decisions``).
+with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0177) holds each kg_search of a
+session or a run with what the agent opened after it, under the label of the session or the run
+(``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -30,6 +33,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    column,
     false,
     func,
 )
@@ -253,6 +257,42 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Index("kg_decision_events_decision_idx", "decision_id"),
     )
     return decisions, events
+
+
+def query_labels(metadata: MetaData) -> Table:
+    """kg_query_labels (0177), added to ``metadata``: each kg_search of a session or a run as its facet read it, with
+    the label of the session or the run (``evo_agents.hub.kg_labels``)."""
+    name = "kg_query_labels"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("session_id", Text),
+        Column("run_id", BigInteger),
+        Column("seq", Integer, nullable=False),
+        Column("at", Text),  # where the result came: FILE:LINE of a transcript, the seq of a run's event
+        _when("searched_at"),
+        Column("query", Text, nullable=False),
+        Column("results", JSONB, nullable=False),
+        Column("clicks", JSONB, nullable=False),
+        Column("grep_after", Boolean, nullable=False),
+        Column("after_grep", JSONB, nullable=False),
+        Column("label", JSONB, nullable=False),
+        _stamp("created_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name=f"{name}_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        CheckConstraint(column("kind").in_(("session", "run")), name=f"{name}_kind_check"),
+        CheckConstraint(
+            "(kind = 'session' AND session_id IS NOT NULL AND run_id IS NULL) OR (kind = 'run' AND run_id IS NOT NULL)",
+            name=f"{name}_owner_check",
+        ),
+        Index(f"{name}_session_idx", "project_id", "session_id"),
+        Index(f"{name}_run_idx", "run_id"),
+        Index(f"{name}_project_idx", "project_id", "searched_at"),
+    )
 
 
 def kg_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:

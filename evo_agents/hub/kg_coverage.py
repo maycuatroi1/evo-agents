@@ -21,6 +21,7 @@ another revision, and ``deleted`` when the graph holds it and the branch no long
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 
@@ -35,6 +36,7 @@ MAX_OFF_PATHS = 2000  # paths missing, stale and deleted a measure keeps of one 
 GIT = "git"
 MENTION_KEYS = ("mentions", "resolved", "ambiguous", "dangling")
 RETRIEVAL_KEYS = ("calls", "lookups", "empty", "searches", "fallbacks", "edited", "in_results", "in_top")
+LABEL_KEYS = ("chains", "grep_after", "queries", "clicked")  # of the facets' kg since FACET_VERSION 3
 READ_KEYS = ("commit", "ref", "base", "behind")
 
 
@@ -196,15 +198,39 @@ def _lookups(kg: Mapping) -> int:
     )
 
 
+def percentile(values: list[int], share: float) -> int:
+    """The nearest-rank percentile ``share`` (0.5, 0.9) of ``values``; 0 for none."""
+    if not values:
+        return 0
+    ordered = sorted(values)
+    return ordered[max(math.ceil(share * len(ordered)) - 1, 0)]
+
+
+def _spread(values: list[int]) -> dict:
+    return {"p50": percentile(values, 0.5), "p90": percentile(values, 0.9)}
+
+
 def retrieval(bodies: Iterable[tuple[str, Mapping | None]]) -> dict:
     """What the facets' ``kg`` (``evo_agents.hub.facets.KgTrail``) of sessions and runs add up to, each given with the
     evidence that names it (``session:ID``, ``run:ID:SEQ``): those that called the graph, its calls and lookups, the
     lookups that came back empty, the searches after a call and the first after an empty one (a fall back to grep),
     the files edited after the first lookup, those a result named and those among its top 5; the shares of empty
     lookups, of empty ones followed by a search, and of edited files in the top 5; ``misses``, the edited files
-    outside it; and the evidence of those with the most empty lookups and fall backs."""
+    outside it; and the evidence of those with the most empty lookups and fall backs.
+
+    From the facets of version 3 on: ``tokens_per_lookup``, the p50 and p90 of the tokens of one lookup's result;
+    ``tokens_to_answer`` and ``lookups_to_answer``, of the sessions and runs that read or edited a file a result named
+    (``answered``), the p50 and p90 of the tokens and the lookups until the first such read; ``chains``, the runs of
+    lookups with no other call between them, ``grep_after`` those a grep, rg or find followed right away, and
+    ``grep_after_rate`` their share; ``queries``, the kg_search calls with a result, ``clicked`` those with a file of
+    their results read or edited within ``facets.KG_WINDOW`` calls, ``click_rate`` their share, and ``click_ranks``,
+    per rank, the searches whose best clicked result had it."""
     sums = dict.fromkeys(RETRIEVAL_KEYS, 0)
+    more = dict.fromkeys(LABEL_KEYS, 0)
     used, worst = 0, []
+    tokens: list[int] = []
+    answers: list[tuple[int, int]] = []
+    ranks: dict[int, int] = {}
     for evidence, kg in bodies:
         if not isinstance(kg, Mapping) or not _int(kg.get("calls")):
             continue
@@ -212,6 +238,16 @@ def retrieval(bodies: Iterable[tuple[str, Mapping | None]]) -> dict:
         found = {key: _int(kg.get(key)) for key in RETRIEVAL_KEYS if key != "lookups"} | {"lookups": _lookups(kg)}
         for key in RETRIEVAL_KEYS:
             sums[key] += found[key]
+        for key in LABEL_KEYS:
+            more[key] += _int(kg.get(key))
+        tokens.extend(_int(n) for n in kg.get("lookup_tokens") or [] if not isinstance(n, bool))
+        answer = kg.get("answer")
+        if isinstance(answer, Mapping) and _int(answer.get("lookups")):
+            answers.append((_int(answer.get("tokens")), _int(answer.get("lookups"))))
+        clicks = kg.get("click_ranks")
+        for rank, n in clicks.items() if isinstance(clicks, Mapping) else ():
+            if str(rank).isdigit() and _int(n):
+                ranks[int(rank)] = ranks.get(int(rank), 0) + _int(n)
         if found["empty"] or found["fallbacks"]:
             worst.append((-(found["empty"] + found["fallbacks"]), evidence))
     return {
@@ -222,6 +258,14 @@ def retrieval(bodies: Iterable[tuple[str, Mapping | None]]) -> dict:
         "in_top_rate": ratio(sums["in_top"], sums["edited"]),
         "misses": max(sums["edited"] - sums["in_top"], 0),
         "evidence": [evidence for _, evidence in sorted(worst)[:SAMPLES]],
+        "tokens_per_lookup": _spread(tokens),
+        "answered": len(answers),
+        "tokens_to_answer": _spread([n for n, _ in answers]),
+        "lookups_to_answer": _spread([n for _, n in answers]),
+        **more,
+        "grep_after_rate": ratio(more["grep_after"], more["chains"]),
+        "click_rate": ratio(more["clicked"], more["queries"]),
+        "click_ranks": {str(rank): ranks[rank] for rank in sorted(ranks)},
     }
 
 
@@ -246,6 +290,32 @@ def _sources(figure: Mapping | None) -> list[Mapping]:
 def _retrieved(figure: Mapping | None, key: str) -> int:
     found = figure.get("retrieval") if isinstance(figure, Mapping) else None
     return _int(found.get(key)) if isinstance(found, Mapping) else 0
+
+
+def _figure(figure: Mapping | None) -> Mapping:
+    found = figure.get("retrieval") if isinstance(figure, Mapping) else None
+    return found if isinstance(found, Mapping) else {}
+
+
+def _spread_of(figure: Mapping | None, key: str, share: str) -> int:
+    found = _figure(figure).get(key)
+    return _int(found.get(share)) if isinstance(found, Mapping) else 0
+
+
+def grep_after_percent(figure: Mapping | None) -> int:
+    """Of the chains of kg lookups, the percent a grep, rg or find followed right away."""
+    found = _figure(figure).get("grep_after_rate")
+    return round(found * 100) if isinstance(found, (int, float)) and not isinstance(found, bool) else 0
+
+
+def unclicked_percent(figure: Mapping | None) -> int:
+    """Of the kg_search calls with a result, the percent whose result files the agent did not read or edit after."""
+    found = _figure(figure)
+    if not _int(found.get("queries")):
+        return 0
+    rate = found.get("click_rate")
+    rate = rate if isinstance(rate, (int, float)) and not isinstance(rate, bool) else 0
+    return max(100 - round(rate * 100), 0)
 
 
 def review_open(figure: Mapping | None, rule: str) -> int:
@@ -279,9 +349,27 @@ METRICS = {
         "files agents edited after a kg lookup that its top 5 did not name",
         lambda figure: _retrieved(figure, "misses"),
     ),
+    "kg_lookup_tokens_p50": (
+        "tokens of the median kg lookup's result",
+        lambda figure: _spread_of(figure, "tokens_per_lookup", "p50"),
+    ),
+    "kg_lookup_tokens_p90": (
+        "tokens of the kg lookup result at the 90th percentile",
+        lambda figure: _spread_of(figure, "tokens_per_lookup", "p90"),
+    ),
+    "kg_answer_tokens": (
+        "tokens of kg results, at the median, before an agent read a file they named",
+        lambda figure: _spread_of(figure, "tokens_to_answer", "p50"),
+    ),
+    "kg_grep_after": ("percent of chains of kg lookups a grep, rg or find followed right away", grep_after_percent),
+    "kg_unclicked": ("percent of kg searches with results whose files the agent did not open", unclicked_percent),
 }
 METRICS.update(
     {f"kg_review_{rule}": (f"open review items: {REVIEW_WORDS[rule]}", _review_metric(rule)) for rule in REVIEW_RULES}
 )
 REVIEW = frozenset(f"kg_review_{rule}" for rule in REVIEW_RULES)  # open items of the review queue, per rule
-LEVELS = frozenset({"kg_behind", "kg_files_off"}) | REVIEW  # the graph's state at a moment, not counts of activity
+# what agents get from a lookup: a size or a share, not a count that grows with the activity
+RETRIEVAL_LEVELS = frozenset(
+    {"kg_lookup_tokens_p50", "kg_lookup_tokens_p90", "kg_answer_tokens", "kg_grep_after", "kg_unclicked"}
+)
+LEVELS = frozenset({"kg_behind", "kg_files_off"}) | REVIEW | RETRIEVAL_LEVELS  # not counts of activity
