@@ -55444,6 +55444,138 @@
           }
         }
       },
+      "/v1/x/canvas/{project}/canvases/{slug}/proposals/reject": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Reject Proposals",
+          "description": "Reject open proposals of a canvas together, with one reason for all: nothing of them is written. One no longer\nopen is left as it is and named; a 404 when the canvas has no proposal of an id, and nothing is rejected then.",
+          "operationId": "reject_proposals_v1_x_canvas__project__canvases__slug__proposals_reject_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasRejectManyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasRejected"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/canvas/{project}/canvases/{slug}/brainstorm": {
         "post": {
           "tags": [
@@ -95680,6 +95812,32 @@
           ],
           "title": "BlobCheck"
         },
+        "BoardGoal": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "G-<number>"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "metric": {
+              "type": "string",
+              "title": "Metric",
+              "description": "how its metric reads; `no metric` without one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "statement",
+            "metric"
+          ],
+          "title": "BoardGoal",
+          "description": "The goal a brainstorm of the Loop was for, as it reads now."
+        },
         "BoardItem": {
           "properties": {
             "group": {
@@ -95793,6 +95951,17 @@
               "type": "object",
               "title": "Refs",
               "description": "the ids of what waits: decision, run, proposal, baseline, plan, goal..."
+            },
+            "proposal": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BoardProposal"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what a proposal of a claim proposes"
             }
           },
           "type": "object",
@@ -95807,6 +95976,165 @@
           ],
           "title": "BoardItem",
           "description": "One thing of the project that waits for a person."
+        },
+        "BoardProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "canvas": {
+              "type": "string",
+              "title": "Canvas",
+              "description": "the slug of its canvas"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "create",
+                "change"
+              ],
+              "title": "Kind",
+              "description": "a new claim, or a change of claim ``claim``"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claim",
+              "description": "the claim it changes (CL-<number>); None for a new claim"
+            },
+            "cell": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "problem",
+                    "customer_segments",
+                    "unique_value_proposition",
+                    "solution",
+                    "channels",
+                    "revenue_streams",
+                    "cost_structure",
+                    "key_metrics",
+                    "unfair_advantage"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cell",
+              "description": "the cell of the claim"
+            },
+            "text": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Text",
+              "description": "the claim's sentence: the one it proposes, else the claim's own"
+            },
+            "fields": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Fields",
+              "description": "the fields of the claim it sets"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "assumption",
+                    "testing",
+                    "validated",
+                    "invalidated",
+                    "retired"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the status it moves the claim to, when it does"
+            },
+            "test": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Test",
+              "description": "its test card's metric, threshold and deadline, in one line"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason",
+              "description": "why it was proposed, in one line"
+            },
+            "synthetic": {
+              "type": "boolean",
+              "title": "Synthetic",
+              "description": "it rests on simulated users"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run",
+              "description": "the run that proposed it"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BoardGoal"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the goal whose brainstorm by the Loop made it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "canvas",
+            "kind",
+            "claim",
+            "cell",
+            "text",
+            "fields",
+            "status",
+            "test",
+            "reason",
+            "synthetic",
+            "run",
+            "goal"
+          ],
+          "title": "BoardProposal",
+          "description": "What a proposal of a claim (kind ``claim_proposal``) proposes, for the member to judge it on the board."
         },
         "Bought": {
           "properties": {
@@ -99893,6 +100221,31 @@
           "title": "CanvasProposal",
           "description": "A new claim, or a change of a claim at the rev it was read at, that an agent or the hub proposed, and what\nbecame of it."
         },
+        "CanvasProposalLeft": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "rejected",
+                "stale"
+              ],
+              "title": "Status",
+              "description": "what it is now: accepted, rejected or stale"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "status"
+          ],
+          "title": "CanvasProposalLeft"
+        },
         "CanvasProvenance": {
           "properties": {
             "actor": {
@@ -99988,6 +100341,61 @@
           },
           "type": "object",
           "title": "CanvasRejectIn"
+        },
+        "CanvasRejectManyIn": {
+          "properties": {
+            "proposals": {
+              "items": {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 200,
+              "minItems": 1,
+              "title": "Proposals",
+              "description": "the ids of the proposals of the canvas to reject"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, kept with each proposal"
+            }
+          },
+          "type": "object",
+          "required": [
+            "proposals",
+            "reason"
+          ],
+          "title": "CanvasRejectManyIn"
+        },
+        "CanvasRejected": {
+          "properties": {
+            "rejected": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Rejected",
+              "description": "the proposals rejected now"
+            },
+            "left": {
+              "items": {
+                "$ref": "#/components/schemas/CanvasProposalLeft"
+              },
+              "type": "array",
+              "title": "Left",
+              "description": "those no longer open, left as they are"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rejected",
+            "left"
+          ],
+          "title": "CanvasRejected",
+          "description": "What rejecting proposals together did."
         },
         "CanvasRev": {
           "properties": {

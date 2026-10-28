@@ -9,7 +9,9 @@ Tables goals and goal_revisions, schema 0091.
   yet: a new goal takes the next code (``G-<number>``), never an alias. The body is the goal whole; ``rank`` and
   ``owner`` left out keep their value, and a new goal goes after the project's other goals and is owned by its writer.
   A body equal to the newest revision writes nothing (``changed`` false). ``if_revision`` other than the revision now
-  is 409, and 0 creates the goal only. POST .../goals/{ref}/close: the next revision, closed with a reason.
+  is 409, and 0 creates the goal only. POST .../goals/{ref}/close: the next revision, closed with a reason. A revision
+  that changes the statement or the metric makes the open proposals of the Loop's brainstorms of the goal stale
+  (``canvas.proposals.stale_for_goal``): a member no longer judges claims brainstormed for a goal that is no more.
 - The agent of a run never writes a goal: @builder proposes one (proposal kind ``goal``,
   ``evo_agents.core_plugins.builder.proposals``), which an admin approves, and the hub writes it through ``write``.
 
@@ -50,6 +52,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
+from evo_agents.hub.server.canvas import proposals
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -65,6 +68,8 @@ MAX_REVISION = 2**31 - 1
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 WRITE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 NUMBER_KIND = "number"  # tables_signals.KINDS: the kind of key a metric names
+# goals.FIELDS whose change makes the open proposals of the Loop's brainstorms of the goal stale
+BRAINSTORMED_FOR = ("statement", "metric")
 ALIAS = re.compile(goals.ALIAS)
 GoalRef = Annotated[
     str, Path(pattern=goals.REF, description="G-<number>, or the alias of a goal made from the charter")
@@ -683,6 +688,11 @@ async def write(
     await _insert(conn, access.project_id, number, alias, now + 1, values, note, user.user_id)
     after = await found(conn, access.project_id, goals.code(number))
     keys = goals.changed(fields_of(held) if held is not None else {}, fields_of(after))
+    aimed = [name for name in BRAINSTORMED_FOR if name in keys]
+    stale = await proposals.stale_for_goal(conn, held.id) if held is not None and aimed else 0
+    if stale:
+        extra = {"project": access.name, "goal": goals.code(number), "revision": now + 1, "changed": aimed}
+        log.info("brainstorm proposals stale", extra={**extra, "stale": stale})
     await audit.record(
         conn,
         actor_id=user.user_id,

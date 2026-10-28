@@ -47,7 +47,7 @@ from tests.hub.test_loop_tick import (  # noqa: F401 (client, hub and loop_core 
 )
 from tests.hub.test_migrate import ALL, move_to
 from tests.hub.test_runs import OTHER, OWNER, PROJECT
-from tests.hub.test_strategist_agent import CARD, CHI, READER, SLUG, edit
+from tests.hub.test_strategist_agent import CANVAS, CARD, CHI, READER, SLUG, edit
 from tests.hub.test_value_check import NUMBER_KEY
 
 app_key = credentials_api.app_key  # a fixture
@@ -169,11 +169,15 @@ def test_decisions_page_gathers_the_three_gates_with_who_decides_each_and_where(
     assert (baseline["decided_by"], baseline["deciders"]) == ("writer", sorted([OWNER, OTHER])), "chi changed CL-1"
     assert baseline["link"] == f"/p/{PROJECT}/x/canvas/canvases/{SLUG}/baselines/1"
     (claim,) = of_kind(found, "claim_proposal")
-    assert claim["title"] == f"Proposal #{proposal_id} on canvas {SLUG}: a new claim, from an agent"
+    assert claim["title"] == (
+        f"Proposal #{proposal_id} on canvas {SLUG}: a new claim in solution, from an agent: A reorder button"
+    )
     assert claim["deciders"] == sorted([CHI, OWNER, OTHER]) and claim["refs"] == {
         "proposal": proposal_id,
         "canvas": SLUG,
     }
+    assert claim["link"] == f"/p/{PROJECT}/x/canvas/canvases/{SLUG}#proposal-{proposal_id}"
+    assert claim["proposal"]["text"] == "A reorder button" and claim["proposal"]["goal"] is None
     (builder,) = of_kind(found, "policy_proposal")
     assert builder["title"] == f"@builder proposal #{builder_id} (policy): Hand out three runs an hour"
     assert (builder["decided_by"], builder["deciders"], builder["link"]) == ("admin", [OWNER], None)
@@ -215,6 +219,160 @@ def test_decisions_page_lists_the_proposer_of_a_baseline_among_its_deciders_once
     assert written.status_code == 200, written.text
     (baseline,) = of_kind(board(client, hub["reader"]), "baseline")
     assert (baseline["decided_by"], baseline["deciders"]) == ("writer", sorted([CHI, OWNER, OTHER]))
+
+
+# The proposals of a claim: what each proposes, the goal its brainstorm was for, rejected together, stale
+
+
+PROPOSALS = f"{CANVAS}/proposals"
+GOAL_1 = {"statement": "Corner shops reorder every week", "metric": METRIC, "canvas": SLUG}  # the hub fixture's G-1
+WEEKLY = {"metric": NUMBER_KEY, "aggregate": "mean", "window_days": 30, "comparator": ">=", "threshold": 0.4}
+
+
+def goal_id(db, number: int) -> int:
+    return sql(db, select(tables.goals.c.id).where(tables.goals.c.number == number))[0][0]
+
+
+def brainstormed(client, db, goal: int, texts: list[str], *, ledger: bool = True) -> tuple[int, list[int]]:
+    """The run the Loop handed out to brainstorm goal G-``goal`` and the new claims of the Solution cell it proposed,
+    as its agent puts them: (the run, the proposals). With ``ledger`` the work item is done and only its ledger names
+    the run; otherwise the work item holds the run, still running."""
+    run_id = a_run(client, db)
+    i, e = tables.loop_items, tables.loop_item_events
+    row = {"project_id": project_id(db), "kind": "brainstorm", "cycle": "business", "goal_id": goal_id(db, goal)}
+    row |= {"key": f"brainstorm:G-{goal}:run{run_id}", "engine": "rules/1"}
+    row |= {"state": "done", "finished_at": func.now()} if ledger else {"state": "running", "run_id": run_id}
+    ((item_id,),) = sql(db, insert(i).values(row).returning(i.c.id))
+    sql(db, insert(e).values(item_id=item_id, kind="dispatched", state="running", run_id=run_id))
+    canvas_id, label = canvas_of(db)
+    p = tables.canvas.proposals
+    made = []
+    for text in texts:
+        fields = {"cell": "solution", "text": text, "confidence": "low", "test_card": {**CARD, **WEEKLY}}
+        values = {"canvas_id": canvas_id, "kind": "create", "fields": fields, "reason": f"Moves the metric of G-{goal}"}
+        values |= {"label": label, "actor": "agent", "user_id": user_id(db, OWNER), "run_id": run_id}
+        made.append(sql(db, insert(p).values(values).returning(p.c.id))[0][0])
+    return run_id, made
+
+
+def statuses(db, ids: list[int]) -> dict[int, tuple]:
+    p, u = tables.canvas.proposals, tables.users
+    query = select(p.c.id, p.c.status, u.c.login, p.c.decided_reason).outerjoin(u, u.c.id == p.c.decided_by)
+    return {row[0]: tuple(row[1:]) for row in sql(db, query.where(p.c.id.in_(ids)))}
+
+
+def test_decisions_page_says_what_each_proposal_proposes_with_the_goal_and_run_it_came_of(client, hub, hub_db):
+    second = {"statement": "Shops find a product in two taps", "metric": METRIC, "canvas": SLUG}
+    assert client.put(f"{GOALS}/G-2", json=second, headers=hub["owner"]).status_code == 200
+    first_run, (lists, reminders) = brainstormed(
+        client, hub_db, 1, ["Shops reorder from a list of their last orders", "A reminder on the reorder day"]
+    )
+    second_run, (search,) = brainstormed(client, hub_db, 2, ["Search by the name on the shelf label"], ledger=False)
+    canvas_id, label = canvas_of(hub_db)
+    p, claims = tables.canvas.proposals, tables.canvas.claims
+    ((claim_id,),) = sql(hub_db, select(claims.c.id).where(claims.c.number == 1))
+    change = {"canvas_id": canvas_id, "kind": "change", "claim_id": claim_id, "base_rev": 2}
+    change |= {"fields": {"confidence": "high"}, "reason": "Two shops asked for it", "label": label, "actor": "agent"}
+    ((changed,),) = sql(hub_db, insert(p).values(**change, user_id=user_id(hub_db, OWNER)).returning(p.c.id))
+
+    found = {entry["refs"]["proposal"]: entry for entry in of_kind(board(client, hub["reader"]), "claim_proposal")}
+    assert sorted(found) == sorted([lists, reminders, search, changed])
+    shown = found[lists]
+    assert shown["title"] == (
+        f"Proposal #{lists} on canvas {SLUG}: a new claim in solution, from run #{first_run}: Shops reorder from a "
+        "list of their last orders"
+    )
+    assert shown["refs"] == {"proposal": lists, "canvas": SLUG, "run": first_run, "goal": "G-1"}
+    assert shown["link"] == f"/p/{PROJECT}/x/canvas/canvases/{SLUG}#proposal-{lists}"
+    assert shown["proposal"] == {
+        "id": lists,
+        "canvas": SLUG,
+        "kind": "create",
+        "claim": None,
+        "cell": "solution",
+        "text": "Shops reorder from a list of their last orders",
+        "fields": ["cell", "confidence", "test_card", "text"],
+        "status": None,
+        "test": f"{NUMBER_KEY} mean over 30 days >= 0.4, by 2026-12-01",
+        "reason": "Moves the metric of G-1",
+        "synthetic": False,
+        "run": first_run,
+        "goal": {"code": "G-1", "statement": GOAL_1["statement"], "metric": f"{NUMBER_KEY} last over 90 days >= 0.5"},
+    }
+    assert found[search]["proposal"]["goal"]["code"] == "G-2", "the work item holds the run it handed out"
+    assert found[search]["proposal"]["run"] == second_run
+    other = found[changed]["proposal"]  # a change reads as its claim does now
+    assert (other["kind"], other["claim"], other["cell"], other["fields"]) == (
+        "change",
+        "CL-1",
+        "solution",
+        ["confidence"],
+    )
+    assert other["text"] == "A reorder list built from the shop's last orders" and other["goal"] is None
+    assert found[changed]["refs"] == {"proposal": changed, "canvas": SLUG}
+
+
+def test_decisions_page_proposals_rejected_together_with_one_reason(client, hub, hub_db):
+    _, made = brainstormed(client, hub_db, 1, ["A list of the last orders", "A weekly reminder", "A shared basket"])
+    first, second, third = made
+    p = tables.canvas.proposals
+    sql(hub_db, update(p).where(p.c.id == third).values(status="stale"))
+    body = {"proposals": made, "reason": "G-1 moved to search; these answer the old metric"}
+    refused = client.post(f"{PROPOSALS}/reject", json=body, headers=hub["reader"])
+    assert refused.status_code == 403, "a reader decides nothing"
+    assert client.post(f"{PROPOSALS}/reject", json={**body, "reason": ""}, headers=hub["chi"]).status_code == 422
+    foreign = client.post(f"{PROPOSALS}/reject", json={**body, "proposals": [first, 99_999]}, headers=hub["chi"])
+    assert foreign.status_code == 404 and "has no proposal 99999" in foreign.text
+    assert statuses(hub_db, [first])[first][0] == "open", "a 404 rejects nothing"
+
+    done = client.post(f"{PROPOSALS}/reject", json={**body, "proposals": [*made, first]}, headers=hub["chi"])
+    assert done.status_code == 200, done.text
+    assert done.json() == {"rejected": [first, second], "left": [{"id": third, "status": "stale"}]}
+    assert statuses(hub_db, made) == {
+        first: ("rejected", CHI, body["reason"]),
+        second: ("rejected", CHI, body["reason"]),
+        third: ("stale", None, None),
+    }
+    assert of_kind(board(client, hub["chi"]), "claim_proposal") == []
+    again = client.post(f"{PROPOSALS}/reject", json=body, headers=hub["chi"])
+    assert again.json()["rejected"] == [] and len(again.json()["left"]) == 3
+
+
+def test_a_goal_whose_statement_or_metric_changes_makes_the_open_proposals_of_its_brainstorms_stale(
+    client, hub, hub_db
+):
+    second = {"statement": "Shops find a product in two taps", "metric": METRIC, "canvas": SLUG}
+    assert client.put(f"{GOALS}/G-2", json=second, headers=hub["owner"]).status_code == 200
+    _, (older, rejected) = brainstormed(client, hub_db, 1, ["A list of the last orders", "A weekly reminder"])
+    _, (current,) = brainstormed(client, hub_db, 1, ["Reorder in one tap"], ledger=False)
+    _, (other_goal,) = brainstormed(client, hub_db, 2, ["Search by the shelf label"])
+    body = {"proposals": [rejected], "reason": "Not now"}
+    assert client.post(f"{PROPOSALS}/reject", json=body, headers=hub["chi"]).status_code == 200
+    ids = [older, rejected, current, other_goal]
+
+    later = {**GOAL_1, "deadline": "2027-03-31"}  # a new deadline asks the same of the canvas
+    assert client.put(f"{GOALS}/G-1", json=later, headers=hub["owner"]).json()["revision"] == 2
+    assert [statuses(hub_db, ids)[number][0] for number in ids] == ["open", "rejected", "open", "open"]
+
+    hit = {**later, "metric": {**METRIC, "aggregate": "mean", "target": 0.66}}
+    assert client.put(f"{GOALS}/G-1", json=hit, headers=hub["owner"]).json()["revision"] == 3
+    assert statuses(hub_db, ids) == {
+        older: ("stale", None, None),
+        rejected: ("rejected", CHI, "Not now"),
+        current: ("stale", None, None),
+        other_goal: ("open", None, None),
+    }
+    assert [entry["refs"]["proposal"] for entry in of_kind(board(client, hub["chi"]), "claim_proposal")] == [other_goal]
+    accept = client.post(f"{PROPOSALS}/{current}/accept", headers=hub["chi"])
+    assert accept.status_code == 409, "a stale proposal is accepted no more"
+
+    _, (fresh,) = brainstormed(client, hub_db, 1, ["Reorder from the receipt"])  # the Loop brainstorms G-1 again
+    worded = {**second, "statement": "Shops find a product in one tap"}
+    assert client.put(f"{GOALS}/G-2", json=worded, headers=hub["owner"]).status_code == 200
+    assert statuses(hub_db, [other_goal, fresh]) == {
+        other_goal: ("stale", None, None),
+        fresh: ("open", None, None),
+    }
 
 
 # What the Loop's chain waits on
