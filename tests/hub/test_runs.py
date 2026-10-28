@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import extract, func, insert, literal, select, update
 
 from evo_agents.harness import plan_digest
-from evo_agents.hub import autonomy_card, jobs, runs, tables
+from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
@@ -957,6 +957,64 @@ def test_a_lost_run_pinned_to_its_worker_waits_until_it_is_stable_and_the_third_
         (f"its worker mac-mini stopped extending the lease, and it was attempt 3 of {runs.MAX_ATTEMPTS}",)
     ]
     assert count_runs(hub_db, tables.runs.c.parent_run_id == third) == [(0,)]
+
+
+# Two turns of Claude Code: tokens of each turn, and the session's running cost.
+TURNS = [
+    ({"input_tokens": 10, "output_tokens": 200, "cache_read_input_tokens": 9000, "service_tier": "standard"}, 1.5),
+    ({"input_tokens": 4, "output_tokens": 50, "cache_read_input_tokens": 12000, "cache_creation": {"x": 1}}, 2.75),
+]
+TOLD = {"input_tokens": 14, "output_tokens": 250, "cache_read_input_tokens": 21000, "total_cost_usd": 2.75}
+
+
+def usage_events(client, worker: dict, run_id: int) -> None:
+    """The worker of ``run_id`` sends the usage_update events of TURNS."""
+    events = [
+        {"seq": seq, "at": datetime.now(UTC).isoformat(), "kind": "usage_update", "body": body}
+        for seq, body in enumerate(
+            ({"usage": usage, "cost": {"amount": cost, "currency": "USD"}, "numTurns": 3} for usage, cost in TURNS),
+            start=1,
+        )
+    ]
+    posted = client.post(f"/v1/worker/runs/{run_id}/events", json={"events": events}, headers=worker["headers"])
+    assert posted.status_code == 200, posted.text
+
+
+def test_a_lost_run_keeps_the_usage_its_events_tell_and_one_with_a_usage_keeps_its_own(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini", slots=2)
+    lost, reported = (dispatched(client, hub["owner"], [key])[0]["id"] for key in (2, 4))
+    claim(client, worker)
+    claim(client, worker)
+    for run_id in (lost, reported):
+        moved(client, worker, run_id, "running")
+        usage_events(client, worker, run_id)
+    own = {"input_tokens": 3, "total_cost_usd": 0.5}
+    moved(client, worker, reported, "running", usage=own)  # news without a move: the usage is kept, the state stays
+    assert of_run(hub_db, reported, "state", "usage") == [("running", own)]
+    assert of_run(hub_db, lost, "usage") == [(None,)], "a running run has no usage of its events"
+    expire(hub_db, lost)
+    expire(hub_db, reported)
+    assert recover(client)["lost"] == 2
+    ((usage,),) = of_run(hub_db, lost, "usage")
+    assert usage == TOLD and runtime_metrics.run_cost(usage) == 2.75
+    assert of_run(hub_db, reported, "usage") == [(own,)], "its worker's usage is kept"
+    assert recover(client)["lost"] == 0 and of_run(hub_db, lost, "usage") == [(TOLD,)]
+
+
+def test_a_run_past_its_timeout_and_a_parked_one_cancelled_keep_the_usage_their_events_tell(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini", slots=2)
+    late, parked = (dispatched(client, hub["owner"], [key], timeout_min=5)[0]["id"] for key in (2, 4))
+    claim(client, worker)
+    claim(client, worker)
+    for run_id in (late, parked):
+        moved(client, worker, run_id, "running")
+        usage_events(client, worker, run_id)
+    set_run(hub_db, late, counted_at=func.now() - timedelta(seconds=301))
+    long_ago = func.now() - run_state.PARKED_FOR - timedelta(minutes=1)  # parked by the reaper, then left so
+    set_run(hub_db, parked, state="parked", parked_at=long_ago, lease_expires_at=None, counted_at=None)
+    assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 1, "parked": 0}
+    assert of_run(hub_db, late, "state", "usage") == [("failed", TOLD)]
+    assert of_run(hub_db, parked, "state", "usage") == [("cancelled", TOLD)]
 
 
 def test_a_heartbeat_keeps_when_the_worker_became_stable_and_one_that_comes_late_starts_it_again(client, hub, hub_db):

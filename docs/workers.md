@@ -1924,6 +1924,14 @@ messages), the `usage` the run reports with its end, or with its failure, holds 
 `total_cost_usd` (Claude Code's running total of the session, which already holds the turns before), as for each
 session of a plan run with a session per step. Each turn's `usage_update` event stays as the runtime said it.
 
+A run the reaper ends (`lost` or `failed` once its lease ran out, `failed` past its timeout, `cancelled` once parked too
+long) gets no report from its worker, so the hub gives it, while its `usage` is null, the usage its `usage_update`
+events add up to (`reaped_usage`): Codex's tokens of the last event in snake_case, any other runtime's summed, and its
+cost: opencode's steps added up under `cost`, else the session's running total (Claude Code's under `total_cost_usd`),
+plus each total it fell back from when a new session began. Its figures and its plan's cost count it then; a run whose
+agent sent no `usage_update` before it stopped still counts as free. Migration 0183 did the same once for the runs that
+ended so before it.
+
 A Claude Code session of a run asks for the preset system prompt without its dynamic sections
 (`exclude_dynamic_sections`), so the system prompt holds nothing of the machine, the worktree or the step and a new
 session reads it from the cache that a session of another run, step or worktree wrote. Claude Code 2.1.296 moves its
