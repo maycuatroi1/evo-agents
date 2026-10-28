@@ -246,8 +246,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_seven_tables(hub_db):
-    assert len(TABLES) == 207  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_eight_tables(hub_db):
+    assert len(TABLES) == 208  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
