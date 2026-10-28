@@ -250,3 +250,24 @@ def test_a_name_only_constants_of_several_modules_hold_is_not_ambiguous():
     doc = Linker(index, "a:file:docs/x.md", "a", "docs/x.md")
     doc.scan("a:file:docs/x.md", "u", "The `CACHE` of a module and the `Run` of another.")
     assert doc.stats.get("ambiguous", 0) == 1 and doc.samples.get("ambiguous") == ["Run"]
+
+
+def test_a_path_with_spaces_and_a_capitals_document_at_a_repo_root_link_when_they_are_files():
+    paths = {"h": ["CLUSTER.md", "AGENTS.md", "reports/Backend tập trung cho agent.md"], "a": ["AGENTS.md"]}
+    records = [
+        {"id": f"{r}:file:{p}", "kind": "markdown", "props": {"path": p, "repo": r}}
+        for r, ps in paths.items()
+        for p in ps
+    ]
+    index = build_index({r["id"]: map_item(r, r["id"].split(":")[0], True) for r in records}, [])
+    step = Linker(index, "plan:p", None, None)
+    step.scan(
+        "plan:p/step:1",
+        "u",
+        "Viết reports/Backend tập trung cho agent.md (281 dòng: kiến trúc), cập nhật CLUSTER.md và AGENTS.md; "
+        "reports/Không có tệp này.md, README.md và lower.md không là tệp nào.",
+        repo="h",
+    )
+    linked = {e["dst"] for e in step.edges.values() if e["src"] == "plan:p/step:1"}
+    assert linked == {"h:file:reports/Backend tập trung cho agent.md", "h:file:CLUSTER.md", "h:file:AGENTS.md"}
+    assert not step.samples.get("dangling")  # a spaced or root name that is no file is not counted as missing

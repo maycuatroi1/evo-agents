@@ -54,6 +54,7 @@ from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs
+from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.tables_kg import OPTIMIZE_ACTIVE
@@ -82,14 +83,26 @@ router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": Error
 # Measuring
 
 
-def _measure_graph(cache: GraphCache, blobs, project: str, access, sink: str, graphs, found_set, weight: float, tune):
+def _measure_graph(
+    cache: GraphCache,
+    blobs,
+    project: str,
+    access,
+    sink: str,
+    graphs,
+    found_set,
+    weight: float,
+    tune,
+    audience: frozenset[str] = frozenset(),
+):
     """The holdout of ``found_set`` asked of the latest graph by words and by meaning, and with ``tune`` the tune split
-    at each weight of model.WEIGHTS. Blocking: run it in a thread."""
+    at each weight of model.WEIGHTS, read with ``audience`` (the owner's, as their agents' kg_search reads the graph).
+    Blocking: run it in a thread."""
     question_set = found_set[0] if found_set else None
     holdout = kg_health_eval.holdout_questions(question_set, project)
     if not holdout:
         return {"why": "the project's eval set has no holdout question"}
-    ceiling = access.rules.ceiling(access.max_level, sink)
+    ceiling = access.rules.ceiling(access.max_level, sink, audience)
     path, graph = cache.acquire(blobs, project, graphs)
     try:
         store = open_graph(path, project, graph)
@@ -136,18 +149,19 @@ def _measure_graph(cache: GraphCache, blobs, project: str, access, sink: str, gr
 
 
 async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, weight: float, tune: bool) -> dict:
-    """The measure of ``row``'s project (project_id, project, owner_id, owner) as its owner reads it through the
-    agents' sink: ``_measure_graph``'s, with ``review`` (kg_health.measure_review); {"why": ...} when it cannot."""
+    """The measure of ``row``'s project (project_id, project, owner_id, owner) as its owner's agents read it, through
+    the agents' sink with the owner's audience: ``_measure_graph``'s, with ``review`` (kg_health.measure_review); {"why": ...} when it cannot."""
     async with engine.begin() as conn:
         graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
         access, sink, why = await kg_health._owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
         if why is not None:
             return {"why": why}
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
+        audience = await agent_audience(conn, row.owner_id, None, None)
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
         found = await asyncio.to_thread(
-            _measure_graph, cache, blobs, row.project, access, sink, graphs, found_set, weight, tune
+            _measure_graph, cache, blobs, row.project, access, sink, graphs, found_set, weight, tune, audience=audience
         )
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}

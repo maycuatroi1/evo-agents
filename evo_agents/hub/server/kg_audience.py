@@ -14,7 +14,8 @@ principal is. The agent of a chat run holds what both people its prompt is clear
 (``chat_runs.run_clearers``): the person who started it and the member whose worker runs it, when another.
 
 Every graph read of the hub asks this module: the kg_* tools of REST and /mcp (``kg.tool_result``), kg_more on /mcp,
-and the web's graph pages (``kg_web``). The review of a proposal reads with no audience instead: what it keeps is
+and the web's graph pages (``kg_web``); the retrieval eval of the night's measure and of the optimize loop reads with
+the audience of the night shift's owner, as their agents do (``kg_health``, ``kg_optimize``). The review of a proposal reads with no audience instead: what it keeps is
 shown to every member of the project (``proposals.graph_view``).
 """
 

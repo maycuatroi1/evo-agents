@@ -45,6 +45,7 @@ from evo_agents.kg.evaluate import (
     QuestionSet,
     evaluate,
     id_file,
+    summarize,
 )
 
 METHODS = ("kg_search",)
@@ -266,14 +267,18 @@ def score(
     sources: Counter | None = None,
     question_set: dict | None = None,
     sink: str | None = None,
+    holdout: Iterable[str] = (),
 ) -> dict:
     """The score of ``questions`` asked through ``session`` (a ``evo_agents.kg.serve.Session``): {types, questions,
     plan_steps, available (plan-step questions before the cut), skipped, skipped_by {reason: n}, dropped (the share of
     the plan steps with commits that ask nothing), reasons, answers_from, limit, sink, set, methods: {method: {n,
     hit@5, recall@1, recall@5, capped_recall@5, mrr, empty, errors, correct_per_1k_tokens, mean_tokens,
-    tokens_per_hit, tokens_per_file, p95_ms}}, by_type: {type: {method: the same}}, digest}."""
+    tokens_per_hit, tokens_per_file, p95_ms}}, by_type: {type: {method: the same}}, holdout: {method: the same} over
+    the questions whose ids ``holdout`` names (the holdout part of the set), None when it names none, digest}."""
     methods: dict = {}
     by_type: dict = {}
+    held: dict = {}
+    holdout = set(holdout)
     if questions:
         report = evaluate(questions, session_for=lambda _: session, checkouts_for=lambda _: {}, methods=METHODS)
         for row in report.rows:
@@ -282,6 +287,11 @@ def score(
                 methods[row["method"]] = numbers
             else:
                 by_type.setdefault(row["type"], {})[row["method"]] = numbers
+        for method in METHODS:
+            picked = [o for o in report.outcomes if o.method == method and o.question.id in holdout]
+            if picked:
+                row = summarize(picked, ALL_TYPES, method)
+                held[method] = {key: row.get(key) for key in SCORE_KEYS}
     steps = sum(q.type == PLAN_STEP_TYPE for q in questions) if plan_steps is None else plan_steps
     considered = available + len(skipped)
     return {
@@ -299,19 +309,30 @@ def score(
         "set": question_set,
         "methods": methods,
         "by_type": by_type,
+        "holdout": held or None,
         "digest": questions_digest(questions),
     }
 
 
+def signal_row(found) -> dict | None:
+    """The kg_search row of an eval its signals read: that of the holdout part of the set (the questions the plan's
+    thresholds name, docs/kg-eval.md), else that of all its questions when it asked no holdout question."""
+    if not isinstance(found, dict):
+        return None
+    row = (found.get("holdout") or {}).get("kg_search") or (found.get("methods") or {}).get("kg_search")
+    return row if isinstance(row, dict) else None
+
+
 def hit_percent(found) -> float | None:
-    """kg_search's hit@5 of an eval, in percent; None without one."""
-    row = ((found or {}).get("methods") or {}).get("kg_search") if isinstance(found, dict) else None
+    """kg_search's hit@5 of an eval (``signal_row``), in percent; None without one."""
+    row = signal_row(found)
     value = row.get("hit@5") if isinstance(row, dict) else None
     return round(float(value) * 100, 2) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 def tokens_per_file(found) -> float | None:
-    """kg_search's tokens per answer file found (mean tokens over Recall@5) of an eval; None without one."""
-    row = ((found or {}).get("methods") or {}).get("kg_search") if isinstance(found, dict) else None
+    """kg_search's tokens per answer file found (mean tokens over Recall@5) of an eval (``signal_row``); None without
+    one."""
+    row = signal_row(found)
     value = row.get("tokens_per_file") if isinstance(row, dict) else None
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
