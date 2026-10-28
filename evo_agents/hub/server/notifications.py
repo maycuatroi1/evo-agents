@@ -152,14 +152,18 @@ def _body(text: str | None) -> str | None:
 # The outbox
 
 
-def _deliveries(notification_id: int, user_id: int):
-    """A delivery of notification ``notification_id`` on the web (no channel), then one for each channel of member
-    ``user_id`` that is enabled."""
+def _deliveries(notification_id: int, user_id: int, *, web_only: bool = False):
+    """A delivery of notification ``notification_id`` on the web (no channel), then, unless ``web_only``, one for
+    each channel of member ``user_id`` that is enabled."""
     channels = tables.notification_channels
     notification = literal(notification_id, BigInteger)
-    rows = union_all(
-        select(notification, null()),
-        select(notification, channels.c.id).where(channels.c.user_id == user_id, channels.c.enabled),
+    web = select(notification, null())
+    rows = (
+        web
+        if web_only
+        else union_all(
+            web, select(notification, channels.c.id).where(channels.c.user_id == user_id, channels.c.enabled)
+        )
     )
     deliveries = tables.notification_deliveries
     return insert(deliveries).from_select([deliveries.c.notification_id, deliveries.c.channel_id], rows)
@@ -182,10 +186,13 @@ async def notify(
 ) -> int:
     """Store a notification for member ``user_id`` and a delivery of it for each of their channels that is on, the
     web included, in the caller's transaction; its id. ``title`` is made one line of at most TITLE_CHARS, ``body``
-    cut to MAX_NOTICE_BODY_BYTES."""
+    cut to MAX_NOTICE_BODY_BYTES. A notice that only reports (``runs.report_only``) is stored read and delivered on
+    the web alone: no channel of the member's gets it, nor a push device unless the member chose the interrupt tier for
+    its kind, and Today's summary counts it instead."""
     if kind not in runs.NOTIFICATION_KINDS:
         raise ValueError(f"{kind!r} is not a kind of notification")
     stored = tables.notifications
+    report = runs.report_only(kind, notice_kind, details)
     inserted = await conn.execute(
         insert(stored)
         .values(
@@ -200,11 +207,14 @@ async def notify(
             body=_body(body),
             details=details if details is not None else null(),  # SQL NULL: None alone would store JSON null
             link=link,
+            read_at=func.now() if report else null(),
         )
         .returning(stored.c.id)
     )
     notification_id = inserted.scalar_one()
-    await conn.execute(_deliveries(notification_id, user_id))
+    await conn.execute(_deliveries(notification_id, user_id, web_only=report))
+    # A report's kinds are of the brief tier by default (``push_tiers``): a device gets one only when its member chose
+    # the interrupt tier for its kind themselves.
     tier = {"notice_kind": notice_kind, "run_id": run_id, "decision_id": decision_id, "details": details}
     if await push_tiers.interrupts(conn, user_id=user_id, kind=kind, **tier):
         await conn.execute(push_store.device_deliveries(notification_id, user_id))
@@ -658,10 +668,26 @@ class Notification(BaseModel):
     link: str | None = Field(description="the hub web's page that shows it, a path of the hub's own site")
     created_at: datetime
     read_at: datetime | None
+    report: bool = Field(
+        False,
+        description="a notice that only reports (a push or merge into a default branch, a plan finished, a run's files, "
+        "asking nothing): stored read, sent to no channel (nor a device, unless you chose the interrupt tier for its "
+        "kind), and counted in Today's summary",
+    )
     outputs: list[RunOutput] = Field(
         default_factory=list,
         description="the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted "
         "since is left out), each with the URL its reader fetches the bytes from",
+    )
+
+
+def report_notice(stored=None):
+    """The SQL of ``runs.report_only`` over ``stored`` (tables.notifications when None)."""
+    stored = tables.notifications if stored is None else stored
+    return and_(
+        stored.c.kind == "notice",
+        stored.c.notice_kind.in_(runs.REPORT_NOTICE_KINDS),
+        stored.c.details[runs.REPORT_ASK].astext.is_(None),
     )
 
 
@@ -695,6 +721,7 @@ def _notification_rows():
         stored.c.link,
         stored.c.created_at,
         stored.c.read_at,
+        func.coalesce(report_notice(stored), false()).label("report"),
     ).select_from(_shown())
 
 

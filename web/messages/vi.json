@@ -658,7 +658,8 @@
         "run_parked": "Run đã park",
         "problem": "Metric thay đổi",
         "cost": "Chi phí",
-        "proposal": "Đề xuất"
+        "proposal": "Đề xuất",
+        "report": "Báo cáo"
       },
       "summary": {
         "asks": "{count, plural, =0 {Không có câu hỏi nào chờ bạn trả lời} other {# câu hỏi chờ bạn trả lời}}",
@@ -671,7 +672,8 @@
           "run_parked": "{count, plural, other {# run đã park}}",
           "problem": "{count, plural, other {# bài toán có metric thay đổi}}",
           "cost": "{count, plural, other {chi phí run của bạn ở # dự án}}",
-          "proposal": "{count, plural, other {# đề xuất chờ trả lời}}"
+          "proposal": "{count, plural, other {# đề xuất chờ trả lời}}",
+          "report": "{count, plural, other {# báo cáo về việc của bạn}}"
         }
       }
     }
@@ -6641,6 +6643,7 @@
     "waitingTitle": "Đang chờ bạn trả lời",
     "restTitle": "Thông báo, quyết định và đề xuất đã xong",
     "allTitle": "Thông báo",
+    "reportsTitle": "Chỉ để báo: push, merge, plan xong, file của run",
     "pagerLabel": "thông báo",
     "summary": {
       "all": "{count, plural, =0 {Chưa có thông báo nào.} other {# thông báo.}}",

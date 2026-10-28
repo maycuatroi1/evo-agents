@@ -296,7 +296,8 @@ def test_a_tier_the_member_chose_holds_for_every_notification_of_its_kind_and_th
     deliver(client)
     assert set(pushes_of(hub_db)) == {"Plan done", "A copy of the question"}
     counted = client.get("/v1/me/notifications/count", headers=hub["owner"]).json()
-    assert (counted["open_decisions"], counted["unread"]) == (1, 3), "the bell counts what is not pushed too"
+    # the bell counts what is not pushed too; plan_finished only reports, so it is read already (a4), pushed or not
+    assert (counted["open_decisions"], counted["unread"]) == (1, 2)
 
     chosen(client, hub["owner"], tiers=[{"kind": "decision", "tier": None}])
     answered(client, hub["owner"], first["id"], option="postgres")
