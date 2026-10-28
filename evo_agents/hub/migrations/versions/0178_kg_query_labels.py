@@ -27,6 +27,8 @@ depends_on = None
 
 TABLE = "kg_query_labels"
 
+col = sa.column
+
 
 def _key(column: str, target: str) -> sa.ForeignKeyConstraint:
     return sa.ForeignKeyConstraint([column], [f"{target}.id"], ondelete="CASCADE", name=f"{TABLE}_{column}_fkey")
@@ -55,7 +57,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=f"{TABLE}_pkey"),
         sa.CheckConstraint(sa.column("kind").in_(("session", "run")), name=f"{TABLE}_kind_check"),
         sa.CheckConstraint(
-            "(kind = 'session' AND session_id IS NOT NULL AND run_id IS NULL) OR (kind = 'run' AND run_id IS NOT NULL)",
+            sa.or_(
+                sa.and_(col("kind") == "session", col("session_id").is_not(None), col("run_id").is_(None)),
+                sa.and_(col("kind") == "run", col("run_id").is_not(None)),
+            ),
             name=f"{TABLE}_owner_check",
         ),
     )
