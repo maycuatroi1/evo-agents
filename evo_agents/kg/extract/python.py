@@ -20,18 +20,21 @@ way and flagged ``ref``: the link stage keeps it only when it finds a function. 
 defines is also an xref flagged ``dispatch``, for the link stage to reach the methods of subclasses that override
 it. A module-level ``name = f`` for a def ``f`` of the file is an alias (``aliases``) other files import ``f`` by. A function
 carries the class its return annotation names as ``returns`` (``items`` for a tuple), a ``via`` list the link
-stage resolves once a build.
+stage resolves once a build. A module-level assignment to an upper-case name (``MAX_DECISIONS = 25``,
+``RULES: tuple = ...``) is a symbol of kind ``constant``: what an agent asks for by name and imports name.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import PurePosixPath
 
 from evo_agents.kg.extract.pytypes import FileTypes, dotted, super_member
 
 DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 FUNCS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+CONSTANT = re.compile(r"_?[A-Z][A-Z0-9_]*")  # MAX_DECISIONS, _CACHE: a module-level name written as a constant
 
 
 def module_name(path: str) -> str | None:
@@ -165,6 +168,31 @@ class _Extractor:
                 self.define(node, top, parent, cls, env, types)
             elif isinstance(node, (ast.Import, ast.ImportFrom)):
                 self.collect_import(node, top)
+
+    def constants(self, body: list) -> None:
+        """A symbol of kind ``constant`` for each upper-case name the module's top level assigns, at its first
+        assignment; not a name a def of the file holds or an alias."""
+        for node in body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                name = target.id if isinstance(target, ast.Name) else None
+                if not name or not CONSTANT.fullmatch(name) or name in self.quals or name in self.aliases:
+                    continue
+                end = node.end_lineno or node.lineno
+                self.symbols.append(
+                    {
+                        "qualname": name,
+                        "name": name,
+                        "kind": "constant",
+                        "top": "_module",
+                        "line": node.lineno,
+                        "parent": None,
+                        "end": end,
+                    }
+                )
+                self.quals.add(name)
 
     def define(self, node, top: str, parent: str | None, cls: str | None, env: _Env, types: dict) -> None:
         qual = f"{parent}.{node.name}" if parent else node.name
@@ -332,4 +360,5 @@ def extract(text: str, path: str) -> dict | None:
             ex.collect_import(node, "_module")
     body = [n for n in tree.body if not isinstance(n, (ast.Import, ast.ImportFrom))]
     ex.visit_body(body, "_module", None, None, ex.module_env, ex.module_types)
+    ex.constants(tree.body)
     return ex.result(ast.get_docstring(tree))
