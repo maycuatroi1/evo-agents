@@ -5012,3 +5012,52 @@ def test_0182_keeps_one_kg_optimize_run_in_flight_a_project_and_going_back_drops
     move_to(hub_db, "0181", down=True)
     assert "kg_optimize_runs" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0182") :]
+
+
+def _ended_run(ids, worker_id: int, state: str, **extra):
+    """The INSERT of an author run of the seeded user that ``worker_id`` claimed and that ended ``state``, with
+    ``extra``, returning its id."""
+    ended = {"worker_id": worker_id, "leased_at": func.now(), "finished_at": func.now(), "state": state}
+    return _author_run(ids, **ended, **({"error": "it stopped"} if state == "failed" else {}), **extra)
+
+
+def _usage_event(run_id: int, seq: int, usage: dict, amount: float | None = None):
+    """The INSERT of a usage_update event of ``run_id``, as ``runtimes.common.usage_update`` makes its body."""
+    body = {"usage": usage} | ({"cost": {"amount": amount, "currency": "USD"}} if amount is not None else {})
+    return insert(hub_tables.run_events).values(run_id=run_id, seq=seq, kind="usage_update", body=body)
+
+
+def test_0183_backfills_the_usage_of_runs_the_reaper_ended_from_their_events_and_writes_only_nulls(hub_db):
+    move_to(hub_db, "0182")
+    r = hub_tables.runs
+    own = {"input_tokens": 1, "total_cost_usd": 0.25}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        worker = one(conn, _worker_row(ids, ids["token"], "mac-mini", 1))
+        lost = one(conn, _ended_run(ids, worker, "lost", session_id="s-lost"))
+        failed = one(conn, _ended_run(ids, worker, "failed", usage=own))  # its worker reported it
+        done = one(conn, _ended_run(ids, worker, "done"))  # resumed, say: the run after it counts its session
+        went_on = one(conn, _ended_run(ids, worker, "lost", session_id="s-on"))
+        next_attempt = {"attempt": 2, "parent_run_id": went_on, "session_id": "s-on"}  # it went on in the session
+        one(conn, _ended_run(ids, worker, "done", **next_attempt))
+        silent = one(conn, _ended_run(ids, worker, "cancelled"))  # no usage_update event
+        codex = one(conn, _ended_run(ids, worker, "failed", runtime="codex", requested_runtime="codex"))
+        for run_id in (lost, failed, done, went_on):
+            conn.execute(_usage_event(run_id, 1, {"input_tokens": 10, "output_tokens": 100}, 1.5))
+            conn.execute(_usage_event(run_id, 2, {"input_tokens": 4, "output_tokens": 50, "speed": "standard"}, 4.0))
+        conn.execute(_usage_event(codex, 1, {"inputTokens": 300, "cachedInputTokens": 200, "outputTokens": 30}))
+    move_to(hub_db, "0183")
+    usage = select(r.c.id, r.c.usage).where(r.c.id.in_((lost, failed, done, went_on, silent, codex))).order_by(r.c.id)
+    filled = [
+        (lost, {"input_tokens": 14, "output_tokens": 150, "total_cost_usd": 4.0}),
+        (failed, own),
+        (done, None),
+        (went_on, None),
+        (silent, None),
+        (codex, {"input_tokens": 300, "cached_input_tokens": 200, "output_tokens": 30}),
+    ]
+    assert query(hub_db, usage) == filled
+    move_to(hub_db, "0182", down=True)
+    assert query(hub_db, usage) == filled, "going back keeps what it wrote"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0183") :]
+    assert query(hub_db, usage) == filled, "a second pass changes nothing"
