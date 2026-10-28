@@ -1,5 +1,5 @@
 from evo_agents.kg.build import build_project
-from evo_agents.kg.pipeline.link import Linker, build_index, looks_like_symbol
+from evo_agents.kg.pipeline.link import Linker, build_index, is_placeholder, looks_like_symbol
 from evo_agents.kg.pipeline.stages import map_item
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
@@ -271,3 +271,90 @@ def test_a_path_with_spaces_and_a_capitals_document_at_a_repo_root_link_when_the
     linked = {e["dst"] for e in step.edges.values() if e["src"] == "plan:p/step:1"}
     assert linked == {"h:file:reports/Backend tập trung cho agent.md", "h:file:CLUSTER.md", "h:file:AGENTS.md"}
     assert not step.samples.get("dangling")  # a spaced or root name that is no file is not counted as missing
+
+
+def unseen_index() -> dict:
+    """Repo ``a`` read with its history, ``b`` read, ``cli`` declared in harness.yaml and read by no source."""
+    paths = {
+        "a": [
+            "pkg/__init__.py",
+            "pkg/hub/runs/__init__.py",
+            "tests/test_real.py",
+            "plans/active/o.yaml",
+            "plans/completed/p.yaml",
+        ],
+        "b": ["docs/readme.md", "scripts/gate.py"],
+    }
+    records = [
+        {"id": f"{r}:file:{p}", "kind": "code", "props": {"path": p, "repo": r}} for r, ps in paths.items() for p in ps
+    ]
+    facts = {r["id"]: map_item(r, r["id"].split(":")[0], True) for r in records}
+    facts["h:file:harness.yaml"] = [
+        {"t": "ident", "type": "repo", "key": name, "node": f"repo:{name}"} for name in ("a", "b", "cli")
+    ]
+    facts["a:commit:1"] = [
+        {
+            "t": "ident",
+            "type": "commit",
+            "key": "1" * 40,
+            "repo": "a",
+            "node": "a:commit:1",
+            "paths": ["pkg/hub/old.py"],
+        }
+    ]
+    return build_index(facts, [])
+
+
+def dangling_of(index: dict, item: str, path: str | None, text: str, repo: str | None = None) -> list[str]:
+    linker = Linker(index, item, "a" if path else None, path)
+    linker.dated = linker.dated or ":commit:" in item
+    linker.scan(item, "u", text, repo=repo)
+    return linker.samples["dangling"]
+
+
+def test_a_module_that_became_a_package_names_its_init():
+    doc = Linker(unseen_index(), "a:file:docs/x.md", "a", "docs/x.md")
+    assert doc.path_target("pkg/hub/runs.py", None) == ("a:file:pkg/hub/runs/__init__.py", "resolved")
+    assert doc.path_target("hub/runs.py", None, guess=True) == ("a:file:pkg/hub/runs/__init__.py", "resolved")
+    assert doc.path_target("pkg/hub/gone.py", None) == (None, "dangling")
+
+
+def test_a_path_of_a_tree_no_source_reads_is_outside():
+    index = unseen_index()
+    assert index["read_repos"] == {"a", "b"}
+    text = (
+        "(cd ~/github/cli && pytest -q tests/test_cli.py) && pytest -q tests/test_gone.py; "
+        "cli `tests/test_two.py` passed, tests/test_three.py of cli too, cli:tests/test_four.py, "
+        "evo-hub@cli:hooks/hooks.json, and `cd ~/github/b && python scripts/gate.py`.\n"
+        "| cli | `scripts/verify.py` |\n| a | `scripts/missing.py` |"
+    )
+    assert dangling_of(index, "a:file:docs/x.md", "docs/x.md", text) == ["tests/test_gone.py", "scripts/missing.py"]
+    linker = Linker(index, "a:file:docs/x.md", "a", "docs/x.md")
+    linker.scan("a:file:docs/x.md", "u", "cd ~/github/b && python scripts/gate.py")
+    assert {e["dst"] for e in linker.edges.values()} == {"b:file:scripts/gate.py"}  # read in the tree it is of
+    assert dangling_of(index, "plan:p/step:1", None, "Run tests/test_cli.py and scripts/x_gate.py.", repo="cli") == []
+
+
+def test_placeholders_lockfiles_and_fixtures_name_no_missing_file():
+    index = unseen_index()
+    text = "Add tests/test_x.py, plans/active/x.yaml, release/X.Y.Z, docs/name.png and docs/package-lock.json."
+    assert dangling_of(index, "a:file:docs/x.md", "docs/x.md", text) == []
+    assert dangling_of(index, "a:file:tests/fixtures/x.md", "tests/fixtures/x.md", "See docs/gone.md.") == []
+    assert dangling_of(index, "a:file:docs/x.md", "docs/x.md", "See docs/gone.md.") == ["docs/gone.md"]
+    assert is_placeholder("tests/test_x.py") and is_placeholder("release/X.Y.Z") and is_placeholder("images/name.png")
+    assert not is_placeholder("tests/test_runs.py") and not is_placeholder("docs/foo_runner.md")
+
+
+def test_a_dated_item_names_a_file_of_the_history_and_a_closed_plan_by_its_new_path():
+    index = unseen_index()
+    text = "Moved pkg/hub/old.py and hub/old.py; tests/test_gone.py never was."
+    assert dangling_of(index, "a:commit:2", None, text) == ["tests/test_gone.py"]
+    assert dangling_of(index, "h:file:plans/completed/q.yaml", "plans/completed/q.yaml", text) == ["tests/test_gone.py"]
+    assert dangling_of(index, "a:file:docs/x.md", "docs/x.md", text) == [
+        "pkg/hub/old.py",
+        "hub/old.py",
+        "tests/test_gone.py",
+    ]
+    linker = Linker(index, "a:file:docs/x.md", "a", "docs/x.md")
+    linker.scan("a:file:docs/x.md", "u", "The plan plans/active/p.yaml is done.")
+    assert {e["dst"] for e in linker.edges.values()} == {"a:file:plans/completed/p.yaml"}
