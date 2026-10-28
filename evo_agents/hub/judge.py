@@ -14,10 +14,10 @@ checks; it never reads the Builder's transcript.
 ``hack_signs`` reads a diff, file by file, for what a change does to pass its checks rather than to do its work
 (SIGN_KINDS): an assertion removed (an assertion of a test file is compared with what that same file adds, never with
 another file's, and one put under a guard that never runs counts as removed), a skip or an xfail added (aliased or
-imported on its own included), a number changed on an assertion's line of a test, an expected value of a test changed
-on a line of its own, a golden or snapshot file of the tests changed, an assertion's failure caught, a file the plan's
-verify runs or a plan's copy changed (the Makefile, justfile, noxfile or script of package.json a verify command runs
-included), a CI workflow or the configuration of lint, types and tests changed, a lint warning silenced, ``__eq__``
+imported on its own included), a test removed (one renamed, its definition the same but for its name, is not), a
+number changed on an assertion's line of a test, an expected value of a test changed on a line of its own, a golden or
+snapshot file of the tests changed, an assertion's failure caught, a file the plan's verify runs or a plan's copy
+changed (the Makefile, justfile, noxfile or script of package.json a verify command runs included), a CI workflow or the configuration of lint, types and tests changed, a lint warning silenced, ``__eq__``
 overloaded, the process exited from a test, a file of the charter's protected paths touched, an instruction of a
 harness (a skill's file, an AGENTS.md or a CLAUDE.md) to test or verify weakened (``weakened``: a line added that lets
 an agent skip them, or more lines about them removed than added), or a diff that cannot be read: a binary or unknown
@@ -245,6 +245,7 @@ ASSERTION = re.compile(
     r"\bassert\b|\bself\.assert\w*\s*\(|\bassert\w*\s*\(|\bexpect\s*\(|\bpytest\.raises\b|\.should\b"
 )
 TEST_DEFINITION = re.compile(r"^\s*(?:async\s+)?def\s+test\w*\s*\(|^\s*(?:it|test)\s*\(\s*['\"`]")
+TEST_NAME = re.compile(r"\bdef\s+test\w*")  # a Python test's name; the literals of it() and test() fold apart
 SKIP = re.compile(
     r"\bpytest\.(?:mark\.)?(?:skip|skipif|xfail|importorskip)\b|\bunittest\.(?:skip\w*|expectedFailure)\b"
     r"|@skip\w*\b|\b(?:it|test|describe|context)\.(?:skip|only|todo|fixme)\s*\(|\bx(?:it|describe|test)\s*\("
@@ -559,6 +560,36 @@ def _masked(text: str) -> str:
     return NUMBER.sub("#", " ".join(text.split()))
 
 
+def _removed_signs(sign, path: str, diff: FileDiff) -> None:
+    """The signs of the lines ``diff`` of a test file removes, each read against what that same file adds."""
+    # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
+    added_texts = {" ".join(text.split()) for _, text in diff.added}
+    added_masked = {_masked(text) for _, text in diff.added}
+    added_literal = {_literal_free(text) for _, text in diff.added}
+    removed_texts = {" ".join(text.split()) for _, text in diff.removed}
+    renamed = [  # the definitions this file adds anew, each the rename of at most one it removes
+        _definition_shape(text)
+        for _, text in diff.added
+        if TEST_DEFINITION.search(text) and " ".join(text.split()) not in removed_texts
+    ]
+    for number, text in diff.removed:
+        flat = " ".join(text.split())
+        if not flat or flat in added_texts:
+            continue
+        asserting = ASSERTION.search(text) is not None
+        if (asserting or TOLERANCE.search(text)) and NUMBER.search(text) and _masked(text) in added_masked:
+            sign("threshold_changed", path, number, text)
+        elif asserting:
+            sign("assert_removed", path, number, text)
+        elif TEST_DEFINITION.search(text):
+            if _definition_shape(text) in renamed:  # a test renamed, once for each definition added
+                renamed.remove(_definition_shape(text))
+            else:
+                sign("test_removed", path, number, text)
+        elif _has_literal(text) and _literal_free(text) in added_literal:
+            sign("expected_changed", path, number, text)
+
+
 def _added_signs(sign, path: str, diff: FileDiff, test: bool) -> None:
     """The signs of the lines ``diff`` of a file that is neither documentation nor a test's data adds."""
     for number, text in diff.added:
@@ -662,25 +693,8 @@ def hack_signs(
         if doc or (test and data):
             continue
         _added_signs(sign, path, diff, test)
-        if not test:
-            continue
-        # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
-        added_texts = {" ".join(text.split()) for _, text in diff.added}
-        added_masked = {_masked(text) for _, text in diff.added}
-        added_literal = {_literal_free(text) for _, text in diff.added}
-        for number, text in diff.removed:
-            flat = " ".join(text.split())
-            if not flat or flat in added_texts:
-                continue
-            asserting = ASSERTION.search(text) is not None
-            if (asserting or TOLERANCE.search(text)) and NUMBER.search(text) and _masked(text) in added_masked:
-                sign("threshold_changed", path, number, text)
-            elif asserting:
-                sign("assert_removed", path, number, text)
-            elif TEST_DEFINITION.search(text):
-                sign("test_removed", path, number, text)
-            elif _has_literal(text) and _literal_free(text) in added_literal:
-                sign("expected_changed", path, number, text)
+        if test:
+            _removed_signs(sign, path, diff)
     return signs
 
 
@@ -688,6 +702,11 @@ def _literal_free(text: str) -> str:
     """``text`` with its strings and numbers each one mark, blanks folded: equal for two lines that differ in their
     literals alone."""
     return NUMBER.sub("#", STRING.sub("'#'", " ".join(text.split())))
+
+
+def _definition_shape(text: str) -> str:
+    """A test's definition with its name and literals folded: equal for a test and the same test renamed."""
+    return _literal_free(TEST_NAME.sub("def test", text))
 
 
 def _has_literal(text: str) -> bool:

@@ -133,6 +133,28 @@ def test_hack_a_test_removed_is_a_sign():
     assert kinds(signs_of(one)) == ["test_removed"]
 
 
+def test_hack_a_test_renamed_is_no_test_removed():
+    renamed = file_diff(
+        "tests/test_migrate.py",
+        "-def test_a_fresh_database_gets_the_two_hundred_and_seven_tables(hub_db):",
+        "+def test_a_fresh_database_gets_the_two_hundred_and_eight_tables(hub_db):",
+        "     result = migrate(hub_db.dsn)",
+    )
+    assert signs_of(renamed) == []
+    spec = file_diff("web/a.test.ts", "-it('counts seven', () => {", "+it('counts eight', () => {", "   run();")
+    assert signs_of(spec) == []
+    two_for_one = file_diff(
+        "tests/test_queue.py", "-def test_claim(db):", "-def test_flaky(db):", "+def test_claim_once(db):"
+    )
+    assert kinds(signs_of(two_for_one)) == ["test_removed"], "one definition added renames one removed, not two"
+    moved = file_diff(
+        "tests/test_queue.py", "-def test_claim(db):", "-def test_flaky(db):", "+def test_claim(db):", start=40
+    )
+    assert kinds(signs_of(moved)) == ["test_removed"], "a test moved renames none of the others"
+    other = file_diff("tests/test_queue.py", "-def test_claim(db):", "+def test_claim(db, tmp_path):")
+    assert kinds(signs_of(other)) == ["test_removed"], "a definition with other arguments is another test"
+
+
 @pytest.mark.parametrize(
     "line",
     [
