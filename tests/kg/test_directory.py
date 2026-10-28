@@ -197,3 +197,56 @@ def test_a_short_name_goes_to_the_nearest_symbol_and_stays_ambiguous_on_a_tie():
     commit.touched = frozenset({"pkg/worker/runs.py"})
     assert commit.nearest([one, two]) == two["node"]  # a file the commit changed
     assert Linker(index, "a:file:docs/x.md", "a", "docs/x.md").nearest([one, two]) is None  # still tied
+
+
+def test_a_url_is_dangling_only_in_a_collection_some_item_is_in():
+    records = [
+        {"id": "a:file:docs/x.md", "kind": "markdown", "props": {"path": "docs/x.md", "repo": "a"}},
+        {"id": "hub:chat:30", "kind": "chat", "props": {"url": "https://hub.test/chats/30"}},
+        {"id": "a:pr:1", "kind": "pull_request", "props": {"url": "https://github.com/acme/a/pull/1"}},
+    ]
+    facts = {r["id"]: map_item(r, r["id"].split(":")[0], True) for r in records}
+    index = build_index(facts, [])
+    index["url"].update({"https://hub.test/chats/30": "hub:chat:30", "https://github.com/acme/a/pull/1": "a:pr:1"})
+    index["url_prefix"] = {"https://hub.test/chats", "https://github.com/acme/a/pull"}
+    doc = Linker(index, "a:file:docs/x.md", "a", "docs/x.md")
+    doc.scan(
+        "a:file:docs/x.md",
+        "u",
+        "See https://hub.test/chats/30, https://hub.test/chats/31, https://hub.test/v1/health, https://hub.test,"
+        " https://github.com/acme/a/pull/2 and https://github.com/acme/a/actions/runs/9.",
+    )
+    assert doc.stats["resolved"] == 1
+    assert doc.samples["dangling"] == ["https://hub.test/chats/31", "https://github.com/acme/a/pull/2"]
+
+
+def test_the_collection_of_a_url():
+    from evo_agents.kg.pipeline.link import _url_prefix
+
+    assert _url_prefix("https://hub.test/chats/30") == "https://hub.test/chats"
+    assert _url_prefix("https://hub.test/p/demo/plans/one") == "https://hub.test/p/demo/plans"
+    assert _url_prefix("https://hub.test") == "https://hub.test"
+    assert _url_prefix("https://github.com/acme/a/pull/1") == "https://github.com/acme/a/pull"
+    assert _url_prefix("https://github.com/acme/a/blob/main/docs/x.md") == "https://github.com/acme/a/blob"
+    assert _url_prefix("https://git.acme.test/g/a/-/merge_requests/3") == "https://git.acme.test/g/a/-/merge_requests"
+
+
+def test_a_module_level_upper_case_name_is_a_constant_symbol():
+    from evo_agents.kg.extract.python import extract
+
+    found = extract(
+        "import os\nMAX_TUNE = 80\n_CACHE: str = 'kg'\nlower = 1\nMAX_TUNE = 90\n\ndef f():\n    X = 1\n", "a/b.py"
+    )
+    constants = [(s["qualname"], s["line"]) for s in found["symbols"] if s["kind"] == "constant"]
+    assert constants == [("MAX_TUNE", 2), ("_CACHE", 3)]  # the first assignment; not a lower-case name or a local
+
+
+def test_a_name_only_constants_of_several_modules_hold_is_not_ambiguous():
+    index = short_path_index()
+    one = {"node": "s:a:pkg/hub/runs.py::CACHE", "repo": "a", "path": "pkg/hub/runs.py", "constant": True}
+    two = {"node": "s:a:pkg/worker/runs.py::CACHE", "repo": "a", "path": "pkg/worker/runs.py", "constant": True}
+    index["symname"]["CACHE"] = [one, two]
+    index["symname"]["Run"] = [{**one, "node": "s:a:pkg/hub/runs.py::Run", "constant": False}, {**two, "node": "x"}]
+    doc = Linker(index, "a:file:docs/x.md", "a", "docs/x.md")
+    doc.scan("a:file:docs/x.md", "u", "The `CACHE` of a module and the `Run` of another.")
+    assert doc.stats.get("ambiguous", 0) == 1 and doc.samples.get("ambiguous") == ["Run"]
