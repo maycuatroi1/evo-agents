@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.kg import retention
+from evo_agents.kg import asked, retention
 from evo_agents.kg import search as text_search
 from evo_agents.kg import store as store_module
 from evo_agents.kg.build import build_project, memo_path, verify_build
@@ -709,3 +709,153 @@ def test_memo_rows_from_before_uses_were_recorded_go_once_a_build_recorded_its_o
     assert warm.content_hash == report.content_hash
     assert all(stage["misses"] == 0 for stage in warm.memo.values()), warm.memo
     assert verify_build(project, report.content_hash, cold=True)["match"]
+
+
+# -- what agents asked before they read a node (evo_agents.kg.asked) ----------------------------------------------
+
+PLAIN = "app:file:docs/plain.md#ghi-chu"
+EVERYTHING = (99, 99)  # a clearance above every label of the demo
+
+
+def asked_row(node_id: str, words: str, level: int = 0, location: int = 0, audience=None, prior: float = 1.0):
+    return asked.Row(node_id, level, location, audience, prior, words)
+
+
+def test_without_the_asked_index_or_a_clearance_search_ranks_as_before(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    queries = ("graph builder", "do thi tri thuc", "tuesday rollout", "load corpus")
+    before = {q: found(store, q) for q in queries}
+    store.asked_clearance = EVERYTHING  # a hub reader of a file without the index
+    assert not store.has_asked()
+    assert {q: found(store, q) for q in queries} == before
+    assert store.write_asked([asked_row(PLAIN, "tuesday tuesday rollout")]) is not None
+    assert store.has_asked()
+    store.asked_clearance = None  # a reader that reads no asked rows (a local session): as before
+    assert {q: found(store, q) for q in queries} == before
+    assert store.write_asked([]) is None and not store.has_asked()  # no labels: the tables go
+    store.asked_clearance = EVERYTHING
+    assert {q: found(store, q) for q in queries} == before
+    assert store.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] == SCHEMA_VERSION
+
+
+def test_asked_words_find_a_node_only_for_a_reader_their_label_allows(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    assert PLAIN not in found(store, "tuesday rollout")
+    store.write_asked(
+        [
+            asked_row(PLAIN, "tuesday tuesday rollout"),
+            asked_row("app:file:docs/do-thi.md#đồ-thị-tri-thức", "zebrafish", level=3),
+            asked_row("app:file:app/hub_build.py", "okapi", audience='["chat:7"]'),
+        ]
+    )
+    store.leave_wal()
+    store.close()
+    store = Store.open_file(project.root / "graph.sqlite", immutable=True)  # as the hub reads a graph it built
+    store.asked_clearance = (1, 0)
+    assert found(store, "tuesday rollout")[0] == PLAIN  # only the words agents asked find it
+    assert found(store, "zebrafish") == []  # a row above the clearance: never read
+    assert found(store, "okapi") == []  # a row of an audience the reader is not in
+    store.reader = frozenset({"chat:7"})
+    assert found(store, "okapi") == ["app:file:app/hub_build.py"]
+    assert found(store, "okapi", kinds=["Symbol"]) == []
+    store.asked_clearance = (3, 0)
+    assert found(store, "zebrafish") == ["app:file:docs/do-thi.md#đồ-thị-tri-thức"]
+
+
+def test_a_clicked_node_is_weighed_up_by_its_prior_at_most_prior_max(tmp_path, kg_env, monkeypatch):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    store.asked_clearance = EVERYTHING
+    hits = found(store, "graph builder")
+    second = hits[1]
+    store.write_asked([asked_row(second, "unrelated", prior=9.0)])
+    assert store._asked_priors([second, hits[0]]) == {second: asked.PRIOR_MAX}  # stored above it: capped
+    monkeypatch.setattr(text_search, "ASKED_WEIGHT", 0.0)  # the words weigh nothing, the prior still counts
+    moved = []
+    for node in hits[1:8]:
+        store.write_asked([asked_row(node, "unrelated", prior=1.0)])
+        assert found(store, "graph builder") == hits  # a prior of 1 changes nothing
+        store.write_asked([asked_row(node, "unrelated", prior=asked.PRIOR_MAX)])
+        now = found(store, "graph builder")
+        assert now.index(node) <= hits.index(node) and set(now) == set(hits)
+        moved.append(now.index(node) < hits.index(node))
+    assert any(moved)
+    assert asked.prior(0) == 1.0 and 1.0 < asked.prior(1) < asked.prior(10) <= asked.PRIOR_MAX
+
+
+class Known(asked.Nodes):
+    def __init__(self, ids, paths=None):
+        super().__init__(set(ids), paths or {})
+
+
+NOW = dt.datetime(2026, 10, 28, tzinfo=dt.UTC)
+
+
+def label(query, clicks=(), results=5, after_grep=(), days=0.0, level=0):
+    shown = [{"id": f"n{k}", "rank": k, "path": None} for k in range(1, results + 1)]
+    picks = [{"id": f"n{k}", "rank": k, "path": None, "how": "read"} for k in clicks]
+    return asked.Label(query, shown, picks, list(after_grep), NOW - dt.timedelta(days=days), level)
+
+
+def weights(rows) -> dict[str, dict[str, int]]:
+    out = {}
+    for row in rows:
+        counts = {}
+        for word in row.asked.split():
+            counts[word] = counts.get(word, 0) + 1
+        out[row.node_id] = counts
+    return out
+
+
+def test_asked_rows_weigh_clicks_by_propensity_grep_most_and_age_by_half_life():
+    nodes = Known({f"n{k}" for k in range(1, 26)} | {"doc"}, {"docs/guide.md": ["doc"]})
+    labels = [label("filler words", clicks=[1]) for _ in range(40)]  # the cascade reads rank 1 as always looked at
+    labels += [label("deep rank", clicks=[5]), label("top rank", clicks=[1])]
+    labels += [label("grep found", after_grep=["/home/x/repo/docs/guide.md"])]
+    exam = asked.propensities(labels)
+    assert exam[1] == 1.0 and all(exam[k] >= exam[k + 1] >= asked.PROPENSITY_FLOOR for k in range(1, 25))
+    got = weights(asked.rows(labels, nodes, NOW))
+    assert got["n5"]["deep"] == asked.MAX_REPEAT // 2 + 1  # 1 / floor = 5: the most a click weighs
+    assert got["doc"]["grep"] == round(asked.GREP_WEIGHT)  # a file the search missed weighs more than any click
+    assert got["doc"]["grep"] > got["n5"]["deep"] > got["n1"]["top"] == 1
+    old = asked.rows([label("half life", after_grep=["docs/guide.md"], days=asked.HALF_LIFE_DAYS)], nodes, NOW)
+    assert weights(old)["doc"]["half"] == round(asked.GREP_WEIGHT / 2)
+    assert old[0].prior < asked.rows([label("half life", after_grep=["docs/guide.md"])], nodes, NOW)[0].prior
+
+
+def test_asked_rows_keep_each_label_apart_cap_the_words_and_leave_out_holdout_questions():
+    nodes = Known({"n1", "n2"})
+    many = " ".join(f"word{chr(97 + i)}{chr(97 + j)}" for i in range(5) for j in range(6))  # 30 words
+    rows = asked.rows(
+        [label(many, clicks=[1]), label("secret plan", clicks=[2], level=2), label("open plan", clicks=[2])],
+        nodes,
+        NOW,
+        holdout=["Where is the hub build of the graph?"],
+    )
+    assert len(rows[0].asked.split()) == asked.MAX_WORDS
+    assert [(r.node_id, r.level, sorted(set(r.asked.split()))) for r in rows[1:]] == [
+        ("n2", 0, ["open", "plan"]),
+        ("n2", 2, ["plan", "secret"]),
+    ]
+    kept = asked.rows([label("where is the hub build of the graph", clicks=[1])], nodes, NOW, ["hub build graph?"])
+    assert kept == []  # repeats a holdout question: the eval would learn its own answer
+    assert asked.rows([label("hub build graph cache", clicks=[1])], nodes, NOW, ["hub build graph"]) == []
+    assert asked.rows([label("hub build", clicks=[1])], nodes, NOW, ["hub build graph"]) != []
+
+
+def test_exploration_sets_the_ratio_of_rank_five_to_four_once_it_has_enough():
+    def explored(rank, clicked):
+        found = label("q", clicks=[rank] if clicked else [], results=6)
+        found.results[rank - 1].update({"explored": rank, "p": 0.01})
+        return found
+
+    labels = [explored(4, n < 20) for n in range(60)] + [explored(5, n < 5) for n in range(60)]
+    exam = asked.propensities(labels)
+    assert exam[5] == pytest.approx(max(exam[4] * 0.25, asked.PROPENSITY_FLOOR))
+    few = asked.propensities(labels[:40] + labels[60:100])
+    assert few[5] != exam[5] or exam[5] == asked.PROPENSITY_FLOOR
