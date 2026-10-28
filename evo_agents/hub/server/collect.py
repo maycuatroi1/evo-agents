@@ -69,7 +69,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, facet_job, review, runs, tables
+from evo_agents.hub import curator, facet_job, kg_labels, review, runs, tables
 from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import audit, facet_figures, kg_health, memory_promotion, product_figures, runtime_figures
@@ -489,7 +489,8 @@ def _night_row(project_id: int, night: date):
 
 async def ensure_figures(conn: AsyncConnection, due, night: date, access: ProjectAccess):
     """The night's figures of schedule ``due``'s project: counted and kept the first time, read after that; the row
-    (id, figures, run_id)."""
+    (id, figures, run_id). The first time also pushes the night's signal ``kg.query.grep_after_rate``
+    (``kg_labels.push_grep_after``)."""
     found = (await conn.execute(_night_row(due.project_id, night))).one_or_none()
     if found is not None:
         return found
@@ -514,8 +515,10 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
     }
     cf = tables.curator_figures
     values = {"project_id": due.project_id, "schedule_id": due.id, "night": night, "since": since, "until": until}
-    await conn.execute(pg_insert(cf).values(**values, figures=figures).on_conflict_do_nothing())
+    stored = await conn.execute(pg_insert(cf).values(**values, figures=figures).on_conflict_do_nothing())
     log.info("night figures counted", extra={"project": due.project, "night": night.isoformat(), "days": days})
+    if stored.rowcount:
+        await kg_labels.push_grep_after(conn, due.project_id, due.owner_id, night, figures)
     return (await conn.execute(_night_row(due.project_id, night))).one()
 
 

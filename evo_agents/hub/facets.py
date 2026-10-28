@@ -44,14 +44,16 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from evo_agents.hub import digest, review
 from evo_agents.hub.digest import MAX_COUNT, TOOL_NAME, USAGE_KEYS
+from evo_agents.kg import refs
 
-FACET_VERSION = 2  # 2: sources.skills_again, sources.skill_bodies and skills[].chars
+FACET_VERSION = 3  # 2: sources.skills_again, sources.skill_bodies and skills[].chars; 3: kg read from text, labels
 KINDS = ("session", "run")
 SOURCES = ("transcript", "digest", "run_log", "events")
 WORK = "work"  # the cause of a failure of the work itself, not of its environment
@@ -86,6 +88,26 @@ VERSION_NUMBER = re.compile(r"(?<=[=@v])\d+(?:\.\d+)+")
 HOME = re.compile(r"(?:/Users|/home)/[^/\s]+/")
 NODE_FILE = re.compile(r"^[^:\s]+:file:([^#]+)")
 NODE_SYMBOL = re.compile(r"^symbol:[^:\s]+:(.+?)::")
+# A node in a kg result's text: ``[source:path]``, ``[source:path::Symbol]``, ``[plan:x/step:1]``; a ``[more: ...]`` or
+# ``[truncated: ...]`` note holds a blank, a markdown ``[link]`` no colon.
+REF = re.compile(r"\[([^\[\]\s:]+:[^\[\]\s]+)\]")
+SNIPPET = re.compile(r"^\s*> ")  # the words of a document a search matched, which name no node
+NO_RESULTS = re.compile(
+    r"^\s*(?:0 result|impact of 0 seed|context for .*: 0 nodes,|no path within|nothing visible matches)"
+)
+BYTES_PER_TOKEN = 3  # evo_agents.kg.evaluate.BYTES_PER_TOKEN
+KG_WINDOW = 12  # the calls after a kg_search within which a read or an edit of a file it named is a click
+MAX_LABELS = 100  # the kg_search labels a facet keeps
+MAX_LABEL_RESULTS = 25  # the results (and the clicks) of one label
+MAX_AFTER_GREP = 10  # the files read or edited after the grep that followed a search
+MAX_LOOKUPS = 500  # the lookups whose tokens a facet lists
+QUERY_CHARS = 300
+SEPARATORS = frozenset(";&|()")  # the operators that end a simple command
+REDIRECTS = frozenset("<>&")
+SHELLS = frozenset({"bash", "sh", "zsh"})
+FLAG_C = re.compile(r"^-[a-z]*c[a-z]*$")  # bash -c, -lc, -ec
+READ_PROGRAMS = frozenset({"cat", "head", "tail", "sed"})
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def cut(text, limit: int) -> str:
@@ -164,43 +186,187 @@ def kg_op(tool: str) -> str | None:
     return found.group(1) if found else None
 
 
+def kg_tokens(text) -> int:
+    """The tokens a kg result costs the model, as ``evo_agents.kg.evaluate.estimate_tokens`` counts them: its UTF-8
+    bytes over BYTES_PER_TOKEN, rounded up."""
+    size = len(str(text or "").encode())
+    return -(-size // BYTES_PER_TOKEN)
+
+
+def _id_path(ident: str) -> str | None:
+    """The path of the file a node id names, stored (``app:file:a/b.py#s``) or readable (``app:a/b.py::f``), as
+    ``evo_agents.kg.refs.stored`` reads it; None for an id of no file (a plan, a commit, a use case)."""
+    for stored in refs.stored(ident):
+        found = NODE_SYMBOL.match(stored) or NODE_FILE.match(stored)
+        if found:
+            path = found.group(1).split("#", 1)[0]
+            if path and ":" not in path and ("/" in path or "." in path):
+                return path
+    return None
+
+
 def _node_path(node: dict) -> str | None:
     props = node.get("props") if isinstance(node.get("props"), dict) else {}
     if isinstance(props.get("path"), str) and props["path"]:
         return props["path"]
     ident = node.get("id") if isinstance(node.get("id"), str) else ""
-    found = NODE_FILE.match(ident) or NODE_SYMBOL.match(ident)
-    return found.group(1) if found else None
+    return _id_path(ident)
 
 
-def kg_paths(text: str) -> tuple[int, list[str]]:
-    """(the nodes, the paths of files in their order) a kg tool's result names: its JSON walked depth first, each
-    object with an ``id`` a node. A result that is not JSON names none."""
+def _text_nodes(text: str) -> tuple[list[tuple[str, str | None]], bool]:
+    """The nodes a kg result's text names, (readable id, its file's path) in the order printed, and whether it says
+    it found nothing (its first line: 0 results, 0 seeds, 0 nodes, no path, nothing visible)."""
+    lines = text.splitlines()
+    head = next((line for line in lines if line.strip()), "")
+    nodes: dict[str, str | None] = {}
+    for line in lines:
+        if SNIPPET.match(line):
+            continue
+        for ref in REF.findall(line):
+            if ref not in nodes:
+                nodes[ref] = _id_path(ref)
+    return list(nodes.items()), bool(NO_RESULTS.match(head))
+
+
+def kg_nodes(text) -> tuple[list[tuple[str, str | None]], bool]:
+    """The nodes a kg tool's result names, each (its id, the path of its file or None) in the order the result gives
+    them, and whether the lookup came back empty. The result is the text the agent read (each ``[id]`` a node, the
+    ids readable as ``evo_agents.kg.refs`` writes them) or the JSON of before (walked depth first, each object with an
+    ``id`` a node, and the ``text`` of a content item read as text). Empty only when it says it found nothing: text
+    whose first line counts 0, or JSON that names no node and holds no text."""
+    text = str(text or "")
     try:
         data = json.loads(text)
-    except (TypeError, ValueError):
-        return 0, []
-    nodes, paths, stack = 0, [], [data]
+    except ValueError:
+        data = None
+    if not isinstance(data, (dict, list)):
+        return _text_nodes(text)
+    nodes: dict[str, str | None] = {}
+    texts: list[bool] = []
+    stack = [data]
     while stack:
         item = stack.pop()
         if isinstance(item, list):
             stack.extend(reversed(item))
         elif isinstance(item, dict):
             if isinstance(item.get("id"), str):
-                nodes += 1
-                path = _node_path(item)
-                if path and path not in paths and len(paths) < MAX_RESULT_PATHS:
-                    paths.append(path)
+                nodes.setdefault(item["id"], _node_path(item))
+            if isinstance(item.get("text"), str) and item["text"].strip():
+                found, empty = _text_nodes(item["text"])
+                texts.append(empty)
+                for ident, path in found:
+                    nodes.setdefault(ident, path)
             stack.extend(reversed([value for value in item.values() if isinstance(value, (list, dict))]))
-    return nodes, paths
+    return list(nodes.items()), not nodes and (not texts or any(texts))
+
+
+def kg_paths(text) -> tuple[int, list[str]]:
+    """(the nodes, the paths of files in their order) a kg tool's result names (``kg_nodes``)."""
+    nodes, _ = kg_nodes(text)
+    paths: list[str] = []
+    for _, path in nodes:
+        if path and path not in paths and len(paths) < MAX_RESULT_PATHS:
+            paths.append(path)
+    return len(nodes), paths
 
 
 def _same_file(edited: str, path: str) -> bool:
     return edited == path or edited.endswith("/" + path.lstrip("/"))
 
 
+def _segments(command: str) -> list[list[str]]:
+    """The simple commands of a shell command line, each its words: split at ``;``, ``&&``, ``||``, ``|`` and new
+    lines, quotes kept together, the target of a redirection left out."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    segments: list[list[str]] = [[]]
+    skip = False
+    try:
+        for token in lexer:
+            if token and set(token) <= SEPARATORS:
+                segments.append([])
+            elif token and set(token) <= REDIRECTS:
+                skip = True
+            elif skip:
+                skip = False
+            else:
+                segments[-1].append(token)
+    except ValueError:
+        return [line.split() for line in command.splitlines()]
+    return [words for words in segments if words]
+
+
+def shell_reads(command, depth: int = 0) -> list[str]:
+    """The files a shell command prints for the agent to read: the paths given to cat, head, tail or ``sed -n``, in
+    each part of a chain or a pipe; the script of a ``bash -c`` read the same way."""
+    found: list[str] = []
+    for words in _segments(str(command or "").replace("\n", ";")):
+        while words and ASSIGNMENT.match(words[0]):
+            words = words[1:]
+        if not words:
+            continue
+        program = words[0].rsplit("/", 1)[-1]
+        if program in SHELLS:
+            script = next((word for flag, word in zip(words, words[1:], strict=False) if FLAG_C.match(flag)), None)
+            if script is not None and depth < 2:
+                found.extend(path for path in shell_reads(script, depth + 1) if path not in found)
+            continue
+        if program not in READ_PROGRAMS or (program == "sed" and "-n" not in words):
+            continue
+        args = [word for word in words[1:] if not word.startswith("-") and not word.isdigit()]
+        if program == "sed" and args:
+            args = args[1:]  # the script
+        for word in args:
+            if word.startswith("/dev/") or not ("/" in word or "." in word) or len(found) >= MAX_RESULT_PATHS:
+                continue
+            if word not in found:
+                found.append(word)
+    return found
+
+
+@dataclass
+class QueryLabel:
+    """A kg_search and what came after it: the files of its results the agent read or edited within KG_WINDOW calls
+    (a click, with the rank the result gave it), whether a grep, rg or find came right after its chain of lookups,
+    and the files the agent read or edited after that grep, that no result named."""
+
+    seq: int
+    at: object
+    when: datetime | None
+    query: str
+    results: list[dict]
+    clicks: list[dict] = field(default_factory=list)
+    grep_after: bool = False
+    after_grep: list[str] = field(default_factory=list)
+    left: int = KG_WINDOW
+    grepped: bool = False
+
+    def touch(self, path: str, how: str) -> None:
+        clicked = [r for r in self.results if r["path"] and _same_file(path, r["path"])]
+        if clicked:
+            best = min(clicked, key=lambda r: r["rank"])
+            if not any(c["rank"] == best["rank"] for c in self.clicks) and len(self.clicks) < MAX_LABEL_RESULTS:
+                self.clicks.append({"id": best["id"], "path": best["path"], "rank": best["rank"], "how": how})
+        elif self.grepped and path not in self.after_grep and len(self.after_grep) < MAX_AFTER_GREP:
+            self.after_grep.append(cut(path, digest.PATH_CHARS))
+
+    def body(self) -> dict:
+        return {
+            "seq": self.seq,
+            "at": self.at,
+            "searched_at": self.when.isoformat() if self.when else None,
+            "query": self.query,
+            "results": self.results,
+            "clicks": self.clicks,
+            "grep_after": self.grep_after,
+            "after_grep": self.after_grep,
+        }
+
+
 class KgTrail:
-    """The calls of the knowledge graph's tools of one session, and what the agent searched and edited after them."""
+    """The calls of the knowledge graph's tools of one session, and what the agent searched, read and edited after
+    them."""
 
     def __init__(self):
         self.calls: Counter = Counter()
@@ -210,27 +376,87 @@ class KgTrail:
         self.fallbacks = 0
         self.edited: dict[str, int | None] = {}  # a file edited after the first kg call: its best rank before
         self._missed = False  # the last kg lookup named no node, and no search came since
+        self.lookups = 0
+        self.tokens = 0
+        self.lookup_tokens: list[int] = []
+        self.answer: dict | None = None  # the lookups and their tokens until a file a result named was read or edited
+        self.chains = 0
+        self.grep_after = 0
+        self.labels: list[QueryLabel] = []
+        self._chain: list[QueryLabel] | None = None  # the lookups since the last other call; None outside a chain
+        self._queries: dict[str, str] = {}  # a kg_search call: its query
 
     @property
     def used(self) -> bool:
         """Whether a lookup of the graph came yet (``kg_status`` and the like name no file)."""
         return any(op in KG_LOOKUPS for op in self.calls)
 
-    def result(self, op: str, text: str) -> None:
+    def called(self, call_id: str, op: str, given: dict) -> None:
+        """A call of kg tool ``op``: a search keeps its query until its result comes."""
+        if op == "kg_search" and call_id:
+            self._queries[call_id] = cut(given.get("query") or given.get("q") or "", QUERY_CHARS)
+
+    def result(self, op: str, text: str, call_id: str = "", at=None, when: datetime | None = None) -> None:
         self.calls[op] += 1
+        query = self._queries.pop(call_id, "")
         if op not in KG_LOOKUPS:
             return
-        nodes, paths = kg_paths(text)
-        self._missed = nodes == 0
-        if self._missed:
+        nodes, empty = kg_nodes(text)
+        self._missed = empty
+        if empty:
             self.empty[op] += 1
-        for rank, path in enumerate(paths, start=1):
+        tokens = kg_tokens(text)
+        self.lookups += 1
+        self.tokens = min(self.tokens + tokens, MAX_COUNT)
+        if len(self.lookup_tokens) < MAX_LOOKUPS:
+            self.lookup_tokens.append(tokens)
+        if self._chain is None:
+            self._chain = []
+            self.chains += 1
+        rank = 0
+        for _, path in nodes:
+            if not path:
+                continue
+            rank += 1
             if path not in self.ranks and len(self.ranks) >= MAX_KG_PATHS:
                 continue
             self.ranks[path] = min(rank, self.ranks.get(path, rank))
+        if op == "kg_search" and len(self.labels) < MAX_LABELS:
+            results = [
+                {"id": cut(ident, digest.PATH_CHARS), "rank": n, "path": path}
+                for n, (ident, path) in enumerate(nodes[:MAX_LABEL_RESULTS], start=1)
+            ]
+            label = QueryLabel(len(self.labels), at, when, query, results)
+            self.labels.append(label)
+            self._chain.append(label)
 
-    def failed(self, op: str) -> None:
+    def failed(self, op: str, call_id: str = "") -> None:
         self.calls[op] += 1
+        self._queries.pop(call_id, None)
+
+    def step(self, op: str | None, search: bool) -> None:
+        """Another call came: the windows of the labels before it shrink, and a call that is not the graph's ends the
+        chain of lookups before it, which a grep, rg or find right after marks."""
+        for label in self.labels:
+            label.left -= 1
+        if op is not None or self._chain is None:
+            return
+        if search:
+            self.grep_after += 1
+            for label in self._chain:
+                label.grep_after = label.grepped = True
+        self._chain = None
+
+    def touch(self, path: str, how: str) -> None:
+        """The agent read (``read``, ``bash``) or edited (``edit``) file ``path``."""
+        path = path.removeprefix("./") if isinstance(path, str) else ""
+        if not path or not self.used:
+            return
+        if self.answer is None and any(_same_file(path, known) for known in self.ranks):
+            self.answer = {"lookups": self.lookups, "tokens": self.tokens}
+        for label in self.labels:
+            if label.left >= 0:
+                label.touch(path, how)
 
     def search(self) -> None:
         if not self.used:
@@ -246,8 +472,17 @@ class KgTrail:
         ranks = [rank for known, rank in self.ranks.items() if _same_file(path, known)]
         self.edited[path] = min(ranks) if ranks else None
 
+    def new_thread(self) -> None:
+        """A new transcript file starts: the windows and the chain of the one before end."""
+        for label in self.labels:
+            label.left = -1
+        self._chain = None
+
     def body(self) -> dict:
         ranks = list(self.edited.values())
+        answered = [label for label in self.labels if label.results]
+        clicked = [label for label in answered if label.clicks]
+        click_ranks = Counter(min(c["rank"] for c in label.clicks) for label in clicked)
         return {
             "calls": sum(self.calls.values()),
             "empty": sum(self.empty.values()),
@@ -257,7 +492,19 @@ class KgTrail:
             "edited": len(ranks),
             "in_results": sum(1 for rank in ranks if rank is not None),
             "in_top": sum(1 for rank in ranks if rank is not None and rank <= KG_TOP),
+            "lookups": self.lookups,
+            "tokens": self.tokens,
+            "lookup_tokens": self.lookup_tokens,
+            "answer": self.answer,
+            "chains": self.chains,
+            "grep_after": self.grep_after,
+            "queries": len(answered),
+            "clicked": len(clicked),
+            "click_ranks": {str(rank): n for rank, n in sorted(click_ranks.items())},
         }
+
+    def label_bodies(self) -> list[dict]:
+        return [label.body() for label in self.labels]
 
 
 # The tally
@@ -338,14 +585,22 @@ class Tally:
         tool = cut(tool or "unknown", MAX_NAME)
         self.calls[tool] += 1
         given = given if isinstance(given, dict) else {"command": given} if isinstance(given, str) else {}
+        op = kg_op(tool)
         ran = self._shell(tool, given, where)
+        searched = tool in SEARCH_TOOLS or (ran is not None and ran in SEARCH_PROGRAMS)
+        self.kg.step(op, searched)
+        if op is not None:
+            self.kg.called(call_id, op, given)
         self._paths(tool, given)
+        if ran is not None:
+            for path in shell_reads(given.get("command")):
+                self.kg.touch(path, "bash")
         if tool == "Skill" and isinstance(given.get("skill"), str) and given["skill"]:
             self.skills.setdefault(cut(given["skill"], MAX_NAME), [0, 0, 0])[0] += 1
-        if tool in SEARCH_TOOLS or (ran is not None and ran in SEARCH_PROGRAMS):
+        if searched:
             self.kg.search()
         if call_id:
-            self._open[call_id] = (tool, ran, at, kg_op(tool))
+            self._open[call_id] = (tool, ran, at, op)
 
     def _shell(self, tool: str, given: dict, where) -> str | None:
         command = given.get("command")
@@ -367,8 +622,10 @@ class Tally:
         if not isinstance(path, str) or not path:
             return
         path = cut(path, digest.PATH_CHARS)
-        if tool in digest.READ_TOOLS and len(self.read) < MAX_FILES:
-            self.read.setdefault(path)
+        if tool in digest.READ_TOOLS:
+            if len(self.read) < MAX_FILES:
+                self.read.setdefault(path)
+            self.kg.touch(path, "read")
         elif tool in digest.EDIT_TOOLS:
             self.edit(path)
 
@@ -376,6 +633,11 @@ class Tally:
         if len(self.edited) < MAX_FILES:
             self.edited.setdefault(cut(path, digest.PATH_CHARS))
         self.kg.edit(path)
+        self.kg.touch(path, "edit")
+
+    def new_file(self) -> None:
+        """A transcript file of the session starts: a kg_search's window and chain stay in the thread they came in."""
+        self.kg.new_thread()
 
     def result(self, call_id: str, at: datetime | None, failed: bool, text: str, chars: int | None, where) -> None:
         """The result of call ``call_id``; ``chars`` the characters the model read of it, None outside the main
@@ -386,9 +648,9 @@ class Tally:
         if started is not None and at is not None:
             self.timing.setdefault(tool, Timing()).add(max(0, round((at - started).total_seconds() * 1000)))
         if op is not None and failed:
-            self.kg.failed(op)
+            self.kg.failed(op, call_id)
         elif op is not None:
-            self.kg.result(op, text)
+            self.kg.result(op, text, call_id, where, at)
         if not failed:
             return
         self.failed[tool] += 1
@@ -490,6 +752,7 @@ class Tally:
             "files_read": list(self.read),
             "files_edited": list(self.edited),
             "kg": self.kg.body(),
+            "kg_labels": self.kg.label_bodies(),
             "context": {"first": self.context_first, "peak": self.context_peak},
             "compactions": len(self.compactions),
             "compaction": {
@@ -623,6 +886,7 @@ def digest_facet(body: dict, runtime: str | None = None) -> dict:
         "files_read": None,
         "files_edited": _list(body.get("files_edited")),
         "kg": None,
+        "kg_labels": [],
         "context": {"first": None, "peak": count(body.get("peak_context_tokens"))},
         "compactions": count(body.get("compactions")) or 0,
         "compaction": None,
