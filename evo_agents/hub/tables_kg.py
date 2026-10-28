@@ -244,6 +244,8 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("reason", Text, nullable=False),
         Column("build_id", BigInteger),
         Column("actor_plugin", Text),  # the id of the core plugin that took it, else NULL (0174)
+        Column("origin", Text),  # the loop that took it, as kg-optimize, else NULL (0179)
+        Column("run_id", BigInteger),  # that loop's run, when it named one (0179)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_decision_events_project_id_fkey"
         ),
@@ -254,6 +256,7 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         ForeignKeyConstraint(
             ["build_id"], ["kg_builds.id"], ondelete="SET NULL", name="kg_decision_events_build_id_fkey"
         ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="kg_decision_events_run_id_fkey"),
         PrimaryKeyConstraint("project_id", "rev", name="kg_decision_events_pkey"),
         Index("kg_decision_events_decision_idx", "decision_id"),
     )

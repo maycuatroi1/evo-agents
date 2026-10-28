@@ -4910,3 +4910,37 @@ def test_0176_drops_the_cost_cap_of_a_release_cycle_and_going_back_puts_the_defa
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0067's cap check is back
         conn.execute(update(s).values(cycle_budget_usd=0.5))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0176") :]
+
+
+def test_0179_says_which_loop_and_run_took_a_decision_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0178")
+    d, e = hub_tables.kg_decisions, hub_tables.kg_decision_events
+    assert "origin" not in columns(hub_db, "kg_decision_events")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        node = {"project_id": ids["project"], "kind": "deprecate", "state": "active", "src": "app:file:a.py"}
+        first = conn.execute(insert(d).values({**node, "number": 1}).returning(d.c.id)).scalar_one()
+        event = {"project_id": ids["project"], "decision_id": first, "action": "decide", "actor_id": ids["user"]}
+        conn.execute(insert(e).values({**event, "rev": 1, "reason": "by hand"}))
+        run_id = one(conn, _author_run(ids))
+    move_to(hub_db, "0179")
+    assert {"origin", "run_id"} <= set(columns(hub_db, "kg_decision_events"))
+    with live.connect(hub_db) as conn:
+        conn.execute(
+            insert(e).values({**event, "rev": 2, "reason": "a fix", "origin": "kg-optimize", "run_id": run_id})
+        )
+        conn.execute(insert(e).values({**event, "rev": 3, "reason": "a fix", "origin": "kg-optimize"}))
+        for bad in (
+            {**event, "rev": 4, "reason": "x", "run_id": run_id},  # a run and no origin
+            {**event, "rev": 4, "reason": "x", "origin": ""},
+            {**event, "rev": 4, "reason": "x", "origin": "o" * 64},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(e).values(bad))
+        conn.execute(delete(hub_tables.runs).where(hub_tables.runs.c.id == run_id))
+    kept = select(e.c.rev, e.c.origin, e.c.run_id).order_by(e.c.rev)
+    assert query(hub_db, kept) == [(1, None, None), (2, "kg-optimize", None), (3, "kg-optimize", None)]
+    move_to(hub_db, "0178", down=True)
+    assert "origin" not in columns(hub_db, "kg_decision_events")
+    assert query(hub_db, select(func.count()).select_from(e)) == [(3,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0179") :]
