@@ -549,6 +549,7 @@ def build_project(
             if verify:
                 report.verify = verify_build(project, report.content_hash, cold=cold)
                 report.ok = report.verify["match"]
+            _vectors(project, report)
             return report
     started_at = utc_now()
     report = BuildReport(project.name, ok=False)
@@ -563,7 +564,27 @@ def build_project(
         raise
     finally:
         audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)
+    if store is None and report.ok:
+        _vectors(project, report)
     return report
+
+
+def _vectors(project: Project, report: BuildReport) -> None:
+    """Make the project's graph hold the vectors its ``semantic.json`` asks for (``evo_agents.kg.semantic``), outside
+    the build's content hash; a model that cannot be loaded is a warning, and the graph searches by words."""
+    from evo_agents.kg import semantic
+
+    path = project.root / "graph.sqlite"
+    try:
+        settings = semantic.read_settings(project.root)
+    except ValueError as exc:
+        report.warnings.append(f"semantic: {exc}")
+        return
+    if not path.exists():
+        return
+    found = semantic.index_file(path, settings)
+    if found.error:
+        report.warnings.append(found.line())
 
 
 def build_inputs(project: Project, corpus: Corpus) -> str | None:

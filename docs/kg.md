@@ -277,6 +277,9 @@ Projects and who sees what), and the core plugin chats labels each message with 
   lifted by its own words only (`test`, `migration`, `fixture`, `golden`, `completed`, `đã đóng`, `report`,
   `history`, `lịch sử`, ...; `BACKGROUND_WORDS`): a closing step's title that says `đóng` asks for no history. On the
   tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709.
+- A project whose semantic mode is `on` also ranks by meaning: the vectors of a local embedding model, fused with the
+  ranking by words by reciprocal rank fusion. Off by default, and a graph without vectors searches as above
+  ([docs/kg-semantic.md](kg-semantic.md)).
 - With `deprecated` false, the nodes a decision deprecated are left out before the list is cut, so they take no room
   in it.
 - The rows of `node_fts_aud` (nodes with an audience, such as chat messages) are few, so the IDF FTS5 gives a word
