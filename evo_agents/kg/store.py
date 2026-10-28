@@ -208,6 +208,9 @@ class Graph:
     units: dict[str, dict] = field(default_factory=dict)
     texts: dict[str, str] = field(default_factory=dict)  # node id -> the body of its searchable text
     paths: dict[str, str] = field(default_factory=dict)  # node id -> the path it is found by, when it has one
+    # node id -> the passages its long body is also indexed as (``kg.search``): [{"start", "end", "text"}], text with
+    # its context first; never nodes
+    passages: dict[str, list[dict]] = field(default_factory=dict)
     clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
     mentions: dict[str, dict] = field(default_factory=dict)  # item id -> its dangling and ambiguous mentions, samples
     review: list[dict] = field(default_factory=list)  # the review items of a build with clusters (``kg.review``)
@@ -674,20 +677,24 @@ class Store:
         return out
 
     def _write_search(self, graph: Graph) -> str:
-        """Bring the full-text index to ``graph``'s nodes, deleting and inserting only the rows that changed, and
-        replace the aliases; the digest of what the index holds. A row of a node with an audience ends with it."""
-        rows = [
-            (
-                nid,
-                n["kind"],
-                text_search.index_text(n["name"] or ""),
-                text_search.fold(graph.paths.get(nid, "")),
-                text_search.index_text(graph.texts.get(nid, "")),
-            )
-            + ((label_columns(n["label"])["label_aud"],) if n["label"].audience else ())
-            for nid, n in sorted(graph.nodes.items())
-        ]
-        self._update_fts(rows)
+        """Bring the full-text index to ``graph``'s nodes and their passages, deleting and inserting only the rows that
+        changed, and replace the aliases; the digest of what the index holds. A row of a node with an audience ends
+        with it. A passage's row is its node's (id, kind, name, path) with the passage's text as body, keyed
+        ``search.passage_key``; a graph without passages digests as before they came."""
+        rows: list[tuple] = []
+        keyed: list[tuple[str, tuple]] = []
+        for nid, n in sorted(graph.nodes.items()):
+            aud = (label_columns(n["label"])["label_aud"],) if n["label"].audience else ()
+            name, path = text_search.index_text(n["name"] or ""), text_search.fold(graph.paths.get(nid, ""))
+            row = (nid, n["kind"], name, path, text_search.index_text(graph.texts.get(nid, ""))) + aud
+            rows.append(row)
+            keyed.append((nid, row))
+            for p in graph.passages.get(nid, ()):
+                key = text_search.passage_key(nid, p["start"], p["end"])
+                passage = (nid, n["kind"], name, path, text_search.index_text(p["text"])) + aud
+                rows.append((key, *passage))
+                keyed.append((key, passage))
+        self._update_fts(keyed)
         self.db.execute("DELETE FROM node_alias")
         self.db.executemany(
             "INSERT OR IGNORE INTO node_alias (alias, node_id) VALUES (?, ?)",
@@ -695,37 +702,39 @@ class Store:
         )
         return sha256(canonical_json(rows))
 
-    def _update_fts(self, rows: list[tuple]) -> None:
-        """Make the full-text tables hold ``rows`` and nothing else, a row with an audience (six columns) in
-        ``node_fts_aud``: the rows whose digest ``node_fts_rows`` does not hold go, new and changed ones come in. An
-        index whose rows ``node_fts_rows`` does not account for is written again whole."""
+    def _update_fts(self, keyed: list[tuple[str, tuple]]) -> None:
+        """Make the full-text tables hold the rows of ``keyed`` (key, row) and nothing else, a row with an audience
+        (six columns) in ``node_fts_aud``: the rows whose digest ``node_fts_rows`` does not hold under their key go, new
+        and changed ones come in. An index whose rows ``node_fts_rows`` does not account for is written again whole. A
+        node's own row is keyed by its id and digested as it always was; a passage's by ``search.passage_key``."""
         db = self.db
-        digests = {row[0]: sha256(canonical_json(row)) for row in rows}
+        digests = {key: sha256(canonical_json(row if key == row[0] else [key, *row])) for key, row in keyed}
         held = {
-            nid: (rowid, d, aud)
-            for nid, rowid, d, aud in db.execute("SELECT node_id, fts_rowid, digest, aud FROM node_fts_rows")
+            key: (rowid, d, aud)
+            for key, rowid, d, aud in db.execute("SELECT node_id, fts_rowid, digest, aud FROM node_fts_rows")
         }
         if sum(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in FTS_TABLES) != len(held):
             for table in (*FTS_TABLES, "node_fts_rows"):
                 db.execute(f"DELETE FROM {table}")
             held = {}
-        gone = [(nid, rowid, aud) for nid, (rowid, d, aud) in held.items() if digests.get(nid) != d]
+        gone = [(key, rowid, aud) for key, (rowid, d, aud) in held.items() if digests.get(key) != d]
         for aud, table in enumerate(FTS_TABLES):
             db.executemany(f"DELETE FROM {table} WHERE rowid = ?", [(rowid,) for _, rowid, a in gone if a == aud])
-        db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(nid,) for nid, _, _ in gone])
-        fresh = [row for row in rows if held.get(row[0], (0, None))[1] != digests[row[0]]]
+        db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(key,) for key, _, _ in gone])
+        fresh = [(key, row) for key, row in keyed if held.get(key, (0, None))[1] != digests[key]]
         for aud, table in enumerate(FTS_TABLES):
-            mine = [row for row in fresh if (len(row) > 5) == bool(aud)]
+            mine = [(key, row) for key, row in fresh if (len(row) > 5) == bool(aud)]
             last = db.execute(f"SELECT rowid FROM {table} ORDER BY rowid DESC LIMIT 1").fetchone()
             start = (last[0] if last else 0) + 1
             columns = "rowid, node_id, kind, name, path, body" + (", aud" if aud else "")
             marks = ", ".join("?" for _ in columns.split(", "))
             db.executemany(
-                f"INSERT INTO {table} ({columns}) VALUES ({marks})", [(start + i, *row) for i, row in enumerate(mine)]
+                f"INSERT INTO {table} ({columns}) VALUES ({marks})",
+                [(start + i, *row) for i, (_, row) in enumerate(mine)],
             )
             db.executemany(
                 "INSERT INTO node_fts_rows VALUES (?, ?, ?, ?)",
-                [(row[0], start + i, digests[row[0]], aud) for i, row in enumerate(mine)],
+                [(key, start + i, digests[key], aud) for i, (key, _) in enumerate(mine)],
             )
 
     def _diff(self, table: str, key_col: str | None, b: int, rows: dict[str, dict], cols: list[str]) -> None:
@@ -1160,8 +1169,28 @@ class Store:
                 return []
             rows += self._as_public(fts_query, found) if table == "node_fts_aud" else found
         prior = text_search.PRIOR
-        scored = sorted(((r[0], r[2] * prior.get(r[1], 1.0)) for r in rows), key=lambda r: (r[1], r[0]))
-        return scored[:limit]  # bm25 is negative: lower is better
+        own = self._own_rows({r[0] for r in rows})
+        weight = text_search.PASSAGE_WEIGHT
+        scored = sorted(
+            ((r[0], r[2] * prior.get(r[1], 1.0) * (1.0 if own.get(r[0]) == r[3] else weight)) for r in rows),
+            key=lambda r: (r[1], r[0]),
+        )
+        best: dict[str, float] = {}
+        for node_id, score in scored:  # a node's own row and its passages: the best of them
+            best.setdefault(node_id, score)
+        return list(best.items())[:limit]  # bm25 is negative: lower is better
+
+    def _own_rows(self, ids: set[str]) -> dict[str, int]:
+        """The rowid of the own row of each node of ``ids`` in the full-text index, which its passages' rows are not."""
+        out: dict[str, int] = {}
+        ids = sorted(ids)
+        for i in range(0, len(ids), 500):
+            chunk = ids[i : i + 500]
+            marks = ", ".join("?" for _ in chunk)
+            out.update(
+                self.db.execute(f"SELECT node_id, fts_rowid FROM node_fts_rows WHERE node_id IN ({marks})", chunk)
+            )
+        return out
 
     def _as_public(self, fts_query: str, rows: list[tuple]) -> list[tuple]:
         """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid) with the BM25 ``node_fts`` would give them. BM25
@@ -1241,6 +1270,48 @@ class Store:
                 passage = " ".join(str(passages.get(rowid) or "").split())
                 if passage:
                     out[node_id]["snippet"] = passage
+        for node_id, (lines, snippet) in self._best_passages(list(out), whole, snippets).items():
+            out[node_id]["lines"] = lines
+            if snippet:
+                out[node_id]["snippet"] = snippet
+        return out
+
+    def _best_passages(self, ids: list[str], whole: list[str], snippets) -> dict[str, tuple[str, str | None]]:
+        """For each node of ``ids`` indexed as passages too (``search.PASSAGE_FROM``), (the lines of its passage that
+        matches the words ``whole`` best by BM25, the passage's snippet when the node is one of ``snippets``). A store
+        written before passages came holds none, and answers {}."""
+        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        query = " OR ".join(whole)
+        out: dict[str, tuple[str, str | None]] = {}
+        for node_id in ids:
+            keys = self.db.execute(
+                "SELECT node_id, fts_rowid, aud FROM node_fts_rows WHERE node_id > ? AND node_id < ?",
+                (node_id + text_search.PASSAGE_MARK, node_id + chr(ord(text_search.PASSAGE_MARK) + 1)),
+            ).fetchall()
+            by_table: dict[int, dict[int, str]] = defaultdict(dict)
+            for key, rowid, aud in keys:
+                if not aud or self.reader:
+                    by_table[aud][rowid] = key
+            best = None
+            for aud, rows in by_table.items():
+                table = FTS_TABLES[aud]
+                seen = " AND aud_seen(aud)" if aud else ""
+                snippet = (
+                    f"snippet({table}, 4, '', '', '…', {text_search.SNIPPET_TOKENS})" if node_id in snippets else "''"
+                )
+                try:
+                    found = self.db.execute(
+                        f"SELECT rowid, bm25({table}, {weights}) AS score, {snippet} FROM {table} WHERE {table} MATCH ?"
+                        f" AND rowid IN ({', '.join('?' for _ in rows)}){seen} ORDER BY score, rowid LIMIT 1",
+                        (query, *rows),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    continue
+                if found and (best is None or found[1] < best[1]):
+                    best = (rows[found[0]], found[1], found[2])
+            if best is not None:
+                lines = text_search.passage_lines(best[0])[1]
+                out[node_id] = (lines, " ".join(str(best[2] or "").split()) or None)
         return out
 
     def derivations(self, elem_id: str, b: int) -> list[dict]:

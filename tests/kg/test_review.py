@@ -3,8 +3,9 @@ reader sees."""
 
 from evo_agents.kg import review
 from evo_agents.kg.build import build_project
+from evo_agents.kg.search import PASSAGE_MARK
 from evo_agents.kg.store import Clusters, Graph, Store
-from tests.kg.projects import make_project
+from tests.kg.projects import commit, make_project, write
 from tests.kg.test_clusters import CUSTOMER, link, needs_engine, node, sync_build
 
 
@@ -156,4 +157,20 @@ def test_review_build_stores_items_counts_them_and_keeps_fingerprints(tmp_path, 
     assert again.ok and again.verify["match"] and again.content_hash == report.content_hash
     store = Store.for_project(project)
     assert {i["fingerprint"] for i in store.review_items(again.build_id)} == first
+    store.close()
+
+
+@needs_engine
+def test_the_passages_of_a_long_section_are_searched_but_never_review_items(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    write(tmp_path / "demo-app" / "docs/long.md", "# Long\n\n" + "Filler sentence. " * 400 + "\n\nThe end.\n")
+    commit(tmp_path / "demo-app", "a long section")
+    report = sync_build(project)
+    store = Store.for_project(project)
+    keys = [k for (k,) in store.db.execute("SELECT node_id FROM node_fts_rows")]
+    assert any(PASSAGE_MARK in k for k in keys)  # the section is indexed as passages too
+    items = store.review_items(report.build_id)
+    assert items and all(PASSAGE_MARK not in i["fingerprint"] for i in items)
+    assert all(PASSAGE_MARK not in e for i in items for e in i["evidence"])
+    assert all(set(i["evidence"]) <= store.alive_ids("nodes", report.build_id) for i in items)
     store.close()

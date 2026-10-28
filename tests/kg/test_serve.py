@@ -267,7 +267,7 @@ def test_impact_by_id_walks_back_to_dependents_and_groups_documents(tmp_path, kg
     assert not set(docs) & set(got)
     text = result["content"][0]["text"]
     # The text names nodes by their readable ids, and a symbol's name only once, in its id.
-    assert "[app:app/search.py::search] Symbol (parsed) line=" in text
+    assert "[app:app/search.py::search] Symbol (parsed) lines 5-6" in text
     assert "-calls-> [app:app/search.py::rank_results] (resolved)" in text
     assert "documents to re-check:" in text
     assert set(impacted(session.call("kg_impact", {"id": RANK, "depth": 1}))) == {SEARCH, SEARCH_PY}
@@ -746,3 +746,27 @@ def test_instructions_descriptions_and_skill_name_only_statuses_the_graph_has():
     for text in (serve.INSTRUCTIONS, skill):
         assert "'parsed'" in text or "`parsed`" in text
         assert "'resolved'" in text or "`resolved`" in text
+
+
+def test_results_print_the_lines_of_a_section_a_symbol_and_the_passage_a_long_section_matched(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    filler = "Filler sentence about nothing. " * 200
+    write(tmp_path / "demo-app" / "docs/long.md", f"# Long\n\n{filler}\n\nzanzibarquokka at the end.\n")
+    commit(tmp_path / "demo-app", "a long section")
+    sync_project(project)
+    assert build_project(project).ok
+    session = Session(project, "agent")
+    found = session.call("kg_search", {"query": "zanzibarquokka", "limit": 3})
+    lines = found["content"][0]["text"].splitlines()
+    hit = next(line for line in lines if line.startswith("[app:docs/long.md#long] Section"))
+    assert hit.endswith(" lines 4-5 of 1-5"), hit  # the passage that holds the word, within the section
+    assert found["structuredContent"]["matched"]["app:file:docs/long.md#long"]["lines"] == "lines 4-5"
+
+    guide = session.call("kg_search", {"query": "rank_results internally"})["content"][0]["text"]
+    assert "[app:docs/guide.md#details] Section 'Details' (parsed) lines 9-12" in guide  # a short one: its own lines
+    symbol = session.call("kg_search", {"query": "rank_results"})["content"][0]["text"]
+    assert "[app:app/search.py::rank_results] Symbol (parsed) lines 1-2" in symbol  # first and last line
+    node = session.call("kg_node", {"id": "app:file:docs/guide.md#details"})["content"][0]["text"]
+    assert "lines 9-12" in node.splitlines()[0]
+    context = session.call("kg_context", {"query": "rank_results", "budget_tokens": 4000})["content"][0]["text"]
+    assert "[app:app/search.py::rank_results] Symbol (parsed) lines 1-2" in context

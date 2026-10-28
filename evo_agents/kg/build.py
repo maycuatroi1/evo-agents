@@ -16,6 +16,7 @@ config, the cursors: ``build_inputs``) are those of the store's latest build is 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -55,6 +56,7 @@ from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
 from evo_agents.kg.store import Clusters, Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
+from evo_agents.kg.text import split_passages
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
@@ -416,19 +418,35 @@ def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, l
     """Fill ``graph.texts`` and ``graph.paths``, what the full-text index holds besides names (``kg.search``): the
     sections of a document, the text of an item that is neither code nor a plan (a plan's text is on its plan and
     step nodes), the descriptions and docstrings in ``notes``, and a requirement's code; the path of a node that has
-    one, a section's being its document's. The ids of the nodes whose body was cut (``kg.search.MAX_TEXT_CHARS``)."""
+    one, a section's being its document's; and ``graph.passages``, a section or a file read whole longer than
+    ``kg.search.PASSAGE_FROM`` cut into passages with their lines, each after the document's name and the headings
+    above it. The ids of the nodes whose body was cut (``kg.search.MAX_TEXT_CHARS``)."""
     parts: dict[str, list[str]] = defaultdict(list)
+    long: list[tuple[str, int, str, list[str]]] = []  # (node id, first line, text, context) of a body to cut
     for rec in records:
         r = rec.record
         node = graph.nodes.get(r["id"])
         if node is None:
             continue
         if r.get("fragments") and node["kind"] == "Document":
-            for f in corpus.fragments(r):
+            frags = corpus.fragments(r)
+            heads = {f["anchor"]: f for f in frags}
+            for f in frags:
                 sid = f"{r['id']}#{f['anchor']}"
-                parts[sid if sid in graph.nodes else r["id"]].append(f["text"])
+                target = sid if sid in graph.nodes else r["id"]
+                parts[target].append(f["text"])
+                first = _first_line(f.get("span"))
+                if first is not None and len(f["text"]) > text_search.PASSAGE_FROM:
+                    long.append((target, first, f["text"], [node["name"] or r["id"], *_headings(f, heads)]))
         elif r["kind"] not in UNSEARCHED_ITEMS:
-            parts[r["id"]].append(body(rec) or "")
+            text = body(rec) or ""
+            parts[r["id"]].append(text)
+            if node["kind"] in ("File", "Document") and len(text) > text_search.PASSAGE_FROM:  # lines of a file
+                long.append((r["id"], 1, text, [node["name"] or r["id"]]))
+    for nid, first, text, context in long:  # past MAX_TEXT_CHARS, a passage would index what the body cut
+        prefix = " > ".join(dict.fromkeys(c for c in context if c))
+        found = split_passages(text[: text_search.MAX_TEXT_CHARS], first, text_search.PASSAGE_CHARS)
+        graph.passages.setdefault(nid, []).extend({**p, "text": f"{prefix}\n{p['text']}"} for p in found)
     for nid, texts in notes.items():
         if nid in graph.nodes:
             parts[nid] += texts
@@ -446,6 +464,23 @@ def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, l
             if was_cut:
                 cut.append(nid)
     return sorted(cut)
+
+
+def _first_line(span: str | None) -> int | None:
+    """The first line of a fragment's ``lines A-B`` span, or None."""
+    found = re.match(r"lines? (\d+)", span or "")
+    return int(found.group(1)) if found else None
+
+
+def _headings(frag: dict, heads: dict[str, dict]) -> list[str]:
+    """The titles of the headings above a markdown fragment, outermost first, then its own."""
+    chain, seen, at = [], set(), frag
+    while at is not None and at["anchor"] not in seen:
+        seen.add(at["anchor"])
+        if at.get("title"):
+            chain.append(at["title"])
+        at = heads.get(at.get("parent") or "")
+    return chain[::-1]
 
 
 def multiple_definitions(graph: Graph, code_kinds: set[str]) -> dict:

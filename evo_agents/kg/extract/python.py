@@ -171,6 +171,7 @@ class _Extractor:
         kind = "class" if isinstance(node, ast.ClassDef) else ("method" if cls else "function")
         anchor = top if parent else node.name
         sym = {"qualname": qual, "name": node.name, "kind": kind, "top": anchor, "line": node.lineno, "parent": parent}
+        sym["end"] = node.end_lineno or node.lineno
         doc = ast.get_docstring(node)
         if doc:
             sym["doc"] = doc

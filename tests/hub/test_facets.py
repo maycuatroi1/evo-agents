@@ -340,9 +340,9 @@ def test_the_paths_of_a_kg_result_and_the_name_of_a_kg_tool():
 
 SEARCH_TEXT = """2 result(s) for 'claim a job' in project demo (build 7)
 label of every node unless its line names another: internal
-[app:app/queue.py::Queue.claim] Symbol 'Queue.claim' (parsed) line=12
+[app:app/queue.py::Queue.claim] Symbol 'Queue.claim' (parsed) lines 12-30
     > the [worker] claims a job: see [notes](x)
-  mentions [app:docs/queue.md#claiming] Section 'Claiming' (parsed)
+  mentions [app:docs/queue.md#claiming] Section 'Claiming' (parsed) lines 80-120 of 10-200
 [plan:jobs/step:2] PlanStep 'Claim' (parsed) status=done
 [more: call kg_more with handle 'h1' for the rest]"""
 
