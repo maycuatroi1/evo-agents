@@ -17633,14 +17633,6 @@
         },
         {
           "flags": [
-            "--budget"
-          ],
-          "value": "number",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--json"
           ],
           "value": null,
@@ -138177,11 +138169,6 @@
               "type": "array",
               "title": "Changed Paths"
             },
-            "budget_usd": {
-              "type": "number",
-              "title": "Budget Usd",
-              "description": "what the cycle's runs may cost"
-            },
             "cost_usd": {
               "type": "number",
               "title": "Cost Usd",
@@ -138290,7 +138277,6 @@
             "target_ref",
             "target_commit",
             "changed_paths",
-            "budget_usd",
             "cost_usd",
             "stop_reason",
             "stop_cause",
@@ -138599,11 +138585,6 @@
               "title": "Paths",
               "description": "the packaging paths: a check opens a cycle when one of them changed"
             },
-            "cycle_budget_usd": {
-              "type": "number",
-              "title": "Cycle Budget Usd",
-              "description": "what one cycle's runs may cost"
-            },
             "owner": {
               "type": "string",
               "title": "Owner",
@@ -138657,7 +138638,6 @@
             "tag_pattern",
             "workflow",
             "paths",
-            "cycle_budget_usd",
             "owner",
             "updated_by",
             "created_at",
@@ -138765,19 +138745,6 @@
               ],
               "title": "Paths",
               "description": "packaging paths"
-            },
-            "cycle_budget_usd": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "maximum": 10000.0,
-                  "minimum": 1.0
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cycle Budget Usd"
             }
           },
           "additionalProperties": false,

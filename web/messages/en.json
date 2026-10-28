@@ -8275,7 +8275,7 @@
         "thread": "Open the triage thread",
         "noCause": "see why below",
         "noReason": "The hub kept no reason.",
-        "waits": "It moves no further until {owner} answers: go on with one more cap, close the cycle, or pause the schedule."
+        "waits": "It moves no further until {owner} answers: go on, close the cycle, or pause the schedule."
       },
       "actions": {
         "title": "The hub cannot read the CI of {workflow}",
@@ -8330,8 +8330,6 @@
       "changed": "Changed paths",
       "noChange": "None: the cycle fixes a red tag",
       "cost": "Cost",
-      "costValue": "{cost} of {budget}, {share}%",
-      "costLabel": "Cost of cycle #{id} against its cap",
       "tags": "Tags",
       "noTags": "No tag yet: the hub tags the merge commit once the cut run's branch lands.",
       "runs": "Runs",
@@ -8400,8 +8398,6 @@
       "shipsValue": "The commit of {ref}, tagged {pattern}",
       "workflow": "Workflow",
       "paths": "Packaging paths",
-      "cap": "Cap per cycle",
-      "capValue": "{budget}",
       "owner": "Runs as",
       "updated": "Last set",
       "updatedValue": "By {login} <ago></ago>"
@@ -8447,7 +8443,6 @@
         "cost": "Cost",
         "ended": "Ended"
       },
-      "costOf": "Of a cap of {budget}",
       "mobileMeta": "{ending}, {runs, plural, one {# run} other {# runs}}, {cost}",
       "mobileTitle": "Cycle #{id}, {day}",
       "caption": "Release cycles of {project} that ended",

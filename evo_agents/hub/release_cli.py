@@ -21,7 +21,7 @@ from evo_agents.hub.cli_client import client_command, print_json, signed_in, whe
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.curator import money
 from evo_agents.hub.plan_cli import project_of_args
-from evo_agents.hub.releases import DEFAULT_AT, DEFAULT_CYCLE_USD, DEFAULT_TIMEZONE, MAX_PATHS, short
+from evo_agents.hub.releases import DEFAULT_AT, DEFAULT_TIMEZONE, MAX_PATHS, short
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 STATUS_KEYS = ("project", "schedule", "paused", "next_check_at", "last_check", "checks", "cycle")
@@ -50,7 +50,6 @@ SET_OPTIONS = {  # option, its key in the body
     "tag_pattern": "tag_pattern",
     "workflow": "workflow",
     "paths": "paths",
-    "budget": "cycle_budget_usd",
 }
 
 
@@ -82,13 +81,12 @@ def _print_status(status: dict) -> None:
     print(f"  compares  the newest tag {schedule['tag_pattern']} with {schedule['target_ref']}")
     print(f"  paths     {', '.join(schedule['paths'])}")
     print(f"  workflow  {schedule['workflow']}")
-    print(f"  cycle cap {money(schedule['cycle_budget_usd'])}, runs dispatched as {schedule['owner']}")
+    print(f"  runs      dispatched as {schedule['owner']}, no cost cap")
     cycle = status["cycle"]
     if cycle is not None:
         print(
             f"  cycle #{cycle['id']} {cycle['state']} since {when(cycle['opened_at'])} UTC: {cycle['target_ref']} at "
-            f"{short(cycle['target_commit'])} since {cycle['base_tag'] or '-'}, {money(cycle['cost_usd'])} of "
-            f"{money(cycle['budget_usd'])}"
+            f"{short(cycle['target_commit'])} since {cycle['base_tag'] or '-'}, {money(cycle['cost_usd'])}"
         )
         if cycle.get("stop_reason"):
             print(f"    stopped ({cycle.get('stop_cause') or '-'}): {cycle['stop_reason']}")
@@ -219,9 +217,6 @@ def register_release(hsub) -> None:
         action="append",
         metavar="PATH",
         help=f"a packaging path, repeated up to {MAX_PATHS} times; replaces them all (a directory ends in /)",
-    )
-    write.add_argument(
-        "--budget", type=float, metavar="USD", help=f"what one cycle's runs may cost (default: {DEFAULT_CYCLE_USD:g})"
     )
     json_option(write, STATUS)
     write.set_defaults(func=cmd_set)

@@ -13,11 +13,11 @@ the triage chat, and goes on from that tag as if no cycle were there. A newest t
 workflow completed, did not publish, and a job of it failed), whoever made it, opens a cycle that starts with a fix: the
 cycle follows that tag with the failures read, and its first run, of kind release in mode fix, fixes it forward, whether
 a packaging path changed or not. Otherwise, with a packaging path changed, it opens a cycle and queues its first run in
-mode cut. Either run is dispatched as the owner, pinned to no worker, with what is left of the cycle's cap as its cost
-cap, audited as release.dispatch with the owner as actor and no token. A CI the hub cannot read (the App's installation
-grants no actions) counts as not red, and the check's reason says why. The scheduled check of a day happens once: a
-check of that day that did not fail, or ERROR_TRIES that did, and the job passes the schedule over, and the unique index
-on the day (``release_checks_day_key``) holds when two passes meet. No model is called by any of this.
+mode cut. Either run is dispatched as the owner, pinned to no worker, with no cost cap, audited as release.dispatch
+with the owner as actor and no token. A CI the hub cannot read (the App's installation grants no actions) counts as not
+red, and the check's reason says why. The scheduled check of a day happens once: a check of that day that did not fail,
+or ERROR_TRIES that did, and the job passes the schedule over, and the unique index on the day
+(``release_checks_day_key``) holds when two passes meet. No model is called by any of this.
 
 ``fire_release_schedules`` is the job's checks, run every minute by the hub's worker: each schedule whose local time
 came in the last CATCH_UP_MINUTES gets the check of that day, in its own transactions, one failing leaving the others
@@ -39,7 +39,7 @@ from sqlalchemy import and_, exists, func, insert, literal, null, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, releases, tables
+from evo_agents.hub import releases, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chat_runs import hub_reply
@@ -163,12 +163,9 @@ async def _open(conn: AsyncConnection, row, day: date, reading: Reading) -> tupl
     """Open a cycle of ``row`` from ``reading`` and queue its cut run: (cycle id, run id); None when another cycle or
     release run of the project got in first."""
     c, rr = tables.release_cycles, tables.release_runs
-    cap = float(row.cycle_budget_usd)
-    budget = releases.run_budget(cap)  # a new cycle has spent nothing
-    if budget["max_usd"] < curator.MIN_RUN_USD:
-        return None
+    budget = releases.run_budget()
     cycle = {"project_id": row.project_id, "schedule_id": row.id, "start": "cut", "owner_id": row.owner_id}
-    cycle |= {"local_day": day, "target_ref": row.target_ref, "budget_usd": cap, **_read_values(reading)}
+    cycle |= {"local_day": day, "target_ref": row.target_ref, **_read_values(reading)}
     cycle["span"] = reading.span  # the range the claim of its cut run builds the prompt from
     try:
         async with conn.begin_nested():
@@ -180,8 +177,7 @@ async def _open(conn: AsyncConnection, row, day: date, reading: Reading) -> tupl
     text = (
         f"Queued by the release schedule of project {row.project} for {day.isoformat()}, as {row.owner}: cycle "
         f"#{cycle_id} cuts {row.target_ref} at {releases.short(reading.target_commit)} since {reading.base_tag} "
-        f"({', '.join(reading.changed)} changed), cost cap {curator.money(budget['max_usd'])} of the cycle's "
-        f"{curator.money(cap)}."
+        f"({', '.join(reading.changed)} changed), with no cost cap."
     )
     await write_event(conn, run_id, {"text": text, "cycle_id": cycle_id, "release_mode": "cut", **budget})
     await notify_queued(conn, run_id)
@@ -220,7 +216,7 @@ async def _open_fix(conn: AsyncConnection, row, day: date, read: Reading, ci: Re
     when another cycle or release run of the project got in first."""
     c, t = tables.release_cycles, tables.release_tags
     cycle = {"project_id": row.project_id, "schedule_id": row.id, "start": "fix", "owner_id": row.owner_id}
-    cycle |= {"local_day": day, "target_ref": row.target_ref, "budget_usd": float(row.cycle_budget_usd)}
+    cycle |= {"local_day": day, "target_ref": row.target_ref}
     cycle |= {**_read_values(read), "span": null() if read.span is None else read.span}  # SQL NULL, not JSON null
     try:
         async with conn.begin_nested():
