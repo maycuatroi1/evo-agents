@@ -9,8 +9,11 @@
   errors of the model's API (``api_error``), and the time of each call, from the line of its call to the line of its
   result; in the main thread, the sources of its context (``facets.CONTEXT_SOURCES``): the files of the
   ``instructions`` attachments (CLAUDE.md, AGENTS.md, a memory index), the blocks of ``mcp_instructions_delta``, the
-  ``skill_listing``, and the text of hooks (``hook_additional_context`` and the content of ``hook_success``). What the
-  person wrote counts in the main thread only, a compaction's summary left out. A message of the model
+  ``skill_listing`` (a whole list unless ``isInitial`` is false, and whether the context already held one), the text
+  of hooks (``hook_additional_context`` and the content of ``hook_success``), and the text of each skill loaded (the
+  ``isMeta`` user line that starts with SKILL_TEXT, named by the Skill call of its ``sourceToolUseID``, else by its
+  directory) or brought back by a compaction (the content of ``invoked_skills``). What the person wrote counts in the
+  main thread only, a compaction's summary left out. A message of the model
   counts once, with the usage of its last line, as in the digest. A Codex rollout is read through its items and token
   counts, as the digest reads it; the usage of each of its threads (main and subagents) adds up.
 - ``run_facet`` reads the events of a run (``docs/workers.md``, "Event kinds"), from its log or from the hub: its tool
@@ -46,6 +49,8 @@ CODEX_TOKENS = {
 # and what the first request read from the cache and wrote to it.
 PEAK_CONTEXT = "peak_context_tokens"
 FIRST_REQUEST = ("first_request_cache_read_input_tokens", "first_request_cache_creation_input_tokens")
+SKILL_TEXT = "Base directory for this skill:"  # how Claude Code starts the text of a skill it loads, then its directory
+CLEAR = "<command-name>/clear</command-name>"
 
 
 def _items(line: dict) -> list[dict]:
@@ -84,6 +89,7 @@ class ClaudeReader:
         self.tally = tally
         self.usage: dict[str, dict] = {}  # message id: the usage of its last line
         self.contexts: dict[str, int] = {}  # message id of the main thread: the tokens of its context
+        self.skill_calls: dict[str, str] = {}  # id of a Skill call: the skill it loads
 
     def add(self, file: str, number: int, line) -> None:
         if not isinstance(line, dict):
@@ -100,6 +106,9 @@ class ClaudeReader:
             cost = line.get("totalCostUSD")
             if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
                 self.tally.cost = max(self.tally.cost or 0.0, float(cost))
+        elif kind == "user" and line.get("isMeta"):
+            if main:
+                self._meta(line)
         elif kind in ("user", "assistant") and not line.get("isMeta"):
             at = timestamp(line.get("timestamp"))
             self.tally.message(at)
@@ -136,6 +145,8 @@ class ClaudeReader:
             for skill in found.get("skills") or []:
                 if isinstance(skill, dict):
                     self.tally.skill_back(skill.get("name"))
+                    if main:
+                        self.tally.skill_body(skill.get("name"), skill.get("content"))
         elif main:
             self._context(kind, found)
 
@@ -149,16 +160,26 @@ class ClaudeReader:
             for block in found.get("addedBlocks") or []:
                 self.tally.context_text("mcp_instructions", block)
         elif kind == "skill_listing":
-            self.tally.context_text("skills", found.get("content"))
+            self.tally.skill_list(found.get("content"), found.get("isInitial") is not False)
         elif kind == "hook_additional_context":
             content = found.get("content")
             for text in content if isinstance(content, list) else [content]:
                 self.tally.context_text("hooks", text)
 
+    def _meta(self, line: dict) -> None:
+        """A line the runtime wrote as the person's in the main thread (``isMeta``): the text of a skill it loaded."""
+        text = _text(_items(line))
+        if text.startswith(SKILL_TEXT):
+            directory = text[len(SKILL_TEXT) :].split("\n", 1)[0].strip().rstrip("/")
+            name = self.skill_calls.get(str(line.get("sourceToolUseID") or "")) or directory.rsplit("/", 1)[-1]
+            self.tally.skill_body(name, text)
+
     def _user(self, line: dict, at: datetime | None, main: bool, where: str) -> None:
         items = _items(line)
         if main and not line.get("isCompactSummary"):
             self.tally.turn(_text(items))
+            if CLEAR in _text(items):
+                self.tally.cleared()
         for item in items:
             if item.get("type") != "tool_result":
                 continue
@@ -183,6 +204,9 @@ class ClaudeReader:
         for item in _items(line):
             if item.get("type") in ("tool_use", "server_tool_use"):
                 self.tally.call(str(item.get("id") or ""), item.get("name") or UNNAMED, item.get("input"), at, where)
+                given = item.get("input") if isinstance(item.get("input"), dict) else {}
+                if item.get("name") == "Skill" and item.get("id") and isinstance(given.get("skill"), str):
+                    self.skill_calls[str(item["id"])] = given["skill"]
 
     def close(self) -> None:
         for usage in self.usage.values():

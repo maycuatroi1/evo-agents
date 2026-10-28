@@ -23,12 +23,15 @@ the Curator's ledger that read them. Pure functions over JSON values, standard l
   by p95, at most TOP_TIMINGS. ``hook_ms`` is the time of every hook, in all.
 
 ``harness`` holds what the harness puts into the main thread's context of the sessions of Claude Code whose transcripts
-the hub read (``facets.CONTEXT_SOURCES``, and the output of tools, MCP tools apart): per source, the characters, the
-tokens they come to (CHARS_PER_TOKEN: an estimate, no tokenizer runs), its share and the sessions it came in; the
-tokens of the fixed sources (all but the output of tools) in all and per session; the always-loaded files, each file
-once with its largest size, grouped by repo (the last directory of its path that names a repo of the project, else its
-directory); the tools whose output was largest; the heaviest HEAVIEST sessions by their fixed sources; and the spool of
-the sessions' digests (the hook that cuts a long output: ``spool_results``, ``spool_original_chars``, ``spool_reads``).
+the hub read (``facets.CONTEXT_SOURCES``, the text of the skills loaded, and the output of tools, MCP tools apart): per
+source, the characters, the tokens they come to (CHARS_PER_TOKEN: an estimate, no tokenizer runs), its share and the
+sessions it came in; the tokens of the fixed sources (``facets.CONTEXT_SOURCES``) in all and per session; the skill
+list (``skill_list``): its tokens and the part of them that came as a whole list into a context that already held one
+(``again_tokens``, with its share and the sessions it came in); the skills whose text filled the most (``skill_bodies``,
+TOP_SKILLS); the always-loaded files, each file once with its largest size, grouped by repo (the last directory of its
+path that names a repo of the project, else its directory); the tools whose output was largest; the heaviest HEAVIEST
+sessions by their fixed sources; and the spool of the sessions' digests (the hook that cuts a long output:
+``spool_results``, ``spool_original_chars``, ``spool_reads``).
 """
 
 from __future__ import annotations
@@ -41,7 +44,7 @@ from dataclasses import dataclass
 from evo_agents.hub import curator
 from evo_agents.hub.digest import TOOL_NAME
 from evo_agents.hub.facet_readers import FIRST_REQUEST, PEAK_CONTEXT, run_usage
-from evo_agents.hub.facets import BUCKETS_MS, CONTEXT_SOURCES, count
+from evo_agents.hub.facets import BUCKETS_MS, CONTEXT_SOURCES, SKILL_BODIES, SKILLS_AGAIN, count
 
 CHARS_PER_TOKEN = 4  # an estimate of the tokens of a text: no tokenizer runs on the hub
 HEAVIEST = 5
@@ -50,6 +53,7 @@ TOP_OUTPUT = 10
 TOP_REPOS = 10
 TOP_FILES = 10
 TOP_PLANS = 10
+TOP_SKILLS = 10
 TOKEN_KEYS = {
     "input": "input_tokens",
     "output": "output_tokens",
@@ -57,7 +61,8 @@ TOKEN_KEYS = {
     "cache_read": "cache_read_input_tokens",
 }
 OUTPUT_SOURCES = ("mcp_output", "tool_output")  # the output of MCP tools (a name mcp__<server>__<tool>), of the others
-SOURCES = (*CONTEXT_SOURCES, *OUTPUT_SOURCES)
+LOADED_SOURCES = (*CONTEXT_SOURCES, SKILL_BODIES)  # what a facet's sources count, ``skills_again`` (a part) apart
+SOURCES = (*LOADED_SOURCES, *OUTPUT_SOURCES)
 SPOOL_KEYS = ("spool_results", "spool_original_chars", "spool_reads")  # of a session's digest
 
 
@@ -447,9 +452,9 @@ def harness(sessions: list[Item], repos: Iterable[str], spool: Mapping | None) -
     """The night's ``harness`` (see the module): ``repos`` are the names of the project's repos, ``spool`` the sums of
     the digests' SPOOL_KEYS with how many digests said them (``digests``)."""
     known = [item for item in sessions if isinstance(item.body.get("sources"), Mapping)]
-    chars, came, outputs, heavy = Counter(), Counter(), defaultdict(Counter), []
+    chars, came, outputs, bodies, heavy = Counter(), Counter(), defaultdict(Counter), defaultdict(Counter), []
     for item in known:
-        found = Counter({name: count(item.body["sources"].get(name)) or 0 for name in CONTEXT_SOURCES})
+        found = Counter({name: count(item.body["sources"].get(name)) or 0 for name in (*LOADED_SOURCES, SKILLS_AGAIN)})
         output, per_tool = _output(item)
         found.update(output)
         chars.update(found)
@@ -457,11 +462,16 @@ def harness(sessions: list[Item], repos: Iterable[str], spool: Mapping | None) -
         for name, n in per_tool.items():
             outputs[name]["chars"] += n
             outputs[name]["sessions"] += 1 if n else 0
+        for entry in _list(item.body.get("skills")):
+            n = count(entry.get("chars")) if isinstance(entry, Mapping) else None
+            if n:
+                bodies[str(entry.get("skill"))].update(chars=n, sessions=1)
         fixed = sum(found[name] for name in CONTEXT_SOURCES)
         heavy.append((item, fixed, found))
-    total, fixed = sum(chars.values()), sum(chars[name] for name in CONTEXT_SOURCES)
+    total, fixed = sum(chars[name] for name in SOURCES), sum(chars[name] for name in CONTEXT_SOURCES)
     heavy.sort(key=lambda entry: (-entry[1], entry[0].name))
     tool_output = sorted(outputs.items(), key=lambda kv: (-kv[1]["chars"], kv[0]))[:TOP_OUTPUT]
+    skill_bodies = sorted(bodies.items(), key=lambda kv: (-kv[1]["chars"], kv[0]))[:TOP_SKILLS]
     return {
         "sessions": len(known),
         "chars_per_token": CHARS_PER_TOKEN,
@@ -477,6 +487,16 @@ def harness(sessions: list[Item], repos: Iterable[str], spool: Mapping | None) -
         ],
         "fixed_tokens": tokens(fixed),
         "fixed_tokens_per_session": round(tokens(fixed) / len(known)) if known else None,
+        "skill_list": {
+            "tokens": tokens(chars["skills"]),
+            "again_tokens": tokens(chars[SKILLS_AGAIN]),
+            "again_share": share(chars[SKILLS_AGAIN], chars["skills"]),
+            "sessions_again": came[SKILLS_AGAIN],
+        },
+        "skill_bodies": [
+            {"skill": name, "chars": n["chars"], "tokens": tokens(n["chars"]), "sessions": n["sessions"]}
+            for name, n in skill_bodies
+        ],
         "always_loaded": _loaded(known, set(repos)),
         "tool_output": [
             {
@@ -493,7 +513,7 @@ def harness(sessions: list[Item], repos: Iterable[str], spool: Mapping | None) -
             {
                 "session": item.name,
                 "fixed_tokens": tokens(weight),
-                **{f"{name}_tokens": tokens(found[name]) for name in CONTEXT_SOURCES},
+                **{f"{name}_tokens": tokens(found[name]) for name in (*LOADED_SOURCES, SKILLS_AGAIN)},
                 "evidence": item.evidence,
             }
             for item, weight, found in heavy[:HEAVIEST]
@@ -564,10 +584,24 @@ METRICS = {
         "tokens of the tool output the sessions read, MCP tools included",
         lambda figures: _source_tokens(figures, OUTPUT_SOURCES),
     ),
+    "skill_list_again_tokens": (
+        "tokens of whole skill lists that came again into a context that already held one",
+        lambda figures: _num(_at(figures, "harness", "skill_list", "again_tokens")),
+    ),
+    "skill_body_tokens": (
+        "tokens of the text of the skills the sessions loaded",
+        lambda figures: _source_tokens(figures, (SKILL_BODIES,)),
+    ),
 }
 LENS_METRICS = {
     "runtime": ("session_cost_usd", "cache_write_tokens", "context_peak_p95", "compactions", "hook_ms"),
-    "harness": ("always_loaded_tokens", "fixed_context_tokens", "tool_output_tokens"),
+    "harness": (
+        "always_loaded_tokens",
+        "fixed_context_tokens",
+        "tool_output_tokens",
+        "skill_list_again_tokens",
+        "skill_body_tokens",
+    ),
 }
 # The levels a span's sessions are at rather than counts of its activity: compared as they are, not per session or run.
 LEVELS = frozenset({"context_peak_p95", "always_loaded_tokens"})

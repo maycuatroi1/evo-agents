@@ -69,8 +69,10 @@ LENSES: dict[str, str] = {
     "code_health": "lint, type and test trouble in the code, tests that flake, code that drifted from its own rules",
     "docs_drift": "documentation that no longer says what the code does: versions, paths, commands, figures",
     "harness": "what the harness puts into every context (the figures' harness): the always-loaded files (CLAUDE.md, "
-    "AGENTS.md, memory) of each repo and their size, the instructions of MCP servers, the skill list, the text of "
-    "hooks and the output of tools, in tokens, and the spool; where a shorter harness would carry the same rules",
+    "AGENTS.md, memory) of each repo and their size, the instructions of MCP servers, the skill list and how much of it "
+    "came again into a context that already held it (skill_list), the text of the skills loaded, skill by skill "
+    "(skill_bodies), the text of hooks and the output of tools, in tokens, and the spool; where a shorter harness "
+    "would carry the same rules",
     "skills_memory": "skills and memories: which skills get loaded, which snag (Bash failures, interrupts and "
     "corrections after a load, against the baseline) and whether the runs that load them get done; learned skills "
     "waiting for review, duplicates, ones that contradict",
