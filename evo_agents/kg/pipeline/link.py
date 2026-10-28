@@ -551,7 +551,8 @@ class Linker:
             return (target, "parsed" if is_dir else "resolved") if target else (None, "ambiguous")
         if guess and not path.startswith(("/", "./", "../")) and key not in (".", ""):
             found = self._guess_path(key, as_dir)
-            if found[1] == "dangling" and posixpath.dirname(key.rstrip("/")) not in self.index["dirsuffix"]:
+            parent = posixpath.dirname(key.rstrip("/"))
+            if found[1] == "dangling" and parent and parent not in self.index["dirsuffix"]:
                 return None, "outside"  # no directory of the project ends so: a path of another tree
             return found
         return None, "dangling"
@@ -639,22 +640,19 @@ class Linker:
         """Count a call: resolved when it found its one symbol; ambiguous when a ``via`` entry finds two; unresolved
         when an entry names a scope of the project (a class of this file, a typed receiver, a Python module the index
         holds) that has no such member. A call into a library the index does not hold is not counted."""
-        if found:
-            outcome = "resolved"
-        else:
-            outcome = None
-            for kind, value, qual in target["via"]:
-                if len(set(self.definitions(kind, value, qual, target))) > 1:
-                    outcome = "ambiguous"
-                    break
-                if outcome is None and self._in_project(kind, value, qual, target):
-                    outcome = "unresolved"
-            if outcome is None:
-                return
+        outcome, named = ("resolved" if found else None), None
+        for kind, value, qual in [] if found else target["via"]:
+            if len(set(self.definitions(kind, value, qual, target))) > 1:
+                outcome = "ambiguous"
+                break
+            if named is None and self._in_project(kind, value, qual, target):
+                outcome, named = "unresolved", f"{kind}:{value}:{qual}"
+        if outcome is None:
+            return
         self.stats["calls"] += 1
         self.stats[f"calls_{outcome}"] += 1
-        if outcome == "unresolved" and len(self.samples["calls_unresolved"]) < 5:
-            self.samples["calls_unresolved"].append(":".join(str(v) for v in target["via"][0])[:120])
+        if named and len(self.samples["calls_unresolved"]) < 5:
+            self.samples["calls_unresolved"].append(named[:120])
 
     def _in_project(self, kind: str, value, qual: str, target: dict) -> bool:
         """Whether a ``via`` entry that found nothing names a scope of the project: a class of this file, a typed

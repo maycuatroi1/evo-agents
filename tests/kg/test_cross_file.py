@@ -390,8 +390,101 @@ UNTYPED = [
     ("rebound", "Store.search"),  # a loop rebinds it
     ("lambda_shadow", "Store.search"),  # the lambda's own parameter
 ]
+PYREACH_BASE = """from typing import Protocol
+
+
+class Kind(Protocol):
+    def steps(self) -> None: ...
+
+
+class Shape:
+    def area(self):
+        return 0
+
+    def show(self):
+        return self.area()
+
+    @property
+    def label(self):
+        return "shape"
+
+    def _on_done(self):
+        return 1
+
+    def hooks(self):
+        return {"done": self._on_done}
+
+
+class Square(Shape):
+    def area(self):
+        return 4
+
+
+class Other:
+    def area(self):
+        return 9
+
+
+class _Hidden:
+    def __init__(self):
+        self.x = 1
+
+
+def _print_json(data):
+    return data
+
+
+print_json = _print_json
+
+
+def make():
+    return _Hidden()
+"""
+PYREACH_USE = """import pyreach.base as base
+from pyreach.base import Kind, Shape, print_json
+
+
+class Plan:
+    def steps(self) -> None:
+        return None
+
+
+def run(kind: Kind):
+    return kind.steps()
+
+
+def describe(shape: Shape):
+    return shape.label + str(shape.area())
+
+
+def build():
+    return base.Shape
+
+
+def emit():
+    return print_json({})
+"""
+# What a call may run beyond the one method it names, and the call forms besides ``f()``: (caller, callee).
+REACHED = [
+    ("base.py::Shape.show", "base.py::Square.area"),  # self.area() may run a subclass's override
+    ("base.py::Shape.hooks", "base.py::Shape._on_done"),  # a method handed on as a callback
+    ("base.py::make", "base.py::_Hidden.__init__"),  # a class whose name starts with _
+    ("use.py::describe", "base.py::Shape.label"),  # a property read
+    ("use.py::describe", "base.py::Shape.area"),
+    ("use.py::describe", "base.py::Square.area"),  # through a typed receiver, to the override too
+    ("use.py::run", "use.py::Plan.steps"),  # Plan defines every method of the protocol Kind
+    ("use.py::emit", "base.py::_print_json"),  # print_json = _print_json
+]
+UNREACHED = [
+    ("base.py::Shape.show", "base.py::Other.area"),  # the same name in a class outside the chain
+    ("use.py::build", "base.py::Shape"),  # a read of a class is not a call of it
+    ("use.py::describe", "base.py::Other.area"),
+]
 # Beyond the two-file fixtures: the scope a language gives without an import, and a Python src/ layout.
 EXTRAS = {
+    "pyreach/__init__.py": "",
+    "pyreach/base.py": PYREACH_BASE,
+    "pyreach/use.py": PYREACH_USE,
     "pytyped/__init__.py": "",
     "pytyped/store.py": PYTYPED_STORE,
     "pytyped/use.py": PYTYPED_USE,
@@ -507,9 +600,38 @@ def test_python_calls_through_a_typed_receiver(poly):
     assert calls.get((sym("pytyped/store.py::make_store"), sym("pytyped/store.py::Store.__init__"))) == "resolved"
 
 
+def test_python_calls_reach_overrides_protocols_reads_and_aliases(poly):
+    calls, _ = poly
+    for caller, callee in REACHED:
+        assert calls.get((sym(f"pyreach/{caller}"), sym(f"pyreach/{callee}"))) == "resolved", (caller, callee)
+    for caller, callee in UNREACHED:
+        assert (sym(f"pyreach/{caller}"), sym(f"pyreach/{callee}")) not in calls, (caller, callee)
+
+
 def test_the_python_row_names_the_receivers_it_cannot_type():
     row = CROSS_FILE_CALLS["python"]
     assert row.supported and "x.m()" in row.note and "unannotated parameter" in row.missing
     line = coverage_line({"language": "python", **coverage_of("python")})
     assert f"calls across files yes, not: {row.missing};" in line
     assert all(not table.missing for lang, table in CROSS_FILE_CALLS.items() if lang != "python")
+
+
+def test_python_calls_are_counted_in_coverage_when_they_name_the_project(tmp_path, kg_env):
+    from tests.kg.projects import make_project
+
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(
+        app / "app/calls.py",
+        "import json\n\nfrom app import search as s\nfrom app.search import rank_results\n\n\n"
+        "def go(q):\n    json.dumps(q)\n    s.missing(q)\n    return rank_results([q])\n",
+    )
+    commit(app, "calls")
+    assert all(r.ok for r in sync_project(project))
+    report = build_project(project)
+    assert report.ok, report.errors
+    (source,) = [s for s in report.coverage["sources"] if s.get("calls")]
+    # rank_results and search() of app/server.py resolve; s.missing names a module of the project that has no
+    # such function; json.dumps goes to a library the index does not hold and is not counted.
+    assert (source["calls"], source["calls_resolved"], source["calls_unresolved"]) == (3, 2, 1)
+    assert source["samples"]["calls_unresolved"] == ["module:app.search:missing"]
