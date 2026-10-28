@@ -5,6 +5,7 @@ Curator's App (evo-agents-curator). ``evo_agents.hub.server.changes`` decides wh
 Each call asks the App's installation on the repo for a token of that repo alone, with the permissions the call needs
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
 head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
+list the pull requests of a branch with pull_requests read alone (``pulls``, the Loop's ``github_merges``);
 write the Judge's check run with checks write; merge with contents and pull_requests write; read a branch, a tree and
 a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
 its failed jobs again with actions write, ``evo_agents.hub.server.release_actions``), uses it, and revokes it.
@@ -58,6 +59,7 @@ T = TypeVar("T")
 SERVER_PERMISSIONS = {
     "open": {"pull_requests": "write", "contents": "read", "metadata": "read"},
     "read": {"pull_requests": "read", "checks": "read", "statuses": "read", "metadata": "read"},
+    "pulls": {"pull_requests": "read", "metadata": "read"},
     "check": {"checks": "write", "metadata": "read"},
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},

@@ -32,7 +32,8 @@ is ready (group todo, the split run ended, in an active sprint when ``loop.requi
 whose author run wrote a plan and ended to done, with a ``deliver`` of that plan (row 9); a ``deliver`` whose merge
 requests are all through to done (row 10; one a person merged on GitLab, which the queue closed, is through), one
 reverted a failure (row 11), and one whose repos the queue does not merge to a person (``merge_manual``) until the
-plan marks them merged. A run a person cancelled cancels its work item.
+plan marks them merged (the tick marks a repo on GitHub merged once the pull request of its run's branch merged,
+``github_merges``). A run a person cancelled cancels its work item.
 Test cards past their deadline make nothing (row 13): the canvas's baseline asks about them.
 
 A work item waits for a person (``waiting_human``), and fails nothing, while its run's agent waits for its owner (an
@@ -407,9 +408,12 @@ def move_build(item: ItemView, view: View) -> Transition | None:
 
 def _merging(item: ItemView, view: View, run: RunView) -> Transition:
     """A deliver whose plan run is done: waiting on the merge queue, or on a person for the repos the queue does not
-    merge (``merge_manual``)."""
+    merge (``merge_manual``); done at once when the plan marks each of those merged already (the pull requests its run
+    merged on GitHub, ``github_merges``)."""
     detail = {"run_id": run.id, "repos": list(run.repos)}
     if run.repos and all(repo in view.manual for repo in run.repos):
+        if all(repo in view.released.get(item.plan_id or "", frozenset()) for repo in run.repos):
+            return _released(item, view.merges.get(item.plan_id or "", ()))
         return Transition(item.id, WAITING_HUMAN, WAITING, reason="merge_manual", detail=detail)
     return Transition(item.id, WATCHING, WAITING, reason="merge_queue", detail=detail)
 
