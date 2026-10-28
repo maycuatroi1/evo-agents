@@ -158,6 +158,7 @@ TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
 TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migrations 0172, 0173 and 0175
 TABLES |= {"kg_query_labels"}  # migration 0177
 TABLES |= {"kg_eval_sets"}  # migration 0178
+TABLES |= {"kg_semantic"}  # migration 0180
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -248,8 +249,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_ten_tables(hub_db):
-    assert len(TABLES) == 210  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_eleven_tables(hub_db):
+    assert len(TABLES) == 211  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4944,3 +4945,21 @@ def test_0179_says_which_loop_and_run_took_a_decision_and_going_back_drops_it(hu
     assert "origin" not in columns(hub_db, "kg_decision_events")
     assert query(hub_db, select(func.count()).select_from(e)) == [(3,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0179") :]
+
+
+def test_0180_keeps_whether_a_project_is_searched_by_meaning_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0179")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0180")
+    t = hub_tables.kg_semantic
+    row = {"project_id": ids["project"], "model": "BAAI/bge-m3"}
+    with live.connect(hub_db) as conn:
+        for bad in ({**row, "mode": "maybe"}, {**row, "mode": "on", "model": ""}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t).values(bad))
+        conn.execute(insert(t).values({**row, "mode": "index", "updated_by": ids["user"]}))
+    assert query(hub_db, select(t.c.mode, t.c.model)) == [("index", "BAAI/bge-m3")]
+    move_to(hub_db, "0179", down=True)
+    assert "kg_semantic" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0180") :]

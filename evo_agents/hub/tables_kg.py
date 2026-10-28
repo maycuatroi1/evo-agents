@@ -321,6 +321,27 @@ def eval_sets(metadata: MetaData) -> Table:
     )
 
 
+def semantic_settings(metadata: MetaData) -> Table:
+    """kg_semantic (0180), added to ``metadata``: whether a project's graph is searched by meaning too
+    (``evo_agents.kg.semantic``): ``off``; ``index``, its builds write the vectors but kg_search ranks by words; ``on``,
+    kg_search fuses both. A project without a row is off. The model the vectors come from, who set it last, when."""
+    name = "kg_semantic"
+    return Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("mode", Text, nullable=False),
+        Column("model", Text, nullable=False),
+        Column("updated_by", BigInteger),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
+        PrimaryKeyConstraint("project_id", name=f"{name}_pkey"),
+        CheckConstraint("mode IN ('off', 'index', 'on')", name=f"{name}_mode_check"),
+        CheckConstraint("char_length(model) BETWEEN 1 AND 200", name=f"{name}_model_check"),
+    )
+
+
 def kg_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:
     """(kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health), added to ``metadata``."""
     ingests, configs, pending = _ingest_tables(metadata)
