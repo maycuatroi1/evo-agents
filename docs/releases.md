@@ -6,9 +6,8 @@ tag and the commit of the tag `nightly`. When it did, an agent on a worker the h
 branch, and the hub merges that branch and tags the merge commit. The hub then follows the tag's `release.yml` until its
 job `publish` puts the version on PyPI; its job `github-release` then makes the tag's GitHub Release with notes GitHub
 generates from the merged pull requests, and the same wheel and sdist. A red CI is fixed forward with the next patch, as
-often as it takes, under a cap of what one cycle may cost (200 USD by default). The cycle stops and asks its owner what
-next when the same test fails at two tags in a row, the cap is spent, a run fails, the CI overruns, or a fix shows signs
-of test hacking.
+often as it takes, with no cost cap. The cycle stops and asks its owner what next when the same test fails at two tags
+in a row, a run fails, the CI overruns, or a fix shows signs of test hacking.
 
 No GitHub Actions cron and no model credential in GitHub's secrets are involved: the hub's job runner makes the check,
 a member's worker runs the agent, and the hub's GitHub App, never the agent, merges and tags.
@@ -44,7 +43,7 @@ a member's worker runs the agent, and the hub's GitHub App, never the agent, mer
    failed jobs run again once. Anything else queues a run in mode `fix`, which cuts the next patch with the fix on
    `release/<patch>`; the hub lands and tags it as in 3, and follows the new tag. The red tag stays as it is.
 7. **Stopped.** On a stop cause (below) the cycle stops, the hub posts a thread in the project's triage chat and asks
-   the owner a decision: go on with one more cap, close the cycle, or pause the schedule.
+   the owner a decision: go on, close the cycle, or pause the schedule.
 
 ## The schedule
 
@@ -59,7 +58,6 @@ resume and circuit breaker never touch it, and pausing the release never touches
 | `tag_pattern` | `v*` | the release tags: a literal prefix, then `*`; the newest is the highest `X.Y.Z` after the prefix, pre-releases ignored |
 | `workflow` | `release.yml` | the workflow file that tests and publishes a tag |
 | `paths` (`--path`) | `evo_agents/`, `plugins/`, `web/`, `.claude-plugin/`, `pyproject.toml`, `uv.lock` | the packaging paths, 1 to 50; an entry ending in `/` is a directory |
-| `cycle_budget_usd` (`--budget`) | 200 | what the runs of one cycle may cost, 1 to 10,000 |
 
 Only an admin of the project sets it, and the admin who set it last is its **owner**: the runs of its cycles are
 dispatched as that member, through `dispatched_via` `release`, and pinned to no worker. Any worker of the owner, or one
@@ -124,9 +122,9 @@ cycle with the reason.
 
 ## The run on the worker
 
-A release run is a headless Claude Code run that asks nobody anything. Its caps are what is left of the cycle's cap and
-120 minutes of agent time, with a timeout 5 minutes longer, and it is tried once: a run the hub lost fails, and the
-cycle decides what comes next.
+A release run is a headless Claude Code run that asks nobody anything. Its cap is 120 minutes of agent time, with a
+timeout 5 minutes longer and no cost cap, and it is tried once: a run the hub lost fails, and the cycle decides what
+comes next.
 
 The daemon starts the worktree at the commit the claim names (a cut: the target's commit; a fix: the red tag's commit)
 on a branch of the run, `evo-run/<run>/<folder>`. The prompt of a cut names the range, the version rule, the bump and
@@ -197,7 +195,7 @@ tag the cycle follows and its base tag.
 | `refused` | the hub refused to land a run, or a run ended done without its branch |
 | `github` | GitHub failed 5 passes in a row while the hub landed a run |
 | `hacking` | a run's change shows a sign of test hacking |
-| `budget` | what is left of the cycle's cap is under `curator.MIN_RUN_USD` (0.01 USD) |
+| `budget` | what was left of the cycle's cap was under 0.01 USD; only cycles from before schema 0176, which dropped the cap |
 | `same_test` | one test id failed at two tags in a row of the cycle |
 | `timeout` | no workflow run in 30 minutes, or one over 3 hours |
 | `ci` | the workflow ended in a way no fix answers: cancelled, or red with no failed job |
@@ -209,7 +207,7 @@ decision of category `release` on the cycle's last run, with three options:
 
 | Option | What the hub does |
 | --- | --- |
-| `continue` | opens the cycle again with one more cap of the schedule, and goes on where it stopped: the newest tag's CI followed again from now, a red newest tag gets a fix run, a cycle with no tag yet a new cut run |
+| `continue` | opens the cycle again and goes on where it stopped: the newest tag's CI followed again from now, a red newest tag gets a fix run, a cycle with no tag yet a new cut run |
 | `close` | closes the cycle, its reason kept |
 | `pause` | pauses the schedule as `evo-agents hub release pause` does, and closes the cycle |
 
@@ -225,11 +223,12 @@ is active, the check closes the cycle with the tag in its reason, cancels the de
 says so in the cycle's thread, and goes on from that tag as if no cycle were there: a red tag opens a fix cycle, a
 change of a packaging path a cut. A tag no newer than the cycle's own keeps the check `busy` until the owner answers.
 
-## The cost cap
+## No cost cap
 
-Each run of a cycle gets as its `max_usd` what is left of the cycle's cap, each agent session of the cycle counted once.
-With less than 0.01 USD left, the hub queues nothing and stops the cycle on its budget. The number of tags in a cycle
-has no limit: the cap and the stop causes are the only limits.
+A cycle has no cost cap, and its runs have none (`max_usd` null): the hub counts what they cost, each agent session of
+the cycle once, and shows it, but never stops a cycle on it. The number of tags in a cycle has no limit either: the
+stop causes are the only limits. Schema 0176 dropped the cap a schedule (`cycle_budget_usd`, 200 USD by default) and a
+cycle (`budget_usd`) used to keep.
 
 ## The GitHub App
 
@@ -260,7 +259,7 @@ the login of its runtime, and no `git` secret.
 
 ```sh
 evo-agents hub release set --project evo-agents --repo evo-agents      # defaults for everything else
-evo-agents hub release set --project evo-agents --at 06:30 --budget 150
+evo-agents hub release set --project evo-agents --at 06:30
 evo-agents hub release status --project evo-agents --json
 evo-agents hub release run --project evo-agents                         # check now
 evo-agents hub release pause --project evo-agents
@@ -286,7 +285,7 @@ Pausing cancels only the runs still queued: a run already under way is not stopp
 project routes. Every run the hub queues is audited as `release.dispatch`, with the owner as actor.
 
 The web's Releases page (`/p/{project}/releases`) shows the schedule, the next check and the last one, the cycle open
-now with its tags, their CI and workflow runs, its runs and its cost against the cap, and the cycles before it. An
+now with its tags, their CI and workflow runs, its runs and their cost, and the cycles before it. An
 admin pauses, resumes and runs a check there. It shows a status only when something needs attention: the schedule
 paused, the cycle stopped, or the App lacking Actions (`web/DESIGN.md`).
 

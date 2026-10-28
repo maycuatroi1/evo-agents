@@ -8,14 +8,12 @@ import { useTranslations } from "next-intl";
 import { InFrame } from "@/components/data/data-card";
 import { Fact, Facts, useDay, useMoney } from "@/components/data/facts";
 import { Identifier } from "@/components/data/identifier";
-import { Meter, METER_TEXT } from "@/components/data/meter";
 import { Banner } from "@/components/feedback/banner";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 import { CycleBadge } from "./badges";
 import { RunsTable, TagsTable } from "./cycle-tables";
-import { budgetShare, budgetTone, githubCommitUrl, githubTagUrl, shortCommit } from "./model";
+import { githubCommitUrl, githubTagUrl, shortCommit } from "./model";
 import { Panel, PanelLine, PathList, Relative } from "./parts";
 import type { ReleaseCycle, ReleaseSchedule, ReleaseStatus } from "./queries";
 
@@ -73,22 +71,17 @@ export function ActionsBanner({ schedule }: { schedule: ReleaseSchedule }) {
   );
 }
 
-/** What the cycle's runs cost against its cap, as the kit's meter with the figure beside it. */
+/** What the cycle's runs cost so far: a cycle has no cap. */
 function CycleCost({ cycle }: { cycle: ReleaseCycle }) {
-  const t = useTranslations("releases.cycle");
   const money = useMoney();
-  const share = budgetShare(cycle.cost_usd, cycle.budget_usd);
-  const tone = budgetTone(share);
-  const text = t("costValue", { cost: money(cycle.cost_usd), budget: money(cycle.budget_usd), share: Math.round(share * 100) });
   return (
-    <div className="flex min-w-0 flex-col gap-1.5" data-testid="release-cycle-cost">
-      <span className={cn("tabular-nums", METER_TEXT[tone])}>{text}</span>
-      <Meter value={share * 100} tone={tone} label={t("costLabel", { id: cycle.id })} valueText={text} className="max-w-xs" />
-    </div>
+    <span className="tabular-nums" data-testid="release-cycle-cost">
+      {money(cycle.cost_usd)}
+    </span>
   );
 }
 
-/** The cycle open now, or stopped: where it started, what changed, its cost against its cap, its tags and its runs. */
+/** The cycle open now, or stopped: where it started, what changed, its cost, its tags and its runs. */
 export function CycleCard({ project, cycle, schedule }: { project: string; cycle: ReleaseCycle; schedule: ReleaseSchedule }) {
   const t = useTranslations("releases.cycle");
   const day = useDay();

@@ -100,8 +100,8 @@ to give every question with a natural choice `--recommended` and `--recommended-
 `--undo` when it can be undone), and `--evidence` for what it rests on (`decision_asks.ASK_RULE`). `evo-agents worker
 ask` without `--recommended` prints a warning to stderr and still asks. The hub fills the recommendation of its own
 decisions where it has a default answer: a decision to log in recommends `done` (the run asked for the login to go
-on), a stopped release cycle `close` (it spends no more of the cap, and the schedule's next daily check starts a new
-cycle if needed), a work item of the Loop that failed three times `manual`, each with its reason. A wait and a gate of
+on), a stopped release cycle `close` (it spends nothing more, and the schedule's next daily check starts a new cycle
+if needed), a work item of the Loop that failed three times `manual`, each with its reason. A wait and a gate of
 autonomy carry none: the hub answers a wait itself, and the principal of a gate chose to be asked about an act whose
 risk the hub cannot judge.
 
@@ -196,7 +196,7 @@ the agent as `additionalContext` of the person's next message and acknowledges i
 
 The hub itself asks decisions of category `release`, never an agent: when a cycle of a project's daily release stops
 (`docs/releases.md`, "When a cycle stops"), the owner of the release schedule gets one on the cycle's last run, with
-the three options `continue` (one more cap of the schedule), `close` and `pause` (the schedule). Only an admin of the
+the three options `continue` (go on), `close` and `pause` (the schedule). Only an admin of the
 project answers it, through the Inbox or `hub decision answer`, with one of those options; any other answer is 422,
 and one for a cycle no longer stopped 409. The hub does the option and says so in the cycle's thread of the triage
 chat. No run waits on the answer.

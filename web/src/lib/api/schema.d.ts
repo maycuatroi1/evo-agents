@@ -10693,6 +10693,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/context-answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Weeks
+         * @description By week (UTC): the runs of the project, those that loaded at least one confirmed answer, and the answers loaded.
+         */
+        get: operations["read_weeks_v1_projects__project__context_answers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/signal-keys": {
         parameters: {
             query?: never;
@@ -17027,6 +17047,39 @@ export interface components {
             name: string;
             /** Email */
             email: string;
+        };
+        /** ContextAnswerWeek */
+        ContextAnswerWeek: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /** Runs */
+            runs: number;
+            /** Runs With Loads */
+            runs_with_loads: number;
+            /** Answers */
+            answers: number;
+        };
+        /** ContextAnswerWeeks */
+        ContextAnswerWeeks: {
+            /** Project */
+            project: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            /** Weeks */
+            weeks: components["schemas"]["ContextAnswerWeek"][];
         };
         /**
          * CredentialLease
@@ -31783,11 +31836,6 @@ export interface components {
             /** Changed Paths */
             changed_paths: string[];
             /**
-             * Budget Usd
-             * @description what the cycle's runs may cost
-             */
-            budget_usd: number;
-            /**
              * Cost Usd
              * @description what they cost so far, each agent session once
              */
@@ -31963,11 +32011,6 @@ export interface components {
              */
             paths: string[];
             /**
-             * Cycle Budget Usd
-             * @description what one cycle's runs may cost
-             */
-            cycle_budget_usd: number;
-            /**
              * Owner
              * @description the admin who set the schedule last, whom its runs are dispatched as
              */
@@ -32029,8 +32072,6 @@ export interface components {
              * @description packaging paths
              */
             paths?: string[] | null;
-            /** Cycle Budget Usd */
-            cycle_budget_usd?: number | null;
         };
         /**
          * ReleaseSpec
@@ -81423,6 +81464,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Signal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_weeks_v1_projects__project__context_answers_get: {
+        parameters: {
+            query?: {
+                /** @description how many weeks, the current one included */
+                weeks?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextAnswerWeeks"];
                 };
             };
             /** @description Unauthorized */

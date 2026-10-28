@@ -8,7 +8,8 @@ decision and triage thread its stop opened; release_runs (0067) the runs of each
 and how the hub landed it (``evo_agents.hub.release_runs``); release_tags (0067) each tag a cycle follows and the CI of
 its workflow there (``evo_agents.hub.release_ci``), one row a tag; release_checks (0067) every check, the scheduled one
 of a local day once (``release_checks_day_key``, a check that failed aside). runs gains ``runs_active_release_key``: a
-project has one release run active at a time. ``evo_agents.hub.releases`` describes the model.
+project has one release run active at a time. 0176 dropped the cost cap of a schedule (cycle_budget_usd) and of a cycle
+(budget_usd). ``evo_agents.hub.releases`` describes the model.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    Double,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -47,10 +47,6 @@ def _id() -> Column:
     return Column("id", BigInteger, Identity(always=True), nullable=False)
 
 
-def _money(name: str) -> Column:
-    return Column(name, Double, nullable=False)
-
-
 def _schedules(metadata: MetaData) -> Table:
     return Table(
         "release_schedules",
@@ -64,7 +60,6 @@ def _schedules(metadata: MetaData) -> Table:
         Column("tag_pattern", Text, nullable=False),
         Column("workflow", Text, nullable=False),
         Column("paths", JSONB, nullable=False),
-        _money("cycle_budget_usd"),
         Column("owner_id", BigInteger, nullable=False),
         Column("updated_by", BigInteger, nullable=False),
         _stamp("created_at"),
@@ -100,7 +95,6 @@ def _cycles(metadata: MetaData) -> Table:
         Column("target_ref", Text, nullable=False),
         Column("target_commit", Text),
         Column("changed_paths", JSONB, nullable=False, server_default="[]"),
-        _money("budget_usd"),
         Column("stop_reason", Text),
         Column("span", JSONB),  # the range its check read: commits, pull requests, new migrations
         _stamp("opened_at"),

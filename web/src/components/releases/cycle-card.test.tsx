@@ -20,14 +20,14 @@ function renderEn(ui: ReactElement) {
 }
 
 describe("CycleCard", () => {
-  it("shows the cycle's range, cost against its cap, its tags with their CI and its runs with their pages", () => {
+  it("shows the cycle's range, its cost, its tags with their CI and its runs with their pages", () => {
     renderEn(<CycleCard project="fleet" cycle={CYCLE} schedule={SCHEDULE} />);
     const card = screen.getByTestId("release-cycle");
     expect(within(card).getByRole("heading", { level: 2 })).toHaveTextContent("Cycle #7");
     expect(within(card).queryByTestId("release-cycle-state")).toBeNull(); // an open cycle carries no pill
     expect(screen.getByTestId("release-cycle-start")).toHaveTextContent("A cut of nightly");
-    expect(screen.getByTestId("release-cycle-cost")).toHaveTextContent("$12.40 of $200.00, 6%");
-    expect(screen.getByRole("progressbar", { name: "Cost of cycle #7 against its cap" })).toHaveAttribute("aria-valuenow", "6");
+    expect(screen.getByTestId("release-cycle-cost")).toHaveTextContent("$12.40");
+    expect(screen.queryByRole("progressbar")).toBeNull(); // a cycle has no cap to measure against
     expect(within(screen.getByTestId("release-cycle-paths")).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["evo_agents/", "web/"]);
 
     const tags = screen.getByTestId("release-tags");

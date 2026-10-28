@@ -8275,7 +8275,7 @@
         "thread": "Mở thread triage",
         "noCause": "xem lý do bên dưới",
         "noReason": "Hub không giữ lý do.",
-        "waits": "Chu kỳ không đi tiếp cho tới khi {owner} trả lời: tiếp tục với thêm một trần, đóng chu kỳ, hay tạm dừng lịch."
+        "waits": "Chu kỳ không đi tiếp cho tới khi {owner} trả lời: tiếp tục, đóng chu kỳ, hay tạm dừng lịch."
       },
       "actions": {
         "title": "Hub không đọc được CI của {workflow}",
@@ -8330,8 +8330,6 @@
       "changed": "Đường dẫn đã đổi",
       "noChange": "Không có: chu kỳ sửa một tag đỏ",
       "cost": "Chi phí",
-      "costValue": "{cost} trên {budget}, {share}%",
-      "costLabel": "Chi phí của chu kỳ #{id} so với trần",
       "tags": "Tag",
       "noTags": "Chưa có tag: hub gắn tag lên merge commit khi nhánh của run cắt bản được đưa vào.",
       "runs": "Run",
@@ -8400,8 +8398,6 @@
       "shipsValue": "Commit của {ref}, tag theo mẫu {pattern}",
       "workflow": "Workflow",
       "paths": "Đường dẫn đóng gói",
-      "cap": "Trần mỗi chu kỳ",
-      "capValue": "{budget}",
       "owner": "Chạy với tư cách",
       "updated": "Đặt lần cuối",
       "updatedValue": "Bởi {login} <ago></ago>"
@@ -8447,7 +8443,6 @@
         "cost": "Chi phí",
         "ended": "Kết thúc"
       },
-      "costOf": "Trên trần {budget}",
       "mobileMeta": "{ending}, {runs} run, {cost}",
       "mobileTitle": "Chu kỳ #{id}, {day}",
       "caption": "Các chu kỳ phát hành đã kết thúc của {project}",

@@ -3,9 +3,9 @@
 
 GET /v1/projects/{p}/releases (reader) says where the release stands: the schedule, or null before an admin sets one;
 whether it is paused; the moment of its next check; the latest checks, newest first, with the last one apart; and the
-cycle of the schedule that is open or stopped, with its runs and their cost against the cycle's cap, for each run the
-version and branch it pushed and how the hub landed it (its pull request, merge commit and tag, or why not), the tags
-it follows with the state of their CI, the workflow run, the tests that failed and what kept the hub from reading it
+cycle of the schedule that is open or stopped, with its runs and their cost, for each run the version and branch it
+pushed and how the hub landed it (its pull request, merge commit and tag, or why not), the tags it follows with the
+state of their CI, the workflow run, the tests that failed and what kept the hub from reading it
 (``actions_permission`` when the App's installation grants no actions), and for a stopped cycle why, the decision it
 asks its owner and its thread in the triage chat.
 
@@ -25,7 +25,7 @@ release.run. A member without the admin role gets 403 on each write, and a worke
 
 GET .../releases/cycles (reader) lists the cycles of the project that ended, published or closed, newest first, a page
 of ``limit`` from ``offset``, each as the status shows the cycle open now: its runs, its tags and their CI, its cost
-against its cap and why it ended. The web's Releases page lists them under the cycle open now.
+and why it ended. The web's Releases page lists them under the cycle open now.
 """
 
 from __future__ import annotations
@@ -83,7 +83,6 @@ class ReleaseScheduleWrite(BaseModel):
     tag_pattern: str | None = Field(None, pattern=releases.TAG_PATTERN.pattern, description="a prefix, then *")
     workflow: str | None = Field(None, pattern=releases.WORKFLOW.pattern, description="the workflow that publishes")
     paths: list[str] | None = Field(None, min_length=1, max_length=releases.MAX_PATHS, description="packaging paths")
-    cycle_budget_usd: float | None = Field(None, ge=releases.CYCLE_USD[0], le=releases.CYCLE_USD[1])
 
     @field_validator("target_ref")
     @classmethod
@@ -111,7 +110,6 @@ class ReleaseSchedule(BaseModel):
     tag_pattern: str = Field(description="the release tags: a literal prefix, then *, before a version X.Y.Z")
     workflow: str = Field(description="the workflow that publishes a tag")
     paths: list[str] = Field(description="the packaging paths: a check opens a cycle when one of them changed")
-    cycle_budget_usd: float = Field(description="what one cycle's runs may cost")
     owner: str = Field(description="the admin who set the schedule last, whom its runs are dispatched as")
     updated_by: str
     created_at: datetime
@@ -186,7 +184,6 @@ class ReleaseCycle(BaseModel):
     target_ref: str
     target_commit: str | None
     changed_paths: list[str]
-    budget_usd: float = Field(description="what the cycle's runs may cost")
     cost_usd: float = Field(description="what they cost so far, each agent session once")
     stop_reason: str | None
     stop_cause: Literal[release_ci.STOP_CAUSES] | None = Field(description="why it stopped last")
@@ -257,7 +254,6 @@ async def _schedule_view(conn: AsyncConnection, row) -> ReleaseSchedule:
         tag_pattern=row.tag_pattern,
         workflow=row.workflow,
         paths=list(row.paths),
-        cycle_budget_usd=float(row.cycle_budget_usd),
         owner=row.owner,
         updated_by=writer,
         created_at=row.created_at,
@@ -342,7 +338,6 @@ def _cycle_model(found, items: list[ReleaseCycleRun], tags: list[ReleaseTag]) ->
         target_ref=found.target_ref,
         target_commit=found.target_commit,
         changed_paths=list(found.changed_paths),
-        budget_usd=float(found.budget_usd),
         cost_usd=round(sum(item.cost_usd for item in items), 4),
         stop_reason=found.stop_reason,
         stop_cause=found.stop_cause,
@@ -498,7 +493,6 @@ async def _values(conn: AsyncConnection, access: ProjectAccess, body: ReleaseSch
         "tag_pattern": kept(body.tag_pattern, "tag_pattern", releases.DEFAULT_TAG_PATTERN),
         "workflow": kept(body.workflow, "workflow", releases.DEFAULT_WORKFLOW),
         "paths": list(kept(body.paths, "paths", list(releases.DEFAULT_PATHS))),
-        "cycle_budget_usd": float(kept(body.cycle_budget_usd, "cycle_budget_usd", releases.DEFAULT_CYCLE_USD)),
     }
     await _time_zone(conn, values["timezone"])
     return values

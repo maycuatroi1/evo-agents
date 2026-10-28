@@ -17,7 +17,7 @@ pytest's FAILED and ERROR lines, the failed tests of Playwright's summary), else
 failed. A job whose log matches one of INFRA_RULES and names no test failed of the runner, the network while installing,
 or PyPI answering 5xx (``infra_rule``, rules on the log alone); a failure all of whose jobs did is the infrastructure's,
 and the hub runs the failed jobs again, INFRA_RERUNS times at most. Any other one queues a fix run with what it read
-(``failures_text``), unless the same test id failed at the cycle's tag before (``same_tests``) or the cap is spent.
+(``failures_text``), unless the same test id failed at the cycle's tag before (``same_tests``).
 
 A fix the hub lands must show no sign of test hacking (``release_signs``): of the signs ``judge.hack_signs`` reads, a
 test removed, an assertion removed or loosened (an assertion of a test changed in any way but its numbers, an assert
@@ -57,12 +57,12 @@ STOP_CAUSES = (
     "refused",  # the hub refused to land a run, or a run ended without its branch
     "github",  # GitHub failed LAND_TRIES passes in a row while the hub landed a run
     "hacking",  # a run's change shows signs of test hacking
-    "budget",  # what is left of the cycle's cap is under curator.MIN_RUN_USD
+    "budget",  # what was left of the cycle's cap was under curator.MIN_RUN_USD: cycles before 0176 dropped the cap
     "same_test",  # one test id failed at two tags in a row
     "timeout",  # no run of the workflow in NO_RUN_MINUTES, or one going over MAX_RUN_HOURS
     "ci",  # the workflow ended in a way no fix forward answers: cancelled, or red with no failed job
 )
-STOP_OPTIONS = ("continue", "close", "pause")  # one more cap, close the cycle, pause the schedule
+STOP_OPTIONS = ("continue", "close", "pause")  # go on, close the cycle, pause the schedule
 
 STAMP = re.compile(r"^\ufeff?\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?")  # GitHub's time before each line of a log
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
