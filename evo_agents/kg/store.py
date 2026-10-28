@@ -38,6 +38,12 @@ edges, their counts and the full-text search leave out the rows whose audience i
 never fills a limit, a count or a page. The full-text rows of nodes with an audience sit in ``node_fts_aud``, apart from
 ``node_fts``: they never weigh in the ranking of what a reader without that audience finds. ``counts`` and ``summary``
 stay the build's totals; ``seen`` counts what the reader's audience holds.
+
+What agents asked before they read a node (``evo_agents.kg.asked``) sits in ``node_asked`` (the words, full-text) and
+``node_asked_rows`` (each row's node, its level, location and audience, and its prior), which ``write_asked`` makes
+when a hub build has labels to learn from: they are outside the schema version and the content hash, and a file
+without them (any local build, any file written before them) searches as before. ``Store.search`` reads them only for
+a reader whose ``asked_clearance`` (level, location) is set, and only the rows within it and within ``reader``.
 """
 
 from __future__ import annotations
@@ -50,6 +56,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
@@ -145,6 +152,15 @@ CREATE TABLE IF NOT EXISTS cluster_warm (
 _NO_WARM = object()  # Store.write: no warm start to record
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
 SEEN = "(label_aud IS NULL OR aud_seen(label_aud))"  # the row's audience is within the store's reader
+ASKED_TABLES = ("node_asked", "node_asked_rows")  # what agents asked before they read a node; only in a hub build
+ASKED_SCHEMA = """
+CREATE VIRTUAL TABLE node_asked USING fts5(asked, tokenize = 'unicode61 remove_diacritics 2');
+CREATE TABLE node_asked_rows (
+    id INTEGER PRIMARY KEY, node_id TEXT NOT NULL, lvl INTEGER NOT NULL, loc INTEGER NOT NULL, aud TEXT,
+    prior REAL NOT NULL
+) STRICT;
+CREATE INDEX node_asked_node ON node_asked_rows(node_id);
+"""
 FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without an audience, and with one
 NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
 EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
@@ -316,6 +332,8 @@ class Store:
     def _reads(self) -> None:
         """Read as a reader with no audience until ``reader`` is set: rows with one are left out (fail closed)."""
         self.reader: frozenset[str] = frozenset()
+        self.asked_clearance: tuple[int, int] | None = None  # the (level, location) of node_asked rows read; None: none
+        self._asked: bool | None = None  # whether the file has the asked tables, once looked up
         self.db.create_function("aud_seen", 1, lambda text: audience_below(stored_audience(text), self.reader))
 
     @staticmethod
@@ -1139,16 +1157,112 @@ class Store:
             for node_id in self.exact(word, b, want, kinds):
                 if node_id not in scores and node_id not in hits:
                     scores[node_id], rows[node_id] = top, self._index_row(node_id)
+        asked = self._asked_scores(query)
+        best = min(scores.values(), default=-1.0)  # an asked match is weighed against the best text score
+        for node_id, match in asked.items():
+            score = text_search.ASKED_WEIGHT * match * best
+            if node_id in scores:
+                scores[node_id] += score
+            elif node_id not in hits:
+                row = self._index_row(node_id)
+                if row[0] and (not kinds or row[0] in kinds):
+                    scores[node_id], rows[node_id] = score, row
         closed = self._closed_plans(b, [i for i, row in rows.items() if row[0] in ("Plan", "PlanStep")])
         wanted = text_search.asked(query)
+        priors = self._asked_priors(list(scores))
         for node_id, (kind, name, path) in rows.items():
             scores[node_id] *= text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
+            scores[node_id] *= priors.get(node_id, 1.0)
         ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
         found = [*hits, *(h for h in ranked if h not in hits)]
         if not deprecated:
             gone = self._deprecated(found, b)
             found = [h for h in found if h not in gone]
         return found[:want]
+
+    # -- what agents asked before they read a node (evo_agents.kg.asked) -------------------------------------------
+
+    def has_asked(self) -> bool:
+        if self._asked is None:
+            marks = ", ".join("?" for _ in ASKED_TABLES)
+            sql = f"SELECT count(*) FROM sqlite_master WHERE name IN ({marks})"
+            self._asked = self.db.execute(sql, ASKED_TABLES).fetchone()[0] == len(ASKED_TABLES)
+        return self._asked
+
+    def write_asked(self, rows) -> str | None:
+        """Put ``rows`` (``evo_agents.kg.asked.Row``) in place of the asked index the file had: the index is derived
+        from the hub's labels at each build, never history. The digest of what it holds now; None when it holds
+        nothing (no rows: the tables are gone, and the file searches as before)."""
+        rows = list(rows)
+        for table in ASKED_TABLES:
+            self.db.execute(f"DROP TABLE IF EXISTS {table}")
+        self._asked = None
+        if not rows:
+            self.db.commit()
+            return None
+        self.db.executescript(ASKED_SCHEMA)
+        for n, row in enumerate(rows, start=1):
+            self.db.execute(
+                "INSERT INTO node_asked_rows VALUES (?, ?, ?, ?, ?, ?)",
+                (n, row.node_id, row.level, row.location, row.audience, row.prior),
+            )
+            self.db.execute("INSERT INTO node_asked(rowid, asked) VALUES (?, ?)", (n, row.asked))
+        self.db.commit()
+        self._asked = None
+        return sha256(canonical_json([[r.node_id, r.level, r.location, r.audience, r.prior, r.asked] for r in rows]))
+
+    def _asked_where(self) -> tuple[str, tuple]:
+        lvl, loc = self.asked_clearance
+        return "r.lvl <= ? AND r.loc <= ? AND (r.aud IS NULL OR aud_seen(r.aud))", (lvl, loc)
+
+    def _asked_scores(self, query: str) -> dict[str, float]:
+        """Per node, how well the best of its asked rows the reader may read matches ``query``'s words, from 0 to 1
+        (``evo_agents.kg.asked.match``); empty without the tables, a clearance, or ASKED_WEIGHT."""
+        if self.asked_clearance is None or not text_search.ASKED_WEIGHT or not self.has_asked():
+            return {}
+        words = asked_words.terms(query)
+        fts = asked_words.fts_query(query)
+        if fts is None:
+            return {}
+        where, params = self._asked_where()
+        try:
+            found = self.db.execute(
+                "SELECT r.node_id, node_asked.asked FROM node_asked JOIN node_asked_rows r ON r.id ="
+                f" node_asked.rowid WHERE node_asked MATCH ? AND {where}",
+                (fts, *params),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        out: dict[str, float] = {}
+        for node_id, text in found:
+            out[node_id] = max(out.get(node_id, 0.0), asked_words.match(words, text))
+        return out
+
+    def _asked_priors(self, ids: list[str]) -> dict[str, float]:
+        """Per node of ``ids``, the highest prior of its asked rows the reader may read, at most PRIOR_MAX."""
+        if self.asked_clearance is None or not ids or not self.has_asked():
+            return {}
+        where, params = self._asked_where()
+        out: dict[str, float] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ", ".join("?" for _ in chunk)
+            for node_id, prior in self.db.execute(
+                f"SELECT r.node_id, max(r.prior) FROM node_asked_rows r WHERE r.node_id IN ({marks}) AND {where}"
+                " GROUP BY r.node_id",
+                (*chunk, *params),
+            ):
+                out[node_id] = min(max(prior, 1.0), asked_words.PRIOR_MAX)
+        return out
+
+    def asked_nodes(self, ids) -> set[str]:
+        """The nodes of ``ids`` with an asked row under any label: some agent read them after a search."""
+        ids = list(ids)
+        if not ids or not self.has_asked():
+            return set()
+        marks = ", ".join("?" for _ in ids)
+        sql = f"SELECT DISTINCT node_id FROM node_asked_rows WHERE node_id IN ({marks})"
+        return {row[0] for row in self.db.execute(sql, ids)}
 
     def _index_row(self, node_id: str) -> tuple[str, str, str]:
         """(kind, name, path) of a node's own row in the full-text index, as ``_ranked`` reads them."""

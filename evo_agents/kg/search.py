@@ -73,6 +73,13 @@ PASSAGE_CHARS = 1_500  # the most characters of a passage, but for a single line
 PASSAGE_WEIGHT = 0.75
 PASSAGE_MARK = "\x1f"  # between a node's id and its passage's lines in the key of the passage's row
 STAGE_WEIGHTS = (2.0, 1.5, 1.0)  # a match of all words whole, of all words as prefixes, of any word
+# The weight of the words agents asked before they read a node (``evo_agents.kg.asked``, the ``node_asked`` index of a
+# hub build): how well they match the query (``asked.match``, 0 to 1), times this and the best text score, is added to
+# the node's text score, and a node only those words find enters at that score. 0 reads the index for the prior alone.
+# On the harness's tune split (600 questions, the 21 labels of this machine's sessions, every eval question left out)
+# 0, 0.5, 1 and 2 ranked alike (R@5 0.148, MRR 0.159): too few labels to choose, so 1, an asked match worth at most
+# the best text match; tune it again once the hub holds labels enough.
+ASKED_WEIGHT = 1.0
 # A document is named by its path, which seldom says what it holds: kg_search shows the passage of its body where the
 # query's words gather, about SNIPPET_TOKENS words, so the reader can tell whether to open it. A section is named by
 # its heading; its passage too cost a third more tokens a call on the harness's question set and found nothing more.
