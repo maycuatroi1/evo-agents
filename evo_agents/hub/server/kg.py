@@ -871,11 +871,19 @@ def _read_sink(access: ProjectAccess, sink: str) -> str:
 
 
 async def tool_result(
-    state, user: Principal, project: str, tool: str, arguments: dict, sink: str, *, audience: frozenset | None = None
+    state,
+    user: Principal,
+    project: str,
+    tool: str,
+    arguments: dict,
+    sink: str,
+    *,
+    audience: frozenset | None = None,
+    explore: bool = False,
 ) -> dict:
     """One kg_* tool of ``evo-agents kg serve`` for ``user``, answered from the project's latest successful build
-    through ``sink``, holding ``user``'s audience as the database says now, or ``audience`` when given: the MCP tool
-    result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a project the caller cannot see,
+    through ``sink``, holding ``user``'s audience as the database says now, or ``audience`` when given, exploring the
+    ranking when ``explore`` (``evo_agents.kg.explore``): the MCP tool result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a project the caller cannot see,
     403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact whose bytes are not the build's."""
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
@@ -905,6 +913,7 @@ async def tool_result(
             graphs,
             tool,
             arguments,
+            explore,
         )
     except GraphOutdated as exc:
         await rebuild_outdated(state, access.project_id, project)

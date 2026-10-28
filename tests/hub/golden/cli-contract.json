@@ -9669,6 +9669,120 @@
         }
       }
     },
+    "hub kg eval-set": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "push",
+            "pull"
+          ]
+        },
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--set"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--split"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "all",
+            "tune",
+            "holdout"
+          ],
+          "default": "all"
+        },
+        {
+          "flags": [
+            "--no-answers"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "-o",
+            "--output"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "set",
+          "version",
+          "digest",
+          "created_at",
+          "split",
+          "answers",
+          "questions"
+        ],
+        "schema": "EvalSetView",
+        "with": {
+          "push": {
+            "kind": "object",
+            "keys": [
+              "set",
+              "version",
+              "digest",
+              "questions",
+              "holdout",
+              "created"
+            ],
+            "schema": "EvalSetPut"
+          }
+        }
+      }
+    },
     "hub kg forget-source": {
       "positionals": [],
       "options": [
@@ -9750,6 +9864,76 @@
           "builds"
         ],
         "schema": "KgHealthView"
+      }
+    },
+    "hub kg optimize": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "via",
+          "state",
+          "night",
+          "agent_run_id",
+          "before_build_id",
+          "after_build_id",
+          "asked_weight",
+          "summary",
+          "report",
+          "error",
+          "created_at",
+          "updated_at",
+          "ended_at",
+          "body"
+        ],
+        "schema": "OptimizeRun",
+        "with": {
+          "--status": {
+            "kind": "object",
+            "keys": [
+              "active",
+              "runs"
+            ],
+            "schema": "OptimizeRuns"
+          }
+        }
       }
     },
     "hub kg prune": {
@@ -9847,7 +10031,8 @@
           "repeatable": false,
           "choices": [
             "dismiss",
-            "undismiss"
+            "undismiss",
+            "apply"
           ]
         },
         {
@@ -9915,6 +10100,40 @@
         },
         {
           "flags": [
+            "--max"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 25
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--origin"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "kg-optimize"
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -9951,6 +10170,21 @@
               "was_by"
             ],
             "schema": "Undismissed"
+          },
+          "apply": {
+            "kind": "object",
+            "keys": [
+              "graph",
+              "rev",
+              "dry_run",
+              "max_decisions",
+              "decided",
+              "skipped",
+              "items",
+              "report",
+              "left"
+            ],
+            "schema": "ApplyResult"
           }
         }
       }
@@ -32287,6 +32521,510 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/review/apply": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Apply Review",
+          "description": "Apply the fixes of the open review items you can see as decisions, at most max_decisions, naming your loop.",
+          "operationId": "apply_review_v1_kg__project__review_apply_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApplyResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/optimize": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Start Optimize",
+          "description": "Start a KG optimize run of the project now, at any hour, under the charter's review cost cap: 201 with the\nnew run, or 200 with the run in flight, as one runs at a time.",
+          "operationId": "start_optimize_v1_kg__project__optimize_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OptimizeRun"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "200": {
+              "description": "a run is in flight already: that run",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OptimizeRun"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Optimize",
+          "description": "The project's KG optimize runs, newest first, with the one in flight and each run's report.",
+          "operationId": "list_optimize_v1_kg__project__optimize_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "description": "the newest runs listed",
+                "default": 10,
+                "title": "Limit"
+              },
+              "description": "the newest runs listed"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OptimizeRuns"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/eval-set": {
+        "put": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Put Eval Set",
+          "description": "Put the project's retrieval question set: the next version, or the latest again when it asks the same.",
+          "operationId": "put_eval_set_v1_kg__project__eval_set_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalSetBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvalSetPut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Get Eval Set",
+          "description": "The project's retrieval question set, or one part of it; holdout questions come without their answers.",
+          "operationId": "get_eval_set_v1_kg__project__eval_set_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "this version, not the latest",
+                "title": "Version"
+              },
+              "description": "this version, not the latest"
+            },
+            {
+              "name": "split",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "enum": [
+                  "all",
+                  "tune",
+                  "holdout"
+                ],
+                "type": "string",
+                "description": "only this part of the set",
+                "default": "all",
+                "title": "Split"
+              },
+              "description": "only this part of the set"
+            },
+            {
+              "name": "answers",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "false: no question carries its answers",
+                "default": true,
+                "title": "Answers"
+              },
+              "description": "false: no question carries its answers"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvalSetView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -94580,6 +95318,236 @@
           ],
           "title": "ApnsDeviceIn"
         },
+        "AppliedDecision": {
+          "properties": {
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the decision's number; null on a dry run"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "src": {
+              "type": "string",
+              "title": "Src"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "kind",
+            "src",
+            "rel",
+            "dst",
+            "reason"
+          ],
+          "title": "AppliedDecision"
+        },
+        "AppliedItem": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint"
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "whole": {
+              "type": "boolean",
+              "title": "Whole",
+              "description": "true when every decision of the item's fix is taken or was said already"
+            },
+            "decisions": {
+              "items": {
+                "$ref": "#/components/schemas/AppliedDecision"
+              },
+              "type": "array",
+              "title": "Decisions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "rule",
+            "whole",
+            "decisions"
+          ],
+          "title": "AppliedItem"
+        },
+        "ApplyBody": {
+          "properties": {
+            "origin": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$",
+              "title": "Origin",
+              "description": "the loop that applies the fixes",
+              "default": "kg-optimize"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the loop, a run of this project"
+            },
+            "max_decisions": {
+              "type": "integer",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "title": "Max Decisions",
+              "description": "the cap of this call",
+              "default": 25
+            },
+            "rules": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "dangling_mention",
+                      "unmentioned_document",
+                      "cluster_without_knowledge",
+                      "possible_duplicate",
+                      "ambiguous_match",
+                      "bulk_noise"
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rules",
+              "description": "only the items of these rules; every rule when null"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "description": "say what would be decided and decide nothing",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "ApplyBody"
+        },
+        "ApplyResult": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "rev": {
+              "type": "integer",
+              "title": "Rev",
+              "description": "the project's decision revision after the call"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "max_decisions": {
+              "type": "integer",
+              "title": "Max Decisions"
+            },
+            "decided": {
+              "type": "integer",
+              "title": "Decided",
+              "description": "the decisions taken (or, on a dry run, that would be)"
+            },
+            "skipped": {
+              "type": "integer",
+              "title": "Skipped",
+              "description": "the decisions of fixes a proposed or active decision already says"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/AppliedItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "the items whose fix took a decision, in the queue's order"
+            },
+            "report": {
+              "items": {
+                "$ref": "#/components/schemas/ReportItem"
+              },
+              "type": "array",
+              "title": "Report",
+              "description": "the open items no decision fixes, for a person to read"
+            },
+            "left": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Left",
+              "description": "per rule, the open items with a fix not wholly taken"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "rev",
+            "dry_run",
+            "max_decisions",
+            "decided",
+            "skipped",
+            "items",
+            "report",
+            "left"
+          ],
+          "title": "ApplyResult"
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -108977,6 +109945,130 @@
           ],
           "title": "ErrorText"
         },
+        "EvalSetBody": {
+          "properties": {
+            "set": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Set",
+              "description": "the set's name, e.g. evo-agents"
+            },
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "minItems": 1,
+              "title": "Questions",
+              "description": "the questions, as the lines of a set file: id, question, type, project, repo, files, nodes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "set",
+            "questions"
+          ],
+          "title": "EvalSetBody"
+        },
+        "EvalSetPut": {
+          "properties": {
+            "set": {
+              "type": "string",
+              "title": "Set"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest",
+              "description": "SHA-256 of what the questions ask and answer"
+            },
+            "questions": {
+              "type": "integer",
+              "title": "Questions"
+            },
+            "holdout": {
+              "type": "integer",
+              "title": "Holdout",
+              "description": "the questions in the holdout part"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "false when the set was the latest version already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "set",
+            "version",
+            "digest",
+            "questions",
+            "holdout",
+            "created"
+          ],
+          "title": "EvalSetPut"
+        },
+        "EvalSetView": {
+          "properties": {
+            "set": {
+              "type": "string",
+              "title": "Set"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "split": {
+              "type": "string",
+              "enum": [
+                "all",
+                "tune",
+                "holdout"
+              ],
+              "title": "Split"
+            },
+            "answers": {
+              "type": "boolean",
+              "title": "Answers",
+              "description": "whether the tune questions carry their answers; holdout ones never do"
+            },
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Questions",
+              "description": "the questions of the part asked, in the set's order, each with split"
+            }
+          },
+          "type": "object",
+          "required": [
+            "set",
+            "version",
+            "digest",
+            "created_at",
+            "split",
+            "answers",
+            "questions"
+          ],
+          "title": "EvalSetView"
+        },
         "EventBatch": {
           "properties": {
             "events": {
@@ -114776,6 +115868,30 @@
               ],
               "title": "Build Id",
               "description": "the build the graph was at; null once that build is gone"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "the loop that took the step, as kg-optimize; null for one taken by hand"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "that loop's run, when it named one; null once the run is gone"
             }
           },
           "type": "object",
@@ -122201,6 +123317,12 @@
               ],
               "title": "Read At"
             },
+            "report": {
+              "type": "boolean",
+              "title": "Report",
+              "description": "a notice that only reports (a push or merge into a default branch, a plan finished, a run's files, asking nothing): stored read, sent to no channel (nor a device, unless you chose the interrupt tier for its kind), and counted in Today's summary",
+              "default": false
+            },
             "outputs": {
               "items": {
                 "$ref": "#/components/schemas/RunOutput"
@@ -122377,7 +123499,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 31,
+              "maxItems": 32,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -124223,6 +125345,198 @@
             "changed"
           ],
           "title": "OpportunityRevision"
+        },
+        "OptimizeRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "night",
+                "manual"
+              ],
+              "title": "Via"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "measuring",
+                "running",
+                "after",
+                "done",
+                "reverted",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "night": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Night"
+            },
+            "agent_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Run Id",
+              "description": "the review run given to the worker on duty"
+            },
+            "before_build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Build Id"
+            },
+            "after_build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Build Id"
+            },
+            "asked_weight": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asked Weight",
+              "description": "the weight of the asked column the run left in effect"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "report": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report",
+              "description": "the report the owner got, markdown; null until the run ends"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "what the run measured, decided and undid"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "via",
+            "state",
+            "night",
+            "agent_run_id",
+            "before_build_id",
+            "after_build_id",
+            "asked_weight",
+            "summary",
+            "report",
+            "error",
+            "created_at",
+            "updated_at",
+            "ended_at",
+            "body"
+          ],
+          "title": "OptimizeRun"
+        },
+        "OptimizeRuns": {
+          "properties": {
+            "active": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OptimizeRun"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/OptimizeRun"
+              },
+              "type": "array",
+              "title": "Runs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "active",
+            "runs"
+          ],
+          "title": "OptimizeRuns"
         },
         "OptionIn": {
           "properties": {
@@ -140161,6 +141475,64 @@
           ],
           "title": "RepoPath"
         },
+        "ReportItem": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint"
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster"
+            },
+            "cluster_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster Label"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/ReviewNode"
+              },
+              "type": "array",
+              "title": "Nodes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "rule",
+            "cluster",
+            "cluster_label",
+            "nodes"
+          ],
+          "title": "ReportItem"
+        },
         "Rerun": {
           "properties": {
             "pool": {
@@ -154129,7 +155501,8 @@
                 "opportunity_window",
                 "market_install_request",
                 "market_license_expiring",
-                "today"
+                "today",
+                "kg_optimize"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -154194,7 +155567,8 @@
                 "opportunity_window",
                 "market_install_request",
                 "market_license_expiring",
-                "today"
+                "today",
+                "kg_optimize"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -154425,10 +155799,11 @@
                 "run_parked",
                 "problem",
                 "cost",
-                "proposal"
+                "proposal",
+                "report"
               ],
               "title": "Kind",
-              "description": "release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer"
+              "description": "release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer; report: notices that only report, such as pushes, merges, plans finished and files of runs"
             },
             "title": {
               "type": "string",

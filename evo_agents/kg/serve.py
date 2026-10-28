@@ -35,6 +35,7 @@ import uuid
 from collections import Counter, deque
 
 from evo_agents import __version__
+from evo_agents.kg import semantic
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
     CONTEXT_MIN_LINE,
@@ -43,6 +44,7 @@ from evo_agents.kg.budget import (
     Room,
     line_size,
 )
+from evo_agents.kg.explore import MARK, POOL, Explorer
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.policy import Label, audience_below
@@ -52,12 +54,14 @@ from evo_agents.kg.search import SNIPPET_KINDS, query_words, with_mentions
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
+from evo_agents.kg.text import slugify
 from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT, INSTRUCTIONS, SIGNATURES, TOOLS
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
+WEAK_LIMIT = 5  # kg_search returns at most this many results when none holds every word of the query
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
@@ -99,6 +103,9 @@ class Session:
         self.read: Label | None = None  # join of the labels the current call reveals
         self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
+        # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
+        self.semantic: bool | None = None
+        self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
                 # The local operator already holds the corpus; the cli sink sees everything unless declared.
@@ -140,6 +147,7 @@ class Session:
         visible, and ``visible`` answers so without comparing labels."""
         store, b = self._graph()
         store.reader = self.audience
+        store.asked_clearance = self.clearance  # what agents asked before reading a node, under this clearance only
         top = store.top_label(b)
         within = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
         self.sees_all = within and audience_below(store.top_audience(b), self.audience)
@@ -208,21 +216,40 @@ class Session:
 
     # -- tools ----------------------------------------------------------------------------------
 
-    def _line(self, n: dict, shared: str | None = None) -> str:
+    def _line(self, n: dict, shared: str | None = None, passage: str | None = None, status: str | None = None) -> str:
         """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
-        it, the line of a symbol, the status and number of a plan step, the chat and thread of a chat message
-        (KIND_PROPS). Never its URI: kg_node gives that."""
+        it, the status and number of a plan step, the chat and thread of a chat message (KIND_PROPS), and where in
+        its file it is (``lines``): the lines of a section, the first and last line of a symbol, or ``passage``, the
+        lines a search matched best (``Store.matched``), with the node's own after ``of``. Never its URI: kg_node
+        gives that. With ``status``, the status the result prints once too (kg_search), the line is briefer: its
+        node's status only when it is another, no name of a section its anchor spells, no number of a step its id
+        holds, and no parentheses when they would hold nothing."""
         ref, props = readable(n["id"]), n["props"]
-        head = f"[{ref}] {n['kind']}" + ("" if named_by(ref, n["name"]) else f" {n['name']!r}")
+        brief = status is not None
+        named = named_by(ref, n["name"]) or (
+            brief and n["kind"] == "Section" and bool(n["name"]) and slugify(n["name"]) == props.get("anchor")
+        )
+        head = f"[{ref}] {n['kind']}" + ("" if named else f" {n['name']!r}")
         extra = [
             f"{key}={props[key]}"
-            for key in ("path", "status", "number", "line", *KIND_PROPS.get(n["kind"], ()))
-            if props.get(key) not in (None, "") and not (key == "path" and str(props[key]) in ref)
+            for key in ("path", "status", "number", *KIND_PROPS.get(n["kind"], ()))
+            if props.get(key) not in (None, "")
+            and not (key == "path" and str(props[key]) in ref)
+            and not (brief and key == "number" and ref.endswith(f"step:{props[key]}"))
         ]
+        where = lines(props)
+        if passage:
+            where = f"{passage} of {where.split(' ', 1)[1]}" if where.startswith("lines ") else passage
+        if where:
+            extra.append(where)
         label = self.describe(n["label"])
-        state = f"({n['status']})" if label == shared else f"({n['status']}, {label})"
-        return f"{head} {state}" + (f" {' '.join(extra)}" if extra else "")
+        if brief:
+            told = [part for part, same in ((n["status"], n["status"] == status), (label, label == shared)) if not same]
+            state = f" ({', '.join(told)})" if told else ""
+        else:
+            state = f" ({n['status']})" if label == shared else f" ({n['status']}, {label})"
+        return f"{head}{state}" + (f" {' '.join(extra)}" if extra else "")
 
     def _labels(self, nodes) -> tuple[str | None, list[str]]:
         """The label a result prints once, under its first line: the label of most of ``nodes`` (the first seen of
@@ -252,7 +279,8 @@ class Session:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
-        ids = store.search(query, b, limit=limit * 4, kinds=kinds)
+        vector = semantic.query_vector(store, query, self.semantic)
+        ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated, vector=vector)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
@@ -261,23 +289,35 @@ class Session:
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
-        for reached in via.values():
-            self._saw(reached["label"])
-        shared, label_line = self._labels(results)
         words = len(query_words(query))
         direct = [n for n in results if n["id"] not in via]  # a node a hit mentions was not found by its words
         matched = store.matched(
             [n["id"] for n in direct], query, {n["id"] for n in direct if n["kind"] in SNIPPET_KINDS}
         )
-        lines = [f"{len(results)} result(s) for {query!r} in project {self.project.name} (build {b})", *label_line]
-        if words > 1 and matched and all(m["words"] < words for m in matched.values()):
+        partial = words > 1 and bool(matched) and all(m["words"] < words for m in matched.values())
+        if partial and len(results) > WEAK_LIMIT:  # no result holds the whole query: the few best say as much
+            results = results[:WEAK_LIMIT]
+            via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
+        explored = self._explore(store, results, hits, via)
+        for reached in via.values():
+            self._saw(reached["label"])
+        shared, label_line = self._labels(results)
+        statuses = Counter(n["status"] for n in results)
+        status = statuses.most_common(1)[0][0] if statuses else ""
+        head = f"{len(results)} result(s) in project {self.project.name} (build {b})"
+        if statuses:
+            head += f", status {status}" + ("" if len(statuses) == 1 else " unless its line names another")
+        lines = [head, *label_line]
+        if partial:
             lines.append(f"no result holds all {words} words of the query")
         for n in results:
-            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared)
             m = matched.get(n["id"])
-            lines.append(line + (f" words={m['words']}/{words}" if m and words > 1 else ""))
+            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared, (m or {}).get("lines"), status)
+            lines.append(line + (f" words={m['words']}/{words}" if m and m["words"] < words else ""))
             if m and m.get("snippet"):
                 lines.append(f"    > {m['snippet']}")
+        if explored is not None:
+            lines.append(MARK.format(rank=explored[0], p=explored[1], ref=readable(results[explored[0] - 1]["id"])))
         return "\n".join(lines), {
             "build": b,
             "results": [self._node_json(n) for n in results],
@@ -285,6 +325,27 @@ class Session:
             "matched": matched,
             "summary": f"{len(results)} results",
         }
+
+    def _explore(self, store: Store, results: list, hits: list, via: dict) -> tuple[int, float] | None:
+        """With an explorer, maybe put a hit past ``results`` that no agent read after a search yet at rank 4 or 5 of
+        them, in place, the last result dropped when that makes one more: (its rank, the chance it had), else None."""
+        if self.explorer is None:
+            return None
+        shown = {n["id"] for n in results}
+        past = [n for n in hits if n["id"] not in shown and n["id"] not in via][: 2 * POOL]
+        read = store.asked_nodes(n["id"] for n in past)
+        candidates = [n for n in past if n["id"] not in read]
+        picked = self.explorer.pick(results, candidates)
+        if picked is None:
+            return None
+        index, rank, chance = picked
+        count = len(results)
+        results.insert(rank - 1, candidates[index])
+        del results[max(count, rank) :]
+        kept = {n["id"] for n in results}
+        for nid in [nid for nid in via if nid not in kept]:
+            del via[nid]
+        return rank, chance
 
     def _evidence(self, store: Store, elem: str, b: int, links: Links) -> list[dict]:
         out = []
@@ -460,7 +521,7 @@ class Session:
             found = [self._lookup(store, i, b) for i in ids if isinstance(i, str)]
             seeds = {n["id"]: n for n in found if n is not None}
         elif query:
-            hits = store.search(query, b, limit=5)[:5]
+            hits = store.search(query, b, limit=5, deprecated=self.deprecated)[:5]
             nodes = store.nodes(hits, b)
             seeds = {h: nodes[h] for h in hits if h in nodes and self.seen(nodes[h])}
         else:
@@ -937,6 +998,20 @@ class Session:
 def _edge_json(t: dict) -> dict:
     e = t["edge"]
     return {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]}
+
+
+def lines(props: dict) -> str:
+    """Where a node is in its file, as its text shows it: ``lines A-B`` of a section (its ``span``) or of a symbol (its
+    ``line`` and ``end_line``), ``line A`` of a symbol read before symbols had an end; "" for any other node."""
+    span = props.get("span")
+    if isinstance(span, str) and _SPAN.fullmatch(span):
+        return span
+    first, last = props.get("line"), props.get("end_line")
+    if not isinstance(first, int) or isinstance(first, bool) or first < 1:
+        return ""
+    if isinstance(last, int) and not isinstance(last, bool) and last > first:
+        return f"lines {first}-{last}"
+    return f"line {first}"
 
 
 def _error(message: str) -> dict:

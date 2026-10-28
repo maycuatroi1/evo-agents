@@ -63,6 +63,12 @@ def _line(location: str | None) -> int:
     return int(m.group(1)) if m else 0
 
 
+def _end_line(location: str | None) -> int | None:
+    """The last line of a ``L12-L40`` (or ``L12-40``) source location, None when it names one line."""
+    m = re.match(r"L(\d+)-L?(\d+)", location or "")
+    return int(m.group(2)) if m and int(m.group(2)) > int(m.group(1)) else None
+
+
 def import_candidates(text: str, path: str) -> list[list[str]]:
     """Possible target paths for each relative import of a JS or TS file."""
     if PurePosixPath(path).suffix not in JS_SUFFIXES:
@@ -150,6 +156,7 @@ def _symbols(result: dict, target: Path, path: str, structural: bool) -> tuple[l
                 "kind": "class" if is_class else ("method" if member else "function"),
                 "line": _line(n.get("source_location")),
                 "parent": quals.get(up) if member else None,
+                **({"end": end} if (end := _end_line(n.get("source_location"))) else {}),
             }
         )
     return symbols, quals

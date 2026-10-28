@@ -378,6 +378,12 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
         "kg_fallbacks": 1.0,
         "kg_misses": 1.0,
         **{f"kg_review_{rule}": 0.0 for rule in RULES},  # no blob store here: the queue is not counted
+        # what agents got from their lookups: no session read any here, so each level is 0
+        "kg_lookup_tokens_p50": 0.0,
+        "kg_lookup_tokens_p90": 0.0,
+        "kg_answer_tokens": 0.0,
+        "kg_grep_after": 0.0,
+        "kg_unclicked": 0.0,
     }
 
 
@@ -463,7 +469,7 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     graph_of(world)
     asked = []
 
-    def broken(cache, blobs, project, access, sink, graphs, plans, previous):
+    def broken(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None):
         asked.append((project, sink, [graph.build_id for graph in graphs], [plan_id for plan_id, _ in plans]))
         raise RuntimeError("sqlite went away")
 
@@ -478,4 +484,127 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     assert body["eval"] == {"why": "the evaluation failed: RuntimeError"}
     assert body["review"]["why"].startswith("counting the review queue failed")  # the measure stands without it
     ((project, sink, builds, plans),) = asked
-    assert project == PROJECT and sink == "hub" and len(builds) == 2 and "credentials-smoke" in plans  # as the owner
+    assert project == PROJECT and len(builds) == 2 and "credentials-smoke" in plans  # as the owner
+    assert sink == "claude-code@anthropic"  # the agent sink the policy declares, not the hub sink
+
+
+# The question set and the signals of the eval
+
+EVAL_SET = [
+    {"id": f"q{n}", "question": f"where is thing {n}", "type": "where", "files": [f"evo-agents:app/f{n}.py"]}
+    for n in range(30)
+]
+
+
+def put_set(world, who: str = "owner", questions=None, name: str = "evo-agents"):
+    body = {"set": name, "questions": EVAL_SET if questions is None else questions}
+    return world.client.put(f"/v1/kg/{PROJECT}/eval-set", json=body, headers=world.headers[who])
+
+
+def test_the_eval_set_is_versioned_on_the_hub_and_its_holdout_answers_stay_there(world):  # noqa: F811
+    from evo_agents.kg.evaluate import HOLDOUT, TUNE, split_of
+
+    path = f"/v1/kg/{PROJECT}/eval-set"
+    assert world.client.get(path, headers=world.headers["owner"]).status_code == 404
+    first = put_set(world)
+    assert first.status_code == 200, first.text
+    holdout = [q["id"] for q in EVAL_SET if split_of(q["id"]) == HOLDOUT]
+    assert first.json() | {"digest": None} == {
+        "set": "evo-agents",
+        "version": 1,
+        "digest": None,
+        "questions": 30,
+        "holdout": len(holdout),
+        "created": True,
+    }
+    again = put_set(world, "other").json()
+    assert (again["version"], again["created"], again["digest"]) == (1, False, first.json()["digest"])
+    assert put_set(world, questions=EVAL_SET[:20]).json()["version"] == 2
+    assert put_set(world, "admin").status_code == 403  # a hub admin with no grant on the project
+    bad = put_set(world, questions=[{"id": "x", "question": "q", "type": "t"}])
+    assert bad.status_code == 422 and "no answer" in bad.text
+    assert put_set(world, questions=[{"question": "q", "type": "t", "files": ["a.py"]}]).status_code == 422
+
+    whole = world.client.get(path, params={"version": 1}, headers=world.headers["other"]).json()
+    assert (whole["set"], whole["version"], whole["split"], len(whole["questions"])) == ("evo-agents", 1, "all", 30)
+    for question in whole["questions"]:
+        assert question["split"] == split_of(question["id"])
+        assert ("files" in question) == (question["split"] == TUNE), "a holdout question never carries its answers"
+    part = world.client.get(path, params={"split": "holdout"}, headers=world.headers["owner"]).json()
+    assert part["version"] == 2 and all(q["split"] == HOLDOUT and "files" not in q for q in part["questions"])
+    bare = world.client.get(path, params={"split": "tune", "answers": "false"}, headers=world.headers["owner"]).json()
+    assert bare["questions"] and all(set(q) == {"id", "question", "type", "split"} for q in bare["questions"])
+    assert world.client.get(path, params={"version": 9}, headers=world.headers["owner"]).status_code == 404
+    narrow = world.client.get(path, headers={**world.headers["owner"], "X-Evo-Sink": "nowhere"})
+    assert narrow.status_code == 404
+
+    async def held():
+        from evo_agents.hub.server import kg_eval_sets
+
+        async with world.app.state.engine.begin() as conn:
+            found = await kg_eval_sets.latest_set(conn, project_id(world.db))
+            listed = await kg_eval_sets.holdout_questions(conn, project_id(world.db))
+        return found, listed
+
+    (question_set, digest), listed = world.client.portal.call(held)
+    assert (question_set.name, question_set.version, len(question_set.questions)) == ("evo-agents", 2, 20)
+    assert digest == part["digest"] and [q["id"] for q in listed] == [q["id"] for q in part["questions"]]
+    assert all(q.files for q in question_set.part(HOLDOUT)), "the hub's own eval reads the holdout answers"
+    a = tables.audit
+    targets = [t for (t,) in sql(world.db, select(a.c.target).where(a.c.action == "kg.eval_set"))]
+    assert targets == [
+        f"{PROJECT} set=evo-agents version=1 questions=30",
+        f"{PROJECT} set=evo-agents version=2 questions=20",
+    ]
+
+
+def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_signals(
+    world,
+    tmp_path,
+    monkeypatch,  # noqa: F811
+):
+    graph_of(world)
+    assert put_set(world).status_code == 200
+    asked = []
+    score = {"kg_search": {"n": 9, "hit@5": 0.625, "recall@5": 0.5, "tokens_per_file": 812.4}}
+
+    def scored(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None):
+        asked.append((sink, found_set[0].version, len(found_set[0].questions), found_set[1]))
+        return {"questions": 9, "methods": score, "build_id": graphs[0].build_id, "sink": sink}
+
+    monkeypatch.setattr(kg_health, "_evaluate", scored)
+    state = world.app.state
+    found = partial(
+        kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED
+    )
+    assert world.client.portal.call(found) == {"measured": 1}
+    ((sink, version, count, digest),) = asked
+    assert (version, count, len(digest)) == (1, 30, 64)
+    assert sink == "claude-code@anthropic", "the sink agents search the graph through"
+    h, s, k = tables.kg_health, tables.signals, tables.signal_keys
+    (measure_id,) = sql(world.db, select(h.c.id))[0]
+    rows = sql(
+        world.db,
+        select(k.c.name, k.c.unit, s.c.value, s.c.user_id, s.c.external_id)
+        .select_from(s.join(k, k.c.id == s.c.key_id))
+        .order_by(k.c.name),
+    )
+    owner = user_id(world.db, "owner")
+    assert rows == [
+        ("kg.retrieval.hit_at_5", "percent", 62.5, owner, f"kg_health:kg.retrieval.hit_at_5:{measure_id}"),
+        (
+            "kg.retrieval.tokens_per_file",
+            "tokens",
+            812.4,
+            owner,
+            f"kg_health:kg.retrieval.tokens_per_file:{measure_id}",
+        ),
+    ]
+
+    async def again(found):
+        async with world.app.state.engine.begin() as conn:
+            return await kg_health.push_eval_signals(conn, project_id(world.db), owner, measure_id, found)
+
+    assert world.client.portal.call(again, {"methods": score}) == [], "the same measure pushes once"
+    assert world.client.portal.call(again, {"why": "no graph"}) == []
+    assert world.client.portal.call(again, {"methods": {"kg_search": {"hit@5": 0.0, "tokens_per_file": None}}}) == []

@@ -29,7 +29,7 @@ from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub.live import sql
 from tests.hub.s3 import get_url
-from tests.hub.test_notifications import add_channel, due_now, listed, read
+from tests.hub.test_notifications import add_channel, due_now, listed
 from tests.hub.test_run_outputs import REGISTER, REPORT, VIDEO, item, running, sent
 from tests.hub.test_runs import OWNER, PROJECT, audit_rows, members
 
@@ -232,7 +232,9 @@ def test_a_file_a_question_carries_goes_with_the_question_and_leaves_the_notice(
     ], "the web shows a question's files, a tool image among them"
 
 
-def test_a_channel_gets_a_questions_files_with_links_and_a_notice_of_files_stays_on_the_web(client, hub, hub_db, recording):
+def test_a_channel_gets_a_questions_files_with_links_and_a_notice_of_files_stays_on_the_web(
+    client, hub, hub_db, recording
+):
     add_channel(hub_db, OWNER, "recording")
     clear_hub_sink(hub_db, "internal")
     run_id, prefix = local_run(client, hub)

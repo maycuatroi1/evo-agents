@@ -39,7 +39,8 @@ node and edge carries a status, a sensitivity label and evidence: source item, r
   section; other ids (`plan:x/step:2`, `repo:x`, `seam:x`) are as stored. Every tool takes these and
   the stored forms (`repo:file:path`, `symbol:repo:path::Symbol`) alike.
 - A line under the first one, `label of every node: ...`, gives the label once; a node whose label
-  differs names its own on its line.
+  differs names its own on its line. The first line of `kg_search` gives the status most results
+  share (`status parsed`); a line names its status only when it is another.
 - Quote ids in answers; `kg_node` gives a node's evidence (`item@rev`, URI).
 - The graph is a snapshot. Before quoting or editing a document or file, read the live file at its
   path (or the URI `kg_node` gives).

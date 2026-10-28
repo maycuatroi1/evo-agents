@@ -3,8 +3,9 @@ reader sees."""
 
 from evo_agents.kg import review
 from evo_agents.kg.build import build_project
-from evo_agents.kg.store import Clusters, Graph, Store
-from tests.kg.projects import make_project
+from evo_agents.kg.search import PASSAGE_MARK
+from evo_agents.kg.store import Clusters, Graph, Store, edge_id
+from tests.kg.projects import commit, make_project, write
 from tests.kg.test_clusters import CUSTOMER, link, needs_engine, node, sync_build
 
 
@@ -132,6 +133,98 @@ def test_review_reader_sees_items_through_their_nodes():
     assert review.visible_item(edge, {k: v for k, v in labels.items() if k != "app:b.py"}, visible_to_internal) is None
 
 
+def deprecate(graph: Graph, nid: str, number: int = 9) -> None:
+    graph.nodes[nid]["props"]["deprecated"] = {"reason": "r", "decision": number}
+
+
+def decided(graph: Graph, src: str, rel: str, dst: str, number: int = 9) -> None:
+    link(graph, src, rel, dst)
+    graph.edges[edge_id(src, rel, dst)].update(status="declared", props={"decision": number})
+
+
+def fixable() -> Graph:
+    """``queue()`` with what each rule's fix can name: files by path, a symbol, a directory's README, an archive."""
+    graph = queue()
+    node(graph, "app:src/x/util.py", "File", "util.py", path="src/x/util.py", repo="app")
+    node(graph, "app:src/x/util.py::parse", "Symbol", "parse", file="app:src/x/util.py")
+    node(graph, "app:docs/README.md", "Document", "Docs", path="docs/README.md", repo="app")
+    node(graph, "app:docs/api/calls.md", "Document", "Calls", path="docs/api/calls.md", repo="app")
+    node(graph, "app:docs/old/notes.md", "Document", "Notes", path="docs/old/notes.md", repo="app")
+    node(graph, "app:docs/x.md", "Document", "X", path="docs/x.md", repo="app")
+    link(graph, "app:docs/x.md", "mentions", "app:docs/README.md")
+    graph.nodes["doc:guide.md"]["props"]["repo"] = "app"
+    for nid in ("app:docs/README.md", "app:docs/api/calls.md", "app:docs/old/notes.md", "app:docs/x.md"):
+        graph.clusters.members[nid] = ("c1", None)
+    graph.mentions = {
+        "doc:guide.md": {
+            "dangling": 2,
+            "ambiguous": 1,
+            "samples": {"dangling": ["`x/util.py`", "./x/util.py"], "ambiguous": ["parse()"]},
+        },
+        "app:a.py": {"dangling": 3, "samples": {"dangling": ["util.py", "nowhere.py", "b.py::parse"]}},
+    }
+    return graph
+
+
+def test_review_items_carry_the_fix_of_their_rule():
+    found = by_rule(review.compute(fixable()))
+    mention = {i["evidence"][0]: i for i in found["dangling_mention"]}
+    util = review.decision("link", "doc:guide.md", "mentions", "app:src/x/util.py", "")
+    assert [{**d, "reason": ""} for d in mention["doc:guide.md"]["detail"]["fix"]] == [util]
+    assert [d["dst"] for d in mention["app:a.py"]["detail"]["fix"]] == ["app:src/x/util.py"]  # a part of the fix
+    ambiguous = next(i for i in found["ambiguous_match"] if not i["detail"].get("edge"))
+    assert [d["dst"] for d in ambiguous["detail"]["fix"]] == ["app:src/x/util.py::parse"]
+    docs = {i["evidence"][0]: i["detail"].get("fix") for i in found["unmentioned_document"]}
+    assert docs["app:docs/old/notes.md"] == [
+        review.decision("deprecate", "app:docs/old/notes.md", None, None, "a document under an archive directory")
+    ]
+    assert [(d["kind"], d["src"], d["dst"]) for d in docs["app:docs/api/calls.md"]] == [
+        ("link", "app:docs/README.md", "app:docs/api/calls.md")
+    ]
+    assert docs["doc:lonely.md"] is None  # docs/ of no repo has no README for it
+    (dupe,) = found["possible_duplicate"]
+    assert [(d["kind"], d["src"], d["dst"]) for d in dupe["detail"]["fix"]] == [("merge", "problem:1", "problem:2")]
+    noise = {i["detail"]["kind"]: i["detail"]["fix"] for i in found["bulk_noise"]}
+    assert {d["src"] for d in noise["image"]} == {f"app:img/{i}.png" for i in range(3)}
+    assert {d["kind"] for d in noise["step"]} == {"deprecate"}
+    (cluster,) = found["cluster_without_knowledge"]
+    assert cluster["detail"]["report"] is True and "fix" not in cluster["detail"]
+
+
+def test_review_leaves_out_what_decisions_deprecated_merged_or_linked():
+    graph = fixable()
+    deprecate(graph, "app:docs/old/notes.md")
+    deprecate(graph, "problem:2")
+    del graph.nodes["problem:3"]  # merged: an alias, no node of the graph
+    deprecate(graph, "app:img/0.png")
+    decided(graph, "doc:guide.md", "mentions", "app:src/x/util.py")
+    decided(graph, "doc:guide.md", "mentions", "app:src/x/util.py::parse")
+    decided(graph, "doc:guide.md#use", "mentions", "lib:b.py")  # the edge item's source linked to one file
+    found = by_rule(review.compute(graph))
+    assert [i["evidence"][0] for i in found["dangling_mention"]] == ["app:a.py"]
+    assert not found["ambiguous_match"]
+    assert "app:docs/old/notes.md" not in {i["evidence"][0] for i in found["unmentioned_document"]}
+    assert not found["possible_duplicate"]
+    assert {i["detail"]["kind"] for i in found["bulk_noise"]} == {"step"}  # two images left are no bulk
+    # a deprecated mentioning item has no mention items, a deprecated code node no cluster item
+    deprecate(graph, "app:a.py")
+    deprecate(graph, "lib:b.py")
+    found = by_rule(review.compute(graph))
+    assert not found["dangling_mention"] and not found["cluster_without_knowledge"]
+
+
+def test_review_reader_sees_a_fix_only_through_every_node_it_names():
+    graph = fixable()
+    items = review.compute(graph)
+    labels = {nid: (n["label"].level, 0, "U", None) for nid, n in graph.nodes.items()}
+    calls = next(i for i in items if i["evidence"] == ["app:docs/api/calls.md"])
+    assert review.visible_item(calls, labels, visible_to_internal)["detail"]["fix"]
+    hidden = {**labels, "app:docs/README.md": (2, 0, "U", None)}
+    assert "fix" not in review.visible_item(calls, hidden, visible_to_internal)["detail"]
+    dupe = next(i for i in items if i["rule"] == "possible_duplicate")
+    assert "fix" not in review.visible_item(dupe, labels, visible_to_internal)["detail"]  # problem:3 is cut
+
+
 def test_review_names_normalise_accents_case_and_punctuation():
     assert review.normal("Tìm kiếm  CHẬM!") == review.normal("tim kiem cham")
     assert review.GENERATED.search("web/pnpm-lock.yaml") and review.GENERATED.search("app/x_pb2.py")
@@ -156,4 +249,20 @@ def test_review_build_stores_items_counts_them_and_keeps_fingerprints(tmp_path, 
     assert again.ok and again.verify["match"] and again.content_hash == report.content_hash
     store = Store.for_project(project)
     assert {i["fingerprint"] for i in store.review_items(again.build_id)} == first
+    store.close()
+
+
+@needs_engine
+def test_the_passages_of_a_long_section_are_searched_but_never_review_items(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    write(tmp_path / "demo-app" / "docs/long.md", "# Long\n\n" + "Filler sentence. " * 400 + "\n\nThe end.\n")
+    commit(tmp_path / "demo-app", "a long section")
+    report = sync_build(project)
+    store = Store.for_project(project)
+    keys = [k for (k,) in store.db.execute("SELECT node_id FROM node_fts_rows")]
+    assert any(PASSAGE_MARK in k for k in keys)  # the section is indexed as passages too
+    items = store.review_items(report.build_id)
+    assert items and all(PASSAGE_MARK not in i["fingerprint"] for i in items)
+    assert all(PASSAGE_MARK not in e for i in items for e in i["evidence"])
+    assert all(set(i["evidence"]) <= store.alive_ids("nodes", report.build_id) for i in items)
     store.close()

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.kg import retention
+from evo_agents.kg import asked, retention
 from evo_agents.kg import search as text_search
 from evo_agents.kg import store as store_module
 from evo_agents.kg.build import build_project, memo_path, verify_build
@@ -16,6 +16,7 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
 from evo_agents.kg.sync import sync_project
+from evo_agents.kg.text import split_passages
 from tests.kg.projects import commit, git, make_project, write
 
 APP_SOURCE = "  - id: app\n    connector: git\n    repo: app\n"
@@ -316,6 +317,54 @@ def test_matched_counts_the_query_words_a_node_holds_and_quotes_the_nodes_asked(
     assert store.matched([doc], "") == {} and store.matched([], "zephyr") == {}
 
 
+LONG = "app:file:docs/long.md#long"
+
+
+def test_split_passages_cuts_at_paragraphs_keeps_a_fence_whole_and_covers_every_line():
+    text = "one\ntwo\n\nthree\n\n```\ncode a\n\ncode b\n```\nafter\n"
+    whole = split_passages(text, 10, 1_000)
+    assert [(p["start"], p["end"]) for p in whole] == [(10, 20)] and whole[0]["text"] == text
+    small = split_passages(text, 10, 26)
+    assert [(p["start"], p["end"]) for p in small] == [(10, 14), (15, 19), (20, 20)]
+    assert "".join(p["text"] for p in small) == text  # every line in one passage, in order
+    assert small[1]["text"] == "```\ncode a\n\ncode b\n```\n"  # the blank line inside the fence does not cut it
+    long_line = "x" * 50 + "\n"
+    cut = split_passages("a\n" + long_line + "b\n", 1, 20)
+    assert [(p["start"], p["end"]) for p in cut] == [(1, 1), (2, 2), (3, 3)]  # a block cut between its lines
+    assert split_passages("", 1, 20) == [] and split_passages("\n\n", 1, 20) == []
+
+
+def test_a_long_section_is_searched_by_passages_under_its_own_id(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    b = store.latest_ready()
+    keys = [k for (k,) in store.db.execute("SELECT node_id FROM node_fts_rows")]
+    passages = sorted(text_search.passage_lines(k)[1] or "" for k in keys if text_search.passage_lines(k)[0] == LONG)
+    assert passages == ["", "lines 1-2", "lines 3-3", "lines 4-5"]  # its own row, then its passages
+    bodies = [
+        body for (body,) in store.db.execute("SELECT body FROM node_fts WHERE node_id = ? ORDER BY rowid", (LONG,))
+    ]
+    prefixed = [body for body in bodies if body.startswith("docs/long.md > Long\n")]  # its document, its headings
+    assert len(bodies) == 4 and len(prefixed) == 3 and NEEDLE in prefixed[-1]
+    ids = {nid for (nid,) in store.db.execute("SELECT node_id FROM node_fts")}
+    assert ids <= set(store.nodes(ids, b))  # a reader that knows no passage still finds a node for each row
+    assert found(store, NEEDLE)[0] == LONG  # one result for the section, not one per passage
+    hit = store.matched([LONG], NEEDLE, {LONG})[LONG]
+    assert hit["lines"] == "lines 4-5" and NEEDLE in hit["snippet"]  # the passage that holds the word
+    plain = store.matched(["app:file:docs/plain.md#ghi-chu"], "duong", set())
+    assert "lines" not in plain["app:file:docs/plain.md#ghi-chu"]  # a short section has no passage
+
+    # A graph an older build wrote holds no passage: it is searched and quoted as before.
+    store.db.execute(
+        "DELETE FROM node_fts WHERE rowid IN (SELECT fts_rowid FROM node_fts_rows WHERE instr(node_id, char(31)))"
+    )
+    store.db.execute("DELETE FROM node_fts_rows WHERE instr(node_id, char(31))")
+    assert found(store, "filler sentence")[0] == LONG
+    old = store.matched([LONG], NEEDLE, {LONG})[LONG]
+    assert "lines" not in old and old["words"] == 1
+
+
 def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
     # The tokenizer folds accents: "án" is "an" in the index and "cua" is "của", so either would match all of them.
     assert text_search.query_words("Phương án A") == ["Phương", "án"]
@@ -329,6 +378,58 @@ def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
         '"session"',
         '"x"*',
     ]
+
+
+def test_a_word_that_reads_as_a_name_and_background_the_query_does_not_ask_for_weigh_a_node():
+    assert text_search.named_words("why does Store.search call `_ranked` with HUB_DEGREE and v2?") == [
+        "Store.search",
+        "_ranked",
+        "HUB_DEGREE",
+    ]
+    assert text_search.named_words("graph builder test") == []  # plain words name nothing
+    assert text_search.named_words("GraphBuilder in app/hub_build.py") == ["GraphBuilder", "app/hub_build.py"]
+    named = ["Store.search", "hub_build.py"]
+    assert text_search.names("symbol:x:evo/kg/store.py::Store.search", "search", "evo/kg/store.py", named)
+    assert text_search.names("x:file:app/hub_build.py", "hub_build.py", "app/hub_build.py", named)
+    assert not text_search.names("symbol:x:evo/kg/search.py::search", "search", "evo/kg/search.py", named)
+
+    background = text_search.background
+    assert background("x:file:tests/kg/test_store.py", "File", "tests/kg/test_store.py") == "test"
+    assert background("x:file:tests/fixtures/a.json", "File", "tests/fixtures/a.json") == "fixture"
+    assert background("x:file:db/migrations/0001.sql", "File", "db/migrations/0001.sql") == "migration"
+    assert background("x:file:web/bundle-budget.json", "File", "web/bundle-budget.json") == "generated"
+    assert background("h:file:plans/completed/a.yaml", "Document", "plans/completed/a.yaml") == "closed"
+    assert background("h:file:docs/history.md#x", "Section", "docs/history.md") == "history"
+    assert background("plan:a/step:2", "PlanStep", "", closed_plan=True) == "closed"
+    assert background("x:file:evo/kg/store.py", "File", "evo/kg/store.py") is None
+    assert background("plan:a/step:2", "PlanStep", "") is None  # a step of an open plan
+
+    assert text_search.asked("which tests cover the store") == {"test"}
+    assert text_search.asked("Kế hoạch đã đóng nào sửa store?") == {"closed"}
+    assert text_search.asked("Đóng bước 3: chạy lại store") == set()  # a closing step's title asks for no history
+    weight = text_search.weight
+    test_file = ("x:file:tests/test_store.py", "File", "test_store.py", "tests/test_store.py")
+    assert weight(*test_file, [], set(), False) == text_search.BACKGROUND_WEIGHT
+    assert weight(*test_file, [], {"test"}, False) == 1.0
+    assert weight(*test_file, ["test_store.py"], {"test"}, False) == text_search.NAMED_WEIGHT
+
+
+def test_search_ranks_a_test_down_unless_the_query_asks_for_tests_and_a_named_node_up(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(app / "tests/test_zephyr.py", "def test_zephyr_quarry_floods():\n    assert True\n")
+    write(app / "app/zephyr.py", "def zephyr_quarry_floods():\n    return 1\n")
+    write(app / "app/quarry.py", "def zephyrDrain():\n    return 2\n")
+    commit(app, "a test and the code it covers")
+    sync_build(project)
+    store = Store.for_project(project)
+    test_file, code = "app:file:tests/test_zephyr.py", "symbol:app:app/zephyr.py::zephyr_quarry_floods"
+    hits = found(store, "zephyr quarry floods")
+    assert test_file in hits and hits.index(code) < hits.index(test_file)  # still returned, below the code
+    asked, plain = found(store, "zephyr quarry floods test"), found(store, "zephyr quarry floods")
+    assert asked.index(test_file) <= plain.index(test_file)  # the query asks for tests: no weight down
+    drain = "symbol:app:app/quarry.py::zephyrDrain"
+    assert found(store, "how does zephyrDrain empty it")[0] == drain  # a word names it: first
 
 
 def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
@@ -432,8 +533,9 @@ def test_the_content_hash_covers_the_schema_and_what_search_reads(tmp_path, kg_e
     assert store.content_hash(b, "a") != before  # the hub never serves a file of one schema for another
 
 
-def fts_rows(store: Store) -> dict[str, int]:
-    return dict(store.db.execute("SELECT node_id, rowid FROM node_fts").fetchall())
+def fts_rows(store: Store) -> dict[int, str]:
+    """rowid -> node id of each row of the full-text index; a node's passages are rows of its own under its id."""
+    return dict(store.db.execute("SELECT rowid, node_id FROM node_fts").fetchall())
 
 
 def fts_content(store: Store) -> list[tuple]:
@@ -452,10 +554,12 @@ def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_
     assert report.verify["match"], report.verify
 
     after = fts_rows(store)
-    moved = {nid for nid, rowid in after.items() if before.get(nid) != rowid}
+    moved = {nid for rowid, nid in after.items() if before.get(rowid) != nid}
     new_commit = f"app:commit:{git(app, 'rev-parse', 'HEAD').strip()}"  # the commit that added the file
     assert new_commit in moved and all(nid.startswith("app:file:docs/plain.md") for nid in moved - {new_commit})
-    assert dict(store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()) == after
+    keys = store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()
+    assert {rowid: text_search.passage_lines(key)[0] for key, rowid in keys} == after
+    assert any(text_search.passage_lines(key)[1] for key, _ in keys)  # docs/long.md is indexed as passages too
     assert any(nid.startswith("app:file:docs/plain.md") for nid in found(store, "zebracorn"))
     fresh = Store(tmp_path / "fresh.sqlite")
     assert build_project(project, store=fresh).content_hash == report.content_hash
@@ -605,3 +709,153 @@ def test_memo_rows_from_before_uses_were_recorded_go_once_a_build_recorded_its_o
     assert warm.content_hash == report.content_hash
     assert all(stage["misses"] == 0 for stage in warm.memo.values()), warm.memo
     assert verify_build(project, report.content_hash, cold=True)["match"]
+
+
+# -- what agents asked before they read a node (evo_agents.kg.asked) ----------------------------------------------
+
+PLAIN = "app:file:docs/plain.md#ghi-chu"
+EVERYTHING = (99, 99)  # a clearance above every label of the demo
+
+
+def asked_row(node_id: str, words: str, level: int = 0, location: int = 0, audience=None, prior: float = 1.0):
+    return asked.Row(node_id, level, location, audience, prior, words)
+
+
+def test_without_the_asked_index_or_a_clearance_search_ranks_as_before(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    queries = ("graph builder", "do thi tri thuc", "tuesday rollout", "load corpus")
+    before = {q: found(store, q) for q in queries}
+    store.asked_clearance = EVERYTHING  # a hub reader of a file without the index
+    assert not store.has_asked()
+    assert {q: found(store, q) for q in queries} == before
+    assert store.write_asked([asked_row(PLAIN, "tuesday tuesday rollout")]) is not None
+    assert store.has_asked()
+    store.asked_clearance = None  # a reader that reads no asked rows (a local session): as before
+    assert {q: found(store, q) for q in queries} == before
+    assert store.write_asked([]) is None and not store.has_asked()  # no labels: the tables go
+    store.asked_clearance = EVERYTHING
+    assert {q: found(store, q) for q in queries} == before
+    assert store.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] == SCHEMA_VERSION
+
+
+def test_asked_words_find_a_node_only_for_a_reader_their_label_allows(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    assert PLAIN not in found(store, "tuesday rollout")
+    store.write_asked(
+        [
+            asked_row(PLAIN, "tuesday tuesday rollout"),
+            asked_row("app:file:docs/do-thi.md#đồ-thị-tri-thức", "zebrafish", level=3),
+            asked_row("app:file:app/hub_build.py", "okapi", audience='["chat:7"]'),
+        ]
+    )
+    store.leave_wal()
+    store.close()
+    store = Store.open_file(project.root / "graph.sqlite", immutable=True)  # as the hub reads a graph it built
+    store.asked_clearance = (1, 0)
+    assert found(store, "tuesday rollout")[0] == PLAIN  # only the words agents asked find it
+    assert found(store, "zebrafish") == []  # a row above the clearance: never read
+    assert found(store, "okapi") == []  # a row of an audience the reader is not in
+    store.reader = frozenset({"chat:7"})
+    assert found(store, "okapi") == ["app:file:app/hub_build.py"]
+    assert found(store, "okapi", kinds=["Symbol"]) == []
+    store.asked_clearance = (3, 0)
+    assert found(store, "zebrafish") == ["app:file:docs/do-thi.md#đồ-thị-tri-thức"]
+
+
+def test_a_clicked_node_is_weighed_up_by_its_prior_at_most_prior_max(tmp_path, kg_env, monkeypatch):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    store.asked_clearance = EVERYTHING
+    hits = found(store, "graph builder")
+    second = hits[1]
+    store.write_asked([asked_row(second, "unrelated", prior=9.0)])
+    assert store._asked_priors([second, hits[0]]) == {second: asked.PRIOR_MAX}  # stored above it: capped
+    monkeypatch.setattr(text_search, "ASKED_WEIGHT", 0.0)  # the words weigh nothing, the prior still counts
+    moved = []
+    for node in hits[1:8]:
+        store.write_asked([asked_row(node, "unrelated", prior=1.0)])
+        assert found(store, "graph builder") == hits  # a prior of 1 changes nothing
+        store.write_asked([asked_row(node, "unrelated", prior=asked.PRIOR_MAX)])
+        now = found(store, "graph builder")
+        assert now.index(node) <= hits.index(node) and set(now) == set(hits)
+        moved.append(now.index(node) < hits.index(node))
+    assert any(moved)
+    assert asked.prior(0) == 1.0 and 1.0 < asked.prior(1) < asked.prior(10) <= asked.PRIOR_MAX
+
+
+class Known(asked.Nodes):
+    def __init__(self, ids, paths=None):
+        super().__init__(set(ids), paths or {})
+
+
+NOW = dt.datetime(2026, 10, 28, tzinfo=dt.UTC)
+
+
+def label(query, clicks=(), results=5, after_grep=(), days=0.0, level=0):
+    shown = [{"id": f"n{k}", "rank": k, "path": None} for k in range(1, results + 1)]
+    picks = [{"id": f"n{k}", "rank": k, "path": None, "how": "read"} for k in clicks]
+    return asked.Label(query, shown, picks, list(after_grep), NOW - dt.timedelta(days=days), level)
+
+
+def weights(rows) -> dict[str, dict[str, int]]:
+    out = {}
+    for row in rows:
+        counts = {}
+        for word in row.asked.split():
+            counts[word] = counts.get(word, 0) + 1
+        out[row.node_id] = counts
+    return out
+
+
+def test_asked_rows_weigh_clicks_by_propensity_grep_most_and_age_by_half_life():
+    nodes = Known({f"n{k}" for k in range(1, 26)} | {"doc"}, {"docs/guide.md": ["doc"]})
+    labels = [label("filler words", clicks=[1]) for _ in range(40)]  # the cascade reads rank 1 as always looked at
+    labels += [label("deep rank", clicks=[5]), label("top rank", clicks=[1])]
+    labels += [label("grep found", after_grep=["/home/x/repo/docs/guide.md"])]
+    exam = asked.propensities(labels)
+    assert exam[1] == 1.0 and all(exam[k] >= exam[k + 1] >= asked.PROPENSITY_FLOOR for k in range(1, 25))
+    got = weights(asked.rows(labels, nodes, NOW))
+    assert got["n5"]["deep"] == asked.MAX_REPEAT // 2 + 1  # 1 / floor = 5: the most a click weighs
+    assert got["doc"]["grep"] == round(asked.GREP_WEIGHT)  # a file the search missed weighs more than any click
+    assert got["doc"]["grep"] > got["n5"]["deep"] > got["n1"]["top"] == 1
+    old = asked.rows([label("half life", after_grep=["docs/guide.md"], days=asked.HALF_LIFE_DAYS)], nodes, NOW)
+    assert weights(old)["doc"]["half"] == round(asked.GREP_WEIGHT / 2)
+    assert old[0].prior < asked.rows([label("half life", after_grep=["docs/guide.md"])], nodes, NOW)[0].prior
+
+
+def test_asked_rows_keep_each_label_apart_cap_the_words_and_leave_out_holdout_questions():
+    nodes = Known({"n1", "n2"})
+    many = " ".join(f"word{chr(97 + i)}{chr(97 + j)}" for i in range(5) for j in range(6))  # 30 words
+    rows = asked.rows(
+        [label(many, clicks=[1]), label("secret plan", clicks=[2], level=2), label("open plan", clicks=[2])],
+        nodes,
+        NOW,
+        holdout=["Where is the hub build of the graph?"],
+    )
+    assert len(rows[0].asked.split()) == asked.MAX_WORDS
+    assert [(r.node_id, r.level, sorted(set(r.asked.split()))) for r in rows[1:]] == [
+        ("n2", 0, ["open", "plan"]),
+        ("n2", 2, ["plan", "secret"]),
+    ]
+    kept = asked.rows([label("where is the hub build of the graph", clicks=[1])], nodes, NOW, ["hub build graph?"])
+    assert kept == []  # repeats a holdout question: the eval would learn its own answer
+    assert asked.rows([label("hub build graph cache", clicks=[1])], nodes, NOW, ["hub build graph"]) == []
+    assert asked.rows([label("hub build", clicks=[1])], nodes, NOW, ["hub build graph"]) != []
+
+
+def test_exploration_sets_the_ratio_of_rank_five_to_four_once_it_has_enough():
+    def explored(rank, clicked):
+        found = label("q", clicks=[rank] if clicked else [], results=6)
+        found.results[rank - 1].update({"explored": rank, "p": 0.01})
+        return found
+
+    labels = [explored(4, n < 20) for n in range(60)] + [explored(5, n < 5) for n in range(60)]
+    exam = asked.propensities(labels)
+    assert exam[5] == pytest.approx(max(exam[4] * 0.25, asked.PROPENSITY_FLOOR))
+    few = asked.propensities(labels[:40] + labels[60:100])
+    assert few[5] != exam[5] or exam[5] == asked.PROPENSITY_FLOOR

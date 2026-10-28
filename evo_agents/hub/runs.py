@@ -393,6 +393,7 @@ NOTICE_KINDS = (
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
     "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market_licenses``)
     "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
+    "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

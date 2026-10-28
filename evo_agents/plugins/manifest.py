@@ -67,7 +67,13 @@ MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
-CORE_ONLY_POINTS = ("tables", "kg_sources", "loop_rules", "notice_kinds", "rankers")  # what only a core plugin contributes
+CORE_ONLY_POINTS = (
+    "tables",
+    "kg_sources",
+    "loop_rules",
+    "notice_kinds",
+    "rankers",
+)  # what only a core plugin contributes
 # what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
 PROJECT_POINTS = (
     "mcp_tools",

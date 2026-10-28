@@ -11,7 +11,9 @@ A type is an expression the link stage evaluates (``pipeline.link``), a list so 
 
 ``via`` is a list of ``[kind, value, qualname]`` entries, as a call carries them (``extract.python``). A call through
 a typed receiver, ``x.m()``, becomes ``["typed", type, "m"]``: the link stage looks ``m`` up the chain of the class
-the type names, so an inherited method is found too.
+the type names, so an inherited method is found too. ``calls`` yields, besides each call, each attribute read that is
+not a call's callee nor part of a signature (a decorator, an annotation), so a property or a method handed on as a
+callback is found the same way.
 
 Types are flow-insensitive per scope. A name has a type when every binding of it in the scope gives one: an
 annotated parameter, an annotated assignment, an assignment of a call, of another typed name, of ``a or b`` or
@@ -47,6 +49,14 @@ MAX_ONE = 4  # different types one name may take before it has none
 # Nodes a scope's walk does not go into: nested scopes, and nodes with nothing that binds a name below them.
 NESTED = frozenset({*SCOPES, *COMPREHENSIONS})
 NO_DESCENT = NESTED | {ast.Name, ast.Constant}
+
+
+def _signature(func: ast.AST) -> set[int]:
+    """The ids of the decorators and annotations of a function: they name types and wrappers, not what it calls."""
+    if not isinstance(func, FUNCS):
+        return set()
+    nodes = [*func.decorator_list, *(a.annotation for a in _arguments(func) if a.annotation is not None)]
+    return {id(n) for n in [*nodes, *([func.returns] if func.returns is not None else [])]}
 
 
 def dotted(expr: ast.expr) -> list[str] | None:
@@ -312,7 +322,7 @@ class FileTypes:
             local = [["local", "", ".".join(names)]]
             return local + ([self.class_member(head, rest[0])] if len(rest) == 1 and head in self.top_classes else [])
         via = env.via(names)
-        owner = env.via(names[:-1]) if rest and names[-2][:1].isupper() else []  # C.m(), m maybe inherited
+        owner = env.via(names[:-1]) if rest and names[-2].lstrip("_")[:1].isupper() else []  # C.m(), m maybe inherited
         return via + ([["typed", ["ann", owner], names[-1]]] if owner else []) or None
 
     def self_callee(self, head: str, rest: list[str], cls: str) -> list[list] | None:
@@ -428,16 +438,23 @@ class FileTypes:
             if id(store) not in handled:
                 out.bind(store.attr, None)
 
-    def calls(self, func: ast.AST, types: dict) -> Iterator[tuple[ast.Call, dict]]:
+    def calls(self, func: ast.AST, types: dict) -> Iterator[tuple[ast.Call | ast.Attribute, dict]]:
         """Each call under ``func``, in the order of ``ast.walk``, with the typed names in effect there: inside a
-        nested function, lambda or comprehension, the names it binds itself are untyped."""
+        nested function, lambda or comprehension, the names it binds itself are untyped. An attribute read that is not
+        what a call calls comes too (``self.m`` passed as a callback, ``x.p`` of a property): it reaches a method as a
+        call does. The annotations and decorators of ``func`` are left out: they name types, not what it calls."""
         todo = deque([(func, types)])
+        called: set[int] = set()
+        skip = _signature(func)
         while todo:
             node, current = todo.popleft()
             kind = type(node)
             if kind is ast.Call:
+                called.add(id(node.func))
                 yield node, current
-            elif kind is ast.Name or kind is ast.Constant:
+            elif kind is ast.Attribute and isinstance(node.ctx, ast.Load) and id(node) not in called:
+                yield node, current
+            elif kind is ast.Name or kind is ast.Constant or id(node) in skip:
                 continue
             elif current and node is not func and kind in NESTED:
                 hidden = self.bound(node)

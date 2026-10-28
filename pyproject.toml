@@ -25,6 +25,9 @@ test = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[serv
 graphify = ["graphifyy==0.9.73"]
 # Clusters of a knowledge graph's build (evo_agents.kg.clusters). Pinned: a build's content hash holds its clusters.
 clusters = ["graspologic-native==1.3.1"]
+# Search by meaning next to BM25 (evo_agents.kg.semantic): an embedding model run on this machine through ONNX Runtime,
+# no third party's API. 0.9: TextEmbedding.add_custom_model with local_files_only. docs/kg-semantic.md.
+semantic = ["fastembed>=0.9,<0.10", "numpy>=1.26"]
 hub-server = [
     "fastapi>=0.135",
     "uvicorn[standard]>=0.34",
@@ -197,6 +200,7 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.brief",
     "evo_agents.hub.worker -> evo_agents.hub.server.changes",
     "evo_agents.hub.worker -> evo_agents.hub.server.collect",
+    "evo_agents.hub.worker -> evo_agents.hub.server.context_answer_reuse",
     "evo_agents.hub.worker -> evo_agents.hub.server.curator",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
@@ -359,3 +363,24 @@ Packages import downward only: cli and core_plugins, then worker, hub, kg, harne
 even inside a function, since import-linter reads those too. Move the shared code down into the package both can \
 import (a type into evo_agents.kg or evo_agents.schema, a client helper into evo_agents.hub), or have the upper \
 package pass it down as an argument. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "kg-ranking-not-eval"
+name = "The ranking and the serving of the knowledge graph do not import its evaluation"
+type = "forbidden"
+source_modules = [
+    "evo_agents.kg.search",
+    "evo_agents.kg.post_search",
+    "evo_agents.kg.store",
+    "evo_agents.kg.serve",
+    "evo_agents.kg.tools",
+    "evo_agents.kg.text",
+    "evo_agents.kg.budget",
+    "evo_agents.hub.kg_graph",
+    "evo_agents.hub.kg_web",
+]
+forbidden_modules = ["evo_agents.kg.evaluate", "evo_agents.hub.kg_health_eval", "evo_agents.hub.server.kg_eval_sets"]
+broken_contract_guidance = """\
+What ranks and serves the graph never reads a question set: a ranking tuned on the answers it is scored with scores \
+what it memorized (plan kg-retrieval-quality, docs/kg-eval.md, section Tune and holdout). Tune on `kg eval --split \
+tune` from outside these modules."""

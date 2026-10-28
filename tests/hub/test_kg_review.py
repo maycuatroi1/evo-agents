@@ -6,7 +6,10 @@ counts per rule; a member whose grant stops at internal never receives the custo
 that includes it, and a public reader sees none; ``rule``, ``cluster`` and ``state`` narrow the list; a writer
 dismisses an item with a reason, kept by fingerprint so it stays dismissed after the next build; a reader may not
 dismiss, an item the writer cannot see or that does not exist answers 404, a blank reason 422; dismissing writes the
-audit log; the command line prints the hub's answer and dismisses.
+audit log; the command line prints the hub's answer and dismisses. A writer's loop applies the fixes of the open
+items as decisions, at most its cap, each naming the loop and its run, skipping what a decision already says and
+dismissed items, the items for a report taking none; a reader may not, a run of another project answers 404, and
+each decision is undone as any other.
 
 One hub serves every test of the module, built as in ``tests.hub.test_kg_clusters``; xdist may give a worker any of
 the tests, so each one reads the queue as it finds it.
@@ -27,7 +30,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import insert, select
 
 from evo_agents.hub import kg_review_cli, tables
 from evo_agents.hub.server import audit
@@ -270,3 +273,142 @@ def test_a_writer_takes_back_a_dismissal_a_core_plugin_made_and_the_item_is_open
     args = SimpleNamespace(project=PROJECT, action="undismiss", fingerprint=fp, json=True)
     assert kg_review_cli._undismiss(client, args) == 0
     assert json.loads(capsys.readouterr().out) == {"fingerprint": fp, "was_by": "wendy"}
+
+
+def fixed_queue(monkeypatch, hub) -> dict:
+    """The queue, its three first open items given fixes on their own nodes and the fourth a report: what the route
+    reads in place of the build's own (whose fixture has no fix)."""
+    from evo_agents.hub.kg_web import WebSession
+
+    real = WebSession.review
+    shown = [i for i in queue(hub, "wendy")["items"] if CONTRACT not in json.dumps(i)][:4]
+    fps = [i["fingerprint"] for i in shown]
+    nodes = [i["nodes"][0]["id"] for i in shown]
+
+    def review(self) -> dict:
+        found = real(self)
+        for item in found["items"]:
+            if item["fingerprint"] in fps[:3]:
+                n = fps.index(item["fingerprint"])
+                fix = [{"kind": "deprecate", "src": nodes[n], "rel": None, "dst": None, "reason": f"noise {n}"}]
+                if n == 0:  # two decisions: the cap of three falls inside the third item
+                    fix.append({"kind": "link", "src": nodes[0], "rel": "mentions", "dst": nodes[1], "reason": "near"})
+                    fix.append({"kind": "link", "src": nodes[0], "rel": "no_such_rel", "dst": nodes[1], "reason": "x"})
+                item["detail"] = {**item["detail"], "fix": fix}
+            elif item["fingerprint"] == fps[3]:
+                item["detail"] = {**item["detail"], "report": True}
+        return found
+
+    monkeypatch.setattr(WebSession, "review", review)
+    return {"fingerprints": fps, "nodes": nodes}
+
+
+def apply(hub, member: str, **body):
+    return hub.client.post(f"/v1/kg/{PROJECT}/review/apply", json=body, headers=getattr(hub, member))
+
+
+def test_a_writers_loop_applies_the_fixes_up_to_its_cap_naming_its_run_and_each_can_be_undone(hub, monkeypatch):
+    fixed = fixed_queue(monkeypatch, hub)
+    fps = fixed["fingerprints"]
+    t = tables
+    project_id = live.sql(hub.db, select(t.projects.c.id).where(t.projects.c.name == PROJECT))[0][0]
+    other_id = live.sql(hub.db, select(t.projects.c.id).where(t.projects.c.name == EMPTY))[0][0]
+    wendy_id = live.sql(hub.db, select(t.users.c.id).where(t.users.c.login == "wendy"))[0][0]
+
+    def new_run(project: int) -> int:
+        row = {"project_id": project, "dispatched_by": wendy_id, "kind": "author", "request": "Optimize the graph."}
+        row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
+        row |= {"timeout_s": 3600, "state": "queued", "repos": [{"repo": "harness", "branch": "main"}]}
+        return live.sql(hub.db, insert(t.runs).values(row).returning(t.runs.c.id))[0][0]
+
+    run_id, foreign = new_run(project_id), new_run(other_id)
+    assert apply(hub, "ivan", dry_run=True).status_code == 403  # a reader may not
+    assert apply(hub, "wendy", run_id=foreign).status_code == 404  # a run of another project
+    assert apply(hub, "wendy", max_decisions=0).status_code == 422
+    assert apply(hub, "wendy", max_decisions=201).status_code == 422
+    assert apply(hub, "wendy", origin="Not A Loop").status_code == 422
+
+    dry = apply(hub, "wendy", dry_run=True, max_decisions=3)
+    assert dry.status_code == 200, dry.text
+    planned = dry.json()
+    before = planned["rev"]
+    assert planned["dry_run"] is True and planned["decided"] == 3 and planned["skipped"] == 1  # the unknown relation
+    assert all(d["number"] is None for i in planned["items"] for d in i["decisions"])
+    assert rev_of(hub) == before  # nothing decided
+
+    made = apply(hub, "wendy", run_id=run_id, max_decisions=3)
+    assert made.status_code == 200, made.text
+    found = made.json()
+    assert found["decided"] == 3 and found["rev"] == before + 3 and found["max_decisions"] == 3
+    assert [(i["fingerprint"], i["whole"]) for i in found["items"]] == [(fps[0], True), (fps[1], True)]
+    assert [d["kind"] for d in found["items"][0]["decisions"]] == ["deprecate", "link"]
+    assert found["left"] == {found_rule(found, hub, fps[2]): 1}  # the third item's fix waits for the next call
+    assert [i["fingerprint"] for i in found["report"]] == [fps[3]]
+    numbers = [d["number"] for i in found["items"] for d in i["decisions"]]
+
+    listed = hub.client.get(f"/v1/kg/{PROJECT}/decisions", headers=hub.wendy).json()["decisions"]
+    taken = {d["number"]: d for d in listed if d["number"] in numbers}
+    assert set(taken) == set(numbers)
+    for d in taken.values():
+        [event] = d["history"]
+        assert d["state"] == "active" and event["by"] == "wendy"
+        assert event["origin"] == "kg-optimize" and event["run_id"] == run_id
+    a = tables.audit
+    logged = live.sql(hub.db, select(a.c.target).where(a.c.action == audit.KG_DECISION, a.c.target.contains("origin=")))
+    assert (f"{PROJECT} decision={numbers[0]} action=decide origin=kg-optimize run={run_id}",) in logged
+
+    # the next call skips what is said and takes the rest; a dismissed item takes nothing
+    assert dismiss(hub, "wendy", fps[2], "kept on purpose").status_code == 200
+    again = apply(hub, "wendy", run_id=run_id).json()
+    assert again["decided"] == 0 and again["skipped"] == 4 and again["items"] == []
+    assert hub.client.delete(f"/v1/kg/{PROJECT}/review/{fps[2]}/dismiss", headers=hub.wendy).status_code == 200
+    rest = apply(hub, "wendy", rules=[found_rule(found, hub, fps[2])]).json()
+    assert [(i["fingerprint"], i["whole"]) for i in rest["items"]] == [(fps[2], True)]
+    numbers += [d["number"] for i in rest["items"] for d in i["decisions"]]
+    [last] = [
+        d
+        for d in hub.client.get(f"/v1/kg/{PROJECT}/decisions", headers=hub.wendy).json()["decisions"]
+        if d["number"] == numbers[-1]
+    ]
+    assert last["history"][0]["origin"] == "kg-optimize" and last["history"][0]["run_id"] is None
+
+    # each is undone as any decision, so the next build has none of them
+    for number in numbers:
+        undone = hub.client.post(
+            f"/v1/kg/{PROJECT}/decisions/{number}/undo",
+            json={"reason": "the loop's round is taken back", "base_rev": rev_of(hub)},
+            headers=hub.wendy,
+        )
+        assert undone.status_code == 200, undone.text
+        assert undone.json()["state"] == "undone"
+
+
+def rev_of(hub) -> int:
+    return hub.client.get(f"/v1/kg/{PROJECT}/decisions", headers=hub.wendy).json()["rev"]
+
+
+def found_rule(found: dict, hub, fingerprint: str) -> str:
+    return next(i["rule"] for i in queue(hub, "wendy", state="all")["items"] if i["fingerprint"] == fingerprint)
+
+
+def test_the_command_line_applies_the_fixes(hub, monkeypatch, capsys):
+    fixed_queue(monkeypatch, hub)
+    client = InProcessHub(hub.client, hub.wendy)
+    args = SimpleNamespace(
+        project=PROJECT,
+        action="apply",
+        fingerprint=None,
+        rule=None,
+        origin="kg-optimize",
+        run=None,
+        max=2,
+        dry_run=True,
+        json=True,
+    )
+    assert kg_review_cli._apply(client, args) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert set(printed) == set(kg_review_cli.APPLY_RESULT) and printed["dry_run"] is True and printed["decided"] == 2
+    args.json = False
+    assert kg_review_cli._apply(client, args) == 0
+    text = capsys.readouterr().out
+    assert "would take 2 decisions (at most 2)" in text and "deprecate" in text and "report: " in text

@@ -432,4 +432,5 @@ def test_the_rows_of_0054_hold_together_and_it_goes_down_to_0053_and_up_again(hu
     assert sql(hub.db, select(func.to_regclass("public.session_facets"))) == [(None,)]
     move_to(hub.db, "0054")
     assert sql(hub.db, select(func.count()).select_from(f)) == [(0,)]
+    move_to(hub.db, "head")  # not 0054: the job writes the kg_query_labels of 0178 with the facet
     assert analyzed(hub.client, later(hub.db)) == {"digest": 1}, "the job makes them again"
