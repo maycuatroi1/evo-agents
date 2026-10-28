@@ -159,6 +159,7 @@ TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migration
 TABLES |= {"kg_query_labels"}  # migration 0177
 TABLES |= {"kg_eval_sets"}  # migration 0178
 TABLES |= {"kg_semantic"}  # migration 0180
+TABLES |= {"kg_optimize_runs"}  # migration 0181
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -249,8 +250,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_eleven_tables(hub_db):
-    assert len(TABLES) == 211  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_twelve_tables(hub_db):
+    assert len(TABLES) == 212  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4963,3 +4964,24 @@ def test_0180_keeps_whether_a_project_is_searched_by_meaning_and_going_back_drop
     move_to(hub_db, "0179", down=True)
     assert "kg_semantic" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0180") :]
+
+
+def test_0181_keeps_one_kg_optimize_run_in_flight_a_project_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0180")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0181")
+    t = hub_tables.kg_optimize_runs
+    row = {"project_id": ids["project"], "via": "manual", "state": "measuring", "body": {}}
+    with live.connect(hub_db) as conn:
+        for bad in ({**row, "via": "cron"}, {**row, "state": "sleeping"}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t).values(bad))
+        conn.execute(insert(t).values({**row, "requested_by": ids["user"]}))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(t).values({**row, "state": "running"}))
+        conn.execute(insert(t).values({**row, "state": "done", "asked_weight": 0.5}))
+    assert query(hub_db, select(t.c.state, t.c.asked_weight).order_by(t.c.id)) == [("measuring", None), ("done", 0.5)]
+    move_to(hub_db, "0180", down=True)
+    assert "kg_optimize_runs" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0181") :]
