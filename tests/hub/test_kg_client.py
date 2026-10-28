@@ -26,6 +26,7 @@ from evo_agents.hub.kg_ingest import (
     read_run_log,
     refusal,
     run_id_of,
+    without_names,
 )
 from evo_agents.hub.kg_push import Pusher, batches, commit_timeout, log_timeout, transient, unanswered
 from evo_agents.kg.policy import Label, Policy
@@ -114,6 +115,52 @@ def test_the_config_keeps_what_the_build_reads_and_nothing_else(machine):
     ]
 
 
+GIT_KNOWLEDGE = """\
+version: 1
+project: alpha
+policy:
+  levels: [public, internal, customer, secret]
+  sinks:
+    - {id: hub, kind: hub, clearance: {level: internal}}
+sources:
+  - id: app
+    connector: git
+    repo: app
+    ref: origin/main
+    fetch: true
+    label: {level: internal}
+"""
+
+
+def git_project(tmp_path):
+    harness = tmp_path / "alpha-harness"
+    harness.mkdir(parents=True)
+    (harness / "harness.yaml").write_text(
+        "name: alpha\nrepos:\n  - {name: app, path: app}\nknowledge_file: knowledge.yaml\n"
+    )
+    (harness / "knowledge.yaml").write_text(GIT_KNOWLEDGE)
+    return load_project_at(harness, tmp_path / "kg")
+
+
+def test_a_git_source_sends_the_names_of_its_repo_and_ref_and_keeps_its_fetch(tmp_path):
+    config = knowledge_config(git_project(tmp_path))
+    (source,) = config["knowledge"]["sources"]
+    assert source == {
+        "id": "app",
+        "connector": "git",
+        "label": {"level": "internal"},
+        "repo": "app",
+        "ref": "origin/main",
+    }
+    assert config_problems("alpha", LEVELS, ["any"], config) == []
+    listed = json.loads(json.dumps(config))
+    listed["knowledge"]["sources"][0]["repo"] = ["app"]
+    assert config_problems("alpha", LEVELS, ["any"], listed) == ["source app: repo must be a string"]
+    assert without_names(config)["knowledge"]["sources"] == [
+        {"id": "app", "connector": "git", "label": {"level": "internal"}}
+    ]
+
+
 # Run logs
 
 
@@ -191,6 +238,35 @@ def test_a_hub_that_may_come_back_is_tried_again_and_one_that_refuses_is_not(mac
     refusing = RefusingHub(422)
     assert Pusher(refusing, project, sleep=waits.append).push().errors == ["refused with 422"]
     assert len(refusing.calls) == 1 and len(waits) == 2
+
+
+class OlderHub:
+    """A hub from before a source's repo and ref travelled: it refuses them as it refuses a source's config."""
+
+    url = "https://hub.test"
+
+    def __init__(self):
+        self.configs = []
+
+    def call(self, method, path, body=None, *, timeout=None):
+        if method == "PUT":
+            self.configs.append(body)
+            extra = sorted(set().union(*body["knowledge"]["sources"]) - {"id", "connector", "label", "code"})
+            if extra:
+                raise HubError(f"source app: {', '.join(extra)} must stay on the machine", 422)
+            return {"changed": True}
+        return {"ingested": []}
+
+
+def test_a_hub_that_refuses_the_repo_and_ref_of_a_source_takes_the_config_without_them(tmp_path):
+    hub = OlderHub()
+    report = Pusher(hub, git_project(tmp_path)).push()
+    assert report.errors == []
+    assert [[sorted(s) for s in c["knowledge"]["sources"]] for c in hub.configs] == [
+        [["connector", "id", "label", "ref", "repo"]],
+        [["connector", "id", "label"]],
+    ]
+    assert Pusher(RefusingHub(422), git_project(tmp_path / "again")).push().errors == ["refused with 422"]
 
 
 def test_errors_that_may_pass_and_requests_that_may_have_been_carried_out():

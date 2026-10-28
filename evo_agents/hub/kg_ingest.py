@@ -1,8 +1,9 @@
 """What a knowledge graph pushed to the hub is made of: the knowledge config it is built with, and the run logs.
 
 The config is the part of a project's knowledge.yaml the build reads: the policy, the identifiers, the ontology
-extension, and for each source its id, connector, label and code backend. A source's config, command, credential,
-refresh and deletion settings never leave the machine: the hub runs no connector. ``knowledge_config`` cuts it out of
+extension, and for each source its id, connector, label and code backend, and for a git source the names of the repo
+and ref it reads, which the hub measures the graph's lag with. A source's config, command, credential, path, refresh,
+fetch and deletion settings never leave the machine: the hub runs no connector. ``knowledge_config`` cuts it out of
 a loaded project; ``config_problems`` is the hub's check that the config fits the project it registered (the same
 ladder, sources named once, identifiers that compile, an ontology that only extends the hub schema).
 
@@ -28,7 +29,8 @@ from pathlib import Path
 from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS, Label, Policy
 from evo_agents.kg.protocol import canonical_json, sha256, source_of
 
-SOURCE_FIELDS = ("id", "connector", "label", "code")  # what the build reads of a source
+SOURCE_FIELDS = ("id", "connector", "label", "code", "repo", "ref")  # what the build and the health measure read
+NAMED_FIELDS = ("repo", "ref")  # names, not paths; an older hub refuses them and a push resends without
 ONTOLOGY_FILE = "ontology.yaml"  # where the hub writes the ontology, next to the knowledge.yaml it writes
 MAX_CONFIG_BYTES = 1024 * 1024
 MAX_LOG_BYTES = 2 * 1024**3  # uncompressed: a log of at most 256 MiB compressed must not unpack without bound
@@ -67,8 +69,31 @@ def knowledge_config(project) -> dict:
     return json.loads(json.dumps({"knowledge": cut, "ontology": ontology}, default=str))  # plain JSON values only
 
 
+def without_names(config: dict) -> dict:
+    """``config`` with no source naming its repo or ref, as a hub that refuses them takes it."""
+    knowledge = config["knowledge"]
+    sources = [{k: v for k, v in s.items() if k not in NAMED_FIELDS} for s in knowledge.get("sources") or []]
+    return {**config, "knowledge": {**knowledge, "sources": sources}}
+
+
 def config_digest(config: dict) -> str:
     return sha256(canonical_json({"knowledge": config["knowledge"], "ontology": config.get("ontology")}))
+
+
+def _source_problems(source: dict) -> list[str]:
+    problems = []
+    extra = sorted(set(source) - set(SOURCE_FIELDS))
+    if extra:
+        problems.append(f"source {source.get('id')}: {', '.join(extra)} must stay on the machine")
+    if not isinstance(source.get("connector"), str):
+        problems.append(f"source {source.get('id')}: connector must be a string")
+    for key in ("label", "code"):
+        if key in source and not isinstance(source[key], dict):
+            problems.append(f"source {source.get('id')}: {key} must be an object")
+    for key in NAMED_FIELDS:
+        if key in source and not isinstance(source[key], str):
+            problems.append(f"source {source.get('id')}: {key} must be a string")
+    return problems
 
 
 def config_problems(project: str, levels: list[str], locations: list[str], config: dict) -> list[str]:
@@ -104,14 +129,7 @@ def config_problems(project: str, levels: list[str], locations: list[str], confi
     elif len(set(ids)) != len(ids):
         problems.append("a source id is declared twice")
     for source in sources:
-        extra = sorted(set(source) - set(SOURCE_FIELDS))
-        if extra:
-            problems.append(f"source {source.get('id')}: {', '.join(extra)} must stay on the machine")
-        if not isinstance(source.get("connector"), str):
-            problems.append(f"source {source.get('id')}: connector must be a string")
-        for key in ("label", "code"):
-            if key in source and not isinstance(source[key], dict):
-                problems.append(f"source {source.get('id')}: {key} must be an object")
+        problems += _source_problems(source)
     identifiers = knowledge.get("identifiers") or []
     if not isinstance(identifiers, list):
         problems.append("identifiers must be a list")
