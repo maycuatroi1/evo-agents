@@ -278,6 +278,8 @@ def test_the_hacking_signs_of_a_fix_spare_importorskip_and_a_platform_skip_with_
     ]
     assert signs(patch("tests/test_x.py", "+@pytest.mark.skip(reason='flaky')", " def test_x():")) == ["skip_added"]
     assert signs({"filename": "tests/test_y.py", "status": "removed", "changes": 0, "patch": ""}) == ["test_removed"]
+    renamed = ("-def test_gets_the_207_tables(hub_db):", "+def test_gets_the_208_tables(hub_db):", " x = 1")
+    assert signs(patch("tests/test_x.py", *renamed)) == [], "a test renamed as a new table asks"
     assert signs(patch("tests/test_x.py", '+sqlalchemy = pytest.importorskip("sqlalchemy")', " import x")) == []
     platform = '+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")'
     assert signs(patch("tests/test_x.py", platform, " def test_mode():")) == []
