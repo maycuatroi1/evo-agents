@@ -31,6 +31,19 @@ def test_extract_typescript():
     assert out["imports"][0][0] == "api/src/rank.ts"  # only the relative import; express is a package
 
 
+def test_module_constants_of_typescript_are_symbols():
+    text = (
+        'export const STALL_MS = 15_000;\nconst _RETRY: number = 3;\nexport const SECRETS_PAGE_KEY = ["secrets"];\n'
+        "export const useLog = () => STALL_MS;\nfunction f() {\n  const INNER = 1;\n  return INNER;\n}\n"
+        "export let STALL_MS = 1;\n"
+    )
+    out = gfy.extract(text, "web/src/use-run-log.ts")
+    found = {s["qualname"]: s for s in out["symbols"] if s["kind"] == "constant"}
+    assert list(found) == ["STALL_MS", "_RETRY", "SECRETS_PAGE_KEY"]  # top level, upper case, first declaration
+    assert found["STALL_MS"]["line"] == 1 and found["SECRETS_PAGE_KEY"]["line"] == 3
+    assert gfy.constants(text, "src/a.py", []) == []  # the python extractor gives python's
+
+
 def test_structure_stage_uses_graphify_for_typescript():
     record = {
         "id": "web:file:api/src/search.ts",

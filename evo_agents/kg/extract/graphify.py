@@ -2,7 +2,8 @@
 
 Optional: ``pip install 'evo-ak[graphify]'``. graphify extracts one file at a time; this module
 maps its nodes to symbols (qualified names built from its contains and method edges) and keeps its
-same-file calls. Relative JS and TS imports are resolved here from the import specifiers, because a
+same-file calls, and gives the upper-case names a JS or TS module's top level declares symbols of kind
+``constant``. Relative JS and TS imports are resolved here from the import specifiers, because a
 single-file run of graphify cannot see the target file. The calls graphify left unresolved become
 ``xrefs``: each with the ``via`` entries ``xref.call_via`` derives from the file's own imports, which the
 link stage resolves against the identifier index. A class carries its ``bases`` the same way, and a call
@@ -22,6 +23,8 @@ from evo_agents.kg.extract import classes, xref
 
 JS_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts")
 IMPORT = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["'](\.{1,2}/[^"']+)["']""")
+# A JS or TS module constant: an upper-case name a top-level const, let or var declares (``export const STALL_MS``).
+CONSTANT = re.compile(r"^(?:export\s+)?(?:const|let|var)\s+(_?[A-Z][A-Z0-9_]*)\s*[:=]", re.MULTILINE)
 # Extractors of their own that mark no node ``_callable``: their definitions are found by shape instead.
 STRUCTURAL = {"extract_go", "extract_rust", "extract_bash"}
 
@@ -162,6 +165,23 @@ def _symbols(result: dict, target: Path, path: str, structural: bool) -> tuple[l
     return symbols, quals
 
 
+def constants(text: str, path: str, symbols: list[dict]) -> list[dict]:
+    """A symbol of kind ``constant`` for each upper-case name the top level of a JS or TS module declares (CONSTANT),
+    at its first declaration, as the python extractor gives module constants; not a name a symbol already holds."""
+    if PurePosixPath(path).suffix not in JS_SUFFIXES:
+        return []
+    held = {sym["qualname"] for sym in symbols}
+    out = []
+    for m in CONSTANT.finditer(text):
+        name = m.group(1)
+        if name in held:
+            continue
+        held.add(name)
+        line = text.count("\n", 0, m.start()) + 1
+        out.append({"qualname": name, "name": name, "kind": "constant", "line": line, "parent": None})
+    return out
+
+
 def _xrefs(result: dict, quals: dict[str, str], members: classes.Members, members_calls: list[dict]) -> list[dict]:
     """The calls graphify could not resolve in the file, each with the ``via`` its imports give it, then the
     calls through ``this`` or ``super`` taken back from graphify's own matches, and Ruby's ``super``."""
@@ -209,6 +229,7 @@ def extract(text: str, path: str) -> dict | None:
         return None
     result, target, structural = ran
     symbols, quals = _symbols(result, target, path, structural)
+    symbols += constants(text, path, symbols)
     scopes = xref.scopes_of(text, path, result)
     members = classes.Members(text, path, symbols, scopes)
     bases = members.bases(result, quals)
