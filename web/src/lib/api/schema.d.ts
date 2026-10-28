@@ -21822,7 +21822,7 @@ export interface components {
         KgConfig: {
             /**
              * Knowledge
-             * @description policy, identifiers, ontology file name and sources {id, connector, label, code}
+             * @description policy, identifiers, ontology file name and sources {id, connector, label, code, repo, ref}
              */
             knowledge: {
                 [key: string]: unknown;

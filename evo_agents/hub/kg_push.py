@@ -45,7 +45,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents.hub.client import Hub, HubError, Unreachable, put_presigned
-from evo_agents.hub.kg_ingest import knowledge_config, log_header, run_id_of
+from evo_agents.hub.kg_ingest import knowledge_config, log_header, run_id_of, without_names
 from evo_agents.kg.project import Project, ProjectError
 
 MiB = 1024 * 1024
@@ -312,6 +312,17 @@ class Pusher:
             return None  # the hub says what is wrong
         return source if self.project.policy.hub_clears(source) is False else None
 
+    def _send_config(self, where: str, config: dict) -> None:
+        def put(body: dict):
+            return self._retrying(where, lambda again: self.hub.call("PUT", f"{self.base}/config", body))
+
+        try:
+            put(config)
+        except HubError as exc:
+            if exc.status != 422 or "must stay on the machine" not in str(exc):
+                raise
+            put(without_names(config))  # a hub older than the repo and ref of a source
+
     def push(self) -> PushReport:
         report = PushReport(self.name)
         try:
@@ -325,7 +336,7 @@ class Pusher:
             report.local_runs = len(logs)
             where = f"project {self.name}"
             if self.send_config:
-                self._retrying(where, lambda again: self.hub.call("PUT", f"{self.base}/config", config))
+                self._send_config(where, config)
             held = set(self._retrying(where, lambda again: self.hub.call("GET", f"{self.base}/runs"))["ingested"])
             corpus.record_on_hub(sorted(held.intersection(run_id for run_id, _ in logs)), self.hub.url)
             todo = []
