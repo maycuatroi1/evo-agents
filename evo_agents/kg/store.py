@@ -1105,24 +1105,86 @@ class Store:
         return nodes, edges
 
     def search(
-        self, query: str, b: int, limit: int = 50, *, kinds: list[str] | None = None, any_word: bool = True
+        self,
+        query: str,
+        b: int,
+        limit: int = 50,
+        *,
+        kinds: list[str] | None = None,
+        any_word: bool = True,
+        deprecated: bool = True,
     ) -> list[str]:
         """Ids of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
         query, then the full-text matches of all its words, of all its words as prefixes, and (``any_word``) of any
-        of its words, ranked together by BM25 times the prior and the weight of the way that scores them best
-        (``evo_agents.kg.search``). ``kinds`` keeps only nodes of those kinds."""
+        of its words, ranked together by BM25 times the prior and the weight of the way that scores them best, times
+        ``search.weight``: up when a word of the query names the node, down when it is background the query does not
+        ask for (``evo_agents.kg.search``). A node a word names (``search.named_words``) that no text query found ranks
+        as the best of them would. ``kinds`` keeps only nodes of those kinds; ``deprecated`` false leaves out the nodes
+        a decision deprecated before the list is cut, so they take no room."""
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
         hits = self.exact(query, b, want, kinds)
         queries = list(text_search.fts_queries(text_search.query_words(query)))
         scores: dict[str, float] = {}
+        rows: dict[str, tuple[str, str, str]] = {}  # node id: (kind, name, path) as the index holds them
         for weight, fts_query in zip(text_search.STAGE_WEIGHTS, queries if any_word else queries[:2], strict=False):
             if len(hits) + len(scores.keys() - set(hits)) >= want:
                 break
-            for node_id, score in self._ranked(fts_query, want, kinds):
+            for node_id, score, row in self._ranked(fts_query, want, kinds):
                 scores[node_id] = min(score * weight, scores.get(node_id, math.inf))  # bm25 is negative
+                rows.setdefault(node_id, row)
+        named = text_search.named_words(query)
+        top = min(scores.values(), default=-1.0)
+        for word in named if query.strip() not in named else ():
+            for node_id in self.exact(word, b, want, kinds):
+                if node_id not in scores and node_id not in hits:
+                    scores[node_id], rows[node_id] = top, self._index_row(node_id)
+        closed = self._closed_plans(b, [i for i, row in rows.items() if row[0] in ("Plan", "PlanStep")])
+        wanted = text_search.asked(query)
+        for node_id, (kind, name, path) in rows.items():
+            scores[node_id] *= text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
         ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
-        return [*hits, *(h for h in ranked if h not in hits)][:want]
+        found = [*hits, *(h for h in ranked if h not in hits)]
+        if not deprecated:
+            gone = self._deprecated(found, b)
+            found = [h for h in found if h not in gone]
+        return found[:want]
+
+    def _index_row(self, node_id: str) -> tuple[str, str, str]:
+        """(kind, name, path) of a node's own row in the full-text index, as ``_ranked`` reads them."""
+        row = self.db.execute(
+            "SELECT kind, name, path FROM node_fts WHERE rowid = (SELECT fts_rowid FROM node_fts_rows"
+            " WHERE node_id = ? AND aud = 0)",
+            (node_id,),
+        ).fetchone()
+        return (row[0], str(row[1] or "").split("\n", 1)[0], row[2] or "") if row else ("", "", "")
+
+    def _closed_plans(self, b: int, ids: list[str]) -> set[str]:
+        """The ids of ``ids`` (plans and steps) whose plan is closed: it has steps and all of them are done."""
+        plans = {i.split("/step:", 1)[0] for i in ids}
+        closed = set()
+        for plan in self.nodes(sorted(plans), b).values():
+            props = plan["props"]
+            if plan["kind"] == "Plan" and isinstance(props.get("steps"), int) and props["steps"] > 0:
+                if props.get("done") == props["steps"]:
+                    closed.add(plan["id"])
+        return {i for i in ids if i.split("/step:", 1)[0] in closed}
+
+    def _deprecated(self, ids: list[str], b: int) -> set[str]:
+        """The ids of ``ids`` whose live node a decision deprecated (``props.deprecated``)."""
+        out: set[str] = set()
+        for i in range(0, len(ids), 500):
+            chunk = ids[i : i + 500]
+            marks = ", ".join("?" for _ in chunk)
+            out.update(
+                r[0]
+                for r in self.db.execute(
+                    f"SELECT node_id FROM nodes WHERE node_id IN ({marks}) AND tx_from <= ? AND (tx_to IS NULL OR"
+                    " tx_to > ?) AND json_extract(props, '$.deprecated') IS NOT NULL",
+                    (*chunk, b, b),
+                )
+            )
+        return out
 
     def exact(self, query: str, b: int, limit: int, kinds: list[str] = ()) -> list[str]:
         """Live nodes whose id, alias or name is ``query``, by id; each through an index, never a scan of nodes."""
@@ -1149,11 +1211,12 @@ class Store:
         ).fetchone()
         return row[0] if row else None
 
-    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float]]:
-        """(node id, score) of the nodes matching an FTS5 query, best first: the best ``RERANK_POOL`` by BM25, scored
-        again with the prior by kind (``evo_agents.kg.search``); [] for a query FTS5 cannot read. The rows of ``node_fts_aud`` are read only
-        for a reader with an audience, and only those within it, each with the score ``node_fts`` would give it
-        (``_as_public``)."""
+    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float, tuple[str, str, str]]]:
+        """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first: the best
+        ``RERANK_POOL`` by BM25, scored again with the prior by kind (``evo_agents.kg.search``); [] for a query FTS5
+        cannot read. The name is the node's as written, without the parts of its camelCase words. The rows of
+        ``node_fts_aud`` are read only for a reader with an audience, and only those within it, each with the score
+        ``node_fts`` would give it (``_as_public``)."""
         of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
         weights = ", ".join(str(w) for w in text_search.WEIGHTS)
         rows = []
@@ -1161,8 +1224,8 @@ class Store:
             seen = " AND aud_seen(aud)" if table == "node_fts_aud" else ""
             try:
                 found = self.db.execute(
-                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score, rowid FROM {table} WHERE {table} MATCH ?"
-                    f"{of_kind}{seen} ORDER BY score, node_id LIMIT ?",
+                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score, rowid, name, path FROM {table}"
+                    f" WHERE {table} MATCH ?{of_kind}{seen} ORDER BY score, node_id LIMIT ?",
                     (fts_query, *kinds, max(limit, text_search.RERANK_POOL)),
                 ).fetchall()
             except sqlite3.OperationalError:
@@ -1171,6 +1234,7 @@ class Store:
         prior = text_search.PRIOR
         own = self._own_rows({r[0] for r in rows})
         weight = text_search.PASSAGE_WEIGHT
+        about = {r[0]: (r[1], str(r[4] or "").split("\n", 1)[0], r[5] or "") for r in rows}
         scored = sorted(
             ((r[0], r[2] * prior.get(r[1], 1.0) * (1.0 if own.get(r[0]) == r[3] else weight)) for r in rows),
             key=lambda r: (r[1], r[0]),
@@ -1178,7 +1242,7 @@ class Store:
         best: dict[str, float] = {}
         for node_id, score in scored:  # a node's own row and its passages: the best of them
             best.setdefault(node_id, score)
-        return list(best.items())[:limit]  # bm25 is negative: lower is better
+        return [(node_id, score, about[node_id]) for node_id, score in best.items()][:limit]  # lower is better
 
     def _own_rows(self, ids: set[str]) -> dict[str, int]:
         """The rowid of the own row of each node of ``ids`` in the full-text index, which its passages' rows are not."""
@@ -1193,7 +1257,7 @@ class Store:
         return out
 
     def _as_public(self, fts_query: str, rows: list[tuple]) -> list[tuple]:
-        """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid) with the BM25 ``node_fts`` would give them. BM25
+        """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid, name, path) with the BM25 ``node_fts`` would give them. BM25
         adds up, over the phrases of the query, the phrase's IDF times a part that only the row's own counts and
         length make. ``node_fts_aud`` holds few rows (a project's chat messages), so the IDF it gives a word is a
         fraction of what ``node_fts`` gives it, and a message would rank below any symbol or section that matches no
@@ -1214,7 +1278,7 @@ class Store:
                 (phrase, *scores),
             ):
                 scores[rowid] += part * weight
-        return [(r[0], r[1], scores[r[3]], r[3]) for r in rows]
+        return [(r[0], r[1], scores[r[3]], *r[3:]) for r in rows]
 
     def _idf(self, table: str, phrase: str, totals: dict[str, int]) -> float:
         """The IDF FTS5's bm25 gives ``phrase`` in ``table``: ln((N - n + 0.5) / (n + 0.5)) for its N rows, n of which

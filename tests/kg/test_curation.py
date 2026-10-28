@@ -130,6 +130,13 @@ def test_deprecated_parts_are_left_out_of_search_context_path_and_impact_unless_
     assert shown in text("kg_path", {"from": HANDLE, "to": RANK, "deprecated": True})
 
 
+def test_search_leaves_deprecated_nodes_out_before_it_cuts_the_list(tmp_path, kg_env):
+    _project, store, b, _report = curated(tmp_path, kg_env, DECISIONS)
+    assert store.search("rank_results", b, limit=1)[0] == RANK  # its name: first, deprecated or not
+    kept = store.search("rank_results", b, limit=1, deprecated=False)
+    assert kept and RANK not in kept  # the room it took goes to the next node
+
+
 def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
     project, _store, _b, _report = curated(tmp_path, kg_env, DECISIONS)
     session = Session(project, "agent")

@@ -52,12 +52,14 @@ from evo_agents.kg.search import SNIPPET_KINDS, query_words, with_mentions
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
+from evo_agents.kg.text import slugify
 from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT, INSTRUCTIONS, SIGNATURES, TOOLS
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
+WEAK_LIMIT = 5  # kg_search returns at most this many results when none holds every word of the query
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
@@ -208,19 +210,27 @@ class Session:
 
     # -- tools ----------------------------------------------------------------------------------
 
-    def _line(self, n: dict, shared: str | None = None, passage: str | None = None) -> str:
+    def _line(self, n: dict, shared: str | None = None, passage: str | None = None, status: str | None = None) -> str:
         """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
         it, the status and number of a plan step, the chat and thread of a chat message (KIND_PROPS), and where in
         its file it is (``lines``): the lines of a section, the first and last line of a symbol, or ``passage``, the
         lines a search matched best (``Store.matched``), with the node's own after ``of``. Never its URI: kg_node
-        gives that."""
+        gives that. With ``status``, the status the result prints once too (kg_search), the line is briefer: its
+        node's status only when it is another, no name of a section its anchor spells, no number of a step its id
+        holds, and no parentheses when they would hold nothing."""
         ref, props = readable(n["id"]), n["props"]
-        head = f"[{ref}] {n['kind']}" + ("" if named_by(ref, n["name"]) else f" {n['name']!r}")
+        brief = status is not None
+        named = named_by(ref, n["name"]) or (
+            brief and n["kind"] == "Section" and bool(n["name"]) and slugify(n["name"]) == props.get("anchor")
+        )
+        head = f"[{ref}] {n['kind']}" + ("" if named else f" {n['name']!r}")
         extra = [
             f"{key}={props[key]}"
             for key in ("path", "status", "number", *KIND_PROPS.get(n["kind"], ()))
-            if props.get(key) not in (None, "") and not (key == "path" and str(props[key]) in ref)
+            if props.get(key) not in (None, "")
+            and not (key == "path" and str(props[key]) in ref)
+            and not (brief and key == "number" and ref.endswith(f"step:{props[key]}"))
         ]
         where = lines(props)
         if passage:
@@ -228,8 +238,12 @@ class Session:
         if where:
             extra.append(where)
         label = self.describe(n["label"])
-        state = f"({n['status']})" if label == shared else f"({n['status']}, {label})"
-        return f"{head} {state}" + (f" {' '.join(extra)}" if extra else "")
+        if brief:
+            told = [part for part, same in ((n["status"], n["status"] == status), (label, label == shared)) if not same]
+            state = f" ({', '.join(told)})" if told else ""
+        else:
+            state = f" ({n['status']})" if label == shared else f" ({n['status']}, {label})"
+        return f"{head}{state}" + (f" {' '.join(extra)}" if extra else "")
 
     def _labels(self, nodes) -> tuple[str | None, list[str]]:
         """The label a result prints once, under its first line: the label of most of ``nodes`` (the first seen of
@@ -259,7 +273,7 @@ class Session:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
-        ids = store.search(query, b, limit=limit * 4, kinds=kinds)
+        ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
@@ -268,21 +282,30 @@ class Session:
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
-        for reached in via.values():
-            self._saw(reached["label"])
-        shared, label_line = self._labels(results)
         words = len(query_words(query))
         direct = [n for n in results if n["id"] not in via]  # a node a hit mentions was not found by its words
         matched = store.matched(
             [n["id"] for n in direct], query, {n["id"] for n in direct if n["kind"] in SNIPPET_KINDS}
         )
-        lines = [f"{len(results)} result(s) for {query!r} in project {self.project.name} (build {b})", *label_line]
-        if words > 1 and matched and all(m["words"] < words for m in matched.values()):
+        partial = words > 1 and bool(matched) and all(m["words"] < words for m in matched.values())
+        if partial and len(results) > WEAK_LIMIT:  # no result holds the whole query: the few best say as much
+            results = results[:WEAK_LIMIT]
+            via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
+        for reached in via.values():
+            self._saw(reached["label"])
+        shared, label_line = self._labels(results)
+        statuses = Counter(n["status"] for n in results)
+        status = statuses.most_common(1)[0][0] if statuses else ""
+        head = f"{len(results)} result(s) in project {self.project.name} (build {b})"
+        if statuses:
+            head += f", status {status}" + ("" if len(statuses) == 1 else " unless its line names another")
+        lines = [head, *label_line]
+        if partial:
             lines.append(f"no result holds all {words} words of the query")
         for n in results:
             m = matched.get(n["id"])
-            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared, (m or {}).get("lines"))
-            lines.append(line + (f" words={m['words']}/{words}" if m and words > 1 else ""))
+            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared, (m or {}).get("lines"), status)
+            lines.append(line + (f" words={m['words']}/{words}" if m and m["words"] < words else ""))
             if m and m.get("snippet"):
                 lines.append(f"    > {m['snippet']}")
         return "\n".join(lines), {
@@ -467,7 +490,7 @@ class Session:
             found = [self._lookup(store, i, b) for i in ids if isinstance(i, str)]
             seeds = {n["id"]: n for n in found if n is not None}
         elif query:
-            hits = store.search(query, b, limit=5)[:5]
+            hits = store.search(query, b, limit=5, deprecated=self.deprecated)[:5]
             nodes = store.nodes(hits, b)
             seeds = {h: nodes[h] for h in hits if h in nodes and self.seen(nodes[h])}
         else:

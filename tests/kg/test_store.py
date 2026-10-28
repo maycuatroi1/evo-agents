@@ -380,6 +380,58 @@ def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
     ]
 
 
+def test_a_word_that_reads_as_a_name_and_background_the_query_does_not_ask_for_weigh_a_node():
+    assert text_search.named_words("why does Store.search call `_ranked` with HUB_DEGREE and v2?") == [
+        "Store.search",
+        "_ranked",
+        "HUB_DEGREE",
+    ]
+    assert text_search.named_words("graph builder test") == []  # plain words name nothing
+    assert text_search.named_words("GraphBuilder in app/hub_build.py") == ["GraphBuilder", "app/hub_build.py"]
+    named = ["Store.search", "hub_build.py"]
+    assert text_search.names("symbol:x:evo/kg/store.py::Store.search", "search", "evo/kg/store.py", named)
+    assert text_search.names("x:file:app/hub_build.py", "hub_build.py", "app/hub_build.py", named)
+    assert not text_search.names("symbol:x:evo/kg/search.py::search", "search", "evo/kg/search.py", named)
+
+    background = text_search.background
+    assert background("x:file:tests/kg/test_store.py", "File", "tests/kg/test_store.py") == "test"
+    assert background("x:file:tests/fixtures/a.json", "File", "tests/fixtures/a.json") == "fixture"
+    assert background("x:file:db/migrations/0001.sql", "File", "db/migrations/0001.sql") == "migration"
+    assert background("x:file:web/bundle-budget.json", "File", "web/bundle-budget.json") == "generated"
+    assert background("h:file:plans/completed/a.yaml", "Document", "plans/completed/a.yaml") == "closed"
+    assert background("h:file:docs/history.md#x", "Section", "docs/history.md") == "history"
+    assert background("plan:a/step:2", "PlanStep", "", closed_plan=True) == "closed"
+    assert background("x:file:evo/kg/store.py", "File", "evo/kg/store.py") is None
+    assert background("plan:a/step:2", "PlanStep", "") is None  # a step of an open plan
+
+    assert text_search.asked("which tests cover the store") == {"test"}
+    assert text_search.asked("Kế hoạch đã đóng nào sửa store?") == {"closed"}
+    assert text_search.asked("Đóng bước 3: chạy lại store") == set()  # a closing step's title asks for no history
+    weight = text_search.weight
+    test_file = ("x:file:tests/test_store.py", "File", "test_store.py", "tests/test_store.py")
+    assert weight(*test_file, [], set(), False) == text_search.BACKGROUND_WEIGHT
+    assert weight(*test_file, [], {"test"}, False) == 1.0
+    assert weight(*test_file, ["test_store.py"], {"test"}, False) == text_search.NAMED_WEIGHT
+
+
+def test_search_ranks_a_test_down_unless_the_query_asks_for_tests_and_a_named_node_up(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(app / "tests/test_zephyr.py", "def test_zephyr_quarry_floods():\n    assert True\n")
+    write(app / "app/zephyr.py", "def zephyr_quarry_floods():\n    return 1\n")
+    write(app / "app/quarry.py", "def zephyrDrain():\n    return 2\n")
+    commit(app, "a test and the code it covers")
+    sync_build(project)
+    store = Store.for_project(project)
+    test_file, code = "app:file:tests/test_zephyr.py", "symbol:app:app/zephyr.py::zephyr_quarry_floods"
+    hits = found(store, "zephyr quarry floods")
+    assert test_file in hits and hits.index(code) < hits.index(test_file)  # still returned, below the code
+    asked, plain = found(store, "zephyr quarry floods test"), found(store, "zephyr quarry floods")
+    assert asked.index(test_file) <= plain.index(test_file)  # the query asks for tests: no weight down
+    drain = "symbol:app:app/quarry.py::zephyrDrain"
+    assert found(store, "how does zephyrDrain empty it")[0] == drain  # a word names it: first
+
+
 def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     sync_build(project)

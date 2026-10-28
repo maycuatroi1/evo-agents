@@ -194,7 +194,10 @@ The text is what an agent's model reads, so it is kept short and readable:
   machine that synced the source.
 - The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
   a node with another label names it on its line, and a label with an audience ends with it
-  (`internal,U audience chat:5 grant:demo:internal`).
+  (`internal,U audience chat:5 grant:demo:internal`). `kg_search` prints the status most of its results share once
+  too, on its first line (`10 result(s) in project demo (build 7), status parsed`), and a line names a status only
+  when it is another: `(resolved)`, `(public,U)` or `(resolved, public,U)`, nothing when both are shared. Its lines
+  also leave out the name of a section its anchor spells and the number of a step its id holds.
 - `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,
   and says how many nodes and edges it reached that did not fit (`left_out` in the structured result).
 - Each tool takes, besides its own argument names, those agents often use for them (`evo_agents/kg/refs.py`,
@@ -265,6 +268,17 @@ Projects and who sees what), and the core plugin chats labels each message with 
   word as a prefix, 1 for any word (`STAGE_WEIGHTS`). The nodes of all ways are ranked together, so a node holding every
   word comes first at a like score but not whatever its score: a long page or a reply that quotes a message, holding
   every word once, no longer comes before the short section or message that matches most of them better.
+- That score is then weighed by what the node is (`search.weight`). A word of the query that reads as a name (it holds
+  `_`, `.`, `/` or `:`, mixes letters and digits, is camelCase or all capitals: `Store.search`, `HUB_DEGREE`) counts
+  1.5 for the node it names (its name, its path or the end of its id), and such a node that no text way found ranks as
+  the best of them. Background counts 0.6 unless the query asks for it: tests (`tests/`, `test_*.py`, `*.test.ts`),
+  migrations, fixtures and golden files, generated JSON (`bundle-budget.json`, catalogs, baselines), closed plans
+  (`plans/completed/`, a plan whose steps are all done, and its steps), reports and `docs/history.md`. Each kind is
+  lifted by its own words only (`test`, `migration`, `fixture`, `golden`, `completed`, `đã đóng`, `report`,
+  `history`, `lịch sử`, ...; `BACKGROUND_WORDS`): a closing step's title that says `đóng` asks for no history. On the
+  tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709.
+- With `deprecated` false, the nodes a decision deprecated are left out before the list is cut, so they take no room
+  in it.
 - The rows of `node_fts_aud` (nodes with an audience, such as chat messages) are few, so the IDF FTS5 gives a word
   there is a fraction of the one `node_fts` gives it, and a message would rank below any symbol or section that
   matches no better. Each of them is scored as `node_fts` would score it instead: per phrase of the query, the BM25 of
@@ -274,10 +288,11 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
   may see: a search that finds a step or a page of the docs also names the code they point at.
-- Each result `kg_search` found by its words says how many of the query's words its name, path or body holds whole
-  (` words=2/3` on its line, `matched` in the structured result), and a query of two words or more whose results hold
-  none of them all says so under the header (`no result holds all N words of the query`): the reader can tell a
-  question the graph does not answer from one it does, instead of opening one file after another. A node listed
+- Each result `kg_search` found by its words that holds only some of the query's words says how many its name, path
+  or body holds whole (` words=2/3` on its line; `matched` in the structured result counts them all), and a query of
+  two words or more whose results hold none of them all says so under the header (`no result holds all N words of the
+  query`) and gets at most 5 results (`WEAK_LIMIT`): the reader can tell a question the graph does not answer from one
+  it does, instead of opening one file after another. A node listed
   because a hit mentions it gets no count. A document, named by its path, is also quoted: the passage of its body
   where the query's words gather, about 16 words, on the line below it (`    > ...`). A section is named by its
   heading and is not quoted. The count and the passage come from the same index rows the search read
