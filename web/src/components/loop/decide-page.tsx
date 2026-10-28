@@ -49,7 +49,8 @@ import {
 
 import { BaselinePanel } from "./baseline-panel";
 import { useLoopViewer } from "./hooks";
-import { boardGroups } from "./model";
+import { boardGroups, isProposal } from "./model";
+import { ProposalGroups } from "./proposal-groups";
 
 const KIND_ICONS: Record<BoardKind, LucideIcon> = {
   goal_review: CalendarCheck,
@@ -154,6 +155,7 @@ function GroupSection({ project, group, items, loop, login }: { project: string;
   const t = useTranslations("loop.decide");
   const Icon = GROUP_ICONS[group];
   const chained = group === "exception" || group === "srs";
+  const rows = items.filter((item) => !isProposal(item)); // a proposal of a claim reads in its goal's group below
   return (
     <section id={`decide-${group}`} aria-labelledby={`decide-${group}-title`} className="min-w-0 scroll-mt-20 rounded-md border bg-card shadow-raised" data-testid="board-group" data-group={group}>
       <div className="flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-2">
@@ -173,11 +175,16 @@ function GroupSection({ project, group, items, loop, login }: { project: string;
       {items.length === 0 ? (
         <p className="px-4 py-4 text-[13px] text-muted-foreground">{chained && !loop ? t("loopOff") : t("nothing")}</p>
       ) : (
-        <ul className="divide-y">
-          {items.map((item, index) => (
-            <BoardRow key={`${item.kind}-${index}`} project={project} item={item} login={login} />
-          ))}
-        </ul>
+        <>
+          {rows.length > 0 ? (
+            <ul className="divide-y">
+              {rows.map((item, index) => (
+                <BoardRow key={`${item.kind}-${index}`} project={project} item={item} login={login} />
+              ))}
+            </ul>
+          ) : null}
+          <ProposalGroups project={project} items={items} login={login} />
+        </>
       )}
     </section>
   );
@@ -214,7 +221,8 @@ function Board({ project, board, login }: { project: string; board: DecisionBoar
  * A project's Decisions page (/p/{project}/decide), for any member with a grant on it, kept current while it is open:
  * everything that waits for a person, the three gates first (the goals, the canvases, the policy), then the Loop's
  * exceptions and the SRS its chain waits on; each with since when, who may decide it, and a link to the page where it
- * is decided, whose buttons call the object's own route. The page itself decides nothing. `extra` is what plugins
+ * is decided, whose buttons call the object's own route. The proposals of claims read in place, by goal and run, and a
+ * writer rejects a group of them with one reason through the canvas's own route. `extra` is what plugins
  * add above the board (the route passes the framed panels of the slot "decide", components/plugins/slot-panels).
  */
 export function DecidePage({ project, initialError, extra }: { project: string; initialError: ApiErrorInfo | null; extra?: ReactNode }) {

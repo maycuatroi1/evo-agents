@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { BaselineItem, GoalMetric, LoopGoal, LoopItem } from "@/lib/loop-queries";
+import type { BaselineItem, BoardGoal, BoardItem, GoalMetric, LoopGoal, LoopItem } from "@/lib/loop-queries";
 
-import { backlogGroups, backlogOpen, byState, chainsOf, goalWord, loopSearch, NO_LOOP_FILTERS, openCount, progressOf, readLoopFilters, subjectOf, totalCount } from "./model";
+import { backlogGroups, backlogOpen, byState, chainsOf, goalWord, idsByCanvas, isProposal, loopSearch, NO_LOOP_FILTERS, openCount, progressOf, proposalGroups, readLoopFilters, subjectOf, totalCount } from "./model";
 
 function item(id: number, values: Partial<LoopItem> = {}): LoopItem {
   return {
@@ -134,5 +134,71 @@ describe("backlogGroups", () => {
   it("counts the backlog as the undelivered use cases", () => {
     expect(backlogOpen(items)).toBe(2);
     expect(backlogGroups([])).toEqual([]);
+  });
+});
+
+const G1: BoardGoal = { code: "G-1", statement: "Shops reorder every week", metric: "reorder last over 90 days >= 0.5" };
+const G10: BoardGoal = { code: "G-10", statement: "Shops find a product in two taps", metric: "no metric" };
+
+function proposed(id: number, run: number | null, goal: BoardGoal | null, values: { canvas?: string; reason?: string } = {}): BoardItem {
+  return {
+    group: "canvas",
+    kind: "claim_proposal",
+    title: `Proposal #${id}`,
+    since: `2026-10-28T09:${String(id).padStart(2, "0")}:00Z`,
+    decided_by: "writer",
+    deciders: ["chi"],
+    link: `/p/northwind/x/canvas/canvases/pantry#proposal-${id}`,
+    refs: { proposal: id },
+    proposal: {
+      id,
+      canvas: values.canvas ?? "pantry",
+      kind: "create",
+      claim: null,
+      cell: "solution",
+      text: `Claim ${id}`,
+      fields: ["cell", "text"],
+      status: null,
+      test: null,
+      reason: values.reason ?? "Moves the metric",
+      synthetic: false,
+      run,
+      goal,
+    },
+  };
+}
+
+describe("proposalGroups", () => {
+  const baseline: BoardItem = { ...proposed(1, null, null), kind: "baseline", proposal: null };
+  const items = [baseline, proposed(12, 1094, G10), proposed(5, 1097, G1), proposed(3, 1097, G1), proposed(7, 1098, G1, { reason: "Another" }), proposed(9, null, null), proposed(8, 1095, null)];
+
+  it("groups by goal, G-1 before G-10 and no goal last, then by run, the newest first", () => {
+    const groups = proposalGroups(items);
+    expect(groups.map((group) => [group.key, group.count])).toEqual([
+      ["G-1", 3],
+      ["G-10", 1],
+      ["none", 2],
+    ]);
+    expect(groups[0]?.runs.map((run) => [run.run, run.items.map((item) => item.proposal.id)])).toEqual([
+      [1098, [7]],
+      [1097, [3, 5]],
+    ]);
+    expect(groups[2]?.runs.map((run) => run.run)).toEqual([1095, null]);
+  });
+
+  it("says a run's reason once when all its proposals give it", () => {
+    const [first] = proposalGroups(items);
+    expect(first?.runs[1]?.reason).toBe("Moves the metric");
+    expect(first?.runs[0]?.reason).toBeNull();
+    expect(first?.runs[1]?.since).toBe("2026-10-28T09:03:00Z");
+  });
+
+  it("keeps the proposals apart from the baselines and splits a rejection by canvas", () => {
+    expect(items.filter(isProposal)).toHaveLength(6);
+    const mixed = [proposed(1, 2, G1), proposed(2, 2, G1, { canvas: "other" }), proposed(3, 2, G1)].filter(isProposal);
+    expect([...idsByCanvas(mixed)]).toEqual([
+      ["pantry", [1, 3]],
+      ["other", [2]],
+    ]);
   });
 });

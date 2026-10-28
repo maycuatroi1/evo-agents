@@ -2,7 +2,7 @@
 
 import { Check, Lightbulb, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 
 import { When } from "@/components/data/when";
 import { InlineError } from "@/components/feedback/notice";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { browserApi } from "@/lib/api/browser";
+import { cn } from "@/lib/utils";
 
 import { acceptProposal, type CanvasProposal, rejectProposal } from "./api";
 import { ClaimCode, Provenance, SyntheticTag } from "./badges";
@@ -18,6 +19,31 @@ import { FieldChanges } from "./field-diff";
 import { useCanvasWrite } from "./hooks";
 import { claimHref } from "./links";
 import { LIMITS } from "./model";
+
+const ANCHOR = /^#proposal-(\d+)$/;
+
+/**
+ * The proposal the address names (`#proposal-<id>`, as the Decisions page links one), once the list holds it: scrolled
+ * into view and focused, so the writer lands on it; its id, to mark it, else null.
+ */
+function useAnchoredProposal(proposals: readonly CanvasProposal[]): number | null {
+  const [anchored, setAnchored] = useState<number | null>(null);
+  useEffect(() => {
+    const land = () => {
+      const id = Number(ANCHOR.exec(window.location.hash)?.[1] ?? Number.NaN);
+      if (!proposals.some((proposal) => proposal.id === id)) return;
+      setAnchored(id);
+      const row = document.getElementById(`proposal-${id}`);
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      row?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+      row?.focus({ preventScroll: true });
+    };
+    land();
+    window.addEventListener("hashchange", land);
+    return () => window.removeEventListener("hashchange", land);
+  }, [proposals]);
+  return anchored;
+}
 
 /** What a new claim would hold, as the changes of a claim that had nothing. */
 function createdFields(proposal: CanvasProposal) {
@@ -52,7 +78,7 @@ function RejectForm({ onReject, busy, onCancel }: { onReject: (reason: string) =
   );
 }
 
-function ProposalRow({ project, slug, proposal, writer }: { project: string; slug: string; proposal: CanvasProposal; writer: boolean }) {
+function ProposalRow({ project, slug, proposal, writer, anchored }: { project: string; slug: string; proposal: CanvasProposal; writer: boolean; anchored: boolean }) {
   const t = useTranslations("canvas.proposals");
   const { busy, refused, run } = useCanvasWrite(project, slug);
   const [rejecting, setRejecting] = useState(false);
@@ -71,7 +97,15 @@ function ProposalRow({ project, slug, proposal, writer }: { project: string; slu
     );
   const changes = proposal.kind === "create" ? createdFields(proposal) : proposal.changes;
   return (
-    <li className="flex min-w-0 flex-col gap-2.5 border-t pt-3 first:border-t-0 first:pt-0" data-testid="proposal" data-proposal={proposal.id} data-kind={proposal.kind}>
+    <li
+      id={`proposal-${proposal.id}`}
+      tabIndex={-1}
+      className={cn("flex min-w-0 scroll-mt-20 flex-col gap-2.5 border-t pt-3 outline-none first:border-t-0 first:pt-0", anchored && "-mx-2 rounded-md bg-attention-soft/50 px-2 pb-3 ring-2 ring-attention/40")}
+      data-testid="proposal"
+      data-proposal={proposal.id}
+      data-kind={proposal.kind}
+      data-anchored={anchored ? "true" : undefined}
+    >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
         {proposal.claim ? (
           <>
@@ -115,10 +149,12 @@ function ProposalRow({ project, slug, proposal, writer }: { project: string; slu
 /**
  * The proposals that wait for a writer: new claims @strategist brainstormed, changes it proposed of its own accord,
  * and changes of status the value check proposes from the signals. Accepting writes a rev as the writer's own; a
- * proposal whose claim changed since its base rev goes stale and leaves this list.
+ * proposal whose claim changed since its base rev goes stale and leaves this list. The one the address names
+ * (`#proposal-<id>`, the Decisions page's link) is scrolled to and marked.
  */
 export function ProposalsCard({ project, slug, proposals, writer }: { project: string; slug: string; proposals: readonly CanvasProposal[]; writer: boolean }) {
   const t = useTranslations("canvas.proposals");
+  const anchored = useAnchoredProposal(proposals);
   if (proposals.length === 0) return null;
   return (
     <SectionCard
@@ -133,7 +169,7 @@ export function ProposalsCard({ project, slug, proposals, writer }: { project: s
     >
       <ul className="flex min-w-0 flex-col gap-3">
         {proposals.map((proposal) => (
-          <ProposalRow key={proposal.id} project={project} slug={slug} proposal={proposal} writer={writer} />
+          <ProposalRow key={proposal.id} project={project} slug={slug} proposal={proposal} writer={writer} anchored={anchored === proposal.id} />
         ))}
       </ul>
     </SectionCard>

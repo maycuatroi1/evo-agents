@@ -14,10 +14,12 @@ import { createTaskByApi } from "./tasks";
  * `evo-agents hub goal set` and `hub policy set` write them, and its work items as the Loop's tick would leave them
  * (hub_stack POST /loop/seed, `e2e/loop_seed.py`), since the stack runs no worker. Names are fictional.
  */
-export type LoopSeed = { items: Record<string, number>; merges: Record<string, number> };
+export type LoopSeed = { items: Record<string, number>; merges: Record<string, number>; proposals?: number[]; run?: number };
 export type GoalWrite = components["schemas"]["ProjectGoalWrite"];
 
 export const RELEASED_PLAN = "northwind-one-tap";
+/** `loop_seed.PROPOSED`: the claims the seeded brainstorm of G-1 proposed. */
+export const PROPOSED = ["Shops reorder from a list of their last orders", "A reminder on the day a shop usually reorders"] as const;
 export const HELD_PLAN = "northwind-reorder";
 /** G-1: checkout conversion, whose mean over 30 days is under its target (the conversions of `pushConversions`). */
 export const GOAL = { statement: "Shops check out in one tap", metric: { key: METRIC, aggregate: "mean", window_days: 30, comparator: ">=", target: 0.6 }, canvas: CANVAS_SLUG, status: "active" } satisfies GoalWrite;
@@ -75,13 +77,17 @@ export async function seedLoopProject(owner: Account, project: string): Promise<
 
 /**
  * The project's work items as the Loop would leave them; with `tripped` its breaker trips; with `problem` (a problem
- * G-1 answers) each goes from it, and a discover of CL-1 runs.
+ * G-1 answers) each goes from it, and a discover of CL-1 runs; with `proposals` the running brainstorm of G-1 holds a
+ * run whose agent proposed two new claims (`PROPOSED`).
  */
-export async function seedLoop(project: string, { tripped = false, problem = null }: { tripped?: boolean; problem?: string | null } = {}): Promise<LoopSeed> {
+export async function seedLoop(
+  project: string,
+  { tripped = false, problem = null, proposals = false }: { tripped?: boolean; problem?: string | null; proposals?: boolean } = {},
+): Promise<LoopSeed> {
   const response = await fetch(`${STACK_URL}/loop/seed`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ project, released: RELEASED_PLAN, held: HELD_PLAN, tripped, problem }),
+    body: JSON.stringify({ project, released: RELEASED_PLAN, held: HELD_PLAN, tripped, problem, proposals }),
   });
   if (!response.ok) throw new Error(`hub_stack /loop/seed: ${response.status} ${await response.text()}`);
   return (await response.json()) as LoopSeed;

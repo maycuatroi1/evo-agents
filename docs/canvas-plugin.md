@@ -118,8 +118,11 @@ claim. An undo restores links without checking them again, since they were check
 review run on a night of the lens `product` (`docs/curator.md`, The lens product) and, later, the Loop make proposals
 instead of revs: a new claim, which starts as an assumption, or a change of a claim at the rev it
 was read at. A writer accepts a proposal, which writes the rev as that writer's own (kind `proposal`), or rejects it
-with a reason. The rules of status hold when a proposal is made and again when it is accepted. Once its claim gets a
-new rev, an open proposal goes stale and can no longer be accepted.
+with a reason; `POST canvases/{slug}/proposals/reject` rejects up to 200 open proposals of a canvas together with one
+reason for all, names those no longer open and leaves them as they are. The rules of status hold when a proposal is
+made and again when it is accepted. Once its claim gets a new rev, an open proposal goes stale and can no longer be
+accepted. So do the open proposals of the Loop's brainstorms of a goal once the goal's statement or metric changes
+(`docs/loop.md`): they were brainstormed for a goal that is no more.
 
 ## Links
 
@@ -334,7 +337,7 @@ sink `X-Evo-Sink` names, else the project's hub sink.
 | `GET canvases/{slug}/claims/{ref}`, `.../diff`, `.../judgings` | reader |
 | `POST canvases/{slug}/edit`, `POST .../undo` | writer |
 | `POST canvases/{slug}/claims/{ref}/evidence`, `.../evidence/{id}/withdraw`, `.../evidence/{id}/confirm` | writer |
-| `POST canvases/{slug}/proposals/{id}/accept`, `.../reject` | writer |
+| `POST canvases/{slug}/proposals/{id}/accept`, `.../reject`, `POST canvases/{slug}/proposals/reject` | writer |
 | `POST canvases/{slug}/brainstorm`, `POST canvases/import` | writer |
 | `GET` and `POST canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide` | read: reader; open and decide: writer |
 | `POST canvases/{slug}/archive`, `.../unarchive` | admin |
