@@ -1486,6 +1486,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/review/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Review
+         * @description Apply the fixes of the open review items you can see as decisions, at most max_decisions, naming your loop.
+         */
+        post: operations["apply_review_v1_kg__project__review_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Optimize
+         * @description The project's KG optimize runs, newest first, with the one in flight and each run's report.
+         */
+        get: operations["list_optimize_v1_kg__project__optimize_get"];
+        put?: never;
+        /**
+         * Start Optimize
+         * @description Start a KG optimize run of the project now, at any hour, under the charter's review cost cap: 201 with the
+         *     new run, or 200 with the run in flight, as one runs at a time.
+         */
+        post: operations["start_optimize_v1_kg__project__optimize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/eval-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Eval Set
+         * @description The project's retrieval question set, or one part of it; holdout questions come without their answers.
+         */
+        get: operations["get_eval_set_v1_kg__project__eval_set_get"];
+        /**
+         * Put Eval Set
+         * @description Put the project's retrieval question set: the next version, or the latest again when it asks the same.
+         */
+        put: operations["put_eval_set_v1_kg__project__eval_set_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/decisions": {
         parameters: {
             query?: never;
@@ -12870,6 +12939,112 @@ export interface components {
              */
             environment: "sandbox" | "production";
         };
+        /** AppliedDecision */
+        AppliedDecision: {
+            /**
+             * Number
+             * @description the decision's number; null on a dry run
+             */
+            number: number | null;
+            /** Kind */
+            kind: string;
+            /** Src */
+            src: string;
+            /** Rel */
+            rel: string | null;
+            /** Dst */
+            dst: string | null;
+            /** Reason */
+            reason: string;
+        };
+        /** AppliedItem */
+        AppliedItem: {
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            /**
+             * Whole
+             * @description true when every decision of the item's fix is taken or was said already
+             */
+            whole: boolean;
+            /** Decisions */
+            decisions: components["schemas"]["AppliedDecision"][];
+        };
+        /** ApplyBody */
+        ApplyBody: {
+            /**
+             * Origin
+             * @description the loop that applies the fixes
+             * @default kg-optimize
+             */
+            origin: string;
+            /**
+             * Run Id
+             * @description the run of the loop, a run of this project
+             */
+            run_id?: number | null;
+            /**
+             * Max Decisions
+             * @description the cap of this call
+             * @default 25
+             */
+            max_decisions: number;
+            /**
+             * Rules
+             * @description only the items of these rules; every rule when null
+             */
+            rules?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise")[] | null;
+            /**
+             * Dry Run
+             * @description say what would be decided and decide nothing
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** ApplyResult */
+        ApplyResult: {
+            graph: components["schemas"]["GraphRef"];
+            /**
+             * Rev
+             * @description the project's decision revision after the call
+             */
+            rev: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Max Decisions */
+            max_decisions: number;
+            /**
+             * Decided
+             * @description the decisions taken (or, on a dry run, that would be)
+             */
+            decided: number;
+            /**
+             * Skipped
+             * @description the decisions of fixes a proposed or active decision already says
+             */
+            skipped: number;
+            /**
+             * Items
+             * @description the items whose fix took a decision, in the queue's order
+             */
+            items: components["schemas"]["AppliedItem"][];
+            /**
+             * Report
+             * @description the open items no decision fixes, for a person to read
+             */
+            report: components["schemas"]["ReportItem"][];
+            /**
+             * Left
+             * @description per rule, the open items with a fix not wholly taken
+             */
+            left: {
+                [key: string]: number;
+            };
+        };
         /**
          * ArmResult
          * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
@@ -19134,6 +19309,76 @@ export interface components {
              */
             n: number;
         };
+        /** EvalSetBody */
+        EvalSetBody: {
+            /**
+             * Set
+             * @description the set's name, e.g. evo-agents
+             */
+            set: string;
+            /**
+             * Questions
+             * @description the questions, as the lines of a set file: id, question, type, project, repo, files, nodes
+             */
+            questions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** EvalSetPut */
+        EvalSetPut: {
+            /** Set */
+            set: string;
+            /** Version */
+            version: number;
+            /**
+             * Digest
+             * @description SHA-256 of what the questions ask and answer
+             */
+            digest: string;
+            /** Questions */
+            questions: number;
+            /**
+             * Holdout
+             * @description the questions in the holdout part
+             */
+            holdout: number;
+            /**
+             * Created
+             * @description false when the set was the latest version already
+             */
+            created: boolean;
+        };
+        /** EvalSetView */
+        EvalSetView: {
+            /** Set */
+            set: string;
+            /** Version */
+            version: number;
+            /** Digest */
+            digest: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Split
+             * @enum {string}
+             */
+            split: "all" | "tune" | "holdout";
+            /**
+             * Answers
+             * @description whether the tune questions carry their answers; holdout ones never do
+             */
+            answers: boolean;
+            /**
+             * Questions
+             * @description the questions of the part asked, in the set's order, each with split
+             */
+            questions: {
+                [key: string]: unknown;
+            }[];
+        };
         /** EventBatch */
         EventBatch: {
             /** Events */
@@ -21657,6 +21902,16 @@ export interface components {
              * @description the build the graph was at; null once that build is gone
              */
             build_id: number | null;
+            /**
+             * Origin
+             * @description the loop that took the step, as kg-optimize; null for one taken by hand
+             */
+            origin?: string | null;
+            /**
+             * Run Id
+             * @description that loop's run, when it named one; null once the run is gone
+             */
+            run_id?: number | null;
         };
         /** KgDecisionList */
         KgDecisionList: {
@@ -25572,6 +25827,73 @@ export interface components {
              * @description the fields whose value differs from the revision before
              */
             changed: string[];
+        };
+        /** OptimizeRun */
+        OptimizeRun: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Via
+             * @enum {string}
+             */
+            via: "night" | "manual";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "measuring" | "running" | "after" | "done" | "reverted" | "failed";
+            /** Night */
+            night: string | null;
+            /**
+             * Agent Run Id
+             * @description the review run given to the worker on duty
+             */
+            agent_run_id: number | null;
+            /** Before Build Id */
+            before_build_id: number | null;
+            /** After Build Id */
+            after_build_id: number | null;
+            /**
+             * Asked Weight
+             * @description the weight of the asked column the run left in effect
+             */
+            asked_weight: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Report
+             * @description the report the owner got, markdown; null until the run ends
+             */
+            report: string | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Body
+             * @description what the run measured, decided and undid
+             */
+            body: {
+                [key: string]: unknown;
+            };
+        };
+        /** OptimizeRuns */
+        OptimizeRuns: {
+            active: components["schemas"]["OptimizeRun"] | null;
+            /** Runs */
+            runs: components["schemas"]["OptimizeRun"][];
         };
         /** OptionIn */
         OptionIn: {
@@ -32563,6 +32885,22 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** ReportItem */
+        ReportItem: {
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            /** Cluster */
+            cluster: string | null;
+            /** Cluster Label */
+            cluster_label: string | null;
+            /** Nodes */
+            nodes: components["schemas"]["ReviewNode"][];
+        };
         /**
          * Rerun
          * @description What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
@@ -38559,7 +38897,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -38573,7 +38911,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -45874,6 +46212,352 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    apply_review_v1_kg__project__review_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_optimize_v1_kg__project__optimize_get: {
+        parameters: {
+            query?: {
+                /** @description the newest runs listed */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimizeRuns"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_optimize_v1_kg__project__optimize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a run is in flight already: that run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimizeRun"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimizeRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_eval_set_v1_kg__project__eval_set_get: {
+        parameters: {
+            query?: {
+                /** @description this version, not the latest */
+                version?: number | null;
+                /** @description only this part of the set */
+                split?: "all" | "tune" | "holdout";
+                /** @description false: no question carries its answers */
+                answers?: boolean;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalSetView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_eval_set_v1_kg__project__eval_set_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvalSetBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvalSetPut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
