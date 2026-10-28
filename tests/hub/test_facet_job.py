@@ -115,7 +115,7 @@ def test_the_job_analyzes_a_transcript_once_and_again_when_it_grows_or_the_versi
     chain = sql(hub.db, select(t.c.sha256).where(t.c.session_id == SESSION))[0][0]
     assert (found["source"], found["version"], found["fingerprint"]) == (
         "transcript",
-        1,
+        facets.FACET_VERSION,
         fingerprint({("main", chain)}),
     )
     assert found["user_id"] == user_of(hub.db, "owner") and found["label"]["level"] == "internal"
@@ -136,9 +136,10 @@ def test_the_job_analyzes_a_transcript_once_and_again_when_it_grows_or_the_versi
     assert analyzed(hub.client, later(hub.db)) == {"transcript": 1}, "it grew"
     assert session_facet_of(hub.db)["body"]["corrections"] == [1]
 
-    monkeypatch.setattr(facets, "FACET_VERSION", 2)
+    newer = facets.FACET_VERSION + 1
+    monkeypatch.setattr(facets, "FACET_VERSION", newer)
     assert analyzed(hub.client, later(hub.db)) == {"transcript": 1}, "a new version of the facet"
-    assert session_facet_of(hub.db)["version"] == 2
+    assert session_facet_of(hub.db)["version"] == newer
     assert analyzed(hub.client, later(hub.db)) == {}
 
 
@@ -161,7 +162,12 @@ def test_a_blob_store_that_does_not_answer_fails_the_attempt_and_the_job_tries_a
     monkeypatch.undo()
     assert analyzed(hub.client, now + timedelta(minutes=17)) == {"transcript": 1}
     found = session_facet_of(hub.db)
-    assert (found["attempts"], found["error"], found["retry_at"], found["version"]) == (0, None, None, 1)
+    assert (found["attempts"], found["error"], found["retry_at"], found["version"]) == (
+        0,
+        None,
+        None,
+        facets.FACET_VERSION,
+    )
 
     assert statuses(send(hub, "owner", grown(hub, path))) == ["stored"]
     monkeypatch.setattr(store, "fetch", down)

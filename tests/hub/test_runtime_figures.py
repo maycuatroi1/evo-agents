@@ -95,7 +95,15 @@ def session_body(read: int, write: int, *, cost: float | None, peak: int, agents
                 "timed_out": 0,
             }
         ],
-        "sources": {"always_loaded": agents + 400, "mcp_instructions": 1600, "skills": 8000, "hooks": 400},
+        "sources": {
+            "always_loaded": agents + 400,
+            "mcp_instructions": 1600,
+            "skills": 8000,
+            "hooks": 400,
+            "skills_again": 2000,
+            "skill_bodies": 1000,
+        },
+        "skills": [{"skill": "execute-plan", "calls": 1, "returned": 0, "chars": 1000}],
         "loaded": [
             {"path": "~/src/evo-agents/AGENTS.md", "type": "Project", "chars": agents, "loads": 1},
             {"path": "~/.claude/CLAUDE.md", "type": "User", "chars": 400, "loads": 1},
@@ -237,6 +245,9 @@ def test_the_nights_figures_hold_the_runtime_and_the_harness_of_the_sessions_and
     sources = {entry["source"]: entry for entry in harness["sources"]}
     assert sources["always_loaded"]["tokens"] == (4400 + 4800) // 4 and sources["skills"]["tokens"] == 4000
     assert sources["mcp_output"]["chars"] == 4000 and sources["tool_output"]["chars"] == 16_000
+    assert sources["skill_bodies"]["tokens"] == 500 and "skills_again" not in sources
+    assert harness["skill_list"] == {"tokens": 4000, "again_tokens": 1000, "again_share": 0.25, "sessions_again": 2}
+    assert harness["skill_bodies"] == [{"skill": "execute-plan", "chars": 2000, "tokens": 500, "sessions": 2}]
     loaded = harness["always_loaded"]
     assert [(entry["repo"], entry["dir"], entry["chars"]) for entry in loaded["repos"]] == [
         ("evo-agents", None, 4400),
@@ -303,6 +314,8 @@ def test_a_finding_and_a_proposal_of_the_lenses_runtime_and_harness_carry_their_
         "always_loaded_tokens": 1200.0,
         "fixed_context_tokens": 7300.0,
         "tool_output_tokens": 5000.0,
+        "skill_list_again_tokens": 1000.0,
+        "skill_body_tokens": 500.0,
     }
 
 
