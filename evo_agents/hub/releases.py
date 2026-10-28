@@ -12,18 +12,18 @@ schedule names a repo of the project on GitHub, a local time and an IANA time zo
 the ref whose commit a release would ship (DEFAULT_TARGET_REF, the tag nightly, which the deploy of the hub moves once
 main runs), the pattern of the release tags (a literal prefix then ``*``, DEFAULT_TAG_PATTERN), the workflow that
 publishes a tag (DEFAULT_WORKFLOW), the paths whose files make the package (DEFAULT_PATHS: an entry ending in ``/`` is
-a directory, any other one a file or a directory of that name) and the cap of what one cycle may cost
-(DEFAULT_CYCLE_USD).
+a directory, any other one a file or a directory of that name). A cycle has no cost cap: its runs stop on their agent
+time (RUN_MINUTES) and the cycle on its stop causes (``release_ci.STOP_CAUSES``).
 
 Each minute the job looks at every schedule whose local time came in the last CATCH_UP_MINUTES (``due_day``) and that
 has no check of that local day yet. A check reads, without any model, the newest tag the pattern matches
 (``latest_tag``: the highest version X.Y.Z after the prefix) and the commit of the target ref, and compares the files
 of the two commits under the packaging paths (``changed_paths``). It opens a cycle, and queues its first run, of kind
 release in mode cut, only when at least one packaging path changed, no cycle of the schedule is unfinished (UNFINISHED)
-and the schedule is not paused; that run's cost cap is what is left of the cycle's cap. Every check is kept with its
-outcome (CHECK_OUTCOMES) and why, and the scheduled check of a local day happens once: a second pass of the job, or a
-hub that restarted, finds it and does nothing, while a check that failed (outcome ``error``: GitHub did not answer, the
-App is not installed, no tag matches) is tried again on the next minutes, ERROR_TRIES times in all that day. An admin
+and the schedule is not paused. Every check is kept with its outcome (CHECK_OUTCOMES) and why, and the scheduled check
+of a local day happens once: a second pass of the job, or a hub that restarted, finds it and does nothing, while a check
+that failed (outcome ``error``: GitHub did not answer, the App is not installed, no tag matches) is tried again on the
+next minutes, ERROR_TRIES times in all that day. An admin
 may also check now (``evo-agents hub release run``): the same gates, recorded as a manual check, which a day may hold
 any number of.
 """
@@ -49,12 +49,10 @@ DEFAULT_TARGET_REF = "nightly"
 DEFAULT_TAG_PATTERN = "v*"
 DEFAULT_WORKFLOW = "release.yml"
 DEFAULT_PATHS = ("evo_agents/", "plugins/", "web/", ".claude-plugin/", "pyproject.toml", "uv.lock")
-DEFAULT_CYCLE_USD = 200.0
-CYCLE_USD = (1.0, 10_000.0)  # the cap of one cycle an admin may set
 
 CATCH_UP_MINUTES = 60  # the job makes the day's check this long after the schedule's time, when it missed the minute
 ERROR_TRIES = 3  # checks of one day that may fail before the job waits for the next day
-RUNTIME = "claude-code"  # the runtime of a release run: it reports its cost, which the cycle's cap counts
+RUNTIME = "claude-code"  # the runtime of a release run: it reports its cost, which the cycle's status counts
 RUN_MINUTES = 120  # the agent time of one release run
 GRACE_SECONDS = 300  # a release run's timeout is its agent time plus this
 MAX_ATTEMPTS = 1  # a release run the hub lost is not tried again: the cycle decides what comes next
@@ -206,10 +204,9 @@ def run_values(*, project_id: int, owner_id: int, repo: str, title: str, budget:
     }
 
 
-def run_budget(left_usd: float) -> dict:
-    """The caps of a release run when ``left_usd`` of its cycle's cap is left: that cost, and RUN_MINUTES of agent
-    time."""
-    return {"max_usd": round(max(left_usd, 0.0), 4), "max_seconds": RUN_MINUTES * 60}
+def run_budget() -> dict:
+    """The caps of a release run: RUN_MINUTES of agent time, and no cost cap."""
+    return {"max_usd": None, "max_seconds": RUN_MINUTES * 60}
 
 
 def clip_reason(text: str) -> str:

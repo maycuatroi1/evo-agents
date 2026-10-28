@@ -65,7 +65,7 @@ def another_cycle(world, state: str, **values) -> int:
     [(schedule_id, project_id)] = sql(world.db, select(s.c.id, s.c.project_id))
     row = {"project_id": project_id, "schedule_id": schedule_id, "state": state, "start": "cut"}
     row |= {"owner_id": user_id(world.db, OWNER), "local_day": date(2026, 10, 23), "target_ref": "nightly"}
-    row |= {"budget_usd": 200.0, "changed_paths": ["web/"], **values}
+    row |= {"changed_paths": ["web/"], **values}
     [(cycle_id,)] = sql(world.db, insert(c).values(**row).returning(c.c.id))
     return cycle_id
 

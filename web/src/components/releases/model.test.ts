@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import { CYCLE, TAG } from "@/test/fixtures/releases";
 
 import {
-  budgetShare,
-  budgetTone,
   failedShown,
   githubCommitUrl,
   githubTagUrl,
@@ -40,15 +38,6 @@ describe("the release page's model", () => {
     expect(safeUrl("https://github.com/northwind/fleet/actions/runs/7")).toBe("https://github.com/northwind/fleet/actions/runs/7");
     expect(safeUrl("javascript:alert(1)")).toBeNull();
     expect(safeUrl(null)).toBeNull();
-  });
-
-  it("says how much of the cap the runs spent, in attention near its end and danger at it", () => {
-    expect(budgetShare(50, 200)).toBe(0.25);
-    expect(budgetShare(5, 0)).toBe(0);
-    expect(budgetTone(0.5)).toBe("normal");
-    expect(budgetTone(0.8)).toBe("warning");
-    expect(budgetTone(0.95)).toBe("danger");
-    expect(budgetTone(1.2)).toBe("danger");
   });
 
   it("finds a CI the App cannot read in a tag's problem or in the newest check's reason", () => {

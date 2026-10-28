@@ -2,13 +2,12 @@
 (``evo_agents.hub.releases`` describes the cycle, ``evo_agents.hub.release_ci`` why it stops).
 
 ``queue_run`` queues the next run of an open cycle, a cut or the fix of a red tag, dispatched as the cycle's owner,
-pinned to no worker, with what is left of the cycle's cap as its cost cap (each agent session counted once, as the
-status counts it); left under ``curator.MIN_RUN_USD``, it queues nothing and stops the cycle on its budget. Audited as
-release.dispatch, with the owner as actor and no token.
+pinned to no worker, with no cost cap (``releases.run_budget``). Audited as release.dispatch, with the owner as actor
+and no token.
 
 ``stop_cycle`` is the one way a cycle stops: open, it becomes stopped with the cause (``release_ci.STOP_CAUSES``) and
 the reason, and the hub asks its owner what next (``ask_owner``): a decision of category release on the cycle's last
-run, whose three options are to go on with one more cap of the schedule, to close the cycle, or to pause the schedule
+run, whose three options are to go on, to close the cycle, or to pause the schedule
 (``release_answer`` does the one chosen), notified to the owner on their channels; and a thread of the hub's in the
 project's triage chat (``triage.project_thread``) that says why, the tags with their workflow runs, the cost and the
 decision. A stopped cycle moves no further until the owner answers, and no check opens another cycle while it is
@@ -39,8 +38,8 @@ DISPATCH = "release.dispatch"  # a cycle's run queued: "<project> cycle:<id> run
 QUESTION_REASON_CHARS = 600
 # Why the hub recommends closing a stopped cycle (``decision_asks``): it spends nothing and keeps the schedule.
 CLOSE_REASON = (
-    "Closing spends nothing more of the cap and keeps the schedule: its next daily check starts a new cycle when the "
-    "newest tag is red or a packaging path changed. Go on only when the reason above is one more cap can fix."
+    "Closing spends nothing more and keeps the schedule: its next daily check starts a new cycle when the newest tag "
+    "is red or a packaging path changed. Go on only when one more run can get past the reason above."
 )
 
 
@@ -64,14 +63,13 @@ def cost_of(cycle_id: int):
 
 
 def _cycle(cycle_id: int):
-    """Cycle ``cycle_id`` with its schedule's repo and cap, its project's name and its owner's login."""
+    """Cycle ``cycle_id`` with its schedule's repo, its project's name and its owner's login."""
     c, s, p, u = tables.release_cycles, tables.release_schedules, tables.projects, tables.users
     return (
         select(
             c,
             s.c.repo,
             s.c.tag_pattern,
-            s.c.cycle_budget_usd.label("schedule_cap"),
             p.c.name.label("project"),
             u.c.login.label("owner"),
             cost_of(cycle_id).label("cost"),
@@ -89,17 +87,9 @@ async def cycle_of(conn: AsyncConnection, cycle_id: int):
 
 async def queue_run(conn: AsyncConnection, cycle_id: int, mode: str, *, red_tag: str | None = None) -> int | None:
     """Queue the next run of open cycle ``cycle_id`` in ``mode``, a fix of ``red_tag`` (see the module); its id, or
-    None when the cap is spent (the cycle stopped) or another release run of the project is active."""
+    None when another release run of the project is active."""
     found = await cycle_of(conn, cycle_id)
-    cap, spent = float(found.budget_usd), float(found.cost)
-    budget = releases.run_budget(cap - spent)
-    if budget["max_usd"] < curator.MIN_RUN_USD:
-        reason = (
-            f"its runs cost {curator.money(spent)} of its cap {curator.money(cap)}: what is left is under "
-            f"{curator.money(curator.MIN_RUN_USD)}, so no {mode} run is queued"
-        )
-        await stop_cycle(conn, cycle_id, reason, "budget")
-        return None
+    budget = releases.run_budget()
     if mode == "fix":
         title = releases.fix_title(found.repo, red_tag or "")
     else:
@@ -116,8 +106,8 @@ async def queue_run(conn: AsyncConnection, cycle_id: int, mode: str, *, red_tag:
         return None
     what = f"fixes {red_tag} forward with the next patch" if mode == "fix" else f"cuts {found.target_ref}"
     text = (
-        f"Queued by cycle #{cycle_id} of the release of project {found.project}, as {found.owner}: it {what}, cost "
-        f"cap {curator.money(budget['max_usd'])}, what is left of the cycle's {curator.money(cap)}."
+        f"Queued by cycle #{cycle_id} of the release of project {found.project}, as {found.owner}: it {what}, with "
+        "no cost cap."
     )
     await write_event(conn, run_id, {"text": text, "cycle_id": cycle_id, "release_mode": mode, **budget})
     await notify_queued(conn, run_id)
@@ -179,7 +169,7 @@ async def _facts(conn: AsyncConnection, found) -> tuple[list[str], int]:
     ).all()
     lines = [
         f"Release cycle #{found.id} of {found.project} stopped ({found.stop_cause}): {found.stop_reason}",
-        f"Cost: {curator.money(float(found.cost))} of the cycle's cap {curator.money(float(found.budget_usd))}.",
+        f"Cost so far: {curator.money(float(found.cost))}.",
         "Tags it follows:" if tags else f"It made no tag since {found.base_tag or 'the first commit'}.",
         *(_tag_line(row) for row in tags),
         "Runs:",
@@ -192,23 +182,21 @@ async def _facts(conn: AsyncConnection, found) -> tuple[list[str], int]:
     return lines, items[-1].run_id
 
 
-def _options(cap: float) -> list[dict]:
-    return [
-        {"key": "continue", "label": f"Go on, with one more cap of {curator.money(cap)}"},
-        {"key": "close", "label": "Close the cycle", "recommended": True},
-        {"key": "pause", "label": "Pause the release schedule"},
-    ]
+OPTIONS = [
+    {"key": "continue", "label": "Go on"},
+    {"key": "close", "label": "Close the cycle", "recommended": True},
+    {"key": "pause", "label": "Pause the release schedule"},
+]
 
 
 async def ask_owner(conn: AsyncConnection, cycle_id: int) -> int:
     """Ask the owner of stopped cycle ``cycle_id`` what next (see the module); the decision's id."""
     found = await cycle_of(conn, cycle_id)
     lines, last_run = await _facts(conn, found)
-    cap = float(found.schedule_cap)
     question = runs.clip(
         f"Release cycle #{cycle_id} of {found.project} stopped: "
-        f"{one_line(found.stop_reason or '', QUESTION_REASON_CHARS)} Go on with one more cap of {curator.money(cap)}, "
-        "close the cycle, or pause the release schedule?",
+        f"{one_line(found.stop_reason or '', QUESTION_REASON_CHARS)} Go on, close the cycle, or pause the release "
+        "schedule?",
         runs.MAX_QUESTION_CHARS,
     )
     d = tables.decisions
@@ -221,7 +209,7 @@ async def ask_owner(conn: AsyncConnection, cycle_id: int) -> int:
                 category=runs.RELEASE_DECISION_CATEGORY,
                 question=question,
                 context=runs.clip("\n".join(lines), runs.MAX_DECISION_CONTEXT_BYTES),
-                options=_options(cap),
+                options=OPTIONS,
                 recommended_reason=CLOSE_REASON,
             )
             .returning(d.c.id)
@@ -239,8 +227,8 @@ async def ask_owner(conn: AsyncConnection, cycle_id: int) -> int:
         link=decision_link(decision_id),
     )
     asked = (
-        f"{found.owner} decides in decision #{decision_id} ({decision_link(decision_id)}): go on with one more cap of "
-        f"{curator.money(cap)}, close the cycle, or pause the release schedule. Nothing goes on until then."
+        f"{found.owner} decides in decision #{decision_id} ({decision_link(decision_id)}): go on, close the cycle, or "
+        "pause the release schedule. Nothing goes on until then."
     )
     thread = await triage.project_thread(
         conn, found.project_id, found.project, found.owner_id, "\n".join([*lines, asked])

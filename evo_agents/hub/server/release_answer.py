@@ -1,10 +1,9 @@
 """What the owner's answer to the decision of a stopped release cycle does (``release_cycles.ask_owner`` asks it;
 ``decisions.answer_decision`` answers it as any decision, and hands the option here).
 
-- ``continue``: the cycle is open again with one more cap of its schedule on its own, and goes on from where it
-  stopped: the CI of its newest tag is followed again from now when it was pending, running or overdue; a red newest
-  tag gets a new fix run; a cycle with no tag of its own yet gets a new cut run (``release_cycles.queue_run``, which
-  stops it again when even the new cap is spent). Nothing is queued while a release run of the cycle is active.
+- ``continue``: the cycle is open again and goes on from where it stopped: the CI of its newest tag is followed again
+  from now when it was pending, running or overdue; a red newest tag gets a new fix run; a cycle with no tag of its own
+  yet gets a new cut run (``release_cycles.queue_run``). Nothing is queued while a release run of the cycle is active.
 - ``close``: the cycle is closed, its reason kept.
 - ``pause``: the schedule is paused as ``evo-agents hub release pause`` pauses it (its queued release runs cancelled),
   and the cycle closed with that reason.
@@ -21,7 +20,7 @@ from fastapi import HTTPException
 from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, release_ci, releases, tables
+from evo_agents.hub import release_ci, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.chat_runs import hub_reply
 from evo_agents.hub.server.projects import project_access
@@ -44,13 +43,12 @@ async def _newest(conn: AsyncConnection, found):
 
 async def _go_on(conn: AsyncConnection, found) -> str:
     c, rr, r, t = tables.release_cycles, tables.release_runs, tables.runs, tables.release_tags
-    cap = float(found.budget_usd) + float(found.schedule_cap)
     await conn.execute(
         update(c)
         .where(c.c.id == found.id)
-        .values(state="open", budget_usd=cap, stop_reason=None, stop_cause=None, updated_at=func.now())
+        .values(state="open", stop_reason=None, stop_cause=None, updated_at=func.now())
     )
-    said = f"cycle #{found.id} goes on with a cap of {curator.money(cap)}"
+    said = f"cycle #{found.id} goes on"
     active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
     if (await conn.execute(select(active))).scalar_one():
         return said + ": a run of it is still active"

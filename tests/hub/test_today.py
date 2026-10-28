@@ -115,11 +115,11 @@ def published(db, project: str, owner: str, ended_at: datetime, tag: str = "v1.2
     """A cycle of the project's daily release, published at ``ended_at`` with ``tag``."""
     owner_id, pid = user_id(db, owner), project_id(db, project)
     schedule = {"project_id": pid, "repo": "evo-agents", "check_at": "09:00", "timezone": "UTC", "target_ref": "main"}
-    schedule |= {"tag_pattern": "v*", "workflow": "release.yml", "paths": ["pyproject.toml"], "cycle_budget_usd": 10.0}
+    schedule |= {"tag_pattern": "v*", "workflow": "release.yml", "paths": ["pyproject.toml"]}
     s, c, t = tables.release_schedules, tables.release_cycles, tables.release_tags
     schedule_id = sql(db, insert(s).values(**schedule, owner_id=owner_id, updated_by=owner_id).returning(s.c.id))[0][0]
     cycle = {"project_id": pid, "schedule_id": schedule_id, "state": "published", "start": "cut", "owner_id": owner_id}
-    cycle |= {"local_day": ended_at.date(), "target_ref": "main", "budget_usd": 10.0, "ended_at": ended_at}
+    cycle |= {"local_day": ended_at.date(), "target_ref": "main", "ended_at": ended_at}
     cycle_id = sql(db, insert(c).values(**cycle).returning(c.c.id))[0][0]
     sql(db, insert(t).values(cycle_id=cycle_id, tag=tag, commit="a" * 40, ci_state="passed"))
     return cycle_id
