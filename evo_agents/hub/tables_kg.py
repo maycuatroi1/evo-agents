@@ -10,7 +10,11 @@ say how healthy the graph is over time: what each build covers, the files each g
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
 kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``).
 kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
-with each step of their history (``evo_agents.hub.kg_decisions``).
+with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0178) holds each kg_search of a
+session or a run with what the agent opened after it, under the label of the session or the run
+(``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``. kg_eval_sets (0179) holds each version of a project's
+retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``. kg_optimize_runs (0182)
+holds each run of the KG optimize loop (``evo_agents.hub.server.kg_optimize``), as ``tables.kg_optimize_runs``.
 """
 
 from __future__ import annotations
@@ -18,8 +22,11 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
+    Date,
     DateTime,
+    Double,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -30,8 +37,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    and_,
+    column,
     false,
     func,
+    or_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
@@ -239,6 +249,8 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("reason", Text, nullable=False),
         Column("build_id", BigInteger),
         Column("actor_plugin", Text),  # the id of the core plugin that took it, else NULL (0174)
+        Column("origin", Text),  # the loop that took it, as kg-optimize, else NULL (0180)
+        Column("run_id", BigInteger),  # that loop's run, when it named one (0180)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_decision_events_project_id_fkey"
         ),
@@ -249,10 +261,140 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         ForeignKeyConstraint(
             ["build_id"], ["kg_builds.id"], ondelete="SET NULL", name="kg_decision_events_build_id_fkey"
         ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="kg_decision_events_run_id_fkey"),
         PrimaryKeyConstraint("project_id", "rev", name="kg_decision_events_pkey"),
         Index("kg_decision_events_decision_idx", "decision_id"),
     )
     return decisions, events
+
+
+def query_labels(metadata: MetaData) -> Table:
+    """kg_query_labels (0178), added to ``metadata``: each kg_search of a session or a run as its facet read it, with
+    the label of the session or the run (``evo_agents.hub.kg_labels``)."""
+    name = "kg_query_labels"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("session_id", Text),
+        Column("run_id", BigInteger),
+        Column("seq", Integer, nullable=False),
+        Column("at", Text),  # where the result came: FILE:LINE of a transcript, the seq of a run's event
+        _when("searched_at"),
+        Column("query", Text, nullable=False),
+        Column("results", JSONB, nullable=False),
+        Column("clicks", JSONB, nullable=False),
+        Column("grep_after", Boolean, nullable=False),
+        Column("after_grep", JSONB, nullable=False),
+        Column("label", JSONB, nullable=False),
+        _stamp("created_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name=f"{name}_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        CheckConstraint(column("kind").in_(("session", "run")), name=f"{name}_kind_check"),
+        CheckConstraint(
+            or_(
+                and_(column("kind") == "session", column("session_id").is_not(None), column("run_id").is_(None)),
+                and_(column("kind") == "run", column("run_id").is_not(None)),
+            ),
+            name=f"{name}_owner_check",
+        ),
+        Index(f"{name}_session_idx", "project_id", "session_id"),
+        Index(f"{name}_run_idx", "run_id"),
+        Index(f"{name}_project_idx", "project_id", "searched_at"),
+    )
+
+
+def eval_sets(metadata: MetaData) -> Table:
+    """kg_eval_sets (0179), added to ``metadata``: each version of a project's question set for ``kg eval``, its
+    name, its questions as JSON objects (``evo_agents.kg.evaluate``), the digest of what they ask and answer, and who
+    put it."""
+    name = "kg_eval_sets"
+    return Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("version", Integer, nullable=False),
+        Column("name", Text, nullable=False),
+        Column("questions", JSONB, nullable=False),
+        Column("digest", Text, nullable=False),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
+        PrimaryKeyConstraint("project_id", "version", name=f"{name}_pkey"),
+        CheckConstraint("version >= 1", name=f"{name}_version_check"),
+    )
+
+
+SEMANTIC_MODES = ("off", "index", "on")  # whether a project's graph is searched by meaning too
+
+
+def semantic_settings(metadata: MetaData) -> Table:
+    """kg_semantic (0181), added to ``metadata``: whether a project's graph is searched by meaning too
+    (``evo_agents.kg.semantic``): ``off``; ``index``, its builds write the vectors but kg_search ranks by words; ``on``,
+    kg_search fuses both. A project without a row is off. The model the vectors come from, who set it last, when."""
+    name = "kg_semantic"
+    return Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("mode", Text, nullable=False),
+        Column("model", Text, nullable=False),
+        Column("updated_by", BigInteger),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
+        PrimaryKeyConstraint("project_id", name=f"{name}_pkey"),
+        CheckConstraint(column("mode").in_(SEMANTIC_MODES), name=f"{name}_mode_check"),
+        CheckConstraint("char_length(model) BETWEEN 1 AND 200", name=f"{name}_model_check"),
+    )
+
+
+OPTIMIZE_ACTIVE = ("measuring", "running", "after")  # the states of a KG optimize run in flight
+OPTIMIZE_STATES = (*OPTIMIZE_ACTIVE, "done", "reverted", "failed")
+
+
+def optimize_runs(metadata: MetaData) -> Table:
+    """kg_optimize_runs (0182), added to ``metadata``: each run of the KG optimize loop of a project
+    (``evo_agents.hub.server.kg_optimize``), by night or asked for, its state, the review run of the agent it queued,
+    the builds measured before and after, the weight of the asked column it left in effect, what it measured and
+    decided (``body``), and its report. One run a project is in flight at a time, one a night."""
+    name = "kg_optimize_runs"
+    table = Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("via", Text, nullable=False),
+        Column("requested_by", BigInteger),
+        Column("night", Date),
+        Column("state", Text, nullable=False),
+        Column("agent_run_id", BigInteger),
+        Column("before_build_id", BigInteger),
+        Column("after_build_id", BigInteger),
+        Column("asked_weight", Double),
+        Column("body", JSONB, nullable=False),
+        Column("report", Text),
+        Column("notification_id", BigInteger),
+        Column("error", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        _when("ended_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
+        ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        CheckConstraint(column("via").in_(("night", "manual")), name=f"{name}_via_check"),
+        CheckConstraint(column("state").in_(OPTIMIZE_STATES), name=f"{name}_state_check"),
+        Index(f"{name}_project_idx", "project_id", "id"),
+        Index(f"{name}_agent_run_idx", "agent_run_id"),
+    )
+    Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(OPTIMIZE_ACTIVE))
+    Index(f"{name}_night_key", table.c.project_id, table.c.night, unique=True, postgresql_where=table.c.via == "night")
+    return table
 
 
 def kg_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:

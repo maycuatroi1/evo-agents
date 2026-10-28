@@ -15,6 +15,8 @@ decision changed since, the write answers 409 with the revision now, and nothing
 role (403 for a reader, 404 for a caller without a grant, as every read of the graph). A decision names only nodes and
 edges the writer sees in the latest build; a decision that names anything a member cannot see is not listed to them.
 An agent's ``kg_propose`` writes the same decision as a proposal, which changes nothing until a writer accepts it.
+A loop applies the fixes of the review queue as decisions of its own (``apply_fixes``, for
+``POST /v1/kg/{project}/review/apply``): each step names the loop (``origin``) and its run, and is undone as any other.
 """
 
 from __future__ import annotations
@@ -70,6 +72,10 @@ class KgDecisionEvent(BaseModel):
     at: datetime
     reason: str
     build_id: int | None = Field(description="the build the graph was at; null once that build is gone")
+    origin: str | None = Field(
+        None, description="the loop that took the step, as kg-optimize; null for one taken by hand"
+    )
+    run_id: int | None = Field(None, description="that loop's run, when it named one; null once the run is gone")
 
 
 class KgDecision(BaseModel):
@@ -144,7 +150,18 @@ async def _rows(conn, project_id: int) -> tuple[list, dict[int, list[KgDecisionE
     d, e, u = tables.kg_decisions, tables.kg_decision_events, tables.users
     rows = list((await conn.execute(select(d).where(d.c.project_id == project_id).order_by(d.c.number.desc()))).all())
     events = await conn.execute(
-        select(e.c.decision_id, e.c.rev, e.c.action, u.c.login, e.c.actor_plugin, e.c.at, e.c.reason, e.c.build_id)
+        select(
+            e.c.decision_id,
+            e.c.rev,
+            e.c.action,
+            u.c.login,
+            e.c.actor_plugin,
+            e.c.at,
+            e.c.reason,
+            e.c.build_id,
+            e.c.origin,
+            e.c.run_id,
+        )
         .join(u, u.c.id == e.c.actor_id, isouter=True)
         .where(e.c.project_id == project_id)
         .order_by(e.c.rev)
@@ -161,6 +178,8 @@ async def _rows(conn, project_id: int) -> tuple[list, dict[int, list[KgDecisionE
                 at=ev.at,
                 reason=ev.reason,
                 build_id=ev.build_id,
+                origin=ev.origin,
+                run_id=ev.run_id,
             )
         )
     return rows, history, rev
@@ -229,7 +248,21 @@ async def _locked_rev(conn, project_id: int, project: str, base_rev: int) -> int
     return rev
 
 
-async def _event(conn, request, user, access: ProjectAccess, row, action: str, *, rev, reason, build_id) -> None:
+async def _event(
+    conn,
+    request,
+    user,
+    access: ProjectAccess,
+    row,
+    action: str,
+    *,
+    rev,
+    reason,
+    build_id,
+    origin: str | None = None,
+    run_id: int | None = None,
+    build: bool = True,
+) -> None:
     await conn.execute(
         tables.kg_decision_events.insert().values(
             project_id=access.project_id,
@@ -239,17 +272,20 @@ async def _event(conn, request, user, access: ProjectAccess, row, action: str, *
             actor_id=user.user_id,
             reason=reason,
             build_id=build_id,
+            origin=origin,
+            run_id=run_id,
         )
     )
+    came = f" origin={origin}" + (f" run={run_id}" if run_id is not None else "") if origin else ""
     await audit.record(
         conn,
         actor_id=user.user_id,
         token_id=user.token_id,
         action=audit.KG_DECISION,
-        target=f"{access.name} decision={row.number} action={action}",
+        target=f"{access.name} decision={row.number} action={action}{came}",
         project_id=access.project_id,
     )
-    if action in ("decide", "accept", "undo"):  # the active decisions changed: the next build applies them
+    if build and action in ("decide", "accept", "undo"):  # the active decisions changed: the next build applies them
         await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
 
 
@@ -308,6 +344,116 @@ async def create(request: Request, user, project: str, body: NewKgDecision, *, p
     return KgDecision(
         number=number, kind=body.kind, state=state, src=body.src, rel=body.rel, dst=body.dst, history=[event]
     )
+
+
+class Fix(BaseModel):
+    """A decision a loop takes as itself from a fix of the review queue (``evo_agents.kg.review``)."""
+
+    kind: Kind
+    src: str
+    rel: str | None
+    dst: str | None
+    reason: str
+    fingerprint: str = Field(description="the review item the fix is of")
+
+
+async def apply_fixes(
+    request: Request,
+    user,
+    access: ProjectAccess,
+    fixes: list[Fix],
+    *,
+    cap: int,
+    origin: str,
+    run_id: int | None,
+    build_id: int | None,
+    dry_run: bool,
+) -> tuple[list[tuple[Fix, KgDecision | None]], list[Fix], int]:
+    """Take the first ``cap`` of ``fixes`` that no proposed or active decision already says, in one transaction under
+    the decisions' lock, each active at once with a step that names ``origin`` and ``run_id``, and queue one build.
+    Their subjects are the caller's to check. (taken, each with its decision, None on a dry run; skipped, as said
+    already or a link the ontology lacks; the revision after)."""
+    d = tables.kg_decisions
+    taken: list[tuple[Fix, KgDecision | None]] = []
+    skipped: list[Fix] = []
+    async with request.app.state.engine.begin() as conn:
+        p, e = tables.projects, tables.kg_decision_events
+        await conn.execute(select(p.c.id).where(p.c.id == access.project_id).with_for_update())
+        rev = await conn.scalar(select(func.coalesce(func.max(e.c.rev), 0)).where(e.c.project_id == access.project_id))
+        configs = tables.kg_configs
+        ontology = await conn.scalar(select(configs.c.ontology).where(configs.c.project_id == access.project_id))
+        relations = known_relations(ontology)
+        said = {
+            (row.kind, row.src, row.rel, row.dst)
+            for row in await conn.execute(
+                select(d.c.kind, d.c.src, d.c.rel, d.c.dst).where(
+                    d.c.project_id == access.project_id, d.c.state.in_(("proposed", "active"))
+                )
+            )
+        }
+        number = await conn.scalar(
+            select(func.coalesce(func.max(d.c.number), 0)).where(d.c.project_id == access.project_id)
+        )
+        at = await conn.scalar(select(func.now()))
+        for fix in fixes:
+            if len(taken) >= cap:
+                break
+            key = (fix.kind, fix.src, fix.rel, fix.dst)
+            if key in said or (fix.kind == "link" and fix.rel not in relations):
+                skipped.append(fix)
+                continue
+            said.add(key)
+            if dry_run:
+                taken.append((fix, None))
+                continue
+            number, rev = number + 1, rev + 1
+            reason = fix.reason[:MAX_REASON_CHARS]
+            row = (
+                await conn.execute(
+                    d.insert()
+                    .values(
+                        project_id=access.project_id,
+                        number=number,
+                        kind=fix.kind,
+                        state="active",
+                        src=fix.src,
+                        rel=fix.rel,
+                        dst=fix.dst,
+                    )
+                    .returning(d.c.id, d.c.number)
+                )
+            ).one()
+            await _event(
+                conn,
+                request,
+                user,
+                access,
+                row,
+                "decide",
+                rev=rev,
+                reason=reason,
+                build_id=build_id,
+                origin=origin,
+                run_id=run_id,
+                build=False,
+            )
+            event = KgDecisionEvent(
+                rev=rev,
+                action="decide",
+                by=user.login,
+                at=at,
+                reason=reason,
+                build_id=build_id,
+                origin=origin,
+                run_id=run_id,
+            )
+            made = KgDecision(
+                number=number, kind=fix.kind, state="active", src=fix.src, rel=fix.rel, dst=fix.dst, history=[event]
+            )
+            taken.append((fix, made))
+        if taken and not dry_run:  # the active decisions changed: the next build applies them
+            await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+    return taken, skipped, rev
 
 
 @router.post("/{project}/decisions", response_model=KgDecision, status_code=201)
@@ -370,4 +516,14 @@ async def mcp_answer(request: Request, project: str, user, arguments: dict, *, s
     return text, {"decision": made.model_dump(mode="json"), "rev": rev}
 
 
-__all__ = ["KgDecision", "KgDecisionList", "NewKgDecision", "create", "listing", "mcp_answer", "router"]
+__all__ = [
+    "Fix",
+    "KgDecision",
+    "KgDecisionList",
+    "NewKgDecision",
+    "apply_fixes",
+    "create",
+    "listing",
+    "mcp_answer",
+    "router",
+]

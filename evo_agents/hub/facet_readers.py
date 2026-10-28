@@ -316,6 +316,7 @@ def session_facet(files: Iterable[tuple[str, Iterable[tuple[int, object]]]], run
     tally = Tally(runtime)
     claude = ClaudeReader(tally)
     for file, lines in files:
+        tally.new_file()
         reader = None
         last = 0
         for number, line in lines:

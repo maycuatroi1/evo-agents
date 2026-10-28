@@ -194,7 +194,10 @@ The text is what an agent's model reads, so it is kept short and readable:
   machine that synced the source.
 - The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
   a node with another label names it on its line, and a label with an audience ends with it
-  (`internal,U audience chat:5 grant:demo:internal`).
+  (`internal,U audience chat:5 grant:demo:internal`). `kg_search` prints the status most of its results share once
+  too, on its first line (`10 result(s) in project demo (build 7), status parsed`), and a line names a status only
+  when it is another: `(resolved)`, `(public,U)` or `(resolved, public,U)`, nothing when both are shared. Its lines
+  also leave out the name of a section its anchor spells and the number of a step its id holds.
 - `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,
   and says how many nodes and edges it reached that did not fit (`left_out` in the structured result).
 - Each tool takes, besides its own argument names, those agents often use for them (`evo_agents/kg/refs.py`,
@@ -265,6 +268,20 @@ Projects and who sees what), and the core plugin chats labels each message with 
   word as a prefix, 1 for any word (`STAGE_WEIGHTS`). The nodes of all ways are ranked together, so a node holding every
   word comes first at a like score but not whatever its score: a long page or a reply that quotes a message, holding
   every word once, no longer comes before the short section or message that matches most of them better.
+- That score is then weighed by what the node is (`search.weight`). A word of the query that reads as a name (it holds
+  `_`, `.`, `/` or `:`, mixes letters and digits, is camelCase or all capitals: `Store.search`, `HUB_DEGREE`) counts
+  1.5 for the node it names (its name, its path or the end of its id), and such a node that no text way found ranks as
+  the best of them. Background counts 0.6 unless the query asks for it: tests (`tests/`, `test_*.py`, `*.test.ts`),
+  migrations, fixtures and golden files, generated JSON (`bundle-budget.json`, catalogs, baselines), closed plans
+  (`plans/completed/`, a plan whose steps are all done, and its steps), reports and `docs/history.md`. Each kind is
+  lifted by its own words only (`test`, `migration`, `fixture`, `golden`, `completed`, `đã đóng`, `report`,
+  `history`, `lịch sử`, ...; `BACKGROUND_WORDS`): a closing step's title that says `đóng` asks for no history. On the
+  tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709.
+- A project whose semantic mode is `on` also ranks by meaning: the vectors of a local embedding model, fused with the
+  ranking by words by reciprocal rank fusion. Off by default, and a graph without vectors searches as above
+  ([docs/kg-semantic.md](kg-semantic.md)).
+- With `deprecated` false, the nodes a decision deprecated are left out before the list is cut, so they take no room
+  in it.
 - The rows of `node_fts_aud` (nodes with an audience, such as chat messages) are few, so the IDF FTS5 gives a word
   there is a fraction of the one `node_fts` gives it, and a message would rank below any symbol or section that
   matches no better. Each of them is scored as `node_fts` would score it instead: per phrase of the query, the BM25 of
@@ -274,10 +291,11 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
   may see: a search that finds a step or a page of the docs also names the code they point at.
-- Each result `kg_search` found by its words says how many of the query's words its name, path or body holds whole
-  (` words=2/3` on its line, `matched` in the structured result), and a query of two words or more whose results hold
-  none of them all says so under the header (`no result holds all N words of the query`): the reader can tell a
-  question the graph does not answer from one it does, instead of opening one file after another. A node listed
+- Each result `kg_search` found by its words that holds only some of the query's words says how many its name, path
+  or body holds whole (` words=2/3` on its line; `matched` in the structured result counts them all), and a query of
+  two words or more whose results hold none of them all says so under the header (`no result holds all N words of the
+  query`) and gets at most 5 results (`WEAK_LIMIT`): the reader can tell a question the graph does not answer from one
+  it does, instead of opening one file after another. A node listed
   because a hit mentions it gets no count. A document, named by its path, is also quoted: the passage of its body
   where the query's words gather, about 16 words, on the line below it (`    > ...`). A section is named by its
   heading and is not quoted. The count and the passage come from the same index rows the search read
@@ -616,3 +634,38 @@ greps the same checkouts for comparison, and prints Recall@1 and @5, MRR, the sh
 of the hub's plans into questions whose answers are the files their commits changed. The command ships without
 questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
 tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.
+
+## The optimize loop
+
+Each project with a night shift and a knowledge config on the hub gets a KG optimize run a night, inside the charter's
+window, and one whenever a writer asks: `evo-agents hub kg optimize --project P`, the Optimize button of the web's KG
+pages, the MCP tool `kg_optimize` of evo-hub, or `POST /v1/kg/{project}/optimize`. A run asked for ignores the window
+and stays under the charter's review cost cap. One run of a project is in flight at a time: asking again answers with
+that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with their reports. The job
+`curator.collect` moves each run on once a minute (`evo_agents/hub/server/kg_optimize.py`, the table
+`kg_optimize_runs`, migration 0182):
+
+1. **Measure.** The holdout of the project's eval set is asked of the latest build by words and by meaning, the tune
+   split at each weight of the asked column (0, 0.5, 1, 2), with the open items of the review queue, the build's
+   coverage, and what real sessions got from `kg_search` since the last run (`click_rate`, the new labels).
+2. **Decide on the hub.** Search by meaning goes on only when hit@5 by meaning is at least 5 points above words
+   alone, the tokens per answer file do not rise and the p95 stays under 1 s (criterion a12); it goes back to `index`
+   when an `on` project fails the gate, and a graph without vectors keeps its mode. The weight of the asked column that
+   ranks the tune split best is kept on the run once 30 tune questions and 20 new labels back it; the next build writes
+   it into the graph.
+3. **Review run.** The worker on duty gets a review run through the `kg_health` lens: the night's run adds the lens to
+   the rotation's, an asked-for run looks through it alone. Its agent proposes fixes of the KG code, which the Builder
+   makes on a branch and the Judge checks before the auto-merge; a change that touches a protected path of the charter
+   stays an open pull request and goes into the report.
+4. **Apply and rebuild.** The fixes of the review queue become decisions through `POST /v1/kg/{project}/review/apply`
+   (origin `kg-optimize`, the review run), and a build is queued.
+5. **Measure again, or undo.** Once a newer build succeeded (or 6 hours passed), the holdout is asked again. A hit@5
+   lower than before by more than the eval's noise (two standard errors over the questions asked, at least one point),
+   or tokens per hit higher by more than the same share (at least 5%), undoes the run: its decisions are undone, each
+   change of the review run that merged gets a revert proposal in the owner's Inbox, search by meaning goes back to its
+   mode before and the asked column to its weight before. The run ends `reverted`; otherwise `done`.
+
+At the end the owner of the night shift (and whoever asked) gets the report as a notification of kind `kg_optimize`:
+the figures before and after, `click_rate` and the new labels, the semantic decision with its figures, the decisions
+applied and the pull requests merged or reverted. The next morning brief names it. The loop never turns on Jev's
+rerank.

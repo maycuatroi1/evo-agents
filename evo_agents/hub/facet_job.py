@@ -49,7 +49,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, facets, runs, tables
+from evo_agents.hub import curator, facets, kg_labels, runs, tables
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.blobs import KIND_LIMITS, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.digest import MAX_SESSION_ID
@@ -427,6 +427,9 @@ def _upsert(item: Todo, values: dict, updated: tuple[str, ...]):
 
 
 async def store_facet(engine: AsyncEngine, item: Todo, made: Made, now: datetime) -> None:
+    """Write ``made`` as ``item``'s facet, and its searches' labels in place of those before (``kg_labels``), in one
+    transaction: the facet's row, locked by its upsert, keeps two writers of one facet apart."""
+    body, labels = kg_labels.split(made.body)
     values = {
         "source": made.source,
         "fingerprint": made.fingerprint,
@@ -435,8 +438,8 @@ async def store_facet(engine: AsyncEngine, item: Todo, made: Made, now: datetime
         "runtime": made.runtime,
         "label": made.label,
         "at": made.at,
-        "summary": facets.summary(made.body),
-        "body": made.body,
+        "summary": facets.summary(body),
+        "body": body,
         "analyzed_at": now,
         "attempts": 0,
         "error": None,
@@ -448,6 +451,15 @@ async def store_facet(engine: AsyncEngine, item: Todo, made: Made, now: datetime
         written = (*WRITTEN, "session_id")
     async with engine.begin() as conn:
         await conn.execute(_upsert(item, values, written))
+        await kg_labels.replace(
+            conn,
+            kind=item.kind,
+            project_id=item.project_id,
+            session_id=item.session_id,
+            run_id=item.run_id,
+            labels=labels,
+            label=made.label if item.kind == "session" else None,
+        )
 
 
 async def failed(engine: AsyncEngine, item: Todo, error: str, now: datetime) -> datetime:

@@ -9,6 +9,11 @@
 - DELETE /v1/kg/{project}/review/{fingerprint}/dismiss: a writer takes a dismissal back, whoever made it (a member, or
   a core plugin through its API), so the item is open again; 404 for an item the writer cannot see or that is not
   dismissed. The audit row names the item and who had dismissed it.
+- POST /v1/kg/{project}/review/apply {origin, run_id, max_decisions, rules, dry_run}: a writer's loop (the KG optimize
+  loop) applies the fixes of the open items it can see (``detail.fix``) as active decisions, in the queue's order, at
+  most ``max_decisions`` in a call, an item's fix in part when the cap falls inside it; a decision a proposed or active
+  one already says is skipped. Each step names the loop and its run; ``hub kg decisions undo`` takes one back. The
+  items of cluster_without_knowledge take no decision: they come back as the report. One build is queued.
 
 Access and visibility are those of the graph's other web reads (``evo_agents.hub.server.kg_web``): a grant on the
 project, the grant's ceiling with the member's audience, and every node through ``Session.visible``.
@@ -32,12 +37,15 @@ from evo_agents.hub.kg_web import WebSession
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.kg_decisions import Fix, KgDecision, apply_fixes
 from evo_agents.hub.server.kg_web import GraphRef, _no_graph, _read, _reader
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg.review import RULES
 
 MAX_REASON_CHARS = 1000  # as migration 0141 checks
+MAX_DECISIONS, MAX_DECISIONS_CAP = 25, 200  # the decisions a call to apply takes, by default and at most
+LOOP = "kg-optimize"
 NO_BUILD = "no build of this project succeeded yet"
 
 Rule = Literal[  # RULES of evo_agents.kg.review, in order
@@ -227,6 +235,126 @@ async def dismiss_item(
             project_id=access.project_id,
         )
     return Dismissal(reason=body.reason, by=user.login, at=row.dismissed_at, build_id=ref.build_id)
+
+
+class ApplyBody(BaseModel):
+    origin: str = Field(LOOP, pattern=r"^[a-z0-9][a-z0-9._-]{0,62}$", description="the loop that applies the fixes")
+    run_id: int | None = Field(None, ge=1, description="the run of the loop, a run of this project")
+    max_decisions: int = Field(MAX_DECISIONS, ge=1, le=MAX_DECISIONS_CAP, description="the cap of this call")
+    rules: list[Rule] | None = Field(None, description="only the items of these rules; every rule when null")
+    dry_run: bool = Field(False, description="say what would be decided and decide nothing")
+
+
+class AppliedDecision(BaseModel):
+    number: int | None = Field(description="the decision's number; null on a dry run")
+    kind: str
+    src: str
+    rel: str | None
+    dst: str | None
+    reason: str
+
+
+class AppliedItem(BaseModel):
+    fingerprint: str
+    rule: Rule
+    whole: bool = Field(description="true when every decision of the item's fix is taken or was said already")
+    decisions: list[AppliedDecision]
+
+
+class ReportItem(BaseModel):
+    fingerprint: str
+    rule: Rule
+    cluster: str | None
+    cluster_label: str | None
+    nodes: list[ReviewNode]
+
+
+class ApplyResult(BaseModel):
+    graph: GraphRef
+    rev: int = Field(description="the project's decision revision after the call")
+    dry_run: bool
+    max_decisions: int
+    decided: int = Field(description="the decisions taken (or, on a dry run, that would be)")
+    skipped: int = Field(description="the decisions of fixes a proposed or active decision already says")
+    items: list[AppliedItem] = Field(description="the items whose fix took a decision, in the queue's order")
+    report: list[ReportItem] = Field(description="the open items no decision fixes, for a person to read")
+    left: dict[str, int] = Field(description="per rule, the open items with a fix not wholly taken")
+
+
+@router.post("/{project}/review/apply", response_model=ApplyResult)
+async def apply_review(request: Request, project: ProjectName, body: ApplyBody, user: CurrentUser) -> ApplyResult:
+    """Apply the fixes of the open review items you can see as decisions, at most max_decisions, naming your loop."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _reader(access)
+        if not has_role(access.role, "writer"):
+            raise HTTPException(403, f"applying the review queue of project {access.name} needs the writer role on it")
+        if body.run_id is not None:
+            r = tables.runs
+            owner = await conn.scalar(select(r.c.project_id).where(r.c.id == body.run_id))
+            if owner != access.project_id:
+                raise HTTPException(404, f"no run {body.run_id} in project {access.name}")
+        dismissed = await _dismissals(conn, access.project_id)
+    data, ref = await _read(request, user, project, WebSession.review)
+    if ref is None:
+        raise _no_graph(project)
+    asked = [
+        i
+        for i in data["items"]
+        if i["fingerprint"] not in dismissed and (body.rules is None or i["rule"] in body.rules)
+    ]
+    fixes = [Fix(**d, fingerprint=i["fingerprint"]) for i in asked for d in i["detail"].get("fix") or []]
+    taken, skipped, rev = await apply_fixes(
+        request,
+        user,
+        access,
+        fixes,
+        cap=body.max_decisions,
+        origin=body.origin,
+        run_id=body.run_id,
+        build_id=ref.build_id,
+        dry_run=body.dry_run,
+    )
+    done: dict[str, list[AppliedDecision]] = {}
+    for fix, made in taken:
+        number = made.number if isinstance(made, KgDecision) else None
+        shown = fix.model_dump(exclude={"fingerprint"})
+        done.setdefault(fix.fingerprint, []).append(AppliedDecision(number=number, **shown))
+    said: dict[str, int] = {}
+    for fix in skipped:
+        said[fix.fingerprint] = said.get(fix.fingerprint, 0) + 1
+    items, left = [], {}
+    for i in asked:
+        fix = i["detail"].get("fix") or []
+        whole = bool(fix) and len(done.get(i["fingerprint"], [])) + said.get(i["fingerprint"], 0) == len(fix)
+        if i["fingerprint"] in done:
+            items.append(
+                AppliedItem(fingerprint=i["fingerprint"], rule=i["rule"], whole=whole, decisions=done[i["fingerprint"]])
+            )
+        if fix and not whole:
+            left[i["rule"]] = left.get(i["rule"], 0) + 1
+    report = [
+        ReportItem(
+            fingerprint=i["fingerprint"],
+            rule=i["rule"],
+            cluster=i["cluster"],
+            cluster_label=i["cluster_label"],
+            nodes=i["nodes"],
+        )
+        for i in asked
+        if i["detail"].get("report")
+    ]
+    return ApplyResult(
+        graph=ref,
+        rev=rev,
+        dry_run=body.dry_run,
+        max_decisions=body.max_decisions,
+        decided=len(taken),
+        skipped=len(skipped),
+        items=items,
+        report=report,
+        left=left,
+    )
 
 
 class Undismissed(BaseModel):

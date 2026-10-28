@@ -1058,6 +1058,10 @@ browser_identities = tables_browser.browser_tables(metadata)  # the browser iden
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 kg_review_dismissals = tables_kg.review_dismissals(metadata)
 kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
+kg_query_labels = tables_kg.query_labels(metadata)  # each kg_search and what the agent opened after it (0178)
+kg_eval_sets = tables_kg.eval_sets(metadata)  # each version of a project's retrieval question set (0179)
+kg_semantic = tables_kg.semantic_settings(metadata)  # whether a project's graph is searched by meaning too (0181)
+kg_optimize_runs = tables_kg.optimize_runs(metadata)  # each run of the KG optimize loop (0182)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )

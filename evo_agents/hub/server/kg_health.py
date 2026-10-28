@@ -19,9 +19,12 @@ config:
   build, a repo off GitHub, a hub without the App, an App not installed, a commit GitHub does not know, a tree GitHub
   cut: the entry says why (``why``) and keeps what was read;
 
-and, once for the project, ``eval``: the retrieval evaluation of the latest build's graph (``kg_health_eval``), from the
-plans the schedule's owner may read, asked as that owner reads the graph through the project's hub sink. The same
-questions of the same graph keep the score of the measure before, so a quiet day asks nothing again.
+and, once for the project, ``eval``: the retrieval evaluation of the latest build's graph (``kg_health_eval``), of the
+holdout part of the project's question set (``evo_agents.hub.server.kg_eval_sets``) and the plans the schedule's owner
+may read, asked as that owner reads the graph through the agent sink (``kg_health_eval.AGENT_SINK``) when the policy
+declares it, else the project's hub sink. The same questions of the same graph keep the score of the measure before, so
+a quiet day asks nothing again. Each measure whose eval has a score pushes the signals EVAL_SIGNALS,
+kg.retrieval.hit_at_5 and kg.retrieval.tokens_per_file, as that owner.
 
 It also holds ``review``: per rule, the items of the latest build's review queue (``evo_agents.hub.kg_review``) open
 to that owner through the hub sink, those a writer dismissed aside, with the build they were counted in; or why there
@@ -56,11 +59,11 @@ from sqlalchemy import case, exists, func, insert, literal, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import kg_coverage, kg_health_eval, kg_review, tables
+from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.kg_build import kg_root
 from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
-from evo_agents.hub.server import hub_settings, pulls
+from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -213,8 +216,11 @@ async def measure_source(app, source: dict, held, origin: str | None, now: datet
 # The evaluation
 
 
-def _evaluate(cache: GraphCache, blobs, project: str, access: ProjectAccess, sink: str, graphs, plans, previous):
-    """The eval of a measure (see the module). Blocking: run it in a thread."""
+def _evaluate(
+    cache: GraphCache, blobs, project: str, access: ProjectAccess, sink: str, graphs, plans, previous, found_set=None
+):
+    """The eval of a measure (see the module), ``found_set`` the project's latest question set and its digest, if any.
+    Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink)
     path, graph = cache.acquire(blobs, project, graphs)
     try:
@@ -224,17 +230,35 @@ def _evaluate(cache: GraphCache, blobs, project: str, access: ProjectAccess, sin
             if b is None:
                 return {"why": f"build {graph.build_id} holds no ready graph"}
             commits = kg_health_eval.GraphCommits(store, b)
-            questions, skipped, available = kg_health_eval.plan_questions(project, plans, commits)
+            question_set, set_digest = found_set if found_set else (None, None)
+            holdout = kg_health_eval.holdout_questions(question_set, project)
+            held = {q.id for q in question_set.questions} if question_set else set()
+            steps, skipped, available, sources = kg_health_eval.plan_questions(project, plans, commits, held)
+            questions = holdout + steps
             digest = kg_health_eval.questions_digest(questions)
             if (
                 isinstance(previous, dict)
                 and previous.get("content_hash") == graph.content_hash
                 and previous.get("digest") == digest
+                and previous.get("sink") == sink
                 and previous.get("methods") is not None
             ):
                 return {**previous, "build_id": graph.build_id}
             session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
-            scored = kg_health_eval.score(questions, skipped, available, session)
+            about = None
+            if question_set is not None:
+                about = {"name": question_set.name, "version": question_set.version, "digest": set_digest}
+                about["holdout"] = len(holdout)
+            scored = kg_health_eval.score(
+                questions,
+                skipped,
+                available,
+                session,
+                plan_steps=len(steps),
+                sources=sources,
+                question_set=about,
+                sink=sink,
+            )
             return {**scored, "build_id": graph.build_id, "content_hash": graph.content_hash}
         finally:
             store.close()
@@ -266,9 +290,10 @@ async def _previous_eval(conn: AsyncConnection, project_id: int):
     return (await conn.execute(query)).scalar_one_or_none()
 
 
-async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None, graphs) -> tuple:
+async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None, graphs, agent: bool = False) -> tuple:
     """(the access of ``row``'s owner, the project's hub sink, None), or (None, None, why the graph cannot be read
-    as the owner reads it)."""
+    as the owner reads it). With ``agent``, the sink is kg_health_eval.AGENT_SINK when the project's policy declares
+    it, as the agents that search the graph read it."""
     if not graphs:
         return None, None, "the project has no graph on the hub yet"
     if blobs is None or data_dir is None:
@@ -277,6 +302,8 @@ async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None,
     if access is None:
         return None, None, f"{row.owner}, who owns the night shift, holds no grant on the project"
     sink = access.rules.hub_sink.sink if access.rules.hub_sink else None
+    if agent and access.rules.ceiling(access.max_level, kg_health_eval.AGENT_SINK) is not None:
+        sink = kg_health_eval.AGENT_SINK
     if sink is None:
         return None, None, "the project declares no hub sink to read its graph through"
     return access, sink, None
@@ -285,14 +312,17 @@ async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None,
 async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
     """The eval of the measure of ``row``'s project (a row of ``_due``)."""
     async with engine.begin() as conn:
-        access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs)
+        access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
         if why is not None:
             return {"why": why}
         plans = await _plans(conn, access)
         previous = await _previous_eval(conn, row.project_id)
+        found_set = await kg_eval_sets.latest_set(conn, row.project_id)
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
-        return await asyncio.to_thread(_evaluate, cache, blobs, row.project, access, sink, graphs, plans, previous)
+        return await asyncio.to_thread(
+            _evaluate, cache, blobs, row.project, access, sink, graphs, plans, previous, found_set
+        )
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}
     except Exception as exc:  # the measure of the sources stands without a score
@@ -344,6 +374,38 @@ async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None,
 
 
 # The measure
+
+
+EVAL_SIGNALS = (
+    (
+        "kg.retrieval.hit_at_5",
+        "percent",
+        "Of the retrieval questions the hub asks its latest graph (the holdout part of the project's question set and "
+        "the done plan steps), the percent whose answer kg_search puts in its first 5 results (kg_health.eval).",
+        kg_health_eval.hit_percent,
+    ),
+    (
+        "kg.retrieval.tokens_per_file",
+        "tokens",
+        "The tokens kg_search spends per answer file it finds in its first 5 results (its mean tokens over Recall@5) "
+        "on the retrieval questions the hub asks its latest graph (kg_health.eval).",
+        kg_health_eval.tokens_per_file,
+    ),
+)
+
+
+async def push_eval_signals(conn: AsyncConnection, project_id: int, owner_id: int | None, measure_id: int, found):
+    """Push EVAL_SIGNALS of the measure ``measure_id``'s eval as the night shift's owner (``kg_labels.push_number``),
+    once per measure; an eval without a score pushes nothing. The keys pushed."""
+    pushed = []
+    for key, unit, words, value_of in EVAL_SIGNALS:
+        value = value_of(found)
+        if value is None or owner_id is None:
+            continue
+        external_id = f"kg_health:{key}:{measure_id}"
+        if await kg_labels.push_number(conn, project_id, owner_id, key, unit, words, value, external_id):
+            pushed.append(key)
+    return pushed
 
 
 async def measure_project(engine: AsyncEngine, row, *, github_app, blobs, data_dir, now: datetime | None) -> tuple:
@@ -398,7 +460,9 @@ async def measure(engine: AsyncEngine, *, github_app=None, blobs=None, data_dir=
             body, build_id, error = {}, None, (f"{type(exc).__name__}: {exc}")[:ERROR_CHARS]
         values = {"project_id": row.project_id, "build_id": build_id, "body": body, "error": error}
         async with engine.begin() as conn:
-            await conn.execute(insert(h).values(**values, **({"measured_at": now} if now is not None else {})))
+            stamp = {"measured_at": now} if now is not None else {}
+            measure_id = (await conn.execute(insert(h).values(**values, **stamp).returning(h.c.id))).scalar_one()
+            await push_eval_signals(conn, row.project_id, row.owner_id, measure_id, body.get("eval"))
         outcomes["failed" if error else "measured"] += 1
         log.info("knowledge graph measured", extra={"project": row.project, "failed": error is not None})
     return dict(sorted(outcomes.items()))

@@ -20,7 +20,8 @@ included, through the outbox (``notifications.notify``). The brief holds:
 - the worker on duty: its last heartbeat, and whether it is online, so a machine that stopped shows up in the morning;
 - for a project whose Loop is on (plan loop-engine), the Loop's part: the runs it handed out and the work items it
   finished in the 24 hours before the brief, and those waiting for a person by reason (``loop.notices.facts``); a
-  project whose Loop is off has none.
+  project whose Loop is off has none;
+- the KG optimize run of the project that ended in the 24 hours before the brief, in a line (``kg_optimize``).
 
 curator_briefs keeps one row a project and local day, with what the brief said and its notification; a second pass of
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
@@ -400,6 +401,9 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
             )
         )
     blocks.extend(loop_notices.blocks(project, facts.get("loop")))
+    optimized = facts.get("kg_optimize")
+    if optimized:
+        blocks.append(f"KG optimize run #{optimized['id']} ({optimized['state']}): {optimized['summary']}")
     blocks.append(_worker_words(worker, zone) if worker is not None else _pool_words(pool))
     return title, "\n\n".join(blocks)
 
@@ -446,6 +450,11 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
         found["pool"] = await _pool(conn, due)
     else:
         found["worker"] = await _worker(conn, due.worker_id, body["window"]["timezone"])
+    from evo_agents.hub.server.kg_optimize import brief_facts  # it reads the graphs through modules that import this
+
+    optimized = await brief_facts(conn, due.project_id)
+    if optimized is not None:
+        found["kg_optimize"] = optimized
     return found if loop is None else {**found, "loop": loop}
 
 
@@ -472,6 +481,8 @@ def _details(facts: dict) -> dict:
     if loop is not None:
         handed, done, waiting = loop_notices.totals(loop)
         found["loop"] = {"handed_out": handed, "done": done, "waiting": waiting}
+    if facts.get("kg_optimize"):
+        found["kg_optimize"] = {key: facts["kg_optimize"][key] for key in ("id", "state")}
     return found
 
 

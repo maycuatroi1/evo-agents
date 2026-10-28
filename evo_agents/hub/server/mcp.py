@@ -106,6 +106,7 @@ from evo_agents.hub.server import (
     kg,
     kg_audience,
     kg_decisions,
+    kg_optimize,
     local_runs,
     memories,
     opportunity_mcp,
@@ -416,6 +417,7 @@ class HubMcp(MCPServer):
             "hub_projects": self._hub_projects,
             "run_tool_stats": self._run_tool_stats,
             "kg_propose": partial(self._delegated, kg_decisions.mcp_answer),
+            "kg_optimize": partial(self._delegated, kg_optimize.mcp_answer),
             "curator_figures": self._curator_figures,
             "digest_list": self._digest_list,
             "digest_show": self._digest_show,
@@ -513,7 +515,12 @@ class HubMcp(MCPServer):
             return self.hub.state.kg_handles.call(session, caller.owner, name, arguments)
         if caller.project is None:
             return _error(NO_PROJECT)
-        return await kg.tool_result(self.hub.state, caller.user, caller.project, name, arguments, caller.sink)
+        scope = caller.user.scope
+        # an agent's search may explore the ranking (evo_agents.kg.explore); the loop's lookups never do
+        explore = name == "kg_search" and (scope is None or scope.kind not in runs.CURATOR_KINDS)
+        return await kg.tool_result(
+            self.hub.state, caller.user, caller.project, name, arguments, caller.sink, explore=explore
+        )
 
     # Projects
 

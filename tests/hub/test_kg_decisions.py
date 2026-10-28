@@ -190,6 +190,7 @@ def test_a_writers_kg_decision_is_active_audited_and_the_next_build_deprecates_t
     [event] = decision["history"]
     assert event["action"] == "decide" and event["by"] == "wendy" and event["reason"] == "merged into the runbook"
     assert event["build_id"] and event["rev"] >= 1
+    assert event["origin"] is None and event["run_id"] is None  # taken by hand, by no loop
     a = tables.audit
     target = f"{PROJECT} decision={decision['number']} action=decide"
     assert live.sql(hub.db, select(a.c.target).where(a.c.action == audit.KG_DECISION, a.c.target == target))

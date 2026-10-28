@@ -12,6 +12,7 @@ pytest.importorskip("sqlalchemy", reason="the hub's source of decisions needs th
 
 from evo_agents.hub import kg_decisions
 from evo_agents.hub.kg_sources import HUB, checked, keep_sources, knowledge_with
+from evo_agents.kg import clusters
 from evo_agents.kg.build import build_project
 from evo_agents.kg.pipeline.curation import curation_item
 from evo_agents.kg.project import load_project_at
@@ -129,6 +130,13 @@ def test_deprecated_parts_are_left_out_of_search_context_path_and_impact_unless_
     assert shown in text("kg_path", {"from": HANDLE, "to": RANK, "deprecated": True})
 
 
+def test_search_leaves_deprecated_nodes_out_before_it_cuts_the_list(tmp_path, kg_env):
+    _project, store, b, _report = curated(tmp_path, kg_env, DECISIONS)
+    assert store.search("rank_results", b, limit=1)[0] == RANK  # its name: first, deprecated or not
+    kept = store.search("rank_results", b, limit=1, deprecated=False)
+    assert kept and RANK not in kept  # the room it took goes to the next node
+
+
 def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
     project, _store, _b, _report = curated(tmp_path, kg_env, DECISIONS)
     session = Session(project, "agent")
@@ -136,3 +144,17 @@ def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
     text = found["content"][0]["text"]
     assert "deprecated: ranking moved to the index (decision 3)" in text
     assert found["structuredContent"]["node"]["props"]["deprecated"]["decision"] == 3
+
+
+@pytest.mark.skipif(not clusters.available(), reason="graspologic-native is not installed")
+def test_the_review_queue_of_a_build_leaves_out_what_its_decisions_settled(tmp_path, kg_env):
+    cluster_md, contracts = "harness:file:CLUSTER.md", "harness:file:contracts.yaml"
+    _project, store, b, _report = curated(tmp_path / "before", kg_env, [row(1, "deprecate", "app:file:app/gone.py")])
+    before = {(i["rule"], i["evidence"][0]) for i in store.review_items(b)}
+    assert {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)} <= before
+    store.close()
+    rows = [row(1, "link", GUIDE, "mentions", cluster_md), row(2, "deprecate", contracts)]
+    _project, store, b, report = curated(tmp_path / "after", kg_env, rows)
+    after = {(i["rule"], i["evidence"][0]) for i in store.review_items(b)}
+    assert after == before - {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)}
+    assert sum(report.coverage["review"].values()) == len(after)

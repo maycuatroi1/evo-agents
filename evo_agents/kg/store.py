@@ -38,6 +38,12 @@ edges, their counts and the full-text search leave out the rows whose audience i
 never fills a limit, a count or a page. The full-text rows of nodes with an audience sit in ``node_fts_aud``, apart from
 ``node_fts``: they never weigh in the ranking of what a reader without that audience finds. ``counts`` and ``summary``
 stay the build's totals; ``seen`` counts what the reader's audience holds.
+
+What agents asked before they read a node (``evo_agents.kg.asked``) sits in ``node_asked`` (the words, full-text) and
+``node_asked_rows`` (each row's node, its level, location and audience, and its prior), which ``write_asked`` makes
+when a hub build has labels to learn from: they are outside the schema version and the content hash, and a file
+without them (any local build, any file written before them) searches as before. ``Store.search`` reads them only for
+a reader whose ``asked_clearance`` (level, location) is set, and only the rows within it and within ``reader``.
 """
 
 from __future__ import annotations
@@ -50,7 +56,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
+from evo_agents.kg import semantic
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -145,6 +153,15 @@ CREATE TABLE IF NOT EXISTS cluster_warm (
 _NO_WARM = object()  # Store.write: no warm start to record
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
 SEEN = "(label_aud IS NULL OR aud_seen(label_aud))"  # the row's audience is within the store's reader
+ASKED_TABLES = ("node_asked", "node_asked_rows")  # what agents asked before they read a node; only in a hub build
+ASKED_SCHEMA = """
+CREATE VIRTUAL TABLE node_asked USING fts5(asked, tokenize = 'unicode61 remove_diacritics 2');
+CREATE TABLE node_asked_rows (
+    id INTEGER PRIMARY KEY, node_id TEXT NOT NULL, lvl INTEGER NOT NULL, loc INTEGER NOT NULL, aud TEXT,
+    prior REAL NOT NULL
+) STRICT;
+CREATE INDEX node_asked_node ON node_asked_rows(node_id);
+"""
 FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without an audience, and with one
 NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
 EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
@@ -208,6 +225,9 @@ class Graph:
     units: dict[str, dict] = field(default_factory=dict)
     texts: dict[str, str] = field(default_factory=dict)  # node id -> the body of its searchable text
     paths: dict[str, str] = field(default_factory=dict)  # node id -> the path it is found by, when it has one
+    # node id -> the passages its long body is also indexed as (``kg.search``): [{"start", "end", "text"}], text with
+    # its context first; never nodes
+    passages: dict[str, list[dict]] = field(default_factory=dict)
     clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
     mentions: dict[str, dict] = field(default_factory=dict)  # item id -> its dangling and ambiguous mentions, samples
     review: list[dict] = field(default_factory=list)  # the review items of a build with clusters (``kg.review``)
@@ -313,6 +333,10 @@ class Store:
     def _reads(self) -> None:
         """Read as a reader with no audience until ``reader`` is set: rows with one are left out (fail closed)."""
         self.reader: frozenset[str] = frozenset()
+        self.asked_clearance: tuple[int, int] | None = None  # the (level, location) of node_asked rows read; None: none
+        self._asked: bool | None = None  # whether the file has the asked tables, once looked up
+        self.asked_weight: float | None = None  # the weight of the asked rows to use in place of the file's (an eval)
+        self._asked_weight: tuple[float | None] | None = None  # (the weight the file records or None), once read
         self.db.create_function("aud_seen", 1, lambda text: audience_below(stored_audience(text), self.reader))
 
     @staticmethod
@@ -674,20 +698,24 @@ class Store:
         return out
 
     def _write_search(self, graph: Graph) -> str:
-        """Bring the full-text index to ``graph``'s nodes, deleting and inserting only the rows that changed, and
-        replace the aliases; the digest of what the index holds. A row of a node with an audience ends with it."""
-        rows = [
-            (
-                nid,
-                n["kind"],
-                text_search.index_text(n["name"] or ""),
-                text_search.fold(graph.paths.get(nid, "")),
-                text_search.index_text(graph.texts.get(nid, "")),
-            )
-            + ((label_columns(n["label"])["label_aud"],) if n["label"].audience else ())
-            for nid, n in sorted(graph.nodes.items())
-        ]
-        self._update_fts(rows)
+        """Bring the full-text index to ``graph``'s nodes and their passages, deleting and inserting only the rows that
+        changed, and replace the aliases; the digest of what the index holds. A row of a node with an audience ends
+        with it. A passage's row is its node's (id, kind, name, path) with the passage's text as body, keyed
+        ``search.passage_key``; a graph without passages digests as before they came."""
+        rows: list[tuple] = []
+        keyed: list[tuple[str, tuple]] = []
+        for nid, n in sorted(graph.nodes.items()):
+            aud = (label_columns(n["label"])["label_aud"],) if n["label"].audience else ()
+            name, path = text_search.index_text(n["name"] or ""), text_search.fold(graph.paths.get(nid, ""))
+            row = (nid, n["kind"], name, path, text_search.index_text(graph.texts.get(nid, ""))) + aud
+            rows.append(row)
+            keyed.append((nid, row))
+            for p in graph.passages.get(nid, ()):
+                key = text_search.passage_key(nid, p["start"], p["end"])
+                passage = (nid, n["kind"], name, path, text_search.index_text(p["text"])) + aud
+                rows.append((key, *passage))
+                keyed.append((key, passage))
+        self._update_fts(keyed)
         self.db.execute("DELETE FROM node_alias")
         self.db.executemany(
             "INSERT OR IGNORE INTO node_alias (alias, node_id) VALUES (?, ?)",
@@ -695,37 +723,39 @@ class Store:
         )
         return sha256(canonical_json(rows))
 
-    def _update_fts(self, rows: list[tuple]) -> None:
-        """Make the full-text tables hold ``rows`` and nothing else, a row with an audience (six columns) in
-        ``node_fts_aud``: the rows whose digest ``node_fts_rows`` does not hold go, new and changed ones come in. An
-        index whose rows ``node_fts_rows`` does not account for is written again whole."""
+    def _update_fts(self, keyed: list[tuple[str, tuple]]) -> None:
+        """Make the full-text tables hold the rows of ``keyed`` (key, row) and nothing else, a row with an audience
+        (six columns) in ``node_fts_aud``: the rows whose digest ``node_fts_rows`` does not hold under their key go, new
+        and changed ones come in. An index whose rows ``node_fts_rows`` does not account for is written again whole. A
+        node's own row is keyed by its id and digested as it always was; a passage's by ``search.passage_key``."""
         db = self.db
-        digests = {row[0]: sha256(canonical_json(row)) for row in rows}
+        digests = {key: sha256(canonical_json(row if key == row[0] else [key, *row])) for key, row in keyed}
         held = {
-            nid: (rowid, d, aud)
-            for nid, rowid, d, aud in db.execute("SELECT node_id, fts_rowid, digest, aud FROM node_fts_rows")
+            key: (rowid, d, aud)
+            for key, rowid, d, aud in db.execute("SELECT node_id, fts_rowid, digest, aud FROM node_fts_rows")
         }
         if sum(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in FTS_TABLES) != len(held):
             for table in (*FTS_TABLES, "node_fts_rows"):
                 db.execute(f"DELETE FROM {table}")
             held = {}
-        gone = [(nid, rowid, aud) for nid, (rowid, d, aud) in held.items() if digests.get(nid) != d]
+        gone = [(key, rowid, aud) for key, (rowid, d, aud) in held.items() if digests.get(key) != d]
         for aud, table in enumerate(FTS_TABLES):
             db.executemany(f"DELETE FROM {table} WHERE rowid = ?", [(rowid,) for _, rowid, a in gone if a == aud])
-        db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(nid,) for nid, _, _ in gone])
-        fresh = [row for row in rows if held.get(row[0], (0, None))[1] != digests[row[0]]]
+        db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(key,) for key, _, _ in gone])
+        fresh = [(key, row) for key, row in keyed if held.get(key, (0, None))[1] != digests[key]]
         for aud, table in enumerate(FTS_TABLES):
-            mine = [row for row in fresh if (len(row) > 5) == bool(aud)]
+            mine = [(key, row) for key, row in fresh if (len(row) > 5) == bool(aud)]
             last = db.execute(f"SELECT rowid FROM {table} ORDER BY rowid DESC LIMIT 1").fetchone()
             start = (last[0] if last else 0) + 1
             columns = "rowid, node_id, kind, name, path, body" + (", aud" if aud else "")
             marks = ", ".join("?" for _ in columns.split(", "))
             db.executemany(
-                f"INSERT INTO {table} ({columns}) VALUES ({marks})", [(start + i, *row) for i, row in enumerate(mine)]
+                f"INSERT INTO {table} ({columns}) VALUES ({marks})",
+                [(start + i, *row) for i, (_, row) in enumerate(mine)],
             )
             db.executemany(
                 "INSERT INTO node_fts_rows VALUES (?, ?, ?, ?)",
-                [(row[0], start + i, digests[row[0]], aud) for i, row in enumerate(mine)],
+                [(key, start + i, digests[key], aud) for i, (key, _) in enumerate(mine)],
             )
 
     def _diff(self, table: str, key_col: str | None, b: int, rows: dict[str, dict], cols: list[str]) -> None:
@@ -1096,24 +1126,244 @@ class Store:
         return nodes, edges
 
     def search(
-        self, query: str, b: int, limit: int = 50, *, kinds: list[str] | None = None, any_word: bool = True
+        self,
+        query: str,
+        b: int,
+        limit: int = 50,
+        *,
+        kinds: list[str] | None = None,
+        any_word: bool = True,
+        deprecated: bool = True,
+        vector=None,
     ) -> list[str]:
         """Ids of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
         query, then the full-text matches of all its words, of all its words as prefixes, and (``any_word``) of any
-        of its words, ranked together by BM25 times the prior and the weight of the way that scores them best
-        (``evo_agents.kg.search``). ``kinds`` keeps only nodes of those kinds."""
+        of its words, ranked together by BM25 times the prior and the weight of the way that scores them best, times
+        ``search.weight``: up when a word of the query names the node, down when it is background the query does not
+        ask for (``evo_agents.kg.search``). A node a word names (``search.named_words``) that no text query found ranks
+        as the best of them would. ``kinds`` keeps only nodes of those kinds; ``deprecated`` false leaves out the nodes
+        a decision deprecated before the list is cut, so they take no room. ``vector``, the query's embedding
+        (``evo_agents.kg.semantic.query_vector``), fuses this ranking by words with the graph's ranking by meaning,
+        weighed the same way; the exact hits stay first."""
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
         hits = self.exact(query, b, want, kinds)
         queries = list(text_search.fts_queries(text_search.query_words(query)))
         scores: dict[str, float] = {}
+        rows: dict[str, tuple[str, str, str]] = {}  # node id: (kind, name, path) as the index holds them
         for weight, fts_query in zip(text_search.STAGE_WEIGHTS, queries if any_word else queries[:2], strict=False):
             if len(hits) + len(scores.keys() - set(hits)) >= want:
                 break
-            for node_id, score in self._ranked(fts_query, want, kinds):
+            for node_id, score, row in self._ranked(fts_query, want, kinds):
                 scores[node_id] = min(score * weight, scores.get(node_id, math.inf))  # bm25 is negative
+                rows.setdefault(node_id, row)
+        named = text_search.named_words(query)
+        top = min(scores.values(), default=-1.0)
+        for word in named if query.strip() not in named else ():
+            for node_id in self.exact(word, b, want, kinds):
+                if node_id not in scores and node_id not in hits:
+                    scores[node_id], rows[node_id] = top, self._index_row(node_id)
+        asked = self._asked_scores(query)
+        best = min(scores.values(), default=-1.0)  # an asked match is weighed against the best text score
+        for node_id, match in asked.items():
+            score = self.weight_of_asked() * match * best
+            if node_id in scores:
+                scores[node_id] += score
+            elif node_id not in hits:
+                row = self._index_row(node_id)
+                if row[0] and (not kinds or row[0] in kinds):
+                    scores[node_id], rows[node_id] = score, row
+        near = self._semantic_ranked(vector, kinds, set(hits)) if vector is not None else {}
+        for node_id in near.keys() - rows.keys():
+            rows[node_id] = self._index_row(node_id)
+        closed = self._closed_plans(b, [i for i, row in rows.items() if row[0] in ("Plan", "PlanStep")])
+        wanted = text_search.asked(query)
+        priors = self._asked_priors(list(rows))
+        for node_id, (kind, name, path) in rows.items():
+            factor = text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
+            factor *= priors.get(node_id, 1.0)
+            if node_id in scores:
+                scores[node_id] *= factor
+            if node_id in near:
+                near[node_id] *= factor
         ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
-        return [*hits, *(h for h in ranked if h not in hits)][:want]
+        if near:
+            by_meaning = sorted(near, key=lambda node_id: (-near[node_id], node_id))
+            ranked = semantic.fuse([(1.0, ranked), (semantic.SEMANTIC_WEIGHT, by_meaning)], semantic.RRF_K)
+        found = [*hits, *(h for h in ranked if h not in hits)]
+        if not deprecated:
+            gone = self._deprecated(found, b)
+            found = [h for h in found if h not in gone]
+        return found[:want]
+
+    # -- the ranking by meaning (evo_agents.kg.semantic) ------------------------------------------------------------
+
+    def vector_info(self) -> semantic.Info | None:
+        """What the graph's vectors are, None when it has none (a graph built without them, or by an older build)."""
+        if not hasattr(self, "_vectors"):
+            self._vectors = semantic.info(self.db)
+        return self._vectors
+
+    def _semantic_ranked(self, vector, kinds: list[str], hits: set[str]) -> dict[str, float]:
+        """Cosine of the SEMANTIC_POOL nodes nearest ``vector``, not of ``hits``, rows with an audience only within the
+        reader's; {} when the graph has no vectors or numpy is missing."""
+        found = self.vector_info()
+        if found is None:
+            return {}
+        try:
+            stat = self.path.stat()
+            key = (str(self.path.resolve()), stat.st_mtime_ns, stat.st_size, found.digest)
+            m = semantic.matrix(self.db, found, key)
+            reader = self.reader
+
+            def seen(aud: str) -> bool:
+                return bool(reader) and audience_below(stored_audience(aud), reader)
+
+            near = semantic.nearest(m, vector, semantic.SEMANTIC_POOL + len(hits), kinds, seen)
+        except (semantic.SemanticUnavailable, ValueError, OSError):
+            return {}
+        return {node_id: score for node_id, score in near if node_id not in hits and score > 0}
+
+    # -- what agents asked before they read a node (evo_agents.kg.asked) -------------------------------------------
+
+    def has_asked(self) -> bool:
+        if self._asked is None:
+            marks = ", ".join("?" for _ in ASKED_TABLES)
+            sql = f"SELECT count(*) FROM sqlite_master WHERE name IN ({marks})"
+            self._asked = self.db.execute(sql, ASKED_TABLES).fetchone()[0] == len(ASKED_TABLES)
+        return self._asked
+
+    def weight_of_asked(self) -> float:
+        """The weight of an asked match: ``asked_weight`` when set, else the one the build recorded in the file's
+        meta (the KG optimize loop tunes it a project), else ``search.ASKED_WEIGHT``."""
+        if self.asked_weight is not None:
+            return self.asked_weight
+        if self._asked_weight is None:
+            row = self.db.execute("SELECT value FROM meta WHERE key = 'asked_weight'").fetchone()
+            try:
+                self._asked_weight = (float(row[0]),) if row is not None else (None,)
+            except (TypeError, ValueError):
+                self._asked_weight = (None,)
+        recorded = self._asked_weight[0]
+        return text_search.ASKED_WEIGHT if recorded is None else recorded
+
+    def write_asked(self, rows, weight: float | None = None) -> str | None:
+        """Put ``rows`` (``evo_agents.kg.asked.Row``) in place of the asked index the file had: the index is derived
+        from the hub's labels at each build, never history. ``weight``, the project's tuned weight of an asked match,
+        is recorded in the file's meta (None: ``search.ASKED_WEIGHT``). The digest of what it holds now, the weight
+        with it when one is given; None when it holds nothing (no rows: the tables are gone, and the file searches as
+        before)."""
+        rows = list(rows)
+        for table in ASKED_TABLES:
+            self.db.execute(f"DROP TABLE IF EXISTS {table}")
+        self._asked = None
+        self._asked_weight = None
+        self.db.execute("DELETE FROM meta WHERE key = 'asked_weight'")
+        if weight is not None:
+            self.db.execute("INSERT INTO meta VALUES ('asked_weight', ?)", (repr(float(weight)),))
+        if not rows:
+            self.db.commit()
+            return None
+        self.db.executescript(ASKED_SCHEMA)
+        for n, row in enumerate(rows, start=1):
+            self.db.execute(
+                "INSERT INTO node_asked_rows VALUES (?, ?, ?, ?, ?, ?)",
+                (n, row.node_id, row.level, row.location, row.audience, row.prior),
+            )
+            self.db.execute("INSERT INTO node_asked(rowid, asked) VALUES (?, ?)", (n, row.asked))
+        self.db.commit()
+        self._asked = None
+        held = [[r.node_id, r.level, r.location, r.audience, r.prior, r.asked] for r in rows]
+        return sha256(canonical_json(held if weight is None else {"rows": held, "weight": float(weight)}))
+
+    def _asked_where(self) -> tuple[str, tuple]:
+        lvl, loc = self.asked_clearance
+        return "r.lvl <= ? AND r.loc <= ? AND (r.aud IS NULL OR aud_seen(r.aud))", (lvl, loc)
+
+    def _asked_scores(self, query: str) -> dict[str, float]:
+        """Per node, how well the best of its asked rows the reader may read matches ``query``'s words, from 0 to 1
+        (``evo_agents.kg.asked.match``); empty without the tables, a clearance, or ASKED_WEIGHT."""
+        if self.asked_clearance is None or not self.weight_of_asked() or not self.has_asked():
+            return {}
+        words = asked_words.terms(query)
+        fts = asked_words.fts_query(query)
+        if fts is None:
+            return {}
+        where, params = self._asked_where()
+        try:
+            found = self.db.execute(
+                "SELECT r.node_id, node_asked.asked FROM node_asked JOIN node_asked_rows r ON r.id ="
+                f" node_asked.rowid WHERE node_asked MATCH ? AND {where}",
+                (fts, *params),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        out: dict[str, float] = {}
+        for node_id, text in found:
+            out[node_id] = max(out.get(node_id, 0.0), asked_words.match(words, text))
+        return out
+
+    def _asked_priors(self, ids: list[str]) -> dict[str, float]:
+        """Per node of ``ids``, the highest prior of its asked rows the reader may read, at most PRIOR_MAX."""
+        if self.asked_clearance is None or not ids or not self.has_asked():
+            return {}
+        where, params = self._asked_where()
+        out: dict[str, float] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ", ".join("?" for _ in chunk)
+            for node_id, prior in self.db.execute(
+                f"SELECT r.node_id, max(r.prior) FROM node_asked_rows r WHERE r.node_id IN ({marks}) AND {where}"
+                " GROUP BY r.node_id",
+                (*chunk, *params),
+            ):
+                out[node_id] = min(max(prior, 1.0), asked_words.PRIOR_MAX)
+        return out
+
+    def asked_nodes(self, ids) -> set[str]:
+        """The nodes of ``ids`` with an asked row under any label: some agent read them after a search."""
+        ids = list(ids)
+        if not ids or not self.has_asked():
+            return set()
+        marks = ", ".join("?" for _ in ids)
+        sql = f"SELECT DISTINCT node_id FROM node_asked_rows WHERE node_id IN ({marks})"
+        return {row[0] for row in self.db.execute(sql, ids)}
+
+    def _index_row(self, node_id: str) -> tuple[str, str, str]:
+        """(kind, name, path) of a node's own row in the full-text index, as ``_ranked`` reads them."""
+        row = self.db.execute(
+            "SELECT kind, name, path FROM node_fts WHERE rowid = (SELECT fts_rowid FROM node_fts_rows"
+            " WHERE node_id = ? AND aud = 0)",
+            (node_id,),
+        ).fetchone()
+        return (row[0], str(row[1] or "").split("\n", 1)[0], row[2] or "") if row else ("", "", "")
+
+    def _closed_plans(self, b: int, ids: list[str]) -> set[str]:
+        """The ids of ``ids`` (plans and steps) whose plan is closed: it has steps and all of them are done."""
+        plans = {i.split("/step:", 1)[0] for i in ids}
+        closed = set()
+        for plan in self.nodes(sorted(plans), b).values():
+            props = plan["props"]
+            if plan["kind"] == "Plan" and isinstance(props.get("steps"), int) and props["steps"] > 0:
+                if props.get("done") == props["steps"]:
+                    closed.add(plan["id"])
+        return {i for i in ids if i.split("/step:", 1)[0] in closed}
+
+    def _deprecated(self, ids: list[str], b: int) -> set[str]:
+        """The ids of ``ids`` whose live node a decision deprecated (``props.deprecated``)."""
+        out: set[str] = set()
+        for i in range(0, len(ids), 500):
+            chunk = ids[i : i + 500]
+            marks = ", ".join("?" for _ in chunk)
+            out.update(
+                r[0]
+                for r in self.db.execute(
+                    f"SELECT node_id FROM nodes WHERE node_id IN ({marks}) AND tx_from <= ? AND (tx_to IS NULL OR"
+                    " tx_to > ?) AND json_extract(props, '$.deprecated') IS NOT NULL",
+                    (*chunk, b, b),
+                )
+            )
+        return out
 
     def exact(self, query: str, b: int, limit: int, kinds: list[str] = ()) -> list[str]:
         """Live nodes whose id, alias or name is ``query``, by id; each through an index, never a scan of nodes."""
@@ -1140,11 +1390,12 @@ class Store:
         ).fetchone()
         return row[0] if row else None
 
-    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float]]:
-        """(node id, score) of the nodes matching an FTS5 query, best first: the best ``RERANK_POOL`` by BM25, scored
-        again with the prior by kind (``evo_agents.kg.search``); [] for a query FTS5 cannot read. The rows of ``node_fts_aud`` are read only
-        for a reader with an audience, and only those within it, each with the score ``node_fts`` would give it
-        (``_as_public``)."""
+    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float, tuple[str, str, str]]]:
+        """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first: the best
+        ``RERANK_POOL`` by BM25, scored again with the prior by kind (``evo_agents.kg.search``); [] for a query FTS5
+        cannot read. The name is the node's as written, without the parts of its camelCase words. The rows of
+        ``node_fts_aud`` are read only for a reader with an audience, and only those within it, each with the score
+        ``node_fts`` would give it (``_as_public``)."""
         of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
         weights = ", ".join(str(w) for w in text_search.WEIGHTS)
         rows = []
@@ -1152,19 +1403,40 @@ class Store:
             seen = " AND aud_seen(aud)" if table == "node_fts_aud" else ""
             try:
                 found = self.db.execute(
-                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score, rowid FROM {table} WHERE {table} MATCH ?"
-                    f"{of_kind}{seen} ORDER BY score, node_id LIMIT ?",
+                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score, rowid, name, path FROM {table}"
+                    f" WHERE {table} MATCH ?{of_kind}{seen} ORDER BY score, node_id LIMIT ?",
                     (fts_query, *kinds, max(limit, text_search.RERANK_POOL)),
                 ).fetchall()
             except sqlite3.OperationalError:
                 return []
             rows += self._as_public(fts_query, found) if table == "node_fts_aud" else found
         prior = text_search.PRIOR
-        scored = sorted(((r[0], r[2] * prior.get(r[1], 1.0)) for r in rows), key=lambda r: (r[1], r[0]))
-        return scored[:limit]  # bm25 is negative: lower is better
+        own = self._own_rows({r[0] for r in rows})
+        weight = text_search.PASSAGE_WEIGHT
+        about = {r[0]: (r[1], str(r[4] or "").split("\n", 1)[0], r[5] or "") for r in rows}
+        scored = sorted(
+            ((r[0], r[2] * prior.get(r[1], 1.0) * (1.0 if own.get(r[0]) == r[3] else weight)) for r in rows),
+            key=lambda r: (r[1], r[0]),
+        )
+        best: dict[str, float] = {}
+        for node_id, score in scored:  # a node's own row and its passages: the best of them
+            best.setdefault(node_id, score)
+        return [(node_id, score, about[node_id]) for node_id, score in best.items()][:limit]  # lower is better
+
+    def _own_rows(self, ids: set[str]) -> dict[str, int]:
+        """The rowid of the own row of each node of ``ids`` in the full-text index, which its passages' rows are not."""
+        out: dict[str, int] = {}
+        ids = sorted(ids)
+        for i in range(0, len(ids), 500):
+            chunk = ids[i : i + 500]
+            marks = ", ".join("?" for _ in chunk)
+            out.update(
+                self.db.execute(f"SELECT node_id, fts_rowid FROM node_fts_rows WHERE node_id IN ({marks})", chunk)
+            )
+        return out
 
     def _as_public(self, fts_query: str, rows: list[tuple]) -> list[tuple]:
-        """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid) with the BM25 ``node_fts`` would give them. BM25
+        """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid, name, path) with the BM25 ``node_fts`` would give them. BM25
         adds up, over the phrases of the query, the phrase's IDF times a part that only the row's own counts and
         length make. ``node_fts_aud`` holds few rows (a project's chat messages), so the IDF it gives a word is a
         fraction of what ``node_fts`` gives it, and a message would rank below any symbol or section that matches no
@@ -1185,7 +1457,7 @@ class Store:
                 (phrase, *scores),
             ):
                 scores[rowid] += part * weight
-        return [(r[0], r[1], scores[r[3]], r[3]) for r in rows]
+        return [(r[0], r[1], scores[r[3]], *r[3:]) for r in rows]
 
     def _idf(self, table: str, phrase: str, totals: dict[str, int]) -> float:
         """The IDF FTS5's bm25 gives ``phrase`` in ``table``: ln((N - n + 0.5) / (n + 0.5)) for its N rows, n of which
@@ -1241,6 +1513,48 @@ class Store:
                 passage = " ".join(str(passages.get(rowid) or "").split())
                 if passage:
                     out[node_id]["snippet"] = passage
+        for node_id, (lines, snippet) in self._best_passages(list(out), whole, snippets).items():
+            out[node_id]["lines"] = lines
+            if snippet:
+                out[node_id]["snippet"] = snippet
+        return out
+
+    def _best_passages(self, ids: list[str], whole: list[str], snippets) -> dict[str, tuple[str, str | None]]:
+        """For each node of ``ids`` indexed as passages too (``search.PASSAGE_FROM``), (the lines of its passage that
+        matches the words ``whole`` best by BM25, the passage's snippet when the node is one of ``snippets``). A store
+        written before passages came holds none, and answers {}."""
+        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        query = " OR ".join(whole)
+        out: dict[str, tuple[str, str | None]] = {}
+        for node_id in ids:
+            keys = self.db.execute(
+                "SELECT node_id, fts_rowid, aud FROM node_fts_rows WHERE node_id > ? AND node_id < ?",
+                (node_id + text_search.PASSAGE_MARK, node_id + chr(ord(text_search.PASSAGE_MARK) + 1)),
+            ).fetchall()
+            by_table: dict[int, dict[int, str]] = defaultdict(dict)
+            for key, rowid, aud in keys:
+                if not aud or self.reader:
+                    by_table[aud][rowid] = key
+            best = None
+            for aud, rows in by_table.items():
+                table = FTS_TABLES[aud]
+                seen = " AND aud_seen(aud)" if aud else ""
+                snippet = (
+                    f"snippet({table}, 4, '', '', '…', {text_search.SNIPPET_TOKENS})" if node_id in snippets else "''"
+                )
+                try:
+                    found = self.db.execute(
+                        f"SELECT rowid, bm25({table}, {weights}) AS score, {snippet} FROM {table} WHERE {table} MATCH ?"
+                        f" AND rowid IN ({', '.join('?' for _ in rows)}){seen} ORDER BY score, rowid LIMIT 1",
+                        (query, *rows),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    continue
+                if found and (best is None or found[1] < best[1]):
+                    best = (rows[found[0]], found[1], found[2])
+            if best is not None:
+                lines = text_search.passage_lines(best[0])[1]
+                out[node_id] = (lines, " ".join(str(best[2] or "").split()) or None)
         return out
 
     def derivations(self, elem_id: str, b: int) -> list[dict]:

@@ -686,6 +686,7 @@ def build_review_prompt(
     plugins=(),
     memories: dict | None = None,
     assignments: list[dict] | None = None,
+    optimize: list[str] | None = None,
 ) -> str:
     """The prompt of the review run of ``project`` for ``night``: what the agent must and must not do, the lenses of
     the night with what each looks for, what the lens product may propose through the plugins the project enables
@@ -694,7 +695,8 @@ def build_review_prompt(
     nights found through the night's lenses and the proposals rejected lately (``earlier``), the lines of the
     project's playbook (``playbook``, ``evo_agents.hub.playbook.prompt_lines``), the agents' memories to consider
     promoting and the shared ones (``memories``, ``memory_lines``), what the weekly probe report assigns the run
-    (``assignments``, ``assignment_lines``), and the night's figures, shortened (``_figures_text``); within
+    (``assignments``, ``assignment_lines``), what the KG optimize run the review run belongs to measured and asks
+    (``optimize``, ``kg_optimize.prompt_lines``), and the night's figures, shortened (``_figures_text``); within
     MAX_PROMPT_BYTES."""
     worktrees = worktrees or {}
     when = f"the night of {night.isoformat()}" if night else "this night"
@@ -716,6 +718,7 @@ def build_review_prompt(
     lines += [f"- {name}: {LENSES.get(name, name)}" for name in lenses]
     if PRODUCT in lenses:
         lines += _product_lines(project, plugins)
+    lines += optimize or []
     goal_lines = [
         f"- {goal.get('id')}: {' '.join(str(goal.get('what') or '').split())}"
         for goal in goals or []

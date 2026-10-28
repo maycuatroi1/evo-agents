@@ -36,7 +36,7 @@ from evo_agents.kg.ids import normalize_time
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "7"
-STRUCTURE_VERSION = "10"
+STRUCTURE_VERSION = "12"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
@@ -358,10 +358,10 @@ def _commit(item_id: str, record: dict, unit: str) -> list[dict]:
     repo, sha = props.get("repo"), props.get("sha")
     if not isinstance(sha, str):
         return [{"t": "issue", "message": f"{item_id}: a commit without its sha", "unit": unit}]
-    facts: list[dict] = [{"t": "ident", "type": "commit", "key": sha, "repo": repo, "node": item_id}]
-    for path in props.get("paths") or []:
-        if isinstance(path, str):
-            facts.append(ref(item_id, "changes", {"type": "paths", "values": [path], "repo": repo}, [unit]))
+    paths = sorted({p for p in props.get("paths") or [] if isinstance(p, str)})
+    facts: list[dict] = [{"t": "ident", "type": "commit", "key": sha, "repo": repo, "node": item_id, "paths": paths}]
+    for path in paths:
+        facts.append(ref(item_id, "changes", {"type": "paths", "values": [path], "repo": repo}, [unit]))
     return facts
 
 
@@ -509,6 +509,7 @@ def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: d
                 "kind": sym["kind"],
                 "path": path,
                 "line": sym["line"],
+                **({"end_line": sym["end"]} if sym.get("end") else {}),
                 "file": item_id,
                 "key": symbol_key(record, source_id, path, sym["qualname"]),
             },
@@ -552,7 +553,8 @@ def _xref_facts(record: dict, source_id: str, xrefs: list[dict], by_qual: dict[s
         caller = by_qual.get(x["caller"])
         if caller:
             unit = unit_for(x.get("top"))
-            target = {"type": "call", "via": x["via"], "source": source_id, "repo": repo}
+            flags = {k: True for k in ("read", "dispatch") if x.get("ref" if k == "read" else k)}
+            target = {"type": "call", "via": x["via"], "source": source_id, "repo": repo, **flags}
             facts.append(ref(caller, "calls", target, [unit], status="resolved", where=[[unit, f"line {x['line']}"]]))
     return facts
 
@@ -572,6 +574,9 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
     by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
         facts += _symbol_facts(record, source_id, sym, unit_for(sym["top"]), by_qual)
+    for name, qual in (result.get("aliases") or {}).items():
+        if qual in by_qual:  # `print_json = _print_json`: an import of `print_json` reaches `_print_json`
+            facts.append({"t": "ident", "type": "alias", "key": f"{item_id}::{name}", "node": by_qual[qual]})
     for imp in result["imports"]:
         facts.append(
             ref(

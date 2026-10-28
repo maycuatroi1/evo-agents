@@ -39,6 +39,16 @@ def _no_hub_home_of_this_machine(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_exploration(monkeypatch):
+    """Tests never explore the ranking of kg_search (``evo_agents.kg.explore``): a hub agent's search would put a
+    random candidate at rank 4 or 5 one time in twenty, and a test of what it finds would fail by chance. A test of
+    exploration gives its explorer a rate of its own."""
+    from evo_agents.kg import explore
+
+    monkeypatch.setattr(explore, "RATE", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def _logging_as_found():
     """Put the root logger back as the test found it. ``configure_logging`` of a hub server command
     (``cmd_migrate`` in tests/hub/test_plugin_migrations.py) and ``evo_agents.worker.logs.configure`` of the worker's

@@ -225,9 +225,17 @@ def _eval_line(found: dict | None) -> str:
     if not isinstance(found, dict) or not found.get("methods"):
         return f"retrieval eval: {(found or {}).get('why') or 'no question'}"
     row = found["methods"].get("kg_search") or {}
+    asked = f"{found.get('questions')} questions"
+    if found.get("set"):
+        asked += (
+            f" ({found['set'].get('holdout')} holdout of set {found['set'].get('name')} v{found['set'].get('version')})"
+        )
+    skipped = found.get("skipped") or 0
+    dropped = f", {skipped} step(s) left out" if skipped else ""
     return (
-        f"retrieval eval of build {found.get('build_id')}: {found.get('questions')} plan-step questions, kg_search "
-        f"R@5 {row.get('recall@5')}, MRR {row.get('mrr')}, empty {row.get('empty')}"
+        f"retrieval eval of build {found.get('build_id')}: {asked}{dropped}, kg_search hit@5 {row.get('hit@5')}, "
+        f"R@5 {row.get('recall@5')}, MRR {row.get('mrr')}, empty {row.get('empty')}, "
+        f"tok/file {row.get('tokens_per_file')}"
     )
 
 
@@ -544,6 +552,14 @@ def register_kg(hsub) -> None:
     from evo_agents.hub import kg_decisions_cli
 
     kg_decisions_cli.register(ksub)
+
+    from evo_agents.hub import kg_eval_set_cli
+
+    kg_eval_set_cli.register(ksub)
+
+    from evo_agents.hub import kg_optimize_cli
+
+    kg_optimize_cli.register(ksub)
 
 
 # The hub backend of kg serve and kg query

@@ -23,6 +23,7 @@ import type { KgBuilds } from "@/lib/kg/types";
 
 import { BuildHistory, BuildQueue, LatestBuild, NoBuilds } from "./build-status";
 import { KgHeader } from "./kg-header";
+import { OptimizeButton } from "./optimize-button";
 import { StatusTiles } from "./status-tiles";
 import { useNow } from "./use-now";
 
@@ -171,7 +172,7 @@ export function KgBuildsPage({ project, errors }: { project: string; errors: KgB
     );
   }
   if (builds.status === "error" && builds.error.status === 403) return <ApiErrorState error={builds.error} />;
-  const header = <KgHeader project={project} current="builds" />;
+  const header = <KgHeader project={project} current="builds" actions={<OptimizeButton project={project} />} />;
   if (builds.status === "error") {
     return (
       <>
