@@ -23,6 +23,7 @@ branch_labels = None
 depends_on = None
 
 TABLE = "kg_semantic"
+MODES = ("off", "index", "on")  # a copy of evo_agents.hub.tables_kg.SEMANTIC_MODES, never an import
 
 
 def upgrade() -> None:
@@ -36,7 +37,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{TABLE}_project_id_fkey"),
         sa.ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{TABLE}_updated_by_fkey"),
         sa.PrimaryKeyConstraint("project_id", name=f"{TABLE}_pkey"),
-        sa.CheckConstraint("mode IN ('off', 'index', 'on')", name=f"{TABLE}_mode_check"),
+        sa.CheckConstraint(sa.column("mode").in_(MODES), name=f"{TABLE}_mode_check"),
         sa.CheckConstraint("char_length(model) BETWEEN 1 AND 200", name=f"{TABLE}_model_check"),
     )
 

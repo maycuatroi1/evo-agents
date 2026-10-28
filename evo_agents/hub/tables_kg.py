@@ -37,9 +37,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    and_,
     column,
     false,
     func,
+    or_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
@@ -293,7 +295,10 @@ def query_labels(metadata: MetaData) -> Table:
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         CheckConstraint(column("kind").in_(("session", "run")), name=f"{name}_kind_check"),
         CheckConstraint(
-            "(kind = 'session' AND session_id IS NOT NULL AND run_id IS NULL) OR (kind = 'run' AND run_id IS NOT NULL)",
+            or_(
+                and_(column("kind") == "session", column("session_id").is_not(None), column("run_id").is_(None)),
+                and_(column("kind") == "run", column("run_id").is_not(None)),
+            ),
             name=f"{name}_owner_check",
         ),
         Index(f"{name}_session_idx", "project_id", "session_id"),
@@ -324,6 +329,9 @@ def eval_sets(metadata: MetaData) -> Table:
     )
 
 
+SEMANTIC_MODES = ("off", "index", "on")  # whether a project's graph is searched by meaning too
+
+
 def semantic_settings(metadata: MetaData) -> Table:
     """kg_semantic (0181), added to ``metadata``: whether a project's graph is searched by meaning too
     (``evo_agents.kg.semantic``): ``off``; ``index``, its builds write the vectors but kg_search ranks by words; ``on``,
@@ -340,7 +348,7 @@ def semantic_settings(metadata: MetaData) -> Table:
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
         PrimaryKeyConstraint("project_id", name=f"{name}_pkey"),
-        CheckConstraint("mode IN ('off', 'index', 'on')", name=f"{name}_mode_check"),
+        CheckConstraint(column("mode").in_(SEMANTIC_MODES), name=f"{name}_mode_check"),
         CheckConstraint("char_length(model) BETWEEN 1 AND 200", name=f"{name}_model_check"),
     )
 

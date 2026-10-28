@@ -16,7 +16,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import column, create_engine, func, insert, select, table
 
 from evo_agents.hub import facets, kg_asked, kg_labels, tables
 from evo_agents.hub.server.curator import _owner_access
@@ -32,6 +32,19 @@ from tests.hub.test_facet_job import SESSION, analyzed, later, session_facet_of,
 from tests.hub.test_runs import OWNER, PROJECT
 from tests.hub.test_session_transcripts import hub, parts_of, send, statuses, transcript  # noqa: F401 (hub: a fixture)
 from tests.kg.projects import make_project
+
+ASKED_ROWS = table("node_asked_rows", column("node_id"), column("lvl"))  # of the graph's SQLite file
+
+
+def asked_rows(graph, *columns) -> list[tuple]:
+    """The rows of node_asked_rows in ``graph``, ordered by ``columns``."""
+    engine = create_engine(f"sqlite:///{graph}")
+    try:
+        with engine.connect() as conn:
+            return [tuple(row) for row in conn.execute(select(*columns).order_by(*columns))]
+    finally:
+        engine.dispose()
+
 
 KG = "mcp__plugin_evo-hub_evo-hub__kg_search"
 FOUND = """2 result(s) for 'claim a job' in project evo-agents (build 3)
@@ -217,7 +230,7 @@ def test_a_build_learns_the_searches_under_their_labels_and_keeps_the_chance_an_
     graph = demo.root / "graph.sqlite"
     assert kg_asked.write(graph, learned) is not None
     store = Store.open_file(graph)
-    rows = store.db.execute("SELECT node_id, lvl FROM node_asked_rows ORDER BY node_id, lvl").fetchall()
+    rows = asked_rows(graph, ASKED_ROWS.c.node_id, ASKED_ROWS.c.lvl)
     assert rows == [
         ("app:file:app/server.py", policy.levels.index("customer")),  # opened after the grep
         ("symbol:app:app/server.py::Server.handle", policy.levels.index("internal")),  # the explored result read
@@ -230,5 +243,5 @@ def test_a_build_learns_the_searches_under_their_labels_and_keeps_the_chance_an_
     assert kg_asked.write(graph, kg_asked.Learned([], [])) is None
     assert kg_asked.write(graph, too_alike) is not None
     store = Store.open_file(graph)
-    assert [r[0] for r in store.db.execute("SELECT node_id FROM node_asked_rows")] == ["app:file:app/server.py"]
+    assert [r[0] for r in asked_rows(graph, ASKED_ROWS.c.node_id)] == ["app:file:app/server.py"]
     store.close()
