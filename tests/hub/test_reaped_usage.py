@@ -6,6 +6,8 @@ import importlib
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the usage of reaped runs needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import runtime_metrics
 from evo_agents.hub.server.reaped_usage import usage_of_events
 
