@@ -9868,7 +9868,8 @@
           "repeatable": false,
           "choices": [
             "dismiss",
-            "undismiss"
+            "undismiss",
+            "apply"
           ]
         },
         {
@@ -9936,6 +9937,40 @@
         },
         {
           "flags": [
+            "--max"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 25
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--origin"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "kg-optimize"
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -9972,6 +10007,21 @@
               "was_by"
             ],
             "schema": "Undismissed"
+          },
+          "apply": {
+            "kind": "object",
+            "keys": [
+              "graph",
+              "rev",
+              "dry_run",
+              "max_decisions",
+              "decided",
+              "skipped",
+              "items",
+              "report",
+              "left"
+            ],
+            "schema": "ApplyResult"
           }
         }
       }
@@ -32231,6 +32281,110 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/Undismissed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/review/apply": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Apply Review",
+          "description": "Apply the fixes of the open review items you can see as decisions, at most max_decisions, naming your loop.",
+          "operationId": "apply_review_v1_kg__project__review_apply_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApplyResult"
                   }
                 }
               }
@@ -94580,6 +94734,236 @@
           ],
           "title": "ApnsDeviceIn"
         },
+        "AppliedDecision": {
+          "properties": {
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the decision's number; null on a dry run"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "src": {
+              "type": "string",
+              "title": "Src"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "kind",
+            "src",
+            "rel",
+            "dst",
+            "reason"
+          ],
+          "title": "AppliedDecision"
+        },
+        "AppliedItem": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint"
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "whole": {
+              "type": "boolean",
+              "title": "Whole",
+              "description": "true when every decision of the item's fix is taken or was said already"
+            },
+            "decisions": {
+              "items": {
+                "$ref": "#/components/schemas/AppliedDecision"
+              },
+              "type": "array",
+              "title": "Decisions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "rule",
+            "whole",
+            "decisions"
+          ],
+          "title": "AppliedItem"
+        },
+        "ApplyBody": {
+          "properties": {
+            "origin": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$",
+              "title": "Origin",
+              "description": "the loop that applies the fixes",
+              "default": "kg-optimize"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the loop, a run of this project"
+            },
+            "max_decisions": {
+              "type": "integer",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "title": "Max Decisions",
+              "description": "the cap of this call",
+              "default": 25
+            },
+            "rules": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "dangling_mention",
+                      "unmentioned_document",
+                      "cluster_without_knowledge",
+                      "possible_duplicate",
+                      "ambiguous_match",
+                      "bulk_noise"
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rules",
+              "description": "only the items of these rules; every rule when null"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "description": "say what would be decided and decide nothing",
+              "default": false
+            }
+          },
+          "type": "object",
+          "title": "ApplyBody"
+        },
+        "ApplyResult": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "rev": {
+              "type": "integer",
+              "title": "Rev",
+              "description": "the project's decision revision after the call"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "max_decisions": {
+              "type": "integer",
+              "title": "Max Decisions"
+            },
+            "decided": {
+              "type": "integer",
+              "title": "Decided",
+              "description": "the decisions taken (or, on a dry run, that would be)"
+            },
+            "skipped": {
+              "type": "integer",
+              "title": "Skipped",
+              "description": "the decisions of fixes a proposed or active decision already says"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/AppliedItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "the items whose fix took a decision, in the queue's order"
+            },
+            "report": {
+              "items": {
+                "$ref": "#/components/schemas/ReportItem"
+              },
+              "type": "array",
+              "title": "Report",
+              "description": "the open items no decision fixes, for a person to read"
+            },
+            "left": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Left",
+              "description": "per rule, the open items with a fix not wholly taken"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "rev",
+            "dry_run",
+            "max_decisions",
+            "decided",
+            "skipped",
+            "items",
+            "report",
+            "left"
+          ],
+          "title": "ApplyResult"
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -114624,6 +115008,30 @@
               ],
               "title": "Build Id",
               "description": "the build the graph was at; null once that build is gone"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "the loop that took the step, as kg-optimize; null for one taken by hand"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "that loop's run, when it named one; null once the run is gone"
             }
           },
           "type": "object",
@@ -140008,6 +140416,64 @@
             "path"
           ],
           "title": "RepoPath"
+        },
+        "ReportItem": {
+          "properties": {
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint"
+            },
+            "rule": {
+              "type": "string",
+              "enum": [
+                "dangling_mention",
+                "unmentioned_document",
+                "cluster_without_knowledge",
+                "possible_duplicate",
+                "ambiguous_match",
+                "bulk_noise"
+              ],
+              "title": "Rule"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster"
+            },
+            "cluster_label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster Label"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/ReviewNode"
+              },
+              "type": "array",
+              "title": "Nodes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "rule",
+            "cluster",
+            "cluster_label",
+            "nodes"
+          ],
+          "title": "ReportItem"
         },
         "Rerun": {
           "properties": {
