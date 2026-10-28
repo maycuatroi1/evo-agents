@@ -112,7 +112,7 @@ class HubInbox:
 def _home_text(directory: Path) -> str:
     home = Path.home()
     try:
-        return "~/" + str(directory.expanduser().relative_to(home))
+        return "~/" + directory.expanduser().relative_to(home).as_posix()  # one separator on every OS
     except ValueError:
         return str(directory)
 

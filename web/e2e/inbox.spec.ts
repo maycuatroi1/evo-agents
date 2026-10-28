@@ -42,7 +42,7 @@ function main(page: Page) {
   return page.locator("#main");
 }
 
-test("the bell counts unread notifications, and the Inbox lists open decisions first, then notices", async ({ page, member }) => {
+test("the bell counts unread notifications, and the Inbox lists open decisions first, then notices, then reports", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedPlanRunPlan(me, project);
@@ -55,6 +55,8 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
     branch: "main",
     commits: [COMMIT, SHA_2],
   });
+  // The push only reports: the hub stores it read, so the bell counts the decision and the failed run's notice.
+  await sendNotice(live, run.id, { kind: "run_failed", title: `Run #${run.id} failed at step 2`, body: "pnpm test failed: 2 of 48 tests." });
   expect(await notificationCount(me)).toEqual({ unread: 2, open_decisions: 1, open_proposals: 0 });
 
   await open(page, "/");
@@ -82,22 +84,28 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
   await expect(waiting.nth(1).getByTestId("notification-open")).toHaveText(`Run #${run.id} asks: ${QUESTION}`);
   await expect(waiting.nth(1).getByTestId("notification-open")).toHaveAttribute("href", `/inbox?decision=${decision}`);
 
-  // The notice of the push shows its title and the first line of its body; opened, it names its repo, branch and
-  // commits.
+  // The unread notice of the failed run shows its title and the first line of its body.
   const notice = main(page).getByTestId("inbox-rest").getByTestId("notification");
   await expect(notice).toHaveCount(1);
-  await expect(notice.getByTestId("notice-kind")).toHaveText("Pushed to a default branch");
-  await expect(notice.getByTestId("notification-snippet")).toHaveText("The catalog of use cases now lists plan runs.");
-  await expect(notice.getByTestId("notice-facts")).toHaveCount(0);
-  await notice.getByTestId("notification-toggle").click();
-  await expect(notice.getByTestId("notification-toggle")).toHaveAttribute("aria-expanded", "true");
-  await expect(notice.getByTestId("notice-repo")).toHaveText(HARNESS_REPO);
-  await expect(notice.getByTestId("notice-branch")).toHaveText("main");
-  await expect(notice.getByTestId("notice-commits").locator("[data-sha]")).toHaveText([
+  await expect(notice).toHaveAttribute("data-unread", "true");
+  await expect(notice.getByTestId("notice-kind")).toHaveText("Run failed");
+  await expect(notice.getByTestId("notification-snippet")).toHaveText("pnpm test failed: 2 of 48 tests.");
+
+  // The push comes last, among the reports, read; opened, it names its repo, branch and commits.
+  const report = main(page).getByTestId("inbox-reports").getByTestId("notification");
+  await expect(report).toHaveCount(1);
+  await expect(report).toHaveAttribute("data-unread", "false");
+  await expect(report.getByTestId("notice-kind")).toHaveText("Pushed to a default branch");
+  await expect(report.getByTestId("notice-facts")).toHaveCount(0);
+  await report.getByTestId("notification-toggle").click();
+  await expect(report.getByTestId("notification-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(report.getByTestId("notice-repo")).toHaveText(HARNESS_REPO);
+  await expect(report.getByTestId("notice-branch")).toHaveText("main");
+  await expect(report.getByTestId("notice-commits").locator("[data-sha]")).toHaveText([
     `${COMMIT.slice(0, 7)}commit ${COMMIT}`,
     `${SHA_2.slice(0, 7)}commit ${SHA_2}`,
   ]);
-  await expect(notice.getByTestId("notification-run-link")).toHaveAttribute("href", runPath(project, run.id));
+  await expect(report.getByTestId("notification-run-link")).toHaveAttribute("href", runPath(project, run.id));
 
   // J and K move focus from row to row: the cards of what waits, then the notice's row.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -112,8 +120,8 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
   // Filters live in the URL.
   await main(page).getByTestId("inbox-facet-kind").getByRole("button", { name: "Notices" }).click();
   await expect(page).toHaveURL(/\?kind=notice$/);
-  await expect(main(page).getByTestId("notification")).toHaveCount(1);
-  await expect(main(page).getByTestId("inbox-summary")).toHaveText("1 notification matches.");
+  await expect(main(page).getByTestId("notification")).toHaveCount(2);
+  await expect(main(page).getByTestId("inbox-summary")).toHaveText("2 notifications match.");
 
   // Marking the notice read lowers the bell at once.
   await notice.getByTestId("notification-mark-read").click();
@@ -123,7 +131,7 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
   await expect(page).toHaveURL(/\?kind=notice&unread=1$/);
   await expect(main(page).getByTestId("state-empty")).toContainText("No notification matches");
   await main(page).getByTestId("inbox-clear-filters").click();
-  await expect(main(page).getByTestId("notification")).toHaveCount(3);
+  await expect(main(page).getByTestId("notification")).toHaveCount(4);
 
   // Mark all as read leaves the decisions open: they still wait for an answer.
   await main(page).getByTestId("inbox-mark-all").click();
@@ -183,7 +191,7 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   await expect(main(page).getByTestId("inbox-list")).toBeVisible();
   await expect(panel.getByRole("heading", { level: 2, name: QUESTION })).toBeVisible();
   await expect(panel.getByTestId("decision-state")).toHaveText("Waiting for you");
-  await expect(panel.getByTestId("decision-category")).toHaveText("Deploy");
+  await expect(panel.getByTestId("decision-category")).toHaveText("Scope");
   await expect(panel.getByTestId("decision-context-markdown").locator("strong")).toHaveText("staging");
   await expect(panel.getByTestId("decision-run-link")).toHaveAttribute("href", runPath(project, run.id));
   await expect(panel.getByTestId("decision-step-link")).toHaveText("step 3");
@@ -221,7 +229,7 @@ test("the owner answers a decision from the Inbox, and an answered decision take
   // The answer waits in the run's inbox for the worker, naming the decision and the option.
   const [message] = await workerInbox(live, run.id);
   expect(message.sent_by).toBe(me.login);
-  expect(message.text).toContain(`Answer to decision #${decision} (deploy): ${QUESTION}`);
+  expect(message.text).toContain(`Answer to decision #${decision} (scope): ${QUESTION}`);
   expect(message.text).toContain("Chosen option: wait, Wait until tomorrow.");
   expect(message.text).toContain("Staging is frozen until the backup finishes.");
   expect((await decisionOf(me, project, decision)).state).toBe("answered");
@@ -444,7 +452,7 @@ test.describe("in Vietnamese", () => {
     const panel = page.getByTestId("decision-sheet");
     await expect(panel.getByRole("heading", { level: 2, name: QUESTION })).toBeFocused();
     await expect(panel.getByTestId("decision-state")).toHaveText("Đang chờ bạn");
-    await expect(panel.getByTestId("decision-category")).toHaveText("Triển khai");
+    await expect(panel.getByTestId("decision-category")).toHaveText("Phạm vi");
     await expect(panel.getByTestId("decision-run-link")).toHaveText(`Run #${run.id}`);
     await expect(panel.getByTestId("decision-recommended")).toHaveText("Agent đề xuất");
     await expect(panel.getByTestId("decision-send")).toHaveAccessibleName("Gửi câu trả lời");

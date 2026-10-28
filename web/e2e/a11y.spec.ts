@@ -1611,7 +1611,8 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("inbox-waiting").getByTestId("notification")).toHaveCount(1);
       await page.locator("#main").getByTestId("notification-toggle").click();
       await expect(page.locator("#main").getByTestId("notice-commits")).toBeVisible();
-      await expect(page.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "2");
+      // The decision alone is unread: a push only reports, read from the start under the Inbox's reports.
+      await expect(page.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "1");
       await page.locator("#main").getByTestId("notification-body-toggle").click();
       await expect(page.locator("#main").getByTestId("notification-body-toggle")).toHaveAttribute("aria-expanded", "true");
     },
