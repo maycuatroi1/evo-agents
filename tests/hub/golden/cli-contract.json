@@ -8611,6 +8611,99 @@
       "options": [],
       "json": null
     },
+    "hub inbox": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--show"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--hub"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--stale"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 30
+        },
+        {
+          "flags": [
+            "--since"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 72
+        },
+        {
+          "flags": [
+            "--waits"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--events"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "hubs"
+        ],
+        "with": {
+          "--show": {
+            "kind": "object",
+            "keys": [
+              "hub",
+              "project",
+              "decision",
+              "run",
+              "leases",
+              "events",
+              "diagnosis",
+              "next"
+            ]
+          }
+        }
+      }
+    },
     "hub intake list": {
       "positionals": [],
       "options": [

@@ -1374,6 +1374,28 @@ unread and how many decisions and proposals wait for an answer (`GET /v1/me/noti
 answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications
 --read` its count of read and unread.
 
+What waits on you across every hub this machine is signed in to, and every project you read, comes in one call:
+
+```sh
+evo-agents hub inbox                                          # open decisions, runs to approve, failed, lost or stale
+                                                              # runs, notices that ask for an act; each with its command
+evo-agents hub inbox --hub north --project lumen --json      # one hub, one project, for an agent
+evo-agents hub inbox --show https://hub.example/inbox?decision=582   # or 582, d582, r1092, #1092, a run's link
+```
+
+`hub inbox` (`evo_agents.hub.inbox`) reads the login of `~/.evo/hub` and each `~/.evo/hub-*` (EVO_HUB_HOME's
+directories), or EVO_HUB_TOKEN with EVO_HUB_URL alone inside a run. Per hub it lists the open decisions of every
+project you read (a credential request says to answer with `--secret`), the runs in review, waiting or parked on no
+decision, failed or lost in the last `--since` hours (72) and not run again by a later run of their plan, step or chain,
+and running with no event for `--stale` minutes (30); failed runs of one project, kind and person with the same cause
+fold into one line. Then the unread notices that ask for an act (a failed run, a mention, a paused breaker, a baseline
+or proposal to review, a pm escalation) and the Curator's proposals that wait; notices that only report (merges,
+pushes, files, briefs) are counted. A decision of category wait is the hub's to answer and listed with `--waits` only.
+Yours come first, then those asked of others. Each item ends with the command that acts on it, with
+`EVO_HUB_HOME=<dir>` in front for a hub other than the one a bare `evo-agents hub` uses. `hub inbox --show REF` finds a
+decision or run without its project, on a link's hub when given a link, and prints the decision, its run, the leases
+the run holds (to its owner), its last events, a diagnosis and the commands that act on it. Nothing writes to the hub.
+
 ## Local runs
 
 A member's Claude Code session on their own machine shows in the hub as a run of kind `local`, with its machine, cwd,
