@@ -557,6 +557,15 @@ def test_the_eval_asks_the_holdout_part_of_the_set_of_its_project_and_scores_eac
     assert scored["methods"]["kg_search"]["n"] == len(holdout) + 1
     assert kg_health_eval.hit_percent(scored) == 100.0
     assert kg_health_eval.tokens_per_file(scored) == scored["methods"]["kg_search"]["tokens_per_file"] > 0
+    assert scored["holdout"] is None  # no id named as the holdout: the signals read all the questions
+
+    held = kg_health_eval.score(
+        [*holdout, step], [], 1, OneHit(), plan_steps=1, question_set=about, holdout=[q.id for q in holdout]
+    )
+    assert held["holdout"]["kg_search"]["n"] == len(holdout) and held["holdout"]["kg_search"]["recall@5"] == 1.0
+    assert held["methods"]["kg_search"]["recall@5"] < 1.0  # the plan step's half answer counts over all only
+    assert kg_health_eval.tokens_per_file(held) == held["holdout"]["kg_search"]["tokens_per_file"]
+    assert kg_health_eval.tokens_per_file(held) < held["methods"]["kg_search"]["tokens_per_file"]
 
 
 class FileBlobs:
@@ -590,7 +599,8 @@ def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_
     access = SimpleNamespace(
         max_level="internal",
         rules=SimpleNamespace(
-            policy=demo.project.policy, ceiling=lambda max_level, sink: Label(level, 0, "U", frozenset())
+            policy=demo.project.policy,
+            ceiling=lambda max_level, sink, audience=frozenset(): Label(level, 0, "U", audience),
         ),
     )
     head = git(demo.app, "rev-parse", "HEAD").strip()
@@ -607,6 +617,12 @@ def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_
     monkeypatch.setattr(kg_health_eval, "score", no_score)
     again = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, first)
     assert again == first and blobs.fetched == 1  # the cached artifact, and the score it had
+    assert first["audience"] == kg_health.audience_digest(frozenset())
+
+    monkeypatch.undo()
+    heard = frozenset({"chat:7"})  # the owner's audience: a chat they are cleared for
+    read = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, first, None, heard)
+    assert read["audience"] == kg_health.audience_digest(heard) != first["audience"]  # asked again with it
 
 
 @needs_engine

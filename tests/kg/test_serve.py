@@ -637,6 +637,9 @@ def test_search_lines_say_once_what_every_result_shares_and_few_results_when_non
     assert text[0] == "10 result(s) in project demo (build 1), status parsed"  # the status every result shares
     assert text[2] == "[plan:demo/step:2] PlanStep 'Server' status=pending"  # its number is in its id
     assert "[app:app/server.py::Server] Symbol lines 4-6 words=1/3" in text  # no status, no label: both shared
+    shown = [line.removeprefix("  mentions ") for line in text[2:] if line.lstrip().startswith(("[", "mentions ["))]
+    assert len(shown) == 10 and all(" " in line for line in shown[: serve.FULL_LINES])
+    assert all(re.fullmatch(r"\[[^\]]+\]", line) for line in shown[serve.FULL_LINES :])  # past the 5th: the id alone
     weak = session.call("kg_search", {"query": "server search zebra", "limit": 10})
     lines = weak["content"][0]["text"].splitlines()
     assert lines[2] == "no result holds all 3 words of the query"
