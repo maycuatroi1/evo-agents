@@ -83,3 +83,73 @@ def split_markdown(text: str) -> list[dict]:
             current["lines"].append(line)
     close(current, len(lines))
     return sections
+
+
+def split_passages(text: str, start: int, max_chars: int) -> list[dict]:
+    """``text``, whose first line is line ``start`` of its file, cut into passages of about ``max_chars`` at most:
+    ``{"start", "end", "text"}``, line numbers of the file, in order, every line in one passage. A cut falls between
+    blocks, a block being a paragraph (lines up to a blank line) or a fenced code block whole; a block longer than
+    ``max_chars`` is cut between its lines, and a line longer than that is a passage of its own."""
+    lines = text.splitlines(keepends=True)
+    blocks: list[list[int]] = []  # line indexes of each block
+    current: list[int] = []
+    fence: str | None = None
+    for i, line in enumerate(lines):
+        fence_match = _FENCE.match(line)
+        opens = fence is None and fence_match is not None
+        if opens and current:
+            blocks.append(current)
+            current = []
+        current.append(i)
+        if fence_match:
+            marker = fence_match.group(1)
+            if fence is None:
+                fence = marker[0] * 3
+            elif marker.startswith(fence):
+                fence = None
+                blocks.append(current)
+                current = []
+        elif fence is None and not line.strip():
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+
+    pieces: list[list[int]] = []  # blocks no longer than max_chars
+    for block in blocks:
+        size = sum(len(lines[i]) for i in block)
+        if size <= max_chars:
+            pieces.append(block)
+            continue
+        part: list[int] = []
+        held = 0
+        for i in block:
+            if part and held + len(lines[i]) > max_chars:
+                pieces.append(part)
+                part, held = [], 0
+            part.append(i)
+            held += len(lines[i])
+        if part:
+            pieces.append(part)
+
+    out: list[dict] = []
+    group: list[int] = []
+    held = 0
+    for piece in pieces:
+        size = sum(len(lines[i]) for i in piece)
+        if group and held + size > max_chars:
+            out.append(_passage(lines, group, start))
+            group, held = [], 0
+        group += piece
+        held += size
+    if group:
+        out.append(_passage(lines, group, start))
+    return [p for p in out if p["text"].strip()]
+
+
+def _passage(lines: list[str], indexes: list[int], start: int) -> dict:
+    return {
+        "start": start + indexes[0],
+        "end": start + indexes[-1],
+        "text": "".join(lines[i] for i in indexes),
+    }

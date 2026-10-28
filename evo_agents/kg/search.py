@@ -14,6 +14,15 @@ above a definition (``kg.build.search_texts``). A body longer than ``MAX_TEXT_CH
 counts the cut texts in its coverage (``search.cut``), so nothing is lost without a trace. URIs are not indexed: every
 one of them shares its host and repo words.
 
+A section, or the text of a file read whole, longer than PASSAGE_FROM characters is also indexed as passages of about
+PASSAGE_CHARS (``kg.text.split_passages``: cut between paragraphs and code blocks), each a row of its own under the
+node's id, named like the node, with the document's name and the headings above it before its text (contextual BM25
+without a model): a question about one paragraph of a long page finds it without the rest of the page weighing on its
+score. Its score is weighed by PASSAGE_WEIGHT, and a node scores its best row. A passage is no node: a hit on it is a
+hit on its node, and ``Store.matched`` gives the lines of the passage that matched best, which ``kg_search`` prints.
+The row is keyed ``passage_key`` in ``node_fts_rows``; a reader of before, which knows no passage, reads its hit as one
+on the node.
+
 A query is read three ways, each read while the ones before found fewer nodes than asked: every word as a whole word
 (AND), every word as a prefix (AND), then any word (OR). A node scores BM25 times a light prior by kind (PRIOR) times
 the weight of the way (STAGE_WEIGHTS), at its best way, and the nodes of all ways are ranked together: a node holding
@@ -55,6 +64,12 @@ PRIOR = {
     "ChatThread": 0.9,  # named by its chat's title, which every thread of the chat shares: after a message as good
 }
 RERANK_POOL = 300
+PASSAGE_FROM = 4_000  # a body longer than this is also indexed as passages
+PASSAGE_CHARS = 1_500  # the most characters of a passage, but for a single line longer than that
+# A passage's score is weighed down against its node's own row: at a like BM25, a short passage beats a long page
+# that holds the words as often, which on the tune part pushed answers out of the first five at 0.9 and not at 0.75.
+PASSAGE_WEIGHT = 0.75
+PASSAGE_MARK = "\x1f"  # between a node's id and its passage's lines in the key of the passage's row
 STAGE_WEIGHTS = (2.0, 1.5, 1.0)  # a match of all words whole, of all words as prefixes, of any word
 # A document is named by its path, which seldom says what it holds: kg_search shows the passage of its body where the
 # query's words gather, about SNIPPET_TOKENS words, so the reader can tell whether to open it. A section is named by
@@ -111,6 +126,17 @@ def index_text(text: str) -> str:
     folded = fold(text)
     extra = dict.fromkeys(part for word in _WORD.findall(folded) for part in camel_parts(word))
     return f"{folded}\n{' '.join(extra)}" if extra else folded
+
+
+def passage_key(node_id: str, start: int, end: int) -> str:
+    """The key of a passage's row in ``node_fts_rows``: the node's id, PASSAGE_MARK, its lines (``lines 10-42``)."""
+    return f"{node_id}{PASSAGE_MARK}lines {start}-{end}"
+
+
+def passage_lines(key: str) -> tuple[str, str | None]:
+    """(node id, the lines of the passage) of a key of ``node_fts_rows``; None for the lines of a node's own row."""
+    node_id, mark, lines = key.partition(PASSAGE_MARK)
+    return node_id, (lines if mark else None)
 
 
 def body_text(parts: Iterable[str]) -> tuple[str, bool]:

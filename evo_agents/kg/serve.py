@@ -208,18 +208,25 @@ class Session:
 
     # -- tools ----------------------------------------------------------------------------------
 
-    def _line(self, n: dict, shared: str | None = None) -> str:
+    def _line(self, n: dict, shared: str | None = None, passage: str | None = None) -> str:
         """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
-        it, the line of a symbol, the status and number of a plan step, the chat and thread of a chat message
-        (KIND_PROPS). Never its URI: kg_node gives that."""
+        it, the status and number of a plan step, the chat and thread of a chat message (KIND_PROPS), and where in
+        its file it is (``lines``): the lines of a section, the first and last line of a symbol, or ``passage``, the
+        lines a search matched best (``Store.matched``), with the node's own after ``of``. Never its URI: kg_node
+        gives that."""
         ref, props = readable(n["id"]), n["props"]
         head = f"[{ref}] {n['kind']}" + ("" if named_by(ref, n["name"]) else f" {n['name']!r}")
         extra = [
             f"{key}={props[key]}"
-            for key in ("path", "status", "number", "line", *KIND_PROPS.get(n["kind"], ()))
+            for key in ("path", "status", "number", *KIND_PROPS.get(n["kind"], ()))
             if props.get(key) not in (None, "") and not (key == "path" and str(props[key]) in ref)
         ]
+        where = lines(props)
+        if passage:
+            where = f"{passage} of {where.split(' ', 1)[1]}" if where.startswith("lines ") else passage
+        if where:
+            extra.append(where)
         label = self.describe(n["label"])
         state = f"({n['status']})" if label == shared else f"({n['status']}, {label})"
         return f"{head} {state}" + (f" {' '.join(extra)}" if extra else "")
@@ -273,8 +280,8 @@ class Session:
         if words > 1 and matched and all(m["words"] < words for m in matched.values()):
             lines.append(f"no result holds all {words} words of the query")
         for n in results:
-            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared)
             m = matched.get(n["id"])
+            line = ("  mentions " if n["id"] in via else "") + self._line(n, shared, (m or {}).get("lines"))
             lines.append(line + (f" words={m['words']}/{words}" if m and words > 1 else ""))
             if m and m.get("snippet"):
                 lines.append(f"    > {m['snippet']}")
@@ -937,6 +944,20 @@ class Session:
 def _edge_json(t: dict) -> dict:
     e = t["edge"]
     return {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]}
+
+
+def lines(props: dict) -> str:
+    """Where a node is in its file, as its text shows it: ``lines A-B`` of a section (its ``span``) or of a symbol (its
+    ``line`` and ``end_line``), ``line A`` of a symbol read before symbols had an end; "" for any other node."""
+    span = props.get("span")
+    if isinstance(span, str) and _SPAN.fullmatch(span):
+        return span
+    first, last = props.get("line"), props.get("end_line")
+    if not isinstance(first, int) or isinstance(first, bool) or first < 1:
+        return ""
+    if isinstance(last, int) and not isinstance(last, bool) and last > first:
+        return f"lines {first}-{last}"
+    return f"line {first}"
 
 
 def _error(message: str) -> dict:

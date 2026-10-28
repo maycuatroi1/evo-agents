@@ -16,6 +16,7 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
 from evo_agents.kg.sync import sync_project
+from evo_agents.kg.text import split_passages
 from tests.kg.projects import commit, git, make_project, write
 
 APP_SOURCE = "  - id: app\n    connector: git\n    repo: app\n"
@@ -316,6 +317,54 @@ def test_matched_counts_the_query_words_a_node_holds_and_quotes_the_nodes_asked(
     assert store.matched([doc], "") == {} and store.matched([], "zephyr") == {}
 
 
+LONG = "app:file:docs/long.md#long"
+
+
+def test_split_passages_cuts_at_paragraphs_keeps_a_fence_whole_and_covers_every_line():
+    text = "one\ntwo\n\nthree\n\n```\ncode a\n\ncode b\n```\nafter\n"
+    whole = split_passages(text, 10, 1_000)
+    assert [(p["start"], p["end"]) for p in whole] == [(10, 20)] and whole[0]["text"] == text
+    small = split_passages(text, 10, 26)
+    assert [(p["start"], p["end"]) for p in small] == [(10, 14), (15, 19), (20, 20)]
+    assert "".join(p["text"] for p in small) == text  # every line in one passage, in order
+    assert small[1]["text"] == "```\ncode a\n\ncode b\n```\n"  # the blank line inside the fence does not cut it
+    long_line = "x" * 50 + "\n"
+    cut = split_passages("a\n" + long_line + "b\n", 1, 20)
+    assert [(p["start"], p["end"]) for p in cut] == [(1, 1), (2, 2), (3, 3)]  # a block cut between its lines
+    assert split_passages("", 1, 20) == [] and split_passages("\n\n", 1, 20) == []
+
+
+def test_a_long_section_is_searched_by_passages_under_its_own_id(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    b = store.latest_ready()
+    keys = [k for (k,) in store.db.execute("SELECT node_id FROM node_fts_rows")]
+    passages = sorted(text_search.passage_lines(k)[1] or "" for k in keys if text_search.passage_lines(k)[0] == LONG)
+    assert passages == ["", "lines 1-2", "lines 3-3", "lines 4-5"]  # its own row, then its passages
+    bodies = [
+        body for (body,) in store.db.execute("SELECT body FROM node_fts WHERE node_id = ? ORDER BY rowid", (LONG,))
+    ]
+    prefixed = [body for body in bodies if body.startswith("docs/long.md > Long\n")]  # its document, its headings
+    assert len(bodies) == 4 and len(prefixed) == 3 and NEEDLE in prefixed[-1]
+    ids = {nid for (nid,) in store.db.execute("SELECT node_id FROM node_fts")}
+    assert ids <= set(store.nodes(ids, b))  # a reader that knows no passage still finds a node for each row
+    assert found(store, NEEDLE)[0] == LONG  # one result for the section, not one per passage
+    hit = store.matched([LONG], NEEDLE, {LONG})[LONG]
+    assert hit["lines"] == "lines 4-5" and NEEDLE in hit["snippet"]  # the passage that holds the word
+    plain = store.matched(["app:file:docs/plain.md#ghi-chu"], "duong", set())
+    assert "lines" not in plain["app:file:docs/plain.md#ghi-chu"]  # a short section has no passage
+
+    # A graph an older build wrote holds no passage: it is searched and quoted as before.
+    store.db.execute(
+        "DELETE FROM node_fts WHERE rowid IN (SELECT fts_rowid FROM node_fts_rows WHERE instr(node_id, char(31)))"
+    )
+    store.db.execute("DELETE FROM node_fts_rows WHERE instr(node_id, char(31))")
+    assert found(store, "filler sentence")[0] == LONG
+    old = store.matched([LONG], NEEDLE, {LONG})[LONG]
+    assert "lines" not in old and old["words"] == 1
+
+
 def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
     # The tokenizer folds accents: "án" is "an" in the index and "cua" is "của", so either would match all of them.
     assert text_search.query_words("Phương án A") == ["Phương", "án"]
@@ -432,8 +481,9 @@ def test_the_content_hash_covers_the_schema_and_what_search_reads(tmp_path, kg_e
     assert store.content_hash(b, "a") != before  # the hub never serves a file of one schema for another
 
 
-def fts_rows(store: Store) -> dict[str, int]:
-    return dict(store.db.execute("SELECT node_id, rowid FROM node_fts").fetchall())
+def fts_rows(store: Store) -> dict[int, str]:
+    """rowid -> node id of each row of the full-text index; a node's passages are rows of its own under its id."""
+    return dict(store.db.execute("SELECT rowid, node_id FROM node_fts").fetchall())
 
 
 def fts_content(store: Store) -> list[tuple]:
@@ -452,10 +502,12 @@ def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_
     assert report.verify["match"], report.verify
 
     after = fts_rows(store)
-    moved = {nid for nid, rowid in after.items() if before.get(nid) != rowid}
+    moved = {nid for rowid, nid in after.items() if before.get(rowid) != nid}
     new_commit = f"app:commit:{git(app, 'rev-parse', 'HEAD').strip()}"  # the commit that added the file
     assert new_commit in moved and all(nid.startswith("app:file:docs/plain.md") for nid in moved - {new_commit})
-    assert dict(store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()) == after
+    keys = store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()
+    assert {rowid: text_search.passage_lines(key)[0] for key, rowid in keys} == after
+    assert any(text_search.passage_lines(key)[1] for key, _ in keys)  # docs/long.md is indexed as passages too
     assert any(nid.startswith("app:file:docs/plain.md") for nid in found(store, "zebracorn"))
     fresh = Store(tmp_path / "fresh.sqlite")
     assert build_project(project, store=fresh).content_hash == report.content_hash
