@@ -489,7 +489,7 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     graph_of(world)
     asked = []
 
-    def broken(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None):
+    def broken(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None, audience=frozenset()):
         asked.append((project, sink, [graph.build_id for graph in graphs], [plan_id for plan_id, _ in plans]))
         raise RuntimeError("sqlite went away")
 
@@ -588,7 +588,7 @@ def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_sig
     asked = []
     score = {"kg_search": {"n": 9, "hit@5": 0.625, "recall@5": 0.5, "tokens_per_file": 812.4}}
 
-    def scored(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None):
+    def scored(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None, audience=frozenset()):
         asked.append((sink, found_set[0].version, len(found_set[0].questions), found_set[1]))
         return {"questions": 9, "methods": score, "build_id": graphs[0].build_id, "sink": sink}
 
