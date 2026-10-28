@@ -234,7 +234,26 @@ def load_credentials() -> Credentials:
 
 def saved_credentials() -> Credentials:
     """The login ``evo-agents hub login`` saved in ``hub_dir``, whatever TOKEN_VARIABLE says."""
-    directory = hub_dir()
+    return credentials_in(hub_dir())
+
+
+def login_dirs() -> list[Path]:
+    """Every login directory of this machine, ``hub_dir`` first: ``~/.evo/hub`` and each ``~/.evo/hub-*`` that holds
+    a ``config.json``, as a harness on another hub names one in EVO_HUB_HOME (``evo-agents hub inbox`` reads them all)."""
+    home = Path.home() / ".evo"
+    found = [hub_dir(), home / "hub", *sorted(home.glob("hub-*"))]
+    seen: set[Path] = set()
+    dirs = []
+    for directory in found:
+        resolved = directory.expanduser().resolve()
+        if resolved not in seen and (directory / "config.json").is_file():
+            seen.add(resolved)
+            dirs.append(directory)
+    return dirs
+
+
+def credentials_in(directory: Path) -> Credentials:
+    """The login saved in ``directory``; NotSignedIn when it holds none."""
     try:
         config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
         token = (directory / "token").read_text(encoding="utf-8").strip()
