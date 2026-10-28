@@ -5,6 +5,7 @@ gets 403, a second answer gets 409; the answer goes to the run's inbox and the h
 use up the run's timeout; the reaper parks a run that waited 24 hours and cancels one parked 7 days; answering a parked
 run queues a run that resumes it, pinned to the same worker, with its session id."""
 
+import logging
 from datetime import timedelta
 
 import pytest
@@ -375,6 +376,212 @@ def test_only_the_worker_holding_a_plan_run_asks_and_a_run_keeps_at_most_twenty_
     assert refused.status_code == 409 and "20 decisions open" in refused.json()["message"]
 
 
+# A credential asked in words (plan hub-attention-runtime, a1 and a6)
+
+CREDENTIAL_COMMAND = "evo-agents worker ask --category credential --env-var"
+PROSE_ASKS = [
+    pytest.param({"category": "scope", "question": "Please give me TELEGRAM_BOT_TOKEN so the bot can post."}, id="env"),
+    pytest.param(
+        {
+            "category": "architecture",
+            "question": "Which bot posts the release notes?",
+            "context": "It reads GITLAB_TOKEN.",
+        },
+        id="env-in-context",
+    ),
+    pytest.param({"category": "scope", "question": "Can you provide the OpenAI API key for the evals?"}, id="api-key"),
+    pytest.param({"category": "scope", "question": "Paste a GitLab token with api scope, please."}, id="token"),
+    pytest.param(
+        {"category": "architecture", "question": "Add the deploy ssh key to the box, or give me its value?"}, id="ssh"
+    ),
+    pytest.param(
+        {"category": "scope", "question": "Cần anh đăng nhập và cung cấp mật khẩu cho tài khoản bot."}, id="vi"
+    ),
+]
+
+
+@pytest.mark.parametrize("extra", PROSE_ASKS)
+def test_prose_credential_a_plan_run_asking_a_credentials_value_in_words_gets_422_naming_the_command(
+    client, hub, hub_db, caplog, extra
+):
+    caplog.set_level(logging.DEBUG)
+    worker, run = started(client, hub)
+    response = ask(client, worker, run["id"], **{"context": None, **extra})
+    assert response.status_code == 422, response.text
+    said = response.json()["message"]
+    assert CREDENTIAL_COMMAND in said and "evo-agents worker env" in said
+    if "TELEGRAM_BOT_TOKEN" in extra["question"]:
+        assert f"{CREDENTIAL_COMMAND} TELEGRAM_BOT_TOKEN`" in said
+    elif "GITLAB_TOKEN" in (extra.get("context") or ""):
+        assert f"{CREDENTIAL_COMMAND} GITLAB_TOKEN`" in said
+    else:
+        assert f"{CREDENTIAL_COMMAND} NAME`" in said
+    # a6: the refused question is kept nowhere, nor sent to anyone
+    for table in (tables.decisions, tables.notifications, tables.notification_deliveries):
+        assert sql(hub_db, select(func.count()).select_from(table)) == [(0,)]
+    kept = [
+        str(body)
+        for (body,) in sql(hub_db, select(tables.run_events.c.body).where(tables.run_events.c.run_id == run["id"]))
+    ]
+    kept += [str(row) for row in sql(hub_db, select(tables.audit))]
+    question = extra["question"]
+    assert not any(question in text for text in kept)
+    assert question not in caplog.text and question not in said
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param({}, id="no-credential"),
+        pytest.param({"question": "Should session tokens expire after a day or a week?"}, id="design-of-tokens"),
+        pytest.param({"question": "Key the cache on CACHE_KEY or on PRIMARY_KEY?"}, id="keys-of-data"),
+        pytest.param({"category": "deploy", "question": "Deploy with OPENAI_API_KEY set from the vault?"}, id="deploy"),
+        pytest.param(
+            {
+                "category": "credential",
+                "question": "The bot needs TELEGRAM_BOT_TOKEN.",
+                "options": [],
+                "recommended": None,
+                "credential_request": {"env_var": "TELEGRAM_BOT_TOKEN"},
+            },
+            id="credential-request",
+        ),
+    ],
+)
+def test_prose_credential_other_questions_of_a_plan_run_are_asked_as_before(client, hub, hub_db, extra):
+    worker, run = started(client, hub)
+    if extra.get("category") == "deploy":  # K6 auto at A5 refuses a deploy question (autonomy_gate): no snapshot
+        set_run(hub_db, run["id"], autonomy=None)
+    asked(client, worker, run["id"], **extra)
+
+
+def test_prose_credential_the_gate_holds_plan_and_author_runs_alone():
+    from fastapi import HTTPException
+
+    from evo_agents.hub.server.decisions import DecisionAsk, admit_ask
+
+    body = DecisionAsk(category="scope", question="Please give me TELEGRAM_BOT_TOKEN.", options=OPTIONS)
+    for kind in ("plan", "author"):
+        with pytest.raises(HTTPException) as refused:
+            admit_ask(7, kind, body)
+        assert refused.value.status_code == 422 and f"{CREDENTIAL_COMMAND} TELEGRAM_BOT_TOKEN" in refused.value.detail
+    chat = DecisionAsk(category="triage", question="Retry, or give me TELEGRAM_BOT_TOKEN?", options=OPTIONS)
+    admit_ask(7, "chat", chat)  # a chat run asks triage as before
+
+
+# a3 of plan hub-attention-runtime: a question the run's autonomy leaves to its agent is refused with the card's rule
+
+TAKEN = "2026-10-28T00:00:00+00:00"
+LEAVE_TO_MERGE = "May I merge pull request 12 into main?"
+LEAVE_TO_DEPLOY = "Can I deploy the hub to production now?"
+LEAVE_TO_RELEASE = "Xin phép phát hành v0.25.0?"
+
+
+def at_level(level: str | None, **overrides) -> dict:
+    from evo_agents.hub import autonomy_levels
+
+    source = autonomy_levels.pref_source(OWNER, level, overrides or None)
+    return autonomy_levels.snapshot(autonomy_levels.effective([source]), TAKEN)
+
+
+def nothing_kept(hub_db, run_id: int, question: str, caplog) -> None:
+    for table in (tables.decisions, tables.notifications, tables.notification_deliveries):
+        assert sql(hub_db, select(func.count()).select_from(table)) == [(0,)]
+    kept = [str(body) for (body,) in event_bodies(hub_db, run_id, "system")]
+    assert not any(question in text for text in kept) and question not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("level", "extra", "klass"),
+    [
+        pytest.param(None, {"category": "merge", "question": "Merge it now?"}, "K5", id="merge-a5"),
+        pytest.param(None, {"category": "deploy", "question": "Deploy to staging now?"}, "K6", id="deploy-a5"),
+        pytest.param("A4", {"category": "deploy", "question": "Deploy to staging now?"}, "K6", id="deploy-a4"),
+        pytest.param("A3", {"category": "merge", "question": "Merge it now?"}, "K5", id="merge-a3"),
+        pytest.param("A3", {"category": "scope", "question": LEAVE_TO_MERGE}, "K5", id="scope-merge-a3"),
+        pytest.param("A4", {"category": "scope", "question": LEAVE_TO_DEPLOY}, "K6", id="scope-deploy-a4"),
+        pytest.param(None, {"category": "scope", "question": LEAVE_TO_RELEASE}, "K6", id="scope-release-a5"),
+    ],
+)
+def test_autonomy_gate_a_question_the_runs_autonomy_leaves_to_its_agent_gets_409_quoting_the_cards_rule(
+    client, hub, hub_db, caplog, level, extra, klass
+):
+    from evo_agents.hub import autonomy_card
+    from evo_agents.hub.autonomy_levels import CLASS_NAMES
+
+    caplog.set_level(logging.DEBUG)
+    worker, run = started(client, hub)
+    set_run(hub_db, run["id"], autonomy=at_level(level))
+    response = ask(client, worker, run["id"], **extra)
+    assert response.status_code == 409, response.text
+    said = response.json()["message"]
+    who = autonomy_card.Who(OWNER, "lead", "unit")
+    rule = autonomy_card.rule_line(autonomy_card.card(at_level(level), who), klass)
+    assert f"leaves {klass} ({CLASS_NAMES[klass]}) to you" in said and "Decision:" in said
+    if level is None:
+        assert rule.endswith("Every class of action is yours to do.") and "Every class of action is yours" in said
+    else:
+        assert rule.startswith("- Yours to do (auto): ") and repr(rule) in said
+    nothing_kept(hub_db, run["id"], extra["question"], caplog)
+
+
+@pytest.mark.parametrize(
+    ("level", "extra"),
+    [
+        pytest.param("A3", {"category": "deploy", "question": "Deploy to staging now?"}, id="deploy-k6-notify"),
+        pytest.param("A2", {"category": "deploy", "question": "Deploy to staging now?"}, id="deploy-k6-ask"),
+        pytest.param("A2", {"category": "merge", "question": "Merge it now?"}, id="merge-k5-asks-on-risk-paths"),
+        pytest.param("A1", {"category": "merge", "question": LEAVE_TO_MERGE}, id="merge-k5-ask"),
+        pytest.param("A2", {"category": "scope", "question": LEAVE_TO_DEPLOY}, id="scope-deploy-k6-ask"),
+        pytest.param(None, {"category": "scope", "question": "Should the export ship in this release or the next?"}),
+        pytest.param(None, {"category": "scope", "question": "Drop criterion a4, since main already does it?"}),
+        pytest.param(None, {"category": "architecture", "question": LEAVE_TO_DEPLOY}, id="architecture"),
+    ],
+)
+def test_autonomy_gate_a_question_the_runs_autonomy_keeps_to_ask_is_asked_as_before(client, hub, hub_db, level, extra):
+    worker, run = started(client, hub)
+    set_run(hub_db, run["id"], autonomy=at_level(level))
+    asked(client, worker, run["id"], **extra)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param({"category": "merge", "question": "Merge it now?"}, id="merge"),
+        pytest.param({"category": "deploy", "question": "Deploy to staging now?"}, id="deploy"),
+        pytest.param({"category": "scope", "question": LEAVE_TO_MERGE}, id="scope-merge"),
+    ],
+)
+def test_autonomy_gate_a_run_without_a_snapshot_asks_as_before(client, hub, hub_db, extra):
+    worker, run = started(client, hub)
+    set_run(hub_db, run["id"], autonomy=None)
+    asked(client, worker, run["id"], **extra)
+
+
+def test_autonomy_gate_holds_plan_and_author_runs_alone_and_the_scope_words_ask_leave():
+    from fastapi import HTTPException
+
+    from evo_agents.hub import autonomy_card
+    from evo_agents.hub.server.decisions import DecisionAsk, admit_ask
+
+    made = autonomy_card.card(at_level(None), autonomy_card.Who(OWNER, "lead", "unit"))
+    body = DecisionAsk(category="merge", question="Merge it now?", options=OPTIONS)
+    for kind in ("plan", "author"):
+        with pytest.raises(HTTPException) as refused:
+            admit_ask(7, kind, body, made)
+        assert refused.value.status_code == 409
+    admit_ask(7, "plan", body, None)  # no card: as before
+    chat = DecisionAsk(category="triage", question="May I merge into main?", options=OPTIONS)
+    admit_ask(7, "chat", chat, made)
+    asked_class = autonomy_card.asked_class
+    assert asked_class("scope", "Is it okay to merge this into the default branch?") == "K5"
+    assert asked_class("scope", "Có được merge vào nhánh mặc định không?") == "K5"
+    assert asked_class("scope", "May I publish the package to PyPI?") == "K6"
+    assert asked_class("scope", "Merge the two steps into one?") is None
+    assert asked_class("scope", "Should we deploy on Fridays at all?") is None
+    assert asked_class("architecture", "May I merge into main?") is None
+
+
 # Answering
 
 
@@ -558,7 +765,14 @@ def test_a_waiting_run_whose_cancel_was_asked_is_cancelled_instead_of_parked(cli
 def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(client, hub, hub_db):
     worker, run, found = waiting(client, hub)
     parked_id = run["id"]
-    later = asked(client, worker, parked_id, category="deploy", question="Deploy to staging now?", step_key=None)
+    later = asked(
+        client,
+        worker,
+        parked_id,
+        category="external_send",
+        question="Post the staging link to the team now?",
+        step_key=None,
+    )
     park(hub_db, parked_id)
     recover(client)
     spent = run_view(client, hub["owner"], parked_id)["run_seconds"]

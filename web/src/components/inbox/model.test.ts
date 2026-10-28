@@ -43,6 +43,7 @@ const note = (id: number, extra: Partial<Notification> = {}): Notification => ({
   link: "/p/demo/runs/12",
   created_at: "2026-10-05T07:00:00Z",
   read_at: null,
+  report: false,
   ...extra,
 });
 
@@ -162,6 +163,15 @@ describe("a page of notifications", () => {
     expect(waiting.map((item) => item.id)).toEqual([5, 4]);
     expect(rest.map((item) => item.id)).toEqual([9, 2]);
     expect(notificationOfProposal(page, 204)?.id).toBe(4);
+  });
+
+  it("lists the notices that only report last, apart from the rest", () => {
+    const read = "2026-10-05T08:00:00Z";
+    const page = [decision(5, "open"), note(9, { report: true, read_at: read }), note(8, { notice_kind: "run_failed" }), note(7, { report: true, read_at: read })];
+    const { waiting, rest, reports } = splitInbox(page);
+    expect(waiting.map((item) => item.id)).toEqual([5]);
+    expect(rest.map((item) => item.id)).toEqual([8]);
+    expect(reports.map((item) => item.id)).toEqual([9, 7]);
     expect(notificationOfProposal(page, 105)).toBeNull();
   });
 

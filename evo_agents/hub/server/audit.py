@@ -99,6 +99,7 @@ RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step 
 RUN_TRIAGE_RERUN = "run.triage_rerun"  # the agent of a triage thread ran a failed run again for its owner
 RUN_TRIAGE_INVITE = "run.triage_invite"  # ... or invited the agent of another project the error names into the thread
 RUN_TRIAGE_PLAN_EDIT = "run.triage_plan_edit"  # ... or edited verify or what of a pending step, as the owner
+RUN_TRIAGE_CANCEL = "run.triage_cancel"  # ... or asked the worker of a stale run to stop it, for its owner
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 # The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the
@@ -125,6 +126,9 @@ TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a brow
 TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
+# The hub (by=hub, as K12 of the run's principal is auto) or the owner's answer (by=owner) bound the owner's secret to
+# a run's project for its credential request: "secret:<id> run:<id> decision:<id> by=<hub|owner>", never its name.
+SECRET_BIND = "secret.bind"
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
 # A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
 # and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or

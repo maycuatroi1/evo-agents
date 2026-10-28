@@ -1,6 +1,8 @@
 """The answer to a credential request (``evo_agents.hub.credential_requests``), which ``decisions.answer_decision``
 hands here in its transaction: the value the owner pasted becomes their secret of kind env for the run's project, and
-"let the run use my hub account" lets the run run as them (``run_access``), as PUT /v1/secrets and PUT .../access do.
+"let the run use my hub account" lets the run run as them (``run_access``), as PUT /v1/secrets and PUT .../access do;
+"lease my secret" (FOUND, which the hub offers when it found the owner's secret for the variable) binds that secret to
+the run's project on the run's worker (``credential_resolver.bind_chosen``).
 
 ``checked`` reads the answer before anything changes: the value (``AnswerIn.secret``) goes only with an option that
 gives it (value or both, which a value with no option stands for), only to a decision that asks for a variable, and
@@ -29,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV, MAX_SECRET_BYTES, MAX_SECRETS_PER_OWNER
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, credential_resolver
 from evo_agents.hub.server.account_oauth import drop_tokens
 from evo_agents.hub.server.decision_models import AnswerIn
 from evo_agents.hub.server.sealing import Sealer, secret_aad
@@ -89,8 +91,13 @@ def checked(decision_id: int, request: dict | None, body: AnswerIn) -> Asked:
 
 
 def acts(request: dict | None, asked: Asked) -> bool:
-    """Whether the answer gives the run something: a value, or the owner's account on the hub."""
-    return request is not None and (asked.value is not None or credential_requests.grants_account(asked.option))
+    """Whether the answer gives the run something: a value, the owner's secret the hub found (FOUND), or the owner's
+    account on the hub."""
+    return request is not None and (
+        asked.value is not None
+        or credential_requests.grants_account(asked.option)
+        or credential_requests.binds_found(asked.option)
+    )
 
 
 def with_sentence(words: str | None, sentence: str) -> str:
@@ -231,6 +238,12 @@ async def give(
         said.append(
             f"{user.login} gave {request['env_var']}: the hub keeps it as their secret {kept.name} of kind env for "
             f"project {project} ({how}), and leases it to the run."
+        )
+    if credential_requests.binds_found(asked.option) and request.get("env_var") is not None:
+        name = await credential_resolver.bind_chosen(conn, user, access.project_id, run_id, decision_id, request)
+        said.append(
+            f"{user.login} leases the run their secret {name} of kind env, which sets {request['env_var']}: the hub "
+            f"binds it to project {project} on the run's worker, its other bindings kept."
         )
     if credential_requests.grants_account(asked.option):
         from evo_agents.hub.server.runs.service.controls import let_run_as_owner  # it imports the routes of runs

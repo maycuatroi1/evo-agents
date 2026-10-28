@@ -357,17 +357,20 @@ function DayTitle({ dayKey: key }: { dayKey: string }) {
 export function InboxDays({
   days,
   entry,
+  idPrefix = "inbox-day",
 }: {
   days: InboxDay[];
   entry: (item: InboxEntry) => ReactNode;
+  /** The start of each day's heading id, so two lists of one page that share a day keep their ids apart. */
+  idPrefix?: string;
 }) {
   const t = useTranslations("inbox.days");
   return (
     <div className="flex flex-col gap-4">
       {days.map((day) => (
-        <section key={day.key} aria-labelledby={`inbox-day-${day.key}`} data-testid="inbox-day" data-day={day.key} className="flex flex-col">
+        <section key={day.key} aria-labelledby={`${idPrefix}-${day.key}`} data-testid="inbox-day" data-day={day.key} className="flex flex-col">
           <h3
-            id={`inbox-day-${day.key}`}
+            id={`${idPrefix}-${day.key}`}
             className="sticky top-13 z-[2] flex items-baseline gap-2 bg-background py-1.5 text-[13px] leading-[18px] font-semibold text-foreground"
           >
             <DayTitle dayKey={day.key} />{" "}

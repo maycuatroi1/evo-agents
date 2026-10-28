@@ -115,7 +115,8 @@ A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a 
 owner's secrets that are not deleted; a deleted secret's name is free again. A member keeps at most
 `MAX_SECRETS_PER_OWNER` (200) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
 only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` without showing one. Each write adds an
-audit row `secret.put` or `secret.delete` whose target is the secret's id, `secret:<id>`, never its name: hub admins
+audit row `secret.put`, `secret.delete` or `secret.bind` (a credential request's binding, below) whose target is the
+secret's id, `secret:<id>`, never its name: hub admins
 read the audit (`/v1/admin/audit`), and a secret's name is its owner's alone, as their list and a run's credentials
 are. No audit row, log line or error carries a value, and a 422 never repeats the input.
 
@@ -973,6 +974,27 @@ The hub refuses a variable no secret may set (`EVO_`, `GIT_`, `LD_`, `DYLD_`, `P
 others of `env_name_refusal`), and gives the decision its own options, never the agent's: `value` (paste the value),
 `as_me` (let the run use my hub account), `both`, and `refuse`, as the request asks. It is asked of the run's owner
 whoever the run's principal reports to, since what it asks for is the owner's alone to give.
+
+**What the hub answers itself.** Before the decision reaches anyone, the hub looks for a live secret of kind `env` of
+the run's owner that sets the variable (`evo_agents/hub/server/credential_resolver.py`), the one of the proposed name
+first, under the same rules as a lease: the worker's profile, the Curator's charter and K7 of the run's principal.
+
+- When the run is leased one already (bound to the run's project, on any worker or on the run's), the hub answers the
+  decision at once: answered by nobody (the hub), with the option `found` ("Lease my secret NAME") and a sentence
+  that names the secret and tells the agent to read its leases again. `worker ask` prints that answer and exits, the
+  answer goes to the run's inbox as an owner's would, so the daemon takes the run's leases again, and the owner gets a
+  notice (kind `autonomy`) instead of a decision to answer. The audit row `decision.answer` ends `by=hub`.
+- When the secret is bound elsewhere only (another project, or another worker) and K12 of the run's principal is
+  `auto`, the hub binds it to the run's project, on the run's worker when it is the owner's, keeps its other
+  bindings, writes the audit row `secret.bind` (`secret:<id> run:<id> decision:<id> by=hub`) and the autonomy ledger's
+  K12 row, then answers as above.
+- Otherwise (K12 is not `auto`, or the request asks for the hub account too) the decision goes to the owner's Inbox as
+  below. Its context says which secret the hub found and, for one it may bind, the option `found` is offered first,
+  with the command that takes it: `evo-agents hub decision answer ID --option found --project P`. That binds the
+  secret the same way, with `secret.bind` ending `by=owner`, and needs no value pasted again.
+
+A hub-answered decision names the secret, never its value; the run's leases carry the value as any lease does.
+Schema 0177 lets a credential request be answered by nobody, as a wait is.
 
 **Answering it.** The owner pastes the value, never on a command line:
 
