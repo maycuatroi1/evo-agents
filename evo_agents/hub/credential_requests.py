@@ -102,3 +102,76 @@ def gives_value(option: str | None) -> bool:
 def grants_account(option: str | None) -> bool:
     """Whether choosing ``option`` lets the run run as its owner on the hub (``evo_agents.hub.server.run_access``)."""
     return option in (AS_ME, BOTH)
+
+
+# A question in words that wants a credential's value (plan hub-attention-runtime, a1). The agent of a plan run or an
+# author run asks for a credential with a credential request, whose answer the hub keeps as a secret and leases to the
+# run; asked in prose, as scope, question or architecture, the owner can only answer by pasting the value into a
+# decision, so the route refuses it and names the command that asks it right (``prose_credential``).
+PROSE_CATEGORIES = ("scope", "question", "architecture")
+# A variable as an environment names it (upper case words joined by _) with a word of a credential among them:
+# OPENAI_API_KEY, BOT_TOKEN, DB_PASSWORD. A key of a table or a cache (PRIMARY_KEY, CACHE_KEY) is none.
+_ENV_NAME = re.compile(r"(?<![A-Za-z0-9_])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+(?![A-Za-z0-9_])")
+_CREDENTIAL_PARTS = frozenset(
+    ("KEY", "KEYS", "APIKEY", "TOKEN", "TOKENS", "SECRET", "SECRETS", "PASSWORD", "PASSWD", "PASS")
+)
+_NOT_CREDENTIAL_KEYS = frozenset(
+    (
+        "PRIMARY",
+        "FOREIGN",
+        "UNIQUE",
+        "COMPOSITE",
+        "SORT",
+        "PARTITION",
+        "CACHE",
+        "IDEMPOTENCY",
+        "LOOKUP",
+        "HASH",
+        "ROUTING",
+    )
+)
+# A credential named in words: it counts only next to the act of giving its value (_GIVES).
+_CREDENTIAL_WORDS = re.compile(
+    r"\b(?:api[ _-]?keys?|access[ _-]?keys?|secret[ _-]?keys?|private[ _-]?keys?|ssh[ _-]?keys?|deploy[ _-]?keys?|"
+    r"(?:bot|access|api|auth|personal[ _-]access|bearer|refresh|github|gitlab|telegram|slack|npm|pypi)?[ _-]?tokens?|"
+    r"passwords?|passphrases?|credentials?|client[ _-]?secrets?|"
+    r"sign[ _-]?in|log[ _-]?in|đăng[ ]nhập|mật[ ]khẩu)\b",
+    re.IGNORECASE,
+)
+_GIVES = re.compile(
+    r"\b(?:provide|give|paste|share|send|supply|enter|type|set|export|add|put|value|"
+    r"cung[ ]cấp|đưa|gửi|dán|nhập|cấp|giá[ ]trị|điền)\b",
+    re.IGNORECASE,
+)
+
+
+def _names_credential(name: str) -> bool:
+    """Whether the variable ``name`` says it holds a credential: one of its words is in _CREDENTIAL_PARTS, and a KEY
+    is not the key of a table or a cache."""
+    parts = name.split("_")
+    for at, part in enumerate(parts):
+        if part in _CREDENTIAL_PARTS and not (part.startswith("KEY") and at and parts[at - 1] in _NOT_CREDENTIAL_KEYS):
+            return True
+    return False
+
+
+ASK_COMMAND = "evo-agents worker ask --category credential --env-var NAME"
+
+
+def prose_credential(category: str, question: str, context: str | None) -> str | None:
+    """Why a decision of ``category`` with ``question`` and ``context`` cannot be asked, when it is in PROSE_CATEGORIES
+    and asks for a credential's value in words: a variable named as an environment names a credential, or a credential
+    in words next to giving its value. The reason names ASK_COMMAND, with the variable for NAME when the text names
+    one. None for any other decision. The reason repeats the variable's name alone, never the text it was found in."""
+    if category not in PROSE_CATEGORIES:
+        return None
+    text = f"{question}\n{context or ''}"
+    named = next((name for name in _ENV_NAME.findall(text) if _names_credential(name)), None)
+    if named is None and not (_CREDENTIAL_WORDS.search(text) and _GIVES.search(text)):
+        return None
+    command = ASK_COMMAND.replace("NAME", named) if named else ASK_COMMAND
+    return (
+        f"a {category} decision does not ask for a credential's value: ask for it with `{command}` (add "
+        "`--hub-account` for the owner's account on the hub), so the owner gives it in a password field, the hub keeps "
+        f"it as their secret, and the run reads it with `{ENV_COMMAND}`"
+    )
