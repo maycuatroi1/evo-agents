@@ -7,9 +7,12 @@ proposes a change of status on) and later the Loop, only proposes: a new claim, 
 accepted, so an agent's proposal never moves a claim to validated, and so are the links it adds (``links``). A proposal
 keeps the fields it sets, why, whether
 it rests on simulated users (``synthetic``) and its provenance. A writer accepts it, which writes the rev as that
-writer's own (kind ``proposal``; the proposal names the claim and the rev), or rejects it, with why. Once its claim
-changes, an open proposal goes stale (``writes.write_rev``) and is accepted no more. The caller holds the transaction
-and the lock of the canvas and has checked the role; a refusal raises CanvasError and the transaction writes nothing.
+writer's own (kind ``proposal``; the proposal names the claim and the rev), or rejects it, with why; a writer rejects
+open proposals of a canvas together too, with one reason for all (``reject_many``). Once its claim changes, an open
+proposal goes stale (``writes.write_rev``) and is accepted no more; so do the open proposals the Loop's brainstorm of a
+goal made once that goal's statement or metric changes (``stale_for_goal``, from ``server.goals.write``): they were
+brainstormed for a goal that is no more. The caller holds the transaction and the lock of the canvas and has checked
+the role; a refusal raises CanvasError and the transaction writes nothing.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, union, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
@@ -27,7 +30,9 @@ from evo_agents.hub.server.canvas.store import CanvasRow, Provenance, provenance
 from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
 
 MAX_PROPOSED = 50  # proposals one call makes
-MAX_OPEN = 200  # open proposals of a canvas
+MAX_OPEN = 200  # open proposals of a canvas, and the most one call rejects together
+BRAINSTORM = "brainstorm"  # loop.model.KINDS: the Loop's work item whose task run brainstorms a goal
+DISPATCHED = "dispatched"  # loop.model: the event of the ledger that hands a work item its run
 NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
     "cell",
     "text",
@@ -292,14 +297,67 @@ async def reject(
     await _decided(conn, writer, row.id, status="rejected", decided_reason=reason.strip() or None)
 
 
+async def reject_many(
+    conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, proposal_ids: list[int], reason: str
+) -> tuple[list[int], list[tuple[int, str]]]:
+    """Close each open proposal of ``proposal_ids`` without writing it, with ``reason`` for all: (the ids rejected,
+    (id, status) of each one no longer open, left as it is). A 404 when the canvas has no proposal of one of the ids,
+    and nothing is rejected then."""
+    _person(writer, "rejects")
+    if not reason.strip() or len(reason) > MAX_REASON_CHARS:
+        raise CanvasError(422, f"rejecting proposals together says why in 1 to {MAX_REASON_CHARS} characters")
+    wanted = sorted(set(proposal_ids))
+    if not 1 <= len(wanted) <= MAX_OPEN:
+        raise CanvasError(422, f"one call rejects 1 to {MAX_OPEN} proposals")
+    p = tables.canvas.proposals
+    query = select(p.c.id, p.c.status).where(p.c.canvas_id == canvas.id, p.c.id.in_(wanted)).order_by(p.c.id)
+    held = {row.id: row.status for row in await conn.execute(query.with_for_update())}
+    missing = [number for number in wanted if number not in held]
+    if missing:
+        raise CanvasError(404, f"canvas {canvas.slug} has no proposal {missing[0]}")
+    rejected = [number for number in wanted if held[number] == "open"]
+    if rejected:
+        decided = {"decided_by": writer.author.user_id, "decided_at": func.now(), "decided_reason": reason.strip()}
+        await conn.execute(update(p).where(p.c.id.in_(rejected)).values(status="rejected", **decided))
+    return rejected, [(number, held[number]) for number in wanted if held[number] != "open"]
+
+
+def brainstorm_runs(project_id: int | None = None):
+    """Each run the Loop handed out for its brainstorm of a goal (of project ``project_id`` alone when given), with the
+    goal (``run_id``, ``goal_id``): from the ledger of its work items, as the Loop's view counts a goal's open proposals
+    (``loop.view``), and from the work item itself for the run it holds now."""
+    i, e = tables.loop_items, tables.loop_item_events
+    brainstorm = (i.c.kind == BRAINSTORM) & i.c.goal_id.is_not(None)
+    if project_id is not None:
+        brainstorm &= i.c.project_id == project_id
+    ledger = select(e.c.run_id, i.c.goal_id).join_from(e, i, i.c.id == e.c.item_id)
+    ledger = ledger.where(brainstorm, e.c.kind == DISPATCHED, e.c.run_id.is_not(None))
+    held = select(i.c.run_id, i.c.goal_id).where(brainstorm, i.c.run_id.is_not(None))
+    return union(ledger, held).subquery("brainstorm_runs")
+
+
+async def stale_for_goal(conn: AsyncConnection, goal_id: int) -> int:
+    """The open proposals the runs of the Loop's brainstorms of goal ``goal_id`` made go stale, as a change of their
+    claim makes them (no one decided them, so they name no decider and no reason): the statement or the metric they
+    were brainstormed for changed. How many went stale."""
+    p, runs = tables.canvas.proposals, brainstorm_runs()
+    of_goal = select(runs.c.run_id).where(runs.c.goal_id == goal_id)
+    done = await conn.execute(update(p).where(p.c.status == "open", p.c.run_id.in_(of_goal)).values(status="stale"))
+    return done.rowcount
+
+
 __all__ = [
+    "BRAINSTORM",
     "MAX_OPEN",
     "MAX_PROPOSED",
     "ProposalRow",
     "accept",
+    "brainstorm_runs",
     "changes_of",
     "proposal",
     "proposals",
     "propose",
     "reject",
+    "reject_many",
+    "stale_for_goal",
 ]
