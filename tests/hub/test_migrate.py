@@ -157,6 +157,7 @@ TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
 TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migrations 0172, 0173 and 0175
 TABLES |= {"kg_query_labels"}  # migration 0177
+TABLES |= {"kg_eval_sets"}  # migration 0178
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -247,8 +248,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_nine_tables(hub_db):
-    assert len(TABLES) == 209  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_ten_tables(hub_db):
+    assert len(TABLES) == 210  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)

@@ -360,3 +360,24 @@ Packages import downward only: cli and core_plugins, then worker, hub, kg, harne
 even inside a function, since import-linter reads those too. Move the shared code down into the package both can \
 import (a type into evo_agents.kg or evo_agents.schema, a client helper into evo_agents.hub), or have the upper \
 package pass it down as an argument. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "kg-ranking-not-eval"
+name = "The ranking and the serving of the knowledge graph do not import its evaluation"
+type = "forbidden"
+source_modules = [
+    "evo_agents.kg.search",
+    "evo_agents.kg.post_search",
+    "evo_agents.kg.store",
+    "evo_agents.kg.serve",
+    "evo_agents.kg.tools",
+    "evo_agents.kg.text",
+    "evo_agents.kg.budget",
+    "evo_agents.hub.kg_graph",
+    "evo_agents.hub.kg_web",
+]
+forbidden_modules = ["evo_agents.kg.evaluate", "evo_agents.hub.kg_health_eval", "evo_agents.hub.server.kg_eval_sets"]
+broken_contract_guidance = """\
+What ranks and serves the graph never reads a question set: a ranking tuned on the answers it is scored with scores \
+what it memorized (plan kg-retrieval-quality, docs/kg-eval.md, section Tune and holdout). Tune on `kg eval --split \
+tune` from outside these modules."""

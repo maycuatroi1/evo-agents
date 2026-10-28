@@ -9576,6 +9576,120 @@
         }
       }
     },
+    "hub kg eval-set": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "push",
+            "pull"
+          ]
+        },
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--set"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--split"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "all",
+            "tune",
+            "holdout"
+          ],
+          "default": "all"
+        },
+        {
+          "flags": [
+            "--no-answers"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "-o",
+            "--output"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "set",
+          "version",
+          "digest",
+          "created_at",
+          "split",
+          "answers",
+          "questions"
+        ],
+        "schema": "EvalSetView",
+        "with": {
+          "push": {
+            "kind": "object",
+            "keys": [
+              "set",
+              "version",
+              "digest",
+              "questions",
+              "holdout",
+              "created"
+            ],
+            "schema": "EvalSetPut"
+          }
+        }
+      }
+    },
     "hub kg forget-source": {
       "positionals": [],
       "options": [
@@ -32180,6 +32294,226 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/eval-set": {
+        "put": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Put Eval Set",
+          "description": "Put the project's retrieval question set: the next version, or the latest again when it asks the same.",
+          "operationId": "put_eval_set_v1_kg__project__eval_set_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalSetBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvalSetPut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Get Eval Set",
+          "description": "The project's retrieval question set, or one part of it; holdout questions come without their answers.",
+          "operationId": "get_eval_set_v1_kg__project__eval_set_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "this version, not the latest",
+                "title": "Version"
+              },
+              "description": "this version, not the latest"
+            },
+            {
+              "name": "split",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "enum": [
+                  "all",
+                  "tune",
+                  "holdout"
+                ],
+                "type": "string",
+                "description": "only this part of the set",
+                "default": "all",
+                "title": "Split"
+              },
+              "description": "only this part of the set"
+            },
+            {
+              "name": "answers",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "false: no question carries its answers",
+                "default": true,
+                "title": "Answers"
+              },
+              "description": "false: no question carries its answers"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvalSetView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -108366,6 +108700,130 @@
             "n"
           ],
           "title": "ErrorText"
+        },
+        "EvalSetBody": {
+          "properties": {
+            "set": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Set",
+              "description": "the set's name, e.g. evo-agents"
+            },
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "minItems": 1,
+              "title": "Questions",
+              "description": "the questions, as the lines of a set file: id, question, type, project, repo, files, nodes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "set",
+            "questions"
+          ],
+          "title": "EvalSetBody"
+        },
+        "EvalSetPut": {
+          "properties": {
+            "set": {
+              "type": "string",
+              "title": "Set"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest",
+              "description": "SHA-256 of what the questions ask and answer"
+            },
+            "questions": {
+              "type": "integer",
+              "title": "Questions"
+            },
+            "holdout": {
+              "type": "integer",
+              "title": "Holdout",
+              "description": "the questions in the holdout part"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "false when the set was the latest version already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "set",
+            "version",
+            "digest",
+            "questions",
+            "holdout",
+            "created"
+          ],
+          "title": "EvalSetPut"
+        },
+        "EvalSetView": {
+          "properties": {
+            "set": {
+              "type": "string",
+              "title": "Set"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "split": {
+              "type": "string",
+              "enum": [
+                "all",
+                "tune",
+                "holdout"
+              ],
+              "title": "Split"
+            },
+            "answers": {
+              "type": "boolean",
+              "title": "Answers",
+              "description": "whether the tune questions carry their answers; holdout ones never do"
+            },
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Questions",
+              "description": "the questions of the part asked, in the set's order, each with split"
+            }
+          },
+          "type": "object",
+          "required": [
+            "set",
+            "version",
+            "digest",
+            "created_at",
+            "split",
+            "answers",
+            "questions"
+          ],
+          "title": "EvalSetView"
         },
         "EventBatch": {
           "properties": {

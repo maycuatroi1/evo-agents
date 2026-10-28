@@ -427,24 +427,35 @@ def test_the_eval_asks_the_done_steps_whose_commits_the_graph_read(demo):
             ("unread", plan("a1b2c3d4e5")),
             ("no-repo", {"id": "no-repo", "repos": [], "steps": [{"id": 2, "status": "done", "evidence": head}]}),
         ]
-        questions, skipped, available = kg_health_eval.plan_questions("demo", bodies, commits)
-        assert available == 1 and [q.id for q in questions] == ["demo#1"]
+        questions, skipped, available, sources = kg_health_eval.plan_questions("demo", bodies, commits)
+        assert available == 1 and [q.id for q in questions] == ["demo#1"] and sources == {"commits": 1}
         assert questions[0].files == tuple(
             ("app", path) for path in sorted(kg_coverage.source_files(demo.project)["app"]["files"])
         )
-        assert skipped == ["unread#1: none of its 1 commit(s) is in the graph of app", "no-repo#2: no repo named"]
-        scored = kg_health_eval.score(questions, skipped, available, Session(demo.project, "agent"))
+        assert [str(s) for s in skipped] == [
+            "unread#1: none of its 1 commit(s) is in the graph of app, and no pull request or path of its evidence "
+            "gives a file",
+            "no-repo#2: no repo named",
+        ]
+        scored = kg_health_eval.score(questions, skipped, available, Session(demo.project, "agent"), sources=sources)
+        left_out = kg_health_eval.plan_questions("demo", bodies, commits, leave_out={"demo#1"})
     finally:
         store.close()
-    assert scored["type"] == "plan-step" and scored["questions"] == 1 and scored["skipped"] == 2
+    assert left_out[0] == [] and left_out[2] == 0  # a step the question set holds is asked as the set asks it
+    assert scored["types"] == ["plan-step"] and scored["questions"] == 1 and scored["plan_steps"] == 1
+    assert scored["skipped"] == 2 and scored["skipped_by"] == {"no_repo": 1, "not_in_graph": 1}
+    assert scored["dropped"] == round(2 / 3, 4) and scored["answers_from"] == {"commits": 1}
     row = scored["methods"]["kg_search"]
     assert row["n"] == 1 and 0.0 <= row["recall@5"] <= 1.0 and row["errors"] == 0
+    assert row["hit@5"] in (0.0, 1.0) and row["capped_recall@5"] >= row["recall@5"]
+    assert scored["by_type"]["plan-step"]["kg_search"] == row
     assert scored["digest"] == kg_health_eval.questions_digest(questions)
-    assert kg_health_eval.score([], [], 0, None)["methods"] == {}
+    empty = kg_health_eval.score([], [], 0, None)
+    assert empty["methods"] == {} and empty["by_type"] == {} and empty["dropped"] == 0.0
 
 
-def test_a_step_whose_commits_change_too_many_files_asks_nothing(demo):
-    for index in range(kg_health_eval.DEFAULT_MAX_FILES + 1):
+def test_a_step_whose_commits_change_more_than_twenty_files_is_still_asked(demo):
+    for index in range(21):  # more than kg eval-questions takes by default (DEFAULT_MAX_FILES, 20)
         write(demo.app / f"many/f{index}.py", f"X = {index}\n")
     commit(demo.app, "many files")
     assert all(result.ok for result in sync_project(demo.project))
@@ -453,10 +464,99 @@ def test_a_step_whose_commits_change_too_many_files_asks_nothing(demo):
     store = Store.open_file(demo.graph)
     try:
         commits = kg_health_eval.GraphCommits(store, store.latest_ready())
-        found = kg_health_eval.plan_questions("demo", [("demo", plan(head))], commits)
+        questions, skipped, available, _ = kg_health_eval.plan_questions("demo", [("demo", plan(head))], commits)
+        scored = kg_health_eval.score(questions, skipped, available, Session(demo.project, "agent"))
     finally:
         store.close()
-    assert found == ([], ["demo#1: its commits change 21 file(s), not 1 to 20"], 0)
+    assert available == 1 and skipped == [] and len(questions[0].files) == 21
+    row = scored["methods"]["kg_search"]
+    # 21 answers: Recall@5 is at most 5/21, the capped Recall@5 reads the 5 it could find
+    assert row["recall@5"] <= 5 / 21 and row["capped_recall@5"] >= row["recall@5"]
+
+
+class FakeGraph:
+    """A store of a few nodes and the ``changes`` edges of its commits, as GraphCommits reads one."""
+
+    def __init__(self, nodes: list[dict], changes: dict[str, list[str]]):
+        self.by_id = {node["id"]: node for node in nodes}
+        self.changes = changes
+
+    def alive_ids(self, table, b):
+        return list(self.by_id)
+
+    def nodes(self, ids, b):
+        return {i: self.by_id[i] for i in ids if i in self.by_id}
+
+    def edges_of(self, node, b, direction, limit):
+        return [{"rel": "changes", "dst": f"app:file:{path}"} for path in self.changes.get(node, [])][:limit]
+
+
+SQUASHED = "9" * 40
+MERGED = "8a" * 20
+
+
+def squashed_graph() -> FakeGraph:
+    files = [{"id": f"app:file:{p}", "kind": "File"} for p in ("src/rank.py", "src/search.py", "README.md")]
+    nodes = files + [
+        {"id": "app:commit:" + MERGED, "kind": "Commit", "props": {"sha": MERGED, "repo": "app", "files": 2}},
+        {
+            "id": "app-git:pr:12",
+            "kind": "PullRequest",
+            "props": {"repo": "app", "number": 12, "head": "feat/rank", "status": "merged", "merge_commit": MERGED},
+        },
+    ]
+    return FakeGraph(nodes, {"app:commit:" + MERGED: ["src/rank.py", "src/search.py"]})
+
+
+def test_a_squashed_steps_answers_come_from_its_pull_request_or_the_paths_of_its_evidence():
+    commits = kg_health_eval.GraphCommits(squashed_graph(), 1)
+    bodies = [
+        ("by-branch", plan(SQUASHED[:10], evidence=f"app@{SQUASHED[:10]} on feat/rank")),
+        ("by-number", plan(SQUASHED[:10], evidence=f"app@{SQUASHED[:10]}, merged in PR #12")),
+        ("by-paths", plan(SQUASHED[:10], evidence=f"app@{SQUASHED[:10]}: edited src/rank.py and app:README.md")),
+        ("lost", plan(SQUASHED[:10], evidence=f"app@{SQUASHED[:10]} on feat/other, edited gone.py")),
+    ]
+    questions, skipped, available, sources = kg_health_eval.plan_questions("demo", bodies, commits)
+    found = {q.id: q.files for q in questions}
+    assert found["by-branch#1"] == found["by-number#1"] == (("app", "src/rank.py"), ("app", "src/search.py"))
+    assert found["by-paths#1"] == (("app", "src/rank.py"), ("app", "README.md"))
+    assert sources == {"pull_requests": 2, "evidence_paths": 1} and available == 3
+    assert [(s.step, s.reason) for s in skipped] == [("lost#1", "not_in_graph")]
+    assert kg_health_eval.evidence_branch("evo-agents@86df203 on feat/kg-retrieval-quality.") == (
+        "feat/kg-retrieval-quality"
+    )
+    assert kg_health_eval.evidence_pulls("see pull/7, PR 9 and #12; plan#3 is a step") == [7, 9, 12]
+
+
+def test_the_eval_asks_the_holdout_part_of_the_set_of_its_project_and_scores_each_type():
+    from evo_agents.kg.evaluate import HOLDOUT, Question, QuestionSet, split_of
+
+    ids = [f"q{n}" for n in range(40)]
+    holdout_ids = [i for i in ids if split_of(i) == HOLDOUT]
+    assert holdout_ids and len(holdout_ids) < len(ids)
+    asked = [Question(i, "rank search", "where", None, "app", (("app", "src/rank.py"),)) for i in ids]
+    other = Question("elsewhere", "x", "where", "other", "app", (("app", "x.py"),))
+    question_set = QuestionSet([*asked, other], "demo", 2)
+    holdout = kg_health_eval.holdout_questions(question_set, "demo")
+    assert [q.id for q in holdout] == holdout_ids  # the tune part and another project's questions stay out
+
+    class OneHit:
+        def call(self, tool, params):
+            nodes = [{"id": "app:file:src/rank.py", "kind": "File", "props": {"path": "src/rank.py", "repo": "app"}}]
+            return {"structuredContent": {"results": nodes}, "content": [{"type": "text", "text": "src/rank.py"}]}
+
+    step = Question("demo#1", "rank", "plan-step", "demo", "app", (("app", "src/a.py"), ("app", "src/rank.py")))
+    about = {"name": "demo", "version": 2, "digest": "d", "holdout": len(holdout)}
+    scored = kg_health_eval.score(
+        [*holdout, step], [], 1, OneHit(), plan_steps=1, question_set=about, sink=kg_health_eval.AGENT_SINK
+    )
+    assert scored["types"] == ["plan-step", "where"] and scored["set"] == about
+    assert scored["sink"] == "claude-code@anthropic" and scored["plan_steps"] == 1
+    assert scored["by_type"]["where"]["kg_search"]["hit@5"] == 1.0
+    assert scored["by_type"]["plan-step"]["kg_search"]["recall@5"] == 0.5
+    assert scored["methods"]["kg_search"]["n"] == len(holdout) + 1
+    assert kg_health_eval.hit_percent(scored) == 100.0
+    assert kg_health_eval.tokens_per_file(scored) == scored["methods"]["kg_search"]["tokens_per_file"] > 0
 
 
 class FileBlobs:
@@ -497,6 +597,7 @@ def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_
     cache = GraphCache(tmp_path / "cache", keep=1)
     plans = [("demo", plan(head))]
     first = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, None)
+    assert first["sink"] == "agent" and first["set"] is None
     assert first["build_id"] == 7 and first["content_hash"] == built.content_hash and first["questions"] == 1
     assert first["methods"]["kg_search"]["n"] == 1 and blobs.fetched == 1
 
@@ -557,9 +658,12 @@ def test_the_health_command_prints_a_row_a_source_and_the_score():
         "-",
         "off GitHub",
     )
-    scored = {"build_id": 7, "questions": 12, "methods": {"kg_search": {"recall@5": 0.25, "mrr": 0.4, "empty": 0.0}}}
+    row = {"hit@5": 0.5, "recall@5": 0.25, "mrr": 0.4, "empty": 0.0, "tokens_per_file": 800.0}
+    scored = {"build_id": 7, "questions": 12, "skipped": 1, "methods": {"kg_search": row}}
+    scored["set"] = {"name": "evo-agents", "version": 3, "holdout": 9}
     assert kg_cli._eval_line(scored) == (
-        "retrieval eval of build 7: 12 plan-step questions, kg_search R@5 0.25, MRR 0.4, empty 0.0"
+        "retrieval eval of build 7: 12 questions (9 holdout of set evo-agents v3), 1 step(s) left out, kg_search "
+        "hit@5 0.5, R@5 0.25, MRR 0.4, empty 0.0, tok/file 800.0"
     )
     assert kg_cli._eval_line({"why": "no graph yet"}) == "retrieval eval: no graph yet"
     assert kg_cli._eval_line(None) == "retrieval eval: no question"

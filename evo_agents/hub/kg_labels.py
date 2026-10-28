@@ -145,29 +145,42 @@ def grep_after_percent(figures: Mapping | None) -> float | None:
     return round(float(rate) * 100, 2) if isinstance(rate, (int, float)) and not isinstance(rate, bool) else None
 
 
-async def push_grep_after(conn: AsyncConnection, project_id: int, owner_id: int | None, night: date, figures) -> bool:
-    """Push the night's SIGNAL_KEY for the project as the night shift's owner (a member), the key added to the
-    registry the first time; idempotent per night (its external_id). In a savepoint of ``conn``: a signal refused
-    or past the day's cap leaves the figures as they are. Whether a signal was stored."""
-    value = grep_after_percent(figures)
-    if value is None or owner_id is None:
-        return False
+async def push_number(
+    conn: AsyncConnection,
+    project_id: int,
+    owner_id: int,
+    key: str,
+    unit: str,
+    words: str,
+    value: float,
+    external_id: str,
+) -> bool:
+    """Push the number ``value`` as signal ``key`` of the project, as ``owner_id`` (a member), the key added to the
+    registry with ``unit`` and ``words`` the first time; idempotent per ``external_id``. In a savepoint of ``conn``: a
+    signal refused or past the day's cap leaves the rest of the transaction as it is. Whether a signal was stored."""
     sk = tables.signal_keys
-    key = {"project_id": project_id, "name": SIGNAL_KEY, "kind": "number", "unit": "percent"}
-    key |= {"description": SIGNAL_WORDS, "source": SIGNAL_SOURCE, "created_by": owner_id}
-    item = _Item(SIGNAL_KEY, value, f"collect:{SIGNAL_KEY}:{night.isoformat()}")
+    row = {"project_id": project_id, "name": key, "kind": "number", "unit": unit}
+    row |= {"description": words, "source": SIGNAL_SOURCE, "created_by": owner_id}
+    item = _Item(key, value, external_id)
     try:
         async with conn.begin_nested():
-            await conn.execute(pg_insert(sk).values(key).on_conflict_do_nothing())
+            await conn.execute(pg_insert(sk).values(row).on_conflict_do_nothing())
             pusher = signals.Pusher(
                 project_id, await signals.project_rules(conn, project_id), "member", user_id=owner_id
             )
             done = await signals.push(conn, pusher, [item], config.DEFAULT_SIGNAL_DAYS)
     except signals.SignalError as exc:
-        log.warning("night signal refused", extra={"project_id": project_id, "key": SIGNAL_KEY, "why": exc.message})
+        log.warning("hub signal refused", extra={"project_id": project_id, "key": key, "why": exc.message})
         return False
     for refused in done.rejected:
-        log.warning(
-            "night signal refused", extra={"project_id": project_id, "key": SIGNAL_KEY, "why": refused["reason"]}
-        )
+        log.warning("hub signal refused", extra={"project_id": project_id, "key": key, "why": refused["reason"]})
     return done.accepted > 0
+
+
+async def push_grep_after(conn: AsyncConnection, project_id: int, owner_id: int | None, night: date, figures) -> bool:
+    """Push the night's SIGNAL_KEY for the project as the night shift's owner (``push_number``), once per night."""
+    value = grep_after_percent(figures)
+    if value is None or owner_id is None:
+        return False
+    external_id = f"collect:{SIGNAL_KEY}:{night.isoformat()}"
+    return await push_number(conn, project_id, owner_id, SIGNAL_KEY, "percent", SIGNAL_WORDS, value, external_id)

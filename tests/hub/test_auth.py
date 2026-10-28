@@ -132,6 +132,7 @@ HUB_TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 HUB_TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
 HUB_TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migrations 0172, 0173 and 0175
 HUB_TABLES |= {"kg_query_labels"}  # migration 0177
+HUB_TABLES |= {"kg_eval_sets"}  # migration 0178
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 
