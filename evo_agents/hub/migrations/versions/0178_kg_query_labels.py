@@ -1,7 +1,7 @@
 """The labels of the knowledge graph's searches.
 
-Revision ID: 0177
-Revises: 0176
+Revision ID: 0178
+Revises: 0177
 Create Date: 2026-10-28
 
 kg_query_labels is new (plan kg-retrieval-quality, criterion a1): one row per kg_search a session or a run made, as its
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0177"
-down_revision = "0176"
+revision = "0178"
+down_revision = "0177"
 branch_labels = None
 depends_on = None
 

@@ -5,7 +5,9 @@ may decide it, and the members of the project by role. ``board`` gathers the ite
 An item says what waits (``kind``, in its ``group``), since when, who may decide it (``decided_by``, a rule in a word,
 and ``deciders``, the logins that may now) and where (``link``, the page of the hub's web whose buttons call the
 object's own route). Its ``title`` is the hub's own line, from codes, numbers and states, and from a question or a
-summary only where the member reading the board may read it.
+summary only where the member reading the board may read it. A proposal of a claim also says what it proposes
+(``proposal``: the claim's cell and sentence, its test card, the run that made it and the goal that run brainstormed
+for), so a member judges a run's proposals on the board and opens the canvas only for the one to accept.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.tables_canvas import CELLS, STATUSES
 from evo_agents.plugins import config as plugin_config
 
 GROUPS = ("goal", "canvas", "policy", "exception", "srs")
@@ -48,6 +51,32 @@ TITLE_CHARS = 200
 QUOTED_CHARS = 160  # of a question or a summary in a title
 
 
+class BoardGoal(BaseModel):
+    """The goal a brainstorm of the Loop was for, as it reads now."""
+
+    code: str = Field(description="G-<number>")
+    statement: str
+    metric: str = Field(description="how its metric reads; `no metric` without one")
+
+
+class BoardProposal(BaseModel):
+    """What a proposal of a claim (kind ``claim_proposal``) proposes, for the member to judge it on the board."""
+
+    id: int
+    canvas: str = Field(description="the slug of its canvas")
+    kind: Literal["create", "change"] = Field(description="a new claim, or a change of claim ``claim``")
+    claim: str | None = Field(description="the claim it changes (CL-<number>); None for a new claim")
+    cell: Literal[CELLS] | None = Field(description="the cell of the claim")
+    text: str | None = Field(description="the claim's sentence: the one it proposes, else the claim's own")
+    fields: list[str] = Field(description="the fields of the claim it sets")
+    status: Literal[STATUSES] | None = Field(description="the status it moves the claim to, when it does")
+    test: str | None = Field(description="its test card's metric, threshold and deadline, in one line")
+    reason: str = Field(description="why it was proposed, in one line")
+    synthetic: bool = Field(description="it rests on simulated users")
+    run: int | None = Field(description="the run that proposed it")
+    goal: BoardGoal | None = Field(description="the goal whose brainstorm by the Loop made it")
+
+
 class BoardItem(BaseModel):
     """One thing of the project that waits for a person."""
 
@@ -64,6 +93,7 @@ class BoardItem(BaseModel):
     refs: dict[str, int | str] = Field(
         default_factory=dict, description="the ids of what waits: decision, run, proposal, baseline, plan, goal..."
     )
+    proposal: BoardProposal | None = Field(None, description="what a proposal of a claim proposes")
 
 
 class DecisionBoard(BaseModel):
@@ -220,7 +250,9 @@ __all__ = [
     "RUN_OWNER",
     "SRS_REVIEWER",
     "WRITER",
+    "BoardGoal",
     "BoardItem",
+    "BoardProposal",
     "DecisionBoard",
     "People",
     "Reading",

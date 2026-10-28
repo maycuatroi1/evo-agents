@@ -6,7 +6,9 @@ A tick, in order, each step in a transaction of its own that first takes the pro
 1. the events of hub_events past the cursor, at most ``hub_events.MAX_READ`` at a time: the engine's ``rules`` for
    each, what they return written, and the cursor moved past them, in one transaction, again while a full batch
    came; not while the Loop's breaker is tripped, so the cursor stands and no event is lost;
-2. the engine's ``scheduled``: a goal's new revision, the weekly look at each goal;
+2. the engine's ``scheduled``: a goal's new revision, the weekly look at each goal; before it, with the workers'
+   GitHub App, each repo on GitHub of a deliver whose plan run is done marked merged in its plan once the pull request
+   of the run's branch merged (``github_merges``), GitHub called outside any transaction;
 3. the engine's ``reconcile`` of each work item not finished: what it waits on read again, stale ones cancelled;
 4. the breaker and the stalls (``breaker.check``, ``stall.handle``, criterion a7): too many work items made in an hour
    trip the breaker; a work item at its second failure gets its triage, one at its third a decision of a person;
@@ -20,7 +22,7 @@ INSERT ... ON CONFLICT (project, key) DO NOTHING, so the same delta read twice, 
 nothing more; a transition moves only a work item not finished; a result is noted in a claim's chain once by its key.
 Each write adds its row to the work item's ledger (loop_item_events) in the same transaction. A tick of a project
 whose Loop is off does nothing; one with nothing new reads and writes no work item, and nothing but ``dispatch`` hands
-out a run; no tick calls a model.
+out a run; no tick calls a model, and none calls GitHub without the App (``github_app``).
 
 The hand-out of each kind of work item is ``dispatch.hand_out`` (criterion a6): a task run of @strategist or @ba, an
 author run or a plan run on worker loop.worker. Nothing else in a tick hands out a run.
@@ -40,7 +42,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, tables
-from evo_agents.hub.server.loop import breaker, srs_ledger, stall
+from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.loop import breaker, github_merges, srs_ledger, stall
 from evo_agents.hub.server.loop.admit import Dispatch, admit
 from evo_agents.hub.server.loop.dispatch import hand_out
 from evo_agents.hub.server.loop.model import (
@@ -260,15 +263,19 @@ async def tick(
     rules: Engine = RULES,
     dispatch: Dispatch | None = hand_out,
     plugins: Loader = load_rules,
+    github_app: GitHubApp | None = None,
 ) -> dict:
     """One tick of project ``project_id``'s Loop with ``rules``, handing out runs with ``dispatch`` (see the module;
     None hands out none): what it read and changed, whether its breaker tripped (``tripped``), the triage it opened
     and the decisions it asked (``triaged``, ``asked``), the runs it handed out (``dispatched``) and the queued work
     items whose reason changed (``waiting``) when there are any. ``plugins`` loads the rules the core plugins of the
-    project add (extension point loop_rules; ``plugin_rules``): they read beside ``rules``, never in its place."""
+    project add (extension point loop_rules; ``plugin_rules``): they read beside ``rules``, never in its place.
+    ``github_app`` (the workers' App) reads the pull requests the plan runs of delivers merged on GitHub (``merged``,
+    when it marked any); None reads none."""
     report: Counter = Counter()
     if not await _events(engine, project_id, rules, report, plugins):
         return {"off": 1}
+    report["merged"] += await github_merges.settle(engine, project_id, github_app)
     for step in (partial(_clock_and_reconcile, rules=rules, plugins=plugins, engine=engine), _stalls):
         async with engine.begin() as conn:
             state = await _state(conn, project_id)
@@ -283,7 +290,7 @@ async def tick(
         s = tables.loop_states
         await conn.execute(update(s).where(s.c.project_id == project_id).values(ticked_at=func.now()))
     found = {"events": report["events"], "changed": report["changed"]}
-    for key in ("breaker", "tripped", "triaged", "asked"):
+    for key in ("breaker", "merged", "tripped", "triaged", "asked"):
         if report[key]:
             found[key] = report[key]
     found.update({key: count for key, count in sorted(admitted.items()) if count})

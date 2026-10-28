@@ -1,7 +1,7 @@
 """The runs of the KG optimize loop.
 
-Revision ID: 0181
-Revises: 0180
+Revision ID: 0182
+Revises: 0181
 Create Date: 2026-10-28
 
 kg_optimize_runs is new (plan kg-retrieval-quality, criteria a7 and a9): one row each time the hub optimizes a
@@ -19,8 +19,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0181"
-down_revision = "0180"
+revision = "0182"
+down_revision = "0181"
 branch_labels = None
 depends_on = None
 

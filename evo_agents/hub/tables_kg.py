@@ -10,10 +10,10 @@ say how healthy the graph is over time: what each build covers, the files each g
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
 kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``).
 kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
-with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0177) holds each kg_search of a
+with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0178) holds each kg_search of a
 session or a run with what the agent opened after it, under the label of the session or the run
-(``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``. kg_eval_sets (0178) holds each version of a project's
-retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``. kg_optimize_runs (0181)
+(``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``. kg_eval_sets (0179) holds each version of a project's
+retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``. kg_optimize_runs (0182)
 holds each run of the KG optimize loop (``evo_agents.hub.server.kg_optimize``), as ``tables.kg_optimize_runs``.
 """
 
@@ -247,8 +247,8 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("reason", Text, nullable=False),
         Column("build_id", BigInteger),
         Column("actor_plugin", Text),  # the id of the core plugin that took it, else NULL (0174)
-        Column("origin", Text),  # the loop that took it, as kg-optimize, else NULL (0179)
-        Column("run_id", BigInteger),  # that loop's run, when it named one (0179)
+        Column("origin", Text),  # the loop that took it, as kg-optimize, else NULL (0180)
+        Column("run_id", BigInteger),  # that loop's run, when it named one (0180)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_decision_events_project_id_fkey"
         ),
@@ -267,7 +267,7 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
 
 
 def query_labels(metadata: MetaData) -> Table:
-    """kg_query_labels (0177), added to ``metadata``: each kg_search of a session or a run as its facet read it, with
+    """kg_query_labels (0178), added to ``metadata``: each kg_search of a session or a run as its facet read it, with
     the label of the session or the run (``evo_agents.hub.kg_labels``)."""
     name = "kg_query_labels"
     return Table(
@@ -303,7 +303,7 @@ def query_labels(metadata: MetaData) -> Table:
 
 
 def eval_sets(metadata: MetaData) -> Table:
-    """kg_eval_sets (0178), added to ``metadata``: each version of a project's question set for ``kg eval``, its
+    """kg_eval_sets (0179), added to ``metadata``: each version of a project's question set for ``kg eval``, its
     name, its questions as JSON objects (``evo_agents.kg.evaluate``), the digest of what they ask and answer, and who
     put it."""
     name = "kg_eval_sets"
@@ -325,7 +325,7 @@ def eval_sets(metadata: MetaData) -> Table:
 
 
 def semantic_settings(metadata: MetaData) -> Table:
-    """kg_semantic (0180), added to ``metadata``: whether a project's graph is searched by meaning too
+    """kg_semantic (0181), added to ``metadata``: whether a project's graph is searched by meaning too
     (``evo_agents.kg.semantic``): ``off``; ``index``, its builds write the vectors but kg_search ranks by words; ``on``,
     kg_search fuses both. A project without a row is off. The model the vectors come from, who set it last, when."""
     name = "kg_semantic"
@@ -350,7 +350,7 @@ OPTIMIZE_STATES = (*OPTIMIZE_ACTIVE, "done", "reverted", "failed")
 
 
 def optimize_runs(metadata: MetaData) -> Table:
-    """kg_optimize_runs (0181), added to ``metadata``: each run of the KG optimize loop of a project
+    """kg_optimize_runs (0182), added to ``metadata``: each run of the KG optimize loop of a project
     (``evo_agents.hub.server.kg_optimize``), by night or asked for, its state, the review run of the agent it queued,
     the builds measured before and after, the weight of the asked column it left in effect, what it measured and
     decided (``body``), and its report. One run a project is in flight at a time, one a night."""

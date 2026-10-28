@@ -658,7 +658,8 @@
         "run_parked": "Run parked",
         "problem": "Metric moved",
         "cost": "Cost",
-        "proposal": "Proposal"
+        "proposal": "Proposal",
+        "report": "Report"
       },
       "summary": {
         "asks": "{count, plural, =0 {Nothing waits for your answer} one {# question waits for your answer} other {# questions wait for your answer}}",
@@ -671,7 +672,8 @@
           "run_parked": "{count, plural, one {a parked run} other {# parked runs}}",
           "problem": "{count, plural, one {a problem whose metric moved} other {# problems whose metric moved}}",
           "cost": "{count, plural, one {what your runs cost in a project} other {what your runs cost in # projects}}",
-          "proposal": "{count, plural, one {a proposal to answer} other {# proposals to answer}}"
+          "proposal": "{count, plural, one {a proposal to answer} other {# proposals to answer}}",
+          "report": "{count, plural, one {a report of your work} other {# reports of your work}}"
         }
       }
     }
@@ -6647,6 +6649,7 @@
     "waitingTitle": "Waiting for your answer",
     "restTitle": "Notices and past decisions and proposals",
     "allTitle": "Notifications",
+    "reportsTitle": "Reports only: pushes, merges, plans finished, files of runs",
     "pagerLabel": "notifications",
     "summary": {
       "all": "{count, plural, =0 {No notification yet.} one {# notification.} other {# notifications.}}",
@@ -10692,7 +10695,35 @@
       "open": "Open",
       "openLabel": "Open: {title}",
       "baselinePreview": "Preview the baseline",
-      "baselineHide": "Hide the baseline"
+      "baselineHide": "Hide the baseline",
+      "proposals": {
+        "summary": "{count, plural, one {# claim proposal} other {# claim proposals}}",
+        "count": "{count, plural, one {# proposal} other {# proposals}}",
+        "runs": "{count, plural, one {# run} other {# runs}}",
+        "metric": "Metric: {metric}",
+        "noGoal": "No goal",
+        "noGoalText": "Not from the Loop's brainstorm of a goal: a brainstorm a member asked for, an agent, or the value check.",
+        "expand": "Show the proposals of {name}",
+        "collapse": "Hide the proposals of {name}",
+        "run": "Run",
+        "runLabel": "Run #{id}",
+        "noRun": "Not from a run",
+        "why": "Why: {reason}",
+        "newClaim": "New claim",
+        "change": "{claim}: {fields}",
+        "statusTo": "{claim} to {status}",
+        "test": "Test card:",
+        "open": "Open",
+        "openLabel": "Open proposal #{id} on canvas {canvas}",
+        "rejectAll": "{count, plural, one {Reject it} other {Reject all #}}",
+        "rejectRun": "{count, plural, one {Reject this run's proposal} other {Reject this run's #}}",
+        "rejectReason": "{count, plural, one {Why reject this proposal} other {Why reject these # proposals}}",
+        "rejectPlaceholder": "Kept with each proposal",
+        "rejectConfirm": "{count, plural, one {Reject # proposal} other {Reject # proposals}}",
+        "cancel": "Cancel",
+        "rejected": "{count, plural, =0 {No proposal was open any more} one {# proposal rejected} other {# proposals rejected}}",
+        "rejectedLeft": "{count, plural, =0 {No proposal rejected} one {# proposal rejected} other {# proposals rejected}}; {left, plural, one {# was decided already} other {# were decided already}}"
+      }
     },
     "boardKind": {
       "goal_review": "Monthly goal review",

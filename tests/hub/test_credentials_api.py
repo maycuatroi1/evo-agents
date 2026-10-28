@@ -28,7 +28,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
-from evo_agents.hub import tables
+from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.credentials import GITHUB_TOKEN_REFRESH_SECONDS, Lease
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
@@ -765,3 +765,153 @@ def test_neither_the_audit_nor_a_log_record_nor_a_table_holds_a_value(client, hu
     for value in values:
         assert value not in logged, "a leased value reached a log record"
         assert value not in stored, "a leased value reached a table or the audit"
+
+
+# The hub answers a credential request its owner's secret covers (``credential_resolver``)
+
+RESOLVED = "NORTHWIND_DEPLOY_KEY"  # the variable the run asks for
+ELSEWHERE = "lumen-ops"  # another project of the owner's
+
+
+def resolver_run(client, hub, worker: dict, request: dict) -> tuple[int, dict]:
+    """A plan run of the owner's, claimed and running on ``worker``, that asked for ``request``: (its id, the
+    decision the ask answered with)."""
+    dispatched = client.post(
+        f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN, "worker_id": worker["id"]}, headers=hub["owner"]
+    )
+    assert dispatched.status_code == 201, dispatched.text
+    run_id = claim(client, worker)["id"]
+    moved(client, worker, run_id, "running", session_id="0199a3c1-0000-7000-8000-00000000000e")
+    question = {"category": "credential", "question": "The deploy needs its key.", "credential_request": request}
+    asked = client.post(f"/v1/worker/runs/{run_id}/decisions", json=question, headers=worker["headers"])
+    assert asked.status_code == 201, asked.text
+    return run_id, asked.json()
+
+
+def resolver_inbox(client, worker: dict, run_id: int) -> list[dict]:
+    response = client.post(f"/v1/worker/runs/{run_id}/inbox", json={}, headers=worker["headers"])
+    assert response.status_code == 200, response.text
+    return response.json()["messages"]
+
+
+def resolver_notices(db, decision_id: int) -> list[tuple]:
+    """(kind, notice kind, title) of each notification that names decision ``decision_id``: a decision by its column,
+    a notice by its details."""
+    n = tables.notifications
+    names = (n.c.decision_id == decision_id) | (n.c.details["decision_id"].as_integer() == decision_id)
+    return sql(db, select(n.c.kind, n.c.notice_kind, n.c.title).where(names).order_by(n.c.id))
+
+
+def resolver_pref(client, headers, **classes) -> None:
+    response = client.put("/v1/autonomy/prefs", json={"level": "A5", "classes": classes}, headers=headers)
+    assert response.status_code == 200, response.text
+
+
+def resolver_elsewhere(client, hub, value: str) -> None:
+    """The owner's secret northwind for RESOLVED, bound to project ELSEWHERE alone, where they write too."""
+    body = registration(DISPATCHED)
+    body["harness"] = {**body["harness"], "name": ELSEWHERE}
+    assert client.put(f"/v1/projects/{ELSEWHERE}", json=body, headers=hub["admin"]).status_code == 200
+    granted = client.put(f"/v1/admin/projects/{ELSEWHERE}/grants/{OWNER}", json=WRITER, headers=hub["admin"])
+    assert granted.status_code == 200, granted.text
+    env_secret(client, hub["owner"], "northwind", RESOLVED, value, projects=[ELSEWHERE])
+
+
+def resolver_values_kept(db, caplog, value: str, *texts: str) -> None:
+    """``value`` is in no table but sealed, no log record and none of ``texts`` (criterion a6)."""
+    logged = caplog.text + "\n".join(f"{record.getMessage()} {vars(record)!r}" for record in caplog.records)
+    assert value not in table_dump(db), "a value reached a table"
+    assert value not in logged, "a value reached a log record"
+    for text in texts:
+        assert value not in text
+
+
+def test_resolver_answers_a_request_the_runs_leased_secret_covers_and_notifies_the_owner(client, hub, hub_db, caplog):
+    caplog.set_level(logging.DEBUG)
+    value = sample("northwind-")
+    env_secret(client, hub["owner"], "northwind", RESOLVED, value)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, asked = resolver_run(client, hub, worker, {"env_var": RESOLVED})
+    assert (asked["state"], asked["answered_by"], asked["answer_option"]) == ("answered", None, "found")
+    assert [option["key"] for option in asked["options"]] == ["found", "value", "refuse"]
+    assert "northwind" in asked["options"][0]["label"] and "northwind" in asked["answer_text"]
+    assert credential_requests.ENV_COMMAND in asked["answer_text"]
+    # the run's inbox holds the answer, as an owner's would: the worker takes the run's leases again
+    (message,) = resolver_inbox(client, worker, run_id)
+    assert message["decision_id"] == asked["id"] and message["text"].startswith(f"Answer to decision #{asked['id']}")
+    assert by_name(leased(client, worker, run_id))["northwind"]["value"] == value
+    # the owner gets a notice, not a decision to answer
+    assert [row[:2] for row in resolver_notices(hub_db, asked["id"])] == [("notice", runs.AUTONOMY_DECISION_CATEGORY)]
+    (target,) = [row[0] for row in audit_rows(hub_db, "decision.answer")]
+    assert target.endswith(f"decision:{asked['id']} run:{run_id} option=found by=hub")
+    assert audit_rows(hub_db, "secret.bind") == [], "a bound secret is not bound again"
+    resolver_values_kept(hub_db, caplog, value, json.dumps(asked))
+
+
+def test_resolver_binds_an_unbound_secret_when_k12_is_auto_and_audits_the_binding(client, hub, hub_db, caplog):
+    caplog.set_level(logging.DEBUG)
+    resolver_pref(client, hub["owner"], K12="auto")
+    value = sample("northwind-")
+    resolver_elsewhere(client, hub, value)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, before = resolver_run(client, hub, worker, {"env_var": "OTHER_KEY"})
+    assert before["state"] == "open", "a secret of another variable answers nothing"
+    assert "northwind" not in by_name(leased(client, worker, run_id))
+    asked = client.post(
+        f"/v1/worker/runs/{run_id}/decisions",
+        json={"category": "credential", "question": "The key, now.", "credential_request": {"env_var": RESOLVED}},
+        headers=worker["headers"],
+    )
+    assert asked.status_code == 201, asked.text
+    asked = asked.json()
+    assert (asked["state"], asked["answered_by"], asked["answer_option"]) == ("answered", None, "found")
+    (bind,) = audit_rows(hub_db, "secret.bind")
+    assert bind[0] == f"secret:{secret_ids(hub_db, 'northwind')} run:{run_id} decision:{asked['id']} by=hub"
+    listed = {secret["name"]: secret for secret in client.get("/v1/secrets", headers=hub["owner"]).json()}
+    assert sorted(listed["northwind"]["projects"]) == sorted([ELSEWHERE, PROJECT]), "its other binding kept"
+    assert by_name(leased(client, worker, run_id))["northwind"]["value"] == value
+    assert any(row[1] == runs.AUTONOMY_DECISION_CATEGORY for row in resolver_notices(hub_db, asked["id"]))
+    resolver_values_kept(hub_db, caplog, value, json.dumps(asked))
+
+
+def test_resolver_asks_the_owner_naming_the_secret_and_its_bind_command_when_k12_is_not_auto(
+    client, hub, hub_db, caplog
+):
+    caplog.set_level(logging.DEBUG)
+    resolver_pref(client, hub["owner"], K12="ask")
+    value = sample("northwind-")
+    resolver_elsewhere(client, hub, value)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    body = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1}
+    features = {**body, "features": [runs.AUTONOMY, runs.AGENT_PROFILES]}
+    assert client.post("/v1/worker/heartbeat", json=features, headers=worker["headers"]).status_code == 200
+    run_id, asked = resolver_run(client, hub, worker, {"env_var": RESOLVED})
+    assert (asked["state"], asked["answer_option"]) == ("open", None)
+    assert [option["key"] for option in asked["options"]] == ["found", "value", "refuse"]
+    assert "northwind" in asked["context"] and f"--option found --project {PROJECT}" in asked["context"]
+    assert audit_rows(hub_db, "secret.bind") == [] and resolver_inbox(client, worker, run_id) == []
+    # the owner binds it from the Inbox: the run is leased it, the value given again nowhere
+    answered = client.post(
+        f"/v1/projects/{PROJECT}/decisions/{asked['id']}/answer", json={"option": "found"}, headers=hub["owner"]
+    )
+    assert answered.status_code == 200, answered.text
+    (bind,) = audit_rows(hub_db, "secret.bind")
+    assert bind[0].endswith(f"decision:{asked['id']} by=owner") and bind[1] == OWNER
+    assert by_name(leased(client, worker, run_id))["northwind"]["value"] == value
+    (message,) = resolver_inbox(client, worker, run_id)
+    assert message["decision_id"] == asked["id"] and "northwind" in message["text"]
+    resolver_values_kept(hub_db, caplog, value, json.dumps(asked), answered.text)
+
+
+def test_resolver_leaves_a_request_for_a_hub_account_to_the_owner(client, hub, hub_db):
+    env_secret(client, hub["owner"], "northwind", RESOLVED, sample("northwind-"))
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    _, asked = resolver_run(client, hub, worker, {"env_var": RESOLVED, "hub_account": True})
+    assert asked["state"] == "open" and [option["key"] for option in asked["options"]] == [
+        "both",
+        "value",
+        "as_me",
+        "refuse",
+    ]
+    assert "northwind" in asked["context"]
+    assert all(row[0] != "notice" for row in resolver_notices(hub_db, asked["id"])), "the owner decides it"

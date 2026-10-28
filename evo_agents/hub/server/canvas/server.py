@@ -5,7 +5,8 @@ Readers read the canvases, a canvas whole with its nine cells, a claim whole wit
 and its evidence, the diff of two revs, what judging runs of @strategist had for a claim with each verdict and why,
 the proposals, and the export. Writers make a canvas, edit its claims (each
 named with the rev it was read at, else a 409 that holds what changed), undo a claim's current rev, add evidence and
-withdraw it, confirm evidence an agent added, accept or reject a proposal, hand @strategist a brainstorm, import
+withdraw it, confirm evidence an agent added, accept or reject a proposal (or reject several together, with one
+reason), hand @strategist a brainstorm, import
 ``evo-canvas/1``, read the baselines and decide their items (never one they changed the status of, unless the
 config's ``self_approval`` is on), and open a baseline of one claim at once. The agent of a run gets none of these routes: it works through the plugin's tools
 (``agent``), and a run's token is refused on every decision. Admins give a new canvas a label of its own, and
@@ -55,7 +56,10 @@ from evo_agents.hub.server.canvas.models import (
     CanvasIn,
     CanvasJudging,
     CanvasProposal,
+    CanvasProposalLeft,
+    CanvasRejected,
     CanvasRejectIn,
+    CanvasRejectManyIn,
     CanvasSummary,
     CanvasUndoIn,
     CanvasWithdrawIn,
@@ -495,6 +499,21 @@ async def reject_proposal(
         await proposals.reject(conn, writer, canvas, proposal_id, body.reason)
 
     return await _decide(request, project, slug, proposal_id, user, sink, act)
+
+
+@router.post("/{project}/canvases/{slug}/proposals/reject", response_model=CanvasRejected)
+async def reject_proposals(
+    request: Request, project: ProjectName, slug: Slug, body: CanvasRejectManyIn, user: CurrentUser, sink: Sink = None
+):
+    """Reject open proposals of a canvas together, with one reason for all: nothing of them is written. One no longer
+    open is left as it is and named; a 404 when the canvas has no proposal of an id, and nothing is rejected then."""
+
+    async def work(conn):
+        _, canvas, writer = await _writing(conn, user, project, slug, sink, "deciding a proposal")
+        rejected, left = await proposals.reject_many(conn, writer, canvas, body.proposals, body.reason)
+        return CanvasRejected(rejected=rejected, left=[CanvasProposalLeft(id=i, status=s) for i, s in left])
+
+    return await _answer(request, work)
 
 
 @router.post("/{project}/canvases/{slug}/brainstorm", response_model=CanvasBrainstorm, status_code=202)

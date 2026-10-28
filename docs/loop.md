@@ -306,7 +306,14 @@ its local tests passing and no step waits for a pipeline, and no step edits CI c
 A work item waits for a person (`waiting_human`) and counts no failure while its run's agent waits for its owner
 (`author_question`, `run_decision`), while the version a `use_case` drafted waits for its review (`srs_review`) or for
 the settle chat of an open finding of level decide (`srs_finding`), and while a merge request of its plan is blocked
-or paused (`merge_blocked`) or its repo is one the queue does not merge (`merge_manual`). Changes a reviewer asked of
+or paused (`merge_blocked`) or its repo is one the queue does not merge (`merge_manual`), until the plan marks that
+repo `merged` or `not-needed` in its `repos`. A repo on GitHub is one the queue does not merge, and a plan run's agent
+may merge the pull request of its branch itself: each tick, with the workers' GitHub App, looks up the pull requests of
+the branch the plan run worked in for each repo on GitHub of a deliver whose plan run is done, and the one merged
+since the deliver's run was queued marks the repo merged in the plan (`merged_at`, and a `note` naming the pull
+request), written as the member who dispatched the run (`loop/github_merges.py`). The deliver then goes to done in the
+same tick with no person. A repo with no pull request merged waits for a person as before, and a pull request a
+person merges by hand later is read the same way. Changes a reviewer asked of
 its version queue the `use_case` again with no failure, the request kept in its detail (`srs_changes`) for the next
 task run; a version a person withdrew cancels it (`person`).
 
@@ -338,7 +345,10 @@ People decide the direction of the project at three gates, gathered on its decis
 2. **Canvas**: each baseline still proposed with an item to decide (a change of status, a status the value check
    proposed, a test card past its deadline), and each open proposal of a claim (a brainstorm's, the value check's, the
    Curator's lens `product`). A writer who did not propose an item of a baseline decides it, any writer once the
-   plugin's `self_approval` is on (`docs/canvas-plugin.md`, Baselines).
+   plugin's `self_approval` is on (`docs/canvas-plugin.md`, Baselines). The web shows each proposal's cell, sentence and
+   test card, by the goal its brainstorm was for and then by run, and a writer rejects a goal's or a run's proposals
+   together with one reason. A goal whose statement or metric changes makes the open proposals of its brainstorms
+   stale, so they wait on nobody and hold back no weekly look (row 2 above).
 3. **Policy**: each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose breaker
    tripped, and the Loop's own breaker.
 

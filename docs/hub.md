@@ -911,19 +911,42 @@ whose objects stay in the bucket with nothing referring to them. Schema 0070 add
 plugin srs. Going back to 0069 makes every settle chat a group chat of the same members, its agent no longer named on
 its row, reads a mention `via` settle as `via` thread, and drops the table.
 
+### Runs that stop moving
+
+Two runs that did not fail by their worker's word also get a triage thread, once a run (`run_triage` holds one row per
+run), in the same chat as a failed run's (`evo_agents/hub/server/triage.py`):
+
+- a run of kind step, plan or author that is `running` or `verifying` and has written no event for 45 minutes
+  (`triage.STALE_MINUTES`; its start counts when it wrote none) while its worker is not revoked and still sends
+  heartbeats (within `runs.OFFLINE_AFTER_SECONDS`), of a project with triage on. Each pass of the reaper (the job
+  `hub.recover_runs`, `triage.open_stale`) finds them, at most 50 a pass. The thread's cause is `stale`; the hub
+  stops nothing itself, and the run keeps its lease and its slot. A run that is `waiting` or `interactive` is not
+  stale, and one on a worker that stopped its heartbeats is the reaper's, as below;
+- a run the reaper ends on its last attempt because its worker stopped extending the lease: it fails with the error
+  "its worker NAME stopped extending the lease, and it was attempt N of N", whose cause the hub guesses as `lease_lost`,
+  and opens its thread as any failed run. A lost run with attempts left opens none: its next attempt is queued.
+
+The first message of both says the diagnosis after the facts of a failed run: the last event of the run (its sequence
+number, kind, time and text; the hub's own move to the end and what it wrote with it left out), the worker and its
+last heartbeat, the lease (held until when, or ended with the run) and the attempt (`N of M`, `(the last)` on the
+last). It mentions the project's default agent as for a failed run, unless the chain of reruns is full.
+
 ### What a triage agent may do on its own
 
-The agent of a failed run's triage thread acts for the run's owner through three worker routes,
-`POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan` and `.../triage/invite` (`evo_agents/hub/server/triage_actions.py`,
-`docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
+The agent of a failed run's triage thread acts for the run's owner through four worker routes,
+`POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan`, `.../triage/invite` and `.../triage/cancel`
+(`evo_agents/hub/server/triage_actions.py`, `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
 of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, and an edit of a plan only as a
 new revision that differs from the held one in the `verify` or `what` of pending steps of the run's repos, with no
 command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step that is done,
 `acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run dispatched by hand.
 When the error names another project, `.../triage/invite` puts the agent of that project in the chat by the rule of
 Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread), and the agent hands it
-work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row
-(`run.triage_rerun`, `run.triage_plan_edit`) in the same transaction.
+work by a mention, within the hop limit of 3. In the thread of a stale run, `.../triage/cancel` asks the run's worker
+to stop it, as the owner's cancel of a held run does (`runs.cancel_requested_at`; 409 for a failed run's thread, a run
+no longer held or a stop asked already), and `.../triage/rerun` runs it again once it has ended, for the cause `stale`
+on a fit worker (409 while it is still held). Every success posts a `Decision:` line and an audit row
+(`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`, `run.triage_cancel`) in the same transaction.
 
 ## Plans and their copies in git
 
@@ -1373,6 +1396,28 @@ unread and how many decisions and proposals wait for an answer (`GET /v1/me/noti
 `--read` with ids, marks them read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters;
 answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications
 --read` its count of read and unread.
+
+What waits on you across every hub this machine is signed in to, and every project you read, comes in one call:
+
+```sh
+evo-agents hub inbox                                          # open decisions, runs to approve, failed, lost or stale
+                                                              # runs, notices that ask for an act; each with its command
+evo-agents hub inbox --hub north --project lumen --json      # one hub, one project, for an agent
+evo-agents hub inbox --show https://hub.example/inbox?decision=582   # or 582, d582, r1092, #1092, a run's link
+```
+
+`hub inbox` (`evo_agents.hub.inbox`) reads the login of `~/.evo/hub` and each `~/.evo/hub-*` (EVO_HUB_HOME's
+directories), or EVO_HUB_TOKEN with EVO_HUB_URL alone inside a run. Per hub it lists the open decisions of every
+project you read (a credential request says to answer with `--secret`), the runs in review, waiting or parked on no
+decision, failed or lost in the last `--since` hours (72) and not run again by a later run of their plan, step or chain,
+and running with no event for `--stale` minutes (30); failed runs of one project, kind and person with the same cause
+fold into one line. Then the unread notices that ask for an act (a failed run, a mention, a paused breaker, a baseline
+or proposal to review, a pm escalation) and the Curator's proposals that wait; notices that only report (merges,
+pushes, files, briefs) are counted. A decision of category wait is the hub's to answer and listed with `--waits` only.
+Yours come first, then those asked of others. Each item ends with the command that acts on it, with
+`EVO_HUB_HOME=<dir>` in front for a hub other than the one a bare `evo-agents hub` uses. `hub inbox --show REF` finds a
+decision or run without its project, on a link's hub when given a link, and prints the decision, its run, the leases
+the run holds (to its owner), its last events, a diagnosis and the commands that act on it. Nothing writes to the hub.
 
 ## Local runs
 
@@ -2251,7 +2296,10 @@ to merge by hand, the merge queue's audit samples not answered, and the SRS vers
 that wait for their review, with their settle chats. The SRS review and the settle chat are no fourth gate: the rules
 of the plugin srs stay. Each item has its group and kind, a title, since when, who may decide it (`decided_by`:
 `admin`, `writer`, `run_owner`, `srs_reviewer` or `chat_member`, and `deciders`, the logins that may now), the page
-where it is decided and the work item it holds up. Anyone with a grant reads the board and sees only what they may
+where it is decided and the work item it holds up. A proposal of a claim also says what it proposes (`proposal`: the
+claim's cell and sentence, its test card in one line, the run that made it and, for a brainstorm of the Loop, the goal
+as it reads now), and its link opens it on its canvas (`#proposal-<id>`); the web groups the proposals by goal, then by
+run, says once who may decide them, and lets a writer reject a goal's or a run's together with one reason. Anyone with a grant reads the board and sees only what they may
 read (a canvas's items under its label, a decision of a run whose plan they read, through `X-Evo-Sink` or the
 project's hub sink); each page's buttons call the object's own route, so who may decide is as it was. The job
 `hub.loop_notices`, every 5 minutes, sends `goal_review` on the first day of each month to the admins and goal owners

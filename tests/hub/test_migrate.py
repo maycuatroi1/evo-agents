@@ -156,10 +156,10 @@ TABLES |= pg.DOCS_TABLES  # migration 0163
 TABLES |= pg.CHAT_BRIDGE_TABLES  # migration 0165
 TABLES |= pg.PLUGIN_RECORD_TABLES  # migration 0169
 TABLES |= {"srs_delivery", "srs_baselines", "context_answer_loads"}  # migrations 0172, 0173 and 0175
-TABLES |= {"kg_query_labels"}  # migration 0177
-TABLES |= {"kg_eval_sets"}  # migration 0178
-TABLES |= {"kg_semantic"}  # migration 0180
-TABLES |= {"kg_optimize_runs"}  # migration 0181
+TABLES |= {"kg_query_labels"}  # migration 0178
+TABLES |= {"kg_eval_sets"}  # migration 0179
+TABLES |= {"kg_semantic"}  # migration 0181
+TABLES |= {"kg_optimize_runs"}  # migration 0182
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -4914,8 +4914,35 @@ def test_0176_drops_the_cost_cap_of_a_release_cycle_and_going_back_puts_the_defa
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0176") :]
 
 
-def test_0179_says_which_loop_and_run_took_a_decision_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0178")
+def test_0177_lets_the_hub_answer_a_credential_request_and_going_back_names_its_owner_as_the_answerer(hub_db):
+    move_to(hub_db, "0176")
+    d = hub_tables.decisions
+    request = {"env_var": "NORTHWIND_DEPLOY_KEY", "secret_name": "northwind-deploy-key", "hub_account": False}
+    answered = {"state": "answered", "answer_option": "a", "answer_text": "Leased.", "answered_at": func.now()}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        asked = _decision_row(ids, run_id, "wait-helper").values(category="credential", credential_request=request)
+        decision_id = one(conn, asked)
+        with pytest.raises(errors.CheckViolation):  # only a wait was answered by nobody before 0177
+            conn.execute(update(d).values(answered).where(d.c.id == decision_id))
+    move_to(hub_db, "0177")
+    with live.connect(hub_db) as conn:
+        conn.execute(update(d).values(answered).where(d.c.id == decision_id))
+        plain = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="credential"))
+        scope = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        for other in (plain, scope):  # a decision that is no credential request still needs who answered it
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(d).values(answered).where(d.c.id == other))
+    move_to(hub_db, "0176", down=True)
+    assert query(hub_db, select(d.c.answered_by).where(d.c.id == decision_id)) == [(ids["user"],)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0140's check is back
+        conn.execute(update(d).values(answered_by=None).where(d.c.id == decision_id))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0177") :]
+
+
+def test_0180_says_which_loop_and_run_took_a_decision_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0179")
     d, e = hub_tables.kg_decisions, hub_tables.kg_decision_events
     assert "origin" not in columns(hub_db, "kg_decision_events")
     with live.connect(hub_db) as conn:
@@ -4925,7 +4952,7 @@ def test_0179_says_which_loop_and_run_took_a_decision_and_going_back_drops_it(hu
         event = {"project_id": ids["project"], "decision_id": first, "action": "decide", "actor_id": ids["user"]}
         conn.execute(insert(e).values({**event, "rev": 1, "reason": "by hand"}))
         run_id = one(conn, _author_run(ids))
-    move_to(hub_db, "0179")
+    move_to(hub_db, "0180")
     assert {"origin", "run_id"} <= set(columns(hub_db, "kg_decision_events"))
     with live.connect(hub_db) as conn:
         conn.execute(
@@ -4942,17 +4969,17 @@ def test_0179_says_which_loop_and_run_took_a_decision_and_going_back_drops_it(hu
         conn.execute(delete(hub_tables.runs).where(hub_tables.runs.c.id == run_id))
     kept = select(e.c.rev, e.c.origin, e.c.run_id).order_by(e.c.rev)
     assert query(hub_db, kept) == [(1, None, None), (2, "kg-optimize", None), (3, "kg-optimize", None)]
-    move_to(hub_db, "0178", down=True)
+    move_to(hub_db, "0179", down=True)
     assert "origin" not in columns(hub_db, "kg_decision_events")
     assert query(hub_db, select(func.count()).select_from(e)) == [(3,)]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0179") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0180") :]
 
 
-def test_0180_keeps_whether_a_project_is_searched_by_meaning_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0179")
+def test_0181_keeps_whether_a_project_is_searched_by_meaning_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0180")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    move_to(hub_db, "0180")
+    move_to(hub_db, "0181")
     t = hub_tables.kg_semantic
     row = {"project_id": ids["project"], "model": "BAAI/bge-m3"}
     with live.connect(hub_db) as conn:
@@ -4961,16 +4988,16 @@ def test_0180_keeps_whether_a_project_is_searched_by_meaning_and_going_back_drop
                 conn.execute(insert(t).values(bad))
         conn.execute(insert(t).values({**row, "mode": "index", "updated_by": ids["user"]}))
     assert query(hub_db, select(t.c.mode, t.c.model)) == [("index", "BAAI/bge-m3")]
-    move_to(hub_db, "0179", down=True)
+    move_to(hub_db, "0180", down=True)
     assert "kg_semantic" not in tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0180") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0181") :]
 
 
-def test_0181_keeps_one_kg_optimize_run_in_flight_a_project_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0180")
+def test_0182_keeps_one_kg_optimize_run_in_flight_a_project_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0181")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    move_to(hub_db, "0181")
+    move_to(hub_db, "0182")
     t = hub_tables.kg_optimize_runs
     row = {"project_id": ids["project"], "via": "manual", "state": "measuring", "body": {}}
     with live.connect(hub_db) as conn:
@@ -4982,6 +5009,6 @@ def test_0181_keeps_one_kg_optimize_run_in_flight_a_project_and_going_back_drops
             conn.execute(insert(t).values({**row, "state": "running"}))
         conn.execute(insert(t).values({**row, "state": "done", "asked_weight": 0.5}))
     assert query(hub_db, select(t.c.state, t.c.asked_weight).order_by(t.c.id)) == [("measuring", None), ("done", 0.5)]
-    move_to(hub_db, "0180", down=True)
+    move_to(hub_db, "0181", down=True)
     assert "kg_optimize_runs" not in tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0181") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0182") :]

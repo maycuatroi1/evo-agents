@@ -1,7 +1,7 @@
 """The retrieval question sets of the knowledge graph.
 
-Revision ID: 0178
-Revises: 0177
+Revision ID: 0179
+Revises: 0178
 Create Date: 2026-10-28
 
 kg_eval_sets is new (plan kg-retrieval-quality, criterion a2): each version of a project's question set for
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0178"
-down_revision = "0177"
+revision = "0179"
+down_revision = "0178"
 branch_labels = None
 depends_on = None
 

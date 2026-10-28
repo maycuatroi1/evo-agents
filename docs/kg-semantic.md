@@ -41,7 +41,7 @@ evo-agents kg eval questions.jsonl --split tune --method kg_search --search hybr
 evo-agents kg semantic --project demo --mode on               # the next build keeps them, kg_search uses them
 ```
 
-On the hub the mode is the project's row of `kg_semantic` (migration 0180), off without one; the build reads it
+On the hub the mode is the project's row of `kg_semantic` (migration 0181), off without one; the build reads it
 (`evo_agents/hub/kg_semantic.py`). No HTTP route sets it yet: the KG optimize loop writes it.
 
 ## What is embedded

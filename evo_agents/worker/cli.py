@@ -25,7 +25,7 @@
   --attach`` and ``chat post --attach`` do for a question and a message (``output_cli``).
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
-- ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
+- ``triage rerun|plan|invite|cancel``: what the agent of a triage thread does for a failed or stale run (``triage_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
@@ -774,7 +774,15 @@ def cmd_ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
 
-    decision_id = _noted_decision(agent, with_hub(agent, work), credential=request is not None)
+    answer = with_hub(agent, work)
+    decision_id = _noted_decision(agent, answer, credential=request is not None)
+    if request is not None and answer.get("state") == "answered":  # the hub found the owner's secret and answered
+        print(f"Decision #{decision_id} was answered by the hub at once: {answer.get('answer_text') or ''}".rstrip())
+        print(
+            "The worker takes the run's leases again as the answer reaches the run: read them with "
+            f"`{credential_requests.ENV_COMMAND}` before the command that needs them; nothing waits on the owner."
+        )
+        return 0
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
     if request is not None:
         print(

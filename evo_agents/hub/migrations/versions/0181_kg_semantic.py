@@ -1,7 +1,7 @@
 """Whether a project's knowledge graph is searched by meaning too.
 
-Revision ID: 0180
-Revises: 0179
+Revision ID: 0181
+Revises: 0180
 Create Date: 2026-10-28
 
 kg_semantic is new (plan kg-retrieval-quality, criterion a12): one row a project, whose mode says what its builds and
@@ -17,8 +17,8 @@ Going back drops the table.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0180"
-down_revision = "0179"
+revision = "0181"
+down_revision = "0180"
 branch_labels = None
 depends_on = None
 

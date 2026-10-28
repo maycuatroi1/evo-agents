@@ -395,6 +395,21 @@ NOTICE_KINDS = (
     "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
     "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
 )
+# The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
+# default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and
+# counted in Today's summary (``server.today``) rather than the unread count. A notice of these kinds whose details carry
+# an ``ask`` (the merge queue's audit sample, revert or release, ``server.post_merge``) waits for an answer: it is not one.
+REPORT_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", OUTPUT_NOTICE)
+REPORT_ASK = "ask"  # the key of a notice's details that makes a notice of REPORT_NOTICE_KINDS ask something
+
+
+def report_only(kind: str | None, notice_kind: str | None, details: dict | None) -> bool:
+    """Whether a notification of ``kind`` and ``notice_kind``, with ``details``, only reports (REPORT_NOTICE_KINDS)."""
+    if kind != "notice" or notice_kind not in REPORT_NOTICE_KINDS:
+        return False
+    return not (isinstance(details, dict) and details.get(REPORT_ASK) is not None)
+
+
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox

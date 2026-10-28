@@ -5638,6 +5638,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/canvas/{project}/canvases/{slug}/proposals/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Proposals
+         * @description Reject open proposals of a canvas together, with one reason for all: nothing of them is written. One no longer
+         *     open is left as it is and named; a 404 when the canvas has no proposal of an id, and nothing is rejected then.
+         */
+        post: operations["reject_proposals_v1_x_canvas__project__canvases__slug__proposals_reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/canvas/{project}/canvases/{slug}/brainstorm": {
         parameters: {
             query?: never;
@@ -9064,6 +9085,27 @@ export interface paths {
          *     automatic rerun, 409 when the chain of reruns or an earlier rerun forbids it.
          */
         post: operations["rerun_v1_worker_runs__run_id__triage_rerun_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/triage/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel
+         * @description Ask the worker of the stale run of this triage thread to stop it, for its owner, as their cancel of a held run
+         *     does; 409 for the thread of a failed run, a run that is no longer held, or a stop asked already.
+         */
+        post: operations["cancel_v1_worker_runs__run_id__triage_cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13401,6 +13443,24 @@ export interface components {
             sha256: string[];
         };
         /**
+         * BoardGoal
+         * @description The goal a brainstorm of the Loop was for, as it reads now.
+         */
+        BoardGoal: {
+            /**
+             * Code
+             * @description G-<number>
+             */
+            code: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Metric
+             * @description how its metric reads; `no metric` without one
+             */
+            metric: string;
+        };
+        /**
          * BoardItem
          * @description One thing of the project that waits for a person.
          */
@@ -13454,6 +13514,74 @@ export interface components {
             refs?: {
                 [key: string]: number | string;
             };
+            /** @description what a proposal of a claim proposes */
+            proposal?: components["schemas"]["BoardProposal"] | null;
+        };
+        /**
+         * BoardProposal
+         * @description What a proposal of a claim (kind ``claim_proposal``) proposes, for the member to judge it on the board.
+         */
+        BoardProposal: {
+            /** Id */
+            id: number;
+            /**
+             * Canvas
+             * @description the slug of its canvas
+             */
+            canvas: string;
+            /**
+             * Kind
+             * @description a new claim, or a change of claim ``claim``
+             * @enum {string}
+             */
+            kind: "create" | "change";
+            /**
+             * Claim
+             * @description the claim it changes (CL-<number>); None for a new claim
+             */
+            claim: string | null;
+            /**
+             * Cell
+             * @description the cell of the claim
+             */
+            cell: ("problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage") | null;
+            /**
+             * Text
+             * @description the claim's sentence: the one it proposes, else the claim's own
+             */
+            text: string | null;
+            /**
+             * Fields
+             * @description the fields of the claim it sets
+             */
+            fields: string[];
+            /**
+             * Status
+             * @description the status it moves the claim to, when it does
+             */
+            status: ("assumption" | "testing" | "validated" | "invalidated" | "retired") | null;
+            /**
+             * Test
+             * @description its test card's metric, threshold and deadline, in one line
+             */
+            test: string | null;
+            /**
+             * Reason
+             * @description why it was proposed, in one line
+             */
+            reason: string;
+            /**
+             * Synthetic
+             * @description it rests on simulated users
+             */
+            synthetic: boolean;
+            /**
+             * Run
+             * @description the run that proposed it
+             */
+            run: number | null;
+            /** @description the goal whose brainstorm by the Loop made it */
+            goal: components["schemas"]["BoardGoal"] | null;
         };
         /** Bought */
         Bought: {
@@ -15231,6 +15359,17 @@ export interface components {
              */
             evidence_id: number | null;
         };
+        /** CanvasProposalLeft */
+        CanvasProposalLeft: {
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @description what it is now: accepted, rejected or stale
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "rejected" | "stale";
+        };
         /**
          * CanvasProvenance
          * @description Who wrote a rev or a piece of evidence.
@@ -15270,6 +15409,35 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /** CanvasRejectManyIn */
+        CanvasRejectManyIn: {
+            /**
+             * Proposals
+             * @description the ids of the proposals of the canvas to reject
+             */
+            proposals: number[];
+            /**
+             * Reason
+             * @description why, kept with each proposal
+             */
+            reason: string;
+        };
+        /**
+         * CanvasRejected
+         * @description What rejecting proposals together did.
+         */
+        CanvasRejected: {
+            /**
+             * Rejected
+             * @description the proposals rejected now
+             */
+            rejected: number[];
+            /**
+             * Left
+             * @description those no longer open, left as they are
+             */
+            left: components["schemas"]["CanvasProposalLeft"][];
         };
         /** CanvasRev */
         CanvasRev: {
@@ -24553,6 +24721,12 @@ export interface components {
             created_at: string;
             /** Read At */
             read_at: string | null;
+            /**
+             * Report
+             * @description a notice that only reports (a push or merge into a default branch, a plan finished, a run's files, asking nothing): stored read, sent to no channel (nor a device, unless you chose the interrupt tier for its kind), and counted in Today's summary
+             * @default false
+             */
+            report: boolean;
             /**
              * Outputs
              * @description the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from
@@ -38507,10 +38681,10 @@ export interface components {
         TodayItem: {
             /**
              * Kind
-             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer
+             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer; report: notices that only report, such as pushes, merges, plans finished and files of runs
              * @enum {string}
              */
-            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal";
+            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal" | "report";
             /** Title */
             title: string;
             /** Body */
@@ -39056,6 +39230,27 @@ export interface components {
              * @description the revision the edit wrote; null for a rerun alone
              */
             plan_revision: number | null;
+        };
+        /** TriageCancelIn */
+        TriageCancelIn: {
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** TriageCancelled */
+        TriageCancelled: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the stale run whose worker was asked to stop it
+             */
+            run_id: number;
         };
         /** TriageInviteIn */
         TriageInviteIn: {
@@ -60705,6 +60900,90 @@ export interface operations {
             };
         };
     };
+    reject_proposals_v1_x_canvas__project__canvases__slug__proposals_reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasRejectManyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasRejected"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     brainstorm_v1_x_canvas__project__canvases__slug__brainstorm_post: {
         parameters: {
             query?: never;
@@ -75457,6 +75736,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TriageActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_v1_worker_runs__run_id__triage_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageCancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageCancelled"];
                 };
             };
             /** @description Unauthorized */

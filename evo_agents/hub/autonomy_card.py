@@ -20,6 +20,7 @@ Standard library only: the worker builds the prompt of a plan run's step from it
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -233,3 +234,61 @@ def without_card(prompt: str) -> str:
         return prompt
     _, _, rest = prompt.partition("\n\n")
     return rest
+
+
+# a3 of plan hub-attention-runtime: a question of a plan run or an author run about a class its card leaves to the
+# agent (auto) is refused at the ask route, quoting the card's rule (``left_to_agent``). Each class the gate holds, the
+# category it is asked in, and the words of a scope question that asks leave to do it.
+_ASKS_LEAVE = re.compile(
+    r"\b(?:may|can|could|shall)[ ](?:i|we)\b|\b(?:ok|okay|fine|safe)[ ]to\b|\bpermission\b|\bapprov\w*|"
+    r"\bgo[ ]ahead\b|\bsign[ -]?off\b|\bgreen[ ]light\b|\ballow(?:ed)?[ ]to\b|"
+    r"\bxin[ ]phép\b|\bcho[ ]phép\b|\bđược[ ]phép\b|\bcó[ ]được\b|\bduyệt\b|\bđồng[ ]ý\b",
+    re.IGNORECASE,
+)
+_MERGES_TO_DEFAULT = re.compile(
+    r"\bmerg\w*\b.{0,80}?\b(?:main|master|trunk|(?:the[ ])?default[ ]branch|nhánh[ ](?:mặc[ ]định|chính))\b",
+    re.IGNORECASE,
+)
+_SHIPS = re.compile(
+    r"\b(?:deploy\w*|roll[ ]?out|ship[ ]it|publish\w*|cut[ ]a[ ]release|tag[ ]a[ ]release|"
+    r"release[ ](?:it|this|that|v?\d[\w.-]*|the[ ](?:package|version|build|new[ ]version))|"
+    r"triển[ ]khai|phát[ ]hành)\b",
+    re.IGNORECASE,
+)
+GATED_CLASSES = {"K5": _MERGES_TO_DEFAULT, "K6": _SHIPS}
+SCOPE_CATEGORY = "scope"
+
+
+def asked_class(category: str, question: str) -> str | None:
+    """The class of K5 and K6 a question of ``category`` asks about: merge K5 and deploy K6 by their category, and a
+    scope question that asks leave to merge into a default branch (K5), or to deploy or release (K6), by its words."""
+    for klass in GATED_CLASSES:
+        if category in CLASS_CATEGORIES[klass]:
+            return klass
+    if category != SCOPE_CATEGORY or not _ASKS_LEAVE.search(question):
+        return None
+    return next((klass for klass, words in GATED_CLASSES.items() if words.search(question)), None)
+
+
+def rule_line(made: Card, klass: str) -> str:
+    """The line of card ``made`` that leaves class ``klass`` to the agent, as the agent read it in its prompt."""
+    named = f"{klass} {CLASS_NAMES[klass]}"
+    lines = made.text.splitlines()
+    for line in lines:
+        if line.startswith("- Yours to do (auto): ") and named in line:
+            return line
+    return next((line for line in lines if line.endswith("Every class of action is yours to do.")), named)
+
+
+def left_to_agent(made: Card | None, category: str, question: str) -> tuple[str, str] | None:
+    """(class, the card's line that leaves it to the agent) when a question of ``category`` asks about K5 or K6
+    (``asked_class``) and card ``made`` has that class auto with no ask of its own in the category (a K5 that asks on a
+    risk path of the merge queue still asks merge); None for a run without a card, which asks as before."""
+    if made is None:
+        return None
+    klass = asked_class(category, question)
+    if klass is None or made.modes.get(klass) != AUTO:
+        return None
+    if any(name in made.categories for name in CLASS_CATEGORIES[klass]):
+        return None
+    return klass, rule_line(made, klass)

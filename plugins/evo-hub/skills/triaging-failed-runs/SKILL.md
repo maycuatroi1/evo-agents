@@ -11,6 +11,11 @@ log and diff, and the candidates for a rerun. Read the log and the diff before y
 paragraph in the thread first (`evo-agents worker chat post TEXT`). The chat holds the threads of the project's other
 failed runs too, of other plans: act on the run of your thread alone.
 
+A thread of cause `stale` is about a run that still holds its worker but has written no event for 45 minutes while the
+worker sends heartbeats; one of cause `lease_lost` is about a run the hub failed on its last attempt when its worker
+stopped extending the lease. Their first message adds the diagnosis: the last event, the worker and its last
+heartbeat, the lease and the attempt.
+
 ## What you do on your own
 
 The hub checks each of these on every call and refuses anything outside it with the reason; the refusal is not
@@ -31,6 +36,11 @@ negotiable, so do not retry it in another form.
   `[{"step": "1", "verify": "..."}, {"step": "7", "verify": "...", "why": "..."}]`. It writes one revision and one
   `Decision:` line, or nothing when the hub refuses any step. Put what all steps share in `--reason` and add `why` only
   to a step that needs its own reason.
+
+- In a `stale` thread, when the log shows the run is stuck (no tool call, no output, the same wait), ask its worker to
+  stop it: `evo-agents worker triage cancel --reason TEXT`. Once the run has ended (`cancelled`), run it again on a
+  fit worker with `evo-agents worker triage rerun --reason TEXT [--worker NAME]`; the hub refuses a rerun while the
+  run is still held. When the log shows it is working (a long build, a long test), cancel nothing and say so.
 
 - When the error names another project (the first message says so, under "The error names another project"), invite its
   agent: `evo-agents worker triage invite HANDLE --reason TEXT`, then hand it the work with `evo-agents worker chat

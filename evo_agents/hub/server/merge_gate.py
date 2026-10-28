@@ -571,8 +571,8 @@ class RepoPass:
                 reason = merge_gate.reason_line(
                     f"GitLab did not open the merge request of {candidate.branch}: {problem}"
                 )
-                if candidate.row_id is None:
-                    await self._insert(conn, {**values, "state": "blocked", "reason": reason}, reason, "gate")
+                if candidate.row_id is None:  # a line of no gate: merge_events_check holds "gate" to a gate's number
+                    await self._insert(conn, {**values, "state": "blocked", "reason": reason}, reason, "queued")
                 else:
                     await set_row(conn, candidate.row_id, reason=reason)
                 self.outcomes["not_opened"] += 1

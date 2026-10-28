@@ -1,4 +1,4 @@
-"""The retrieval question sets of a project's knowledge graph, versioned on the hub (kg_eval_sets, migration 0178).
+"""The retrieval question sets of a project's knowledge graph, versioned on the hub (kg_eval_sets, migration 0179).
 
 A set is what ``evo-agents kg eval`` reads (``evo_agents.kg.evaluate``, docs/kg-eval.md): a question a JSON object,
 each in the ``tune`` or the ``holdout`` part by the hash of its id. The hub keeps it so that every machine and the

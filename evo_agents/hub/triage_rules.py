@@ -11,6 +11,9 @@ whatever the agent was told:
   names a repo of that run (``edit_problems``), as a new revision under the owner's name, never losing a clause of
   the ``verify``; the ``verify_failed`` cause is rerun only together with such an edit.
 
+- ask the worker of a run that is stale (it wrote no event for ``triage.STALE_MINUTES`` while its worker heartbeats)
+  to stop it, and run it again once it has ended, as for the cause ``stale``;
+
 - when the cause or the error points at a repo of another project, invite the agent of that project into the thread
   (``named_in`` finds what the error names; the hub checks the owner's writer role there and the chat's label) and hand
   work to it by a mention, within the hop limit of a chat.
@@ -39,6 +42,7 @@ RERUN_CAUSES = {
     "hub_5xx": "on the worker the run was on",
     "checkout": "on a worker that has a checkout of every repo of the run",
     VERIFY_WITH_EDIT: "after the verify or the what of a step was edited",
+    "stale": "once it has ended (``triage cancel`` asks its worker to stop it), on a worker of the owner that is fit",
 }
 
 
