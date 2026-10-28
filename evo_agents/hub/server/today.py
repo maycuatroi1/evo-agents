@@ -24,6 +24,9 @@ reach is neither listed nor counted. It answers:
     session once at its largest total (``night_cost.usage_cost``);
   - ``proposal``: an open proposal of the Curator recorded in the window, in a project the caller is an admin of, and
     so may answer, whose label their grant reaches;
+  - ``report``: the notices that only report (``runs.REPORT_NOTICE_KINDS``: a push or merge into a default branch, a
+    plan finished, a run's files) the caller got in the window in a project they hold a grant on, one item a project
+    and kind of notice, at the newest of them; they are stored read and reach no channel, so Today is where they count;
 
 - ``caught_up``: whether ``items`` holds everything that changed in the window; ``seen_until``, the mark to post once
   every item listed was shown: the moment of the answer when it is caught up, else the moment of the last item;
@@ -46,7 +49,7 @@ from typing import Literal
 from fastapi import APIRouter, Request
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, Text, and_, bindparam, case, cast, func, literal, or_, select, tuple_
-from sqlalchemy.dialects.postgresql import JSONPATH
+from sqlalchemy.dialects.postgresql import JSONPATH, aggregate_order_by, array_agg
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -58,7 +61,7 @@ from evo_agents.hub.server.decisions import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.loop.view import measure
 from evo_agents.hub.server.night_cost import usage_cost
-from evo_agents.hub.server.notifications import decision_link, one_line, run_link
+from evo_agents.hub.server.notifications import decision_link, one_line, report_notice, run_link
 from evo_agents.hub.server.overview import (
     UNPLANNED,
     VISIBLE,
@@ -82,7 +85,7 @@ MAX_PROPOSALS = 200  # the open proposals of the window one answer reads, before
 DEFAULT_WINDOW = timedelta(hours=24)  # the window of a member who has no seen mark yet
 MAX_WINDOW = timedelta(days=7)  # a seen mark older than this counts from this long ago
 METRIC_DAYS = timedelta(days=7)  # a problem's metric now is compared with its value this long ago
-ITEM_KINDS = ("release", "step_done", "run_failed", "run_parked", "problem", "cost", "proposal")
+ITEM_KINDS = ("release", "step_done", "run_failed", "run_parked", "problem", "cost", "proposal", "report")
 FAILED = ("failed", "lost")  # a run of these ends is a run_failed item
 TITLE_CHARS = 160
 BODY_CHARS = 300
@@ -116,7 +119,8 @@ class TodayItem(BaseModel):
     kind: Literal[ITEM_KINDS] = Field(
         description="release: a release published; step_done: a plan step done; run_failed and run_parked: a run you "
         "dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; "
-        "proposal: a proposal of the Curator you may answer"
+        "proposal: a proposal of the Curator you may answer; report: notices that only report, such as pushes, merges, "
+        "plans finished and files of runs"
     )
     title: str
     body: str | None
@@ -289,6 +293,38 @@ def _costs(visible):
     )
 
 
+def _reports():
+    """The notices that only report which :user_id got in the window in the projects :granted, a project and kind of
+    notice at a time: how many, when the newest came, and its title, body and link."""
+    n, projects = tables.notifications, tables.projects
+    newest = (n.c.created_at.desc(), n.c.id.desc())
+
+    def latest(column):
+        return array_agg(aggregate_order_by(column, *newest))[1]
+
+    return (
+        select(
+            projects.c.name.label("project"),
+            n.c.notice_kind,
+            func.count().label("count"),
+            func.max(n.c.created_at).label("at"),
+            latest(n.c.title).label("title"),
+            latest(n.c.body).label("body"),
+            latest(n.c.link).label("link"),
+        )
+        .join_from(n, projects, projects.c.id == n.c.project_id)
+        .where(
+            n.c.user_id == bindparam("user_id"),
+            report_notice(n),
+            one_of(n.c.project_id, name="granted"),
+            _in_window(n.c.created_at),
+        )
+        .group_by(projects.c.name, n.c.notice_kind)
+        .order_by(func.max(n.c.created_at), projects.c.name, n.c.notice_kind)
+        .limit(MAX_ITEMS + 1)
+    )
+
+
 def _changed_plans(visible):
     """The visible plans changed in the window: their project, title and steps."""
     p, projects = tables.plans, tables.projects
@@ -364,6 +400,7 @@ _NEEDS_YOU = _needs_you(VISIBLE, bindparam("user_id"), UNPLANNED)
 _RELEASES = _releases()
 _RUNS = _runs(VISIBLE)
 _COSTS = _costs(VISIBLE)
+_REPORTS = _reports()
 _CHANGED_PLANS = _changed_plans(VISIBLE)
 _OWNED_PROBLEMS = _owned_problems()
 _NOW = select(func.now())
@@ -420,6 +457,34 @@ def _cost(row) -> Found:
         link=f"/p/{row.project}/runs",
     )
     return Found(item, cost_usd=spent)
+
+
+REPORTS = {  # each kind of notice that only reports, one of it and some of it
+    "push_default_branch": ("a push to a default branch", "{} pushes to a default branch"),
+    "merge_default_branch": ("a merge into a default branch", "{} merges into a default branch"),
+    "plan_finished": ("a plan finished", "{} plans finished"),
+    runs.OUTPUT_NOTICE: ("files from a run", "{} notices of files from runs"),
+}
+
+
+def _report(row) -> Found:
+    count = int(row.count)
+    if count == 1:
+        title, body = row.title, row.body
+        link = row.link or f"/inbox?kind=notice&project={row.project}"
+    else:
+        some = REPORTS.get(row.notice_kind, ("a notice", "{} notices"))[1].format(count)
+        title, body = f"{some[0].upper()}{some[1:]} in {row.project}", f"The newest: {row.title}"
+        link = f"/inbox?kind=notice&project={row.project}"
+    item = TodayItem(
+        kind="report",
+        title=one_line(title, TITLE_CHARS),
+        body=_line(body, BODY_CHARS),
+        at=row.at,
+        project=row.project,
+        link=link,
+    )
+    return Found(item)
 
 
 def _first_done(revisions: list, since: datetime) -> tuple[set[str], dict[str, datetime]]:
@@ -552,6 +617,7 @@ PHRASES = {  # each kind of item, one of it and some of it
     "run_parked": ("a parked run", "{} parked runs"),
     "problem": ("a problem whose metric moved", "{} problems whose metric moved"),
     "proposal": ("a proposal to answer", "{} proposals to answer"),
+    "report": ("a report of your work", "{} reports of your work"),  # an item: a project and kind of notice
 }
 
 
@@ -613,6 +679,7 @@ async def _found(conn: AsyncConnection, accesses: list[ProjectAccess], bound: di
     found += await _problems(conn, bound)
     found += [_cost(row) for row in (await conn.execute(_COSTS, bound)).all()]
     found += await _proposals(conn, accesses, bound)
+    found += [_report(row) for row in (await conn.execute(_REPORTS, bound)).all()]
     return sorted(found, key=lambda each: (each.item.at, ITEM_KINDS.index(each.item.kind), each.item.title))
 
 

@@ -24554,6 +24554,12 @@ export interface components {
             /** Read At */
             read_at: string | null;
             /**
+             * Report
+             * @description a notice that only reports (a push or merge into a default branch, a plan finished, a run's files, asking nothing): stored read, sent to no channel (nor a device, unless you chose the interrupt tier for its kind), and counted in Today's summary
+             * @default false
+             */
+            report: boolean;
+            /**
              * Outputs
              * @description the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from
              */
@@ -38507,10 +38513,10 @@ export interface components {
         TodayItem: {
             /**
              * Kind
-             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer
+             * @description release: a release published; step_done: a plan step done; run_failed and run_parked: a run you dispatched failed or parked; problem: the metric of a problem you own moved; cost: what your runs cost; proposal: a proposal of the Curator you may answer; report: notices that only report, such as pushes, merges, plans finished and files of runs
              * @enum {string}
              */
-            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal";
+            kind: "release" | "step_done" | "run_failed" | "run_parked" | "problem" | "cost" | "proposal" | "report";
             /** Title */
             title: string;
             /** Body */

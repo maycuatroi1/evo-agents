@@ -1,11 +1,11 @@
 """The notice of a run's files on the hub (plan run-outputs, step 4): criteria a6 and the hub's part of a4.
 
 The files a run's agent sent, or left in its outputs directory, become one notice ``run_outputs`` to the run's owner,
-gathered a minute a run, never two of one run within a minute on a channel and never with an image taken out of a
-tool's result; the Inbox lists their outputs; a file a question carries goes with the question; a member turns the
-notice off and still gets questions; a channel cleared for the project gets the files of a decision or a notice with
-presigned links, a restricted project's channel the link alone; and Telegram's message of a restricted project names
-no file. The people, projects and files are fictional.
+gathered a minute a run and never with an image taken out of a tool's result; it only reports (plan
+hub-attention-runtime, a4), so it is read already and the web alone gets it; the Inbox lists their outputs; a file a
+question carries goes with the question; a member turns the notice off and still gets questions; a channel cleared
+for the project gets the files of a decision with presigned links, a restricted project's channel the link alone; and
+Telegram's message of a restricted project names no file. The people, projects and files are fictional.
 """
 
 from __future__ import annotations
@@ -120,13 +120,13 @@ def test_the_files_a_run_sent_become_one_notice_a_minute_to_its_owner_and_never_
     (shown_report,) = sent(client, prefix, hub["owner"], [(REPORT, report)])["outputs"]
     ((notice_id, title, details, _),) = output_notices_of(hub_db)
     assert (title, details) == (f"Local run #{run_id} sent report.md", {"outputs": [shown_report["id"]]})
-    assert all(55 <= seconds <= 61 for seconds in due_in(hub_db, notice_id)), "the channels wait a minute for more"
-    read(client, hub["owner"], ids=[notice_id])
+    assert all(55 <= seconds <= 61 for seconds in due_in(hub_db, notice_id)), "the web waits a minute for more"
+    assert len(due_in(hub_db, notice_id)) == 1, "the notice only reports: the web alone gets it (a4)"
 
     demo = item(VIDEO, "demo.mp4", "video/mp4", "outputs")
     (shown_demo,) = sent(client, prefix, hub["owner"], [(VIDEO, demo)])["outputs"]
     ((same_id, title, details, read_at),) = output_notices_of(hub_db)
-    assert same_id == notice_id and read_at is None, "a file within the minute joins the notice, unread again"
+    assert same_id == notice_id and read_at is not None, "a file within the minute joins the notice, read still"
     assert (title, details) == (
         f"Local run #{run_id} sent 2 files",
         {"outputs": [shown_report["id"], shown_demo["id"]]},
@@ -232,7 +232,7 @@ def test_a_file_a_question_carries_goes_with_the_question_and_leaves_the_notice(
     ], "the web shows a question's files, a tool image among them"
 
 
-def test_a_channel_gets_a_questions_and_a_notices_files_with_links_but_no_tool_image(client, hub, hub_db, recording):
+def test_a_channel_gets_a_questions_files_with_links_and_a_notice_of_files_stays_on_the_web(client, hub, hub_db, recording):
     add_channel(hub_db, OWNER, "recording")
     clear_hub_sink(hub_db, "internal")
     run_id, prefix = local_run(client, hub)
@@ -262,13 +262,15 @@ def test_a_channel_gets_a_questions_and_a_notices_files_with_links_but_no_tool_i
     assert get_url(carried["url"]) == SHOT
 
     due_now(hub_db)
-    assert deliver(client)["delivered"] == 2
-    notice = recording.sent[-1]
-    assert notice.notice_kind == "run_outputs" and notice.extra["outputs_count"] == 2
-    assert [(f["name"], f["size"]) for f in notice.extra["outputs"]] == [("report.md", len(REPORT)), ("demo.mp4", 1024)]
-    assert [get_url(f["url"]) for f in notice.extra["outputs"]] == [REPORT, VIDEO]
-    outside = dataclasses.replace(notice, extra=None)
-    files, _ = client.portal.call(_channel_outputs, client.app.state.engine, outside)
+    assert deliver(client)["delivered"] == 1, "the notice of files only reports: the web alone takes it (a4)"
+    assert recording.sent == [question]
+    ((notice_id, title, details, _),) = output_notices_of(hub_db)
+    assert details == {"outputs": [report["id"], demo["id"]]}
+    outside = dataclasses.replace(
+        question, id=notice_id, kind="notice", notice_kind="run_outputs", decision_id=None, details=details, extra=None
+    )
+    files, count = client.portal.call(_channel_outputs, client.app.state.engine, outside)
+    assert count == 2 and [(f["name"], f["size"]) for f in files] == [("report.md", len(REPORT)), ("demo.mp4", 1024)]
     assert [f["url"] for f in files] == [None, None], "outside the job's pass there is no store to sign with"
 
 
@@ -285,8 +287,8 @@ def test_a_restricted_projects_channel_gets_neither_files_nor_their_names(client
     ask_local(client, hub, prefix, [shot["id"]])
     sent(client, prefix, hub["owner"], [(REPORT, item(REPORT, "northwind-terms.md", "text/markdown"))])
     due_now(hub_db)
-    assert deliver(client)["delivered"] == 4
-    assert [n.extra for n in recording.sent] == [{"restricted": True}, {"restricted": True}]
+    assert deliver(client)["delivered"] == 3, "the question on the web and the channel, the notice on the web alone"
+    assert [n.extra for n in recording.sent] == [{"restricted": True}]
 
 
 def test_telegrams_message_of_a_restricted_projects_files_holds_the_project_the_kind_and_the_link_alone():

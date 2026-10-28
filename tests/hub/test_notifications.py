@@ -35,6 +35,8 @@ PUSHED = {
     "branch": "main",
     "commits": [SHA, "b" * 40],
 }
+# A notice that asks for attention, so its member's channels get it: a push only reports (``runs.REPORT_NOTICE_KINDS``).
+FAILED = {**PUSHED, "kind": "run_failed", "title": "Step 3 of fleet failed", "body": "Its verify exited 1."}
 
 
 @pytest.fixture
@@ -90,6 +92,11 @@ def notice(client, worker: dict, run_id: int, **body):
     return client.post(f"/v1/worker/runs/{run_id}/notices", json={**PUSHED, **body}, headers=worker["headers"])
 
 
+def alert(client, worker: dict, run_id: int, **body):
+    """A notice of FAILED, which reaches the member's channels."""
+    return notice(client, worker, run_id, **{**FAILED, **body})
+
+
 def deliver(client) -> dict:
     return client.portal.call(notifications.deliver_notifications, client.app.state.engine)
 
@@ -138,27 +145,28 @@ def test_a_notice_notifies_the_owner_with_a_delivery_per_channel_that_is_on(clie
     add_channel(hub_db, OWNER, "mail", enabled=False)
     add_channel(hub_db, "someone-else", "fake")
     worker, run = started(client, hub)
-    response = notice(client, worker, run["id"])
+    response = alert(client, worker, run["id"])
     assert response.status_code == 201, response.text
     sent = response.json()
     assert {key: sent[key] for key in ("kind", "notice_kind", "project", "run_id", "decision_id", "title", "link")} == {
         "kind": "notice",
-        "notice_kind": "push_default_branch",
+        "notice_kind": "run_failed",
         "project": PROJECT,
         "run_id": run["id"],
         "decision_id": None,
-        "title": "Pushed main of agent-skills",
+        "title": "Step 3 of fleet failed",
         "link": f"/p/{PROJECT}/runs/{run['id']}",
     }
     assert sent["details"] == {"repo": "agent-skills", "branch": "main", "commits": [SHA, "b" * 40]}
-    assert (sent["body"], sent["read_at"], sent["decision_state"]) == ("Two commits of step 3.", None, None)
+    assert (sent["body"], sent["read_at"], sent["decision_state"]) == ("Its verify exited 1.", None, None)
+    assert sent["report"] is False
     # the web and the owner's channel that is on; not the one turned off, nor anyone else's
     assert deliveries(hub_db) == [("web", "pending", 0, None), ("fake", "pending", 0, None)]
     run_events = tables.run_events
     events = sql(
         hub_db, select(run_events.c.body).where(run_events.c.run_id == run["id"], run_events.c.kind == "system")
     )
-    assert events[-1][0]["text"] == "notice push_default_branch: Pushed main of agent-skills"
+    assert events[-1][0]["text"] == "notice run_failed: Step 3 of fleet failed"
     assert events[-1][0]["notice"]["notification_id"] == sent["id"]
     assert [item["id"] for item in listed(client, hub["owner"])["notifications"]] == [sent["id"]]
     assert listed(client, hub["other"])["notifications"] == []
@@ -230,7 +238,7 @@ def test_a_plan_run_that_finishes_or_fails_notifies_its_owner(client, hub, hub_d
 def test_the_job_delivers_on_the_web_at_once_and_tries_a_failing_channel_again(client, hub, hub_db, fake):
     add_channel(hub_db, OWNER, "fake", config={"chat_id": 42})
     worker, run = started(client, hub)
-    sent = notice(client, worker, run["id"]).json()
+    sent = alert(client, worker, run["id"]).json()
     fake.failures = 2
     assert deliver(client) == {"delivered": 1, "retried": 1, "failed": 0}
     web, channel = deliveries(hub_db)
@@ -252,7 +260,7 @@ def test_the_job_delivers_on_the_web_at_once_and_tries_a_failing_channel_again(c
         sent["id"],
         OWNER,
         "notice",
-        "push_default_branch",
+        "run_failed",
         PROJECT,
     )
     assert (outgoing.title, outgoing.run_id, outgoing.details["repo"]) == (sent["title"], run["id"], "agent-skills")
@@ -262,7 +270,7 @@ def test_the_fifth_failure_fails_a_delivery_and_a_channel_without_a_class_fails_
     add_channel(hub_db, OWNER, "fake")
     add_channel(hub_db, OWNER, "pager")  # no class in the registry
     worker, run = started(client, hub)
-    notice(client, worker, run["id"])
+    alert(client, worker, run["id"])
     fake.failures = 10
     assert deliver(client) == {"delivered": 1, "retried": 1, "failed": 1}
     assert deliveries(hub_db)[2] == ("pager", "failed", 1, "the hub has no class for channels of kind pager")
@@ -293,7 +301,7 @@ async def _notify(engine, member: int) -> int:
     """A notice for ``member``, stored through the outbox."""
     async with engine.begin() as conn:
         return await notifications.notify(
-            conn, user_id=member, kind="notice", notice_kind="plan_finished", title="Plan fleet finished"
+            conn, user_id=member, kind="notice", notice_kind="run_failed", title="Plan run of fleet failed"
         )
 
 
@@ -332,7 +340,7 @@ def test_backoff_doubles_up_to_an_hour():
 
 def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db):
     worker, run = started(client, hub)
-    first = notice(client, worker, run["id"]).json()
+    first = alert(client, worker, run["id"]).json()
     ask = {
         "category": "external_send",
         "question": "Post the staging link to the team now?",
@@ -349,17 +357,18 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     assert listed(client, hub["owner"], kind="notice")["total"] == 2
     assert listed(client, hub["owner"], project="elsewhere")["total"] == 0
     assert listed(client, hub["owner"], limit=1, offset=1)["notifications"][0]["id"] == second["id"]
-    assert count(client, hub["owner"]) == {"unread": 3, "open_decisions": 1, "open_proposals": 0}
+    # the merge only reports: it is read already (criterion a4)
+    assert count(client, hub["owner"]) == {"unread": 2, "open_decisions": 1, "open_proposals": 0}
     assert count(client, hub["other"]) == {"unread": 0, "open_decisions": 0, "open_proposals": 0}
 
     marked = read(client, hub["owner"], ids=[first["id"], 999999])
-    assert marked.status_code == 200 and marked.json() == {"read": 1, "unread": 2}
-    assert read(client, hub["owner"], ids=[first["id"]]).json() == {"read": 0, "unread": 2}  # read already
+    assert marked.status_code == 200 and marked.json() == {"read": 1, "unread": 1}
+    assert read(client, hub["owner"], ids=[first["id"]]).json() == {"read": 0, "unread": 1}  # read already
     assert read(client, hub["other"], ids=[second["id"]]).json() == {"read": 0, "unread": 0}  # not theirs
-    assert [item["id"] for item in listed(client, hub["owner"], unread=True)["notifications"]][1:] == [second["id"]]
+    assert [item["kind"] for item in listed(client, hub["owner"], unread=True)["notifications"]] == ["decision"]
     for body in ({}, {"ids": [first["id"]], "all": True}, {"ids": []}, {"all": False}):
         assert read(client, hub["owner"], **body).status_code == 422, body
-    assert read(client, hub["owner"], all=True).json() == {"read": 2, "unread": 0}
+    assert read(client, hub["owner"], all=True).json() == {"read": 1, "unread": 0}
     assert count(client, hub["owner"]) == {
         "unread": 0,
         "open_decisions": 1,
@@ -368,7 +377,7 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     # the audit names the notifications, never their text
     assert [row[:3] for row in audit_rows(hub_db, "notification")] == [
         ("notification.read", f"notifications:{first['id']}", OWNER),
-        ("notification.read", "notifications:all count=2", OWNER),
+        ("notification.read", "notifications:all count=1", OWNER),
     ]
     assert listed(client, hub["owner"])["notifications"][0]["read_at"] is not None
 
@@ -430,3 +439,92 @@ def test_a_notification_is_one_line_of_at_most_200_characters():
     assert notifications.one_line("Pushed\n\tmain   of\x00 evo-agents") == "Pushed main of evo-agents"
     long = notifications.one_line("x" * 300)
     assert len(long) == 200 and long.endswith("...")
+
+
+# Notices that only report (plan hub-attention-runtime, criterion a4)
+
+
+def _store(client, **fields) -> int:
+    """A notification stored through ``notifications.notify``, as the hub's own senders store theirs; its id."""
+
+    async def store():
+        async with client.app.state.engine.begin() as conn:
+            return await notifications.notify(conn, **fields)
+
+    return client.portal.call(store)
+
+
+def _project_id(db) -> int:
+    return sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+
+
+def _reports(client, hub, hub_db, worker, run) -> dict[str, int]:
+    """One notice of each kind that only reports, to the owner of ``run``: their ids by kind."""
+    owner, project = user_id(hub_db, OWNER), _project_id(hub_db)
+    common = {"user_id": owner, "kind": "notice", "project_id": project, "run_id": run["id"]}
+    return {
+        "push_default_branch": notice(client, worker, run["id"]).json()["id"],
+        "merge_default_branch": notice(client, worker, run["id"], kind="merge_default_branch", title="Merged").json()[
+            "id"
+        ],
+        "plan_finished": _store(client, notice_kind="plan_finished", title=f"Plan {PLAN} finished", **common),
+        "run_outputs": _store(client, notice_kind="run_outputs", title="2 files from run", **common),
+    }
+
+
+def test_report_notices_are_read_reach_no_channel_and_are_still_listed(client, hub, hub_db, fake):
+    add_channel(hub_db, OWNER, "fake", config={"chat_id": 42})
+    worker, run = started(client, hub)
+    ids = _reports(client, hub, hub_db, worker, run)
+    failed = alert(client, worker, run["id"]).json()
+    owner, project = user_id(hub_db, OWNER), _project_id(hub_db)
+    asking = _store(
+        client,
+        user_id=owner,
+        kind="notice",
+        notice_kind="merge_default_branch",
+        project_id=project,
+        title="Was the merge of !4 fine?",
+        details={"ask": "sample", "sample_id": 1},
+    )
+    # what only reports is not counted unread: the failed run and the merge that asks are
+    assert count(client, hub["owner"]) == {"unread": 2, "open_decisions": 0, "open_proposals": 0}
+    page = listed(client, hub["owner"])
+    shown = {item["id"]: item for item in page["notifications"]}
+    assert page["total"] == 6 and set(ids.values()) | {failed["id"], asking} == set(shown)
+    for kind, notification_id in ids.items():
+        item = shown[notification_id]
+        assert (item["notice_kind"], item["report"]) == (kind, True)
+        assert item["read_at"] is not None, kind
+    assert (shown[failed["id"]]["report"], shown[failed["id"]]["read_at"]) == (False, None)
+    assert (shown[asking]["report"], shown[asking]["read_at"]) == (False, None)
+    assert {item["id"] for item in listed(client, hub["owner"], unread=True)["notifications"]} == {failed["id"], asking}
+
+    # a report has its web delivery alone: no channel and no device gets it
+    of = DELIVERIES.c.notification_id
+    for notification_id in ids.values():
+        assert sql(hub_db, select(DELIVERIES.c.channel_id, DELIVERIES.c.device_id).where(of == notification_id)) == [
+            (None, None)
+        ]
+    assert deliver(client) == {"delivered": 8, "retried": 0, "failed": 0}  # 4 reports and 2 others, on the web and fake
+    assert sorted(outgoing.id for outgoing, _ in fake.sent) == sorted([failed["id"], asking])
+
+
+def test_report_notices_count_in_today_one_item_a_project_and_kind(client, hub, hub_db):
+    worker, run = started(client, hub)
+    _reports(client, hub, hub_db, worker, run)
+    notice(client, worker, run["id"], title="Pushed main again")
+    response = client.get("/v1/me/today", headers=hub["owner"])
+    assert response.status_code == 200, response.text
+    today = response.json()
+    reports = [item for item in today["items"] if item["kind"] == "report"]
+    assert len(reports) == 4 and {item["project"] for item in reports} == {PROJECT}
+    by_title = {item["title"]: item for item in reports}
+    pushes = by_title[f"2 pushes to a default branch in {PROJECT}"]
+    assert (pushes["body"], pushes["link"]) == ("The newest: Pushed main again", f"/inbox?kind=notice&project={PROJECT}")
+    assert {"Merged", f"Plan {PLAN} finished", "2 files from run"} <= set(by_title)
+    assert by_title["Merged"]["link"] == f"/p/{PROJECT}/runs/{run['id']}"
+    assert "4 reports of your work" in today["summary"], today["summary"]
+    assert listed(client, hub["other"])["total"] == 0
+    other = client.get("/v1/me/today", headers=hub["other"]).json()
+    assert [item for item in other["items"] if item["kind"] == "report"] == []

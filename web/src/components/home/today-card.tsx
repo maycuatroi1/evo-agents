@@ -39,6 +39,7 @@ const LOOK: Record<ItemKind, { icon: LucideIcon; tone: string }> = {
   problem: { icon: ChartLine, tone: "text-muted-foreground" },
   cost: { icon: Coins, tone: "text-muted-foreground" },
   proposal: { icon: Lightbulb, tone: "text-muted-foreground" },
+  report: { icon: Info, tone: "text-muted-foreground" },
 };
 
 /**

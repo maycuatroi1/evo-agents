@@ -324,6 +324,24 @@ it; a chat without agents keeps it in no project. The daemon sends `push_default
 worker step`; for a push or merge the agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
 
+### Notices that only report
+
+`push_default_branch`, `merge_default_branch`, `plan_finished` and `run_outputs` say that work went as it should
+(`runs.REPORT_NOTICE_KINDS`, plan hub-attention-runtime). A notice of these kinds whose `details.ask` is set (the merge
+queue's `sample`, `release` or `revert`) asks for an answer and is not one of them; every other kind of notice is
+unchanged. `notify` stores such a report:
+
+- read already (`read_at` at its creation), so the bell's `unread` and `GET /v1/me/notifications?unread=true` leave it
+  out, and a later file that joins a `run_outputs` keeps it read;
+- with its web delivery alone: no channel of the member's (Telegram) gets it, and no push device either, since these
+  kinds are of the brief tier unless the member chose `interrupt` for the kind themselves (Push to devices, Tiers); the
+  channels of isolated plugins still get it, as any notification of the project;
+- with `report: true` on the `Notification` the routes answer.
+
+`GET /v1/me/notifications` and `evo-agents hub notifications` still list every report, and the web's Inbox shows them
+after the rest under "Reports only", by day. Today counts them instead (Today and its summary push, below): an item
+`report` for each project and kind of report the member got in the window.
+
 The hub sends no `author_waiting` when an author run moves to `waiting` with a decision of its own still open: the
 decision's notification told the owner already, and Home lists the run in Needs you through its decision, not again
 among the author runs waiting for a reply. An author run that waits with no decision open sends `author_waiting` as
@@ -335,17 +353,16 @@ The hub sends `run_outputs` itself (`evo_agents/hub/server/output_notices.py`), 
 run's outputs, to the member who dispatched the run, for the files of source `sent` and `outputs`; an image taken out
 of a tool's result (source `tool`) never makes or joins one. It gathers a minute a run (`runs.OUTPUT_NOTICE_SECONDS`):
 
-- the first files store the notification, with every delivery of it due a minute later, so the Inbox shows it at once
-  and the channels wait for more;
+- the first files store the notification, read already and with its one delivery, the web's, due a minute later
+  (Notices that only report, above), so the Inbox shows it at once;
 - the files that come before any channel tried it join it: its `details.outputs`, title (`Run #N sent report.md`,
   `Local run #N sent 3 files`) and body (each file's name, size and caption, 20 at most, then how many more) are
-  written again, and it is unread again;
-- once a channel took it, or is sending it (its delivery is locked by the job's pass), the next files start a new
-  notice, due a minute after they came. So no channel gets two notices of one run within a minute, a delivery that
-  failed and is tried again aside.
+  written again, and it stays read;
+- once the web's delivery went, or is going (it is locked by the job's pass), the next files start a new notice, due a
+  minute after they came.
 
 A file that a question carries goes with the question: once a decision names it in `output_ids`, it leaves the run's
-notice no channel has tried yet, and a notice left with no file goes, its deliveries with it. A chat run sends no
+notice the web has not been sent yet, and a notice left with no file goes, its deliveries with it. A chat run sends no
 `run_outputs`: its files go under its messages in the thread. The Inbox lists the files a notification carries in
 `outputs` (`RunOutput`, as `docs/hub.md` describes it): the files of a `run_outputs` still there, with the run's URLs
 of their bytes, and the files of a decision, with the decision's.
@@ -408,7 +425,8 @@ and its entry in `CHANNELS`; the tables, the outbox and the job stay as they are
 a member belong to that channel, like the Telegram ones below.
 
 A notification is read when its owner opens it on the web, marks it read (`POST /v1/me/notifications/read`, by ids or
-all), or answers its decision. The web shows the unread count on a bell in the top bar and the notifications in the
+all), or answers its decision; a notice that only reports is read from the start (Notices, above). The web shows
+the unread count on a bell in the top bar and the notifications in the
 Inbox, open decisions and the Curator's open tier 2 proposals first; a proposal opens there in a sheet with its
 evidence, and an admin of its project answers it. The audit row `notification.read` names the notifications, not their
 text.
@@ -593,8 +611,11 @@ neither listed nor counted. It answers:
   of the window; a plan first written in the window starts from its first revision), `run_failed` and `run_parked` (a
   run the caller dispatched that failed, was lost or parked; the night shift's runs are left to the Curator's morning
   brief), `problem` (an open problem the caller owns whose metric differs from seven days ago, measured as the Loop
-  measures a goal's), `cost` (what the caller's runs that ended in the window cost, one item a project) and `proposal`
-  (an open proposal of the Curator in a project the caller is an admin of, who may answer it);
+  measures a goal's), `cost` (what the caller's runs that ended in the window cost, one item a project), `proposal`
+  (an open proposal of the Curator in a project the caller is an admin of, who may answer it) and `report` (the
+  notices that only report the caller got in the window in a project they hold a grant on, one item a project and kind
+  of notice, at the newest: its title, body and link for one notice, else `N pushes to a default branch in PROJECT`
+  with the newest one's title and a link to the project's notices in the Inbox);
 - `caught_up`, whether the items are everything that changed in the window, and `seen_until`, the mark to post once
   every item listed was shown: the moment of the answer when caught up, else the moment of the last item;
 - `summary`, one sentence made from English templates, no model, and `since` and `seen_at`.
@@ -693,7 +714,8 @@ title and body as plain text and the web's button. A decision or proposal that n
 time its message goes out (answered on the web meanwhile, say) goes out as the project, its number, that it no longer
 waits and the link, never with its question or summary.
 
-The files of a decision and of a `run_outputs` notice reach the channel in what the hub prepares for it
+The files of a decision reach the channel (a `run_outputs` notice only reports and reaches no channel of a
+member's, Notices above; a plugin's channel that gets it gets its files the same way) in what the hub prepares for it
 (`core_plugin_api.prepare`, `docs/plugins.md`): `extra.outputs`, at most 10 files (a media group of Telegram holds 10),
 oldest first, each with its id, name, media type, viewer, size, caption and `url`, a presigned GET of its bytes that
 works 5 minutes and is made at each try, and `extra.outputs_count`, how many files there are; both keys are left out
@@ -755,7 +777,8 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
   project's own ladder, read as `evo_agents.kg.policy` reads a clearance (a sink that names no location may receive
   any, so it sits at the top of the locations), the project's name, the kind of thing that waits and the link, nothing
   else: no question, title, option, context, diff, file or file name, and no answer button. Its channel's `extra` is
-  `{"restricted": true}` alone, so a `run_outputs` notice goes out as the project, the words of its kind (the hub's
+  `{"restricted": true}` alone, so a `run_outputs` notice, to a plugin's channel, goes out as the project, the words
+  of its kind (the hub's
   and those of the core plugin telegram from 1.1.0 are `Files from a run`) and the link. It fails closed: a project with
   no hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
   `domestic-only`) and a clearance above its lowest rung, is restricted too. A sink of kind `channel` (`docs/hub.md`,
