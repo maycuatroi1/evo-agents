@@ -5,10 +5,20 @@ by meaning: each row of the index that has a body gets the vector of a multiling
 one too, and the two rankings are fused. The model runs on the machine that builds the graph, the hub's worker or a
 member's machine, never through a third party's API. Code is `evo_agents/kg/semantic.py`.
 
-It is off by default, and a project turns it on only when its own question set says it helps: on the evo-agents
-questions it did not (below), so the hub's KG optimize loop turns it on for a project only when the holdout part of
-its set gives hit@5 at least 5 points above the search by words, tokens per answer file no higher, and a hub p95
-under one second.
+It is off by default, and a project turns it on only when its own question set says it helps. The hub's KG optimize
+loop turns it on for a project only when the holdout part of its set gives hit@5 at least 5 points above the search
+by words, tokens per answer file no higher, and a hub p95 under one second. On the evo-agents questions (830, all
+repos of the harness, graph of 20,462 rows with a body) it does not clear that bar, so it stays off there:
+
+| Split | Search | hit@5 | tokens per answer file | p95 ms (local, 8 cores) |
+| --- | --- | --- | --- | --- |
+| tune (600) | by words | 0.238 | 1,674 | 34 |
+| tune (600) | fused | 0.238 | 1,655 | 163 |
+| holdout (230) | by words | 0.178 | 2,281 | 31 |
+| holdout (230) | fused | 0.187 | 2,246 | 165 |
+
+Most of those questions name a plan step and are answered by the files its commits changed; the ranking by meaning
+finds sections and steps that talk about the subject more often than the code, so it lifts MRR more than hit@5.
 
 ## Modes
 
@@ -48,15 +58,16 @@ without the model, searches by words as it did. On the hub the build folds the v
 content hash it records, so a build whose graph is the same but whose vectors are not uploads its file. Each vector is
 also kept in `vectors.sqlite` next to the graph, by model and digest of its text, so a build embeds only the rows
 whose text changed: the first one of a large project embeds everything (20,462 rows, 10.6 M characters for the
-evo-agents graph, about 45 minutes on 8 CPU cores), the next ones a few rows.
+evo-agents graph, 72 minutes on 8 CPU cores), the next ones a few rows.
 
 ## The fusion
 
 Reciprocal rank fusion (Cormack, Clarke and Buettcher, 2009): a node scores `1 / (60 + its rank by words)` plus
-`SEMANTIC_WEIGHT / (60 + its rank by meaning)`, over the nodes each list holds. The ranking by meaning holds the 100
-nodes nearest the query (`SEMANTIC_POOL`), a node at its best row, of the kinds asked, rows of an audience only for a
-reader within it, and is weighed like the ranking by words (`search.weight`: background down, named nodes up). The
-nodes whose id, alias or name is the query still come first.
+`SEMANTIC_WEIGHT / (60 + its rank by meaning)`, the weight 0.5 (on the tune split, weights from 0.25 to 5 and `RRF_K` of
+20 or 60 moved hit@5 by under a point; 0.5 gave the fewest tokens per answer file), over the nodes each list holds. The
+ranking by meaning holds the 100 nodes nearest the query (`SEMANTIC_POOL`), a node at its best row, of the kinds asked,
+rows of an audience only for a reader within it, and is weighed like the ranking by words (`search.weight`: background
+down, named nodes up). The nodes whose id, alias or name is the query still come first.
 
 ## Install
 
@@ -65,10 +76,10 @@ huggingface_hub). Without it, `index` and `on` write nothing, the build says why
 words.
 
 The model is BAAI/bge-m3 (568 M parameters, 1,024 dimensions, over 100 languages, the ONNX export of its Hugging Face
-repository): about 2.3 GB on disk and some 2.5 GB of memory once loaded, one query in about 30 ms on 8 cores, no GPU
-needed. Models are read from `EVO_KG_MODEL_DIR`, by default `~/.cache/evo-agents/models`. A build downloads the model
-when it is missing; a search never does: it loads the model from that directory only, and searches by words when it
-is not there.
+repository): 2.2 GB on disk, a peak of about 1.6 GB of memory in a process that loads it and embeds a query, one query
+in about 30 ms on 8 cores, no GPU needed. Models are read from `EVO_KG_MODEL_DIR`, by default
+`~/.cache/evo-agents/models`. A build downloads the model when it is missing; a search never does: it loads the model
+from that directory only, and searches by words when it is not there.
 
 On a member's machine or a worker:
 
