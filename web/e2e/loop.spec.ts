@@ -1,10 +1,10 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { openBaselineByApi } from "./support/canvas";
+import { CANVAS_SLUG, openBaselineByApi } from "./support/canvas";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
-import { decidePath, goalsPath, HELD_PLAN, itemPath, loopPath, RELEASED_PLAN, seedLoop, seedLoopProject } from "./support/loop";
+import { decidePath, goalsPath, HELD_PLAN, itemPath, loopPath, PROPOSED, RELEASED_PLAN, seedLoop, seedLoopProject } from "./support/loop";
 import { open } from "./support/plans";
 import { submitVersion } from "./support/srs";
 import { toast } from "./support/toast";
@@ -175,6 +175,46 @@ test("the Decisions page gathers the three gates and the Loop's exceptions, and 
   await expect(main(page).getByTestId("loop-breaker-reset")).toHaveCount(0);
   await expect(main(page).getByTestId("loop-turn-off")).toHaveCount(0);
   await expect(main(page).getByTestId("loop-items-table").locator("tbody tr")).toHaveCount(10);
+});
+
+test("the Decisions page reads each claim proposal by goal and run, opens one on its canvas, and rejects a goal's together", async ({ page, admin, signInAs }) => {
+  const project = uniqueName("loop");
+  const me = newAccount("loop-owner");
+  await admin.registerProject(project);
+  await admin.grant(project, me.login, "admin", "internal");
+  await seedLoopProject(me, project);
+  const seeded = await seedLoop(project, { proposals: true });
+  const [first, second] = seeded.proposals ?? [];
+  await signInAs(me);
+
+  await open(page, decidePath(project));
+  const proposals = main(page).getByTestId("board-proposals");
+  await expect(proposals.getByTestId("board-proposals-deciders")).toHaveText(`A writer: ${me.login}`);
+  await expect(main(page).locator('[data-testid="board-group"][data-group="canvas"]').getByTestId("board-item-deciders")).toHaveCount(0);
+  const group = proposals.locator('[data-testid="proposal-group"][data-goal="G-1"]');
+  await expect(group).toContainText("Shops check out in one tap");
+  await expect(group.getByTestId("proposal-run")).toHaveAttribute("data-run", String(seeded.run));
+  const lines = group.getByTestId("proposal-line");
+  await expect(lines.getByTestId("proposal-text")).toHaveText([...PROPOSED]);
+  await expect(lines.first().getByTestId("proposal-cell")).toHaveText("Solution");
+  await expect(lines.first().getByTestId("proposal-test")).toContainText("checkout.one_tap_share mean over 30 days >= 0.6, by 2026-12-31");
+  const opening = lines.first().getByTestId("proposal-open");
+  await expect(opening).toHaveAttribute("href", `/p/${project}/x/canvas/canvases/${CANVAS_SLUG}#proposal-${first}`);
+  await expectNoSeriousViolations(page, "the Decisions page with claim proposals");
+
+  // Open lands on the proposal on its canvas.
+  await opening.click();
+  await expect(main(page).locator(`[data-testid="proposal"][data-proposal="${first}"]`)).toHaveAttribute("data-anchored", "true");
+  await expect(main(page).locator(`[data-testid="proposal"][data-proposal="${second}"]`)).not.toHaveAttribute("data-anchored", "true");
+
+  // A writer rejects the goal's proposals in one go, with one reason.
+  await open(page, decidePath(project));
+  await group.getByTestId("proposal-group-reject").click();
+  await expect(page.getByTestId("proposals-reject-confirm")).toBeDisabled();
+  await page.getByTestId("proposals-reject-reason").fill("G-1 now measures repeat orders");
+  await page.getByTestId("proposals-reject-confirm").click();
+  await expect(toast(page, "2 proposals rejected")).toBeVisible();
+  await expect(main(page).getByTestId("board-proposals")).toHaveCount(0);
 });
 
 test.describe("in Vietnamese", () => {

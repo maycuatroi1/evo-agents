@@ -21,8 +21,10 @@ import {
 import type { StatusLook } from "@/components/status/status-badge";
 import {
   type BaselineItem,
+  type BoardGoal,
   type BoardGroup,
   type BoardItem,
+  type BoardProposal,
   type GoalMetric,
   ITEM_KINDS,
   ITEM_STATES,
@@ -235,6 +237,66 @@ export function boardGroups(items: readonly BoardItem[]): Map<BoardGroup, BoardI
   const groups = new Map<BoardGroup, BoardItem[]>();
   for (const item of items) groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
   return groups;
+}
+
+/** A proposal of a claim on the board, with what it proposes. */
+export type ProposalItem = BoardItem & { proposal: BoardProposal };
+
+/** The proposals one run made, or those no run made (run null): the agent or the value check of no run, a member. */
+export type ProposalRun = {
+  run: number | null;
+  since: string | null;
+  /** The reason every proposal of the run gives, when they all give the same one: shown once. */
+  reason: string | null;
+  items: ProposalItem[];
+};
+
+/** The proposals of the Loop's brainstorms of one goal, or of no goal (goal null), run by run. */
+export type ProposalGroup = { key: string; goal: BoardGoal | null; runs: ProposalRun[]; count: number };
+
+export function isProposal(item: BoardItem): item is ProposalItem {
+  return item.kind === "claim_proposal" && item.proposal != null;
+}
+
+function goalNumber(goal: BoardGoal | null): number {
+  return goal ? Number(goal.code.replace(/^G-/, "")) : Number.POSITIVE_INFINITY;
+}
+
+function proposalRuns(found: Map<number | null, ProposalItem[]>): ProposalRun[] {
+  return [...found]
+    .map(([run, listed]) => {
+      const items = [...listed].sort((a, b) => a.proposal.id - b.proposal.id);
+      const shared = items.length > 1 && new Set(items.map((item) => item.proposal.reason)).size === 1;
+      return { run, since: items[0]?.since ?? null, reason: shared ? (items[0]?.proposal.reason ?? null) : null, items };
+    })
+    .sort((a, b) => (b.run ?? -1) - (a.run ?? -1));
+}
+
+/**
+ * The proposals of the board by the goal whose brainstorm made them (G-1 first, those of no goal last), then by run,
+ * the newest run first (those of no run last); a run's proposals in the order they were made.
+ */
+export function proposalGroups(items: readonly BoardItem[]): ProposalGroup[] {
+  const groups = new Map<string, { goal: BoardGoal | null; runs: Map<number | null, ProposalItem[]> }>();
+  for (const item of items.filter(isProposal)) {
+    const key = item.proposal.goal?.code ?? "none";
+    const group = groups.get(key) ?? { goal: item.proposal.goal ?? null, runs: new Map() };
+    group.runs.set(item.proposal.run, [...(group.runs.get(item.proposal.run) ?? []), item]);
+    groups.set(key, group);
+  }
+  return [...groups]
+    .map(([key, group]) => {
+      const runs = proposalRuns(group.runs);
+      return { key, goal: group.goal, runs, count: runs.reduce((sum, run) => sum + run.items.length, 0) };
+    })
+    .sort((a, b) => goalNumber(a.goal) - goalNumber(b.goal));
+}
+
+/** The ids of `items` by the canvas they belong to: one rejection per canvas. */
+export function idsByCanvas(items: readonly ProposalItem[]): Map<string, number[]> {
+  const found = new Map<string, number[]>();
+  for (const item of items) found.set(item.proposal.canvas, [...(found.get(item.proposal.canvas) ?? []), item.proposal.id]);
+  return found;
 }
 
 /** The states of a use case in a baseline, the open ones first: what the Loop still has to deliver comes before what is done. */

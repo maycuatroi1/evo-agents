@@ -25,6 +25,8 @@ export type ProjectGoal = Schemas["ProjectGoal"];
 export type GoalMetric = Schemas["GoalMetric"];
 export type DecisionBoard = Schemas["DecisionBoard"];
 export type BoardItem = Schemas["BoardItem"];
+export type BoardProposal = Schemas["BoardProposal"];
+export type BoardGoal = Schemas["BoardGoal"];
 export type SrsBaseline = Schemas["SrsBaseline"];
 export type BaselineItem = Schemas["BaselineItem"];
 
@@ -171,6 +173,23 @@ export const baselineQuery = (api: ApiSource, project: string, ref: string) =>
  * Turn the Loop on or off: the policy's next revision, the revision now with `loop.enabled` set, written only while
  * the policy is still at that revision; the hub answers 409 when another admin wrote it since it was read.
  */
+/** The run's page, where a proposal's run and a work item's run lead. */
+export function runPageHref(project: string, id: number): Route {
+  return `/p/${encodeURIComponent(project)}/runs/${id}` as Route;
+}
+
+/** Every read of the plugin canvas in a project (`components/canvas/api`'s `canvasKeys.all`), stale once proposals of it are decided here. */
+export function canvasReadsKey(project: string) {
+  return ["projects", project, "plugins", "x", "canvas"] as const;
+}
+
+/** Reject open proposals of a canvas together, with one reason for all (the canvas's own route); those no longer open come back in `left`. */
+export async function rejectProposals(api: ApiClient, project: string, slug: string, ids: number[], reason: string) {
+  const headers = await csrfHeaders(api);
+  const params = { path: { project, slug } };
+  return call(api.POST("/v1/x/canvas/{project}/canvases/{slug}/proposals/reject", { params, body: { proposals: ids, reason }, headers }));
+}
+
 export async function setLoopEnabled(api: ApiClient, project: string, enabled: boolean, note: string) {
   const now = await call(api.GET("/v1/projects/{project}/policy", { params: { path: { project } } }));
   const policy = { ...now.policy };
