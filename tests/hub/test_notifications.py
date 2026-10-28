@@ -334,9 +334,9 @@ def test_a_member_lists_counts_and_reads_their_notifications(client, hub, hub_db
     worker, run = started(client, hub)
     first = notice(client, worker, run["id"]).json()
     ask = {
-        "category": "deploy",
-        "question": "Deploy to staging now?",
-        "options": [{"key": "yes", "label": "Deploy"}, {"key": "no", "label": "Wait"}],
+        "category": "external_send",
+        "question": "Post the staging link to the team now?",
+        "options": [{"key": "yes", "label": "Post"}, {"key": "no", "label": "Wait"}],
     }
     asked = client.post(f"/v1/worker/runs/{run['id']}/decisions", json=ask, headers=worker["headers"])
     assert asked.status_code == 201, asked.text
@@ -383,9 +383,9 @@ def test_an_answered_decision_is_listed_by_age_and_the_project_filter_keeps_the_
     worker, run = started(client, hub)
     first = notice(client, worker, run["id"]).json()
     ask = {
-        "category": "deploy",
-        "question": "Deploy to staging now?",
-        "options": [{"key": "yes", "label": "Deploy"}, {"key": "no", "label": "Wait"}],
+        "category": "external_send",
+        "question": "Post the staging link to the team now?",
+        "options": [{"key": "yes", "label": "Post"}, {"key": "no", "label": "Wait"}],
     }
     asked = client.post(f"/v1/worker/runs/{run['id']}/decisions", json=ask, headers=worker["headers"])
     assert asked.status_code == 201, asked.text
