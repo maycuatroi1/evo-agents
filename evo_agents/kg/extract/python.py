@@ -14,7 +14,11 @@ file. ``self.m()`` or ``cls.m()`` to a method the class does not define, and ``s
 
 A call through a receiver whose class the file states (``extract.pytypes``: a variable assigned an instance or a
 call's result, an annotated parameter or variable, a ``self`` attribute, ``f().m()``, ``C.m()``) becomes an xref
-``["typed", type, "m"]``, and a call of a class ``C(...)`` one to the ``__init__`` up its chain. A function
+``["typed", type, "m"]``, and a call of a class ``C(...)`` (``_C(...)`` too) one to the ``__init__`` up its chain.
+A read of an attribute without a call (``self.p``, ``x.p``, ``self._m`` handed on as a callback) is looked up the same
+way and flagged ``ref``: the link stage keeps it only when it finds a function. ``self.m()`` to a method the class
+defines is also an xref flagged ``dispatch``, for the link stage to reach the methods of subclasses that override
+it. A module-level ``name = f`` for a def ``f`` of the file is an alias (``aliases``) other files import ``f`` by. A function
 carries the class its return annotation names as ``returns`` (``items`` for a tuple), a ``via`` list the link
 stage resolves once a build.
 """
@@ -135,7 +139,19 @@ class _Extractor:
         self.calls: list[dict] = []
         self.xrefs: list[dict] = []
         self.top_names = {n.name for n in tree.body if isinstance(n, DEFS)}
+        # `print_json = _print_json`: a public name bound to a def of the file, what other modules import
+        self.aliases = {
+            n.targets[0].id: n.value.id
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and len(n.targets) == 1
+            and isinstance(n.targets[0], ast.Name)
+            and isinstance(n.value, ast.Name)
+            and n.value.id in self.top_names
+            and n.targets[0].id not in self.top_names
+        }
         self.quals: set[str] = set()
+        self.based: set[str] = set()  # classes with a base the imports or the file name
         self.module_env = _Env()
         for node in _imports_in(tree.body):
             self.module_env.bind(node, path)
@@ -164,6 +180,7 @@ class _Extractor:
             bases = [via for base in node.bases if (via := self.base_via(base, node.name, parent, env))]
             if bases:
                 sym["bases"] = bases
+                self.based.add(qual)
             methods = [m for m in node.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))]
             self.envs.update((id(m), env.child(m, self.path)) for m in methods)
             self.typing.attrs[qual] = self.typing.class_attrs(node, qual, env, types, self.envs)
@@ -204,6 +221,9 @@ class _Extractor:
     def collect_calls(self, func, qual: str, top: str, cls: str | None, env: _Env, types: dict) -> None:
         for node, here in self.typing.calls(func, types):
             call = {"caller": qual, "line": node.lineno, "top": top}
+            if isinstance(node, ast.Attribute):
+                self.reference({**call, "ref": True}, node, cls, env, here)
+                continue
             member = super_member(node.func, cls) if cls else None
             if member:
                 self.xrefs.append({**call, "via": [["super", cls, member]]})
@@ -214,6 +234,24 @@ class _Extractor:
                 continue
             self.named_call(call, chain, cls, env, here)
             self.constructor(call, chain, env, here)
+
+    def reference(self, call: dict, node: ast.Attribute, cls: str | None, env: _Env, types: dict) -> None:
+        """A method read without a call, ``self.m`` or ``x.p``: found as the call ``self.m()`` or ``x.p()`` would be.
+        Most such reads are of data attributes and find nothing; the link stage keeps only those that find a function
+        (a property, a method passed on), never a class. ``self.a`` looks up the chain only when the class has bases."""
+        member = super_member(node, cls) if cls else None
+        chain = dotted(node)
+        if member:
+            self.xrefs.append({**call, "via": [["super", cls, member]]})
+        elif chain is None:
+            self.add_xref(call, self.typing.callee(node, env, cls, types))
+        elif len(chain) == 2 and chain[0] in ("self", "cls") and cls:
+            if f"{cls}.{chain[1]}" in self.quals:
+                self.calls.append({**call, "callee": f"{cls}.{chain[1]}"})
+            elif cls in self.based:
+                self.xrefs.append({**call, "via": [["self", cls, chain[1]]]})
+        else:
+            self.named_call(call, chain, cls, env, types)
 
     def named_call(self, call: dict, chain: list[str], cls: str | None, env: _Env, types: dict) -> None:
         head = chain[0]
@@ -230,7 +268,7 @@ class _Extractor:
     def constructor(self, call: dict, chain: list[str], env: _Env, types: dict) -> None:
         """A call of a class, ``C(...)``, runs the ``__init__`` nearest up the chain of ``C``. Only a name written
         as a class is tried; the link stage keeps it when the name is a class."""
-        if not chain[-1][:1].isupper() or chain[0] in types or chain[0] in ("self", "cls"):
+        if not chain[-1].lstrip("_")[:1].isupper() or chain[0] in types or chain[0] in ("self", "cls"):
             return
         if chain[0] in self.top_names:
             owner = [["local", "", ".".join(chain)]] if chain[0] in self.typing.top_classes else []
@@ -245,19 +283,32 @@ class _Extractor:
 
     def result(self, doc: str | None = None) -> dict:
         known = {s["qualname"] for s in self.symbols}
-        calls = [{k: v for k, v in c.items() if k != "member"} for c in self.calls if c["callee"] in known]
+        calls = [
+            {k: v for k, v in c.items() if k not in ("member", "ref")}
+            | {"callee": self.aliases.get(c["callee"], c["callee"])}
+            for c in self.calls
+            if self.aliases.get(c["callee"], c["callee"]) in known
+        ]
         inherited = [  # self.m() to a method the class does not define: up its chain, in the link stage
             {k: c[k] for k in ("caller", "line", "top")} | {"via": [["self", *c["member"]]]}
             for c in self.calls
             if c["callee"] not in known and "member" in c
         ]
+        dispatch = [  # self.m() to a method the class defines may run the m of a subclass: the link stage knows them
+            {k: c[k] for k in ("caller", "line", "top")} | {"via": [["self", *c["member"]]], "dispatch": True}
+            for c in self.calls
+            if c["callee"] in known and "member" in c
+        ]
         xrefs, seen = [], set()
-        for x in self.xrefs + inherited:  # one per caller and target: the first line stands for the others
+        # One per caller and target: the first line stands for the others, a call before a read.
+        for x in sorted(self.xrefs + inherited + dispatch, key=lambda x: bool(x.get("ref"))):
             key = (x["caller"], repr(x["via"]))
             if key not in seen:
                 seen.add(key)
                 xrefs.append(x)
         out = {"symbols": self.symbols, "imports": self.imports, "calls": calls, "xrefs": xrefs}
+        if self.aliases:
+            out["aliases"] = self.aliases
         return {**out, "doc": doc} if doc else out
 
 
@@ -267,7 +318,8 @@ def extract(text: str, path: str) -> dict | None:
 
     symbols: {qualname, name, kind (class|function|method), top (top-level anchor), line, parent, [bases],
     [returns], [items], [doc]}
-    imports: {module, top}; calls: {caller, callee, line, top}; xrefs: {caller, line, top, via}
+    imports: {module, top}; calls: {caller, callee, line, top}; xrefs: {caller, line, top, via};
+    [aliases]: {name: qualname} of module-level ``name = f`` for a def ``f`` of the file
     """
     try:
         tree = ast.parse(text)

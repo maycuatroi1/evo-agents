@@ -7,6 +7,15 @@ link nothing; they are counted, so coverage shows how much prose is still unlink
 directory of a repo links to its Directory node, always ``parsed``: the directory exists exactly because
 items of that repo sit under it.
 
+A path written short is read, in order, from the directories above the document's own, from the package roots of
+its repo (a top-level Python package, a tsconfig ``baseUrl`` or ``paths`` target: ``hub/server/runs.py`` means
+``evo_agents/hub/server/runs.py``), then of other repos, and last as the tail of one path of the project (its own
+repo first, then the files a commit or pull request changed). A path whose directory no repo holds is outside the
+project, like a URL, and is not counted. A plain lower-case word in backticks (```name```) is prose, not a symbol;
+a short name several symbols share goes to the one nearest the document: its repo, the files a commit changed,
+the directories it shares with the document, the topic its file name gives, and outside tests for a text that is
+not a test's. It stays ambiguous only when they tie.
+
 A call into another file (a ``calls`` reference of the structure stage) links its caller to the symbol
 the file's imports name, ``resolved``: each ``via`` entry names the files to look in (a module, candidate
 paths, a package, a Go import path, a JS or TS specifier read through the nearest tsconfig) and the
@@ -18,7 +27,12 @@ instead; the index's class hierarchy (``pipeline.hierarchy``) finds the method u
 gives each class its ``inherits`` edges and each method its ``overrides`` edges. A Python call through a typed
 receiver (``extract.pytypes``) names the class by a type expression: the class an annotation names, or what a
 callee returns, an instance of it when it is a class, else the class its return annotation names, which the
-index resolves once a build in the callee's own file; the method is then found up that class's chain.
+index resolves once a build in the callee's own file; the method is then found up that class's chain. A call of a
+method also links, at confidence 0.6, to each method that overrides it below, and for a method of a
+``typing.Protocol`` to the method of each class that defines all the protocol's methods: what the call may run.
+A read of a function without a call (a property, a callback ``self._m`` passed on) links as a call, never to a
+class. Calls are counted (``calls_resolved``, ``calls_ambiguous``, ``calls_unresolved``) when they name a scope of the
+project; one into a library the index does not hold is not.
 
 A SHA names a commit a git source read from its history when exactly one such commit starts with it: ``repo@sha``
 among the commits of that repo, a bare SHA in a plan step's evidence among those of the step's repo first, then of
@@ -39,12 +53,13 @@ from collections import defaultdict
 from urllib.parse import unquote
 
 from evo_agents.kg.extract.xref import module_files
+from evo_agents.kg.health import is_test_path
 from evo_agents.kg.pipeline import hierarchy
 from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, normalize_url
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "13"
+LINK_VERSION = "14"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -85,6 +100,7 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
     }
     with_bases: list[dict] = []
     typed: list[dict] = []
+    methods: list[dict] = []
     for facts in facts_by_item.values():
         for f in facts:
             if f["t"] == "node":
@@ -95,7 +111,12 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
                     with_bases.append(f)
                 if f["type"] == "symbol" and (f.get("returns") or f.get("items")):
                     typed.append(f)
+                if f["type"] == "symbol" and f.get("kind") == "method" and f.get("file"):
+                    methods.append(f)
     index["gosuffix"] = _go_suffixes({key.partition("::")[0] for key in index["pkgdef"]})
+    index["roots"] = _package_roots(index["path"], index["tsconfig"])
+    index["pathsuffix"] = _path_suffixes(index["path"])
+    index["dirsuffix"] = {"/".join(d.split("/")[i:]) for d in index["dir"] for i in range(d.count("/") + 1)}
     # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
     index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
     index["identifiers"] = [
@@ -103,6 +124,7 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         for i in identifiers
     ]
     hierarchy.resolve(index, with_bases, lambda file, repo, path: Linker(index, file, repo, path))
+    _overriders(index, methods, with_bases)
     _return_types(index, typed)
     return index
 
@@ -130,13 +152,64 @@ def _return_types(index: dict, functions: list[dict]) -> None:
     index["returns"], index["returns_items"] = returns, items
 
 
+PROTOCOL_MODULES = ("typing", "typing_extensions")
+
+
+def _overriders(index: dict, methods: list[dict], classes: list[dict]) -> None:
+    """Set ``index["overriders"]``: method -> ``[method, class]`` of each method that overrides it, at any depth
+    below, what a call of it may run (``self.m()`` in a base reaches the ``m`` of each subclass); and
+    ``index["implements"]``: class -> the ``typing.Protocol`` classes it implements the way Python checks one, by
+    defining every method the protocol does. A method of a protocol is overridden by those classes' methods."""
+    direct: dict[str, set[str]] = defaultdict(set)
+    owner_of: dict[str, str] = {}
+    members: dict[str, dict[str, str]] = defaultdict(dict)  # class -> its methods by name
+    for f in methods:
+        owner, _, name = f["qualname"].rpartition(".")
+        cls = index["def"].get(f"{f['file']}::{owner}")
+        if not cls:
+            continue
+        members[cls][name], owner_of[f["node"]] = f["node"], cls
+        for base in index["bases"].get(cls, ()):
+            found = hierarchy.find_member(index, base, name)
+            if found and found[0] != f["node"]:
+                direct[found[0]].add(f["node"])
+    protocols = {
+        f["node"]
+        for f in classes
+        if any(
+            kind == "module" and value in PROTOCOL_MODULES and qual == "Protocol"
+            for via in f["bases"]
+            for kind, value, qual in via
+        )
+    }
+    implements: dict[str, list[str]] = defaultdict(list)
+    for proto in sorted(protocols):
+        wanted = members.get(proto, {})
+        for cls, own in members.items():
+            if cls not in protocols and wanted and wanted.keys() <= own.keys():
+                implements[cls].append(proto)
+                for name, method in wanted.items():
+                    direct[method].add(own[name])
+    out: dict[str, list[list[str]]] = {}
+    for method in direct:
+        seen, todo = set(), [method]
+        while todo:
+            for below in direct.get(todo.pop(), ()):
+                if below not in seen:
+                    seen.add(below)
+                    todo.append(below)
+        out[method] = [[m, owner_of[m]] for m in sorted(seen - {method})]
+    index["overriders"], index["implements"] = out, dict(implements)
+
+
 def _learn(index: dict, f: dict) -> None:
     """Add one ``ident`` fact to the index."""
     kind = f["type"]
     if kind in ("repo", "seam", "plan", "step", "url", "pr"):
         index[kind].setdefault(f["key"], f["node"])
     elif kind == "commit":
-        index["commit"][f["key"][:7]].append({"sha": f["key"], "repo": f.get("repo"), "node": f["node"]})
+        entry = {"sha": f["key"], "repo": f.get("repo"), "node": f["node"], "paths": f.get("paths") or []}
+        index["commit"][f["key"][:7]].append(entry)
     elif kind == "path":
         index["path"][f["key"]].append({"node": f["node"], "repo": f.get("repo"), "source": f["source"]})
     elif kind == "dir":  # every item under a directory names it: keep one entry per node
@@ -150,6 +223,8 @@ def _learn(index: dict, f: dict) -> None:
             index["modsuffix"][".".join(parts[i:])].append({"node": f["node"], "source": f["source"]})
     elif kind == "symbol":
         _learn_symbol(index, f)
+    elif kind == "alias":  # a module-level name bound to a def of its file
+        index["def"].setdefault(f["key"], f["node"])
     elif kind == "tsconfig":
         index["tsconfig"].setdefault(f["key"], {"base": f["base"], "paths": f["paths"]})
 
@@ -157,15 +232,49 @@ def _learn(index: dict, f: dict) -> None:
 def _learn_symbol(index: dict, f: dict) -> None:
     entry = {"node": f["node"], "repo": f.get("repo"), "source": f["source"]}
     index["symbol"][f["key"]].append(entry)
-    index["symname"][f["qualname"]].append(f["node"])
+    named = {"node": f["node"], "repo": f.get("repo"), "path": f.get("path") or ""}
+    index["symname"][f["qualname"]].append(named)
     if f["name"] != f["qualname"]:
-        index["symname"][f["name"]].append(f["node"])
+        index["symname"][f["name"]].append(named)
     if f.get("file"):
         index["def"].setdefault(f"{f['file']}::{f['qualname']}", f["node"])
         if f.get("kind") == "class":
             index["classes"].setdefault(f["node"], (f["file"], f["qualname"]))
     if f.get("package"):
         index["pkgdef"][f"{f['package']}::{f['qualname']}"].append(entry)
+
+
+def _package_roots(paths: dict, tsconfigs: dict) -> dict[str, list[str]]:
+    """Repo -> the directories a path written short is read from: each top-level Python package (a directory with
+    an ``__init__.py`` whose parent has none), and each directory a tsconfig's ``baseUrl`` or ``paths`` map onto
+    (``web/src`` for ``"@/*": ["./src/*"]``). ``hub/server/runs.py`` in prose means ``evo_agents/hub/server/runs.py``."""
+    inits: dict[str, set[str]] = defaultdict(set)
+    for key, entries in paths.items():
+        if posixpath.basename(key) == "__init__.py":
+            for e in entries:
+                inits[e.get("repo")].add(posixpath.dirname(key))
+    roots: dict[str, set[str]] = defaultdict(set)
+    for repo, dirs in inits.items():
+        roots[repo] |= {d for d in dirs if d and posixpath.dirname(d) not in dirs}
+    for key, config in tsconfigs.items():
+        repo = key.partition(":")[0]
+        targets = [t.partition("*")[0] for ts in config["paths"].values() for t in ts]
+        for d in [*targets, config["base"] or ""]:
+            d = d.rstrip("/")
+            if d and d != ".":
+                roots[repo].add(d)
+    return {repo: sorted(dirs) for repo, dirs in sorted(roots.items(), key=lambda kv: str(kv[0]))}
+
+
+def _path_suffixes(paths: dict) -> dict[str, list[dict]]:
+    """Every trailing run of two segments or more of a file's path, to the files ending with it: ``worker/cli.py``
+    -> ``evo_agents/worker/cli.py``. A bare file name is too weak to name one file."""
+    out: dict[str, list[dict]] = defaultdict(list)
+    for key, entries in paths.items():
+        segments = key.split("/")
+        for i in range(1, len(segments) - 1):
+            out["/".join(segments[i:])].extend({**e, "path": key} for e in entries)
+    return out
 
 
 def _go_suffixes(packages: set[str]) -> dict[str, list[dict]]:
@@ -303,6 +412,31 @@ def _url_prefix(url: str) -> str:
     return host
 
 
+def looks_like_symbol(name: str) -> bool:
+    """Whether a name in backticks may be a symbol: written as code (``_``, a dot, camelCase or a capital), not a
+    plain lower-case word such as `settings` or `coverage`, which prose uses for the thing and not the code, nor a
+    dunder alone."""
+    if name.startswith("__") and name.endswith("__"):
+        return False  # `__init__` names a protocol every class may have, not one symbol
+    return "_" in name or "." in name or not name.islower()
+
+
+def _segments(path: str) -> set[str]:
+    """The directory names of a path and its file's stem: what a document named ``srs-plugin.md`` may be about."""
+    *dirs, name = path.lower().split("/")
+    return {*dirs, posixpath.splitext(name)[0]}
+
+
+def _shared(a: list[str], b: list[str]) -> int:
+    """How many leading segments two paths share."""
+    n = 0
+    for x, y in zip(a, b, strict=False):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
 def _unique(entries: list) -> str | None:
     nodes = {e["node"] if isinstance(e, dict) else e for e in entries}
     return next(iter(nodes)) if len(nodes) == 1 else None
@@ -317,6 +451,8 @@ class Linker:
         self.item_id = item_id
         self.repo = repo
         self.base_dir = posixpath.dirname(path) if path else ""
+        self.path = path or ""
+        self.touched: frozenset[str] = frozenset()  # the files a commit changed: what its message most likely names
         self.edges: dict[tuple, dict] = {}
         self.nodes: dict[str, dict] = {}
         self.stats = {
@@ -328,8 +464,12 @@ class Linker:
             "refs_resolved": 0,
             "refs_ambiguous": 0,
             "refs_dangling": 0,
+            "calls": 0,
+            "calls_resolved": 0,
+            "calls_ambiguous": 0,
+            "calls_unresolved": 0,
         }
-        self.samples: dict[str, list[str]] = {"ambiguous": [], "dangling": []}
+        self.samples: dict[str, list[str]] = {"ambiguous": [], "dangling": [], "calls_unresolved": []}
         self.url_prefixes = index["url_prefix"]
         self.patterns = [(i["kind"], re.compile(i["pattern"]), i.get("aliases") or {}) for i in index["identifiers"]]
 
@@ -382,7 +522,14 @@ class Linker:
                 return entries, table == "dir"
         return [], False
 
-    def path_target(self, path: str, repo: str | None) -> tuple[str | None, str]:
+    def path_target(self, path: str, repo: str | None, guess: bool = False) -> tuple[str | None, str]:
+        """The file or directory a path names, and how: ``parsed`` relative to this item's directory or with its repo,
+        ``resolved`` as written from a repo's root, ``ambiguous`` or ``dangling`` when it finds two or none. With
+        ``guess`` (a path in prose), a path not found as written is also tried ``resolved``: relative to a directory
+        above this item's, under a package root of a repo (``_package_roots``), then as the end of one file's path,
+        in this item's repo before any other. A path still not found whose directory no directory of the project ends
+        with is ``outside``, as a URL of an unknown host is: it names a file of another tree (``.evo-run/plan.yaml``,
+        ``icons/x.svg`` of a vendored package), not a missing file of this one."""
         as_dir = path.endswith("/")
         if not repo and self.base_dir and not path.startswith("/"):
             relative = posixpath.normpath(posixpath.join(self.base_dir, path))
@@ -399,19 +546,133 @@ class Linker:
         if len(same) == 1:
             return same[0]["node"], "parsed" if is_dir else "resolved"
         entries, is_dir = self._at(key, as_dir)
-        if not entries:
+        if entries:
+            target = _unique(entries)
+            return (target, "parsed" if is_dir else "resolved") if target else (None, "ambiguous")
+        if guess and not path.startswith(("/", "./", "../")) and key not in (".", ""):
+            found = self._guess_path(key, as_dir)
+            if found[1] == "dangling" and posixpath.dirname(key.rstrip("/")) not in self.index["dirsuffix"]:
+                return None, "outside"  # no directory of the project ends so: a path of another tree
+            return found
+        return None, "dangling"
+
+    def _guess_path(self, key: str, as_dir: bool) -> tuple[str | None, str]:
+        """A path written short: the one match of the first way that finds any (``path_target``)."""
+        found: list[dict] = []
+        directory = posixpath.dirname(self.base_dir) if self.base_dir else ""
+        while directory and not found:  # the directories above this item's, nearest first
+            found, _ = self._at(f"{directory}/{key}", as_dir, lambda e: e.get("repo") == self.repo)
+            directory = posixpath.dirname(directory)
+        if not found:
+            for repo in [self.repo] if self.repo else []:
+                for root in self.index["roots"].get(repo, []):
+                    found += self._at(f"{root}/{key}", as_dir, lambda e, r=repo: e.get("repo") == r)[0]
+        if not found:
+            found, _ = self._at_roots(key, as_dir)
+        if not found and not as_dir:
+            entries = self.index["pathsuffix"].get(key, [])
+            found = [e for e in entries if self.repo and e.get("repo") == self.repo] or entries
+            if len(found) > 1 and self.touched:  # a commit's message names a file it changed
+                found = [e for e in found if e["path"] in self.touched] or found
+        if not found:
             return None, "dangling"
-        target = _unique(entries)
-        return (target, "parsed" if is_dir else "resolved") if target else (None, "ambiguous")
+        target = _unique(found)
+        return (target, "resolved") if target else (None, "ambiguous")
+
+    def _at_roots(self, key: str, as_dir: bool) -> tuple[list[dict], bool]:
+        """Entries at ``key`` under a package root of any repo other than this item's."""
+        found: list[dict] = []
+        for repo in self.index["roots"]:
+            if repo == self.repo:
+                continue
+            for root in self.index["roots"].get(repo, []):
+                found += self._at(f"{root}/{key}", as_dir, lambda e, r=repo: e.get("repo") == r)[0]
+        return found, False
 
     def resolve_call(self, f: dict) -> None:
-        """Link a caller to the one symbol the first ``via`` entry with a definition finds."""
-        found = self.first_found(f["target"]["via"], f["target"])
-        key = (f["src"], "calls", found)
-        if found and found != f["src"] and key not in self.edges:
-            self.edges[key] = edge(
-                f["src"], "calls", found, f["units"], status="resolved", conf=0.8, needs=[found], where=f["where"]
-            )
+        """Link a caller to the one symbol the first ``via`` entry with a definition finds, and to the methods
+        overriding it that the receiver may run (``dispatched``, confidence 0.6); only to those for ``dispatch``, a
+        call the structure stage resolved in its file. A read without a call (``read``) links only to a function,
+        never to a class, and is not counted: most reads are of data."""
+        target = f["target"]
+        found = self.first_found(target["via"], target)
+        if target.get("read"):
+            if found in self.index["classes"]:
+                return
+        elif not target.get("dispatch"):  # the structure stage already linked and counts a call it resolved
+            self._call(found, target)
+        if not found:
+            return
+        direct = [] if target.get("dispatch") else [(found, 0.8)]
+        for dst, conf in direct + [(m, 0.6) for m in self.dispatched(found, target)]:
+            key = (f["src"], "calls", dst)
+            if dst != f["src"] and key not in self.edges:
+                self.edges[key] = edge(
+                    f["src"], "calls", dst, f["units"], status="resolved", conf=conf, needs=[dst], where=f["where"]
+                )
+
+    def dispatched(self, found: str, target: dict) -> list[str]:
+        """The methods overriding ``found`` that a call through ``self`` or a typed receiver may run instead: those
+        of a class whose chain holds the receiver's class, or a protocol it implements. ``super().m()`` and
+        ``C.m()`` run ``found`` itself."""
+        below = self.index["overriders"].get(found)
+        if not below:
+            return []
+        receiver = None
+        for kind, value, qual in target["via"]:
+            if self.definitions(kind, value, qual, target):
+                if kind == "self":
+                    receiver = self.index["def"].get(f"{self.item_id}::{value}")
+                elif kind == "typed":
+                    receiver = self.class_of(value, target)
+                break
+        if receiver is None:
+            return []
+        implements = self.index["implements"]
+        return [
+            m
+            for m, owner in below
+            if any(c == receiver or receiver in implements.get(c, ()) for c in self.index["mro"].get(owner, (owner,)))
+        ]
+
+    def _call(self, found: str | None, target: dict) -> None:
+        """Count a call: resolved when it found its one symbol; ambiguous when a ``via`` entry finds two; unresolved
+        when an entry names a scope of the project (a class of this file, a typed receiver, a Python module the index
+        holds) that has no such member. A call into a library the index does not hold is not counted."""
+        if found:
+            outcome = "resolved"
+        else:
+            outcome = None
+            for kind, value, qual in target["via"]:
+                if len(set(self.definitions(kind, value, qual, target))) > 1:
+                    outcome = "ambiguous"
+                    break
+                if outcome is None and self._in_project(kind, value, qual, target):
+                    outcome = "unresolved"
+            if outcome is None:
+                return
+        self.stats["calls"] += 1
+        self.stats[f"calls_{outcome}"] += 1
+        if outcome == "unresolved" and len(self.samples["calls_unresolved"]) < 5:
+            self.samples["calls_unresolved"].append(":".join(str(v) for v in target["via"][0])[:120])
+
+    def _in_project(self, kind: str, value, qual: str, target: dict) -> bool:
+        """Whether a ``via`` entry that found nothing names a scope of the project: a class of this file, a typed
+        receiver, a module the index holds (a dotted module only by suffix, ``secrets`` is the standard library's),
+        and for a dotted ``qual`` its head a class defined there (``log.info`` is a method of data, ``client.get`` of a
+        fixture's value). A class without its own ``__init__`` is called through ``object``'s."""
+        head = qual.partition(".")[0]
+        if qual == "__init__" or kind not in ("local", "self", "super", "typed", "module"):
+            return False
+        if kind == "local":
+            return "." in qual and self.index["def"].get(f"{self.item_id}::{head}") in self.index["classes"]
+        if kind != "module":
+            return kind != "typed" or self.class_of(value, target) is not None
+        files = [e["node"] for e in self.index["module"].get(value, [])]
+        if not files and "." in value:
+            files = [e["node"] for e in self.index["modsuffix"].get(value, [])]
+        classes = self.index["classes"]
+        return bool(files) and ("." not in qual or any(self.index["def"].get(f"{f}::{head}") in classes for f in files))
 
     def first_found(self, via: list, target: dict, keep=None) -> str | None:
         """The one symbol the first ``via`` entry with a definition (in ``keep``, when given) finds; None when
@@ -614,6 +875,27 @@ class Linker:
             self.nodes.setdefault(commit, node(commit, "Commit", sha[:10], [unit], props={"sha": sha}))
             self._link(src, commit, unit, m.start(), "parsed", "commit", field)
 
+    def nearest(self, candidates: list[dict]) -> str | None:
+        """The one symbol of several with the name a mention gives: those of this item's repo first, then those a
+        commit changed, then those sharing the most leading directories with this item (the same package), then those
+        under a directory or in a file the item's own name names (``docs/srs-plugin.md``: ``srs``). None when that
+        still leaves two."""
+        nodes = {e["node"]: e for e in candidates}
+        if len(nodes) > 1 and self.repo:
+            nodes = {n: e for n, e in nodes.items() if e.get("repo") == self.repo} or nodes
+        if len(nodes) > 1 and self.touched:
+            nodes = {n: e for n, e in nodes.items() if e["path"] in self.touched} or nodes
+        if len(nodes) > 1:
+            here = self.base_dir.split("/") if self.base_dir else []
+            shared = {n: _shared(here, e["path"].split("/")[:-1]) for n, e in nodes.items()}
+            best = max(shared.values())
+            nodes = {n: e for n, e in nodes.items() if shared[n] == best}
+        if len(nodes) > 1 and self.path:
+            topic = set(re.split(r"[-_.]", posixpath.splitext(posixpath.basename(self.path))[0].lower())) - {""}
+            named = {n: e for n, e in nodes.items() if topic & _segments(e["path"])}
+            nodes = named or nodes
+        return next(iter(nodes)) if len(nodes) == 1 else None
+
     def _pulls(self, src: str, unit: str, text: str, field: str, claim, repo: str | None) -> None:
         """A pull request a source read: ``owner/repo#57`` and ``repo#57`` (parsed), "PR #57" in the text of a step
         of that repo (resolved)."""
@@ -650,10 +932,14 @@ class Linker:
             span = (m.start(1), m.end(1))
             taken.append(span)
             target, status = self.path_target(target_text, None)
+            how = "parsed"
+            if target is None and status == "dangling":
+                target, status = self.path_target(target_text, None, guess=True)
+                how = status
             if target:
                 self._count("resolved")
-                self._link(src, target, unit, m.start(1), "parsed", "md-link", field)
-            else:
+                self._link(src, target, unit, m.start(1), how, "md-link", field)
+            elif status != "outside":
                 self._count(status if status in ("ambiguous", "dangling") else "dangling", target_text)
 
         for m in URL.finditer(text):
@@ -671,15 +957,24 @@ class Linker:
             if not claim(m):
                 continue
             repo, path, qual = m.group(1), m.group(2), m.group(3)
+            if repo and repo not in self.index["repo"]:
+                continue  # `app:app/pricing.py::total`: a symbol of a repo outside the project
             entries = self.index["symbol"].get(f"{path}::{qual}", [])
             if repo:
                 entries = [e for e in entries if e.get("repo") == repo]
-            target = _unique(entries)
+            target, how = _unique(entries), "parsed"
+            outcome = "ambiguous" if entries else "dangling"
+            if not entries and not repo:  # `worker/cli.py::main`: the file written short
+                file, status = self.path_target(path, None, guess=True)
+                if status == "outside":
+                    continue
+                target, how = (self.index["def"].get(f"{file}::{qual}") if file else None), "resolved"
+                outcome = "ambiguous" if status == "ambiguous" else "dangling"
             if target:
                 self._count("resolved")
-                self._link(src, target, unit, m.start(), "parsed", "symbol", field)
+                self._link(src, target, unit, m.start(), how, "symbol", field)
             else:
-                self._count("ambiguous" if entries else "dangling", m.group(0))
+                self._count(outcome, m.group(0))
 
         self._commits(src, unit, text, field, claim, repo)
 
@@ -708,13 +1003,13 @@ class Linker:
             repo = first if first in self.index["repo"] and rest else None
             if not claim(m):
                 continue
-            target, status = self.path_target(rest if repo else path, repo)
+            target, status = self.path_target(rest if repo else path, repo, guess=not repo)
             if target is None and repo:
-                target, status = self.path_target(path, None)
+                target, status = self.path_target(path, None, guess=True)
             if target:
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), status, "path", field)
-            else:
+            elif status != "outside":
                 self._count(status if status in ("ambiguous", "dangling") else "dangling", m.group(0))
 
         for m in BACKTICK.finditer(text):
@@ -726,14 +1021,15 @@ class Linker:
                 self._count("resolved")
                 self._link(src, inner, unit, m.start(), "parsed", "id", field)
                 continue
-            if not SYMBOLISH.match(inner):
+            if not SYMBOLISH.match(inner) or not looks_like_symbol(inner):
                 continue
-            looks_like_symbol = "_" in inner or "." in inner or re.search(r"[a-z][A-Z]", inner) or len(inner) >= 8
             candidates = self.index["symname"].get(inner, [])
-            if not candidates or not looks_like_symbol:
+            if not inner.lower().startswith("test") and not is_test_path(self.path or "x"):
+                candidates = [e for e in candidates if not is_test_path(e["path"])]
+            if not candidates:
                 continue
             taken.append(m.span())
-            target = _unique(candidates)
+            target = self.nearest(candidates)
             if target:
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), "resolved", "symbol-name", field)
@@ -783,6 +1079,13 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     props = record.get("props") or {}
     defined = frozenset((f["src"], f["dst"]) for f in structure if f["t"] == "edge" and f["rel"] == "defines")
     linker = Linker(index, item_id, props.get("repo"), props.get("path"), defined)
+    linker.touched = frozenset(
+        v for f in structure if f["t"] == "ref" and f["rel"] == "changes" for v in f["target"].get("values") or []
+    )
+    if record["kind"] == "pr" and isinstance(props.get("merge_commit"), str):  # what the pull request merged
+        sha = props["merge_commit"]
+        merged = [e for e in index["commit"].get(sha[:7], []) if e["sha"] == sha and e["repo"] == props.get("repo")]
+        linker.touched = frozenset(p for e in merged for p in e["paths"])
     for f in structure:
         if f["t"] == "ref":
             linker.resolve_ref(f)

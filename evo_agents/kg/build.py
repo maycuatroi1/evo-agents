@@ -71,6 +71,10 @@ STAT_KEYS = (
     "refs_resolved",
     "refs_ambiguous",
     "refs_dangling",
+    "calls",
+    "calls_resolved",
+    "calls_ambiguous",
+    "calls_unresolved",
 )
 
 
@@ -225,7 +229,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     errors: list[str] = []
     issues: list[str] = []
     stats: dict[str, dict] = defaultdict(lambda: {"items": 0, "issues": 0, **dict.fromkeys(STAT_KEYS, 0)})
-    samples: dict[str, dict[str, list]] = defaultdict(lambda: {"ambiguous": [], "dangling": []})
+    samples: dict[str, dict[str, list]] = defaultdict(lambda: {"ambiguous": [], "dangling": [], "calls_unresolved": []})
     rejected: set[tuple[str, str]] = set()
     item_mentions: dict[str, dict] = {}  # item id -> its dangling and ambiguous mentions, for the review queue
     for rec in records:
