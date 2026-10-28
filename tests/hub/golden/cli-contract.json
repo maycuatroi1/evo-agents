@@ -24132,6 +24132,20 @@
       ],
       "json": null
     },
+    "worker triage cancel": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker triage invite": {
       "positionals": [
         {
@@ -77941,6 +77955,101 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TriageActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/triage/cancel": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Cancel",
+          "description": "Ask the worker of the stale run of this triage thread to stop it, for its owner, as their cancel of a held run\ndoes; 409 for the thread of a failed run, a run that is no longer held, or a stop asked already.",
+          "operationId": "cancel_v1_worker_runs__run_id__triage_cancel_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageCancelIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TriageCancelled"
                   }
                 }
               }
@@ -155047,6 +155156,42 @@
             "plan_revision"
           ],
           "title": "TriageActed"
+        },
+        "TriageCancelIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "TriageCancelIn"
+        },
+        "TriageCancelled": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the stale run whose worker was asked to stop it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "run_id"
+          ],
+          "title": "TriageCancelled"
         },
         "TriageInviteIn": {
           "properties": {

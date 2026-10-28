@@ -9070,6 +9070,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/triage/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel
+         * @description Ask the worker of the stale run of this triage thread to stop it, for its owner, as their cancel of a held run
+         *     does; 409 for the thread of a failed run, a run that is no longer held, or a stop asked already.
+         */
+        post: operations["cancel_v1_worker_runs__run_id__triage_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/triage/plan": {
         parameters: {
             query?: never;
@@ -39062,6 +39083,27 @@ export interface components {
              * @description the revision the edit wrote; null for a rerun alone
              */
             plan_revision: number | null;
+        };
+        /** TriageCancelIn */
+        TriageCancelIn: {
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** TriageCancelled */
+        TriageCancelled: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the stale run whose worker was asked to stop it
+             */
+            run_id: number;
         };
         /** TriageInviteIn */
         TriageInviteIn: {
@@ -75463,6 +75505,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TriageActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_v1_worker_runs__run_id__triage_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageCancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageCancelled"];
                 };
             };
             /** @description Unauthorized */

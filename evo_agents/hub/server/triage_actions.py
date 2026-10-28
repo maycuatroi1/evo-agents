@@ -15,13 +15,17 @@ chat run does, and the hub checks the frame again on each call, so an agent that
   own rule that decides (``chat_members.put_agent``): the owner needs the writer role there, and a label of the chat that
   someone in it does not clear is the 409 of the hub. A refusal is said in the thread, in the agent's name, and invites
   no one; the call answers 409 with the same reason.
+- POST /v1/worker/runs/{id}/triage/cancel: in the thread of a stale run (cause ``triage.STALE_CAUSE``, opened by
+  ``triage.open_stale``), ask the run's worker to stop it, as the owner's cancel of a held run does; ``rerun`` then
+  runs it again once it has ended, for the cause ``stale``. A stale run's thread is the one whose run may be held or
+  cancelled; every other thread's run is failed.
 - POST /v1/worker/runs/{id}/triage/plan: change the ``verify`` or narrow the ``what`` of a pending step of the failed
   run's plan, or of several at once (``steps``), as one new revision under the owner's name (``plans.write_plan``) and
   one ``Decision:`` line, only as ``triage_rules.edit_problems`` allows; with ``rerun`` the rerun follows in the same
   transaction, so a refused rerun leaves the plan as it was.
 
 Each success posts a line that starts with ``Decision:`` in the thread, in the agent's name, and writes an audit row
-(``run.triage_rerun``, ``run.triage_plan_edit``) that names the failed run, the agent and the chat run. Nothing here
+(``run.triage_rerun``, ``run.triage_plan_edit``, ``run.triage_cancel``) that names the failed run, the agent and the chat run. Nothing here
 writes ``acceptance``, ``goal``, ``non_goals`` or a step that is not pending: ``edit_problems`` compares the whole plan.
 """
 
@@ -35,7 +39,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
@@ -53,7 +57,7 @@ from evo_agents.hub.server.runs.service.candidates import RerunCandidates, candi
 from evo_agents.hub.server.runs.service.controls import rerun_in
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, refuse_curator_plan
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
-from evo_agents.hub.server.triage import chain_of
+from evo_agents.hub.server.triage import STALE_CAUSE, chain_of
 
 log = logging.getLogger(__name__)
 
@@ -153,6 +157,15 @@ class TriageInvited(BaseModel):
     added: bool = Field(description="false when the agent was in the chat already")
 
 
+class TriageCancelIn(BaseModel):
+    reason: Reason
+
+
+class TriageCancelled(BaseModel):
+    message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
+    run_id: int = Field(description="the stale run whose worker was asked to stop it")
+
+
 class TriageActed(BaseModel):
     message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
     run_id: int | None = Field(description="the run queued again; null for a plan edit without a rerun")
@@ -174,6 +187,8 @@ class Frame:
     project: str
     owner: Principal
     access: ProjectAccess
+    cause: str | None = None  # the failed run's cause; ``stale`` for a stale run's thread until the run failed
+    stale: bool = False  # the thread was opened for a stale run (``triage.open_stale``)
 
 
 async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
@@ -184,7 +199,7 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
     t, r, p = tables.run_triage, tables.runs, tables.projects
     thread = (
         await conn.execute(
-            select(t.c.id, t.c.run_id, t.c.cause_inferred, t.c.auto_reruns)
+            select(t.c.id, t.c.run_id, t.c.cause, t.c.cause_inferred, t.c.auto_reruns)
             .where(t.c.chat_id == found.chat_id, t.c.root_message_id == found.root_id)
             .with_for_update()
         )
@@ -218,7 +233,8 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
         raise HTTPException(409, f"run {failed.id} is in another project than the agent of chat run {run_id}")
     if not failed.triage_enabled:
         raise HTTPException(409, f"triage is off for project {failed.project}: ask the owner in the thread")
-    if failed.state != "failed":
+    stale = thread.cause == STALE_CAUSE
+    if failed.state != "failed" and not (stale and failed.state in (*runs.HELD_STATES, "cancelled")):
         raise HTTPException(409, f"run {failed.id} is {failed.state} now, not failed: there is nothing to triage")
     if failed.dispatched_by != agent.principal.user_id:
         raise HTTPException(
@@ -240,6 +256,8 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
         failed.project,
         owner,
         access,
+        cause=failed.failure_cause if failed.state == "failed" or not stale else STALE_CAUSE,
+        stale=stale,
     )
 
 
@@ -329,15 +347,21 @@ async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, 
             f"run {failed.id} is a {failed.kind} run: the agent reruns a step run only; ask the owner to dispatch the "
             f"{'plan' if failed.kind == 'plan' else 'author run'} again",
         )
+    if failed.state in runs.HELD_STATES:
+        raise HTTPException(
+            409,
+            f"run {failed.id} is still {failed.state}: ask its worker to stop it with `evo-agents worker triage cancel`, "
+            "and run it again once it has ended",
+        )
     if frame.auto_reruns >= 1:
         raise HTTPException(409, f"run {failed.id} was rerun by the agent once already: ask the owner")
     problem = triage_rules.rerun_problem(
-        failed.failure_cause, inferred=frame.inferred, confirmed=options.cause_confirmed, edited=edited
+        frame.cause, inferred=frame.inferred, confirmed=options.cause_confirmed, edited=edited
     )
     if problem:
         raise HTTPException(422, problem)
     depth, causes = await chain_of(conn, failed.id)
-    refusal = triage_rules.chain_problem(depth, causes, failed.failure_cause)
+    refusal = triage_rules.chain_problem(depth, causes, frame.cause)
     if refusal:
         raise HTTPException(409, refusal)
     found = await candidates_of(
@@ -376,12 +400,42 @@ async def rerun(request: Request, run_id: RunId, body: TriageRerunIn, user: Curr
         new_id = await _rerun(conn, frame, body, edited=False)
         text = (
             f"Decision: ran run #{frame.failed.id} again as run #{new_id} "
-            f"(cause {frame.failed.failure_cause}): {body.reason} Undo: cancel run #{new_id}."
+            f"(cause {frame.cause}): {body.reason} Undo: cancel run #{new_id}."
         )
         message_id = await _said(conn, frame, text)
         await _audit(conn, frame, audit.RUN_TRIAGE_RERUN, f" rerun:{new_id}")
     log.info("triage rerun", extra={"run_id": frame.failed.id, "rerun": new_id, "agent_run_id": run_id})
     return TriageActed(message_id=message_id, run_id=new_id, plan_revision=None)
+
+
+@worker_router.post("/runs/{run_id}/triage/cancel", response_model=TriageCancelled, responses={**REFUSALS})
+async def cancel(request: Request, run_id: RunId, body: TriageCancelIn, user: CurrentUser) -> TriageCancelled:
+    """Ask the worker of the stale run of this triage thread to stop it, for its owner, as their cancel of a held run
+    does; 409 for the thread of a failed run, a run that is no longer held, or a stop asked already."""
+    async with request.app.state.engine.begin() as conn:
+        frame = await _frame(conn, user, run_id)
+        failed = frame.failed
+        if not frame.stale:
+            raise HTTPException(409, f"run {failed.id} failed, which is final: only a stale run's thread stops a run")
+        if failed.state not in runs.HELD_STATES:
+            raise HTTPException(409, f"run {failed.id} is {failed.state} now: its worker holds it no more")
+        r = tables.runs
+        ask = (
+            update(r)
+            .values(cancel_requested_at=func.now())
+            .where(r.c.id == failed.id, r.c.cancel_requested_at.is_(None))
+            .returning(r.c.id)
+        )
+        if (await conn.execute(ask)).one_or_none() is None:
+            raise HTTPException(409, f"the worker of run {failed.id} was asked to stop it already")
+        text = (
+            f"Decision: asked the worker of run #{failed.id} to stop it (cause {STALE_CAUSE}): {body.reason} "
+            "Undo: none once it stops; run it again with `evo-agents worker triage rerun` once it has ended."
+        )
+        message_id = await _said(conn, frame, text)
+        await _audit(conn, frame, audit.RUN_TRIAGE_CANCEL, "")
+    log.info("triage cancel", extra={"run_id": failed.id, "agent_run_id": run_id})
+    return TriageCancelled(message_id=message_id, run_id=failed.id)
 
 
 def _edited(held_body: dict, edits: list[StepEdit]) -> dict:

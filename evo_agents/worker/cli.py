@@ -25,7 +25,7 @@
   --attach`` and ``chat post --attach`` do for a question and a message (``output_cli``).
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
-- ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
+- ``triage rerun|plan|invite|cancel``: what the agent of a triage thread does for a failed or stale run (``triage_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
