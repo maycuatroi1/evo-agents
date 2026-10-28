@@ -22,7 +22,8 @@ async def cancel_queued(
     conn: AsyncConnection, schedule_ids: list[int], reason: str, *, changes_too: bool = True
 ) -> list[int]:
     """Cancel the runs of ``schedule_ids`` still queued, but a run that resumes a parked one, which its owner's answer
-    queued, and, without ``changes_too``, a run of a Curator's change; their ids."""
+    queued, and, without ``changes_too``, a run of a Curator's change or the review run of a KG optimize run asked
+    for; their ids."""
     r = tables.runs
     query = (
         select(r.c.id)
@@ -32,6 +33,9 @@ async def cancel_queued(
     )
     if not changes_too:
         query = query.where(r.c.plan_id.is_(None) | ~r.c.plan_id.startswith(judge.CURATOR_PLAN_PREFIX))
+        o = tables.kg_optimize_runs  # the review run of a KG optimize run asked for runs at any hour
+        asked = select(o.c.agent_run_id).where(o.c.via == "manual", o.c.agent_run_id.is_not(None))
+        query = query.where(r.c.id.not_in(asked))
     cancelled = []
     for run_id in (await conn.execute(query)).scalars().all():
         await move_run(conn, run_id, "queued", "cancelled", "owner", reason=reason)

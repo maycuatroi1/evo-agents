@@ -62,6 +62,7 @@ import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 import psycopg
 from sqlalchemy import func, select, update
@@ -70,9 +71,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, kg_labels, review, runs, tables
+from evo_agents.hub import kg_optimize as optimize_model
 from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit, facet_figures, kg_health, memory_promotion, product_figures, runtime_figures
+from evo_agents.hub.server import (
+    audit,
+    facet_figures,
+    kg_health,
+    kg_optimize,
+    memory_promotion,
+    product_figures,
+    runtime_figures,
+)
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
@@ -82,6 +92,7 @@ from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
 from evo_agents.hub.server.runs.service.kg_duties import keeper_of
 from evo_agents.hub.server.runs.service.views import visible_plans
+from evo_agents.hub.tables_kg import OPTIMIZE_ACTIVE
 
 log = logging.getLogger(__name__)
 
@@ -578,11 +589,12 @@ async def _review_place(conn: AsyncConnection, due, duty: Duty, runtime: str) ->
     return repos, problems
 
 
-async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
+async def queue_review(conn: AsyncConnection, due, gate: Gate, *, hold: bool = False) -> int | None:
     """Queue the night's review run of schedule ``due`` when it has none yet, counting the night's figures first;
     its id, or None when there is nothing to queue (reviewed already, a worker that runs no review run, no repo to
     review, no money left). Called under the schedule's row lock. Figures that cannot be counted are logged and queue
-    no review, so the night shift goes on with its plans."""
+    no review, so the night shift goes on with its plans. Inside the window the night's KG optimize run starts here;
+    with ``hold`` (a pass that measures the graphs, the job's) the review waits for its first measure."""
     try:
         async with conn.begin_nested():
             row = await ensure_figures(conn, due, gate.night, gate.access)
@@ -591,6 +603,16 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
         return None
     if row.run_id is not None:
         return None
+    optimized = None
+    if gate.inside:
+        try:
+            async with conn.begin_nested():
+                optimized = await kg_optimize.night_run(conn, due, gate.night)
+        except Exception:  # the night's review goes on without its KG optimize run
+            log.exception("the night's KG optimize run did not start", extra={"project": due.project})
+        if hold and kg_optimize.holds_review(optimized, await conn.scalar(select(func.now()))):
+            log.info("the review run waits for the KG optimize run's measure", extra={"project": due.project})
+            return None
     charter, duty = due.body, gate.duty
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
     repos, problems = await _review_place(conn, due, duty, runtime)
@@ -600,7 +622,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
         log.info("no review run tonight yet", extra={"project": due.project, "why": why})
         return None
     count = int((charter.get("review") or {}).get("lenses") or review.LENSES_PER_NIGHT)
-    lenses = review.lenses_for(gate.night, count)
+    lenses = kg_optimize.with_lens(review.lenses_for(gate.night, count), optimized)
     values = {
         "kind": "review",
         "project_id": due.project_id,
@@ -630,6 +652,8 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
     cf = tables.curator_figures
     figures = {**row.figures, "lenses": lenses}
     await conn.execute(update(cf).values(run_id=run_id, figures=figures).where(cf.c.id == row.id))
+    if optimized is not None and optimized.state in OPTIMIZE_ACTIVE:
+        await kg_optimize.link_agent_run(conn, optimized, run_id)
     caps = (
         f"cost cap {curator.money(budget['max_usd'])}, {budget['max_turns']} turns, "
         f"{budget['max_seconds'] // 60} minutes of agent time"
@@ -652,6 +676,66 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
     )
     log.info("review run queued", extra={"project": due.project, "run_id": run_id, "night": gate.night.isoformat()})
     return run_id
+
+
+async def queue_optimize_review(conn: AsyncConnection, due, gate: Gate, optimize_id: int) -> tuple[int | None, str]:
+    """Queue the review run of KG optimize run ``optimize_id``, asked for now: the kg_health lens alone, at any hour,
+    beside the night's runs, under the charter's review cost cap; (its id, ""), or (None, why)."""
+    charter, duty = due.body, gate.duty
+    runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
+    repos, problems = await _review_place(conn, due, duty, runtime)
+    budget = _review_budget(charter, gate.budget)
+    if problems or budget is None:
+        return None, "; ".join(problems) or "the night has too little money left"
+    lenses = ["kg_health"]
+    values = {
+        "kind": "review",
+        "project_id": due.project_id,
+        "plan_id": None,
+        "title": f"KG optimize of {due.project}",
+        "plan_revision": None,
+        "dispatched_by": due.owner_id,
+        "dispatched_via": "schedule",
+        **duty.columns(),
+        "requested_runtime": runtime,
+        "runtime": runtime,
+        "model": (charter.get("reviewer") or {}).get("model"),
+        "mode": "headless",
+        "approval": "auto",
+        "timeout_s": budget["max_seconds"] + curator.BUDGET_GRACE_SECONDS,
+        "repos": repos,
+        "schedule_id": due.id,
+        "schedule_night": gate.night,
+        "budget": budget,
+    }
+    try:
+        async with conn.begin_nested():
+            run_id = await insert_run(conn, values)
+    except IntegrityError as exc:
+        if isinstance(exc.orig, psycopg.errors.UniqueViolation):
+            return None, "another review run of the project is active"
+        raise
+    caps = (
+        f"cost cap {curator.money(budget['max_usd'])}, {budget['max_turns']} turns, "
+        f"{budget['max_seconds'] // 60} minutes of agent time"
+    )
+    text = (
+        f"Queued for KG optimize run #{optimize_id} of project {due.project}, asked for, as {due.owner} on "
+        f"{duty.where}: lens kg_health; {caps}."
+    )
+    event = {"text": text, "schedule_id": due.id, "optimize_run_id": optimize_id, "lenses": lenses, **budget}
+    await write_event(conn, run_id, event)
+    await notify_queued(conn, run_id)
+    await audit.record(
+        conn,
+        actor_id=due.owner_id,
+        token_id=None,
+        action=REVIEW,
+        target=f"{due.project} run:{run_id} optimize={optimize_id} lenses=kg_health",
+        project_id=due.project_id,
+    )
+    log.info("kg optimize review run queued", extra={"project": due.project, "run_id": run_id})
+    return run_id, ""
 
 
 async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, lenses: list[str]) -> tuple[dict, list]:
@@ -705,6 +789,11 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     plugins = [name for name in PRODUCT_PLUGINS if await enabled_in(conn, name, row.project_id) is not None]
     memories = await memory_promotion.for_prompt(conn, view.id, row.project_id, row.dispatched_by)
     assignments = await _assigned(conn, row.dispatched_by, row.project_id, row.schedule_night)
+    optimized = await kg_optimize.of_agent_run(conn, view.id)
+    if optimized is not None and optimized.via == "manual":
+        lenses = ["kg_health"]
+    elif optimized is not None:
+        lenses = kg_optimize.with_lens(list(lenses), SimpleNamespace(state="running"))
     return review.build_review_prompt(
         view.project,
         row.schedule_night,
@@ -717,6 +806,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         plugins=plugins,
         memories=memories,
         assignments=assignments,
+        optimize=None if optimized is None else optimize_model.prompt_lines(optimized.id, optimized.body or {}),
     )
 
 
@@ -765,6 +855,13 @@ async def collect(
         except Exception:  # the night's figures go on without a new measure of the graph
             log.exception("measuring the knowledge graphs failed")
             measured = {"failed": 1}
+    optimized = None
+    if data_dir is not None:
+        try:
+            optimized = await kg_optimize.advance(engine, blobs=blobs, data_dir=data_dir)  # by the database's clock
+        except Exception:  # the night shift goes on without moving its KG optimize runs
+            log.exception("moving the KG optimize runs on failed")
+            optimized = {"failed": 1}
     async with engine.begin() as conn:
         due = (await conn.execute(_due(now))).all()
         reopened = await reopen_deferred(conn)
@@ -774,10 +871,13 @@ async def collect(
             async with engine.begin() as conn:
                 word, gate = await gate_of(conn, row, figures_first=True)
                 if gate is not None:
-                    word = "review" if await queue_review(conn, row, gate) is not None else "collected"
+                    queued = await queue_review(conn, row, gate, hold=data_dir is not None)
+                    word = "review" if queued is not None else "collected"
                 outcomes[word] += 1
         except Exception:  # one schedule failing leaves the others their turn
             log.exception("collecting a night failed", extra={"project": row.project, "schedule_id": row.id})
             outcomes["failed"] += 1
     found = {**dict(sorted(outcomes.items())), "reopened": reopened}
+    if optimized:
+        found["kg_optimize"] = optimized
     return found if measured is None else {**found, "graphs": measured}

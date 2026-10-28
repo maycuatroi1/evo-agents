@@ -1865,6 +1865,12 @@
     "title": "Knowledge graph",
     "readOnly": "Read-only",
     "copied": "Copied to the clipboard",
+    "optimize": {
+      "label": "Optimize",
+      "started": "KG optimize run #{id} started",
+      "inFlight": "KG optimize run #{id} is in flight already ({state})",
+      "failed": "Couldn't start a KG optimize run"
+    },
     "tabs": {
       "label": "Knowledge graph pages",
       "explore": "Explore",
@@ -6731,7 +6737,8 @@
       "opportunity_window": "The window of an opportunity closes",
       "today": "Today's summary",
       "market_install_request": "A project asks for a plugin of the market",
-      "market_license_expiring": "The licence of a paid plugin ends soon"
+      "market_license_expiring": "The licence of a paid plugin ends soon",
+      "kg_optimize": "The report of a KG optimize run"
     },
     "item": {
       "unread": "Unread",

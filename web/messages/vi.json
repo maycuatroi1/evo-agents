@@ -1865,6 +1865,12 @@
     "title": "Đồ thị tri thức",
     "readOnly": "Chỉ đọc",
     "copied": "Đã chép vào bộ nhớ tạm",
+    "optimize": {
+      "label": "Tối ưu",
+      "started": "Đã bắt đầu lượt tối ưu KG #{id}",
+      "inFlight": "Lượt tối ưu KG #{id} đang chạy ({state})",
+      "failed": "Không bắt đầu được lượt tối ưu KG"
+    },
     "tabs": {
       "label": "Các trang của đồ thị tri thức",
       "explore": "Khám phá",
@@ -6731,7 +6737,8 @@
       "opportunity_window": "Hạn của một cơ hội sắp đóng",
       "today": "Tóm tắt Today",
       "market_install_request": "Một dự án xin cài plugin từ market",
-      "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn"
+      "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn",
+      "kg_optimize": "Báo cáo của một lượt tối ưu KG"
     },
     "item": {
       "unread": "Chưa đọc",

@@ -521,6 +521,23 @@ HUB_TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "kg_optimize",
+        "description": (
+            "Start a KG optimize run of the project (action start, the default; needs the writer role) or read its "
+            "runs (status). The hub measures the graph, applies what the review queue fixes, gives a review run to "
+            "the worker on duty under the charter's cost cap, and measures again after the next build, undoing what "
+            "made the holdout worse; the owner gets the report. One run is in flight at a time: start returns it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["start", "status"]},
+                "project": _PROJECT,
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 # What the Curator's review run reads, and any member with a session of the project.
