@@ -36,7 +36,7 @@ from evo_agents.kg.ids import normalize_time
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "7"
-STRUCTURE_VERSION = "12"
+STRUCTURE_VERSION = "13"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).

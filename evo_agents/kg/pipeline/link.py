@@ -59,7 +59,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "14"
+LINK_VERSION = "15"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -233,6 +233,8 @@ def _learn_symbol(index: dict, f: dict) -> None:
     entry = {"node": f["node"], "repo": f.get("repo"), "source": f["source"]}
     index["symbol"][f["key"]].append(entry)
     named = {"node": f["node"], "repo": f.get("repo"), "path": f.get("path") or ""}
+    if f.get("kind") == "constant":
+        named["constant"] = True
     index["symname"][f["qualname"]].append(named)
     if f["name"] != f["qualname"]:
         index["symname"][f["name"]].append(named)
@@ -401,15 +403,18 @@ def _plain(value):
 
 
 def _url_prefix(url: str) -> str:
-    """Forge URLs up to owner/repo, other URLs up to the host: a mention under a known prefix that matches
-    no item is a dangling link; any other URL is just outside the project."""
+    """The collection a URL is in: forge URLs up to the kind after owner/repo (``.../pull``, ``.../commit``,
+    ``.../blob``, past GitLab's ``-``), other URLs without their last segment (``https://hub/chats`` of
+    ``https://hub/chats/30``). A mention in a collection some item's URL is in that matches no item is a dangling
+    link; any other URL (a host alone, ``/v1/health`` of the hub, a forge's ``actions/runs``) is just outside the
+    project."""
     parts = url.split("/")
-    if len(parts) < 3:
+    if len(parts) < 4 or not parts[3]:
         return url
-    host = "/".join(parts[:3])
-    if any(marker in parts for marker in ("blob", "tree", "-")) or parts[2] in ("github.com", "gitlab.com"):
-        return "/".join(parts[:5])
-    return host
+    if any(marker in parts[5:6] for marker in ("blob", "tree", "-")) or parts[2] in ("github.com", "gitlab.com"):
+        kind = 6 if parts[5:6] == ["-"] else 5
+        return "/".join(parts[: kind + 1])
+    return "/".join(parts[:-1])
 
 
 def looks_like_symbol(name: str) -> bool:
@@ -1031,8 +1036,9 @@ class Linker:
             if target:
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), "resolved", "symbol-name", field)
-            else:
+            elif not all(e.get("constant") for e in candidates):
                 self._count("ambiguous", inner)
+            # a name only constants of several modules hold (`CACHE`, `LOOP`) names none of them: not counted
 
         self.scan_codes(src, unit, text, field, heading, claim)
 
