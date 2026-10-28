@@ -8,8 +8,9 @@ deliver done after its merge request merged, with the ledger of the build); the 
 whose deliver waits for a person, its merge request blocked at gate 3; a build of UC ORD-2 queued for want of a worker; a use case
 waiting for its SRS version's review; and a build cancelled when the Loop was turned off. With ``tripped`` the Loop's
 breaker trips. With ``problem`` (a code, P-<number>, of a problem G-1 answers), every work item goes from that problem,
-as rules/2 stamps them, and a discover of CL-1 runs. The answer names the ids a test needs (``items``: name -> work item
-id, ``merges``: plan -> queue id).
+as rules/2 stamps them, and a discover of CL-1 runs. With ``proposals`` the running brainstorm holds a run of an admin of
+the project, whose agent proposed two new claims of the Solution cell on the canvas of CL-1. The answer names the ids a
+test needs (``items``: name -> work item id, ``merges``: plan -> queue id, ``proposals``: the proposals, ``run``: their run).
 """
 
 from __future__ import annotations
@@ -18,6 +19,14 @@ from datetime import UTC, datetime, timedelta
 
 FORGE = "https://gitlab.example.org/northwind/api/-/merge_requests"
 WORKER_WHY = "no live worker northwind-mini (the policy's loop.worker) serves the project"
+PROPOSED = ("Shops reorder from a list of their last orders", "A reminder on the day a shop usually reorders")
+CARD = {
+    "metric": "checkout.one_tap_share",
+    "aggregate": "mean",
+    "window_days": 30,
+    "comparator": ">=",
+    "threshold": 0.6,
+}
 
 
 def seed(dsn: str, body: dict) -> dict:
@@ -192,6 +201,9 @@ def seed(dsn: str, body: dict) -> dict:
                 claim_id=claim,
                 engine="rules/2",
             )
+        found = {"items": items, "merges": merges}
+        if body.get("proposals"):
+            found |= _proposals(conn, pid, claim, items["brainstorm"], ago(2))
         if body.get("tripped"):
             conn.execute(
                 "UPDATE loop_states SET breaker = 'tripped', breaker_reason = %s, tripped_at = now() "
@@ -199,4 +211,45 @@ def seed(dsn: str, body: dict) -> dict:
                 ("31 work items in an hour, over the cap of 30", pid),
             )
         conn.commit()
-    return {"items": items, "merges": merges}
+    return found
+
+
+def _proposals(conn, pid: int, claim: int, brainstorm: int, at) -> dict:
+    """The run of brainstorm work item ``brainstorm``, of an admin of the project, and the two new claims its agent
+    proposed on the canvas of claim ``claim``."""
+    from psycopg.types.json import Jsonb
+
+    owner = conn.execute(
+        "SELECT user_id FROM grants WHERE project_id = %s AND role = 'admin' ORDER BY user_id LIMIT 1", (pid,)
+    ).fetchone()[0]
+    run = conn.execute(
+        "INSERT INTO runs (project_id, kind, title, dispatched_by, requested_runtime, runtime, mode, approval, timeout_s, "
+        "request, repos) VALUES (%s, 'author', 'Loop brainstorm for goal G-1', %s, 'claude-code', 'claude-code', "
+        "'headless', 'auto', 3900, 'Brainstorm G-1', %s) RETURNING id",
+        (pid, owner, Jsonb([{"repo": "api", "branch": None}])),
+    ).fetchone()[0]
+    conn.execute("UPDATE loop_items SET run_id = %s WHERE id = %s", (run, brainstorm))
+    conn.execute(
+        "INSERT INTO loop_item_events (item_id, kind, state, run_id, at) VALUES (%s, 'dispatched', 'running', %s, %s)",
+        (brainstorm, run, at),
+    )
+    canvas_id, label = conn.execute(
+        "SELECT k.id, k.label FROM canvas_claims c JOIN canvas_canvases k ON k.id = c.canvas_id WHERE c.id = %s",
+        (claim,),
+    ).fetchone()
+    made = []
+    for text in PROPOSED:
+        fields = {
+            "cell": "solution",
+            "text": text,
+            "confidence": "low",
+            "test_card": {**CARD, "deadline": "2026-12-31"},
+        }
+        made.append(
+            conn.execute(
+                "INSERT INTO canvas_proposals (canvas_id, kind, fields, reason, label, actor, user_id, run_id, created_at) "
+                "VALUES (%s, 'create', %s, %s, %s, 'agent', %s, %s, %s) RETURNING id",
+                (canvas_id, Jsonb(fields), "Moves the share of one-tap checkouts of G-1", Jsonb(label), owner, run, at),
+            ).fetchone()[0]
+        )
+    return {"proposals": made, "run": run}

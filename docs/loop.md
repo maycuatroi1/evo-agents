@@ -345,7 +345,10 @@ People decide the direction of the project at three gates, gathered on its decis
 2. **Canvas**: each baseline still proposed with an item to decide (a change of status, a status the value check
    proposed, a test card past its deadline), and each open proposal of a claim (a brainstorm's, the value check's, the
    Curator's lens `product`). A writer who did not propose an item of a baseline decides it, any writer once the
-   plugin's `self_approval` is on (`docs/canvas-plugin.md`, Baselines).
+   plugin's `self_approval` is on (`docs/canvas-plugin.md`, Baselines). The web shows each proposal's cell, sentence and
+   test card, by the goal its brainstorm was for and then by run, and a writer rejects a goal's or a run's proposals
+   together with one reason. A goal whose statement or metric changes makes the open proposals of its brainstorms
+   stale, so they wait on nobody and hold back no weekly look (row 2 above).
 3. **Policy**: each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose breaker
    tripped, and the Loop's own breaker.
 

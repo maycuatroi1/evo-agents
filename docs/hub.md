@@ -2296,7 +2296,10 @@ to merge by hand, the merge queue's audit samples not answered, and the SRS vers
 that wait for their review, with their settle chats. The SRS review and the settle chat are no fourth gate: the rules
 of the plugin srs stay. Each item has its group and kind, a title, since when, who may decide it (`decided_by`:
 `admin`, `writer`, `run_owner`, `srs_reviewer` or `chat_member`, and `deciders`, the logins that may now), the page
-where it is decided and the work item it holds up. Anyone with a grant reads the board and sees only what they may
+where it is decided and the work item it holds up. A proposal of a claim also says what it proposes (`proposal`: the
+claim's cell and sentence, its test card in one line, the run that made it and, for a brainstorm of the Loop, the goal
+as it reads now), and its link opens it on its canvas (`#proposal-<id>`); the web groups the proposals by goal, then by
+run, says once who may decide them, and lets a writer reject a goal's or a run's together with one reason. Anyone with a grant reads the board and sees only what they may
 read (a canvas's items under its label, a decision of a run whose plan they read, through `X-Evo-Sink` or the
 project's hub sink); each page's buttons call the object's own route, so who may decide is as it was. The job
 `hub.loop_notices`, every 5 minutes, sends `goal_review` on the first day of each month to the admins and goal owners
