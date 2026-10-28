@@ -6,8 +6,11 @@ Quyết định): where a person decides the direction of the project.
   its deadline in the Loop's zone. An admin writes a goal.
 - gate 2, ``canvas``: each baseline of a canvas still proposed with an item to decide (a change of status, a status
   the value check proposed, a test card past its deadline to extend or retire), for the writers who changed none of
-  those claims (any writer once the plugin canvas's self_approval is on); and each open proposal of a claim (a brainstorm's, the value check's, the Curator's lens product), for
-  any writer. Both are read under their labels, as the plugin canvas reads them; an archived canvas has none.
+  those claims (any writer once the plugin canvas's self_approval is on); and each open proposal of a claim (a
+  brainstorm's, the value check's, the Curator's lens product), for any writer, with what it proposes and, for one a
+  brainstorm of the Loop made, the goal it was for; its link opens the proposal on its canvas. Both are read under
+  their labels, as the plugin canvas reads them (a change of a claim under the claim's too); an archived canvas has
+  none.
 - gate 3, ``policy``: each pending proposal of @builder of kind policy or goal, each repo of the merge queue whose
   breaker tripped, each active goal that aims at an SRS document whose baseline is not confirmed (``srs_baseline``,
   plan srs-backlog-loop; ``evo-agents hub loop baseline``), and the Loop's own breaker tripped; an admin decides each.
@@ -23,11 +26,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, goals, tables
+from evo_agents.hub.server.canvas.proposals import brainstorm_runs
 from evo_agents.hub.server.loop import baseline
 from evo_agents.hub.server.loop.board_items import (
     ADMIN,
     WRITER,
+    BoardGoal,
     BoardItem,
+    BoardProposal,
     People,
     Reading,
     canvas_path,
@@ -36,6 +42,7 @@ from evo_agents.hub.server.loop.board_items import (
     project_path,
     self_approval,
 )
+from evo_agents.hub.tables_canvas import CELLS, STATUSES
 
 GOAL_REVIEW = "goal_review"  # runs.NOTICE_KINDS: loop.notices sends it
 ACTIVE = "active"  # goals.STATUSES
@@ -47,6 +54,7 @@ BUILDER_KINDS = {"policy": "policy_proposal", "goal": "goal_proposal"}  # of @bu
 TRIPPED = "tripped"  # merge_breaker.STATES, loop_states.breaker
 SOURCES = {"hub": "the value check", "agent": "an agent", "person": "a member"}  # tables_canvas.ACTORS, run aside
 CANVAS = "canvas"  # the core plugin whose config says self_approval
+PROPOSED_TEXT_CHARS = 600  # of the sentence of a proposed claim on the board
 
 
 def _plural(number: int, word: str) -> str:
@@ -147,20 +155,69 @@ async def _baselines(conn: AsyncConnection, reading: Reading, crowd: People) -> 
 
 def _proposed(row) -> str:
     """What a proposal of a claim asks, in words."""
-    if row.claim is None:
-        return "a new claim"
     fields = row.fields if isinstance(row.fields, dict) else {}
+    if row.claim is None:
+        return f"a new claim in {fields['cell']}" if isinstance(fields.get("cell"), str) else "a new claim"
     if isinstance(fields.get("status"), str):
         return f"CL-{row.claim} to {fields['status']}"
     return f"CL-{row.claim}: {', '.join(sorted(fields)) or 'a change'}"
 
 
+def _card_line(card) -> str | None:
+    """A test card's metric, how it is summed up and compared, and its deadline, in one line; None without a metric."""
+    if not isinstance(card, dict) or not card.get("metric"):
+        return None
+    parts = [str(card["metric"]), *([str(card["aggregate"])] if card.get("aggregate") else [])]
+    if card.get("window_days"):
+        parts.append(f"over {card['window_days']} days")
+    if card.get("comparator") and isinstance(card.get("threshold"), int | float):
+        parts.append(f"{card['comparator']} {card['threshold']:g}")
+    deadline = f", by {card['deadline']}" if card.get("deadline") else ""
+    return line(" ".join(parts) + deadline)
+
+
+def _goal_of(row) -> BoardGoal | None:
+    if row.goal_number is None:
+        return None
+    return BoardGoal(
+        code=goals.code(row.goal_number), statement=line(row.goal_statement), metric=goals.metric_text(row.goal_metric)
+    )
+
+
+def _content(row) -> BoardProposal:
+    """What proposal ``row`` proposes: a new claim's own fields, or a change of the claim as it reads now."""
+    fields = row.fields if isinstance(row.fields, dict) else {}
+    new = row.claim is None
+    text = fields.get("text") if new or isinstance(fields.get("text"), str) else row.claim_text
+    card = fields.get("test_card") if new or "test_card" in fields else row.claim_card
+    cell = fields.get("cell") if new or "cell" in fields else row.claim_cell
+    status = fields.get("status")
+    return BoardProposal(
+        id=row.id,
+        canvas=row.slug,
+        kind="create" if new else "change",
+        claim=None if new else f"CL-{row.claim}",
+        cell=cell if cell in CELLS else None,
+        text=line(text, PROPOSED_TEXT_CHARS) if text else None,
+        fields=sorted(fields),
+        status=status if status in STATUSES else None,
+        test=_card_line(card),
+        reason=line(row.reason),
+        synthetic=row.synthetic,
+        run=row.run_id,
+        goal=_goal_of(row),
+    )
+
+
 async def _proposals(conn: AsyncConnection, reading: Reading, crowd: People) -> list[BoardItem]:
     p, k, c = tables.canvas.proposals, tables.canvas.canvases, tables.canvas.claims
+    g, r, runs = tables.goals, tables.goal_revisions, brainstorm_runs(reading.project_id)
     query = (
         select(
             p.c.id,
             p.c.fields,
+            p.c.reason,
+            p.c.synthetic,
             p.c.label,
             p.c.actor,
             p.c.run_id,
@@ -168,24 +225,38 @@ async def _proposals(conn: AsyncConnection, reading: Reading, crowd: People) -> 
             k.c.slug,
             k.c.label.label("canvas_label"),
             c.c.number.label("claim"),
+            c.c.cell.label("claim_cell"),
+            c.c.text.label("claim_text"),
+            c.c.test_card.label("claim_card"),
+            c.c.label.label("claim_label"),
+            g.c.number.label("goal_number"),
+            r.c.statement.label("goal_statement"),
+            r.c.metric.label("goal_metric"),
         )
         .join_from(p, k, k.c.id == p.c.canvas_id)
         .outerjoin(c, c.c.id == p.c.claim_id)
+        .outerjoin(runs, runs.c.run_id == p.c.run_id)
+        .outerjoin(g, g.c.id == runs.c.goal_id)
+        .outerjoin(r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
         .where(k.c.project_id == reading.project_id, k.c.archived_at.is_(None), p.c.status == OPEN)
         .order_by(p.c.id)
     )
     writers = crowd.holding(WRITER)
     found = []
     for row in await conn.execute(query):
-        if not reading.label(row.label, row.canvas_label):
+        if not reading.label(row.label, row.canvas_label, *([row.claim_label] if row.claim is not None else [])):
             continue
         source = (
             SOURCES.get(row.actor, "a member") if row.run_id is None or row.actor == "hub" else f"run #{row.run_id}"
         )
+        proposed = _content(row)
         title = f"Proposal #{row.id} on canvas {row.slug}: {_proposed(row)}, from {source}"
-        link = canvas_path(reading.project, row.slug)
-        refs = {"proposal": row.id, "canvas": row.slug}
-        found.append(item("claim_proposal", title, row.created_at, WRITER, writers, link, refs=refs))
+        title += f": {proposed.text}" if proposed.text else ""
+        link = canvas_path(reading.project, row.slug) + f"#proposal-{row.id}"
+        refs: dict[str, int | str] = {"proposal": row.id, "canvas": row.slug}
+        refs |= {"run": row.run_id} if row.run_id is not None else {}
+        refs |= {"goal": proposed.goal.code} if proposed.goal is not None else {}
+        found.append(item("claim_proposal", title, row.created_at, WRITER, writers, link, refs=refs, proposal=proposed))
     return found
 
 

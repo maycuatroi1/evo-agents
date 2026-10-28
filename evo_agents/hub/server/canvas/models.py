@@ -5,7 +5,7 @@ rev and evidence become an answer. Every model is named ``Canvas...`` in the hub
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ from evo_agents.hub.server.canvas.content import (
     diff,
 )
 from evo_agents.hub.server.canvas.judging import JudgingRow
-from evo_agents.hub.server.canvas.proposals import ProposalRow
+from evo_agents.hub.server.canvas.proposals import MAX_OPEN, ProposalRow
 from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow, EvidenceRow, Provenance, RevRow
 from evo_agents.hub.server.canvas.transfer import Report
 from evo_agents.hub.server.canvas.writes import ADDED_KINDS, MAX_CHANGES
@@ -441,6 +441,25 @@ class CanvasWithdrawIn(BaseModel):
 
 class CanvasRejectIn(BaseModel):
     reason: str = Field("", max_length=MAX_REASON_CHARS, description="why, kept with the proposal")
+
+
+class CanvasRejectManyIn(BaseModel):
+    proposals: list[Annotated[int, Field(ge=1)]] = Field(
+        min_length=1, max_length=MAX_OPEN, description="the ids of the proposals of the canvas to reject"
+    )
+    reason: str = Field(min_length=1, max_length=MAX_REASON_CHARS, description="why, kept with each proposal")
+
+
+class CanvasProposalLeft(BaseModel):
+    id: int
+    status: Literal[PROPOSAL_STATUSES] = Field(description="what it is now: accepted, rejected or stale")
+
+
+class CanvasRejected(BaseModel):
+    """What rejecting proposals together did."""
+
+    rejected: list[int] = Field(description="the proposals rejected now")
+    left: list[CanvasProposalLeft] = Field(description="those no longer open, left as they are")
 
 
 class CanvasBrainstormIn(BaseModel):
