@@ -300,6 +300,9 @@ Projects and who sees what), and the core plugin chats labels each message with 
   where the query's words gather, about 16 words, on the line below it (`    > ...`). A section is named by its
   heading and is not quoted. The count and the passage come from the same index rows the search read
   (`Store.matched`), so a node with an audience is counted and quoted only for a reader within it.
+- The text shows the first 5 results whole (`FULL_LINES`); a result past them, a mentioned one too, shows its id
+  alone (`[repo:path]`), with no count and no passage: an agent reads the first few, and kg_node gives the rest. The
+  structured result keeps every node whole.
 
 What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
 `session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:
