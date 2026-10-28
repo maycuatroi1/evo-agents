@@ -521,7 +521,10 @@ def test_report_notices_count_in_today_one_item_a_project_and_kind(client, hub, 
     assert len(reports) == 4 and {item["project"] for item in reports} == {PROJECT}
     by_title = {item["title"]: item for item in reports}
     pushes = by_title[f"2 pushes to a default branch in {PROJECT}"]
-    assert (pushes["body"], pushes["link"]) == ("The newest: Pushed main again", f"/inbox?kind=notice&project={PROJECT}")
+    assert (pushes["body"], pushes["link"]) == (
+        "The newest: Pushed main again",
+        f"/inbox?kind=notice&project={PROJECT}",
+    )
     assert {"Merged", f"Plan {PLAN} finished", "2 files from run"} <= set(by_title)
     assert by_title["Merged"]["link"] == f"/p/{PROJECT}/runs/{run['id']}"
     assert "4 reports of your work" in today["summary"], today["summary"]
