@@ -61,7 +61,7 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_sources, tables
+from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_semantic, kg_sources, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
@@ -321,12 +321,15 @@ def build_in_cache(
     ingests: list[Ingest],
     sources: list | None = None,
     learned: kg_asked.Learned | None = None,
+    semantic: kg_semantic.semantic.Settings | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
     build covers with the files of each git source, which ``record`` keeps. With ``learned``, the graph gets the
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
-    build whose graph is the same but whose index is not uploads its file. Blocking."""
+    build whose graph is the same but whose index is not uploads its file. With ``semantic`` settings that ask for
+    them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when the project's vectors.sqlite
+    lacks them, and the content hash folds in their digest and the mode, the same way. Blocking."""
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
@@ -336,6 +339,12 @@ def build_in_cache(
     path, report = build_graph(project)
     asked = kg_asked.write(path, learned) if learned is not None else None
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
+    if semantic is not None:
+        vectors = kg_semantic.index(path, semantic, project.root / kg_semantic.semantic.CACHE_FILE)
+        if vectors.error:
+            log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
+        if vectors.digest is not None:
+            content_hash = sha256_of(f"{content_hash}\n{vectors.mode}\n{vectors.digest}")
     sha256 = _sha256(path)
     coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
     return Built(
@@ -564,8 +573,9 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         sources = await kg_sources.read_sources(engine, context.config, project_id, project, found[1])
         async with engine.connect() as conn:
             learned = await kg_asked.read(conn, project_id, project, found[1])
+            semantic = await kg_semantic.read(conn, project_id)
         built = await asyncio.to_thread(
-            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned
+            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, semantic
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop

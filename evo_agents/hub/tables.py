@@ -1060,6 +1060,7 @@ kg_review_dismissals = tables_kg.review_dismissals(metadata)
 kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
 kg_query_labels = tables_kg.query_labels(metadata)  # each kg_search and what the agent opened after it (0177)
 kg_eval_sets = tables_kg.eval_sets(metadata)  # each version of a project's retrieval question set (0178)
+kg_semantic = tables_kg.semantic_settings(metadata)  # whether a project's graph is searched by meaning too (0180)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
