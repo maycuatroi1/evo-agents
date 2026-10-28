@@ -12,6 +12,7 @@ pytest.importorskip("sqlalchemy", reason="the hub's source of decisions needs th
 
 from evo_agents.hub import kg_decisions
 from evo_agents.hub.kg_sources import HUB, checked, keep_sources, knowledge_with
+from evo_agents.kg import clusters
 from evo_agents.kg.build import build_project
 from evo_agents.kg.pipeline.curation import curation_item
 from evo_agents.kg.project import load_project_at
@@ -136,3 +137,17 @@ def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
     text = found["content"][0]["text"]
     assert "deprecated: ranking moved to the index (decision 3)" in text
     assert found["structuredContent"]["node"]["props"]["deprecated"]["decision"] == 3
+
+
+@pytest.mark.skipif(not clusters.available(), reason="graspologic-native is not installed")
+def test_the_review_queue_of_a_build_leaves_out_what_its_decisions_settled(tmp_path, kg_env):
+    cluster_md, contracts = "harness:file:CLUSTER.md", "harness:file:contracts.yaml"
+    _project, store, b, _report = curated(tmp_path / "before", kg_env, [row(1, "deprecate", "app:file:app/gone.py")])
+    before = {(i["rule"], i["evidence"][0]) for i in store.review_items(b)}
+    assert {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)} <= before
+    store.close()
+    rows = [row(1, "link", GUIDE, "mentions", cluster_md), row(2, "deprecate", contracts)]
+    _project, store, b, report = curated(tmp_path / "after", kg_env, rows)
+    after = {(i["rule"], i["evidence"][0]) for i in store.review_items(b)}
+    assert after == before - {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)}
+    assert sum(report.coverage["review"].values()) == len(after)
