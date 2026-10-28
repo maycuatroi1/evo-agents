@@ -1,9 +1,13 @@
 import json
+import random
 import re
 from pathlib import Path
 
-from evo_agents.kg import serve
+import pytest
+
+from evo_agents.kg import explore, serve
 from evo_agents.kg.build import build_project
+from evo_agents.kg.explore import Explorer
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
 from evo_agents.kg.refs import readable, stored
 from evo_agents.kg.serve import Session, diff_lines, handle
@@ -805,3 +809,55 @@ def test_results_print_the_lines_of_a_section_a_symbol_and_the_passage_a_long_se
     assert "lines 9-12" in node.splitlines()[0]
     context = session.call("kg_context", {"query": "rank_results", "budget_tokens": 4000})["content"][0]["text"]
     assert "[app:app/search.py::rank_results] Symbol (parsed) lines 1-2" in context
+
+
+class Always(random.Random):
+    """A draw that always explores, and picks the first candidate and the last rank."""
+
+    def random(self):
+        return 0.0
+
+    def choice(self, seq):
+        return seq[-1]
+
+    def randrange(self, n):
+        return 0
+
+
+def test_a_search_explores_only_with_an_explorer_and_says_where_and_with_what_chance(tmp_path, kg_env):
+    project = built(tmp_path, kg_env)
+    plain = Session(project, "agent")
+    query = {"query": "search", "limit": 5}
+    before = plain.call("kg_search", query)
+    assert all("explored:" not in plain.call("kg_search", query)["content"][0]["text"] for _ in range(20))
+    shown = [r["id"] for r in before["structuredContent"]["results"]]
+    everything = [r["id"] for r in plain.call("kg_search", {**query, "limit": 25})["structuredContent"]["results"]]
+    past = [i for i in everything if i not in shown]
+    assert len(shown) == 5 and past
+
+    exploring = Session(project, "agent")
+    exploring.explorer = Explorer(rate=0.05, rng=Always())
+    result = exploring.call("kg_search", query)
+    text = result["content"][0]["text"]
+    ids = [r["id"] for r in result["structuredContent"]["results"]]
+    assert len(ids) == 5 and ids[:4] == shown[:4] and ids[4] in past  # rank 5: a hit from past the results
+    rank, chance, ref = explore.marked(text)
+    assert (rank, ref) == (5, readable(ids[4]))
+    assert 0 < chance <= 0.05 / 2
+    assert text.splitlines()[-1].startswith("explored: rank 5, p=")
+
+    never = Session(project, "agent")
+    never.explorer = Explorer(rate=0.0, rng=Always())
+    assert [r["id"] for r in never.call("kg_search", query)["structuredContent"]["results"]] == shown
+
+
+def test_an_explorer_draws_at_its_rate_and_needs_results_to_put_a_candidate_after():
+    pick = Explorer(rate=1.0, rng=random.Random(3)).pick
+    assert pick([1, 2], ["c"]) is None  # fewer than three results: no rank 4 to go to
+    index, rank, chance = pick([1, 2, 3], ["c", "d"])
+    assert rank == 4 and index in (0, 1) and chance == pytest.approx(1.0 / 1 / 2)
+    assert pick([1, 2, 3, 4, 5], []) is None
+    assert Explorer(rng=Always()).pick([1, 2, 3, 4, 5], ["c"]) is None  # tests run at RATE 0 (tests/conftest.py)
+    drawn = Explorer(rate=0.05, rng=random.Random(1))  # the hub's RATE
+    explored = sum(drawn.pick([1, 2, 3, 4, 5], ["c"]) is not None for _ in range(4000))
+    assert 120 < explored < 280  # about one search in twenty

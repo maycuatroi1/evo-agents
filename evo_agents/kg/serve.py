@@ -43,6 +43,7 @@ from evo_agents.kg.budget import (
     Room,
     line_size,
 )
+from evo_agents.kg.explore import MARK, POOL, Explorer
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.policy import Label, audience_below
@@ -101,6 +102,7 @@ class Session:
         self.read: Label | None = None  # join of the labels the current call reveals
         self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
+        self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
                 # The local operator already holds the corpus; the cli sink sees everything unless declared.
@@ -142,6 +144,7 @@ class Session:
         visible, and ``visible`` answers so without comparing labels."""
         store, b = self._graph()
         store.reader = self.audience
+        store.asked_clearance = self.clearance  # what agents asked before reading a node, under this clearance only
         top = store.top_label(b)
         within = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
         self.sees_all = within and audience_below(store.top_audience(b), self.audience)
@@ -291,6 +294,7 @@ class Session:
         if partial and len(results) > WEAK_LIMIT:  # no result holds the whole query: the few best say as much
             results = results[:WEAK_LIMIT]
             via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
+        explored = self._explore(store, results, hits, via)
         for reached in via.values():
             self._saw(reached["label"])
         shared, label_line = self._labels(results)
@@ -308,6 +312,8 @@ class Session:
             lines.append(line + (f" words={m['words']}/{words}" if m and m["words"] < words else ""))
             if m and m.get("snippet"):
                 lines.append(f"    > {m['snippet']}")
+        if explored is not None:
+            lines.append(MARK.format(rank=explored[0], p=explored[1], ref=readable(results[explored[0] - 1]["id"])))
         return "\n".join(lines), {
             "build": b,
             "results": [self._node_json(n) for n in results],
@@ -315,6 +321,27 @@ class Session:
             "matched": matched,
             "summary": f"{len(results)} results",
         }
+
+    def _explore(self, store: Store, results: list, hits: list, via: dict) -> tuple[int, float] | None:
+        """With an explorer, maybe put a hit past ``results`` that no agent read after a search yet at rank 4 or 5 of
+        them, in place, the last result dropped when that makes one more: (its rank, the chance it had), else None."""
+        if self.explorer is None:
+            return None
+        shown = {n["id"] for n in results}
+        past = [n for n in hits if n["id"] not in shown and n["id"] not in via][: 2 * POOL]
+        read = store.asked_nodes(n["id"] for n in past)
+        candidates = [n for n in past if n["id"] not in read]
+        picked = self.explorer.pick(results, candidates)
+        if picked is None:
+            return None
+        index, rank, chance = picked
+        count = len(results)
+        results.insert(rank - 1, candidates[index])
+        del results[max(count, rank) :]
+        kept = {n["id"] for n in results}
+        for nid in [nid for nid in via if nid not in kept]:
+            del via[nid]
+        return rank, chance
 
     def _evidence(self, store: Store, elem: str, b: int, links: Links) -> list[dict]:
         out = []
