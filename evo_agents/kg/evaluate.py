@@ -379,10 +379,13 @@ def file_ranks(question: Question, files: list[tuple[str, str]]) -> list[int | N
 # -- the methods -------------------------------------------------------------------------------------------------
 
 
-def run_kg(session, method: str, question: Question, limit: int, budget_tokens: int) -> Outcome:
-    """Ask the graph through ``session.call`` (a local Session or the hub's RemoteSession) as an agent would."""
+def run_kg(session, method: str, question: Question, limit: int, budget_tokens: int, scope: str = "all") -> Outcome:
+    """Ask the graph through ``session.call`` (a local Session or the hub's RemoteSession) as an agent would; with
+    ``scope`` "repo", kg_search names the question's repo, as an agent searching inside one repo would."""
     if method == "kg_search":
         args, key = {"query": question.text, "limit": limit}, "results"
+        if scope == "repo" and question.repo:
+            args["repo"] = question.repo
     else:
         args, key = {"query": question.text, "budget_tokens": budget_tokens}, "nodes"
     start = time.perf_counter()
@@ -579,6 +582,7 @@ def evaluate(
     grep_ref: str | None = None,
     question_set: QuestionSet | None = None,
     split: str | None = None,
+    scope: str = "all",
 ) -> Report:
     """Run every method on every question. ``session_for`` and ``checkouts_for`` take a question's project (None:
     the default one) and are called once per project. ``question_set`` and ``split`` are only named in the settings:
@@ -596,7 +600,7 @@ def evaluate(
                 continue
             if question.project not in sessions:
                 sessions[question.project] = session_for(question.project)
-            outcomes.append(run_kg(sessions[question.project], method, question, limit, budget_tokens))
+            outcomes.append(run_kg(sessions[question.project], method, question, limit, budget_tokens, scope))
     settings = {
         "questions": len(questions),
         "methods": list(methods),

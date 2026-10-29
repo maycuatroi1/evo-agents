@@ -1270,8 +1270,8 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     elif texts:
         for t in texts:
             linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
-    elif kind in ("config", "asset"):
-        pass  # config and assets are not prose
+    elif kind in ("config", "asset", "markup"):
+        pass  # config, assets, templates and stylesheets are not prose
     elif fragments:
         document_like = node_kind_for_item(kind) == "Document"  # only documents get Section nodes
         for frag in fragments:

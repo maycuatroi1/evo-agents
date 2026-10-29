@@ -34,6 +34,18 @@ English "an". The score is then weighed by what the node is (``weight``): up whe
 (``named_words``), down when it is background, a test, a migration, a fixture, generated JSON or the history of closed
 work, that the query does not ask for (``background``, ``asked``). ``kg_search`` then follows each step, section or document it found to what it mentions
 (``with_mentions``).
+
+The text of code and markup files is not in ``node_fts``: a symbol is found by its name and docstring, and a file's
+code would bury the documents and steps a question in prose asks about. It sits in an index of its own, ``code_fts``,
+whose tokenizer keeps ``_``, ``-`` and ``$`` inside a word, so ``MOBILE_AI_CHAT_V2_ENABLED``, ``app-course-card`` and
+``$route`` are one word each. ``kg_search`` looks up there the words of a query that reads like a search of code
+(``code_words``: every word of a query of at most CODE_WORDS words, else only the words written like identifiers),
+and puts the files that hold the most of them after its first CODE_LEAD results, each with the first CODE_LINES lines
+that hold them: where a name is used, which grep would have found and the graph's resolved edges often do not (a
+setting read through ``settings.X``, a selector in a template, a class in a stylesheet). On 412 searches agents ran
+with grep in the sessions of a harness of 16 repos, restricted to the searched repo, the files the agent opened next
+were in the first five 35.9% of the time against 24.5% without the code index (grep 30.3%); 511 plan-step questions
+went from 67.9% to 70.1%.
 """
 
 from __future__ import annotations
@@ -86,6 +98,15 @@ ASKED_WEIGHT = 1.0
 # its heading; its passage too cost a third more tokens a call on the harness's question set and found nothing more.
 SNIPPET_KINDS = frozenset({"Document"})
 SNIPPET_TOKENS = 16
+CODE_WORDS = 4  # a query of at most this many words is read as a search of code: each of its words is looked up there
+CODE_TERMS = 6  # words of a query looked up in code, at most
+CODE_POOL = 50  # files read from code_fts per word
+CODE_LEAD = 2  # results of the ranking kept before the files whose code holds the query's words
+CODE_LINES = 3  # lines a code hit shows
+_CODE_WORD = re.compile(r"[\w$.-]+")
+# Written like an identifier: a _, - or $ between characters, or a camelCase hump. A word in capitals alone (SCORM,
+# YAML) is more often an acronym every file of a kind names: on plan-step questions it pushed the answers out.
+_IDENTIFIER = re.compile(r".[_$-].|[a-z][A-Z]")
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})
 _WORD = re.compile(r"[^\W_]+")
@@ -164,6 +185,32 @@ def query_words(query: str) -> list[str]:
     words = list(dict.fromkeys(_WORD.findall(fold(query))))
     meaning = [w for w in words if w.lower() not in STOP_WORDS]
     return (meaning or words)[:MAX_TERMS]
+
+
+def code_words(query: str) -> list[str]:
+    """The words of ``query`` to look up in code (``code_fts``), as written, once each, at most CODE_TERMS: all of a
+    query of at most CODE_WORDS words, else only those written like identifiers; none of under three characters, all
+    digits, or a word that only asks. Dots and dashes at a word's ends are dropped (``.hostname``)."""
+    words = [w.strip(".-") for w in _CODE_WORD.findall(fold(query))]
+    words = list(dict.fromkeys(w for w in words if len(w) >= 3 and not w.isdigit() and w.lower() not in STOP_WORDS))
+    if len(query.split()) > CODE_WORDS:
+        words = [w for w in words if _IDENTIFIER.search(w)]
+    return words[:CODE_TERMS]
+
+
+def lines_holding(text: str, words: list[str], most: int = CODE_LINES) -> list[int]:
+    """The numbers of the first ``most`` lines of ``text`` holding a word of ``words`` whole, as ``code_fts`` cuts
+    words (``_``, ``-`` and ``$`` inside one), ignoring case and accents."""
+    wanted = [bare(w) for w in words]
+    patterns = [re.compile(rf"(?<![\w$-]){re.escape(w)}(?![\w$-])") for w in wanted if w]
+    found: list[int] = []
+    for number, line in enumerate(text.splitlines(), 1):
+        read = line.lower() if line.isascii() else bare(line)
+        if any(p.search(read) for p in patterns):
+            found.append(number)
+            if len(found) >= most:
+                break
+    return found
 
 
 def _quote(word: str) -> str:

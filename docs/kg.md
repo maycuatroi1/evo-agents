@@ -307,6 +307,18 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - The text shows the first 5 results whole (`FULL_LINES`); a result past them, a mentioned one too, shows its id
   alone (`[repo:path]`), with no count and no passage: an agent reads the first few, and kg_node gives the rest. The
   structured result keeps every node whole.
+- `repo` keeps the results to one repo: a source of the project or the git repo it reads (`django` or
+  `northwind-django`), any case. The ranking reads 12 candidates per result asked instead of 4, since most are of
+  other repos, and drops what a hit mentions in another repo. Nothing matched says so and points at `kg_status`.
+- Where a name is written in code: the text of code and markup files (templates and stylesheets: `.html`, `.css`,
+  `.scss`, `.sass`, `.less`, read since this index came) is not in `node_fts` but in `code_fts`, whose tokenizer keeps
+  `_`, `-` and `$` inside a word (`LUMEN_CARDS_ENABLED`, `app-course-card` and `$route` are one word each).
+  `kg_search` looks up there every word of a query of at most 4 words, or only the words of a longer one written like
+  identifiers (`search.code_words`: a `_`, `-` or `$` between characters, or a camelCase hump), and puts the files that
+  hold the most of them after its first 2 results (`CODE_LEAD`), each with the first 3 lines that hold them
+  (` line 5 code`; `code` in the structured result). A file the ranking listed already keeps its place and shows its
+  lines too. This answers what agents grep for: where a setting, a selector or a class is used, which no resolved
+  edge of the graph says.
 
 What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
 `session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:
@@ -316,6 +328,9 @@ step (what, why, note) or a seam (notes), not their verify commands nor their ev
 symbol or module, the comment right above a definition in another language or at the top of its file, and a
 requirement's code. `đ` is indexed and searched as `d`. URIs and repo names are not indexed. A body longer than
 100,000 characters is cut there, and the build counts the cut ones in its coverage (`search.cut`, with samples).
+`code_fts` holds the whole text of each code or markup file without an audience, and `code_fts_rows` its row id and
+digest, written like `node_fts`: only the files whose text changed. A graph built before it came has no such table,
+and `kg_search` reads it as holding nothing.
 
 The index holds the latest build only. A build deletes and inserts only the rows whose content changed:
 `node_fts_rows` keeps each node's row id and digest, and an index without it is written again whole. The build's

@@ -123,6 +123,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS node_fts_aud USING fts5(
 CREATE TABLE IF NOT EXISTS node_fts_rows (
     node_id TEXT PRIMARY KEY, fts_rowid INTEGER NOT NULL, digest TEXT NOT NULL, aud INTEGER NOT NULL
 ) STRICT, WITHOUT ROWID;
+CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
+    node_id UNINDEXED, body, tokenize = "unicode61 remove_diacritics 2 tokenchars '_-$'"
+);
+CREATE TABLE IF NOT EXISTS code_fts_rows (
+    node_id TEXT PRIMARY KEY, fts_rowid INTEGER NOT NULL, digest TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS clusters (
     cluster_id TEXT NOT NULL, level INTEGER NOT NULL, parent TEXT, label TEXT NOT NULL, size INTEGER NOT NULL,
     kinds TEXT NOT NULL, content TEXT NOT NULL, tx_from INTEGER NOT NULL, tx_to INTEGER
@@ -228,6 +234,8 @@ class Graph:
     # node id -> the passages its long body is also indexed as (``kg.search``): [{"start", "end", "text"}], text with
     # its context first; never nodes
     passages: dict[str, list[dict]] = field(default_factory=dict)
+    # file node id -> the text of its code or markup, where kg_search looks up the words of a query (``code_fts``)
+    code: dict[str, str] = field(default_factory=dict)
     clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
     mentions: dict[str, dict] = field(default_factory=dict)  # item id -> its dangling and ambiguous mentions, samples
     review: list[dict] = field(default_factory=list)  # the review items of a build with clusters (``kg.review``)
@@ -716,12 +724,40 @@ class Store:
                 rows.append((key, *passage))
                 keyed.append((key, passage))
         self._update_fts(keyed)
+        code = self._update_code(graph.code)
         self.db.execute("DELETE FROM node_alias")
         self.db.executemany(
             "INSERT OR IGNORE INTO node_alias (alias, node_id) VALUES (?, ?)",
             sorted((alias, nid) for nid, n in graph.nodes.items() for alias in n.get("aliases", [])),
         )
-        return sha256(canonical_json(rows))
+        return sha256(canonical_json(rows if code is None else {"nodes": rows, "code": code}))
+
+    def _update_code(self, code: dict[str, str]) -> str | None:
+        """Make ``code_fts`` hold the text of ``code`` (file node id: text) and nothing else, writing only the files
+        whose text changed, as ``_update_fts`` does; the digest of what it holds, None when it holds nothing, so a
+        graph without code text digests as before the index came."""
+        db = self.db
+        digests = {nid: sha256(text) for nid, text in code.items()}
+        held = {nid: (rowid, d) for nid, rowid, d in db.execute("SELECT node_id, fts_rowid, digest FROM code_fts_rows")}
+        if db.execute("SELECT count(*) FROM code_fts").fetchone()[0] != len(held):
+            db.execute("DELETE FROM code_fts")
+            db.execute("DELETE FROM code_fts_rows")
+            held = {}
+        gone = [(nid, rowid) for nid, (rowid, d) in held.items() if digests.get(nid) != d]
+        db.executemany("DELETE FROM code_fts WHERE rowid = ?", [(rowid,) for _, rowid in gone])
+        db.executemany("DELETE FROM code_fts_rows WHERE node_id = ?", [(nid,) for nid, _ in gone])
+        fresh = sorted(nid for nid in code if held.get(nid, (0, None))[1] != digests[nid])
+        last = db.execute("SELECT rowid FROM code_fts ORDER BY rowid DESC LIMIT 1").fetchone()
+        start = (last[0] if last else 0) + 1
+        db.executemany(
+            "INSERT INTO code_fts (rowid, node_id, body) VALUES (?, ?, ?)",
+            [(start + i, nid, text_search.fold(code[nid])) for i, nid in enumerate(fresh)],
+        )
+        db.executemany(
+            "INSERT INTO code_fts_rows VALUES (?, ?, ?)",
+            [(nid, start + i, digests[nid]) for i, nid in enumerate(fresh)],
+        )
+        return sha256(canonical_json(sorted(digests.items()))) if digests else None
 
     def _update_fts(self, keyed: list[tuple[str, tuple]]) -> None:
         """Make the full-text tables hold the rows of ``keyed`` (key, row) and nothing else, a row with an audience
@@ -1407,6 +1443,38 @@ class Store:
             {"a": alias, "b": b},
         ).fetchone()
         return row[0] if row else None
+
+    def code_files(self, words: list[str], limit: int = text_search.CODE_POOL) -> list[tuple[str, int]]:
+        """(file node id, how many of ``words`` its text holds) of the files whose code or markup (``code_fts``)
+        holds a word of ``words`` whole, the most words first, then the best BM25 a word gave; the best ``limit`` files
+        per word. [] for a graph built before the index came."""
+        held: dict[str, list] = {}
+        for word in words:
+            try:
+                rows = self.db.execute(
+                    "SELECT node_id, bm25(code_fts) AS score FROM code_fts WHERE code_fts MATCH ?"
+                    " ORDER BY score, node_id LIMIT ?",
+                    (text_search.phrase(text_search.fold(word)), limit),
+                ).fetchall()
+            except sqlite3.OperationalError:  # no such table, or a word FTS5 cannot read
+                continue
+            for node_id, score in rows:
+                found = held.setdefault(node_id, [0, 0.0])
+                found[0] += 1
+                found[1] = min(found[1], score)
+        return [(nid, held[nid][0]) for nid in sorted(held, key=lambda nid: (-held[nid][0], held[nid][1], nid))]
+
+    def code_lines(self, node_id: str, words: list[str], most: int = text_search.CODE_LINES) -> list[int]:
+        """The first ``most`` lines of a file's text in ``code_fts`` that hold a word of ``words`` whole, as the
+        index's tokenizer reads it (case and accents aside); [] when the index does not hold the file."""
+        try:
+            row = self.db.execute(
+                "SELECT body FROM code_fts WHERE rowid = (SELECT fts_rowid FROM code_fts_rows WHERE node_id = ?)",
+                (node_id,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return []
+        return text_search.lines_holding(row[0], words, most) if row else []
 
     def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float, tuple[str, str, str]]]:
         """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first: the best
