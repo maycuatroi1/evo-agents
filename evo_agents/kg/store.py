@@ -1446,17 +1446,20 @@ class Store:
 
     def code_files(self, words: list[str], limit: int = text_search.CODE_POOL) -> list[tuple[str, int]]:
         """(file node id, how many of ``words`` its text holds) of the files whose code or markup (``code_fts``)
-        holds a word of ``words`` whole, the most words first, then the best BM25 a word gave; the best ``limit`` files
-        per word. [] for a graph built before the index came."""
+        holds a word of ``words`` whole, the most words first, then the best BM25 a word gave. A word more than
+        ``limit`` files hold is left out: it names a kind of file (a brand, a framework), not the one asked for.
+        [] for a graph built before the index came."""
         held: dict[str, list] = {}
         for word in words:
             try:
                 rows = self.db.execute(
                     "SELECT node_id, bm25(code_fts) AS score FROM code_fts WHERE code_fts MATCH ?"
                     " ORDER BY score, node_id LIMIT ?",
-                    (text_search.phrase(text_search.fold(word)), limit),
+                    (text_search.phrase(text_search.fold(word)), limit + 1),
                 ).fetchall()
             except sqlite3.OperationalError:  # no such table, or a word FTS5 cannot read
+                continue
+            if len(rows) > limit:
                 continue
             for node_id, score in rows:
                 found = held.setdefault(node_id, [0, 0.0])

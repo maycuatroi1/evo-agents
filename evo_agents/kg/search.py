@@ -42,10 +42,12 @@ whose tokenizer keeps ``_``, ``-`` and ``$`` inside a word, so ``MOBILE_AI_CHAT_
 (``code_words``: every word of a query of at most CODE_WORDS words, else only the words written like identifiers),
 and puts the files that hold the most of them after its first CODE_LEAD results, each with the first CODE_LINES lines
 that hold them: where a name is used, which grep would have found and the graph's resolved edges often do not (a
-setting read through ``settings.X``, a selector in a template, a class in a stylesheet). On 412 searches agents ran
-with grep in the sessions of a harness of 16 repos, restricted to the searched repo, the files the agent opened next
-were in the first five 35.9% of the time against 24.5% without the code index (grep 30.3%); 511 plan-step questions
-went from 67.9% to 70.1%.
+setting read through ``settings.X``, a selector in a template, a class in a stylesheet). A word more than CODE_POOL
+files hold is left out: a brand or a framework every file of a kind names points at none of them. On 412 searches
+agents ran with grep in the sessions of a harness of 16 repos, the file the agent opened next was in the first five
+24.5% of the time, 32.5% with the searched repo given, against 19.9% before (grep 30.3%), at 1,053 tokens of result
+per file found against grep's 8,418; that harness's 511 plan-step questions stayed at 71.0% (75.2% with the repo),
+and the 600 tune questions of evo-agents went from 27.7% to 27.8%.
 """
 
 from __future__ import annotations
@@ -100,7 +102,7 @@ SNIPPET_KINDS = frozenset({"Document"})
 SNIPPET_TOKENS = 16
 CODE_WORDS = 4  # a query of at most this many words is read as a search of code: each of its words is looked up there
 CODE_TERMS = 6  # words of a query looked up in code, at most
-CODE_POOL = 50  # files read from code_fts per word
+CODE_POOL = 50  # files read from code_fts per word; a word more files hold is too common to look up
 CODE_LEAD = 2  # results of the ranking kept before the files whose code holds the query's words
 CODE_LINES = 3  # lines a code hit shows
 _CODE_WORD = re.compile(r"[\w$.-]+")
