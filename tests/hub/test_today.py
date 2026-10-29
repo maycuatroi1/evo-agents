@@ -167,6 +167,10 @@ def admin_of(db, project: str, login: str) -> None:
 def test_needs_you_lists_the_questions_asked_of_you_the_oldest_first_with_when_their_run_parks(
     client, members, world, hub_db
 ):
+    # The world's failed run ended an hour before the UTC day began: from 23:00 UTC on, out of the last 24 hours.
+    runs = tables.runs
+    ended = db_now(hub_db) - timedelta(hours=1)
+    sql(hub_db, update(runs).values(finished_at=ended).where(runs.c.id == world["failed_yesterday"]))
     shown = today_of(client, members[OWNER])
     assert [item["id"] for item in shown["needs_you"]] == [world["d_mine"], world["d_vault"]]
     assert shown["needs_you_count"] == 2
@@ -183,7 +187,6 @@ def test_needs_you_lists_the_questions_asked_of_you_the_oldest_first_with_when_t
         f"Go on with run {world['waiting']}?",
         f"/inbox?decision={world['d_mine']}",
     )
-    runs = tables.runs
     ((waiting_since,),) = sql(hub_db, select(runs.c.waiting_since).where(runs.c.id == world["waiting"]))
     assert datetime.fromisoformat(mine["parks_at"]) == waiting_since + WAIT
     assert shown["summary"].startswith("2 questions wait for your answer. In the last 24 hours: ")
