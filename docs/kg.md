@@ -656,7 +656,9 @@ decisions` lists and takes them (`docs/hub.md`, Memories, skills and knowledge g
 `evo-agents kg eval questions.jsonl` asks `kg_search` and `kg_context` each question of a set as an agent would,
 greps the same checkouts for comparison, and prints Recall@1 and @5, MRR, the share of empty answers, answers per
 1,000 tokens of output and the time per call, by question type and method. `kg eval-questions` turns the done steps
-of the hub's plans into questions whose answers are the files their commits changed. The command ships without
+of the hub's plans into questions whose answers are the files their commits changed, and with `--from-sessions` the
+code searches agents ran in the harness's sessions into questions whose answers are the files they opened next. The
+command ships without
 questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
 tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.
 
