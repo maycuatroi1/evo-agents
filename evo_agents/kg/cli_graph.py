@@ -174,8 +174,9 @@ def cmd_eval(args) -> int:
         grep_ref=args.grep_ref,
         question_set=question_set,
         split=args.split,
+        scope=args.scope,
     )
-    report.settings.update(backend=args.backend, sink=args.sink, search=args.search)
+    report.settings.update(backend=args.backend, sink=args.sink, search=args.search, scope=args.scope)
     if args.json:
         print(json.dumps(report.to_json(), ensure_ascii=False, indent=2))
     else:
@@ -282,6 +283,12 @@ def _register_eval(ksub, with_project) -> None:
         default="graph",
         help="how kg_search ranks: as the graph's semantic mode says (default), by words only, or by words and meaning"
         " fused (needs the graph's vectors; docs/kg-semantic.md)",
+    )
+    run.add_argument(
+        "--scope",
+        choices=["all", "repo"],
+        default="all",
+        help="what kg_search ranks: the whole graph (default), or only the question's repo, as an agent inside it",
     )
     run.set_defaults(func=cmd_eval)
 
