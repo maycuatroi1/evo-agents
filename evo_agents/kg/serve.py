@@ -50,7 +50,7 @@ from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candida
 from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
-from evo_agents.kg.search import SNIPPET_KINDS, query_words, with_mentions
+from evo_agents.kg.search import CODE_LEAD, SNIPPET_KINDS, code_words, query_words, with_mentions
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
@@ -63,6 +63,7 @@ DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result
 HANDLE_TTL = 1800
 WEAK_LIMIT = 5  # kg_search returns at most this many results when none holds every word of the query
 FULL_LINES = 5  # the results kg_search shows whole; those past them show their id alone (kg_node reads one)
+REPO_POOL = 12  # with a repo, kg_search ranks this many candidates per result asked, since most are of other repos
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
@@ -90,6 +91,29 @@ _SPAN = re.compile(r"lines? (\d+)(?:-(\d+))?")
 
 class ToolError(Exception):
     pass
+
+
+def in_repo(node: dict, repo: str | None) -> bool:
+    """Whether ``node`` is of ``repo``, a source of the project or its git repo: the source its readable id starts
+    with, or the repo its props name (a file's ``repo``, a symbol's key). Any node when ``repo`` is None."""
+    if repo is None:
+        return True
+    props = node.get("props") or {}
+    key = props.get("key")
+    names = (
+        readable(node["id"]).partition(":")[0],
+        props.get("repo"),
+        key[0] if isinstance(key, list) and key else None,
+    )
+    want = repo.lower()
+    return any(isinstance(name, str) and name.lower() == want for name in names)
+
+
+def code_where(numbers: list[int]) -> str | None:
+    """The lines of a code hit as a result line names them: ``line 12`` or ``lines 12, 40, 88``."""
+    if not numbers:
+        return None
+    return f"line {numbers[0]}" if len(numbers) == 1 else "lines " + ", ".join(str(n) for n in numbers)
 
 
 class Session:
@@ -276,20 +300,27 @@ class Session:
             "aliases": n["aliases"],
         }
 
-    def tool_kg_search(self, query: str, kinds: list | None = None, limit: int = 10) -> tuple[str, dict]:
+    def tool_kg_search(
+        self, query: str, kinds: list | None = None, limit: int = 10, repo: str | None = None
+    ) -> tuple[str, dict]:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
+        repo = repo.strip() if isinstance(repo, str) and repo.strip() else None
         vector = semantic.query_vector(store, query, self.semantic)
-        ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated, vector=vector)
+        pool = limit * (REPO_POOL if repo else 4)
+        ids = store.search(query, b, limit=pool, kinds=kinds, deprecated=self.deprecated, vector=vector)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
         found = store.nodes(ids, b)
-        hits = [found[i] for i in ids if i in found and self.seen(found[i])]
+        hits = [found[i] for i in ids if i in found and self.seen(found[i]) and in_repo(found[i], repo)]
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
+        if repo:  # what a hit mentions may be of another repo
+            results = [n for n in results if in_repo(n, repo)]
+            via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
         words = len(query_words(query))
         direct = [n for n in results if n["id"] not in via]  # a node a hit mentions was not found by its words
         matched = store.matched(
@@ -299,6 +330,9 @@ class Session:
         if partial and len(results) > WEAK_LIMIT:  # no result holds the whole query: the few best say as much
             results = results[:WEAK_LIMIT]
             via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
+        code: dict[str, list[int]] = {}
+        if not kinds or "File" in kinds:
+            results, code = self._with_code(store, b, query, results, WEAK_LIMIT if partial else limit, repo)
         explored = self._explore(store, results, hits, via)
         for reached in via.values():
             self._saw(reached["label"])
@@ -311,10 +345,18 @@ class Session:
         lines = [head, *label_line]
         if partial:
             lines.append(f"no result holds all {words} words of the query")
+        if repo and not results:
+            lines.append(f"nothing of repo {repo!r} matched: kg_status lists the sources, each with its repo")
         for rank, n in enumerate(results, 1):
             mark = "  mentions " if n["id"] in via else ""
             if rank > FULL_LINES:
                 lines.append(f"{mark}[{readable(n['id'])}]")
+                continue
+            if n["id"] in code:
+                where = code_where(code[n["id"]])
+                lines.append(
+                    mark + self._line(n, shared, where, status) + (" code" if where else " code holds the words")
+                )
                 continue
             m = matched.get(n["id"])
             line = mark + self._line(n, shared, (m or {}).get("lines"), status)
@@ -328,8 +370,26 @@ class Session:
             "results": [self._node_json(n) for n in results],
             "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
             "matched": matched,
+            "code": {nid: found_lines for nid, found_lines in code.items() if any(n["id"] == nid for n in results)},
             "summary": f"{len(results)} results",
         }
+
+    def _with_code(
+        self, store: Store, b: int, query: str, results: list[dict], limit: int, repo: str | None
+    ) -> tuple[list[dict], dict[str, list[int]]]:
+        """``results`` with the visible files whose code or markup holds the most words of ``query`` that read as a
+        search of code (``search.code_words``) after its first CODE_LEAD, those already listed left in their place,
+        cut at ``limit``; and the lines of each listed file that hold the words (``Store.code_lines``)."""
+        words = code_words(query)
+        if not words:
+            return results, {}
+        listed = {n["id"] for n in results}
+        found = [nid for nid, _ in store.code_files(words)]
+        nodes = store.nodes([nid for nid in found if nid not in listed], b)
+        extra = [nodes[nid] for nid in found if nid in nodes and self.seen(nodes[nid]) and in_repo(nodes[nid], repo)]
+        merged = [*results[:CODE_LEAD], *extra, *results[CODE_LEAD:]][:limit]
+        held = set(found)  # a file the ranking listed already keeps its place and shows its lines too
+        return merged, {n["id"]: store.code_lines(n["id"], words) for n in merged if n["id"] in held}
 
     def _explore(self, store: Store, results: list, hits: list, via: dict) -> tuple[int, float] | None:
         """With an explorer, maybe put a hit past ``results`` that no agent read after a search yet at rank 4 or 5 of

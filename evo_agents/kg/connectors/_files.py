@@ -41,6 +41,14 @@ KIND_BY_SUFFIX = {
     ".sql": "code",
     ".sh": "code",
     ".vue": "code",
+    # Templates and stylesheets: no symbols to read, but their text is where a selector or a class is written
+    # (``kg.search``, code_fts).
+    ".html": "markup",
+    ".htm": "markup",
+    ".css": "markup",
+    ".scss": "markup",
+    ".sass": "markup",
+    ".less": "markup",
 }
 LANGUAGE_BY_SUFFIX = {
     ".py": "python",

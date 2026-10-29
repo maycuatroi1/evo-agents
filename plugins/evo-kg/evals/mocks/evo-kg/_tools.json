@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "kg_search",
-      "description": "Find nodes by name, id, path, code or words, best first; a plan step, section or document is followed by the files, symbols and documents it mentions. Past the first 5, a result shows its id alone. Returns ids to pass to kg_node or kg_context.",
+      "description": "Find nodes by name, id, path, code or words, best first; a plan step, section or document is followed by the files, symbols and documents it mentions. Files whose code or templates hold an identifier of the query, or every word of a short one, follow the first two results with the lines that hold them. Past the first 5, a result shows its id alone. Returns ids to pass to kg_node or kg_context.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -22,6 +22,10 @@
             "minimum": 1,
             "maximum": 25,
             "default": 10
+          },
+          "repo": {
+            "type": "string",
+            "description": "only results of this repo: a source (kg_status lists them) or its git repo name"
           },
           "deprecated": {
             "type": "boolean",

@@ -20,8 +20,8 @@ INSTRUCTIONS = (
     "Knowledge graph of the bound project: repos, files, symbols, documents and sections, plans and steps, "
     "commits and pull requests, seams, and the explicit links between them, each with provenance and a sensitivity "
     "label. Use kg_search "
-    "or kg_context before grepping for a named requirement, plan, document, seam or feature; use grep for exact "
-    "strings and code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
+    "or kg_context before grepping for a named requirement, plan, document, seam or feature; kg_search with repo "
+    "also finds where a name is written in code. Use grep for code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
     "kg_impact (ids, repo:path or a diff) and check every dependent it lists, then grep for what its coverage note "
     "says the seed's language lacks. kg_path traces a requirement to its steps, code and tests, a plan step to the "
     "files its commits changed, or shows how two nodes connect. Search, context, impact and path leave out what "
@@ -35,8 +35,9 @@ TOOLS = [
         "name": "kg_search",
         "description": (
             "Find nodes by name, id, path, code or words, best first; a plan step, section or document is followed by "
-            "the files, symbols and documents it mentions. Past the first 5, a result shows its id alone. Returns ids to "
-            "pass to kg_node or kg_context."
+            "the files, symbols and documents it mentions. Files whose code or templates hold an identifier of the "
+            "query, or every word of a short one, follow the first two results with the lines that hold them. Past "
+            "the first 5, a result shows its id alone. Returns ids to pass to kg_node or kg_context."
         ),
         "inputSchema": {
             "type": "object",
@@ -44,6 +45,10 @@ TOOLS = [
                 "query": {"type": "string", "description": "name, id, path, code or words"},
                 "kinds": {"type": "array", "items": {"type": "string"}, "description": "e.g. Plan, Symbol, Section"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10},
+                "repo": {
+                    "type": "string",
+                    "description": "only results of this repo: a source (kg_status lists them) or its git repo name",
+                },
                 "deprecated": DEPRECATED,
             },
             "required": ["query"],
