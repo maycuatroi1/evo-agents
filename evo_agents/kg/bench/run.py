@@ -67,6 +67,7 @@ class Options:
     git_url: str = graphs.GITHUB_URL
     prune: bool = False  # delete each graph after its last task, each clone after its repo's (graphs.prune_*)
     jobs: int = 1  # repos asked at once, each in a process of its own
+    exclude: tuple[str, ...] = ()  # repos (OWNER/NAME) left out before sampling, for ones too big for the disk
     progress: object = None  # a callable(str) for progress lines
 
     @property
@@ -96,7 +97,8 @@ def check_parts(parts, sealed: bool) -> tuple[str, ...]:
 def select(cache: Path, bench: str, lay: graphs.Layout, options: Options) -> Selection:
     """The tasks of ``bench`` in the parts asked for, sampled when asked or when building them would pass max_hours."""
     tasks, deduped = load_tasks(cache, bench)
-    mine = [t for t in tasks if t.split in options.parts]
+    skip = {r.lower() for r in options.exclude}
+    mine = [t for t in tasks if t.split in options.parts and t.repo.lower() not in skip]
     chosen, why, size = mine, None, options.sample
     if size is not None:
         why = f"--sample {size}"
@@ -109,6 +111,8 @@ def select(cache: Path, bench: str, lay: graphs.Layout, options: Options) -> Sel
     if size is not None and size < len(mine):
         chosen = sample(mine, size, options.seed)
         picked = {"size": len(chosen), "of": len(mine), "seed": options.seed, "why": why, "ids": [t.id for t in chosen]}
+        if skip:
+            picked["excluded_repos"] = sorted(skip)
     return Selection(bench, chosen, len(mine), deduped, picked)
 
 
