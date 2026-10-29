@@ -39,11 +39,13 @@ def _options(args):
         limit=getattr(args, "limit", None),
         budget_tokens=getattr(args, "budget_tokens", run.DEFAULT_BUDGET_TOKENS),
         line_budget=getattr(args, "line_budget", run.LINE_BUDGET),
-        search=getattr(args, "search", "graph"),
+        searches=tuple(getattr(args, "search", None) or ("graph",)),
         sample=args.sample,
         seed=args.seed,
         max_hours=None if args.max_hours <= 0 else args.max_hours,
         git_url=args.git_url,
+        prune=getattr(args, "prune", False),
+        jobs=getattr(args, "jobs", 1),
         progress=None if getattr(args, "json", False) and not args.verbose else run.progress_to_stderr,
     )
 
@@ -102,45 +104,43 @@ def cmd_run(args) -> int:
 
     try:
         options = _options(args)
+        outs = [Path(p) for p in args.out]
+        if len(outs) != len(options.searches):
+            raise datasets.BenchError(f"{len(options.searches)} searches need as many --out, not {len(outs)}")
         local = _local_sets(args.set)
         benches = [] if local and not args.sets else _benches(args.sets)
         cache = datasets.cache_dir(args.cache) if benches else None
-        parts: dict[str, dict] = {}
-        records: list[dict] = []
+        parts: dict[str, dict] = {s: {} for s in options.searches}
+        records: dict[str, list[dict]] = {s: [] for s in options.searches}
         for bench in benches:
             part, mine, _ = run.run_bench(cache, bench, options)
-            parts[bench], records = part, records + mine
+            for search in options.searches:
+                parts[search][bench] = part[search]
+                records[search] += mine[search]
         for name, path in local:
-            from evo_agents.kg.serve import Session
-
             project = resolve_project(args.project)
-
-            def session_for(_project, project=project):
-                session = Session(project, "cli")
-                if options.search != "graph":
-                    session.semantic = options.search == "hybrid"
-                return session
-
-            part, mine = run.score_local(
-                name,
-                load_set(path),
-                session_for,
-                lambda _project: project_checkouts(args.project),
-                options,
-                run.file_digest(path),
-            )
-            parts[name], records = part, records + mine
-        summary = run.summary(parts, records, options)
+            for search in options.searches:
+                part, mine = run.score_local(
+                    name,
+                    load_set(path),
+                    lambda _project, project=project, search=search: run.session_of(project, search),
+                    lambda _project: project_checkouts(args.project),
+                    options,
+                    run.file_digest(path),
+                )
+                parts[search][name] = part
+                records[search] += mine
+        summaries = [run.summary(parts[s], records[s], options, s) for s in options.searches]
     except (datasets.BenchError, ProjectError, ValueError) as exc:
         return _fail(str(exc), 1)
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    if args.json:
-        print(json.dumps(summary, ensure_ascii=False, indent=2))
-    else:
-        print("\n".join(compare.show_lines(summary)))
-        print(f"summary written to {out}")
+    for out, summary in zip(outs, summaries, strict=True):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        if args.json:
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+        else:
+            print("\n".join(compare.show_lines(summary)))
+            print(f"summary written to {out}")
     return 0
 
 
@@ -255,7 +255,9 @@ def register(ksub) -> None:
 
     go = sub.add_parser("run", help="ask every selected task on its graph, no model called, into a summary JSON")
     _selection_args(go)
-    go.add_argument("--out", required=True, metavar="PATH", help="where the summary JSON goes")
+    go.add_argument(
+        "--out", action="append", required=True, metavar="PATH", help="where the summary JSON goes, one a --search"
+    )
     go.add_argument(
         "--set", action="append", metavar="NAME=QUESTIONS", help="also a local `kg eval` set, such as evo-agents"
     )
@@ -264,7 +266,14 @@ def register(ksub) -> None:
     go.add_argument("--limit", type=int, help="kg_search's limit (default 5 for swe-explore, else 10)")
     go.add_argument("--budget-tokens", type=int, default=run.DEFAULT_BUDGET_TOKENS, help="kg_context's budget")
     go.add_argument("--line-budget", type=int, default=ev.LINE_BUDGET, help="lines scored per answer (default 500)")
-    go.add_argument("--search", choices=run.SEARCHES, default="graph", help="how kg_search ranks, as in kg eval")
+    go.add_argument(
+        "--search",
+        action="append",
+        choices=run.SEARCHES,
+        help="how kg_search ranks, as in kg eval (default graph); repeated, each on the same graphs into its --out",
+    )
+    go.add_argument("--prune", action="store_true", help="delete each graph and clone once asked, to spare the disk")
+    go.add_argument("--jobs", type=int, default=1, metavar="N", help="repos asked at once (default 1)")
     go.add_argument("--json", action="store_true", help="print the summary")
     go.set_defaults(func=cmd_run)
 

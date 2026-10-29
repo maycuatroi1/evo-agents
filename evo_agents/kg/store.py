@@ -1196,6 +1196,24 @@ class Store:
             found = [h for h in found if h not in gone]
         return found[:want]
 
+    def plain_search(self, query: str, limit: int, kinds: list[str] | None = None) -> list[str]:
+        """Ids of the nodes plain BM25 ranks for ``query``, best first, at most ``limit``: a node at its best row, of
+        ``kinds`` (default ``search.PLAIN_KINDS``), from the rows without an audience (``search.plain_query``)."""
+        fts_query = text_search.plain_query(query)
+        if fts_query is None:
+            return []
+        kinds = sorted({k for k in kinds or text_search.PLAIN_KINDS if isinstance(k, str)})
+        weights = ", ".join(str(w) for w in text_search.PLAIN_WEIGHTS)
+        try:
+            rows = self.db.execute(
+                f"SELECT node_id, bm25(node_fts, {weights}) AS score FROM node_fts WHERE node_fts MATCH ?"
+                f" AND kind IN ({', '.join('?' for _ in kinds)}) ORDER BY score, node_id LIMIT ?",
+                (fts_query, *kinds, limit * 4),  # a node's passages take rows too
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return list(dict.fromkeys(node_id for node_id, _ in rows))[:limit]
+
     # -- the ranking by meaning (evo_agents.kg.semantic) ------------------------------------------------------------
 
     def vector_info(self) -> semantic.Info | None:

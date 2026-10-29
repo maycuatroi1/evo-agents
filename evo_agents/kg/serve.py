@@ -106,6 +106,7 @@ class Session:
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None
+        self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -280,6 +281,8 @@ class Session:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
+        if self.plain:
+            return self._plain_search(store, b, query, kinds, limit)
         vector = semantic.query_vector(store, query, self.semantic)
         ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated, vector=vector)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
@@ -327,6 +330,25 @@ class Session:
             "build": b,
             "results": [self._node_json(n) for n in results],
             "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
+            "matched": matched,
+            "summary": f"{len(results)} results",
+        }
+
+    def _plain_search(self, store: Store, b: int, query: str, kinds: list | None, limit: int) -> tuple[str, dict]:
+        """kg_search by plain BM25: the nodes in its order, no mention, cut or exploring; the passages matched."""
+        ids = store.plain_search(query, limit * 4, kinds)
+        found = store.nodes(ids, b)
+        results = [found[i] for i in ids if i in found and self.seen(found[i])][:limit]
+        matched = store.matched(
+            [n["id"] for n in results], query, {n["id"] for n in results if n["kind"] in SNIPPET_KINDS}
+        )
+        shared, label_line = self._labels(results)
+        lines = [f"{len(results)} result(s) in project {self.project.name} (build {b}), plain BM25", *label_line]
+        lines += [self._line(n, shared, (matched.get(n["id"]) or {}).get("lines"), n["status"]) for n in results]
+        return "\n".join(lines), {
+            "build": b,
+            "results": [self._node_json(n) for n in results],
+            "mentioned_by": {},
             "matched": matched,
             "summary": f"{len(results)} results",
         }

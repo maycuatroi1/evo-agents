@@ -49,7 +49,7 @@ LIMITS = {datasets.SWE_EXPLORE: 5}
 DEFAULT_LIMIT = 10
 DEFAULT_BUDGET_TOKENS = 3000
 MAX_HOURS = 6.0
-SEARCHES = ("graph", "bm25", "hybrid")
+SEARCHES = ("graph", "bm25", "plain", "hybrid")  # plain: plain BM25 (Store.plain_search), the sets' baseline
 
 
 @dataclass
@@ -60,12 +60,18 @@ class Options:
     limit: int | None = None  # None: LIMITS, else DEFAULT_LIMIT
     budget_tokens: int = DEFAULT_BUDGET_TOKENS
     line_budget: int = LINE_BUDGET
-    search: str = "graph"
+    searches: tuple[str, ...] = ("graph",)  # each asked on the same graphs in one pass, into a summary of its own
     sample: int | None = None
     seed: int = 0
     max_hours: float | None = MAX_HOURS
     git_url: str = graphs.GITHUB_URL
+    prune: bool = False  # delete each graph after its last task, each clone after its repo's (graphs.prune_*)
+    jobs: int = 1  # repos asked at once, each in a process of its own
     progress: object = None  # a callable(str) for progress lines
+
+    @property
+    def search(self) -> str:
+        return self.searches[0]
 
     def limit_of(self, bench: str) -> int:
         return self.limit or LIMITS.get(bench, DEFAULT_LIMIT)
@@ -204,84 +210,149 @@ def _ensure_vectors(project_dir: Path) -> None:
         raise BenchError(f"hybrid search needs the vectors of {path}: {found.line()}")
 
 
-def run_bench(cache: Path, bench: str, options: Options) -> tuple[dict, list[dict], Selection]:
-    """Build what is missing and ask every selected task of ``bench``; the set's part of the summary, its task records."""
+@dataclass
+class Asked:
+    """What asking one repo's tasks gave: per search, the task records and the outcomes by part; build counts."""
+
+    records: dict[str, list[dict]]
+    outcomes: dict[str, dict[str, list[Outcome]]]
+    built: int = 0
+    reused: int = 0
+    failed: int = 0
+    seconds: float = 0.0
+
+
+def session_of(project, search: str):
+    """A CLI session on ``project`` that ranks the way ``search`` says, as `kg eval --search` does, or by plain BM25."""
     from evo_agents.kg.serve import Session
 
+    session = Session(project, "cli")
+    if search != "graph":
+        session.semantic = search == "hybrid"
+    session.plain = search == "plain"
+    return session
+
+
+def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:
+    """Build each graph ``tasks`` need (one repo's) and ask each task with every search of ``options``; with ``prune``,
+    a graph goes once its last task was asked, and the clone once the repo's last was."""
+    lay = graphs.layout(cache)
+    say = options.progress or (lambda line: None)
+    asked = Asked({s: [] for s in options.searches}, {s: {} for s in options.searches})
+    last = {(t.repo.lower(), t.commit.lower()): i for i, t in enumerate(tasks)}
+    for i, task in enumerate(tasks):
+        result = graphs.build_graph(lay, task, git_url=options.git_url)
+        if result.error:
+            asked.failed += 1
+            say(f"{bench} {task.id}: {result.error}")
+            for search in options.searches:
+                for method in options.methods:
+                    asked.records[search].append(
+                        {
+                            **_record(bench, task.split, task.repo, task.language, Outcome(task.as_question(), method)),
+                            "skipped": f"no graph: {result.error[:200]}",
+                        }
+                    )
+        else:
+            asked.reused += result.reused
+            asked.built += not result.reused
+            asked.seconds += result.seconds
+            clone = lay.clone(task.repo)
+            for search in options.searches:
+                with graphs.bench_home(lay.home):
+                    project = graphs.project_of(lay, task)
+                    if search == "hybrid":
+                        _ensure_vectors(lay.project_dir(task))
+                    report = evaluate(
+                        [task.as_question()],
+                        session_for=lambda _project, project=project, search=search: session_of(project, search),
+                        checkouts_for=lambda _project, clone=clone: {clone.name: clone},
+                        methods=options.methods,
+                        limit=options.limit_of(bench),
+                        budget_tokens=options.budget_tokens,
+                        grep_ref=task.commit,
+                        line_budget=options.line_budget,
+                        acc=True,
+                    )
+                for outcome in report.outcomes:
+                    asked.records[search].append(_record(bench, task.split, task.repo, task.language, outcome))
+                    asked.outcomes[search].setdefault(task.split, []).append(outcome)
+        if options.prune and last[(task.repo.lower(), task.commit.lower())] == i:
+            graphs.prune_graph(lay, task)
+    if options.prune and tasks:
+        graphs.prune_repo(lay, tasks[0].repo)
+    if tasks:
+        state = f"{asked.built} built, {asked.reused} reused, {asked.failed} failed"
+        say(f"{bench} {tasks[0].repo}: {len(tasks)} asked ({state})")
+    return asked
+
+
+def by_repo(tasks: list[Task]) -> list[list[Task]]:
+    """The tasks in groups of one repo each, in the order the repos first come, each in its tasks' order."""
+    groups: dict[str, list[Task]] = {}
+    for task in tasks:
+        groups.setdefault(task.repo.lower(), []).append(task)
+    return list(groups.values())
+
+
+def _asked_all(cache: Path, bench: str, groups: list[list[Task]], options: Options) -> list[Asked]:
+    if options.jobs <= 1 or len(groups) <= 1:
+        return [ask_repo(cache, bench, group, options) for group in groups]
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    # spawn: a child starts clean, with no lock or thread (the embedding model's) a fork would copy mid-use
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=options.jobs, mp_context=context) as pool:
+        largest = sorted(range(len(groups)), key=lambda g: -len(groups[g]))  # the long repos start first
+        futures = {g: pool.submit(ask_repo, cache, bench, groups[g], options) for g in largest}
+        return [futures[g].result() for g in range(len(groups))]
+
+
+def run_bench(cache: Path, bench: str, options: Options) -> tuple[dict[str, dict], dict[str, list[dict]], Selection]:
+    """Build what is missing and ask every selected task of ``bench`` once a search of ``options``, a repo at a time
+    (``jobs`` repos at once); per search, the set's part of the summary and its task records."""
     lay = graphs.layout(cache)
     selection = select(cache, bench, lay, options)
     write_questions(datasets.data_dir(cache, bench) / "questions.jsonl", selection)
-    say = options.progress or (lambda line: None)
-    records: list[dict] = []
-    outcomes: dict[str, list[Outcome]] = {}
-    built = reused = failed = 0
-    seconds = 0.0
-    for number, task in enumerate(selection.tasks, 1):
-        result = graphs.build_graph(lay, task, git_url=options.git_url)
-        if result.error:
-            failed += 1
-            say(f"{bench} {number}/{len(selection.tasks)} {task.id}: {result.error}")
-            for method in options.methods:
-                records.append(
-                    {
-                        **_record(bench, task.split, task.repo, task.language, Outcome(task.as_question(), method)),
-                        "skipped": f"no graph: {result.error[:200]}",
-                    }
-                )
-            continue
-        reused += result.reused
-        built += not result.reused
-        seconds += result.seconds
-        clone = lay.clone(task.repo)
-        with graphs.bench_home(lay.home):
-            project = graphs.project_of(lay, task)
-            if options.search == "hybrid":
-                _ensure_vectors(lay.project_dir(task))
-
-            def session_for(_project, project=project):
-                session = Session(project, "cli")
-                if options.search != "graph":
-                    session.semantic = options.search == "hybrid"
-                return session
-
-            report = evaluate(
-                [task.as_question()],
-                session_for=session_for,
-                checkouts_for=lambda _project, clone=clone: {clone.name: clone},
-                methods=options.methods,
-                limit=options.limit_of(bench),
-                budget_tokens=options.budget_tokens,
-                grep_ref=task.commit,
-                line_budget=options.line_budget,
-                acc=True,
-            )
-        for outcome in report.outcomes:
-            records.append(_record(bench, task.split, task.repo, task.language, outcome))
-            outcomes.setdefault(task.split, []).append(outcome)
-        if number % 25 == 0 or number == len(selection.tasks):
-            say(f"{bench} {number}/{len(selection.tasks)} asked ({built} built, {reused} reused, {failed} failed)")
+    results = _asked_all(cache, bench, by_repo(selection.tasks), options)
     primary = PRIMARY[bench]
     method = options.methods[0]
-    part = {
-        "revision": datasets.revision(bench),
-        "fetched": [
-            {k: f[k] for k in ("dataset", "file", "sha256")}
-            for f in (datasets.fetched_info(cache, bench) or {}).get("files", [])
-        ],
-        "primary": primary,
-        "method": method,
-        "limit": options.limit_of(bench),
-        "tasks": selection.total,
-        "deduped": selection.deduped,
-        "asked": len(selection.tasks),
-        "sample": selection.sample,
-        "build": {"built": built, "reused": reused, "failed": failed, "seconds": round(seconds, 1)},
-        "parts": {
-            p: part_numbers([r for r in records if r["part"] == p], outcomes.get(p, []), method, primary)
-            for p in options.parts
-        },
+    build = {
+        "built": sum(a.built for a in results),
+        "reused": sum(a.reused for a in results),
+        "failed": sum(a.failed for a in results),
+        "seconds": round(sum(a.seconds for a in results), 1),
     }
-    return part, records, selection
+    parts: dict[str, dict] = {}
+    records: dict[str, list[dict]] = {}
+    for search in options.searches:
+        mine = [r for a in results for r in a.records[search]]
+        outcomes: dict[str, list[Outcome]] = {}
+        for a in results:
+            for p, found in a.outcomes[search].items():
+                outcomes.setdefault(p, []).extend(found)
+        records[search] = mine
+        parts[search] = {
+            "revision": datasets.revision(bench),
+            "fetched": [
+                {k: f[k] for k in ("dataset", "file", "sha256")}
+                for f in (datasets.fetched_info(cache, bench) or {}).get("files", [])
+            ],
+            "primary": primary,
+            "method": method,
+            "limit": options.limit_of(bench),
+            "tasks": selection.total,
+            "deduped": selection.deduped,
+            "asked": len(selection.tasks),
+            "sample": selection.sample,
+            "build": build,
+            "parts": {
+                p: part_numbers([r for r in mine if r["part"] == p], outcomes.get(p, []), method, primary)
+                for p in options.parts
+            },
+        }
+    return parts, records, selection
 
 
 def score_local(name: str, question_set: QuestionSet, session_for, checkouts_for, options: Options, digest: str):
@@ -330,7 +401,7 @@ def local_checkouts(project: str | None):
     return lambda question_project: project_checkouts(question_project or project)
 
 
-def summary(benches: dict[str, dict], records: list[dict], options: Options) -> dict:
+def summary(benches: dict[str, dict], records: list[dict], options: Options, search: str | None = None) -> dict:
     """The summary of a run (see the module): what it ran, with what, and its numbers per set, part and task."""
     return {
         "format": FORMAT,
@@ -339,7 +410,7 @@ def summary(benches: dict[str, dict], records: list[dict], options: Options) -> 
         "extractor": graphs.extractor(),
         "settings": {
             "methods": list(options.methods),
-            "search": options.search,
+            "search": search or options.search,
             "budget_tokens": options.budget_tokens,
             "line_budget": options.line_budget,
             "parts": list(options.parts),
