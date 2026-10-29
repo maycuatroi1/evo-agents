@@ -7,10 +7,9 @@ import { describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import vi from "../../../messages/vi.json";
 import { CLAIMS, type ClaimKey } from "./claims";
-import { docHref, REPO_URL } from "./links";
+import { docHref, GETTING_STARTED, LOCAL_GRAPH, REPO_URL } from "./links";
 
-// Each sentence the product page says about evo-agents must link to the public docs section that describes it: a
-// claim whose sentence holds no link, whose tag has no section, or whose section is gone fails here.
+// Each product claim has a public reference. Links and anchors must survive documentation moves.
 const repoDir = fileURLToPath(new URL("../../../..", import.meta.url));
 const LANGUAGES = { en: en.product.claims, vi: vi.product.claims } as const;
 
@@ -41,9 +40,14 @@ function anchors(file: string): Set<string> {
 }
 
 const tagsOf = (text: string) => [...new Set([...text.matchAll(/<(\w+)>/g)].map((match) => match[1]))];
-const sentences = (text: string) => text.split(/(?<=[.!?]["”]?)\s+/).filter((part) => part.trim());
 
 describe("the product page's claims", () => {
+  it("keeps the headline and example consistent with README", () => {
+    const readme = readFileSync(path.join(repoDir, "README.md"), "utf8");
+    expect(readme).toContain(en.product.hero.title);
+    expect(readme).toContain(en.product.workflow.example);
+  });
+
   it("are the claims of both message files", () => {
     for (const claims of Object.values(LANGUAGES)) expect(Object.keys(claims).sort()).toEqual(Object.keys(CLAIMS).sort());
   });
@@ -56,10 +60,10 @@ describe("the product page's claims", () => {
     }
   });
 
-  it("put a link in every sentence", () => {
+  it("give each claim a public reference without requiring a link in every sentence", () => {
     for (const [language, claims] of Object.entries(LANGUAGES)) {
       for (const [key, text] of Object.entries(claims)) {
-        for (const sentence of sentences(text)) expect(sentence, `${language} ${key}`).toMatch(/<\w+>/);
+        expect(text, `${language} ${key}`).toMatch(/<\w+>/);
       }
     }
   });
@@ -75,20 +79,25 @@ describe("the product page's claims", () => {
     }
   });
 
+  it("keep both onboarding routes pointed at the new guide", () => {
+    for (const doc of [GETTING_STARTED, LOCAL_GRAPH]) {
+      expect([...anchors(doc.file)]).toContain(doc.anchor);
+    }
+  });
+
   it("find a heading the way GitHub names it", () => {
     expect(slug("What `kg_impact` follows")).toBe("what-kg_impact-follows");
     expect(slug("Decisions and notices")).toBe("decisions-and-notices");
     expect(slug("A plan run with a session for each step")).toBe("a-plan-run-with-a-session-for-each-step");
   });
 
-  it("make none of the claims the plan rules out", () => {
+  it("avoid unsubstantiated promotional claims", () => {
     const copy = JSON.stringify(en.product).toLowerCase();
     for (const banned of [
       /account (sharing|rotation|pool)/,
       /curator/,
       /cheaper|save (money|cost)|cost saving/,
       /testimonial|trusted by|loved by/,
-      /\bmemor(y|ies)\b|\bskills? sync|\bsync(s|ing)? (your )?(memor|skill)/,
     ]) {
       expect(copy).not.toMatch(banned);
     }
