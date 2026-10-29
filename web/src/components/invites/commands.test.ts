@@ -14,29 +14,29 @@ import {
   SERVICE_COMMAND,
 } from "./commands";
 
-// The Get started list may only name commands the CLI has: each one is checked against README.md and docs/hub.md.
+// The Get started list may only name commands the CLI has: each one is checked against the getting-started guide the
+// README links to, and docs/hub.md.
 const repoDir = fileURLToPath(new URL("../../../..", import.meta.url));
-const readme = readFileSync(path.join(repoDir, "README.md"), "utf8");
+const guide = readFileSync(path.join(repoDir, "docs/getting-started.md"), "utf8");
 const hubDoc = readFileSync(path.join(repoDir, "docs/hub.md"), "utf8");
 const pyproject = readFileSync(path.join(repoDir, "pyproject.toml"), "utf8");
 
 describe("the Get started commands", () => {
   it("install the CLI with extras the package has", () => {
     expect(INSTALL_COMMAND).toBe("uv tool install 'evo-ak[graphify,worker]'");
-    expect(readme).toContain("uv tool install 'evo-ak[worker]'");
-    expect(readme).toContain("'evo-ak[graphify,worker]'");
+    expect(guide).toContain(INSTALL_COMMAND);
     expect(pyproject).toMatch(/^graphify = \[/m);
     expect(pyproject).toMatch(/^worker = \[/m);
   });
 
-  it("are the README's own lines", () => {
+  it("are the getting-started guide's own lines", () => {
     for (const command of [...CLAUDE_PLUGIN_COMMANDS, ...CODEX_PLUGIN_COMMANDS, SERVICE_COMMAND, REGISTER_COMMAND]) {
-      expect(readme).toContain(command);
+      expect(guide).toContain(command);
     }
-    expect(readme).toContain(hubLoginCommand("https://hub.example.org"));
-    expect(readme).toContain(harnessInitCommand(""));
+    expect(guide).toContain(hubLoginCommand("https://hub.example.org"));
+    expect(guide).toContain(harnessInitCommand(""));
     expect(hubDoc).toContain("evo-agents harness init");
-    expect(readme).toContain("`--project NAME`");
+    expect(guide).toContain(harnessInitCommand("acme"));
   });
 
   it("name the hub they sign in to", () => {
