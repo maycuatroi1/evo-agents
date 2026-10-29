@@ -68,8 +68,11 @@ def cmd_semantic(args) -> int:
         indexed = semantic.index_file(path, settings, progress=progress)
     held = None
     if path.exists():
-        with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as db:
+        db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
             held = semantic.info(db)
+        finally:
+            db.close()
     out = {
         **settings.to_json(),
         "graph": None if held is None else {"model": held.model, "mode": held.mode, "digest": held.digest},

@@ -152,8 +152,12 @@ def test_a_build_embeds_only_the_rows_whose_text_changed(tmp_path, kg_env, words
     words.texts = 0
     assert semantic.index_file(path, semantic.Settings("on", FAKE)).embedded == 0  # same rows: the mode alone
     assert Store.open_file(path).vector_info().mode == "on" and words.texts == 0
-    with sqlite3.connect(path) as db:
-        semantic.drop(db)
+    db = sqlite3.connect(path)
+    try:
+        with db:
+            semantic.drop(db)
+    finally:
+        db.close()
     again = semantic.index_file(path, semantic.Settings("on", FAKE))
     assert again.embedded == 0 and again.rows > 0 and words.texts == 0  # every vector from the cache
     app = tmp_path / "demo-app"
@@ -181,8 +185,12 @@ def test_without_the_model_the_build_warns_and_search_stays_by_words(tmp_path, k
     by_words = Session(project, "cli")
     by_words.semantic = False
     before = kg_search(by_words, "graph builder")
-    with sqlite3.connect(project.root / "graph.sqlite") as db:  # a graph whose model this reader lacks
-        db.execute("UPDATE node_vec_meta SET value = 'fake/missing' WHERE key = 'model'")
+    db = sqlite3.connect(project.root / "graph.sqlite")
+    try:
+        with db:  # a graph whose model this reader lacks
+            db.execute("UPDATE node_vec_meta SET value = 'fake/missing' WHERE key = 'model'")
+    finally:
+        db.close()
     assert semantic.query_vector(Store.for_project(project), "automobile", True) is None
     assert CAR not in kg_search(Session(project, "cli"), "automobile")
     assert kg_search(Session(project, "cli"), "graph builder") == before
