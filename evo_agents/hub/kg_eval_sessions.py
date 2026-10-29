@@ -44,6 +44,7 @@ from pathlib import Path
 
 from evo_agents.hub.memory import slug
 from evo_agents.kg.evaluate import SESSION_TYPE
+from evo_agents.kg.redact import redact_file
 
 WINDOW = 6  # tool calls after a search whose opened files answer it
 MAX_TERMS = 4
@@ -344,13 +345,14 @@ def source_repos(project, overrides: dict[str, Path] | None = None) -> dict[str,
 
 
 def terms_of(patterns: Iterable[str]) -> list[str]:
-    """The identifiers a search's patterns name, in order, each once whatever its case."""
+    """The identifiers a search's patterns name, in order, each once whatever its case; never one the redaction of
+    the corpus would take for a secret (an agent may grep for a token's value), since the set goes to the hub."""
     found, seen = [], set()
     for pattern in patterns:
         for term in TERM.findall(ESCAPED.sub(r"\1", REGEX_SYNTAX.sub(" ", pattern))):
             low = term.lower()
             if MIN_TERM <= len(term) <= MAX_TERM and low not in KEYWORDS and low not in seen:
-                if not term.strip("_").isdigit():
+                if not term.strip("_").isdigit() and not redact_file(term, "terms.txt")[1]:
                     seen.add(low)
                     found.append(term)
     return found

@@ -319,3 +319,10 @@ def test_eval_questions_command_prints_a_session_set_kg_eval_reads(cluster, tmp_
 
     assert main([*command, "--plan", "demo"]) == 2
     assert "--plan picks plans" in capsys.readouterr().err
+
+
+def test_a_term_that_reads_as_a_secret_never_makes_a_question():
+    from evo_agents.hub.kg_eval_sessions import terms_of
+
+    token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    assert terms_of([f"{token}\\|lumen_cards"]) == ["lumen_cards"]
