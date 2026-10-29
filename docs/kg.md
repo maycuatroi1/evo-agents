@@ -4,7 +4,7 @@ How the graph of a project answers an agent: what `kg_impact` follows and covers
 tool is written, who sees an element through the audience of its label, how `kg_search` finds nodes, what the note
 after a grep adds, how plans of the hub, commits and pull requests enter the graph, which commit each git source read
 and when a sync or a build does anything, how long this machine keeps old data, and how `kg eval` measures retrieval.
-The README shows how to build a graph and call the tools.
+[Graph setup](kg-setup.md) covers building a graph and calling the tools.
 
 ## What kg_impact follows
 
@@ -50,7 +50,7 @@ package under that name. Even two sources of the same repo may read different re
 lookup scopes. This restriction does not change explicit bindings or references in documents.
 
 Declare a cross-repo dependency with a qualified `from`, `rel: depends_on` and `to` in `bindings/*.yaml` (the
-[README example](../README.md#trace-a-schema-change-across-repos)). The binding enters the graph as `declared`;
+[schema example](kg-setup.md#trace-a-schema-change-across-repos)). The binding enters the graph as `declared`;
 `kg_impact` follows it across sources. An endpoint that does not resolve fails the build instead of dropping the
 dependency silently. Declaring a relationship asserts that it exists; the graph does not verify runtime behavior
 or schema compatibility for you.

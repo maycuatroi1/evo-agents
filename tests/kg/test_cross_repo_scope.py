@@ -127,9 +127,9 @@ def test_local_python_calls_still_resolve_despite_foreign_name_collision(two_rep
     assert SERVICE not in impacted(two_repos, "schemas:shared_schema.py")
 
 
-def test_readme_explicit_cross_repo_schema_binding_is_followed_and_retracted(two_repos, tmp_path):
-    readme = (Path(__file__).parents[2] / "README.md").read_text()
-    assert f"```yaml\n{BINDING}```" in readme
+def test_documented_cross_repo_schema_binding_is_followed_and_retracted(two_repos, tmp_path):
+    guide = (Path(__file__).parents[2] / "docs" / "kg-setup.md").read_text()
+    assert f"```yaml\n{BINDING}```" in guide
     write(tmp_path / "service/consumer.py", "def consume(payload):\n    return payload['customer_id']\n")
     commit(tmp_path / "service", "consume schema event")
     sync_build(two_repos)
