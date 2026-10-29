@@ -156,6 +156,8 @@ def task_metrics(outcome: Outcome) -> dict:
     for k in (1, 5, 10):
         if file_ranks:
             metrics[f"acc_file@{k}"] = float(all(r is not None and r <= k for r in file_ranks))
+        if outcome.file_ranks:
+            metrics[f"acc_dfile@{k}"] = float(all(r is not None and r <= k for r in outcome.file_ranks))
         if node_ranks:
             metrics[f"acc_func@{k}"] = float(all(r is not None and r <= k for r in node_ranks))
     if outcome.line_stats is not None:
