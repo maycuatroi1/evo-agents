@@ -1163,6 +1163,10 @@ class Store:
             for node_id in self.exact(word, b, want, kinds):
                 if node_id not in scores and node_id not in hits:
                     scores[node_id], rows[node_id] = top, self._index_row(node_id)
+        for word in named:
+            for node_id, row in self._files_named(word, kinds):
+                if node_id not in hits:  # the file a word names ranks as the best text match would
+                    scores[node_id], rows[node_id] = min(top, scores.get(node_id, top)), row
         asked = self._asked_scores(query)
         best = min(scores.values(), default=-1.0)  # an asked match is weighed against the best text score
         for node_id, match in asked.items():
@@ -1379,6 +1383,20 @@ class Store:
             params,
         )
         return [r[0] for r in rows]
+
+    def _files_named(self, word: str, kinds: list[str]) -> list[tuple[str, tuple[str, str, str]]]:
+        """(node id, (kind, name, path)) of the files whose file name or stem is ``word`` (``search.file_named``),
+        found through the path column of the full-text index; none when ``kinds`` leaves files out."""
+        if kinds and "File" not in kinds:
+            return []
+        try:
+            found = self.db.execute(
+                "SELECT node_id, kind, name, path FROM node_fts WHERE node_fts MATCH ? AND kind = 'File' LIMIT ?",
+                (f"path : {text_search.phrase(word)}", text_search.RERANK_POOL),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [(r[0], (r[1], r[2] or "", r[3] or "")) for r in found if r[3] and text_search.file_named(r[3], word)]
 
     def alias_of(self, alias: str, b: int) -> str | None:
         """The live node that holds ``alias`` (an id merged into it), or None."""

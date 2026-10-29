@@ -41,6 +41,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Callable, Iterable, Iterator
+from pathlib import PurePosixPath
 
 MAX_TEXT_CHARS = 100_000  # a node's body past this is cut and counted in the build's coverage
 # Words of a query read; the rest are dropped. A question often names its subject late ("does the weekly review
@@ -169,6 +170,11 @@ def _quote(word: str) -> str:
     return '"' + word.lower().replace('"', '""') + '"'
 
 
+def phrase(word: str) -> str:
+    """``word`` as one FTS5 phrase: the tokenizer splits it into the words it indexes (``store.py``: store py)."""
+    return _quote(word)
+
+
 def _word_match(word: str, prefix: bool) -> str:
     """One word of an AND query: the whole word, or all its camelCase parts."""
     star = "*" if prefix else ""
@@ -224,7 +230,29 @@ BACKGROUND_WORDS = {
     "closed": frozenset({"completed", "closed", "đã đóng", "plan cũ", "old plan"}),
     "report": frozenset({"report", "reports", "báo cáo"}),
     "history": frozenset({"history", "lịch sử", "changelog"}),
+    "asset": frozenset(
+        {
+            "image",
+            "images",
+            "screenshot",
+            "screenshots",
+            "png",
+            "svg",
+            "jpg",
+            "icon",
+            "diagram",
+            "drawio",
+            "hình ảnh",
+            "ảnh chụp",
+            "sơ đồ",
+        }
+    ),
 }
+# A file known by its path alone (an image, a diagram, a video: ``asset_item``) has no text but its path, so a slug
+# match in the path scores high and BACKGROUND_WEIGHT does not move it; it never answers a question about code or a
+# plan, so it weighs ASSET_WEIGHT unless the query asks for an image. Its words are whole phrases where a single
+# Vietnamese word is ambiguous: "hình" also reads "mô hình" (model), "ảnh" also "ảnh hưởng" (effect).
+ASSET_WEIGHT = 0.25
 _TEST_PATH = re.compile(r"(?:^|/)(?:tests?|__tests__|e2e)/|(?:^|/)test_[^/]*$|_test\.[a-z]+$|\.(?:test|spec)\.[a-z]+$")
 _MIGRATION_PATH = re.compile(r"(?:^|/)(?:migrations|alembic/versions)/")
 _FIXTURE_PATH = re.compile(r"(?:^|/)fixtures?/")
@@ -232,6 +260,7 @@ _GENERATED_JSON = re.compile(r"(?:^|/)golden/[^/]*\.json$|bundle-budget\.json$|c
 _CLOSED_PATH = re.compile(r"(?:^|/)plans/completed/")
 _REPORT_PATH = re.compile(r"(?:^|/)reports/")
 _HISTORY_PATH = re.compile(r"(?:^|/)(?:docs/history\.md|CHANGELOG\.md)$")
+_ASSET_PATH = re.compile(r"\.(?:png|jpe?g|gif|webp|svg|ico|bmp|drawio|excalidraw|webm|mp4|mov)$", re.IGNORECASE)
 
 
 def named_words(query: str) -> list[str]:
@@ -250,20 +279,31 @@ def named_words(query: str) -> list[str]:
 
 
 def names(node_id: str, name: str, path: str, words: list[str]) -> bool:
-    """Whether one of ``words`` (``named_words``) is the node's name, its path or its file's name, or ends its id
-    (``…::Store.search``, ``…/search.py``)."""
+    """Whether one of ``words`` (``named_words``) is the node's name or its path, ends its id (``…::Store.search``,
+    ``…/search.py``), or, for the file itself, is its file name or stem (``file_named``). A symbol or section is not
+    named by its file's name: the file is what such a word asks for."""
     for word in words:
-        if word == name or word == path or path.endswith("/" + word):
+        if word == name or word == path:
             return True
         if node_id.endswith(("::" + word, "/" + word, "." + word)):
             return True
+        if path and node_id.endswith(path) and file_named(path, word):
+            return True
     return False
+
+
+def file_named(path: str, word: str) -> bool:
+    """Whether ``word`` is the file name of ``path`` (``store.py``) or its stem (``kg_health_eval``)."""
+    pure = PurePosixPath(path)
+    return word == pure.name or ("." not in word and word == pure.stem)
 
 
 def background(node_id: str, kind: str, path: str, closed_plan: bool = False) -> str | None:
     """The kind of background a node is (BACKGROUND_WORDS), or None: by its path, and a plan or step of a closed
     plan (``closed_plan``) as ``closed``."""
     if path:
+        if _ASSET_PATH.search(path):
+            return "asset"
         if _FIXTURE_PATH.search(path):
             return "fixture"
         if _TEST_PATH.search(path):
@@ -297,7 +337,7 @@ def weight(node_id: str, kind: str, name: str, path: str, named: list[str], want
     w = NAMED_WEIGHT if named and names(node_id, name, path, named) else 1.0
     found = background(node_id, kind, path, closed)
     if found is not None and found not in wanted:
-        w *= BACKGROUND_WEIGHT
+        w *= ASSET_WEIGHT if found == "asset" else BACKGROUND_WEIGHT
     return w
 
 
