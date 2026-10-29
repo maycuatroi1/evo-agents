@@ -432,6 +432,50 @@ def test_search_ranks_a_test_down_unless_the_query_asks_for_tests_and_a_named_no
     assert found(store, "how does zephyrDrain empty it")[0] == drain  # a word names it: first
 
 
+def test_a_file_name_names_the_file_not_its_symbols_and_an_image_is_background():
+    named = ["quarry_audit.py", "kg_health_eval"]
+    assert text_search.names("app:file:app/quarry_audit.py", "app/quarry_audit.py", "app/quarry_audit.py", named)
+    assert text_search.names("x:file:hub/kg_health_eval.py", "hub/kg_health_eval.py", "hub/kg_health_eval.py", named)
+    symbol = ("symbol:app:app/quarry_audit.py::LIMIT", "LIMIT", "app/quarry_audit.py")
+    assert not text_search.names(*symbol, named)  # a symbol is not named by its file's name
+    assert text_search.names(*symbol, ["LIMIT"])
+
+    background = text_search.background
+    image = ("h:file:reports/assets/plan-a-change.png", "File", "reports/assets/plan-a-change.png")
+    assert background(*image) == "asset"
+    assert background("x:file:docs/arch.drawio", "File", "docs/arch.drawio") == "asset"
+    assert background("x:file:reports/plan-a.md", "Document", "reports/plan-a.md") == "report"
+    assert text_search.weight(*image[:2], "", image[2], [], set(), False) == text_search.ASSET_WEIGHT
+    assert text_search.asked("a screenshot of the run page") == {"asset"}
+    assert text_search.asked("Sơ đồ kiến trúc của hub") == {"asset"}
+    assert text_search.asked("Kiến trúc dịch vụ và mô hình một instance") == set()  # "mô hình" is a model
+    assert text_search.asked("ảnh hưởng của cache") == set()
+
+
+def test_search_finds_a_file_by_its_bare_name_and_weighs_an_image_down(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    code = "".join(f"QUARRY_{n} = {n}\n" for n in ("LIMIT", "DEPTH", "WIDTH", "SLOPE"))
+    write(app / "app/quarry_audit.py", code + "\n\ndef audit_quarry():\n    return QUARRY_LIMIT\n")
+    image = app / "reports/assets/zephyr-rollout-change.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR")
+    write(app / "docs/zephyr.md", "# Rollout\n\nThe zephyr rollout moves the quarry one change at a time.\n")
+    write(app / "app/rollout.py", "def zephyr_rollout(change):\n    return change\n")
+    commit(app, "a module of constants, a report's image and a page")
+    sync_build(project)
+    store = Store.for_project(project)
+    file = "app:file:app/quarry_audit.py"
+    assert found(store, "quarry_audit.py")[0] == file  # not one of its four constants
+    assert found(store, "quarry_audit")[0] == file  # its stem
+    assert found(store, "audit_quarry")[0] == "symbol:app:app/quarry_audit.py::audit_quarry"
+    png = "app:file:reports/assets/zephyr-rollout-change.png"
+    hits = found(store, "zephyr rollout change")  # before ASSET_WEIGHT the image, words in its path only, was first
+    assert hits.index("app:file:docs/zephyr.md#rollout") < hits.index(png)
+    assert hits.index("symbol:app:app/rollout.py::zephyr_rollout") < hits.index(png)
+    assert found(store, "zephyr rollout change screenshot")[0] == png  # the query asks for an image
+
+
 def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     sync_build(project)
