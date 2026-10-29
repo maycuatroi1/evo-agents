@@ -317,8 +317,11 @@ Projects and who sees what), and the core plugin chats labels each message with 
   identifiers (`search.code_words`: a `_`, `-` or `$` between characters, or a camelCase hump), and puts the files that
   hold the most of them after its first 2 results (`CODE_LEAD`), each with the first 3 lines that hold them
   (` line 5 code`; `code` in the structured result). A file the ranking listed already keeps its place and shows its
-  lines too. This answers what agents grep for: where a setting, a selector or a class is used, which no resolved
-  edge of the graph says.
+  lines too. A word more than 50 files hold (`CODE_POOL`) is left out: a brand or a framework names a kind of file,
+  not the one asked for. This answers what agents grep for: where a setting, a selector or a class is used, which no
+  resolved edge of the graph says. On 412 searches agents of a 16-repo harness ran with grep, the file they opened
+  next was in the first five 24.5% of the time, 32.5% with the repo given, against 19.9% before and grep's 30.3%;
+  the harness's plan-step questions kept their 71.0%, and evo-agents' tune split went from 27.7% to 27.8%.
 
 What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
 `session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:

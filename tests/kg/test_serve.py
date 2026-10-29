@@ -908,6 +908,12 @@ def test_search_finds_where_a_name_is_written_in_code_templates_and_stylesheets(
     # Template text is not in the index of prose: a document still answers a question in prose first.
     store = Store.for_project(session.project)
     assert store.db.execute("SELECT count(*) FROM node_fts WHERE body LIKE '%app-course-card%'").fetchone()[0] == 0
+    # A word more files hold than are read per word names a kind of file, not one: it is left out.
+    assert {nid for nid, _ in store.code_files(["course-card"], limit=2)} == {
+        "app:file:app/templates/card.html",
+        "app:file:app/styles/card.scss",
+    }
+    assert store.code_files(["course-card"], limit=1) == []
     store.close()
 
 
