@@ -6,9 +6,11 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 FETCH_TIMEOUT = 120.0
+ISO_TIME = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-])(\d+):(\d{2})$")
 
 
 class GitError(RuntimeError):
@@ -92,6 +94,18 @@ def cat_blobs(repo: Path, shas: list[str]) -> dict[str, bytes]:
     return blobs
 
 
+def iso_time(text: str) -> str:
+    """A time of ``%cI`` as the protocol takes it. A few old commits hold an offset no clock has (psf/requests has
+    one at +518:00), which ``%cI`` prints as is: such a time is moved to UTC, the same instant."""
+    text = text.strip()
+    m = ISO_TIME.match(text)
+    if not m or (len(m[3]) == 2 and int(m[3]) <= 23):
+        return text
+    offset = timedelta(hours=int(m[3]), minutes=int(m[4]))
+    moment = datetime.fromisoformat(m[1]) - (offset if m[2] == "+" else -offset)
+    return moment.isoformat() + "Z"
+
+
 def last_change_times(repo: Path, commit: str) -> dict[str, str]:
     """Committer time of the latest commit touching each path, from one walk of the history."""
     out = git(repo, "log", "--format=%x00%cI", "--name-only", "--no-renames", commit)
@@ -99,7 +113,7 @@ def last_change_times(repo: Path, commit: str) -> dict[str, str]:
     current = None
     for line in out.splitlines():
         if line.startswith("\0"):
-            current = line[1:]
+            current = iso_time(line[1:])
         elif line and current and line not in times:
             times[line] = current
     return times
@@ -126,7 +140,7 @@ def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
             {
                 "sha": sha,
                 "parents": parents,
-                "time": time,
+                "time": iso_time(time),
                 "author_email": email.strip(),
                 "message": message.strip(),
                 "paths": paths,
@@ -146,7 +160,7 @@ def is_ancestor(repo: Path, older: str, newer: str) -> bool:
 
 
 def commit_time(repo: Path, commit: str) -> str:
-    return git(repo, "show", "-s", "--format=%cI", commit).strip()
+    return iso_time(git(repo, "show", "-s", "--format=%cI", commit))
 
 
 def remote_head(repo: Path, remote: str = "origin") -> str | None:
