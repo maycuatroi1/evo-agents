@@ -164,6 +164,7 @@ class FastEmbedder(Embedder):
 OPENROUTER_URL = "https://openrouter.ai/api/v1/embeddings"
 OPENROUTER_MODELS = {"BAAI/bge-m3": "baai/bge-m3"}
 OPENROUTER_BATCH = 64
+OPENROUTER_THREADS = 4  # requests in flight at once
 OPENROUTER_USD_PER_MTOKEN = 0.01  # baai/bge-m3 on OpenRouter, measured 2026-10-29 (provider Parasail)
 OPENROUTER_MAX_USD = 55.0  # a run that would pass this stops; the owner decides past 60
 BACKEND_ENV = "EVO_KG_EMBEDDINGS"  # "openrouter" turns the API backend on; unset (default) is the local fastembed model
@@ -226,29 +227,31 @@ class OpenRouterEmbedder(Embedder):
             time.sleep(min(2**attempt, 30))
         raise SemanticUnavailable(f"OpenRouter embeddings: {last} after 6 tries")
 
+    def _batch(self, part: list[str], ledger: Path) -> list:
+        if spent_usd(ledger) >= OPENROUTER_MAX_USD:
+            raise SemanticUnavailable(f"OpenRouter spend reached {OPENROUTER_MAX_USD} USD ({ledger}): stop and ask")
+        data = self._post(part)
+        usage = data.get("usage") or {}
+        cost = usage.get("cost")
+        tokens = usage.get("total_tokens", 0)
+        usd = float(cost) if isinstance(cost, (int, float)) else tokens * OPENROUTER_USD_PER_MTOKEN / 1e6
+        self.provider = data.get("provider") or self.provider
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        row = {"tokens": tokens, "usd": usd, "provider": self.provider, "inputs": len(part)}
+        with ledger.open("a", encoding="utf-8") as f:  # one short append: whole lines even from several processes
+            f.write(json.dumps(row) + "\n")
+        return [self._unit(item["embedding"]) for item in sorted(data["data"], key=lambda item: item.get("index", 0))]
+
     def embed(self, texts: Sequence[str]) -> list:
+        from concurrent.futures import ThreadPoolExecutor
+
         ledger = spend_ledger()
-        out: list = []
-        for start in range(0, len(texts), OPENROUTER_BATCH):
-            part = [t or " " for t in texts[start : start + OPENROUTER_BATCH]]
-            if spent_usd(ledger) >= OPENROUTER_MAX_USD:
-                raise SemanticUnavailable(f"OpenRouter spend reached {OPENROUTER_MAX_USD} USD ({ledger}): stop and ask")
-            data = self._post(part)
-            usage = data.get("usage") or {}
-            cost = usage.get("cost")
-            usd = (
-                float(cost)
-                if isinstance(cost, (int, float))
-                else usage.get("total_tokens", 0) * OPENROUTER_USD_PER_MTOKEN / 1e6
-            )
-            self.provider = data.get("provider") or self.provider
-            ledger.parent.mkdir(parents=True, exist_ok=True)
-            row = {"tokens": usage.get("total_tokens", 0), "usd": usd, "provider": self.provider, "inputs": len(part)}
-            with ledger.open("a", encoding="utf-8") as f:  # one short append: whole lines even from several processes
-                f.write(json.dumps(row) + "\n")
-            ordered = sorted(data["data"], key=lambda item: item.get("index", 0))
-            out += [self._unit(item["embedding"]) for item in ordered]
-        return out
+        parts = [
+            [t or " " for t in texts[start : start + OPENROUTER_BATCH]]
+            for start in range(0, len(texts), OPENROUTER_BATCH)
+        ]
+        with ThreadPoolExecutor(max_workers=OPENROUTER_THREADS) as pool:
+            return [v for vectors in pool.map(lambda part: self._batch(part, ledger), parts) for v in vectors]
 
     @staticmethod
     def _unit(vector):
@@ -421,10 +424,12 @@ def index(
     *,
     download: bool = True,
     progress: Callable[[int, int], None] | None = None,
+    forget: bool = True,
 ) -> Indexed:
     """Make the graph in ``db`` hold the vectors ``settings`` asks for: none when off (the tables go), else one per
     full-text row with a body, embedded only when ``cache_path`` lacks it. A model that cannot be loaded leaves the
-    graph without vectors, as off, and says why."""
+    graph without vectors, as off, and says why. ``forget`` False keeps the vectors of the cache that no row of this
+    graph has, for a cache shared by the snapshots of one repo."""
     if not settings.indexes:
         drop(db)
         return Indexed("off")
@@ -455,7 +460,7 @@ def index(
             done += len(part)
             if progress:
                 progress(done, len(todo))
-        if cache:
+        if cache and forget:
             cache.keep(settings.model, set(digests))
     except SemanticUnavailable as exc:
         drop(db)

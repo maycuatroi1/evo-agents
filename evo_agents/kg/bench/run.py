@@ -201,11 +201,11 @@ def part_numbers(records: list[dict], outcomes: list[Outcome], method: str, prim
     }
 
 
-def _ensure_vectors(project_dir: Path) -> None:
+def _ensure_vectors(project_dir: Path, cache: Path) -> None:
     from evo_agents.kg import semantic
 
     path = project_dir / "graph.sqlite"
-    found = semantic.index_file(path, semantic.Settings("on"))
+    found = semantic.index_file(path, semantic.Settings("on"), cache, forget=False)
     if found.error:
         raise BenchError(f"hybrid search needs the vectors of {path}: {found.line()}")
 
@@ -262,7 +262,7 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
                 with graphs.bench_home(lay.home):
                     project = graphs.project_of(lay, task)
                     if search == "hybrid":
-                        _ensure_vectors(lay.project_dir(task))
+                        _ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
                     report = evaluate(
                         [task.as_question()],
                         session_for=lambda _project, project=project, search=search: session_of(project, search),
