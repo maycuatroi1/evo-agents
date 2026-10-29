@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 FETCH_TIMEOUT = 120.0
+COMMIT_START = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})? ")  # %H and the space before %P, as a history record opens
 ISO_TIME = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-])(\d+):(\d{2})$")
 
 
@@ -130,8 +131,14 @@ def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
     args += ["--no-renames", "--diff-merges=first-parent", commit]
     if since:
         args.append(f"^{since}")
+    records: list[str] = []
+    for piece in git(repo, *args).split("\x01")[1:]:
+        if records and not COMMIT_START.match(piece):  # a \x01 a message held (ansible has some), not a new commit
+            records[-1] += "\x01" + piece
+        else:
+            records.append(piece)
     found: list[dict] = []
-    for record in git(repo, *args).split("\x01")[1:]:
+    for record in records:
         head, _, listed = record.partition("\x03")
         shas, time, email, message = (head.split("\x02", 3) + ["", "", ""])[:4]
         sha, *parents = shas.split()
