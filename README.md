@@ -1,650 +1,76 @@
 # evo-agents
 
-evo-agents runs coding agents on your own workers and gives them a shared knowledge graph across repositories.
+Run coding agents across your repositories, on machines you control.
 
-## Trace a schema change across repos
+evo-agents gives your team a place to hand off work to **Claude Code, Codex CLI or opencode** and follow it through.
+Agents work through a plan, run its checks and push their changes. You can watch the work in your browser, answer
+questions when needed, or take over a run.
 
-The `schemas` repo owns `schemas/event.yaml`. The `service` repo consumes events described by that schema in
-`consumer.py::consume`. With both repos indexed in your harness, add this to `bindings/schema.yaml`:
+[Get started](docs/getting-started.md) | [Website](https://agents.omelet.tech) | [Documentation](#documentation)
 
-```yaml
-version: 1
-bindings:
-  - from: service:consumer.py::consume
-    rel: depends_on
-    to: schemas:schemas/event.yaml
-```
+![Live agent runs and a pending decision in the Monitor.](docs/images/monitor-1440-light.png)
+*Demo hub with fictional projects, people and machines.*
 
-Build the graph, then ask what depends on the schema:
+## Less time coordinating agents
 
-```sh
-evo-agents kg sync --build
-evo-agents kg query kg_impact schemas:schemas/event.yaml --backend local
-```
+A change can span an API, a frontend and a shared library. Keeping the agents supplied with the right context,
+tracking what passed, and picking up work on another machine can become a job of its own.
 
-The result includes the consumer in the other repo:
+- **Hand off a whole plan.** Each step has dependencies and checks. A worker runs the checks again before recording
+  completion, with commits and results attached to the run.
+- **Keep project context between sessions.** Agents share plans, memories and a searchable knowledge graph of code
+  and documents across your repos.
+- **See what needs you.** Follow live runs in the Monitor. Answer decisions in the Inbox or through Telegram when
+  configured. Your autonomy settings determine which actions need approval.
+- **Use your own machines.** Run workers on a laptop, desktop or server, using your coding-agent accounts. You can
+  host the hub yourself, too.
 
-```text
-hop 1:
-  [service:consumer.py::consume] Symbol (parsed) line=1 -depends_on-> [schemas:schemas/event.yaml] (declared)
-```
+The **hub** holds the plans and shows progress. A **worker** runs the agent on a machine you connect.
 
-`declared` identifies the relationship you supplied. Without that relationship, this schema query does not flag
-the consumer. Python module-name resolution stays within one indexed source: a module with the same name in another
-repo is not evidence of a dependency. `kg_impact` lists code to check; it does not determine whether a schema change
-is breaking. [Build a graph](#building-a-knowledge-graph) or read the [resolution rules](docs/kg.md#cross-repo-bindings).
+## Give it a piece of work
 
-## Run plans on your own workers
+On your project's Plans page, choose **New plan** and describe the change:
 
-evo-agents is open-source tooling for teams that hand their plans to coding agents. A worker on your own laptop or
-desktop takes a plan from your team's hub and has Claude Code, Codex CLI or opencode do its steps in the order the plan
-allows. As the agent reports a step, the worker runs the step's verify commands again, then commits and pushes. The
-agent makes the other choices itself and stops for you only at decisions of a few kinds, such as deleting data,
-spending money or a choice of scope the plan leaves open. The agents of a project query one knowledge graph of all its
-repos. The product page is at [agents.omelet.tech](https://agents.omelet.tech).
+> Add saved carts to checkout. Cover the API and frontend, and include tests for restoring a cart after sign-in.
 
-![The Inbox of a demo hub: plan run #4 asks whether to reindex the 48,210 products on staging now.](docs/images/inbox-1440-light.png)
-
-You answer a decision in the Inbox on the web, or with a button on Telegram when the hub has a bot. The wait does not
-count toward the run's timeout, and after 24 hours without an answer the run parks and frees its slot on the worker.
-
-![The Monitor of a demo hub: four runs in flight on three workers, one of them waiting for a decision.](docs/images/monitor-1440-light.png)
-
-![A knowledge graph search for checkout that finds files and symbols in the web, API and harness sources.](docs/images/kg-search-1440-light.png)
-
-Agents query the same graph over MCP: `kg_search` finds ids by name, code, path or words, and `kg_impact` lists what
-depends on a file or a diff before you change it.
-
-The screens come from a demo hub whose projects, people and machines are made up; `pnpm screenshots` in `web/` makes
-them again ([web/README.md](web/README.md#screenshots)).
-
-Status: before 1.0. Releases go to PyPI as `evo-ak`, and commands, routes and file formats can still change from one
-release to the next. [docs/roadmap.md](docs/roadmap.md) says what works today and what is still being built.
+An agent on your worker drafts the plan. Review its scope and checks, then choose **Run plan**. Follow each step and
+its output in the browser; you can send the agent a message or stop the run there.
 
 ## Quick start
 
-You get access to a hub from an invite link or from a hub admin. To ask for an invite to the evo-agents hub, open the
-[invite form](https://github.com/maycuatroi1/evo-agents/issues/new?template=invite.yml): a public GitHub issue that
-asks for your GitHub login and what you want to do, and no email.
-
-1. Open the link, sign in with GitHub and accept it. The page then lists the commands below with your hub's URL in
-   place of `https://hub.example.org`.
-
-2. Install the CLI with [uv](https://docs.astral.sh/uv/). The `graphify` extra gives the knowledge graph code symbols
-   in about 40 languages, and `worker` adds the worker's daemon; [Install](#install) has the other ways.
-
-   ```sh
-   uv tool install 'evo-ak[graphify,worker]'
-   ```
-
-3. Sign the CLI in to the hub, once per machine. It prints a code to enter on github.com, and the token stays in
-   `~/.evo/hub`.
-
-   ```sh
-   evo-agents hub login --url https://hub.example.org
-   ```
-
-4. Add the plugins to Claude Code: evo-hub connects the agent to the hub's plans, and evo-kg to the project's knowledge
-   graph. Codex takes evo-hub with two commands of its own ([The team hub](#the-team-hub)).
-
-   ```sh
-   claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
-   claude plugin install evo-hub@evo-agents
-   claude plugin install evo-kg@evo-agents
-   ```
-
-5. A join link gave you a role on a project the hub has already, so go on to step 6. A register link gives you the
-   right to register one project of your own. In a repo's directory, or in one whose direct subdirectories are repos,
-   make a harness and register it: `evo-agents harness init` gives each repo a git source and the harness a source of
-   its own, for one knowledge graph of the project, and registering makes you the project's admin
-   ([Building a knowledge graph](#building-a-knowledge-graph) has what it writes).
-
-   ```sh
-   cd ~/code/acme-tools                 # api/ and web/ are git checkouts
-   evo-agents harness init
-   evo-agents hub project register
-   ```
-
-6. Pair this machine as a worker, which serves the projects you can write to. Make a pairing code on the hub's Workers
-   page, run the join command it shows, then keep the daemon running in the background. The worker runs agents with the
-   Claude Code, Codex CLI or opencode login of this machine and pushes with its git credentials.
-
-   ```sh
-   evo-agents worker join --url https://hub.example.org --code K7QM-4XPD
-   evo-agents worker service install
-   ```
-
-7. On the project's plans page, New plan has an agent on your worker write a plan from your request, and Run plan hands
-   a plan to your worker. From the command line ([Workers](#workers)):
-
-   ```sh
-   evo-agents hub run author "a plan to add saved carts to checkout" --worker mac-mini --project demo   # your worker's name
-   evo-agents hub run plan rollout --project demo
-   ```
-
-## Install
+**Run agents with a team.** You'll need access to a hub and a machine with a coding agent installed and signed in.
+[Ask for an invite](https://github.com/maycuatroi1/evo-agents/issues/new?template=invite.yml), use your team's hub, or
+[self-host](docs/hub-deployment.md). Install Python 3.11+ and [uv](https://docs.astral.sh/uv/), then run:
 
 ```sh
-uv tool install 'evo-ak[graphify]'   # or: pip install 'evo-ak[graphify]' (PyPI name; the command is evo-agents)
-uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents'   # unreleased main
-uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents@nightly'   # main as of last night
-# or, from a checkout: python -m pip install -e '.[test,graphify]'
-# the hub's tests also take the core plugins the hub's image pins, after evo-ak:
-#   python -m pip install --no-deps --require-hashes -r deploy/hub/core-plugins.txt
+uv tool install 'evo-ak[graphify,worker]'
+evo-agents hub login --url https://hub.example.org
 ```
 
-The core needs Python 3.11+ and PyYAML; nothing else. The `graphify` extra adds graphify's tree-sitter
-extractors, which give code symbols for about 40 languages; without it only Python files get symbols,
-and `kg build` and `kg status` warn with the number of code files left without them. A source that sets
-`code: {backend: graphify-ast}` fails the build instead when the extra is missing.
-
-macOS, Linux and Windows run every command but `evo-agents worker`, whose daemon needs process groups, tmux and
-launchd or systemd: it runs on macOS and Linux, and on Windows inside WSL. On Windows, `kg schedule install` prints the
-command to give Task Scheduler instead of loading a LaunchAgent, and a skill published from there marks a file
-executable when it starts with `#!`, since Windows keeps no execute bit.
-
-## Building a knowledge graph
-
-`evo-agents harness init` starts a harness. Run in a repo's directory, or in a directory whose direct subdirectories
-are repos, it writes a minimal `harness.yaml` and `knowledge.yaml` for those repos, with the origin (without the
-password an https URL may carry) and the default branch git has for each. The project takes the directory's name,
-unless `--project NAME` gives another. Each repo gets a git source and the harness a source of its own, all labelled
-`internal`, with a Claude Code sink and a hub sink that clear `internal`. It overwrites nothing: when either file is
-there already, it writes neither and says which is there. `evo-agents harness validate` accepts what it writes, and
-`evo-agents hub project register` sends it to a hub ([docs/hub.md](docs/hub.md#invite-links), Invite links, for a first
-project of your own).
-
-```sh
-cd ~/code/acme-tools                 # api/ and web/ are git checkouts
-evo-agents harness init              # or: evo-agents harness init ~/code/acme-tools --project acme
-evo-agents harness validate
-evo-agents hub project register      # as a hub admin, or with the right of a register invite link
-```
-
-A harness opts in with a `knowledge.yaml` next to its `harness.yaml`:
-
-```yaml
-version: 1
-project: demo
-policy:
-  levels: [public, internal, customer, secret]
-  sinks:
-    - id: claude-code@anthropic
-      kind: agent-session
-      clearance: {level: internal}
-sources:
-  - id: harness            # plans, contracts, bindings, docs of the harness itself
-    connector: harness
-    label: {level: internal, integrity: U}
-  - id: app                # a repo declared in harness.yaml
-    connector: git
-    repo: app
-    refresh: 1h            # due for kg sync --due once an hour
-    label: {level: internal, integrity: U}
-  - id: wiki               # any command that speaks kg/1
-    connector: exec
-    command: [my-cli, kg-connector, wiki]
-    credentials: [{key: my.wiki.token, env: WIKI_TOKEN}]
-    label: {level: customer, integrity: U}
-identifiers:
-  - kind: UseCase
-    pattern: '\bKB-\d{2}\b'
-```
-
-A git source reads the text of markdown, YAML, text, config and code files (or of what its `include:`
-globs match) and records other files by path only. It skips the paths its `exclude:` globs match, plus a
-default list: build output, lock files, virtualenvs and agent folders such as `.claude/` and `.agents/`,
-at any depth, and `state/` at the root only (a nested `src/state/` is ordinary code).
-`allow:` takes globs that bring paths from that default list back, for example
-`allow: [".claude/CLAUDE.md"]`, or `"*/.claude/CLAUDE.md"` for a nested one; `exclude:` still wins over
-`allow:`. Only the git connector reads `allow:`.
-`fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
-timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
-fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
-is fetched. Without `ref:` a source reads HEAD of its checkout, whatever branch that has, and
-`harness validate` warns about it.
-A git source also reads the history of its ref, one `Commit` node per commit with `changes` edges to the files it
-changed, and, for a repo whose origin is on GitHub, the pull requests with their number, title, state, branches and
-merge commit, never their body or comments (`pulls: false` turns that off; the token comes from `GH_TOKEN`,
-`GITHUB_TOKEN` or `gh auth token`). A SHA or "PR #57" in a plan step's evidence then links the step to that commit
-or pull request, and through it to the files: `docs/kg.md`, section Plans of the hub, commits and pull requests.
-In a harness whose harness.yaml names a hub project, `kg sync` reads the plans at the revision the hub holds, with
-the hub's label, rather than the copies in `plans/`; a machine not signed in to a hub reads the copies.
-The graph says which commit each git source read and how many commits that is behind the remote's default
-branch (`origin/<default_branch>`, counted from the clone without fetching): `kg status`, `kg_status`, the
-SessionStart note and the hub's graph page show it, and `kg_node` links a file at that commit, so the lines
-of a span match what the link opens.
-Changing where a source reads from (a git source's `ref:`, `repo:` or `path:`, an exec source's `command:`)
-makes its next run replace what the source read before, even when the old ref has newer commits; within
-one ref, a file keeps the copy whose last commit is newest. Keys such as `refresh:`, `label:`, `include:`
-or `fetch:` do not count as a change of place.
-Before a file enters the corpus, the git connector replaces each secret in its text with a marker naming
-its kind: a private key in PEM (`[redacted:pem]`), a provider's key (Anthropic, OpenAI, AWS, Slack, Google,
-GitHub, hub tokens), the password of a URI, and the literal value of a variable or key named as a password,
-secret, token, API key or private key (`DB_PASSWORD: [redacted:password]`). References such as `${VAR}`,
-`os.environ[...]` or `process.env.X`, empty values, placeholders and descriptive words stay, and so does the
-rest of the file, so its structure still enters the graph. The patterns favour precision over recall;
-`evo_agents/kg/redact.py` lists what they take and leave.
-
-A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
-a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.
-
-Then, from the harness:
-
-```sh
-evo-agents harness validate          # schema and reference checks for every harness file
-evo-agents kg sync --build           # run connectors, build the graph
-evo-agents kg status                 # freshness, coverage and held deletions per source
-evo-agents kg build --verify         # rebuild from scratch and compare hashes
-evo-agents kg query kg_search "KB-01"
-evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
-evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
-```
-
-A harness's CI runs `harness validate` with the evo-agents of the tag `nightly`, the tip of main, which a workflow
-moves every night:
-
-```yaml
-      - name: Install evo-agents
-        run: python -m pip install "evo-ak @ git+https://github.com/maycuatroi1/evo-agents@nightly"
-      - name: Validate manifest, contracts, knowledge and plans
-        run: evo-agents harness validate .
-```
-
-A harness that must stay on one release pins it instead, `python -m pip install "evo-ak==<version>"`: the pin is
-that harness's lock, and only an edit of the workflow moves it. The worker daemon follows the same tag unless its
-owner locks its version ([docs/workers.md](docs/workers.md#updating-itself-to-nightly)).
-
-Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
-source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
-never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
-never their values. A build that finds nothing changed builds nothing and adds no line (see below).
-
-A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
-and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
-them with the connector's patterns and lists each blob that holds a secret by hash, path, item id and kind of
-secret, never the value. A blob is old when nothing uses it, live when an item of the corpus refers to it now (a
-sync of its source replaces it with a redacted copy, so sync and build first), and kept when only records the corpus
-no longer holds name it, in the log of a run still in use (an item or a tombstone of that run still wins). Counting
-changes nothing. `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer). It
-then rewrites each run log in use that names a kept blob, keeping of its item and tombstone records only those the
-corpus holds (the log keeps its name and format, and replays to the same state), deletes the old and kept blobs, the
-run logs of old runs that name them and the memo rows holding a secret, compacts the memo and the graph so no free
-page keeps the text, and appends a `scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus
-uses, and it holds every source's lock meanwhile, so a sync started then stops at once instead of writing.
-`hub kg push` never sends a run the hub already holds, so a rewritten log leaves the machine only for a run the hub
-lacks. In order:
-
-```sh
-evo-agents kg sync --build                   # live copies become old ones
-evo-agents kg scrub                          # count, change nothing
-evo-agents kg scrub --all --purge            # delete the old copies of every project, after a yes
-```
-
-To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
-the sources whose interval has passed since their last ok run; `--all` does that for every project that
-has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
-`kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
-removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
-gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand). To drop from
-knowledge.yaml a source the hub holds runs of, take them off first with `evo-agents hub kg forget-source --project
-demo --source old-repo`, then push; the other way round the push is refused (`docs/hub.md`, Dropping a source).
-
-Syncs and builds do only what changed. A git source whose ref still resolves to the commit its last ok run read,
-with the same config and connector code, is not read again: the sync records the run, writes no run log and leaves
-the cursor, and `--due --build` builds only when a source read something. A harness source is always read, so
-files not yet committed in the harness still reach the graph. `kg build` skips a build whose corpus state, config,
-code and cursors are those of the latest build (`--force` builds anyway; the hub's worker skips the same way). A
-build that runs links again only the items whose text or structure changed or that looked up a name or path that
-now resolves elsewhere, and rewrites only the rows of the full-text index that changed. `kg serve` opens the store
-read-only.
-
-Old data on the machine goes by retention periods (`evo-agents kg prune`): `logs` (default 1d) for run logs, blobs
-and rows of the runs table, `history` (1d) for the builds of the graph, and `memo` (14d) for memo rows after their
-last use. An old run log is deleted once no record of it is the one the corpus holds, and one still in use is
-rewritten without the records the corpus no longer holds, as `kg scrub --purge` does. A log the hub has not received
-is never touched: `hub kg push` records which runs the hub holds, and a run of a source above the hub sink never goes
-there. A blob goes once no log left and no item refers to it, the graph keeps its latest two builds and the builds of
-the period, and a memo row goes when neither the period nor the latest build used it. None of it changes what a build
-makes: `kg build --verify --cold` gives the same hash before and after. `kg prune` counts and changes nothing,
-`--delete` deletes after a yes (`--yes` when no terminal can answer), and `--logs`, `--history` and `--memo` set the
-periods of one pass. `kg prune --schedule on` counts, asks, and saves the periods in `~/.evo/kg/retention.json`: from
-then on every `kg sync --due --all`, the LaunchAgent's command, prunes each project once a day and appends a `prune`
-line with the counts to its `audit.jsonl`. The schedule is off until the owner turns it on.
-
-```sh
-evo-agents kg prune --all                    # count, change nothing
-evo-agents kg prune --all --delete           # delete what the periods make old, after a yes
-evo-agents kg prune --schedule on            # count, ask, then prune with every scheduled sync
-```
-
-## Using it from Claude Code
-
-```sh
-claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
-claude plugin install evo-kg@evo-agents
-```
-
-The plugin registers the MCP server `evo-kg`, a `using-project-graph` skill, and three hooks. The
-server binds to the project of the session directory; pass `--project` in `.mcp.json` to pin one, or
-run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
-(`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
-hub that has a graph of the project, the server answers from the hub with the same tools
-(`kg serve --backend auto`, the default; `local` and `hub` force one or the other). Inside a run of a worker,
-`auto` and `hub` ask the hub with the run's worker token, signed in or not, and only `local` reads a graph built on
-the machine ([docs/credentials.md](docs/credentials.md)).
-
-| Tool | Use |
-|---|---|
-| `kg_search` | find ids by name, code, path or words |
-| `kg_context` | connected subgraph around a question or ids, within a token budget |
-| `kg_node` | one node: properties, evidence, edges |
-| `kg_path` | shortest path between two ids, or the trace chains from one (requirement, step, code, test) |
-| `kg_impact` | what depends on ids, `repo:path` files or a unified diff, before you change them |
-| `kg_status` | bound project, clearance, snapshot age, coverage per source, session label |
-| `kg_more` | continue a truncated result |
-
-`kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
-importers, members, definers, subclasses (`inherits`), overriding methods (`overrides`), implementations and tests.
-Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and
-names a seed with more incoming edges than it reads (2,000), with their number. Its text lists the first 20 dependents
-of each hop and counts the rest (`limit` raises it). [docs/kg.md](docs/kg.md) has the coverage table per language, the
-fields of the result, and how the text of every tool is written.
-
-Hooks:
-
-- SessionStart prints a short note: the bound project, the snapshot age, and how many git sources read a
-  commit that is current with its remote's default branch, naming only the others with the commit read and
-  how far behind it is now (`commits read: 16 sources, 13 current; behind: app 1550c7a (3 behind
-  origin/main)`, or `commits read: 16 sources, all current`), counted from the checkout without the network.
-- PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
-  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
-  `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
-- PostToolUse, after Grep, or `rg` or `grep` at the head of a Bash command, adds a note beside the
-  result when a matched line falls in a symbol or file of the graph: at most four lines after its
-  header, each naming by id who calls it (or imports the file), its tests and the plan steps that
-  name it. It never changes, cuts or blocks the result, and says nothing when there is nothing to
-  add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](docs/kg.md) says how it places a
-  matched line.
-
-The plugin needs [uv](https://docs.astral.sh/uv/) or `evo-agents` on `PATH`, and a POSIX `sh` (on Windows, Git for
-Windows' `sh` on `PATH`). It pins the release it runs, the version in its `plugin.json`. The server's `.mcp.json` runs
-`sh -c`: `uvx --from evo-ak==<version> evo-agents --version` first, which downloads and caches that version on first
-start, then the server itself from uv's cache. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so
-they never wait on the network. When uvx cannot run that release (uvx missing, the version not in uv's cache yet, or
-never published: the plugins follow `main`, and a release reaches PyPI only once its tag's CI passes), the server and
-each hook run `evo-agents` from the PATH with the same arguments and say so in one line on stderr. With no
-`evo-agents` there either, the server exits 1 and a hook exits 0, each with a line on stderr saying it did not run.
-The server is marked `alwaysLoad`, so Claude Code loads its seven tools with the session instead of deferring them
-behind ToolSearch: a session's first search no longer waits a turn for the tool to be loaded. The evo-hub server's
-many tools stay deferred.
-
-### The team hub
-
-```sh
-evo-agents hub login --url https://hub.example.org   # once per machine; the token stays in ~/.evo/hub
-claude plugin install evo-hub@evo-agents
-```
-
-The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
-hub's `/mcp`), a `using-agent-hub` skill, and six hooks. Its tools are the seven `kg_*` tools and `memory_search`,
-`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
-`run_tool_stats`. A session that has the evo-kg plugin too gets the `kg_*` tools and the graph's instructions from
-evo-kg alone: evo-hub leaves them out (it reads `enabledPlugins` of Claude Code's settings). In a harness
-whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
-mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML. To hand a
-plan to a new session or a subagent, give it `plan_handoff` (or `evo-agents hub plan handoff PLAN --step KEY`) rather
-than your history: the plan's goal, each step done with its commits and `Decision:` lines, and the steps left, within a
-token budget.
-
-Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-tool|session-end`, same pins and `|| true` as evo-kg):
-
-- SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
-  plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
-  `evo-agents hub skills sync` would change, and prints one line: hub, project, memories pulled, skills to sync.
-- Stop pushes the memory files that changed since the last sync, so the next session on another machine has them.
-  A turn that wrote no memory sends nothing; when the hub does not answer, the files wait and a later Stop pushes
-  them (state in `~/.evo/hub/memory-state.json`).
-- Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
-  per tool and per Bash program, what the person wrote, model and tokens, the largest context one model call read
-  (`peak_context_tokens`), the compactions, the characters of each tool's results, and how many results the spool
-  below cut, their size before the cut and the reads of spool files, with every string that looks like a secret
-  replaced on the machine first. A digest the hub did not take waits for a later Stop
-  (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none. Claude Code runs no Stop for a turn
-  you interrupt, so SessionEnd pushes the digest too, and SessionStart finds the sessions of the last 7 days that
-  neither hook reached (Claude Code killed, the machine off) and queues their digests for the next Stop.
-- PostToolUse writes a result of Bash, Grep, WebFetch or an MCP tool longer than 10,000 characters
-  (`EVO_SPOOL_THRESHOLD`), and a Read longer than 40,000 (`EVO_SPOOL_READ_THRESHOLD`), to
-  `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
-  tail, its size and the file's path instead; the tools of evo-hub and evo-kg, which cut their own text, and a plan's
-  handoff pass whole.
-
-- UserPromptSubmit, a second PostToolUse hook (`local-tool`), Stop and SessionEnd put a local Claude Code session
-  of a hub project on the hub as a run of kind `local` (shown as local in the runs list): `running` while the agent
-  works, `idle` while it waits for you, `ended` at session end, with its last activity, the plan and step it marks
-  (`evo harness step`, `hub plan step` and `plan_step` name the run), and a live log. The log holds the agent's words,
-  and each tool's name, its input (300 characters) and its result (400 characters), with every string that looks like a
-  secret replaced on the machine first (the digest's redaction). The run also carries the session id, directory,
-  machine, the first line of your first prompt (120 characters), and the Claude account: for the Code tab of Claude
-  Desktop the email of the session record plus the claude-profiles profile name, for the CLI `oauthAccount.emailAddress`
-  of the Claude Code configuration, else `unknown`. `EVO_HUB_LOCAL_SYNC=0` turns all of this off (Stop still pushes the
-  digest and the memories). A session outside a hub project, and the agent of a worker run (`EVO_RUN_ID`), sends
-  nothing. When the hub does not answer, events wait in `~/.evo/hub/local/<session>.json` (500 at most, kept 7 days)
-  and a later hook sends them. [Unverified] The layout of Desktop's session record and of `profiles.json` follows
-  claude-profiles' README and was not checked on a Mac; `EVO_CLAUDE_DESKTOP_DIRS` (`name=path`, separated like PATH)
-  names the data folders when the defaults miss, and a record that cannot be read gives `unknown`.
-
-All of them exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
-tokens or memory text and send nothing when the machine is not signed in; PostToolUse prints the shortened result or
-nothing.
-
-Codex takes the same plugin (`codex plugin marketplace add https://github.com/maycuatroi1/evo-agents`, then
-`codex plugin add evo-hub@evo-agents`). Once you trust its hooks, which the first interactive session that loads them
-asks, SessionStart and Stop do in a Codex session what they do in Claude Code, and the digest is built from Codex's
-rollout. PostToolUse leaves Codex's output as it is: Codex ignores a replaced tool output and cuts a long one to its
-own `tool_output_token_limit` ([docs/hub.md](docs/hub.md), Codex).
-
-### Workers
-
-A worker is your own laptop or desktop running plan steps for you. You dispatch a ready step, the hub queues a run,
-and your worker claims it, runs the step with Claude Code, opencode or Codex CLI, and sends its log, state and
-evidence back, so the hub can record the step in the plan. The daemon needs the `worker` extra:
-
-```sh
-uv tool install 'evo-ak[worker]'    # or: pip install 'evo-ak[worker]'; with graphify: 'evo-ak[graphify,worker]'
-evo-agents worker join --url https://hub.example.org --code K7QM-4XPD   # the code from the hub's Workers page
-evo-agents worker register --name mac-mini --project demo --slots 1    # or this, once signed in with hub login
-evo-agents worker service install   # keep the daemon running in the background
-evo-agents worker doctor            # what the machine still holds that a worker should not; exit 2 on a high finding
-```
-
-A daemon that `worker service install` runs from a `uv tool install` of evo-ak, from git or from PyPI, updates itself
-to the tag `nightly` once it and every daemon of its install are idle, and starts again on the new version; lock its
-version on the worker's page to keep it where it is. A team that follows nightly installs from it:
-`uv tool install --force 'evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly'`.
-[docs/workers.md](docs/workers.md#updating-itself-to-nightly) has the conditions, the states and how to turn it off.
-
-Then, from any machine signed in to the hub:
-
-```sh
-evo-agents hub run dispatch rollout 2 --project demo
-evo-agents hub run logs 41 --follow --project demo
-evo-agents hub run approve 41 --project demo
-```
-
-A worker can also take a whole plan as one plan run: its agent does every step not done yet in the order
-`depends_on` allows, in a worktree of each repo those steps name, and reports each step as it goes, verified, committed
-and pushed on the plan's branch. It stops for you only on a decision it may not take alone (a deploy, deleting data,
-a migration on real data, sending outside, spending money, or an architectural or scope choice the plan leaves open),
-which waits in the Inbox on the web or on the command line:
-
-```sh
-evo-agents hub run plan rollout --worker mac-mini --timeout-h 8 --project demo
-evo-agents hub run plan rollout --session-per-step --project demo   # each step in a new session, with the handoff
-evo-agents hub decision list --state open --project demo
-evo-agents hub decision answer 7 --option postgres --project demo
-evo-agents hub notifications --unread
-```
-
-A plan run does every step in one agent session unless it is dispatched with `--session-per-step`: then each step
-gets a new session whose prompt carries the plan's handoff instead of what the sessions before it read, and the run's
-usage lists the session of each step. A Claude Code agent on a worker compacts its context as it nears 200,000 tokens
-(`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window). A Codex agent compacts there too and
-keeps 8,000 tokens of each tool output (`EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT`,
-`EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT`), and opencode clears old tool outputs (`EVO_WORKER_OPENCODE_COMPACTION_PRUNE`
-turns that off); what the owner's own codex or opencode config sets stays.
-
-The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
-[docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`
-and `hub decision` command, and [docs/notifications.md](docs/notifications.md) decisions, notices and notifications.
-
-On a machine others also administer, keep your credentials on the hub as secrets instead: each run gets a lease of
-just what it needs, and the hub takes it back when the run ends ([docs/credentials.md](docs/credentials.md)). The
-value goes in on stdin, or at a prompt that does not echo it, and never comes back out:
-
-```sh
-pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
-evo-agents hub secret list
-evo-agents hub run credentials 41 --project demo   # the leases run 41 got, given back or not; never their values
-```
-
-Several `env` secrets for the same variable bound to one project are accounts, such as two Claude subscriptions: each
-run takes one of them by the rotation you set for the project (round-robin by default, weighted-round-robin or
-fill-first) and keeps it, and a headless Claude Code run whose account hits its usage limit goes on in the same session
-with the next one. `hub account login` adds a Claude account: it runs Anthropic's own `claude setup-token`, where you
-approve in the browser, and puts the token it prints on the hub without showing it, ending a year from today less a
-day. Run it again with the same name to renew the token, or use Add Claude account and Renew token on the web's
-Accounts page. `hub account` shows and weighs the accounts, and `--account` picks one by hand
-([docs/credentials.md](docs/credentials.md), section "Accounts"):
-
-```sh
-evo-agents hub account login claude-b --project demo  # claude setup-token, then the token goes to the hub sealed
-evo-agents hub account list                        # state, usage, runs and cost of each account; never a value
-evo-agents hub account policy demo --strategy fill-first --cooldown 1800
-evo-agents hub account pause claude-a
-evo-agents hub run dispatch rollout 2 --account claude-b --project demo
-```
-
-### Running a hub
-
-The hub is an API server, a job worker and a web interface, published as two images on GHCR for each release and run
-with `deploy/hub/docker-compose.yml`, which can also build them from source, next to a Postgres database and a
-Cloudflare R2 bucket. `evo-agents hub serve`
-and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
-covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
-workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
-health checks. [docs/plugins.md](docs/plugins.md) covers plugins: their extension points, the plugin host and the
-`plugin/1` protocol, pages and signing; [docs/hub-deployment.md](docs/hub-deployment.md) a hub for a client, from the
-same images, with its own branding, publishers and plugins. [docs/srs-plugin.md](docs/srs-plugin.md) and
-[docs/tasks-plugin.md](docs/tasks-plugin.md) cover the core plugins srs (BA documents with versions, approval and
-@ba) and tasks (a backlog linked to use cases and plan steps).
-
-### The web
-
-The hub's web interface (`web/`) is where people read the hub, answer decisions and dispatch runs. From 0.6.0 it
-follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN.md)):
-
-- Home shows what waits on you, what runs, what ended lately and your workers, over every project you hold a grant
-  on, in one request (`GET /v1/me/overview`). You answer a decision in a sheet over it and rerun a failed step from
-  it.
-- Every page takes the full width beside the sidebar.
-- A run's page draws its phases on a timeline and reads its events as a Trace: the agent's messages, its thinking,
-  and each tool call with its argument, exit code, duration and output. The raw log and the owner's terminal are
-  tabs beside it, and a usage card adds up the run's tokens by type with the cost the agent reported. From 1280 px
-  the session and the side column of cards scroll on their own. A repo links to its page on its forge, and on GitHub
-  or GitLab its branch and commit do too.
-- Monitor (`/monitor`) lists every run in flight over your projects and watches the ones you pick in a grid of live
-  tiles that shares out the window: each tile a run's state, worker, time, plan steps and the tail of its trace, for
-  viewing only. The tiles are in the URL (`?runs=project:id,...`), so a link opens the same grid.
-- A plan's page shows its steps as Board, List or Graph (`?view=graph`): the graph draws each step under the steps it
-  waits for, marks the Ready ones, and a step selected (`&step=11`) opens its details beside the graph, read only.
-- Insights charts a project's runs by day over 7, 30 or 90 days: outcomes, failure rate, run time and tokens
-  (`GET /v1/projects/{project}/runs/stats`), each chart with its table.
-- Administration lists what needs a hub admin (`GET /v1/admin/overview`): tokens expiring or unused, failed graph
-  builds, offline workers, people granted a role who have not signed in yet.
-- Cmd K or Ctrl K opens a command palette that jumps to runs, plans and workers and offers the actions your grants
-  allow. `?` lists the keyboard shortcuts: G then H, I, P, R or W to move, D to dispatch, / to search.
-- Under 768 px tables become lists, filters move into a sheet, and a decision is a screen of its own.
-- Each project's Curator page shows the night shift, its proposals with their evidence, and the charter.
-
-### The Curator
-
-The Curator is a project's night shift on the hub. Inside the hours its charter sets, the hub queues runs on one
-member's worker without anybody pressing Run: a review run that reads the project's sessions, runs and code and
-proposes changes with evidence, a Builder that makes an accepted change on a branch `curator/...`, and a Judge that
-checks the pull request without reading the Builder's transcript. The hub computes each change's tier, merges only
-tier 0 and only when the charter, CI, the Judge and the repo's ruleset all allow it, and sends the owner a morning
-brief on the web and Telegram:
-
-```sh
-evo-agents hub curator charter set charter.yaml --project demo   # an admin of the project
-evo-agents hub curator status --project demo
-evo-agents hub curator proposal list --state open --project demo
-evo-agents hub curator pause --project demo
-```
-
-[docs/curator.md](docs/curator.md) describes the charter, the night shift and its caps, the tiers, the three roles,
-the Curator's own GitHub App and the ruleset it needs, and Telegram.
-
-### Running steps on your machine
-
-A member's laptop or desktop can run plan steps the hub hands it, with that member's own coding agent:
-
-```sh
-uv tool install 'evo-ak[worker]'
-evo-agents worker join --url https://hub.example.org --code XXXX-XXXX   # the code from the web's Workers page
-evo-agents worker run                                                    # the daemon, in the foreground
-```
-
-The daemon claims runs, checks each run's repos, credentials and the programs its verify calls before the agent
-starts, works in a git worktree of its own under `~/.evo/worker`, runs the agent's verify commands again, and pushes
-the plan's branch, never forced. A run of one step never pushes the default branch; a plan run pushes it only when the
-plan names it, putting its own commits on top when someone pushed meanwhile, or on `evo-run/<run>` when they do not
-fit. On macOS the daemon keeps the machine awake while it holds a run, unless it is a laptop with its lid closed on
-battery. [docs/workers.md](docs/workers.md) covers the protocol and the daemon.
-
-## Writing a connector
-
-A connector is a generator in process or any executable. It writes JSON objects, one per line:
-`hello` first, then `item`, `tombstone`, `listing`, `state`, `error`, `log`, and `closed` last.
-Item IDs are `<source>:<kind>:<native key>`; every item carries a revision and a content hash over
-canonical JSON. Deletions are only inferred from a scoped `listing` that ends with
-`complete: true`, so a connector that dies half-way never deletes anything.
-
-```sh
-evo-agents kg connector test -- my-cli kg-connector wiki --fixture tests/fixtures/wiki
-```
-
-checks protocol, determinism, replay and permutation, truncated listings, golden output and labels.
-
-## Layout
-
-```
-evo_agents/
-  harness/    schema and loader for harness.yaml, knowledge.yaml, contracts.yaml, plans
-  kg/         protocol, connectors, corpus, pipeline, store, policy, MCP server
-  hub/        team hub: server, client commands, MCP proxy, plugin hooks
-  worker/     the worker daemon, `evo-agents worker`
-plugins/      Claude Code marketplace (plugins evo-kg and evo-hub)
-web/          the hub's web interface (Next.js, its own image)
-deploy/hub/   the hub's Dockerfile and compose files
-scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.py and in each plugin's manifest and pins
-docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
-              notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
-              worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
-              and size budgets that CI checks, and how to split a module; kg.md: the knowledge graph's tools
-              (what kg_impact follows and covers per language, the text of every tool, search, the note after
-              grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
-              retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
-              hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks;
-              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab; problems.md: the
-              problems of a project (P-<number>), what hurts before any solution, which goals, claims and
-              plans point to; loop.md: goals and the Loop of a project, which goes from the problem a goal
-              answers through a solution to a plan, use cases optional; roadmap.md: what works today and
-              what is still being built; images/: the screenshots of this README and the product page, from
-              `pnpm screenshots` in web/
-```
+Use your hub's URL in place of `https://hub.example.org`. Then follow the
+[setup guide](docs/getting-started.md#run-your-first-plan) to connect a project and worker. Workers run on macOS and
+Linux, or inside WSL on Windows.
+
+**Try the knowledge graph on its own.** You can index a local repository and explore its code without a hub account
+or a running agent. Follow the [local walkthrough](docs/getting-started.md#try-the-knowledge-graph-locally).
+
+The package is named `evo-ak` on PyPI; the command is `evo-agents`. evo-agents is **pre-1.0**: commands and formats can
+change between releases.
+See the [roadmap](docs/roadmap.md) for current capabilities and unfinished work.
+
+## Documentation
+
+| I want to... | Read |
+| --- | --- |
+| Set up a project and run a plan | [Getting started](docs/getting-started.md) |
+| Monitor runs and manage workers | [Operations](docs/operations.md) |
+| Index repos and configure the graph | [Graph setup](docs/kg-setup.md), [query reference](docs/kg.md) |
+| Set permissions and handle credentials | [Autonomy](docs/autonomy.md), [credentials](docs/credentials.md) |
+| Host a hub or build a plugin | [Deployment](docs/hub-deployment.md), [plugins](docs/plugins.md) |
+| Contribute code or documentation | [Contributing](CONTRIBUTING.md) |
+
+Agent instructions and MCP details are in [AGENTS.md](AGENTS.md) and the [agent guide](docs/agents.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+[Apache-2.0](LICENSE).
