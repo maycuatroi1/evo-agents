@@ -7,6 +7,7 @@ import argparse
 import json
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 
@@ -186,7 +187,37 @@ def cmd_eval(args) -> int:
     return 1 if broken else 0
 
 
+def cmd_session_questions(args) -> int:
+    from evo_agents.hub.kg_eval_sessions import session_questions
+    from evo_agents.hub.transcripts import claude_roots
+    from evo_agents.kg.project import ProjectError, resolve_project
+
+    try:
+        if args.plan:
+            raise ValueError("--plan picks plans, which --from-sessions does not read")
+        overrides = _repo_overrides(args.repo)
+        project = resolve_project(args.project)
+    except (ValueError, ProjectError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    roots = [Path(path).expanduser() for path in args.transcripts] if args.transcripts else claude_roots()
+    found = session_questions(project, roots, since=time.time() - args.days * 86400, checkouts=overrides)
+    for question in found.questions:
+        sys.stdout.write(json.dumps(question, ensure_ascii=False) + "\n")
+    print(
+        f"{len(found.questions)} question(s) from {found.transcripts} transcript(s) of {project.name} in the last"
+        f" {args.days} day(s); of {found.searches} search(es) of its repos, {found.no_identifier} named no identifier"
+        f" and {found.unanswered} opened no file of the repo after",
+        file=sys.stderr,
+    )
+    for repo, count in found.per_repo():
+        print(f"  {repo}: {count}", file=sys.stderr)
+    return 0
+
+
 def cmd_eval_questions(args) -> int:
+    if args.from_sessions:
+        return cmd_session_questions(args)
     from evo_agents.hub.client import Hub, HubError, load_credentials
     from evo_agents.hub.kg_eval import plan_questions
     from evo_agents.kg.evaluate import project_checkouts
@@ -293,7 +324,9 @@ def _register_eval(ksub, with_project) -> None:
     run.set_defaults(func=cmd_eval)
 
     build = ksub.add_parser(
-        "eval-questions", help="print a question set for `kg eval` from the done steps of the hub's plans (JSONL)"
+        "eval-questions",
+        help="print a question set for `kg eval` from the done steps of the hub's plans, or from how agents searched"
+        " the code in this harness's sessions (JSONL)",
     )
     build.add_argument("--project", help="hub project (default: the project of the current directory)")
     build.add_argument("--plan", action="append", help="only this plan (repeatable)")
@@ -306,6 +339,23 @@ def _register_eval(ksub, with_project) -> None:
     )
     build.add_argument(
         "--repo", action="append", metavar="NAME=PATH", help="checkout of repo NAME (default: the harness's)"
+    )
+    build.add_argument(
+        "--from-sessions",
+        action="store_true",
+        help="questions from the code searches in the Claude Code transcripts of the harness, not from the plans",
+    )
+    build.add_argument(
+        "--days",
+        type=_bounded(1, 3650),
+        default=ev.DEFAULT_SESSION_DAYS,
+        help=f"with --from-sessions: tool calls of the last N days (default {ev.DEFAULT_SESSION_DAYS})",
+    )
+    build.add_argument(
+        "--transcripts",
+        action="append",
+        metavar="DIR",
+        help="with --from-sessions: a Claude Code projects directory to read (repeatable; default: this machine's)",
     )
     build.set_defaults(func=cmd_eval_questions)
 

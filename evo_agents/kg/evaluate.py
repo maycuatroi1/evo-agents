@@ -77,10 +77,13 @@ TUNE, HOLDOUT = "tune", "holdout"
 SPLITS = (TUNE, HOLDOUT)
 HOLDOUT_SHARE = 0.3  # of the questions of a set, by the hash of their id: changing it moves questions between parts
 # `kg eval-questions` (evo_agents.hub.kg_eval): the type of its questions, what of a step asks, the most files a step
-# may change and still make one question. Here so that building the command line imports nothing of the hub.
+# may change and still make one question; with --from-sessions (evo_agents.hub.kg_eval_sessions) the type of its
+# questions and the days of transcripts it reads. Here so that building the command line imports nothing of the hub.
 PLAN_STEP_TYPE = "plan-step"
 PLAN_TEXTS = ("title", "what")
 DEFAULT_MAX_FILES = 20
+SESSION_TYPE = "session"
+DEFAULT_SESSION_DAYS = 30
 WORD = re.compile(r"\w+")
 STOP_WORDS = frozenset(
     "the and for with from that this these those what where which when how does did into are was were has have had "
