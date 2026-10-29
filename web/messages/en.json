@@ -10151,6 +10151,9 @@
     "proposals": {
       "heading": "Proposals waiting ({count})",
       "newClaim": "New claim",
+      "inRun": "in run",
+      "openRun": "Open run #{id}",
+      "group": "{count, plural, one {# proposal} other {# proposals}} for one reason",
       "change": "change at rev {rev}",
       "accept": "Accept",
       "reject": "Reject",
