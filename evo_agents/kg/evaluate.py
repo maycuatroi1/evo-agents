@@ -41,6 +41,16 @@ output, the tokens per hit (the mean tokens over hit@5) and per answer found (th
 nothing was found, and the 95th percentile of the time a call took (nearest rank). Tokens are estimated as in the
 hub's handoff: UTF-8 bytes / 3, rounded up.
 
+Line answers. A question may also give ``lines``: an object from a file (``repo:path``, or a path) to its answer
+ranges, ``{"app:app/search.py": [[10, 24], "40-52"]}``, or a list of ``"repo:path:10-24"``; ranges are closed and count
+from line 1. The files of ``lines`` are answer files too. A set with ``lines`` (or ``--acc``) adds columns: the lines
+each method returned in order, a result being the lines its node carries (a symbol's ``line`` to ``end_line``, a
+section's ``span``, the passage ``kg_search`` matched), the whole file for a result that is only a file, cut at
+``line_budget`` lines (LINE_BUDGET, 500), are scored as precision, recall and F1 over the distinct lines, Context
+Efficiency (answer lines over all lines returned, a line twice counting twice) and nDCG over the lines in order; and
+Acc@k, the share of questions whose answer files (with ``files``) or nodes (with ``nodes``) are all in the first k
+results. Grep's lines are the ones it prints. Without ``lines`` and ``--acc`` the columns are the ones before.
+
 The command only reads: the graph through the tools of a local store or the hub, the checkouts through git.
 """
 
@@ -72,6 +82,11 @@ GREP_LINES_PER_FILE = 3
 GREP_LINE_CHARS = 200
 GREP_TIMEOUT = 60.0
 ALL_TYPES = "all"
+LINE_BUDGET = 500  # lines a method may return and be scored on, with ``lines`` answers (--line-budget)
+ACC_KS = (1, 5, 10)
+SPAN = re.compile(r"lines? (\d+)(?:-(\d+))?")
+RANGE = re.compile(r"(\d+)\s*-\s*(\d+)")
+LINE_ENTRY = re.compile(r"(?P<file>.+):(?P<start>\d+)-(?P<end>\d+)")
 HIT_K = 5  # hit@5, capped Recall@5 and the tokens per hit and per answer found read the first HIT_K results
 TUNE, HOLDOUT = "tune", "holdout"
 SPLITS = (TUNE, HOLDOUT)
@@ -104,6 +119,7 @@ class Question:
     repo: str | None = None
     files: tuple[tuple[str | None, str], ...] = ()  # (repo or None, path)
     nodes: tuple[str, ...] = ()
+    lines: tuple[tuple[str | None, str, int, int], ...] = ()  # (repo or None, path, first line, last line), closed
 
     @property
     def answers(self) -> int:
@@ -145,6 +161,7 @@ class Outcome:
     ms: float = 0.0
     error: str | None = None
     skipped: str | None = None  # why the method could not run on this question: it is left out of the numbers
+    line_stats: dict | None = None  # the line scores, for a question with ``lines`` (``score_lines``)
 
     @property
     def found(self) -> int:
@@ -168,7 +185,9 @@ class Outcome:
         return 0.0 if best is None else 1.0 / best
 
     def to_json(self) -> dict:
+        extra = {"lines": self.line_stats} if self.line_stats is not None else {}
         return {
+            **extra,
             "id": self.question.id,
             "type": self.question.type,
             "split": self.question.split,
@@ -230,6 +249,45 @@ def _optional(entry: dict, key: str, problems: list[str]) -> str | None:
     return None
 
 
+def _range(value, problems: list[str]) -> tuple[int, int] | None:
+    if isinstance(value, str) and (m := RANGE.fullmatch(value.strip())):
+        value = [int(m[1]), int(m[2])]
+    ok = isinstance(value, list) and len(value) == 2 and all(type(v) is int for v in value)
+    if not ok or not 1 <= value[0] <= value[1]:
+        problems.append('a line range is [first, last] or "first-last", from line 1')
+        return None
+    return value[0], value[1]
+
+
+def _line_answers(value, problems: list[str]) -> list[tuple[str | None, str, int, int]]:
+    """``lines`` of a question: {"repo:path": [ranges]} or ["repo:path:first-last", ...]."""
+    if value is None:
+        return []
+    out: list[tuple[str | None, str, int, int]] = []
+    if isinstance(value, list) and all(isinstance(v, str) for v in value):
+        for text in value:
+            m = LINE_ENTRY.fullmatch(text.strip())
+            if not m:
+                problems.append("lines entries read repo:path:first-last")
+                continue
+            span = _range(f"{m['start']}-{m['end']}", problems)
+            if span:
+                out.append((*split_file(m["file"]), *span))
+    elif isinstance(value, dict) and value:
+        for name, ranges in value.items():
+            if not name.strip() or not isinstance(ranges, list) or not ranges:
+                problems.append("lines maps each file to a list of ranges")
+                continue
+            pair = isinstance(ranges, list) and len(ranges) == 2 and all(type(v) is int for v in ranges)
+            for item in [ranges] if pair else ranges:
+                span = _range(item, problems)
+                if span:
+                    out.append((*split_file(name.strip()), *span))
+    else:
+        problems.append("lines is an object from a file to its ranges, or a list of repo:path:first-last")
+    return out
+
+
 def parse_question(entry, number: int) -> tuple[Question | None, list[str]]:
     """One line of a question set, or the problems that keep it from being one."""
     if not isinstance(entry, dict):
@@ -239,7 +297,8 @@ def parse_question(entry, number: int) -> tuple[Question | None, list[str]]:
     kind = _optional(entry, "type", problems)
     files = _strings(entry.get("files"), "files", problems)
     nodes = _strings(entry.get("nodes"), "nodes", problems)
-    if not files and not nodes and not problems:
+    lines = _line_answers(entry.get("lines"), problems)
+    if not files and not nodes and not lines and not problems:
         problems.append("no answer: give files, nodes or both")
     raw_id = entry.get("id", f"line {number}")
     if not isinstance(raw_id, (str, int)) or isinstance(raw_id, bool):
@@ -248,14 +307,19 @@ def parse_question(entry, number: int) -> tuple[Question | None, list[str]]:
     repo = _optional(entry, "repo", problems)
     if problems:
         return None, problems
+    answer_files = [split_file(f) for f in files]
+    for repo_name, path, _, _ in lines:  # the files of the line answers are answer files
+        if (repo_name, path) not in answer_files:
+            answer_files.append((repo_name, path))
     question = Question(
         id=str(raw_id),
         text=text,
         type=kind,
         project=project,
         repo=repo,
-        files=tuple(split_file(f) for f in files),
+        files=tuple(answer_files),
         nodes=tuple(nodes),
+        lines=tuple(lines),
     )
     return question, []
 
@@ -376,10 +440,101 @@ def file_ranks(question: Question, files: list[tuple[str, str]]) -> list[int | N
     ]
 
 
+# -- scoring lines -----------------------------------------------------------------------------------------------
+
+
+def _no_length(repo: str | None, path: str) -> int | None:
+    return None
+
+
+Item = tuple  # (repo or None, path or None, first line or None, last line or None): whole file when no lines
+
+
+def node_span(node: dict, matched: dict | None = None) -> tuple[int | None, int | None]:
+    """The lines a result node stands for: the passage a search matched best, a section's ``span``, a symbol's
+    ``line`` to ``end_line``; (None, None) for a node that is the whole file."""
+    props = node.get("props") or {}
+    shown = ((matched or {}).get(node.get("id")) or {}).get("lines")
+    for text in (shown, props.get("span")):
+        m = SPAN.fullmatch(text) if isinstance(text, str) else None
+        if m:
+            first = int(m[1])
+            return first, max(int(m[2] or first), first)
+    first, last = props.get("line"), props.get("end_line")
+    if type(first) is int and first >= 1:
+        return first, last if type(last) is int and last >= first else first
+    return None, None
+
+
+def node_items(nodes: list[dict], matched: dict | None = None) -> list[Item]:
+    """The line ranges of the result nodes in order; a node with no file adds none."""
+    items: list[Item] = []
+    for node in nodes:
+        repo, path = node_file(node)
+        if path:
+            items.append((repo, path, *node_span(node, matched)))
+    return items
+
+
+def _expand(item: Item, room: int, file_length: Callable[[str | None, str], int | None]) -> Iterable[tuple]:
+    repo, path, first, last = item
+    if first is None:  # the file whole; its length when a checkout has it, else what room is left
+        first, last = 1, file_length(repo, path) or room
+    for number in range(first, min(last, first + room - 1) + 1):
+        yield repo, path, number
+
+
+def score_lines(
+    question: Question,
+    items: list[Item],
+    budget: int,
+    file_length: Callable[[str | None, str], int | None] = _no_length,
+) -> dict:
+    """The line scores of one output: its ``items`` in order cut at ``budget`` lines, against the answer lines."""
+    owner = {path: repo for repo, path, _, _ in question.lines}
+    wanted = {(path, n) for _, path, first, last in question.lines for n in range(first, last + 1)}
+    emitted: list[tuple] = []
+    for item in items:
+        if len(emitted) >= budget:
+            break
+        for repo, path, number in _expand(item, budget - len(emitted), file_length):
+            same = owner.get(path) in (None, repo) or repo is None
+            emitted.append((path, number) if same else (repo, path, number))
+    distinct = set(emitted)
+    inside = len(distinct & wanted)
+    precision = inside / len(distinct) if distinct else 0.0
+    recall = inside / len(wanted) if wanted else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if inside else 0.0
+    efficiency = sum(1 for key in emitted if key in wanted) / len(emitted) if emitted else 0.0
+    seen: set = set()
+    dcg = 0.0
+    for place, key in enumerate(emitted, 1):
+        if key in wanted and key not in seen:
+            dcg += 1 / math.log2(place + 1)
+        seen.add(key)
+    ideal = sum(1 / math.log2(place + 1) for place in range(1, min(len(wanted), budget) + 1))
+    return {
+        "returned": len(emitted),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        "context_efficiency": round(efficiency, 4),
+        "ndcg": round(dcg / ideal, 4) if ideal else 0.0,
+    }
+
+
 # -- the methods -------------------------------------------------------------------------------------------------
 
 
-def run_kg(session, method: str, question: Question, limit: int, budget_tokens: int) -> Outcome:
+def run_kg(
+    session,
+    method: str,
+    question: Question,
+    limit: int,
+    budget_tokens: int,
+    line_budget: int = LINE_BUDGET,
+    file_length: Callable[[str | None, str], int | None] = _no_length,
+) -> Outcome:
     """Ask the graph through ``session.call`` (a local Session or the hub's RemoteSession) as an agent would."""
     if method == "kg_search":
         args, key = {"query": question.text, "limit": limit}, "results"
@@ -391,7 +546,7 @@ def run_kg(session, method: str, question: Question, limit: int, budget_tokens: 
     text = "\n".join(b.get("text", "") for b in result.get("content") or [] if isinstance(b, dict))
     data = result.get("structuredContent") or {}
     nodes = [] if result.get("isError") else [n for n in data.get(key) or [] if isinstance(n, dict)]
-    return Outcome(
+    outcome = Outcome(
         question=question,
         method=method,
         ranks=node_ranks(question, nodes),
@@ -400,6 +555,10 @@ def run_kg(session, method: str, question: Question, limit: int, budget_tokens: 
         ms=ms,
         error=text.removeprefix("error: ")[:300] if result.get("isError") else None,
     )
+    if question.lines:
+        items = node_items(nodes, data.get("matched") if method == "kg_search" else None)
+        outcome.line_stats = score_lines(question, items, line_budget, file_length)
+    return outcome
 
 
 def grep_terms(text: str) -> list[str]:
@@ -452,23 +611,38 @@ def grep_checkout(repo: str, checkout: Path, terms: list[str], ref: str | None) 
 
 def grep_output(files: list[GrepFile], budget_tokens: int) -> tuple[str, list[tuple[str, str]]]:
     """The ``path:line:text`` lines of the ranked files within the budget, and the files they show."""
+    text, shown, _ = grep_lines(files, budget_tokens)
+    return text, shown
+
+
+def grep_lines(files: list[GrepFile], budget_tokens: int) -> tuple[str, list[tuple[str, str]], list[Item]]:
+    """``grep_output`` and the lines it prints, as one-line items."""
     budget = budget_tokens * BYTES_PER_TOKEN
     lines: list[str] = []
     used = 0
     shown: list[tuple[str, str]] = []
+    items: list[Item] = []
     for entry in files:
         for number, content in entry.shown:
             line = f"{entry.path}:{number}:{content}"
             if used + len(line.encode()) + 1 > budget:
-                return "\n".join(lines), shown
+                return "\n".join(lines), shown, items
             used += len(line.encode()) + 1
             lines.append(line)
+            if number.isdigit():
+                items.append((entry.repo, entry.path, int(number), int(number)))
             if not shown or shown[-1] != (entry.repo, entry.path):
                 shown.append((entry.repo, entry.path))
-    return "\n".join(lines), shown
+    return "\n".join(lines), shown, items
 
 
-def run_grep(question: Question, checkouts: dict[str, Path], budget_tokens: int, ref: str | None) -> Outcome:
+def run_grep(
+    question: Question,
+    checkouts: dict[str, Path],
+    budget_tokens: int,
+    ref: str | None,
+    line_budget: int = LINE_BUDGET,
+) -> Outcome:
     if question.repo is not None:
         if question.repo not in checkouts:
             return Outcome(question, "grep", skipped=f"no checkout of repo {question.repo}")
@@ -486,11 +660,14 @@ def run_grep(question: Question, checkouts: dict[str, Path], budget_tokens: int,
     except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
         return Outcome(question, "grep", ranks=[None] * question.answers, error=str(exc)[:300])
     found.sort(key=lambda f: (-len(f.terms), -f.lines, f.repo, f.path))
-    text, shown = grep_output(found, budget_tokens)
+    text, shown, items = grep_lines(found, budget_tokens)
     ms = (time.perf_counter() - start) * 1000
-    return Outcome(
+    outcome = Outcome(
         question, "grep", ranks=file_ranks(question, shown), count=len(shown), tokens=estimate_tokens(text), ms=ms
     )
+    if question.lines:
+        outcome.line_stats = score_lines(question, items, line_budget)
+    return outcome
 
 
 # -- running and reporting ---------------------------------------------------------------------------------------
@@ -532,7 +709,39 @@ def p95(values: list[float]) -> float:
     return ordered[max(math.ceil(0.95 * len(ordered)) - 1, 0)]
 
 
-def summarize(outcomes: list[Outcome], kind: str, method: str) -> dict:
+def acc_rate(ran: list[Outcome], k: int, nodes: bool) -> float | None:
+    """The share of the questions with files (or with nodes) whose answers are all in the first ``k`` results."""
+    picked = []
+    for o in ran:
+        files = len(o.question.files)
+        mine = o.ranks[files:] if nodes else o.ranks[:files]
+        if mine:
+            picked.append(all(rank is not None and rank <= k for rank in mine))
+    return round(sum(picked) / len(picked), 4) if picked else None
+
+
+def line_row(ran: list[Outcome]) -> dict:
+    """The columns of the line scores, over the outcomes that have them."""
+    scored = [o.line_stats for o in ran if o.line_stats is not None]
+    row: dict = {}
+    for key, name in (
+        ("precision", "line_precision"),
+        ("recall", "line_recall"),
+        ("f1", "line_f1"),
+        ("context_efficiency", "context_efficiency"),
+        ("ndcg", "ndcg_lines"),
+    ):
+        row[name] = round(sum(s[key] for s in scored) / len(scored), 4) if scored else None
+    row["line_questions"] = len(scored)
+    row["lines_returned"] = round(sum(s["returned"] for s in scored) / len(scored), 1) if scored else None
+    for k in ACC_KS:
+        row[f"acc_file@{k}"] = acc_rate(ran, k, nodes=False)
+    for k in ACC_KS:
+        row[f"acc_func@{k}"] = acc_rate(ran, k, nodes=True)
+    return row
+
+
+def summarize(outcomes: list[Outcome], kind: str, method: str, extended: bool = False) -> dict:
     """One row of the report: the numbers of ``method`` over the outcomes it ran on."""
     ran = [o for o in outcomes if o.skipped is None]
     n = len(ran)
@@ -553,10 +762,10 @@ def summarize(outcomes: list[Outcome], kind: str, method: str) -> dict:
     row["tokens_per_hit"] = round(mean / hit, 1) if hit else None
     row["tokens_per_file"] = round(mean / recall, 1) if recall else None
     row["p95_ms"] = round(p95([o.ms for o in ran]), 1)
-    return row
+    return {**row, **line_row(ran)} if extended else row
 
 
-def report_rows(outcomes: list[Outcome], methods: Iterable[str]) -> list[dict]:
+def report_rows(outcomes: list[Outcome], methods: Iterable[str], extended: bool = False) -> list[dict]:
     """A row per question type and method, in the order the types first appear, then one per method over all."""
     types = list(dict.fromkeys(o.question.type for o in outcomes))
     rows = []
@@ -564,7 +773,7 @@ def report_rows(outcomes: list[Outcome], methods: Iterable[str]) -> list[dict]:
         for method in methods:
             picked = [o for o in outcomes if o.method == method and kind in (ALL_TYPES, o.question.type)]
             if picked:
-                rows.append(summarize(picked, kind, method))
+                rows.append(summarize(picked, kind, method, extended))
     return rows
 
 
@@ -579,11 +788,16 @@ def evaluate(
     grep_ref: str | None = None,
     question_set: QuestionSet | None = None,
     split: str | None = None,
+    line_budget: int = LINE_BUDGET,
+    acc: bool = False,
 ) -> Report:
     """Run every method on every question. ``session_for`` and ``checkouts_for`` take a question's project (None:
     the default one) and are called once per project. ``question_set`` and ``split`` are only named in the settings:
-    pass the questions of the split."""
+    pass the questions of the split. A question with ``lines`` is scored on the lines too, within ``line_budget``
+    lines, and the report then has the line and Acc@k columns, as with ``acc``."""
     methods = tuple(methods)
+    extended = acc or any(q.lines for q in questions)
+    lengths: dict[tuple[str | None, str | None, str], int | None] = {}
     sessions: dict[str | None, object] = {}
     checkouts: dict[str | None, dict[str, Path]] = {}
     outcomes: list[Outcome] = []
@@ -592,11 +806,18 @@ def evaluate(
             if method == "grep":
                 if question.project not in checkouts:
                     checkouts[question.project] = checkouts_for(question.project)
-                outcomes.append(run_grep(question, checkouts[question.project], budget_tokens, grep_ref))
+                outcomes.append(run_grep(question, checkouts[question.project], budget_tokens, grep_ref, line_budget))
                 continue
             if question.project not in sessions:
                 sessions[question.project] = session_for(question.project)
-            outcomes.append(run_kg(sessions[question.project], method, question, limit, budget_tokens))
+            file_length = _no_length
+            if question.lines:
+                if question.project not in checkouts:
+                    checkouts[question.project] = checkouts_for(question.project)
+                file_length = _length_reader(checkouts[question.project], grep_ref, lengths, question.project)
+            outcomes.append(
+                run_kg(sessions[question.project], method, question, limit, budget_tokens, line_budget, file_length)
+            )
     settings = {
         "questions": len(questions),
         "methods": list(methods),
@@ -606,8 +827,37 @@ def evaluate(
         "set": question_set.name if question_set else None,
         "version": question_set.version if question_set else None,
         "split": split or ALL_TYPES,
+        **({"line_budget": line_budget} if extended else {}),
     }
-    return Report(settings, report_rows(outcomes, methods), outcomes)
+    return Report(settings, report_rows(outcomes, methods, extended), outcomes)
+
+
+def _length_reader(checkouts: dict[str, Path], ref: str | None, cache: dict, project: str | None):
+    """A function (repo, path) -> the lines of that file in a checkout (at ``ref``), None when no checkout has it."""
+
+    def length(repo: str | None, path: str) -> int | None:
+        key = (project, repo, path)
+        if key not in cache:
+            cache[key] = None
+            for name, root in sorted(checkouts.items()):
+                if repo is not None and name != repo:
+                    continue
+                try:
+                    if ref:
+                        out = subprocess.run(
+                            ["git", "-C", str(root), "show", f"{ref}:{path}"], capture_output=True, timeout=GREP_TIMEOUT
+                        )
+                        data = out.stdout if out.returncode == 0 else None
+                    else:
+                        data = (root / path).read_bytes() if (root / path).is_file() else None
+                except (OSError, subprocess.TimeoutExpired):
+                    data = None
+                if data is not None:
+                    cache[key] = len(data.splitlines())
+                    break
+        return cache[key]
+
+    return length
 
 
 COLUMNS = (
@@ -632,11 +882,23 @@ def _cell(value, fmt: str) -> str:
     return "-" if value is None else fmt.format(value)
 
 
+LINE_COLUMNS = (
+    ("P@L", "line_precision", "{:.3f}"),
+    ("R@L", "line_recall", "{:.3f}"),
+    ("F1@L", "line_f1", "{:.3f}"),
+    ("CE", "context_efficiency", "{:.3f}"),
+    ("NDCG@L", "ndcg_lines", "{:.3f}"),
+    *((f"ACC{k} FILE", f"acc_file@{k}", "{:.3f}") for k in ACC_KS),
+    *((f"ACC{k} FUNC", f"acc_func@{k}", "{:.3f}") for k in ACC_KS),
+)
+
+
 def render(report: Report) -> str:
     """The rows as a table, then a line for each method that failed or skipped questions."""
-    table = [[title for title, _, _ in COLUMNS]]
-    table += [[_cell(row[key], fmt) for _, key, fmt in COLUMNS] for row in report.rows]
-    widths = [max(len(cells[i]) for cells in table) for i in range(len(COLUMNS))]
+    columns = COLUMNS + (LINE_COLUMNS if "line_budget" in report.settings else ())
+    table = [[title for title, _, _ in columns]]
+    table += [[_cell(row[key], fmt) for _, key, fmt in columns] for row in report.rows]
+    widths = [max(len(cells[i]) for cells in table) for i in range(len(columns))]
     lines = ["  ".join(c.ljust(w) for c, w in zip(cells, widths, strict=True)).rstrip() for cells in table]
     s = report.settings
     named = f"set {s['set']}" + (f" v{s['version']}" if s.get("version") else "") + ", " if s.get("set") else ""
@@ -644,6 +906,7 @@ def render(report: Report) -> str:
     lines.append(
         f"{named}{s['questions']} question(s){part}; kg_search limit {s['limit']}, kg_context and grep within"
         f" {s['budget_tokens']} tokens; grep on {s['grep_ref'] or 'the working tree'}"
+        + (f"; line scores within {s['line_budget']} lines" if "line_budget" in s else "")
     )
     for method in report.settings["methods"]:
         mine = [o for o in report.outcomes if o.method == method]
