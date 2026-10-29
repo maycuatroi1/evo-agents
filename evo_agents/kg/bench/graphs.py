@@ -33,6 +33,7 @@ from evo_agents.kg.bench.tasks import SOURCE_ID, Task
 from evo_agents.kg.project import Project, load_project_at
 
 GITHUB_URL = "https://github.com/{repo}.git"
+RENAMED = {"mui/material": "mui/material-ui"}  # a set names the repo by a name GitHub no longer serves
 GIT_TIMEOUT = 3600.0
 MARKER = "bench.json"
 SLUG = re.compile(r"[^a-z0-9._-]+")
@@ -136,7 +137,7 @@ def ensure_commit(lay: Layout, task: Task, git_url: str = GITHUB_URL) -> Path:
     clone = lay.clone(task.repo)
     if not clone.is_dir():
         clone.parent.mkdir(parents=True, exist_ok=True)
-        url = git_url.format(repo=task.repo)
+        url = git_url.format(repo=RENAMED.get(task.repo.lower(), task.repo))
         out = _git("clone", "--bare", "--quiet", url, str(clone))
         if out.returncode != 0:
             raise BenchError(f"cannot clone {url}: {out.stderr.strip()[:300]}")
@@ -219,6 +220,8 @@ def build_graph(lay: Layout, task: Task, *, git_url: str = GITHUB_URL) -> Built:
                 return Built(task, False, time.monotonic() - start, f"build: {'; '.join(report.errors[:2])}")
     except BenchError as exc:
         return Built(task, False, time.monotonic() - start, str(exc))
+    except Exception as exc:  # a build that crashes fails its task, not the set's whole run
+        return Built(task, False, time.monotonic() - start, f"build crashed: {type(exc).__name__}: {str(exc)[:200]}")
     seconds = round(time.monotonic() - start, 1)
     marker = {"repo": task.repo, "commit": task.commit, "extractor": lay.extractor, "seconds": seconds}
     (lay.project_dir(task) / MARKER).write_text(json.dumps(marker) + "\n", encoding="utf-8")

@@ -129,7 +129,7 @@ def annotation_class(expr: ast.expr | None) -> ast.expr | None:
         name = (dotted(expr.value) or [""])[-1]
         args = _args(expr)
         if name in WRAPPERS:
-            return annotation_class(args[0])
+            return annotation_class(args[0]) if args else None
         return annotation_class(_one(args)) if name == "Union" else None
     return expr if expr is not None and dotted(expr) else None
 
