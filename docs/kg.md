@@ -271,12 +271,16 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - That score is then weighed by what the node is (`search.weight`). A word of the query that reads as a name (it holds
   `_`, `.`, `/` or `:`, mixes letters and digits, is camelCase or all capitals: `Store.search`, `HUB_DEGREE`) counts
   1.5 for the node it names (its name, its path or the end of its id), and such a node that no text way found ranks as
-  the best of them. Background counts 0.6 unless the query asks for it: tests (`tests/`, `test_*.py`, `*.test.ts`),
+  the best of them. A file name or its stem (`store.py`, `kg_health_eval`) names the file itself, found through the
+  path column of the index and ranked as the best text match, not the symbols of the file. Background counts 0.6
+  unless the query asks for it: tests (`tests/`, `test_*.py`, `*.test.ts`),
   migrations, fixtures and golden files, generated JSON (`bundle-budget.json`, catalogs, baselines), closed plans
   (`plans/completed/`, a plan whose steps are all done, and its steps), reports and `docs/history.md`. Each kind is
   lifted by its own words only (`test`, `migration`, `fixture`, `golden`, `completed`, `đã đóng`, `report`,
   `history`, `lịch sử`, ...; `BACKGROUND_WORDS`): a closing step's title that says `đóng` asks for no history. On the
-  tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709.
+  tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709. A file known by its path
+  alone (`.png`, `.svg`, `.drawio`, a video) counts 0.25 (`ASSET_WEIGHT`), since a slug in its path outranks the page
+  that holds the words, unless the query asks for an image (`image`, `screenshot`, `png`, `sơ đồ`, `hình ảnh`, ...).
 - A project whose semantic mode is `on` also ranks by meaning: the vectors of a local embedding model, fused with the
   ranking by words by reciprocal rank fusion. Off by default, and a graph without vectors searches as above
   ([docs/kg-semantic.md](kg-semantic.md)).
