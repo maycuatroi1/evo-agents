@@ -7,9 +7,12 @@ when) and its feedback memories of the project's scope. The block is built by ru
 
 - scope: an item cites code as ``code:REPO:PATH`` (a decision's evidence, question, context and answer; a memory's
   text). It matches a run by path (the run's prompt, which holds its plan step, names the path: 3), by directory (it
-  names a directory of the path: 2) or by repo (the run works in the repo: 1). The project is always the run's own, the
-  guest of the answer, and a decision of category architecture or scope adds 1 to a run that works on a plan. An item
-  that matches by none of the three is not in the block, and the block is empty when none is;
+  names a directory of the path: 2) or by repo (the run works in the repo: 1). A decision asked on the run's plan
+  matches it too, by its step (3) or by the plan (2), whatever it cites; a feedback memory that cites no code is a rule
+  of the whole project and matches every run of it (0). The project is always the run's own, the guest of the answer,
+  and a decision of category architecture or scope adds 1 to a run that works on a plan. An item that matches by none
+  of these is not in the block (a memory that cites code only of repos the run does not work in, a decision of no plan
+  of the run that cites none), and the block is empty when none is;
 - order: by match, then newest; the block stops at BLOCK_BYTES and at the room the prompt leaves under MAX_PROMPT_BYTES,
   and each line names its source, to open with ``memory_get`` or ``decision show``.
 
@@ -21,7 +24,7 @@ hold. The audiences it shows are noted to the run (``run_audience``). With the k
 returned as it came, byte for byte.
 
 ``context_answer_loads`` records each answer loaded: the run, the source, its id and the scope key that matched
-(``repo:REPO``, ``dir:REPO:DIR`` or ``path:REPO:PATH``). ``load_counts`` counts them a day or a week, and ``week_counts``
+(``repo:REPO``, ``dir:REPO:DIR``, ``path:REPO:PATH``, ``plan:PLAN``, ``step:PLAN:STEP`` or ``project:PROJECT``). ``load_counts`` counts them a day or a week, and ``week_counts``
 sets them against the runs queued (the daily signal and the weekly read: ``context_answer_reuse``).
 """
 
@@ -55,6 +58,7 @@ CANDIDATES = 200  # answers of each source read, newest first
 EXCLUDED = frozenset({"credential", "wait", "release", "loop"})  # categories of decision that never load
 SOURCES = ("decision", "memory")  # context_answer_loads.source
 PATH, DIR, REPO = 3, 2, 1  # what a scope key weighs
+STEP, PLAN, PROJECT = 3, 2, 0  # a decision of the run's plan step, of its plan; a feedback memory that cites no code
 CATEGORY_BONUS = frozenset({"architecture", "scope"})  # categories that add 1 to a run on a plan
 QUESTION_CHARS, ANSWER_CHARS = 300, 500
 BUCKETS = ("day", "week")
@@ -66,6 +70,8 @@ _RUN = (
         tables.runs.c.project_id,
         tables.runs.c.repo,
         tables.runs.c.repos,
+        tables.runs.c.plan_id,
+        tables.runs.c.step_key,
         tables.runs.c.dispatched_by.label("owner_id"),
         tables.projects.c.name.label("project"),
         tables.users.c.login,
@@ -79,6 +85,8 @@ _DECISIONS = (
     select(
         tables.decisions.c.id,
         tables.decisions.c.run_id,
+        tables.decisions.c.plan_id,
+        tables.decisions.c.step_key,
         tables.decisions.c.category,
         tables.decisions.c.question,
         tables.decisions.c.context,
@@ -168,6 +176,16 @@ def match(found: set[str], repos: set[str], text: str) -> tuple[int, str] | None
     return best
 
 
+def on_plan(plan_id: str | None, step_key: str | None, run) -> tuple[int, str] | None:
+    """How a decision asked on plan ``plan_id``, step ``step_key``, matches ``run``: its weight and scope key, by the
+    run's step or else its plan; None when the decision is of no plan or of another than the run's."""
+    if not plan_id or plan_id != run.plan_id:
+        return None
+    if step_key and step_key == run.step_key:
+        return STEP, f"step:{plan_id}:{step_key}"
+    return PLAN, f"plan:{plan_id}"
+
+
 def _repos(run) -> set[str]:
     names = {run.repo} if run.repo else set()
     for entry in run.repos or []:
@@ -197,9 +215,10 @@ async def _decisions(conn, run, repos: set[str], text: str) -> list[Answer]:
     found = []
     for row in (await conn.execute(_DECISIONS, {"project_id": run.project_id})).all():
         refs = citations(" ".join([row.question, row.context or "", row.answer_text or "", *(row.evidence or [])]))
-        hit = match(refs, repos, text)
-        if hit is None:
+        hits = [h for h in (match(refs, repos, text), on_plan(row.plan_id, row.step_key, run)) if h is not None]
+        if not hits:
             continue
+        hit = max(hits, key=lambda h: h[0])  # the code it cites on a tie
         weight = hit[0] + (1 if row.category in CATEGORY_BONUS and run.kind in PLAN_KINDS else 0)
         found.append(
             Answer("decision", row.id, hit[1], weight, row.answered_at, _decision_line(row), run_id=row.run_id)
@@ -212,7 +231,8 @@ async def _memories(conn, run, access, repos: set[str], text: str) -> list[Answe
     for row in (await conn.execute(_FEEDBACK, {"project_id": run.project_id, "owner_id": run.owner_id})).all():
         if not access.visible(row.label, AGENT_SINK):
             continue
-        hit = match(citations(row.body), repos, text)
+        refs = citations(row.body)
+        hit = match(refs, repos, text) if refs else (PROJECT, f"project:{run.project}")  # no code: the whole project
         if hit is None:
             continue
         line = (
