@@ -1,5 +1,6 @@
 import type { Route } from "next";
 
+import { projectHref } from "@/components/shell/nav";
 import { pluginPageHref } from "@/lib/plugin-queries";
 
 import { PAGE, PLUGIN } from "./api";
@@ -27,4 +28,9 @@ export function baselineHref(project: string, slug: string, number: number): Rou
 /** The plugin's page in the project (its config: the weekly baseline's day, time and zone). */
 export function settingsHref(project: string): Route {
   return `/p/${encodeURIComponent(project)}/plugins/${PLUGIN}` as Route;
+}
+
+/** An agent run's page, the run a proposal came from. */
+export function runHref(project: string, id: number): Route {
+  return projectHref(project, `runs/${id}`);
 }

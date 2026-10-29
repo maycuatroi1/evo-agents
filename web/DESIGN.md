@@ -1910,8 +1910,11 @@ Shared pieces built on them:
   is a writer's, Signals and Settings sit beside it. A canvas (`/canvases/{slug}`, `?archived=1` with archived claims)
   heads with the product's name and slug, Export JSON (`evo-canvas/1`, which the browser saves) and a writer's Add
   claim; then the banner of a baseline that waits for review, the claims by status in one `MetricStrip`, the proposals
-  that wait (new claims and changes from @strategist, changes of status from the value check, each with its fields
-  before and after, Accept or Reject with a reason), the grid, and the baselines before. The grid is the printed Lean
+  that wait (new claims and changes from @strategist, changes of status from the value check; those one writer made
+  for one reason, a brainstorm's, sit under that reason said once with who made them and the run as `RunRef`; a new
+  claim reads as the claim it would make, its cell and confidence as tags, its text, its test card as the claim's page
+  shows one in a `surface-sunken` well, then its signal keys; a change shows its fields before and after; Accept or
+  Reject with a reason), the grid, and the baselines before. The grid is the printed Lean
   Canvas from xl (ten tracks: Problem, Solution over Key metrics, the value proposition, Unfair advantage over Channels,
   Customer segments, then Cost structure beside Revenue streams), two columns from md, one on a phone; the cells come in
   the order Lean Canvas numbers them, which the keyboard and a screen reader follow, and each shows its number. A cell
