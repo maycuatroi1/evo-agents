@@ -3,7 +3,7 @@
 `kg_search` ranks by words (BM25 over the full-text index, [docs/kg.md](kg.md#search)). A project can also have it rank
 by meaning: each row of the index that has a body gets the vector of a multilingual embedding model, the query gets
 one too, and the two rankings are fused. The model runs on the machine that builds the graph, the hub's worker or a
-member's machine, never through a third party's API. Code is `evo_agents/kg/semantic.py`.
+member's machine, never through a third party's API unless the API backend below is turned on. Code is `evo_agents/kg/semantic.py`.
 
 It is off by default, and a project turns it on only when its own question set says it helps. The hub's KG optimize
 loop turns it on for a project only when the holdout part of its set gives hit@5 at least 5 points above the search
@@ -100,3 +100,17 @@ EVO_KG_MODEL_DIR=/var/lib/evo-hub/models python -c \
 
 The hub process loads the model on the first search of a project whose graph is `on`, once a process, and keeps each
 graph's vectors in memory (`MAX_MATRICES`, about 80 MB for 20,000 rows).
+
+## The API backend (opt-in)
+
+For a host with no GPU and no CPU time to spare, `EVO_KG_EMBEDDINGS=openrouter` makes `BAAI/bge-m3` come from
+OpenRouter's embeddings API (`baai/bge-m3`, 1,024 dimensions, key in `OPENROUTER_API_KEY`) instead of fastembed. The
+default stays the local model, the base dependencies are unchanged (the call uses the standard library; numpy comes
+with the `semantic` extra), and **the texts of the rows leave the machine**, so do not use it on a graph that holds
+private text. The model name, the cache and the stored vectors are the same as the local ones: the cache, keyed by the
+digest of a row's text, reuses a vector across the snapshots of a repo.
+
+Each call adds its tokens and cost to a ledger (`EVO_KG_EMBED_LEDGER`, default `<model dir>/openrouter-spend.jsonl`),
+and the backend stops at 55 USD (`OPENROUTER_MAX_USD`). Price on 2026-10-29: 0.01 USD per million tokens, provider
+Parasail. On a sample of 48 rows of this code base the API vectors and the local fastembed ones had a cosine of
+0.99997 at the least and 0.999998 on average, and the same top 5 neighbours.

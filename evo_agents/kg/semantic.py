@@ -1,5 +1,5 @@
-"""Search by meaning next to BM25: a multilingual embedding model run on this machine (the hub's or a worker's, never a
-third party's API), a vector for each row of the full-text index that has a body, and the two rankings fused.
+"""Search by meaning next to BM25: a multilingual embedding model run on this machine (the hub's or a worker's; the API backend
+below is opt-in and sends texts to OpenRouter), a vector for each row of the full-text index that has a body, and the two rankings fused.
 
 A project chooses, ``off`` by default (``Settings``): ``off`` writes no vector and searches by words alone; ``index``
 writes the vectors with each build, but ``kg_search`` still ranks by words unless the caller asks for both (``kg eval
@@ -161,6 +161,103 @@ class FastEmbedder(Embedder):
         return next(iter(self.model.query_embed(text)))
 
 
+OPENROUTER_URL = "https://openrouter.ai/api/v1/embeddings"
+OPENROUTER_MODELS = {"BAAI/bge-m3": "baai/bge-m3"}
+OPENROUTER_BATCH = 64
+OPENROUTER_USD_PER_MTOKEN = 0.01  # baai/bge-m3 on OpenRouter, measured 2026-10-29 (provider Parasail)
+OPENROUTER_MAX_USD = 55.0  # a run that would pass this stops; the owner decides past 60
+BACKEND_ENV = "EVO_KG_EMBEDDINGS"  # "openrouter" turns the API backend on; unset (default) is the local fastembed model
+
+
+def spend_ledger() -> Path:
+    """Where the API backend adds up what it spent: EVO_KG_EMBED_LEDGER, else next to the models (JSON lines)."""
+    return Path(os.environ.get("EVO_KG_EMBED_LEDGER") or model_dir() / "openrouter-spend.jsonl").expanduser()
+
+
+def spent_usd(ledger: Path | None = None) -> float:
+    path = ledger or spend_ledger()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return 0.0
+    return sum(json.loads(line).get("usd", 0.0) for line in lines if line.strip())
+
+
+class OpenRouterEmbedder(Embedder):
+    """The same BGE-M3 vectors through OpenRouter's embeddings API (key in OPENROUTER_API_KEY, never written down):
+    opt-in with EVO_KG_EMBEDDINGS=openrouter, for a host with no CPU time or GPU for the local model. Texts leave the
+    machine, so it is not the default. Every call adds its tokens and cost to ``spend_ledger`` and stops at
+    OPENROUTER_MAX_USD."""
+
+    def __init__(self, name: str):
+        if name not in OPENROUTER_MODELS:
+            raise SemanticUnavailable(f"model {name} is not served by the API backend: {', '.join(OPENROUTER_MODELS)}")
+        self.key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+        if not self.key:
+            raise SemanticUnavailable("OPENROUTER_API_KEY is not set")
+        self.name, self.remote, self.dim = name, OPENROUTER_MODELS[name], KNOWN_MODELS[name]["dim"]
+        self.provider: str | None = None
+
+    def _post(self, texts: Sequence[str]) -> dict:
+        import time
+        import urllib.error
+        import urllib.request
+
+        body = json.dumps({"model": self.remote, "input": list(texts), "encoding_format": "float"}).encode()
+        request = urllib.request.Request(
+            OPENROUTER_URL,
+            body,
+            {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json", "X-Title": "evo-agents kg"},
+        )
+        last = ""
+        for attempt in range(6):
+            try:
+                with urllib.request.urlopen(request, timeout=120) as reply:
+                    data = json.loads(reply.read())
+                if isinstance(data.get("data"), list) and len(data["data"]) == len(texts):
+                    return data
+                last = str(data.get("error") or "answer without data")[:200]
+            except urllib.error.HTTPError as exc:
+                last = f"HTTP {exc.code}"
+                if exc.code not in (408, 429, 500, 502, 503, 504):
+                    raise SemanticUnavailable(f"OpenRouter embeddings: {last}") from None
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+                last = type(exc).__name__
+            time.sleep(min(2**attempt, 30))
+        raise SemanticUnavailable(f"OpenRouter embeddings: {last} after 6 tries")
+
+    def embed(self, texts: Sequence[str]) -> list:
+        ledger = spend_ledger()
+        out: list = []
+        for start in range(0, len(texts), OPENROUTER_BATCH):
+            part = [t or " " for t in texts[start : start + OPENROUTER_BATCH]]
+            if spent_usd(ledger) >= OPENROUTER_MAX_USD:
+                raise SemanticUnavailable(f"OpenRouter spend reached {OPENROUTER_MAX_USD} USD ({ledger}): stop and ask")
+            data = self._post(part)
+            usage = data.get("usage") or {}
+            cost = usage.get("cost")
+            usd = (
+                float(cost)
+                if isinstance(cost, (int, float))
+                else usage.get("total_tokens", 0) * OPENROUTER_USD_PER_MTOKEN / 1e6
+            )
+            self.provider = data.get("provider") or self.provider
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            row = {"tokens": usage.get("total_tokens", 0), "usd": usd, "provider": self.provider, "inputs": len(part)}
+            with ledger.open("a", encoding="utf-8") as f:  # one short append: whole lines even from several processes
+                f.write(json.dumps(row) + "\n")
+            ordered = sorted(data["data"], key=lambda item: item.get("index", 0))
+            out += [self._unit(item["embedding"]) for item in ordered]
+        return out
+
+    @staticmethod
+    def _unit(vector):
+        np = _numpy()
+        v = np.asarray(vector, dtype=np.float32)
+        norm = float(np.linalg.norm(v))
+        return v / norm if norm else v
+
+
 def model_dir() -> Path:
     """Where models are downloaded and read: EVO_KG_MODEL_DIR, else ``~/.cache/evo-agents/models``."""
     return Path(os.environ.get("EVO_KG_MODEL_DIR") or "~/.cache/evo-agents/models").expanduser()
@@ -185,7 +282,10 @@ def embedder(name: str, *, download: bool = False) -> Embedder:
         if name in _FAILED and not download:
             raise SemanticUnavailable(_FAILED[name])
         try:
-            _LOADED[name] = FastEmbedder(name, download)
+            if os.environ.get(BACKEND_ENV, "").strip().lower() == "openrouter":
+                _LOADED[name] = OpenRouterEmbedder(name)
+            else:
+                _LOADED[name] = FastEmbedder(name, download)
         except SemanticUnavailable as exc:
             _FAILED[name] = str(exc)
             raise

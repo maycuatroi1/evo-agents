@@ -241,3 +241,37 @@ def test_eval_runs_both_ways_on_one_build(tmp_path, kg_env, words, capsys):
         runs[search] = {r["id"]: r["ranks"] for r in data["results"]}
     assert runs["graph"] == runs["bm25"]  # mode index: the graph ranks by words
     assert runs["hybrid"]["rank"] == [1, 1]  # an identifier stays first by its exact hit
+
+
+# -- the opt-in API backend ----------------------------------------------------------------------------------------
+
+
+def test_openrouter_backend_is_opt_in_unit_length_and_keeps_a_ledger(tmp_path, monkeypatch):
+    from evo_agents.kg import semantic
+
+    ledger = tmp_path / "spend.jsonl"
+    monkeypatch.setenv("EVO_KG_EMBED_LEDGER", str(ledger))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    semantic.forget_models()
+
+    def fake_post(self, texts):
+        data = [{"index": i, "embedding": [3.0, 4.0] + [0.0] * 1022} for i in reversed(range(len(texts)))]
+        return {"data": data, "provider": "P", "usage": {"total_tokens": 1_000_000}}
+
+    monkeypatch.setattr(semantic.OpenRouterEmbedder, "_post", fake_post)
+    monkeypatch.delenv(semantic.BACKEND_ENV, raising=False)
+    assert type(semantic.OpenRouterEmbedder("BAAI/bge-m3")).__name__ == "OpenRouterEmbedder"
+    monkeypatch.setenv(semantic.BACKEND_ENV, "openrouter")
+    model = semantic.embedder("BAAI/bge-m3")
+    assert isinstance(model, semantic.OpenRouterEmbedder)
+    vectors = model.embed(["a", "b"])
+    assert len(vectors) == 2 and abs(float(vectors[0][0]) - 0.6) < 1e-6
+    assert semantic.spent_usd() == pytest.approx(0.01) and model.provider == "P"
+    monkeypatch.setattr(semantic, "OPENROUTER_MAX_USD", 0.005)
+    with pytest.raises(semantic.SemanticUnavailable, match="spend reached"):
+        model.embed(["c"])
+    semantic.forget_models()
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    with pytest.raises(semantic.SemanticUnavailable, match="OPENROUTER_API_KEY"):
+        semantic.embedder("BAAI/bge-m3")
+    semantic.forget_models()
