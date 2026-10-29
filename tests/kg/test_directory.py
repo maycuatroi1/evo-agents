@@ -179,6 +179,28 @@ def test_a_path_whose_directory_no_repo_holds_is_outside_the_project():
     assert doc.path_target("missing.md", None, guess=True) == (None, "dangling")  # a bare name stays counted
 
 
+def test_a_path_from_the_root_of_a_docs_bundle_resolves_in_its_own_repo():
+    doc = Linker(short_path_index(), "a:file:docs/guide/x.md", "a", "docs/guide/x.md")
+    assert doc.path_target("/guide/notes.md", None) == (None, "dangling")  # strict: from the repo root only
+    assert doc.path_target("/guide/notes.md", None, guess=True) == ("a:file:docs/guide/notes.md", "resolved")
+    assert doc.path_target("/docs/guide/notes.md", None, guess=True) == ("a:file:docs/guide/notes.md", "resolved")
+    assert doc.path_target("/plans/notes.md", None, guess=True) == (None, "dangling")  # repo b's: not its site
+    assert doc.path_target("/guide/missing.md", None, guess=True) == (None, "dangling")  # docs/guide is the project's
+    assert doc.path_target("/v1/worker/runs.json", None, guess=True) == (None, "outside")  # a route, not a file
+
+
+def test_a_root_path_prefers_the_bundle_above_the_document_to_a_fixture_copy():
+    paths = ["docs/plan/p.md", "docs/lines/one.md", "tests/fixtures/lines/one.md", "tests/fixtures/plan/q.md"]
+    records = [{"id": f"a:file:{p}", "kind": "markdown", "props": {"path": p, "repo": "a"}} for p in paths]
+    index = build_index({r["id"]: map_item(r, "a", True) for r in records}, [])
+    doc = Linker(index, "a:file:docs/plan/p.md", "a", "docs/plan/p.md")
+    fixture = Linker(index, "a:file:tests/fixtures/plan/q.md", "a", "tests/fixtures/plan/q.md")
+    assert doc.path_target("/lines/one.md", None, guess=True) == ("a:file:docs/lines/one.md", "resolved")
+    assert fixture.path_target("/lines/one.md", None, guess=True) == ("a:file:tests/fixtures/lines/one.md", "resolved")
+    commit = Linker(index, "a:commit:1", "a", None)
+    assert commit.path_target("/lines/one.md", None, guess=True) == (None, "ambiguous")  # no bundle above it
+
+
 def test_a_plain_lower_case_word_is_not_a_symbol():
     assert not looks_like_symbol("search") and not looks_like_symbol("__init__")
     assert all(looks_like_symbol(n) for n in ("rank_results", "Server", "app.search", "getUser"))
