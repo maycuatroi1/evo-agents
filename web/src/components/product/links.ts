@@ -17,3 +17,6 @@ export const LICENSE: DocLink = { file: "LICENSE" };
 
 /** The issue form that asks for an invite: a GitHub login and what the person wants to do, no email. */
 export const INVITE_FORM_URL = `${REPO_URL}/issues/new?template=invite.yml`;
+
+export const GETTING_STARTED: DocLink = { file: "docs/getting-started.md", anchor: "run-your-first-plan" };
+export const LOCAL_GRAPH: DocLink = { file: "docs/getting-started.md", anchor: "try-the-knowledge-graph-locally" };
