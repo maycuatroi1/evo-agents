@@ -19,11 +19,12 @@ class GitError(RuntimeError):
 
 
 def git(repo: Path, *args: str, binary: bool = False):
-    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=not binary)
+    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
     if result.returncode != 0:
-        err = result.stderr if not binary else result.stderr.decode("utf-8", "replace")
+        err = result.stderr.decode("utf-8", "replace")
         raise GitError(f"git {' '.join(args)} failed in {repo}: {err.strip()}")
-    return result.stdout
+    # text is UTF-8 with bad bytes replaced: a history holds commits in Latin-1 (sympy), which must not stop a sync
+    return result.stdout if binary else result.stdout.decode("utf-8", "replace")
 
 
 def is_repo(path: Path) -> bool:
