@@ -5,9 +5,10 @@ Checked on the hub and the runs of ``tests.hub.test_memory_agents`` (project aud
 an author run works in the repo aud-harness), with decisions written straight into the table as answered:
 
 - a1: with ``context.answers`` set, the prompt ends with a block of the answered decisions and feedback memories whose
-  cited paths match the run (path before directory before repo), best match first, at most 4 KiB, each line naming its
-  source; an answer that matches nothing is not there, and no match leaves the prompt as it was; the block comes before
-  the index of an agent's memories;
+  cited paths match the run (path before directory before repo), the decisions of the run's plan (its step before the
+  plan) and the feedback memories that cite no code (the whole project, last), best match first, at most 4 KiB, each
+  line naming its source; an answer that matches nothing is not there, and no match leaves the prompt as it was; the
+  block comes before the index of an agent's memories;
 - a2: never in the block: a decision of another project, of category credential, wait, release or loop, one whose run
   showed an audience the run's agent does not hold; a memory whose label the agent's sink does not reach, whose audience
   the agent does not hold, someone else's feedback;
@@ -29,7 +30,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, null, select, update
 
 from evo_agents.hub import jobs, tables
 from evo_agents.hub.contract import commands
@@ -84,8 +85,9 @@ def decide(hub, run_id: int, question: str, cites: str, *, category="architectur
     return live.sql(hub.db, insert(tables.decisions).values({**row, **more}).returning(tables.decisions.c.id))[0][0]
 
 
-def feedback(hub, name: str, cites: str, who: str = "alice") -> dict:
-    text = f"---\nname: {name}\ndescription: {name} says use code:{cites}\nmetadata:\n  type: feedback\n---\nText.\n"
+def feedback(hub, name: str, cites: str | None, who: str = "alice") -> dict:
+    says = f"use code:{cites}" if cites else "keep commit messages short"  # None: a rule that cites no code
+    text = f"---\nname: {name}\ndescription: {name} says {says}\nmetadata:\n  type: feedback\n---\nText.\n"
     memory = {"scope": "project", "project": A, "location": "harness", "name": f"{name}.md", "type": "feedback"}
     return done(hub.client.put("/v1/memories", json={**memory, "body": text}, headers=getattr(hub, who)))
 
@@ -179,6 +181,41 @@ def test_a_path_the_run_names_ranks_before_a_directory_before_the_repo(hub, agen
         f"dir:{REPO}:src/app",
         f"repo:{REPO}",
     ]
+
+
+def test_a_decision_of_the_runs_plan_matches_by_its_step_then_the_plan_whatever_it_cites(hub, agents, run):  # noqa: F811
+    turn_on(hub)
+    runs = tables.runs
+    steps = [{"id": n, "title": f"Step {n}", "what": f"do {n}"} for n in (1, 2)]
+    plan = {"body": {"id": "orbit", "goal": "Ship it.", "steps": steps}, "if_revision": None}
+    done(hub.client.put(f"/v1/projects/{A}/plans/orbit", json=plan, headers=hub.alice))
+    on_step = {"kind": "step", "plan_id": "orbit", "plan_revision": 1, "step_key": "2", "request": None}
+    on_step.update(repo=REPO, repos=null())  # a step run works in one repo
+    on_hub(hub, lambda conn: conn.execute(update(runs).where(runs.c.id == run).values(**on_step)))
+    asked = {"category": "question", "context": None}  # no bonus of category, no code cited
+    by_plan = decide(hub, run, "plan level", "none", day=1, plan_id="orbit", step_key="1", **asked)
+    by_step = decide(hub, run, "step level", "none", day=5, plan_id="orbit", step_key="2", **asked)
+    cited = decide(hub, run, "cites a path too", f"{REPO}:docs/x.md", day=7, category="question", plan_id="orbit")
+    other_plan = decide(hub, run, "other plan", "none", day=2, plan_id="comet", step_key="2", **asked)
+    no_plan = decide(hub, run, "no plan", "none", day=3, **asked)
+    text, taken = on_hub(hub, lambda conn: context_answers.block(conn, run, "Work on step 2."))
+    assert [(a.source_id, a.scope_key, a.weight) for a in taken] == [
+        (by_step, "step:orbit:2", context_answers.STEP),
+        (by_plan, "plan:orbit", context_answers.PLAN),
+        (cited, "plan:orbit", context_answers.PLAN),  # the plan outweighs the repo it cites
+    ]
+    assert f"decision {other_plan} " not in text and f"decision {no_plan} " not in text
+
+
+def test_a_feedback_memory_that_cites_no_code_matches_the_whole_project_after_the_scoped(hub, agents, run):  # noqa: F811
+    turn_on(hub)
+    whole = feedback(hub, "orbit-habit", None)["id"]
+    scoped = feedback(hub, "orbit-rule", f"{REPO}:docs/hub.md")["id"]
+    elsewhere = feedback(hub, "comet-rule", "elsewhere:docs/hub.md")["id"]
+    block = block_of(prompt(hub, run))
+    assert block.index(f"memory {scoped} ") < block.index(f"memory {whole} ")
+    assert f"memory {elsewhere} " not in block  # it cites code, of a repo the run does not work in
+    assert sorted(row[2:] for row in loads(hub)) == sorted([(scoped, f"repo:{REPO}"), (whole, f"project:{A}")])
 
 
 def test_the_block_is_at_most_4_kib_and_comes_before_the_index_of_memories(hub, agents):  # noqa: F811
