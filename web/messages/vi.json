@@ -10151,6 +10151,9 @@
     "proposals": {
       "heading": "Đề xuất chờ nhận ({count})",
       "newClaim": "Claim mới",
+      "inRun": "trong run",
+      "openRun": "Mở run #{id}",
+      "group": "{count, plural, other {# đề xuất}} chung một lý do",
       "change": "thay đổi ở rev {rev}",
       "accept": "Nhận",
       "reject": "Từ chối",

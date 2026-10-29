@@ -21,7 +21,7 @@ export function useFieldName(): (field: string) => string {
 }
 
 /** A field's value in a diff, words for the values the pages translate (a status, a cell, a confidence). */
-function useValueWords(): (field: string, value: unknown) => string {
+export function useValueWords(): (field: string, value: unknown) => string {
   const tStatus = useTranslations("canvas.status");
   const tCell = useTranslations("canvas.cell");
   const tConfidence = useTranslations("canvas.confidence");
