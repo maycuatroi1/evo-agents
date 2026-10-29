@@ -15,6 +15,9 @@ evo-agents kg eval questions.jsonl --split tune            # only the part ranki
 evo-agents kg eval questions.jsonl --search hybrid         # rank by words and meaning (docs/kg-semantic.md)
 ```
 
+For public code benches (ContextBench, SWE-Explore, LocBench, MuLocBench), each task on a graph of its own repo, see
+`kg bench` (docs/kg-bench.md).
+
 The command ships without questions. A team keeps its set, with its plans' text and its paths, on the hub
 (`hub kg eval-set`, below), where every machine and the hub's own evaluation read the same version.
 
