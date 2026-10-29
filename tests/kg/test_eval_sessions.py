@@ -3,6 +3,7 @@ Code transcripts, answered by the files they opened next. Synthetic transcripts 
 
 import itertools
 import json
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from evo_agents.hub.memory import slug
 from evo_agents.kg import evaluate as ev
 from evo_agents.kg.project import load_project_at
 from tests.kg.projects import commit, git, write
+
+# The questions come from POSIX shell lines (cd ~/github/x && git grep ...) and the paths they name; a Windows
+# machine resolves those with backslashes, so the module is not read there.
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="reads POSIX shell lines and paths")
 
 NOW = datetime.now(UTC)
 RECENT = (NOW - timedelta(days=1)).isoformat().replace("+00:00", "Z")
