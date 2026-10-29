@@ -6014,6 +6014,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/editorial/{project}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Workspace
+         * @description The configured stage order and notebook labels for the reader's filters.
+         */
+        get: operations["workspace_v1_x_editorial__project__workspace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/editorial/{project}/posts": {
         parameters: {
             query?: never;
@@ -18733,6 +18753,13 @@ export interface components {
              */
             rejected: components["schemas"]["RejectedProposal"][];
         };
+        /** EditorialChoice */
+        EditorialChoice: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+        };
         /** EditorialComment */
         EditorialComment: {
             /**
@@ -19240,6 +19267,16 @@ export interface components {
             at: string;
             /** Evidence */
             evidence?: string | null;
+        };
+        /**
+         * EditorialWorkspace
+         * @description Display labels only, not the plugin's operational configuration.
+         */
+        EditorialWorkspace: {
+            /** Stages */
+            stages: components["schemas"]["EditorialChoice"][];
+            /** Notebooks */
+            notebooks: components["schemas"]["EditorialChoice"][];
         };
         /**
          * EffectiveConfig
@@ -62930,6 +62967,84 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    workspace_v1_x_editorial__project__workspace_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialWorkspace"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
