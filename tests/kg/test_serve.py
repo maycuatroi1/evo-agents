@@ -864,3 +864,78 @@ def test_an_explorer_draws_at_its_rate_and_needs_results_to_put_a_candidate_afte
     drawn = Explorer(rate=0.05, rng=random.Random(1))  # the hub's RATE
     explored = sum(drawn.pick([1, 2, 3, 4, 5], ["c"]) is not None for _ in range(4000))
     assert 120 < explored < 280  # about one search in twenty
+
+
+def built_with_code_text(tmp_path, home):
+    """The demo project plus a setting read in a view, a template and a stylesheet naming a selector and a class."""
+    project = make_project(tmp_path, home)
+    app = tmp_path / "demo-app"
+    write(app / "app/settings.py", "LUMEN_CARDS_ENABLED = True\n")
+    write(
+        app / "app/views.py",
+        "from app import settings\n\n\ndef page():\n    return settings.LUMEN_CARDS_ENABLED\n",
+    )
+    write(app / "app/templates/card.html", '<div class="course-card">\n  <app-course-card></app-course-card>\n</div>\n')
+    write(app / "app/styles/card.scss", ".course-card {\n  color: red;\n}\n")
+    commit(app, "cards")
+    sync_project(project)
+    report = build_project(project)
+    assert report.ok, report.errors
+    return project
+
+
+def test_search_finds_where_a_name_is_written_in_code_templates_and_stylesheets(tmp_path, kg_env):
+    session = Session(built_with_code_text(tmp_path, kg_env), "agent")
+    flag = session.call("kg_search", {"query": "LUMEN_CARDS_ENABLED"})
+    data = flag["structuredContent"]
+    ids = [r["id"] for r in data["results"]]
+    assert "app:file:app/views.py" in ids  # where it is read: no edge of the graph says so
+    assert data["code"]["app:file:app/views.py"] == [5]
+    assert "[app:app/views.py] File line 5 code" in flag["content"][0]["text"].splitlines()
+
+    selector = session.call("kg_search", {"query": "app-course-card"})["structuredContent"]
+    assert selector["code"].get("app:file:app/templates/card.html") == [2]  # one word: the dashes are inside it
+    css = session.call("kg_search", {"query": "course-card"})["structuredContent"]
+    assert css["code"].get("app:file:app/styles/card.scss") == [1]
+    assert css["code"].get("app:file:app/templates/card.html") == [1]  # app-course-card is another word
+
+    # A question in prose looks up only the words written like identifiers.
+    prose = session.call("kg_search", {"query": "Wire the server to search"})["structuredContent"]
+    assert prose["code"] == {}
+    asked = session.call("kg_search", {"query": "where do the views read LUMEN_CARDS_ENABLED"})["structuredContent"]
+    assert "app:file:app/views.py" in asked["code"]
+
+    # Template text is not in the index of prose: a document still answers a question in prose first.
+    store = Store.for_project(session.project)
+    assert store.db.execute("SELECT count(*) FROM node_fts WHERE body LIKE '%app-course-card%'").fetchone()[0] == 0
+    # A word more files hold than are read per word names a kind of file, not one: it is left out.
+    assert {nid for nid, _ in store.code_files(["course-card"], limit=2)} == {
+        "app:file:app/templates/card.html",
+        "app:file:app/styles/card.scss",
+    }
+    assert store.code_files(["course-card"], limit=1) == []
+    store.close()
+
+
+def test_search_keeps_to_the_repo_it_is_given(tmp_path, kg_env):
+    session = Session(built(tmp_path, kg_env), "agent")
+    wide = session.call("kg_search", {"query": "search"})["structuredContent"]["results"]
+    assert any(readable(r["id"]).partition(":")[0] != "app" for r in wide)  # steps, seams and the harness too
+    for repo in ("app", "APP"):
+        only = session.call("kg_search", {"query": "search", "repo": repo})["structuredContent"]["results"]
+        assert only and all(serve.in_repo(r, "app") for r in only)
+    none = session.call("kg_search", {"query": "search", "repo": "northwind"})
+    assert none["structuredContent"]["results"] == []
+    assert "nothing of repo 'northwind' matched" in none["content"][0]["text"]
+
+
+def test_code_words_read_a_short_query_whole_and_a_long_one_for_identifiers():
+    from evo_agents.kg.search import code_words, lines_holding
+
+    assert code_words("imsmanifest .hostname") == ["imsmanifest", "hostname"]
+    assert code_words("sync_activity_logs SYNC_INTERVAL") == ["sync_activity_logs", "SYNC_INTERVAL"]
+    assert code_words("where is the setting read in every view of the app") == []
+    assert code_words("where is getCourseCard called in the lumen app") == ["getCourseCard"]
+    assert code_words("ab 12 the") == []
+    text = "x = 1\nLUMEN_FLAG = 2\nprint(LUMEN_FLAG_OLD)\n  lumen_flag()\n"
+    assert lines_holding(text, ["LUMEN_FLAG"]) == [2, 4]  # whole words only, case aside

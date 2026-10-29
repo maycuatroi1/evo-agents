@@ -13,6 +13,7 @@ evo-agents kg eval questions.jsonl --grep-ref origin/main  # grep the commit the
 evo-agents kg eval questions.jsonl --type identifier --method kg_search
 evo-agents kg eval questions.jsonl --split tune            # only the part ranking is tuned on
 evo-agents kg eval questions.jsonl --search hybrid         # rank by words and meaning (docs/kg-semantic.md)
+evo-agents kg eval questions.jsonl --scope repo            # kg_search keeps to each question's repo, as an agent in it
 ```
 
 The command ships without questions. A team keeps its set, with its plans' text and its paths, on the hub
