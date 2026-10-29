@@ -66,7 +66,8 @@ data/SET/raw/DATASET/REVISION/FILE   the files as downloaded
 data/SET/tasks.jsonl                 the tasks read from them; fetched.json: revisions, SHA-256, what was left out
 data/SET/questions.jsonl             the last run's tasks as a `kg eval` question set
 repos/OWNER__NAME.git                a bare clone of each repo
-kg/EXTRACTOR/home/                   the EVO_KG_HOME of the bench: a project per repo and base commit, one memo
+kg/EXTRACTOR/home/                   the EVO_KG_HOME of the bench: a project per repo and base commit
+kg/EXTRACTOR/memo/OWNER__NAME.sqlite the extraction memo of each repo, shared by its snapshots
 kg/EXTRACTOR/builds.jsonl            how long each build took
 ```
 
@@ -77,6 +78,8 @@ kg/EXTRACTOR/builds.jsonl            how long each build took
 - **Reuse.** A graph is built once and reused while `EXTRACTOR` stays the same. `EXTRACTOR` is a digest of the
   store's schema, the version of each stage, graphify, the git connector's code and the search index's text. A
   release that only changes ranking searches the graphs it already has.
+- **Memo.** Each repo has its own extraction memo, so a file unchanged between two snapshots is not read twice, and
+  parallel builds of different repos never wait on one database.
 - **Clones.** `--git-url` changes where repos are cloned from, with `{repo}` standing for `OWNER/NAME`. Use it for a
   mirror or for local copies.
 
@@ -84,8 +87,24 @@ kg/EXTRACTOR/builds.jsonl            how long each build took
 
 `run` asks each selected task with `kg_search` (add `--method kg_context` or `--method grep` to run those too; the
 first method is the primary one). It uses the same scoring as `kg eval --acc`: line scores within `--line-budget`
-(500), Acc@1, 5 and 10 by file and by function, hit@5 and MRR. `--search graph|bm25|hybrid` ranks the way `kg eval
---search` does. For `hybrid`, the vectors of each graph are indexed first (the `semantic` extra).
+(500), Acc@1, 5 and 10 by file and by function, hit@5 and MRR.
+
+**Searches.** `--search` picks the ranking, and can be given more than once, with one `--out` per search in the same
+order. Each graph is built once and every search asks it before the next graph, so the arms compare on the same
+graphs and tasks.
+
+| Search | Ranks by |
+|---|---|
+| `graph` | the shipped ranking, as `kg eval --search graph`: weighted FTS5 BM25, kind priors, `asked`, the weak cut to 5 |
+| `bm25` | `kg eval --search bm25`; on a bench graph, which holds no vectors, the same as `graph` |
+| `plain` | plain BM25: every word of the issue but stop words, ORed, over names, text and paths of files, symbols, documents and sections; no priors, no mentions, no weak cut |
+| `hybrid` | BM25 fused with bge-m3 by RRF; the vectors of each graph are indexed first (the `semantic` extra) |
+
+`plain` is the BM25 row the published benches report, so the deviation from them reads the ranking alone.
+
+**Room and time.** `--prune` deletes each snapshot's graph after its last task, and each repo's clone and memo after
+its last snapshot, so a run needs room for the graphs in flight only. `--jobs N` builds and asks N repos at once, the
+largest first, each in its own process.
 
 **Sampling.** A set whose missing graphs would take longer than `--max-hours` (default 6) to build is sampled:
 
