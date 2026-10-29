@@ -162,6 +162,7 @@ class Outcome:
     error: str | None = None
     skipped: str | None = None  # why the method could not run on this question: it is left out of the numbers
     line_stats: dict | None = None  # the line scores, for a question with ``lines`` (``score_lines``)
+    file_ranks: list[int | None] | None = None  # each answer file's rank among the distinct files shown (kg methods)
 
     @property
     def found(self) -> int:
@@ -431,6 +432,19 @@ def node_ranks(question: Question, nodes: list[dict]) -> list[int | None]:
     return ranks
 
 
+def distinct_file_ranks(question: Question, nodes: list[dict]) -> list[int | None]:
+    """The rank (from 1) of each answer file among the distinct files the result nodes lie in, as a file-level
+    leaderboard counts: several nodes of one file take one place."""
+    seen: list[tuple[str | None, str | None]] = []
+    for node in nodes:
+        where = node_file(node)
+        if where[1] and where not in seen:
+            seen.append(where)
+    return [
+        next((i for i, (r, p) in enumerate(seen, 1) if file_matches(answer, r, p)), None) for answer in question.files
+    ]
+
+
 def file_ranks(question: Question, files: list[tuple[str, str]]) -> list[int | None]:
     """The rank (from 1) of the first file that answers each answer; a node answers by the file its id names."""
     answers = list(question.files) + [id_file(node) for node in question.nodes]
@@ -550,6 +564,7 @@ def run_kg(
         question=question,
         method=method,
         ranks=node_ranks(question, nodes),
+        file_ranks=distinct_file_ranks(question, nodes),
         count=len(nodes),
         tokens=estimate_tokens(text),
         ms=ms,
@@ -720,6 +735,12 @@ def acc_rate(ran: list[Outcome], k: int, nodes: bool) -> float | None:
     return round(sum(picked) / len(picked), 4) if picked else None
 
 
+def acc_distinct_rate(ran: list[Outcome], k: int) -> float | None:
+    """``acc_file@k`` with a file counted once however many of its nodes come first."""
+    picked = [all(r is not None and r <= k for r in o.file_ranks) for o in ran if o.file_ranks]
+    return round(sum(picked) / len(picked), 4) if picked else None
+
+
 def line_row(ran: list[Outcome]) -> dict:
     """The columns of the line scores, over the outcomes that have them."""
     scored = [o.line_stats for o in ran if o.line_stats is not None]
@@ -738,6 +759,8 @@ def line_row(ran: list[Outcome]) -> dict:
         row[f"acc_file@{k}"] = acc_rate(ran, k, nodes=False)
     for k in ACC_KS:
         row[f"acc_func@{k}"] = acc_rate(ran, k, nodes=True)
+    for k in ACC_KS:
+        row[f"acc_dfile@{k}"] = acc_distinct_rate(ran, k)
     return row
 
 
