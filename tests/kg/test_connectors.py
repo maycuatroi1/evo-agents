@@ -420,6 +420,17 @@ def test_git_history_gives_each_commit_the_files_it_changed(tmp_path):
     assert listing_of(msgs, "app:commit:") == {"type": "listing", "scope": "app:commit:", "complete": True, "count": 4}
 
 
+def test_git_history_reads_a_message_holding_the_byte_that_opens_a_record(tmp_path):
+    from evo_agents.kg.connectors import _git
+
+    repo = make_repo(tmp_path / "app")
+    (repo / "config.yaml").write_text("name: app2\n")
+    sh(repo, "commit", "-qam", "Deprecations\x01\n\n* Improve layout")  # as a commit of ansible/ansible holds
+    newest, older = _git.history(repo, "HEAD")
+    assert newest["message"] == "Deprecations\x01\n\n* Improve layout" and newest["paths"] == ["config.yaml"]
+    assert older["parents"] == [] and newest["parents"] == [older["sha"]]
+
+
 def test_git_history_caps_the_paths_of_a_sweep_and_counts_them_all(tmp_path, monkeypatch):
     repo = make_repo(tmp_path / "app")
     monkeypatch.setattr(git_connector, "MAX_COMMIT_PATHS", 2)

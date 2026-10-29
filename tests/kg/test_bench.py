@@ -342,6 +342,7 @@ def test_one_pass_asks_each_search_on_the_same_graphs_and_prunes_them(bench, tmp
     assert built == sum(n["build"]["built"] for n in two["benches"].values()) and built >= 2  # pruned, so built again
     lay = graphs.layout(cache)
     assert not any(lay.home.glob("acme__*")) and not any((cache / "repos").glob("*.git"))
+    assert not any((lay.base / "memo").glob("*.sqlite"))
 
 
 def test_run_reads_the_sealed_test_part_only_with_sealed(bench, tmp_path, capsys):

@@ -3,7 +3,8 @@
 Layout under the bench cache::
 
     repos/OWNER__NAME.git              a bare clone of each repo, fetched once, every base commit read from it
-    kg/EXTRACTOR/home/                 EVO_KG_HOME of the builds: a project per repo and commit, one shared memo
+    kg/EXTRACTOR/home/                 EVO_KG_HOME of the builds: a project per repo and commit
+    kg/EXTRACTOR/memo/OWNER__NAME.sqlite  the memo of a repo's builds: its commits share most of their work
     kg/EXTRACTOR/harness/NAME/         the harness of that project: a git source at the base commit, no pulls
     kg/EXTRACTOR/builds.jsonl          the time each build took, which ``estimate`` reads
 
@@ -17,7 +18,6 @@ changes only the ranking finds its graphs built and searches them again. A build
 from __future__ import annotations
 
 import contextlib
-import datetime as dt
 import hashlib
 import json
 import os
@@ -34,7 +34,6 @@ from evo_agents.kg.project import Project, load_project_at
 
 GITHUB_URL = "https://github.com/{repo}.git"
 GIT_TIMEOUT = 3600.0
-MEMO_KEEP_HOURS = 2.0  # a pruning run keeps the memo rows used this recently, which builds running beside it read
 MARKER = "bench.json"
 SLUG = re.compile(r"[^a-z0-9._-]+")
 
@@ -84,6 +83,10 @@ class Layout:
 
     def name(self, task: Task) -> str:
         return f"{slug(task.repo)}-{task.commit[:12].lower()}"
+
+    def memo(self, repo: str) -> Path:
+        """The memo of the repo's builds, its own so that builds of two repos at once never wait on one file."""
+        return self.base / "memo" / f"{slug(repo)}.sqlite"
 
     def harness(self, task: Task) -> Path:
         return self.base / "harness" / self.name(task)
@@ -140,7 +143,8 @@ def ensure_commit(lay: Layout, task: Task, git_url: str = GITHUB_URL) -> Path:
 
 
 def write_harness(lay: Layout, task: Task, clone: Path) -> Path:
-    """The harness of the task's graph: one git source at the base commit, labelled public, memo shared."""
+    """The harness of the task's graph: one git source at the base commit, labelled public (``build_graph`` gives the
+    build the memo of its repo)."""
     root = lay.harness(task)
     root.mkdir(parents=True, exist_ok=True)
     name = lay.name(task)
@@ -186,6 +190,7 @@ def build_graph(lay: Layout, task: Task, *, git_url: str = GITHUB_URL) -> Built:
     if lay.built(task):
         return Built(task, reused=True)
     from evo_agents.kg.build import build_project
+    from evo_agents.kg.memo import Memo
     from evo_agents.kg.sync import sync_project
 
     start = time.monotonic()
@@ -199,7 +204,12 @@ def build_graph(lay: Layout, task: Task, *, git_url: str = GITHUB_URL) -> Built:
             if failed:
                 why = failed[0].exception or "; ".join(failed[0].issues[:2]) or failed[0].status
                 return Built(task, False, time.monotonic() - start, f"sync: {why}")
-            report = build_project(project)
+            lay.memo(task.repo).parent.mkdir(parents=True, exist_ok=True)
+            memo = Memo(lay.memo(task.repo))
+            try:
+                report = build_project(project, memo=memo)
+            finally:
+                memo.close()
             if not report.ok:
                 return Built(task, False, time.monotonic() - start, f"build: {'; '.join(report.errors[:2])}")
     except BenchError as exc:
@@ -219,15 +229,10 @@ def prune_graph(lay: Layout, task: Task) -> None:
 
 
 def prune_repo(lay: Layout, repo: str) -> None:
-    """Delete the bare clone of ``repo`` and the rows of the shared memo no build used in MEMO_KEEP_HOURS: a memo row
-    is a cache, so one deleted while another build still wanted it only makes that build slower."""
+    """Delete the bare clone of ``repo`` and the memo of its builds."""
     shutil.rmtree(lay.clone(repo), ignore_errors=True)
-    memo = lay.home / "_shared" / "memo.sqlite"
-    if memo.is_file():
-        from evo_agents.kg import memo as memo_module
-        from evo_agents.kg.ids import utc_text
-
-        memo_module.drop_unused(memo, utc_text(dt.datetime.now(dt.UTC) - dt.timedelta(hours=MEMO_KEEP_HOURS)))
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{lay.memo(repo)}{suffix}").unlink(missing_ok=True)
 
 
 def build_seconds(lay: Layout, bench: str) -> float | None:
