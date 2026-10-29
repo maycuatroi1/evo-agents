@@ -516,3 +516,33 @@ def test_plain_bm25_ors_every_word_of_the_issue_but_stop_words():
         == '"parse" OR "config" OR "crashes" OR "again" OR "2"'
     )
     assert search.plain_query("the a of") is None
+
+
+def test_merge_adds_the_sets_and_names_where_hybrid_vectors_came_from(tmp_path):
+    def summary(bench):
+        return {
+            "format": "evo-kg-bench/1",
+            "extractor": "x",
+            "settings": {"search": "hybrid"},
+            "cost": {"usd": 0.0, "model_calls": 0},
+            "benches": {bench: {"parts": {}}},
+            "tasks": [{"bench": bench, "id": "1"}],
+        }
+
+    ledger = tmp_path / "spend.jsonl"
+    ledger.write_text('{"tokens": 100, "usd": 0.5, "provider": "Parasail"}\n{"tokens": 50, "usd": 0.25}\n')
+    merged = compare.merge([summary("a"), summary("b")], ledger)
+    assert list(merged["benches"]) == ["a", "b"] and len(merged["tasks"]) == 2
+    assert merged["settings"]["embeddings"] == {
+        "backend": "openrouter",
+        "model": "baai/bge-m3",
+        "providers": ["Parasail"],
+        "tokens": 150,
+    }
+    assert merged["cost"]["usd"] == 0.75
+    with pytest.raises(BenchError, match="two summaries"):
+        compare.merge([summary("a"), summary("a")])
+    other = summary("c")
+    other["extractor"] = "y"
+    with pytest.raises(BenchError, match="extractor"):
+        compare.merge([summary("a"), other])

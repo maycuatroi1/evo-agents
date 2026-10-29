@@ -46,6 +46,38 @@ def load_summary(path: Path | str) -> dict:
     return data
 
 
+def merge(summaries: list[dict], ledger: Path | str | None = None) -> dict:
+    """One summary from several of the same run's search, extractor and settings, each holding other sets (a pass
+    a set). The sets and tasks add up. With ``ledger`` (the API embeddings' spend, JSON lines) a hybrid summary
+    names where its vectors came from and the cost carries what they cost."""
+    first = summaries[0]
+    names = [name for s in summaries for name in s["benches"]]
+    if len(set(names)) != len(names):
+        raise BenchError("a set is in two summaries: " + ", ".join(sorted({n for n in names if names.count(n) > 1})))
+    for s in summaries[1:]:
+        for key in ("extractor",):
+            if s.get(key) != first.get(key):
+                raise BenchError(f"summaries differ in {key}: {first.get(key)} and {s.get(key)}")
+        if s["settings"].get("search") != first["settings"].get("search"):
+            raise BenchError("summaries differ in search")
+    out = {**first, "benches": {}, "tasks": [], "cost": {**first.get("cost", {})}}
+    out["settings"] = {**first["settings"], "sets": names}
+    for s in summaries:
+        out["benches"].update(s["benches"])
+        out["tasks"] += s["tasks"]
+    if ledger is not None and first["settings"].get("search") == "hybrid":
+        rows = [json.loads(line) for line in Path(ledger).read_text(encoding="utf-8").splitlines() if line.strip()]
+        providers = sorted({r["provider"] for r in rows if r.get("provider")})
+        out["settings"]["embeddings"] = {
+            "backend": "openrouter",
+            "model": "baai/bge-m3",
+            "providers": providers,
+            "tokens": sum(r.get("tokens", 0) for r in rows),
+        }
+        out["cost"] = {"usd": round(sum(r.get("usd", 0.0) for r in rows), 4), "model_calls": len(rows)}
+    return out
+
+
 def _records(summary: dict, bench: str, split: str) -> dict[str, dict]:
     method = summary["benches"][bench].get("method", "kg_search")
     return {
