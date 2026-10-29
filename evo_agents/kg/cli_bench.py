@@ -1,4 +1,4 @@
-"""``evo-agents kg bench``: fetch, build, run, compare and show the code benches (docs/kg-bench.md)."""
+"""``evo-agents kg bench``: fetch, build, run, merge, compare and show the code benches (docs/kg-bench.md)."""
 
 from __future__ import annotations
 
@@ -168,6 +168,22 @@ def cmd_compare(args) -> int:
     return 0 if verdict.ok else 1
 
 
+def cmd_merge(args) -> int:
+    from evo_agents.kg.bench import compare
+    from evo_agents.kg.bench.datasets import BenchError
+
+    try:
+        merged = compare.merge([compare.load_summary(p) for p in args.summaries], args.ledger)
+    except (BenchError, OSError, ValueError) as exc:
+        return _fail(str(exc))
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(merged, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    print("\n".join(compare.show_lines(merged)))
+    print(f"summary written to {out}")
+    return 0
+
+
 def cmd_show(args) -> int:
     from evo_agents.kg.bench import compare
     from evo_agents.kg.bench.datasets import BenchError
@@ -288,6 +304,14 @@ def register(ksub) -> None:
     cmp.add_argument("--tokens-drop", type=_ratio, metavar="R", help="fail unless tokens per question fall by R")
     cmp.add_argument("--json", action="store_true", help="machine-readable output")
     cmp.set_defaults(func=cmd_compare)
+
+    mrg = sub.add_parser("merge", help="one summary from the summaries of several sets run apart (same search)")
+    mrg.add_argument("--out", required=True, metavar="PATH")
+    mrg.add_argument(
+        "--ledger", metavar="PATH", help="spend of the API embeddings, to name where hybrid vectors came from"
+    )
+    mrg.add_argument("summaries", nargs="+")
+    mrg.set_defaults(func=cmd_merge)
 
     show = sub.add_parser("show", help="print a summary and check it")
     show.add_argument("summary")

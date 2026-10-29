@@ -419,7 +419,10 @@ def summary(benches: dict[str, dict], records: list[dict], options: Options, sea
             "sample": options.sample,
             "max_hours": options.max_hours,
         },
-        "cost": {"usd": 0.0, "model_calls": 0},  # run calls no model
+        "cost": {
+            "usd": 0.0,
+            "model_calls": 0,
+        },  # run calls no model; a hybrid summary's cost is set by `merge --ledger`
         "benches": benches,
         "tasks": records,
     }
