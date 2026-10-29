@@ -31,7 +31,7 @@ One JSON object a line:
 | Key | Meaning |
 | --- | --- |
 | `question` | what the tools are asked, and what grep looks for (required) |
-| `type` | the group the question is reported in, such as `plan-step`, `transcript` or `identifier` (required) |
+| `type` | the group the question is reported in, such as `plan-step`, `session` or `identifier` (required) |
 | `files` | answer files: `repo:path`, or a path in any repo |
 | `nodes` | answer nodes: node ids or aliases |
 | `project` | the graph to ask (default: `--project`, else the project of the current directory) |
@@ -125,6 +125,33 @@ Each step that is done and whose evidence names commits becomes a question of ty
 parent. A step is left out, with the reason on stderr, when it has no checkout here, when none of its commits is in
 the checkout, or when its commits change more than `--max-files` (20) files. The command reads the hub's plans and
 the checkouts' history, nothing else.
+
+## Questions from agent sessions
+
+```sh
+evo-agents kg eval-questions --from-sessions > sessions.jsonl
+evo-agents kg eval-questions --from-sessions --days 14 --project ../demo-harness
+```
+
+A plan step's title is in the graph word for word, so `plan-step` questions flatter it. `--from-sessions` asks what
+agents really searched for instead. It reads the Claude Code transcripts of sessions started in the harness, a
+directory under it or one of its git worktrees (main and subagents', in every Claude Code projects directory of the
+machine, or `--transcripts DIR`), and only their tool calls of the last `--days` (30) days. Each Bash call that runs
+`git grep`, `grep -r` or `-R`, or `rg` in one repo a source of knowledge.yaml reads, other than the harness itself
+(after `cd` into it, with `git -C` or on a path in it), becomes a question of type `session`:
+
+- it asks the identifiers its patterns name, regex syntax and keywords such as `def` taken out: at most 4 terms of 4
+  characters or more; a search without one that looks like code (snake_case, camelCase, CONSTANT, dotted, `::` or
+  kebab names, digits) is left out;
+- the answers are the files of that repo the agent opened in the next 6 tool calls, as `repo:path`: a Read of a path
+  in the repo or one of its worktrees, `git show REF:PATH` there, `sed -n`, `cat`, `head` or `tail` of a file there.
+  A relative path counts from where the call ran: the transcript's directory, then the `cd`s before it in the same
+  command. Lockfiles, `.json` files and files neither the checkout tracks nor a ref its sources read holds are left out.
+
+The same terms searched in the same repo again make one question, answered by the files opened most often after them
+(at most 3) and with `searches`, the times they were searched. Its id is `session-` and a hash of the repo and the
+terms, so it stays in its part of the set, tune or holdout, as sessions come and go. The output is sorted by repo and
+question; stderr counts the questions per repo and the searches left out. `--repo NAME=PATH` gives a repo's checkout.
 
 ## The hub's evaluation
 
