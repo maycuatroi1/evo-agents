@@ -20,10 +20,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, insert, select, union, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
+from evo_agents.hub.server.brainstorms import BRAINSTORM, brainstorm_runs, stale_for_goal
 from evo_agents.hub.server.canvas import links, rules, store, writes
 from evo_agents.hub.server.canvas.content import CanvasError, Content, changed, code, diff, number_of
 from evo_agents.hub.server.canvas.store import CanvasRow, Provenance, provenance_of
@@ -31,8 +32,6 @@ from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
 
 MAX_PROPOSED = 50  # proposals one call makes
 MAX_OPEN = 200  # open proposals of a canvas, and the most one call rejects together
-BRAINSTORM = "brainstorm"  # loop.model.KINDS: the Loop's work item whose task run brainstorms a goal
-DISPATCHED = "dispatched"  # loop.model: the event of the ledger that hands a work item its run
 NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
     "cell",
     "text",
@@ -320,30 +319,6 @@ async def reject_many(
         decided = {"decided_by": writer.author.user_id, "decided_at": func.now(), "decided_reason": reason.strip()}
         await conn.execute(update(p).where(p.c.id.in_(rejected)).values(status="rejected", **decided))
     return rejected, [(number, held[number]) for number in wanted if held[number] != "open"]
-
-
-def brainstorm_runs(project_id: int | None = None):
-    """Each run the Loop handed out for its brainstorm of a goal (of project ``project_id`` alone when given), with the
-    goal (``run_id``, ``goal_id``): from the ledger of its work items, as the Loop's view counts a goal's open proposals
-    (``loop.view``), and from the work item itself for the run it holds now."""
-    i, e = tables.loop_items, tables.loop_item_events
-    brainstorm = (i.c.kind == BRAINSTORM) & i.c.goal_id.is_not(None)
-    if project_id is not None:
-        brainstorm &= i.c.project_id == project_id
-    ledger = select(e.c.run_id, i.c.goal_id).join_from(e, i, i.c.id == e.c.item_id)
-    ledger = ledger.where(brainstorm, e.c.kind == DISPATCHED, e.c.run_id.is_not(None))
-    held = select(i.c.run_id, i.c.goal_id).where(brainstorm, i.c.run_id.is_not(None))
-    return union(ledger, held).subquery("brainstorm_runs")
-
-
-async def stale_for_goal(conn: AsyncConnection, goal_id: int) -> int:
-    """The open proposals the runs of the Loop's brainstorms of goal ``goal_id`` made go stale, as a change of their
-    claim makes them (no one decided them, so they name no decider and no reason): the statement or the metric they
-    were brainstormed for changed. How many went stale."""
-    p, runs = tables.canvas.proposals, brainstorm_runs()
-    of_goal = select(runs.c.run_id).where(runs.c.goal_id == goal_id)
-    done = await conn.execute(update(p).where(p.c.status == "open", p.c.run_id.in_(of_goal)).values(status="stale"))
-    return done.rowcount
 
 
 __all__ = [

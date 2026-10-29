@@ -11,7 +11,7 @@ Tables goals and goal_revisions, schema 0091.
   A body equal to the newest revision writes nothing (``changed`` false). ``if_revision`` other than the revision now
   is 409, and 0 creates the goal only. POST .../goals/{ref}/close: the next revision, closed with a reason. A revision
   that changes the statement or the metric makes the open proposals of the Loop's brainstorms of the goal stale
-  (``canvas.proposals.stale_for_goal``): a member no longer judges claims brainstormed for a goal that is no more.
+  (``brainstorms.stale_for_goal``): a member no longer judges claims brainstormed for a goal that is no more.
 - The agent of a run never writes a goal: @builder proposes one (proposal kind ``goal``,
   ``evo_agents.core_plugins.builder.proposals``), which an admin approves, and the hub writes it through ``write``.
 
@@ -50,9 +50,8 @@ from evo_agents.hub import opportunities as opportunity_model
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, brainstorms
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
-from evo_agents.hub.server.canvas import proposals
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -689,7 +688,7 @@ async def write(
     after = await found(conn, access.project_id, goals.code(number))
     keys = goals.changed(fields_of(held) if held is not None else {}, fields_of(after))
     aimed = [name for name in BRAINSTORMED_FOR if name in keys]
-    stale = await proposals.stale_for_goal(conn, held.id) if held is not None and aimed else 0
+    stale = await brainstorms.stale_for_goal(conn, held.id) if held is not None and aimed else 0
     if stale:
         extra = {"project": access.name, "goal": goals.code(number), "revision": now + 1, "changed": aimed}
         log.info("brainstorm proposals stale", extra={**extra, "stale": stale})

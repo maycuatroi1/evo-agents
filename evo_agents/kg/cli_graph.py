@@ -174,6 +174,8 @@ def cmd_eval(args) -> int:
         grep_ref=args.grep_ref,
         question_set=question_set,
         split=args.split,
+        line_budget=args.line_budget,
+        acc=args.acc,
     )
     report.settings.update(backend=args.backend, sink=args.sink, search=args.search)
     if args.json:
@@ -264,6 +266,15 @@ def _register_eval(ksub, with_project) -> None:
         type=_bounded(ev.MIN_BUDGET_TOKENS, ev.MAX_BUDGET_TOKENS),
         default=ev.DEFAULT_BUDGET_TOKENS,
         help=f"kg_context's budget and where grep's output is cut (default {ev.DEFAULT_BUDGET_TOKENS})",
+    )
+    run.add_argument(
+        "--line-budget",
+        type=_bounded(1, 100_000),
+        default=ev.LINE_BUDGET,
+        help=f"lines a method may return and be scored on, for questions with `lines` (default {ev.LINE_BUDGET})",
+    )
+    run.add_argument(
+        "--acc", action="store_true", help="also print Acc@k by file and by function when the set has no `lines`"
     )
     run.add_argument(
         "--repo", action="append", metavar="NAME=PATH", help="checkout of repo NAME for grep (default: the harness's)"

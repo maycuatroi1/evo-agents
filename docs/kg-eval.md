@@ -35,9 +35,10 @@ One JSON object a line:
 | `nodes` | answer nodes: node ids or aliases |
 | `project` | the graph to ask (default: `--project`, else the project of the current directory) |
 | `repo` | grep reads only this repo of the project |
+| `lines` | answer lines, scored by line (below): `{"repo:path": [[10, 24], "40-52"]}` or `["repo:path:10-24"]`; closed ranges, from line 1 |
 | `id` | the question's name in the results, and what fixes its part (default: `line N`) |
 
-A question needs at least one answer, and each entry of `files` and `nodes` is one answer. Other keys are left for
+A question needs at least one answer, and each entry of `files` and `nodes` is one answer; the files of `lines` are answer files too. Other keys are left for
 whoever wrote the set. A bad line stops the command before anything runs; the error names the bad lines, the first 20 of them.
 
 The first line may be a header instead of a question, `{"set": "evo-agents", "version": 3}`: the set's name and
@@ -110,6 +111,28 @@ each answer (`files` first, then `nodes`; `null` when not shown), the count of r
 
 The command exits 1 when a method answered with an error on every question it ran, which points at the set or the
 backend rather than the ranking, and 2 on a bad set or option.
+
+## Scoring by line
+
+A question with `lines` is also scored on the lines a method returns, and a set with one (or the flag `--acc`) gets
+these columns after the others, in the table and in `--json` (`rows`, and `lines` on each result; `settings.line_budget`).
+A set without `lines` and without `--acc` prints exactly the columns above.
+
+The lines of a result come from the range its node carries: a symbol's `line` to `end_line`, a section's `span`, the
+passage `kg_search` matched best (`matched`) when it has one; a result that is only a file counts the whole file (its
+length in a checkout of the project, else all the room left in the budget); a node with no file adds none. Grep's lines
+are the ones it prints. A method's lines are read in order and cut at the line budget (`--line-budget`, default 500).
+
+| Column | Meaning |
+| --- | --- |
+| `P@L`, `R@L`, `F1@L` | precision, recall and F1 over the distinct lines returned within the budget against the answer lines, averaged over the questions with `lines` |
+| `CE` | Context Efficiency: answer lines over all lines returned, a line returned twice counting twice |
+| `NDCG@L` | nDCG over the lines in the order returned, a line gaining 1 the first time it is an answer line, against the best order for min(answer lines, budget) lines |
+| `ACC1`, `ACC5`, `ACC10 FILE` | share of the questions with answer files whose files are all among the first k results |
+| `ACC1`, `ACC5`, `ACC10 FUNC` | the same for the questions with `nodes` (functions): every node among the first k results |
+
+`--json` rows also hold `line_questions` (questions with `lines`) and `lines_returned` (the mean). A cell is empty (`null`)
+when no question of the row applies. The optimize loop on the hub and eval11 read the columns above and are unchanged.
 
 ## Questions from the hub's plans
 
