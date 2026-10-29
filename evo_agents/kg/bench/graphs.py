@@ -88,6 +88,11 @@ class Layout:
         """The memo of the repo's builds, its own so that builds of two repos at once never wait on one file."""
         return self.base / "memo" / f"{slug(repo)}.sqlite"
 
+    def vectors(self, repo: str) -> Path:
+        """The vectors of the repo's snapshots, by the digest of a row's text: a snapshot embeds only the rows no
+        other snapshot of the repo had (with the API backend, that is what is paid for)."""
+        return self.base / "vectors" / f"{slug(repo)}.sqlite"
+
     def harness(self, task: Task) -> Path:
         return self.base / "harness" / self.name(task)
 
@@ -229,10 +234,11 @@ def prune_graph(lay: Layout, task: Task) -> None:
 
 
 def prune_repo(lay: Layout, repo: str) -> None:
-    """Delete the bare clone of ``repo`` and the memo of its builds."""
+    """Delete the bare clone of ``repo``, the memo of its builds and its cache of vectors."""
     shutil.rmtree(lay.clone(repo), ignore_errors=True)
     for suffix in ("", "-wal", "-shm"):
         Path(f"{lay.memo(repo)}{suffix}").unlink(missing_ok=True)
+        Path(f"{lay.vectors(repo)}{suffix}").unlink(missing_ok=True)
 
 
 def build_seconds(lay: Layout, bench: str) -> float | None:
