@@ -543,9 +543,12 @@ feedback memories of the project's scope that the run's owner owns. The hub pick
 
 - an item matches by the `code:REPO:PATH` references in it (a decision's evidence, question, context and answer; a
   memory's text) against the run: its repos and the prompt, which holds the plan step. A path the prompt names weighs
-  3, a directory of it 2, the repo alone 1; a decision of category `architecture` or `scope` adds 1 to a run on a plan.
-  An item that matches by none is left out, and a run with no match, or a project with the key off, gets its prompt
-  byte for byte as before;
+  3, a directory of it 2, the repo alone 1. A decision asked on the run's plan matches whatever it cites: on the run's
+  step it weighs 3, on another step of the plan 2. A feedback memory that cites no code is a rule of the whole project
+  and matches every run of it, weighing 0, so the scoped items come first. A decision of category `architecture` or
+  `scope` adds 1 to a run on a plan. An item that matches by none is left out (a decision of no plan of the run that
+  cites no code, a memory that cites only code of repos the run does not work in), and a run with no match, or a
+  project with the key off, gets its prompt byte for byte as before;
 - the block is ordered by match, then newest, and stops at 4 KiB and at the room the prompt leaves under
   `MAX_PROMPT_BYTES`; each line names its source (`memory_get ID`, `evo-agents hub decision show ID`);
 - never in it: an item of another project; a decision of category `credential`, `wait`, `release` or `loop`; a decision
@@ -554,7 +557,8 @@ feedback memories of the project's scope that the run's owner owns. The hub pick
   same checks as `memory_get` and the index of memories). The audiences it shows are noted to the run.
 
 Each answer loaded is a row of `context_answer_loads` (schema 0175): the run, the project, the source (`decision` or
-`memory`), its id, the scope key that matched (`repo:REPO`, `dir:REPO:DIR` or `path:REPO:PATH`) and when. A run loads an
+`memory`), its id, the scope key that matched (`repo:REPO`, `dir:REPO:DIR`, `path:REPO:PATH`, `plan:PLAN`,
+`step:PLAN:STEP` or `project:PROJECT`) and when. A run loads an
 answer once, so a run claimed again adds no row. `context_answers.load_counts` counts the runs that loaded and the
 answers loaded by day or by week. The policy revision that sets the key true is the first week of the trial that
 compares the 28 days after with the 28 before (`evo-agents hub policy history`).
