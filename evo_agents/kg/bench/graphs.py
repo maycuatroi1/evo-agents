@@ -17,10 +17,12 @@ changes only the ranking finds its graphs built and searches them again. A build
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -32,6 +34,7 @@ from evo_agents.kg.project import Project, load_project_at
 
 GITHUB_URL = "https://github.com/{repo}.git"
 GIT_TIMEOUT = 3600.0
+MEMO_KEEP_HOURS = 2.0  # a pruning run keeps the memo rows used this recently, which builds running beside it read
 MARKER = "bench.json"
 SLUG = re.compile(r"[^a-z0-9._-]+")
 
@@ -207,6 +210,24 @@ def build_graph(lay: Layout, task: Task, *, git_url: str = GITHUB_URL) -> Built:
     with (lay.base / "builds.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps({**marker, "bench": task.bench}) + "\n")
     return Built(task, False, seconds)
+
+
+def prune_graph(lay: Layout, task: Task) -> None:
+    """Delete the graph of the task's repo and commit, and its harness: ``run --prune`` keeps a disk from filling."""
+    shutil.rmtree(lay.project_dir(task), ignore_errors=True)
+    shutil.rmtree(lay.harness(task), ignore_errors=True)
+
+
+def prune_repo(lay: Layout, repo: str) -> None:
+    """Delete the bare clone of ``repo`` and the rows of the shared memo no build used in MEMO_KEEP_HOURS: a memo row
+    is a cache, so one deleted while another build still wanted it only makes that build slower."""
+    shutil.rmtree(lay.clone(repo), ignore_errors=True)
+    memo = lay.home / "_shared" / "memo.sqlite"
+    if memo.is_file():
+        from evo_agents.kg import memo as memo_module
+        from evo_agents.kg.ids import utc_text
+
+        memo_module.drop_unused(memo, utc_text(dt.datetime.now(dt.UTC) - dt.timedelta(hours=MEMO_KEEP_HOURS)))
 
 
 def build_seconds(lay: Layout, bench: str) -> float | None:

@@ -323,6 +323,27 @@ def test_run_builds_each_graph_once_apart_from_the_hub_and_writes_a_summary(benc
     )
 
 
+def test_one_pass_asks_each_search_on_the_same_graphs_and_prunes_them(bench, tmp_path):
+    cache, mirror, git_url, _ = bench
+    assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
+    graph, bm25 = tmp_path / "graph.json", tmp_path / "plain.json"
+    argv = ["kg", "bench", "run", "--cache", str(cache), "--git-url", git_url, "--search", "graph", "--search", "plain"]
+    assert main([*argv, "--out", str(graph)]) == 1  # one --out a search
+    assert main([*argv, "--out", str(graph), "--out", str(bm25), "--prune", "--jobs", "2"]) == 0
+    one, two = compare.load_summary(graph), compare.load_summary(bm25)
+    assert (one["settings"]["search"], two["settings"]["search"]) == ("graph", "plain")
+    for summary in (one, two):
+        assert all(n["build"]["failed"] == 0 for n in summary["benches"].values())
+        assert summary["tasks"] and all(r["skipped"] is None for r in summary["tasks"])
+    assert sorted((r["bench"], r["id"]) for r in one["tasks"]) == sorted((r["bench"], r["id"]) for r in two["tasks"])
+    loc = next(r for r in two["tasks"] if r["bench"] == "locbench")
+    assert loc["metrics"]["acc_file@5"] == 1.0  # plain BM25 finds widgets.py by the issue's words too
+    built = sum(n["build"]["built"] for n in one["benches"].values())
+    assert built == sum(n["build"]["built"] for n in two["benches"].values()) and built >= 2  # pruned, so built again
+    lay = graphs.layout(cache)
+    assert not any(lay.home.glob("acme__*")) and not any((cache / "repos").glob("*.git"))
+
+
 def test_run_reads_the_sealed_test_part_only_with_sealed(bench, tmp_path, capsys):
     cache, mirror, git_url, _ = bench
     assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
@@ -484,3 +505,13 @@ def test_show_checks_the_thresholds_later_steps_read(tmp_path, capsys):
     capsys.readouterr()
     assert main(["kg", "bench", "show", path, "--precision-min", "0.1"]) == 1
     assert "give --split" in capsys.readouterr().out
+
+
+def test_plain_bm25_ors_every_word_of_the_issue_but_stop_words():
+    from evo_agents.kg import search
+
+    assert (
+        search.plain_query("The parse_config crashes; parse_config again, x 2")
+        == '"parse" OR "config" OR "crashes" OR "again" OR "2"'
+    )
+    assert search.plain_query("the a of") is None
