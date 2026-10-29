@@ -405,6 +405,8 @@ def test_the_review_run_is_claimed_with_its_prompt_and_reports_done_without_veri
     assert shown.status_code == 200 and shown.json()["state"] == "done"
     listed = client.get(f"/v1/projects/{PROJECT}/runs", headers=review.headers["owner"]).json()
     assert run_id not in [run["id"] for run in listed["runs"]]  # the runs of plans; the Curator lists its own
+    asked = client.get(f"/v1/projects/{PROJECT}/runs?kind=review", headers=review.headers["owner"]).json()
+    assert [run["id"] for run in asked["runs"]] == [run_id] and asked["total"] == 1  # unless asked for by its kind
     rerun = client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/rerun", headers=review.headers["owner"])
     assert rerun.status_code == 409 and "only the night shift" in rerun.text
 
