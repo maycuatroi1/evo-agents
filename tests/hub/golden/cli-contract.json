@@ -24395,6 +24395,14 @@
         },
         {
           "flags": [
+            "--proof"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--verify"
           ],
           "value": "string",
@@ -146517,6 +146525,21 @@
               "title": "Verify",
               "description": "the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)"
             },
+            "criteria": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Criteria",
+              "description": "the ids of the criteria of the plan's acceptance that the step of a run of one step names: its result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step that names none"
+            },
             "session_per_step": {
               "type": "boolean",
               "title": "Session Per Step",
@@ -153313,6 +153336,22 @@
               ],
               "description": "what the routing by difficulty did, for a run it rated"
             },
+            "proofs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StepProof"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proofs",
+              "description": "with done or review of a run of one step: the proof of each criterion it names, which the step keeps once done"
+            },
             "answer": {
               "anyOf": [
                 {
@@ -153423,6 +153462,64 @@
             "step"
           ],
           "title": "StepEdit"
+        },
+        "StepProof": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 20,
+              "pattern": "^a\\d+$",
+              "title": "Id",
+              "description": "the criterion's id in the plan's acceptance"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "test",
+                "command",
+                "n/a"
+              ],
+              "title": "Kind",
+              "description": "test (path::name), command, or n/a"
+            },
+            "locator": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locator",
+              "description": "the test or the command"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "with n/a: why"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind"
+          ],
+          "title": "StepProof",
+          "description": "The proof of one criterion a step names (``evo_agents.hub.proofs``)."
         },
         "StepReadiness": {
           "properties": {
@@ -153575,6 +153672,22 @@
               ],
               "title": "Commit Sha",
               "description": "the repo's commit the step ends on"
+            },
+            "proofs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StepProof"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proofs",
+              "description": "with done: one proof for each criterion of the plan's acceptance the step names, which the step keeps; 422 when one is missing or names another criterion. Absent from an older worker's report"
             }
           },
           "type": "object",

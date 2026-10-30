@@ -18,7 +18,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import proofs, runs, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -359,6 +359,8 @@ async def _moved_columns(conn, run_id: int, name: str, body: StateReport, column
             verify=columns.get("verify", found.verify),
         )
         columns["evidence"] = evidence(found, body.summary)
+        if body.proofs:
+            columns["proofs"] = proofs.stored(item.model_dump(exclude_none=True) for item in body.proofs)
     return error
 
 

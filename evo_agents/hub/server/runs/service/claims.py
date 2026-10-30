@@ -28,7 +28,7 @@ from sqlalchemy import BigInteger, Text, and_, any_, case, column, exists, func,
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import author, autonomy_card, curator, model_router, runs, tables
+from evo_agents.hub import author, autonomy_card, curator, model_router, proofs, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
@@ -711,7 +711,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     )
     body = (await conn.execute(dispatched)).scalar_one_or_none()
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
-    copy, verify = None, None
+    copy, verify, criteria = None, None, None
     if view.kind in OWN_PROMPTS:
         prompt = await _own_prompt(conn, view, features, card is not None and card.ships)
         title = view.title
@@ -749,6 +749,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = text_or_none(step.get("title"))
         verify = runs.verify_of(step)
+        criteria = [key for key, _ in proofs.criteria(plan, step)] or None
     from evo_agents.hub.server.context_answers import with_answers
     from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
 
@@ -785,6 +786,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         budget=await _claimed_budget(conn, view),
         curator=await _curator_spec(conn, project_id, view),
         verify=verify,
+        criteria=criteria,
         session_per_step=view.session_per_step,
         browser=view.browser,
         browser_identities=view.browser_identities,

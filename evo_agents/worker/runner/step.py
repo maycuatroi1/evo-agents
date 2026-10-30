@@ -104,6 +104,7 @@ class StepRun:
             diffstat=diffstat,
             verify=run.verify,
             summary=run.summary,
+            proofs=run.proofs,
             usage=run.outcome.usage if run.outcome else None,
         )
 

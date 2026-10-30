@@ -495,6 +495,8 @@ runs = Table(
     Column("claude_email", Text),  # the Claude account that ran the session; 'unknown' when it could not be read
     Column("claude_profile", Text),  # the claude-profiles profile, when it could be read
     _when("last_activity_at"),
+    # The proof of each acceptance criterion its step names, as the worker of a run of one step reported it (0186).
+    Column("proofs", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),

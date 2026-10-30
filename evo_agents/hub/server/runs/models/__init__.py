@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from evo_agents.hub import author, profiles, question_runs, runs
+from evo_agents.hub import author, profiles, proofs, question_runs, runs
 from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -606,6 +606,13 @@ class RunSpec(BaseModel):
         "worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other "
         "kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)",
     )
+    criteria: list[str] | None = Field(
+        None,
+        exclude_if=lambda value: value is None,
+        description="the ids of the criteria of the plan's acceptance that the step of a run of one step names: its "
+        "result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step "
+        "that names none",
+    )
     session_per_step: bool = Field(
         False,
         description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
@@ -973,6 +980,27 @@ class Diffstat(BaseModel):
     deletions: int = Field(ge=0)
 
 
+class StepProof(BaseModel):
+    """The proof of one criterion a step names (``evo_agents.hub.proofs``)."""
+
+    id: str = Field(pattern=r"^a\d+$", max_length=20, description="the criterion's id in the plan's acceptance")
+    kind: Literal[proofs.KINDS] = Field(description="test (path::name), command, or n/a")
+    locator: str | None = Field(
+        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="the test or the command"
+    )
+    reason: str | None = Field(
+        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="with n/a: why"
+    )
+
+    @model_validator(mode="after")
+    def _kind_has_its_key(self):
+        if self.kind == proofs.NA and not self.reason:
+            raise ValueError(f"the proof of {self.id} is n/a, which comes with a reason")
+        if self.kind != proofs.NA and not self.locator:
+            raise ValueError(f"the proof of {self.id} is a {self.kind}, which comes with its locator")
+        return self
+
+
 class StateReport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -995,6 +1023,12 @@ class StateReport(BaseModel):
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
     model_used: ModelName | None = Field(None, description="the model the run's runtime runs it on")
     routing: RoutingRecord | None = Field(None, description="what the routing by difficulty did, for a run it rated")
+    proofs: list[StepProof] | None = Field(
+        None,
+        max_length=proofs.MAX_PROOFS,
+        description="with done or review of a run of one step: the proof of each criterion it names, which the "
+        "step keeps once done",
+    )
     answer: str | None = Field(
         None,
         min_length=1,
@@ -1026,6 +1060,12 @@ class StepReport(BaseModel):
         None, max_length=50, description="each verify command the worker ran again; done needs one, every one exit 0"
     )
     commit_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the repo's commit the step ends on")
+    proofs: list[StepProof] | None = Field(
+        None,
+        max_length=proofs.MAX_PROOFS,
+        description="with done: one proof for each criterion of the plan's acceptance the step names, which the step "
+        "keeps; 422 when one is missing or names another criterion. Absent from an older worker's report",
+    )
 
 
 class StepWritten(BaseModel):

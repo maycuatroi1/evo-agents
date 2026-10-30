@@ -115,7 +115,7 @@ PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cance
 CAUSED_KINDS = ("step", "plan", "author", "chat")
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
-MOVE_COLUMNS |= {"evidence", "usage", "failure_cause", "model_used", "routing"}
+MOVE_COLUMNS |= {"evidence", "usage", "failure_cause", "model_used", "routing", "proofs"}
 
 
 # Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.
@@ -310,6 +310,7 @@ class RunStep:
     repos: list | None = None  # a plan run's repos, each {"repo", "branch"}
     project_id: int | None = None
     failure_cause: str | None = None  # why it failed, as its worker reported it
+    proofs: list | None = None  # the proof of each criterion its step names, as a run of one step reported them
 
 
 def _run_step(run_id: int):
@@ -337,6 +338,7 @@ def _run_step(run_id: int):
             r.c.repos,
             r.c.project_id,
             r.c.failure_cause,
+            r.c.proofs,
         )
         .select_from(
             r.join(p, p.c.id == r.c.project_id)
@@ -417,6 +419,8 @@ def step_updates(found: RunStep, old: str, new: str, reason: str):
         updates = {"status": "in_progress", "note": _note(f"run #{found.run_id} on worker {found.worker}")}
     elif new == "done":
         updates = {"status": "done", "done_at": _today(), "evidence": found.evidence or evidence(found)}
+        if found.proofs:
+            updates["proofs"] = found.proofs
     elif new == "failed":
         updates = {"status": "pending", "note": _note(f"run #{found.run_id} failed: {found.error or reason}")}
     elif new == "cancelled":
@@ -499,6 +503,7 @@ async def write_step(
                             updates,
                             if_revision=held.revision,
                             step=found.step_key,
+                            hub=True,
                         )
                 except plan_routes.PlanError as exc:
                     if exc.code != plan_routes.REVISION_CONFLICT or attempt == PLAN_TRIES:

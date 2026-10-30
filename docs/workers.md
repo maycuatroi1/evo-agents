@@ -476,6 +476,20 @@ depends on. The rules tell the agent to:
 checkout while the run is `verifying`, and approval `auto` marks the step done only when every one exits 0: the plan's
 own `verify` is often prose mixed with commands, and a result the daemon saw is worth more than the agent's word.
 
+A step whose `acceptance` names criteria of the plan's `acceptance` (`[a4, a9]`, ids the plan defines; sentences and
+ids it lacks do not count) gets them in its prompt, in the plan's words, under `## Acceptance criteria of the step`,
+and the claim lists their ids (`criteria`). The result file then gives one proof for each under `"proofs"`, an object
+of criterion id to one line: a test that proves it (`path::test_name`, which must be in the worktree), a command that
+shows it, or `n/a: why`:
+
+```json
+{"verify_commands": ["python -m pytest -q"], "summary": "...", "proofs": {"a4": "tests/hub/test_x.py::test_y", "a9": "n/a: no contract change"}}
+```
+
+A result file without a proof for each criterion, or with one for a criterion the step does not name, fails the run
+and names what is missing. The proofs go to the hub with `review` or `done` and reach the plan's step when the run is
+done ([Proof of a step's criteria](hub.md#proof-of-a-steps-criteria)). A step that names no criterion takes none.
+
 The prompt is at most 32 KiB of UTF-8. Each part has its own budget (goal 2 KiB, context 4 KiB, what 10 KiB, verify
 3 KiB, note 2 KiB, 1.5 KiB of evidence per dependency and 5 KiB for all of them, 200 bytes for a title, key, repo or
 branch). A part over its budget is cut on a character boundary and ends with a mark saying how many bytes were left
@@ -495,7 +509,9 @@ to:
   pending and every step it depends on is done, and checkpoint steps are the agent's too;
 - read the plan as the hub holds it now with `evo-agents worker plan` before each step;
 - record progress only with `evo-agents worker step` (`in_progress`, `done` with evidence and verify commands, which
-  the worker runs again and refuses done on a non-zero exit, or `pending`), never with the hub's `plan_step` tool,
+  the worker runs again and refuses done on a non-zero exit, or `pending`), with one `--proof ID=VALUE` for each
+  criterion of the plan's acceptance the step names (`record_rule`; a step's session also gets the criteria in the
+  plan's words), never with the hub's `plan_step` tool,
   `evo harness step` or `evo-agents hub plan`;
 - ask the owner with `evo-agents worker ask` only a decision of the categories in `docs/notifications.md`, decide
   everything else itself and write each choice, with why, in the step's evidence on a line starting with `Decision:`;
@@ -1732,7 +1748,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker projects [--add P ...] [--remove P ...] [--worker W]` | shows the projects the worker serves, or changes them in place with `PATCH /v1/workers/{id}` and the owner's machine token; this machine's worker by default, whose `config.json` takes the new list and the repos of its projects at once, or with `--worker` another of the owner's workers by id or name, whose daemon takes them at its next heartbeat ([The projects a worker serves](#the-projects-a-worker-serves)) |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
-| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
+| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--proof ID=VALUE ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)). A step whose `acceptance` names criteria of the plan's takes one `--proof` for each: `a4=path::test_name` (a test in the repo's worktree), `a4=COMMAND`, or `a4=n/a: why`; `done` without one for each, or with one for a criterion the step does not name, is refused, naming the criteria, before anything is verified or pushed. `--evidence` stays free text ([Proof of a step's criteria](hub.md#proof-of-a-steps-criteria)) |
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--recommended-reason TEXT] [--reversible yes\|no] [--undo TEXT] [--evidence REF ...] [--wait-option KEY ...] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run. `--recommended-reason` says why the recommended option, at most 500 characters, and needs `--recommended`; `--reversible` says whether the act can be undone, and `--undo` how (at most 500 characters; alone it sends `--reversible yes`, and with `--reversible no` it is refused); `--evidence` is repeated, at most 20 refs: `run:ID`, `run:ID:SEQ`, `output:ID`, `P-<n>/E-<n>`, an https URL, `session:ID[:FIELD:INDEX]`, `transcript:ID[:FILE]:LINE`, `code:REPO:PATH[:LINE]` or `memory:ID:REV`, checked for their form before anything is sent (`docs/notifications.md`, Why the agent recommends). Without `--recommended` it prints a warning to stderr and still asks. With `--category credential`, `--env-var NAME [--secret-name NAME]` and/or `--hub-account` ask the owner for a variable's value and their hub account instead of options of its own: the hub gives it its options, the decision is noted as a credential request, and once it is answered the daemon takes the run's leases again, which `worker env` then prints ([credentials.md](credentials.md#a-run-that-asks-for-a-credential)) |
 | `evo-agents worker output FILE ... [--caption TEXT]` | for the agent of any run: sends files to the run's outputs on the hub, in the background (see [Outputs of a run on the machine](#outputs-of-a-run-on-the-machine)) |
 | `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | for the agent of any run: records a backup it made before deleting or overwriting data, on the hub (the run's log and the audit row `autonomy.backup`) and in the run's `backups.jsonl`; a command that deletes data for good (K9) runs only after one made within the last 24 hours (see [The hook of autonomy on the worker](autonomy.md#the-hook-of-autonomy-on-the-worker)) |
