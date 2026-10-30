@@ -215,6 +215,12 @@ class WorkerHub:
     async def heartbeat(self, body: dict) -> dict:
         return await self.call("POST", "/v1/worker/heartbeat", body)
 
+    async def merged(self, run_ids: list[int]) -> list[int]:
+        """Of ``run_ids``, ended runs whose worktrees this worker keeps, those whose work the hub knows merged."""
+        answer = await self.call("POST", "/v1/worker/merged", {"runs": run_ids})
+        found = answer.get("merged") if isinstance(answer, dict) else None
+        return [item for item in found or [] if isinstance(item, int) and not isinstance(item, bool)]
+
     async def doctor(self, body: dict) -> dict:
         """Send the findings of the machine's doctor (``evo_agents.worker.doctor_report``)."""
         return await self.call("POST", "/v1/worker/doctor", body)
