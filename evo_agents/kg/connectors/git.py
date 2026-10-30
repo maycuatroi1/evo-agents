@@ -30,11 +30,11 @@ shows only once the file changes again. A change of the source's ``ref``, ``repo
 (``evo_agents.kg.corpus``): the next run's records replace those read from the old ref, even where its commits
 are newer.
 
-The run's cursor (``read_cursor``) names the commit read, how far it is behind the remote's default branch as the
-clone has it, where links at that commit start, and ``input``, a digest of what besides the commit decides the items
-(``read_input``). A sync whose source's last run was ok asks ``read_already`` first: when the ref still resolves to
-that commit and the input is the same, the run would read the same items, so the sync reads nothing and keeps no log
-(``evo_agents.kg.sync``). An item's ``uri`` links to its file by branch, never by commit,
+The run's cursor (``read_cursor``) names the commit read, when it was read (``at``), how far it is behind the remote's
+default branch as the clone has it then, where links at that commit start, and ``input``, a digest of what besides
+the commit decides the items (``read_input``). A sync whose source's last run was ok asks ``read_already`` first:
+when the ref still resolves to that commit and the input is the same, the run would read the same items, so the sync
+reads nothing and keeps no log (``evo_agents.kg.sync``). An item's ``uri`` links to its file by branch, never by commit,
 which would change every item's hash on every commit; the tools show the link at the commit read instead
 (``evo_agents.kg.freshness``).
 
@@ -62,6 +62,7 @@ a rewrite of much of the history waits for ``kg sync --accept-removals``. A pull
 
 from __future__ import annotations
 
+import datetime as dt
 import functools
 import hashlib
 import json
@@ -187,12 +188,13 @@ def blob_item(item_id: str, path: str, sha: str, data: bytes, *, rev_time: str, 
 
 
 def read_cursor(repo: Path, ref: str, commit: str, *, origin: str, branch: str, default: str | None) -> dict:
-    """The cursor that ends a run: the commit read and the ref named; ``base``, the remote's default branch as the
-    clone has it now (harness.yaml's ``default_branch``, else the clone's ``origin/HEAD``), and ``behind``, how many of
-    its commits the commit read lacks, when the clone has that branch; with an origin on a forge, ``url`` of the commit
-    and ``blob``, where file links by branch start and where those at the commit read start
-    (``evo_agents.kg.freshness`` reads all of it)."""
-    cursor: dict = {"commit": commit, "ref": ref}
+    """The cursor that ends a run: the commit read, the ref named and ``at``, the time of the read in UTC; ``base``,
+    the remote's default branch as the clone has it now (harness.yaml's ``default_branch``, else the clone's
+    ``origin/HEAD``), and ``behind``, how many of its commits the commit read lacks, when the clone has that branch:
+    a count true at ``at`` only, which a sync that finds the same commit again does not renew; with an origin on a
+    forge, ``url`` of the commit and ``blob``, where file links by branch start and where those at the commit read
+    start (``evo_agents.kg.freshness`` reads all of it)."""
+    cursor: dict = {"commit": commit, "ref": ref, "at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")}
     default = default or _git.remote_head(repo)
     count = _git.behind(repo, commit, f"origin/{default}") if default else None
     if count is not None:
