@@ -44,7 +44,14 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.changes import HiddenResult, JudgeKey, Sign
+from evo_agents.hub.server.changes import (
+    HiddenResult,
+    JudgeKey,
+    SecurityPass,
+    Sign,
+    security_dimension,
+    security_findings,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.projects import project_access
@@ -305,6 +312,9 @@ class MergeVerdictIn(BaseModel):
     prior: dict[str, FindingMark] | None = Field(
         None, description="the Judge's mark of each finding of an earlier round its prompt listed, by id"
     )
+    security: SecurityPass | None = Field(
+        None, description="the security pass of the run, which judges the dimension security apart from the agent"
+    )
 
 
 class MergeVerdict(BaseModel):
@@ -442,6 +452,7 @@ class Judged:
         self.hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
         self.signs = [sign.model_dump() for sign in body.signs]
         self.dimensions = {name: item.model_dump() for name, item in (body.dimensions or {}).items()}
+        self.dimensions[merge_gate.SECURITY] = security_dimension(body.security)
         self.checks_ok, self.checks_why = judge.final_verdict(
             agent="pass",
             verify=self.verify,
@@ -451,10 +462,12 @@ class Judged:
             signs=[],
             head_matches=True,
         )
-        names = merge_gate.RISK_DIMENSIONS if second else merge_gate.DIMENSIONS
-        new = findings.read_new([item.model_dump() for item in body.findings], names)
-        self.marks = findings.read_marks({key: item.model_dump() for key, item in (body.prior or {}).items()})
+        names = merge_gate.gate_names(second)
         ledger = ledger or []
+        if body.security is not None:  # the pass ran on this head: what it finds now is all it finds
+            ledger = findings.supersede(ledger, merge_gate.SECURITY, run_id=run_id, head=body.head_sha)
+        new = findings.read_new([item.model_dump() for item in body.findings], names) + security_findings(body.security)
+        self.marks = findings.read_marks({key: item.model_dump() for key, item in (body.prior or {}).items()})
         self.judge_ok, self.judge_why = merge_gate.judge_round(
             body.verdict, self.dimensions, names, ledger=ledger, marks=self.marks, new=new
         )
@@ -487,6 +500,7 @@ class Judged:
             "passed": passed,
             "findings": [item["id"] for item in self.raised],
             "prior": self.marks,
+            "security": self.body.security.model_dump(exclude={"findings"}) if self.body.security else None,
         }
 
 

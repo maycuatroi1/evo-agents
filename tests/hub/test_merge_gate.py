@@ -215,6 +215,16 @@ def judge_headers(world, spec: dict) -> dict:
     return {**world.worker["headers"], judge.JUDGE_KEY_HEADER: spec["curator"]["judge_key"]}
 
 
+SECURITY_PASS = {
+    "verdict": "pass",
+    "reason": "none found",
+    "findings": [],
+    "candidates": 0,
+    "turns": 1,
+    "cost_usd": 0.02,
+}
+
+
 def dimensions(names=merge_gate.DIMENSIONS, **failed) -> dict:
     return {
         name: {"verdict": "fail" if name in failed else "pass", "reason": failed.get(name, "fine")} for name in names
@@ -240,6 +250,7 @@ def judged(
         "hidden": [],
         "signs": [],
         "dimensions": dimensions(names, **failed),
+        "security": SECURITY_PASS,
         **(extra or {}),
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
@@ -295,6 +306,7 @@ def test_merge_gate_opens_a_plans_merge_request_and_takes_it_through_every_gate(
         "head_sha": merge_request.sha,
         "verify": [{"command": VERIFY, "exit_code": 0}],
         "dimensions": dimensions(),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(
         f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=judge_headers(world, spec)
@@ -308,7 +320,9 @@ def test_merge_gate_opens_a_plans_merge_request_and_takes_it_through_every_gate(
     kinds = [event["kind"] for event in reversed(entry["events"])]
     assert kinds[0] == "opened" and "judged" in kinds and kinds[-1] == "queued"
     verdict = next(event for event in entry["events"] if event["kind"] == "judged")
-    assert verdict["detail"]["model"] == "sonnet" and set(verdict["detail"]["dimensions"]) == set(merge_gate.DIMENSIONS)
+    assert verdict["detail"]["model"] == "sonnet" and set(verdict["detail"]["dimensions"]) == set(
+        merge_gate.gate_names()
+    )
     assert entry["verdict"]["first"]["passed"] is True and "second" not in entry["verdict"]
     audit = tables.audit
     actions = [row[0] for row in sql(world.db, select(audit.c.action).where(audit.c.action.like("merge.%")))]
@@ -460,6 +474,7 @@ def test_merge_gate_a_failed_check_of_the_judge_run_blocks_it_at_gate_4(world):
         "head_sha": merge_request.sha,
         "verify": [{"command": VERIFY, "exit_code": 1}],
         "dimensions": dimensions(),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.json()["state"] == "blocked"
@@ -512,6 +527,7 @@ def test_merge_gate_a_high_risk_needs_a_second_judge_on_opus(world):
         "head_sha": merge_request.sha,
         "verify": [{"command": VERIFY, "exit_code": 0}],
         "dimensions": dimensions(merge_gate.RISK_DIMENSIONS, migration="it drops a column it cannot bring back"),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.json()["state"] == "blocked"
@@ -793,3 +809,27 @@ def test_merge_gate_a_task_runs_branch_gets_its_merge_request(world):
     entry = one(world)
     assert (entry["source"], entry["run_id"], entry["source_branch"]) == ("task", task_id, f"task/{task_id}")
     assert world.project.merge_requests[1].title == "Index the kb"
+
+
+# The security pass of the merge queue's Judges (plan super-board-parity-1, step 4)
+
+
+def test_merge_gate_security_pass_a_finding_blocks_the_judge_and_enters_the_ledger(world):
+    plan_done(world)
+    gate_pass(world)
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    gate_pass(world)
+    found = {"path": "src/report.py", "line": 7, "text": "command_injection (high): the name reaches a shell"}
+    security = {**SECURITY_PASS, "verdict": "fail", "reason": "1 vulnerability: src/report.py:7", "findings": [found]}
+    _, answer = judged(world, head=merge_request.sha, extra={"security": security})
+    assert answer["passed"] is False and answer["state"] == "blocked"
+    assert one(world)["reason"] == "gate 5 (Judge): the Judge failed security: 1 vulnerability: src/report.py:7"
+    verdict = one(world)["verdict"]
+    (raised,) = verdict["findings"]
+    assert (raised["dimension"], raised["path"], raised["line"], raised["status"]) == (
+        "security", "src/report.py", 7, "open"
+    )  # fmt: skip
+    assert (
+        verdict["first"]["security"]["turns"] == 1 and verdict["first"]["dimensions"]["security"]["verdict"] == "fail"
+    )

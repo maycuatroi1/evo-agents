@@ -685,3 +685,53 @@ def test_merge_ci_is_green_only_once_the_required_checks_passed():
         {"type": "required_status_checks", "ruleset_id": 1, "parameters": {"required_status_checks": from_app}},
     ]
     assert judge.required_checks(rules) == from_app
+
+
+# The security pass of every Judge (plan super-board-parity-1, step 4)
+
+
+def test_security_pass_the_text_is_the_pinned_one_with_its_license_beside_it():
+    from evo_agents.hub import security_pass
+
+    assert security_pass.digest(security_pass.vendored()) == security_pass.SOURCE_SHA256
+    assert security_pass.digest(security_pass.vendored_license()) == security_pass.LICENSE_SHA256
+    assert security_pass.LICENSE_FILE.parent == security_pass.TEXT_FILE.parent
+    assert security_pass.LICENSE_FILE.name == "claude-code-security-review-LICENSE.txt"
+    licensed = security_pass.vendored_license()
+    assert licensed.startswith("MIT License") and "Copyright (c) 2025 Anthropic" in licensed
+    assert len(security_pass.SOURCE_COMMIT) == 40 and security_pass.SOURCE.endswith("/claude-code-security-review")
+
+
+def test_security_pass_the_diff_starts_at_the_base_of_the_change_not_at_origin_head():
+    from evo_agents.hub import security_pass
+
+    base = "a" * 40
+    assert security_pass.DIFF_TARGET in security_pass.vendored()
+    text = security_pass.find_prompt(base)
+    assert security_pass.DIFF_TARGET not in text
+    assert f"git diff --merge-base {base}" in text and f"git diff --name-only {base}..." in text
+    assert f"git log --no-decorate {base}..." in text
+    # nothing else of the review changed: its instructions are in the prompt as the command has them
+    original = security_pass.vendored()
+    for heading in ("OBJECTIVE:", "CRITICAL INSTRUCTIONS:", "SECURITY CATEGORIES TO EXAMINE:", "SEVERITY GUIDELINES:"):
+        start = original.index(heading)
+        assert original[start : original.index("\n\n", start)] in text
+
+
+def test_security_pass_the_filter_prompt_holds_the_filtering_instructions_and_the_finding_alone():
+    from evo_agents.hub import security_pass
+
+    item = {
+        "file": "app/db.py",
+        "line": 12,
+        "severity": "HIGH",
+        "category": "sql_injection",
+        "description": "the name goes into the query",
+        "exploit_scenario": "a crafted name",
+        "recommendation": "bind it",
+    }
+    text = security_pass.filter_prompt("b" * 40, item)
+    assert "HARD EXCLUSIONS" in text and "PRECEDENTS" in text and "confidence score from 1-10" in text
+    assert '"file": "app/db.py"' in text and "the name goes into the query" in text
+    assert "bind it" not in text  # the filter reads the finding, not the fix proposed
+    assert "START ANALYSIS" not in text and "sub-task" not in text.split("The finding:")[0]

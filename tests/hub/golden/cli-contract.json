@@ -122493,6 +122493,17 @@
               ],
               "title": "Prior",
               "description": "the Judge's mark of each finding of an earlier round its prompt listed, by id"
+            },
+            "security": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SecurityPass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the security pass of the run, which judges the dimension security apart from the agent"
             }
           },
           "type": "object",
@@ -147364,6 +147375,105 @@
           ],
           "title": "SecretWritten"
         },
+        "SecurityFinding": {
+          "properties": {
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "SecurityFinding",
+          "description": "A vulnerability the security pass kept after its filter."
+        },
+        "SecurityPass": {
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "title": "Verdict"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Reason",
+              "default": ""
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/SecurityFinding"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Findings"
+            },
+            "candidates": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Candidates",
+              "description": "the findings the first turn raised, before the filter",
+              "default": 0
+            },
+            "turns": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Turns",
+              "description": "agent turns the pass took: one that finds, one for each candidate",
+              "default": 0
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "what those turns cost, when the runtime reports it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "verdict"
+          ],
+          "title": "SecurityPass",
+          "description": "What the security pass of a Judge run (``evo_agents.hub.security_pass``) said of the change, and what it cost:\nthe dimension ``security``, its findings with path and line, and the turns the pass took."
+        },
         "SelfManagedIn": {
           "properties": {
             "enabled": {
@@ -158212,6 +158322,17 @@
               ],
               "title": "Verdict",
               "description": "the Judge agent's; null when it gave none"
+            },
+            "security": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SecurityPass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the security pass of the run: a verdict without it fails the dimension security"
             },
             "reasons": {
               "anyOf": [
