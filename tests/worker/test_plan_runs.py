@@ -1546,3 +1546,68 @@ def test_a_plan_run_resumed_after_a_decision_reports_every_turn_and_the_first_re
     assert (usage["input_tokens"], usage["output_tokens"]) == (15, 140), "the tokens of both turns, added up"
     assert usage["total_cost_usd"] == 0.6448, "the session's running total, which holds the first turn's cost"
     assert (usage[FIRST_READ], usage[FIRST_CREATION]) == (0, 41_000), "the session's first request: its first turn's"
+
+
+# A step run pushing to the branch its plan's runs share, which another step run moved on (plan super-board-parity-2, a5)
+
+
+async def _push_step(path: Path, replay: gitops.Replay) -> gitops.Pushed:
+    return await gitops.push(path, "main", protected=(), kind="step", replay=replay)
+
+
+def test_step_replay_puts_the_runs_commit_on_top_of_the_branch_and_runs_the_verify_again(machine):
+    path = machine.checkouts["alpha"]
+    mine = commit_file(path, "mine.txt")
+    tip = move_origin(machine, "alpha", "theirs.txt")
+    seen = []
+
+    async def verify(head: str) -> str | None:
+        seen.append((head, (path / "theirs.txt").exists()))
+        return None
+
+    pushed = asyncio.run(_push_step(path, replay_rules(machine, verify)))
+    new = git("rev-parse", "HEAD", cwd=path)
+    assert (pushed.branch, pushed.default, pushed.changed, pushed.onto, pushed.replayed_from) == (
+        "main",
+        False,
+        True,
+        tip,
+        mine,
+    )
+    assert new != mine and git("rev-parse", "HEAD^", cwd=path) == tip
+    assert seen == [(new, True)], "the verify ran again at the replayed head"
+    assert machine.origin_rev("alpha", "refs/heads/main") == new
+
+
+def test_step_replay_fails_with_a_conflict_only_when_the_replay_conflicts_and_keeps_the_work_aside(machine):
+    path = machine.checkouts["alpha"]
+    mine = commit_file(path, "same.txt", "mine\n")
+    tip = move_origin(machine, "alpha", "same.txt")
+
+    async def go():
+        with pytest.raises(gitops.PushConflict) as conflict:
+            await _push_step(path, replay_rules(machine))
+        return conflict.value
+
+    conflict = asyncio.run(go())
+    assert "conflict in same.txt" in str(conflict)
+    assert machine.origin_rev("alpha", "refs/heads/evo-run/7") == mine
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip, "the branch was not touched"
+
+
+def test_step_replay_fails_when_the_steps_verify_fails_on_the_new_head(machine):
+    path = machine.checkouts["alpha"]
+    mine = commit_file(path, "mine.txt")
+    tip = move_origin(machine, "alpha", "theirs.txt")
+
+    async def verify(head: str) -> str | None:
+        return "`make check` exited 1"
+
+    async def go():
+        with pytest.raises(gitops.PushConflict) as conflict:
+            await _push_step(path, replay_rules(machine, verify))
+        return conflict.value
+
+    assert "the verify run again there failed" in str(asyncio.run(go()))
+    assert git("rev-parse", "HEAD", cwd=path) == mine
+    assert machine.origin_rev("alpha", "refs/heads/main") == tip

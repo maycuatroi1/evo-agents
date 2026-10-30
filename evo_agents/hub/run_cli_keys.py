@@ -56,6 +56,7 @@ RUN_KEYS = (
     "request",
     "finish_requested_at",
     "steady_wait",
+    "overlap_wait",
     "failure_cause",
     "session_per_step",
     "browser",

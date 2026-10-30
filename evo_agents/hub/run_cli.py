@@ -533,6 +533,10 @@ def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
         lines.append(("ended", f"{_when(run['finished_at'])} UTC"))
     if run["waiting_since"] and run["state"] == "waiting":
         lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+    if run.get("overlap_wait") and run["state"] == "queued":
+        wait = run["overlap_wait"]
+        who = ", ".join(f"#{number}" for number in wait["run_ids"])
+        lines.append(("waits for", f"run {who} to end: it edited {', '.join(wait['paths'])}, which this step names"))
     if run["session_id"]:
         lines.append(("session", run["session_id"]))
     lines.append(("events", f"{run['last_seq']}"))

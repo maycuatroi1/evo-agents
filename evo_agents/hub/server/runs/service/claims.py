@@ -52,7 +52,7 @@ from evo_agents.hub.server.runs.models import (
     RunSpec,
     available,
 )
-from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service import browsers, overlap, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
     own_home,
@@ -479,6 +479,9 @@ async def _claim_once(
                 node.gate(worker_id),
             ),
         )
+        waiting = await overlap.blocked(conn, list(served))
+        if waiting:  # a step run whose files another run of its plan is editing waits in the queue
+            query = query.where(tables.runs.c.id.not_in(waiting))
         row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None

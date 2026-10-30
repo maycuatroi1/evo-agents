@@ -20,6 +20,11 @@ default branch never, whatever its plan names; a chat run its branch ``chat/<run
 an author run push nothing. ``push``
 sends the push options it is given (``--push-option``), with which a push to GitLab opens a merge request.
 
+A run of one step does the same for the branch its plan's runs share (``push`` with a ``Replay`` and kind ``step``): other
+step runs push to it too, so a branch that went on while the run worked gets the run's commits on top of its tip, the
+step's verify runs again, and only a real conflict (or a failed verify) ends in ``PushConflict``, with the work kept on
+the side branch as above.
+
 A branch the remote moved past HEAD (it has HEAD in its history) is left alone: there is nothing to push. A default
 branch the plan names that the remote moved on while HEAD has commits of its own (``push`` with a ``Replay``, as
 ``evo-agents worker step`` and the push at the end of a plan run call it) gets those commits on top of the remote's tip:
@@ -663,8 +668,8 @@ async def push(
     head = await rev(cwd, "HEAD")
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")
-    if default and replay is not None:
-        return await _push_replaying(cwd, branch, remote, head, replay, env=env, options=options)
+    if replay is not None and (default or kind == "step"):
+        return await _push_replaying(cwd, branch, remote, head, replay, default, env=env, options=options)
     before = await remote_tip(cwd, branch, remote, env=env)
     if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
         return Pushed(branch, head, default, False)
@@ -679,6 +684,7 @@ async def _push_replaying(
     remote: str,
     head: str,
     replay: Replay,
+    default: bool,
     *,
     env: Mapping[str, str] | None,
     options: Collection[str],
@@ -689,14 +695,14 @@ async def _push_replaying(
     for attempt in range(1, REPLAY_TRIES + 1):
         before = await remote_tip(cwd, branch, remote, env=env)
         if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
-            return Pushed(branch, head, True, False, (), onto, original if head != original else None)
+            return Pushed(branch, head, default, False, (), onto, original if head != original else None)
         if before is not None and not await is_ancestor(cwd, before, head):
             if await rev(cwd, before) is None:  # has_commit fetched it; nothing replays onto a commit not here
                 raise GitError(f"the tip {before[:12]} of {branch} on {remote} could not be fetched to replay onto")
             head = await _replay(cwd, branch, remote, before, head, original, replay, env=env)
             onto = before
             if head == before:  # every commit of the run was on the remote's branch already, as another commit
-                return Pushed(branch, head, True, False, (), onto, original)
+                return Pushed(branch, head, default, False, (), onto, original)
         commits = tuple(await new_commits(cwd, before, remote))
         try:
             await _send(cwd, "HEAD", branch, remote, env=env, options=options)
@@ -707,7 +713,7 @@ async def _push_replaying(
                 why = f"went on top of it {REPLAY_TRIES} times, and each time it moved on again before the push"
                 raise await _conflict(cwd, branch, remote, original, before or head, why, replay, env=env) from None
             continue  # the remote moved the branch on between the look and the push
-        return Pushed(branch, head, True, True, commits, onto, original if head != original else None)
+        return Pushed(branch, head, default, True, commits, onto, original if head != original else None)
     raise AssertionError("unreachable")  # pragma: no cover
 
 

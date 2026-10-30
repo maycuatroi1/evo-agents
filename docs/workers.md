@@ -1509,7 +1509,7 @@ picking a state does not change the counts beside it. `GET .../runs/{id}` shows 
 null for any other run. A run carries the step's `title`, `last_seq` (its latest event, 0 before the first),
 `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`, `takeover_requested_at`,
 `handback_requested_at`). A queued attempt whose run before it was lost on a worker that is not steady has
-`steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)).
+`steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)); a queued step run held back for the files another run of its plan edits has `overlap_wait`.
 
 `GET /v1/projects/{p}/runs/stats` counts, for the web's charts, the runs of the same plans that ended on each of the
 last `days` UTC days, today included (7 to 90, 30 by default; 422 outside). Each day of `by_day`, oldest first, and
@@ -2517,8 +2517,21 @@ lacks. Each commit `evo-agents worker step` pushed to a default branch is noted 
 that resumes a parked one takes the parked run's notes over); a later rebase that would put back one of them, which
 the remote no longer has because someone took it out, goes to the side branch instead, since putting it back is the
 owner's call. A step done was pushed before it was reported, so the push at the end of the run has no step's verify to
-run again. A branch the plan names that is not a default branch is pushed as before: a push that is no fast-forward is
-refused, and the run fails with `push_conflict`.
+run again. A run of one step (kind `step`) that pushes the branch its plan's runs share does the same replay when the
+branch went on while it worked, because other step runs of the plan push there too: its commits go on top of the new
+tip, the verify of its step runs again at the replayed head, and the push is a fast-forward. It fails with
+`push_conflict` only when the replay conflicts for real, holds a merge commit, or the verify fails there; its work is
+then on the side branch `evo-run/<run>` and the branch is not touched. Any other branch is pushed as before: a push
+that is no fast-forward is refused, and the run fails with `push_conflict`.
+
+### Step runs that edit the same files
+
+Before a worker takes a queued step run, the hub compares the files that the other step runs of the same plan and repo
+(held by a worker) edited, read from their `tool_call` events as `hub/facets.py` reads them, with the paths the new
+step names in its `what` and `note` (a word with a file extension, or a directory written with a trailing slash). When
+one of them matches, no worker takes the run: it stays `queued` until those runs end, and its `overlap_wait`
+(`{run_ids, paths}`) says who it waits for. The run page and `evo-agents hub run show` show it as `waits for`. A step
+that names no path never waits. A step already done, or already running, is still not dispatched.
 
 ### Runs of the night shift
 
@@ -2995,7 +3008,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `credentials` | git cannot read or push to a repo with what the run holds, or no token the agent of a plan run has can open the pull request of a repo on GitHub (preflight), or the remote refused the fetch or the push for its credential |
 | `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), a verify command exited 127, or a repo asks for a Python environment and uv is not on PATH |
 | `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight); or the Python environment a repo asks for was not made ([The Python environment of a worktree](#the-python-environment-of-a-worktree)) |
-| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
+| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push; a step run's replay onto the plan's branch that conflicts or fails its verify ends the same way, with the work on `evo-run/<run>` |
 | `push_declined` | origin declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset: git's `[remote rejected]`), neither for its credential nor because the branch moved on; the error ends with origin's reason, and the commits are still in the run's worktree. A chat run that failed so goes on in its session at the next message, whose run pushes again ([Chat runs](#chat-runs)); a triage agent asks the owner rather than rerun it |
 | `verify_failed` | a verify command the daemon ran again exited other than 0 |
 | `timeout` | it ran past its timeout |

@@ -33731,6 +33731,8 @@ export interface components {
             finish_requested_at?: string | null;
             /** @description a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only once it is; another worker may take it now unless it is pinned to that one. Null otherwise */
             steady_wait?: components["schemas"]["SteadyWait"] | null;
+            /** @description a queued step run that waits for another run of the same plan and repo, which has edited files the step names; null otherwise */
+            overlap_wait?: components["schemas"]["OverlapWait"] | null;
             /**
              * Failure Cause
              * @description why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024
@@ -37693,6 +37695,17 @@ export interface components {
              * @description with done of a question run, and only then (422 otherwise): the agent's answer, which goes to the core plugin that asked
              */
             answer?: string | null;
+        };
+        /**
+         * OverlapWait
+         * @description The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
+         *     in its what or note, so the hub leaves the run in the queue until they end.
+         */
+        OverlapWait: {
+            /** @description the running step runs it waits for, the oldest first */
+            run_ids: number[];
+            /** @description the files they edited that the step names, at most 10 */
+            paths: string[];
         };
         /**
          * SteadyWait

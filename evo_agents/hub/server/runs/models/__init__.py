@@ -245,6 +245,14 @@ class AccessChange(BaseModel):
     )
 
 
+class OverlapWait(BaseModel):
+    """The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
+    in its what or note, so the hub leaves the run in the queue until they end."""
+
+    run_ids: list[int] = Field(description="the running step runs it waits for, the oldest first")
+    paths: list[str] = Field(description="the files they edited that the step names, at most 10")
+
+
 class SteadyWait(BaseModel):
     """The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only
     once it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,
@@ -350,6 +358,11 @@ class Run(RunPlacement):
         None,
         description="a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only "
         "once it is; another worker may take it now unless it is pinned to that one. Null otherwise",
+    )
+    overlap_wait: OverlapWait | None = Field(
+        None,
+        description="a queued step run that waits for another run of the same plan and repo, which has edited files "
+        "the step names; null otherwise",
     )
     failure_cause: str | None = Field(
         None,
