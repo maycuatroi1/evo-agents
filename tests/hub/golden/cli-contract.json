@@ -24593,7 +24593,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.49.2"
+      "version": "0.53.3"
     },
     "paths": {
       "/v1/health": {
@@ -58396,6 +58396,116 @@
                   "format": "binary"
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/x/editorial/{project}/workspace": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Workspace",
+          "description": "The configured stage order and notebook labels for the reader's filters.",
+          "operationId": "workspace_v1_x_editorial__project__workspace_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EditorialWorkspace"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
             }
           }
         }
@@ -108421,6 +108531,24 @@
           ],
           "title": "EarlierView"
         },
+        "EditorialChoice": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "title"
+          ],
+          "title": "EditorialChoice"
+        },
         "EditorialComment": {
           "properties": {
             "id": {
@@ -109800,6 +109928,31 @@
             "at"
           ],
           "title": "EditorialStageEntered"
+        },
+        "EditorialWorkspace": {
+          "properties": {
+            "stages": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialChoice"
+              },
+              "type": "array",
+              "title": "Stages"
+            },
+            "notebooks": {
+              "items": {
+                "$ref": "#/components/schemas/EditorialChoice"
+              },
+              "type": "array",
+              "title": "Notebooks"
+            }
+          },
+          "type": "object",
+          "required": [
+            "stages",
+            "notebooks"
+          ],
+          "title": "EditorialWorkspace",
+          "description": "Display labels only, not the plugin's operational configuration."
         },
         "EffectiveConfig": {
           "properties": {
