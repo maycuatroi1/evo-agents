@@ -51,7 +51,7 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import autonomy, findings, judge, merge_gate, runs, tables, task_runs
+from evo_agents.hub import approval_heads, autonomy, findings, judge, merge_gate, runs, tables, task_runs
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, pull_trailers
 from evo_agents.hub.server.autonomy_policies import project_repos
 from evo_agents.hub.server.forge import forge_token, has_forge
@@ -186,6 +186,7 @@ def merge_act(row) -> dict:
         "what": f"merge !{row.iid} of {row.repo} into {row.target_branch}",
         "repo": row.repo,
         "risk": bool((row.risk or {}).get("high")),
+        "approval": approval_heads.approval(row.head_sha, None, f"{row.repo}!{row.iid}"),
     }
 
 

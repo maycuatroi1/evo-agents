@@ -816,6 +816,7 @@ async def apply_patch(
     index: int | None = None,
     step=None,
     run_id: int | None = None,
+    hub: bool = False,
 ) -> tuple[Held, bool, list[Problem]]:
     """PATCH's write, in the caller's transaction, for a ``user`` whose writer role the caller checked: set
     ``updates`` on one item of ``section``, named by ``index`` or (for steps) by ``step``, when ``if_revision`` is
@@ -823,14 +824,15 @@ async def apply_patch(
     ``plan_semantics``. Raises PlanError: 409 ``revision_conflict`` for another revision, 422 for an update the plan
     refuses; and HTTPException 404 for a plan ``user`` cannot see, 403 or 422 when its label refuses the push. The
     hub's own writes of a run's step (``evo_agents.hub.server.run_state``) go through here as the dispatcher;
-    ``run_id`` is the local run whose session writes it, recorded on the revision."""
+    ``run_id`` is the local run whose session writes it, recorded on the revision, and ``hub`` lets them set
+    ``plans.HUB_UPDATABLE`` too (a step's proofs)."""
     held = await _visible(conn, access, plan_id, None, lock=True)
     label = access.push_label(held.label)
     if if_revision != held.revision:
         raise _stale(access, held, if_revision)
     try:
         position = index if step is None else step_index(held.body, step)
-        body, old = update_item(held.body, section, position, updates)
+        body, old = update_item(held.body, section, position, updates, hub=hub)
     except PlanProblem as exc:
         raise PlanError(422, f"plan {plan_id}: {exc}; nothing was written") from None
     _schema_checked(body, plan_id)

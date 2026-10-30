@@ -390,6 +390,13 @@ prompt of every run of the project the confirmed answers that match its work, wh
 described in `docs/hub.md`, Confirmed answers in a run's prompt. Its key and the policy revision that turns it on are
 the first week of the trial that compares the repeated corrections of the 28 days after with the 28 before.
 
+The section `routing` is not the Loop's either, and applies to every run of the project, the Loop's author and plan
+runs too: with `routing.enabled` (false by default) a run that names no model is rated easy, medium or hard by one
+short turn of `routing.scorer` (haiku) on the worker, and runs on the model `routing.ladder.easy`,
+`routing.ladder.medium` or `routing.ladder.hard` names (haiku, sonnet, opus); a run the scorer did not rate takes the
+medium one. The Loop's caps of minutes and turns stay the same whatever model a run gets. `docs/workers.md`, Model
+routing, describes it.
+
 ## Commands, routes and pages
 
 ```sh

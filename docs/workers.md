@@ -476,6 +476,20 @@ depends on. The rules tell the agent to:
 checkout while the run is `verifying`, and approval `auto` marks the step done only when every one exits 0: the plan's
 own `verify` is often prose mixed with commands, and a result the daemon saw is worth more than the agent's word.
 
+A step whose `acceptance` names criteria of the plan's `acceptance` (`[a4, a9]`, ids the plan defines; sentences and
+ids it lacks do not count) gets them in its prompt, in the plan's words, under `## Acceptance criteria of the step`,
+and the claim lists their ids (`criteria`). The result file then gives one proof for each under `"proofs"`, an object
+of criterion id to one line: a test that proves it (`path::test_name`, which must be in the worktree), a command that
+shows it, or `n/a: why`:
+
+```json
+{"verify_commands": ["python -m pytest -q"], "summary": "...", "proofs": {"a4": "tests/hub/test_x.py::test_y", "a9": "n/a: no contract change"}}
+```
+
+A result file without a proof for each criterion, or with one for a criterion the step does not name, fails the run
+and names what is missing. The proofs go to the hub with `review` or `done` and reach the plan's step when the run is
+done ([Proof of a step's criteria](hub.md#proof-of-a-steps-criteria)). A step that names no criterion takes none.
+
 The prompt is at most 32 KiB of UTF-8. Each part has its own budget (goal 2 KiB, context 4 KiB, what 10 KiB, verify
 3 KiB, note 2 KiB, 1.5 KiB of evidence per dependency and 5 KiB for all of them, 200 bytes for a title, key, repo or
 branch). A part over its budget is cut on a character boundary and ends with a mark saying how many bytes were left
@@ -495,7 +509,9 @@ to:
   pending and every step it depends on is done, and checkpoint steps are the agent's too;
 - read the plan as the hub holds it now with `evo-agents worker plan` before each step;
 - record progress only with `evo-agents worker step` (`in_progress`, `done` with evidence and verify commands, which
-  the worker runs again and refuses done on a non-zero exit, or `pending`), never with the hub's `plan_step` tool,
+  the worker runs again and refuses done on a non-zero exit, or `pending`), with one `--proof ID=VALUE` for each
+  criterion of the plan's acceptance the step names (`record_rule`; a step's session also gets the criteria in the
+  plan's words), never with the hub's `plan_step` tool,
   `evo harness step` or `evo-agents hub plan`;
 - ask the owner with `evo-agents worker ask` only a decision of the categories in `docs/notifications.md`, decide
   everything else itself and write each choice, with why, in the step's evidence on a line starting with `Decision:`;
@@ -1053,7 +1069,8 @@ whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
-from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
+from), with the run's `kind`, `model` and `routing` (the scorer and the ladder when the policy has model routing on,
+see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
@@ -1239,7 +1256,9 @@ causes of [Preflight and failure causes](#preflight-and-failure-causes), or a ne
 as they come. The hub keeps it with the run (`failure_cause` of the run, null when the report has none, as a daemon
 before it sends none) and ignores it with any other state. Reporting the state the run is in already moves
 nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
-answer is safe. The answer is the run as the hub holds it.
+answer is safe. A report may also carry `model_used`, the model the runtime used, and `routing`, what the
+model routing did ([Model routing](#model-routing)); the hub keeps the last it got of each, and an older hub ignores
+them. The answer is the run as the hub holds it.
 
 ### Events
 
@@ -1509,7 +1528,7 @@ picking a state does not change the counts beside it. `GET .../runs/{id}` shows 
 null for any other run. A run carries the step's `title`, `last_seq` (its latest event, 0 before the first),
 `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`, `takeover_requested_at`,
 `handback_requested_at`). A queued attempt whose run before it was lost on a worker that is not steady has
-`steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)).
+`steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)); a queued step run held back for the files another run of its plan edits has `overlap_wait`.
 
 `GET /v1/projects/{p}/runs/stats` counts, for the web's charts, the runs of the same plans that ended on each of the
 last `days` UTC days, today included (7 to 90, 30 by default; 422 outside). Each day of `by_day`, oldest first, and
@@ -1729,7 +1748,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker projects [--add P ...] [--remove P ...] [--worker W]` | shows the projects the worker serves, or changes them in place with `PATCH /v1/workers/{id}` and the owner's machine token; this machine's worker by default, whose `config.json` takes the new list and the repos of its projects at once, or with `--worker` another of the owner's workers by id or name, whose daemon takes them at its next heartbeat ([The projects a worker serves](#the-projects-a-worker-serves)) |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
-| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
+| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--proof ID=VALUE ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)). A step whose `acceptance` names criteria of the plan's takes one `--proof` for each: `a4=path::test_name` (a test in the repo's worktree), `a4=COMMAND`, or `a4=n/a: why`; `done` without one for each, or with one for a criterion the step does not name, is refused, naming the criteria, before anything is verified or pushed. `--evidence` stays free text ([Proof of a step's criteria](hub.md#proof-of-a-steps-criteria)) |
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--recommended-reason TEXT] [--reversible yes\|no] [--undo TEXT] [--evidence REF ...] [--wait-option KEY ...] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run. `--recommended-reason` says why the recommended option, at most 500 characters, and needs `--recommended`; `--reversible` says whether the act can be undone, and `--undo` how (at most 500 characters; alone it sends `--reversible yes`, and with `--reversible no` it is refused); `--evidence` is repeated, at most 20 refs: `run:ID`, `run:ID:SEQ`, `output:ID`, `P-<n>/E-<n>`, an https URL, `session:ID[:FIELD:INDEX]`, `transcript:ID[:FILE]:LINE`, `code:REPO:PATH[:LINE]` or `memory:ID:REV`, checked for their form before anything is sent (`docs/notifications.md`, Why the agent recommends). Without `--recommended` it prints a warning to stderr and still asks. With `--category credential`, `--env-var NAME [--secret-name NAME]` and/or `--hub-account` ask the owner for a variable's value and their hub account instead of options of its own: the hub gives it its options, the decision is noted as a credential request, and once it is answered the daemon takes the run's leases again, which `worker env` then prints ([credentials.md](credentials.md#a-run-that-asks-for-a-credential)) |
 | `evo-agents worker output FILE ... [--caption TEXT]` | for the agent of any run: sends files to the run's outputs on the hub, in the background (see [Outputs of a run on the machine](#outputs-of-a-run-on-the-machine)) |
 | `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | for the agent of any run: records a backup it made before deleting or overwriting data, on the hub (the run's log and the audit row `autonomy.backup`) and in the run's `backups.jsonl`; a command that deletes data for good (K9) runs only after one made within the last 24 hours (see [The hook of autonomy on the worker](autonomy.md#the-hook-of-autonomy-on-the-worker)) |
@@ -1982,6 +2001,34 @@ and the package the adapter needs is installed at least at the version checked: 
 claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
 used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
 hands it no run.
+
+### Model routing
+
+A run's model is the one the dispatch named (`--model`), else the one its agent profile allows when it allows exactly
+one, else the runtime's own choice as [Runtime adapters](#runtime-adapters) says. When the project's policy has the
+section `routing` on (`routing.enabled`, false by default; `docs/hub.md`, Workers and runs), a run that is pinned
+neither way has its model chosen by its difficulty, on the worker, before its agent starts:
+
+- The claim of a step, plan, author or task run on claude-code carries `routing`: `{"scorer": "haiku", "ladder":
+  {"easy": "haiku", "medium": "sonnet", "hard": "opus"}}` as the policy sets them; null for any other run, and for a
+  run with a model. The hub calls no model at the dispatch. The Judge of the merge queue and of the Curator keeps the
+  rules of `evo_agents/hub/judges.py`, and the Curator's other runs the model of the charter.
+- The daemon skips a run its agent profile pins to one model. For any other, once the run's account is ready and before
+  the first headless agent starts, it runs `claude --print --model <scorer> --output-format json --max-turns 1` with
+  no tool, no MCP server and no session kept, in an empty directory and the agent's environment, asking for one word,
+  easy, medium or hard, about the start of the run's prompt (12,000 characters). The turn is cut off after 120
+  seconds.
+- The run takes the ladder's model for that difficulty. When the scorer fails, times out or names no difficulty, it
+  takes the medium one. A ladder model the run's profile does not allow is not taken, and the session keeps the model
+  it would have had. Nothing here fails the run, and a run that starts in the terminal UI is not rated.
+- The run's log gets a note (`Model routing: ...`), and the reports of the run carry `routing`: `scorer`,
+  `difficulty`, `scored` (false when the scorer gave none), `model` (null when it took none), `cost_usd` of the
+  scorer's turn and `error`. The hub keeps it as the run's `routing` (schema 0185).
+
+Every run, routed or not, reports `model_used`: the model the runtime said it used (the model of Claude Code's init
+message, opencode's `provider/model`), else the one the daemon asked for, else none. The hub keeps it as the run's
+`model_used`, so what runs cost can be read by model. The rules both sides share are in
+`evo_agents/hub/model_router.py`, the daemon's part in `evo_agents/worker/model_router.py`.
 
 ### Runtimes of plugins
 
@@ -2517,8 +2564,21 @@ lacks. Each commit `evo-agents worker step` pushed to a default branch is noted 
 that resumes a parked one takes the parked run's notes over); a later rebase that would put back one of them, which
 the remote no longer has because someone took it out, goes to the side branch instead, since putting it back is the
 owner's call. A step done was pushed before it was reported, so the push at the end of the run has no step's verify to
-run again. A branch the plan names that is not a default branch is pushed as before: a push that is no fast-forward is
-refused, and the run fails with `push_conflict`.
+run again. A run of one step (kind `step`) that pushes the branch its plan's runs share does the same replay when the
+branch went on while it worked, because other step runs of the plan push there too: its commits go on top of the new
+tip, the verify of its step runs again at the replayed head, and the push is a fast-forward. It fails with
+`push_conflict` only when the replay conflicts for real, holds a merge commit, or the verify fails there; its work is
+then on the side branch `evo-run/<run>` and the branch is not touched. Any other branch is pushed as before: a push
+that is no fast-forward is refused, and the run fails with `push_conflict`.
+
+### Step runs that edit the same files
+
+Before a worker takes a queued step run, the hub compares the files that the other step runs of the same plan and repo
+(held by a worker) edited, read from their `tool_call` events as `hub/facets.py` reads them, with the paths the new
+step names in its `what` and `note` (a word with a file extension, or a directory written with a trailing slash). When
+one of them matches, no worker takes the run: it stays `queued` until those runs end, and its `overlap_wait`
+(`{run_ids, paths}`) says who it waits for. The run page and `evo-agents hub run show` show it as `waits for`. A step
+that names no path never waits. A step already done, or already running, is still not dispatched.
 
 ### Runs of the night shift
 
@@ -2995,7 +3055,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `credentials` | git cannot read or push to a repo with what the run holds, or no token the agent of a plan run has can open the pull request of a repo on GitHub (preflight), or the remote refused the fetch or the push for its credential |
 | `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), a verify command exited 127, or a repo asks for a Python environment and uv is not on PATH |
 | `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight); or the Python environment a repo asks for was not made ([The Python environment of a worktree](#the-python-environment-of-a-worktree)) |
-| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
+| `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push; a step run's replay onto the plan's branch that conflicts or fails its verify ends the same way, with the work on `evo-run/<run>` |
 | `push_declined` | origin declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset: git's `[remote rejected]`), neither for its credential nor because the branch moved on; the error ends with origin's reason, and the commits are still in the run's worktree. A chat run that failed so goes on in its session at the next message, whose run pushes again ([Chat runs](#chat-runs)); a triage agent asks the owner rather than rerun it |
 | `verify_failed` | a verify command the daemon ran again exited other than 0 |
 | `timeout` | it ran past its timeout |

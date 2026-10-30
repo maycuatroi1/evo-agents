@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from evo_agents.hub import author, profiles, question_runs, runs
+from evo_agents.hub import author, profiles, proofs, question_runs, runs
 from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -21,6 +21,7 @@ from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
 from evo_agents.hub.server.runs.models.placement import PlacementFields, RunPlacement
+from evo_agents.hub.server.runs.models.routing import RoutingRecord, RunRouting
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     LostAttempt,
@@ -245,6 +246,14 @@ class AccessChange(BaseModel):
     )
 
 
+class OverlapWait(BaseModel):
+    """The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
+    in its what or note, so the hub leaves the run in the queue until they end."""
+
+    run_ids: list[int] = Field(description="the running step runs it waits for, the oldest first")
+    paths: list[str] = Field(description="the files they edited that the step names, at most 10")
+
+
 class SteadyWait(BaseModel):
     """The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only
     once it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,
@@ -301,6 +310,12 @@ class Run(RunPlacement):
     requested_runtime: str = Field(description="as the dispatch asked: any, a runtime of the core or a plugin's")
     runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
+    model_used: str | None = Field(
+        None, description="the model its runtime ran it on, as its worker reported it; null until then, or not said"
+    )
+    routing: RoutingRecord | None = Field(
+        None, description="what the routing by difficulty did; null for a run it did not rate"
+    )
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
@@ -350,6 +365,11 @@ class Run(RunPlacement):
         None,
         description="a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only "
         "once it is; another worker may take it now unless it is pinned to that one. Null otherwise",
+    )
+    overlap_wait: OverlapWait | None = Field(
+        None,
+        description="a queued step run that waits for another run of the same plan and repo, which has edited files "
+        "the step names; null otherwise",
     )
     failure_cause: str | None = Field(
         None,
@@ -504,6 +524,11 @@ class CuratorSpec(BaseModel):
     base_branch: str | None = Field(None, description="the default branch the pull request goes into, when known")
     head_sha: str | None = Field(None, description="a Judge's commit to judge; null: the branch's tip")
     pr_url: str | None = None
+    merge_result: bool = Field(
+        False,
+        description="a Judge of a merge check: merge the current base into the head in a scratch worktree and run the "
+        "checks there; a conflict fails it with needs a rebase",
+    )
     judge_key: str | None = Field(
         None,
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
@@ -553,6 +578,11 @@ class RunSpec(BaseModel):
     )
     runtime: str = Field(description="a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
+    routing: RunRouting | None = Field(
+        None,
+        description="while the project's policy has routing on, for a run that names no model: the scorer that rates "
+        "its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise",
+    )
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
@@ -580,6 +610,13 @@ class RunSpec(BaseModel):
         description="the verify of the step of a run of one step, as the plan it was dispatched from has it: the "
         "worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other "
         "kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)",
+    )
+    criteria: list[str] | None = Field(
+        None,
+        exclude_if=lambda value: value is None,
+        description="the ids of the criteria of the plan's acceptance that the step of a run of one step names: its "
+        "result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step "
+        "that names none",
     )
     session_per_step: bool = Field(
         False,
@@ -948,6 +985,27 @@ class Diffstat(BaseModel):
     deletions: int = Field(ge=0)
 
 
+class StepProof(BaseModel):
+    """The proof of one criterion a step names (``evo_agents.hub.proofs``)."""
+
+    id: str = Field(pattern=r"^a\d+$", max_length=20, description="the criterion's id in the plan's acceptance")
+    kind: Literal[proofs.KINDS] = Field(description="test (path::name), command, or n/a")
+    locator: str | None = Field(
+        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="the test or the command"
+    )
+    reason: str | None = Field(
+        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="with n/a: why"
+    )
+
+    @model_validator(mode="after")
+    def _kind_has_its_key(self):
+        if self.kind == proofs.NA and not self.reason:
+            raise ValueError(f"the proof of {self.id} is n/a, which comes with a reason")
+        if self.kind != proofs.NA and not self.locator:
+            raise ValueError(f"the proof of {self.id} is a {self.kind}, which comes with its locator")
+        return self
+
+
 class StateReport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -968,6 +1026,14 @@ class StateReport(BaseModel):
         "the run as its failure_cause, and ignored with any other state",
     )
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
+    model_used: ModelName | None = Field(None, description="the model the run's runtime runs it on")
+    routing: RoutingRecord | None = Field(None, description="what the routing by difficulty did, for a run it rated")
+    proofs: list[StepProof] | None = Field(
+        None,
+        max_length=proofs.MAX_PROOFS,
+        description="with done or review of a run of one step: the proof of each criterion it names, which the "
+        "step keeps once done",
+    )
     answer: str | None = Field(
         None,
         min_length=1,
@@ -999,6 +1065,12 @@ class StepReport(BaseModel):
         None, max_length=50, description="each verify command the worker ran again; done needs one, every one exit 0"
     )
     commit_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the repo's commit the step ends on")
+    proofs: list[StepProof] | None = Field(
+        None,
+        max_length=proofs.MAX_PROOFS,
+        description="with done: one proof for each criterion of the plan's acceptance the step names, which the step "
+        "keeps; 422 when one is missing or names another criterion. Absent from an older worker's report",
+    )
 
 
 class StepWritten(BaseModel):

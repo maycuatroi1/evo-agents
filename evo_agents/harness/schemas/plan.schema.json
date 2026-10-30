@@ -236,6 +236,36 @@
         "evidence": {
           "type": "string"
         },
+        "proofs": {
+          "type": "array",
+          "description": "One proof for each criterion of the plan's acceptance that the step's acceptance names, written by the hub when a run reports the step done: a test (path::name) or a command that shows it holds (locator), or n/a with why (reason).",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "test",
+                  "command",
+                  "n/a"
+                ]
+              },
+              "locator": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "blocking": {
           "type": "boolean"
         },

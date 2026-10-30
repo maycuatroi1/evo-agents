@@ -1006,6 +1006,23 @@ that no step's `acceptance` names, unless it is `invariant: true`. A step's `acc
 such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
 plans hold there pass. Each is a warning: the hub stores the plan anyway.
 
+### Proof of a step's criteria
+
+A step done whose `acceptance` names criteria of the plan's `acceptance` keeps one proof for each in `proofs`
+(`plan.schema.json`), beside its free-text `evidence`: `{"id": "a4", "kind": "test", "locator": "path::test_name"}`,
+kind `command` with the command as its locator, or `{"id": "a9", "kind": "n/a", "reason": "..."}`
+(`evo_agents/hub/proofs.py`). The agent gives them as one line per criterion, with `evo-agents worker step KEY done
+--proof ID=VALUE` in a plan run or under `"proofs"` of a step run's `.evo-run/result.json` (`docs/workers.md`); the
+prompts of step runs, of a step's session and of plan runs say how. A step report (`POST
+/v1/worker/runs/{id}/steps/{key}`) whose `proofs` lack a criterion of the step, or name one it does not, is 422 naming
+the criteria, and nothing is written; a report without `proofs`, from a worker older than this, is taken as before. A
+step run's proofs come with its `review` or `done` state, wait on the run (`runs.proofs`, schema 0186) while it is in
+review, and reach the step when it is done. Only the hub's own writes of a run's step set `proofs`
+(`plans.HUB_UPDATABLE`); a member's PATCH of one item cannot. The Judge of the merge queue and the Judge of a
+Curator's change read each criterion in the plan's words with the locator of its proof (the test or the command, or
+that the Builder says it does not apply), never the reason or the evidence, which the Builder wrote. A step that names
+no criterion keeps the behaviour it had.
+
 A plan names the problems of its project it solves in `problems`, a list of codes such as `[P-1, P-3]`
 (`plan.schema.json`, section Problems). A write that names a code the plan did not hold before and the project lacks
 answers 422 naming the code, and nothing is written; a PUT that creates a plan, or writes a new revision of it, naming
@@ -1262,6 +1279,16 @@ evo-agents hub run chat 42                                    # an author run's 
 evo-agents hub run send 42 "keep the old route until 0.10"    # your reply in that chat
 evo-agents hub run finish 42                                  # end the chat: the run ends done
 ```
+
+A run dispatched without `--model` (and without a profile that allows exactly one model) runs on the model its runtime
+picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the
+claim of a step, plan, author or task run on claude-code carries the policy's scorer and ladder, and the worker rates
+the run easy, medium or hard before its agent starts, with one short turn of the scorer model on the run's prompt, and
+runs it on the ladder's model for that difficulty (`docs/workers.md`, Model routing). The hub calls no model at the
+dispatch. A model `--model` names that the profile's allowlist leaves out is refused (422) as before, and the Judge of
+the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the
+run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
+and for every run `model_used`, the model its runtime used, also with routing off.
 
 `run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
 has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`

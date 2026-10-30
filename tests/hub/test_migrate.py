@@ -160,6 +160,7 @@ TABLES |= {"kg_query_labels"}  # migration 0178
 TABLES |= {"kg_eval_sets"}  # migration 0179
 TABLES |= {"kg_semantic"}  # migration 0181
 TABLES |= {"kg_optimize_runs"}  # migration 0182
+TABLES |= {"merge_checks"}  # migration 0187
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -250,8 +251,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_twelve_tables(hub_db):
-    assert len(TABLES) == 212  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_thirteen_tables(hub_db):
+    assert len(TABLES) == 213  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5061,3 +5062,75 @@ def test_0183_backfills_the_usage_of_runs_the_reaper_ended_from_their_events_and
     assert query(hub_db, usage) == filled, "going back keeps what it wrote"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0183") :]
     assert query(hub_db, usage) == filled, "a second pass changes nothing"
+
+
+def test_0184_keeps_the_approval_head_of_a_decision_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0183")
+    d = hub_tables.decisions
+    assert "approval" not in columns(hub_db, "decisions")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        before = one(conn, _decision_row(ids, run_id, "wait-helper"))
+    move_to(hub_db, "0184")
+    bound = {"pull": "acme/app#12", "head": "a" * 40, "scope": "sha256:" + "0" * 64}
+    with live.connect(hub_db) as conn:
+        merge = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="merge", approval=bound))
+        for bad in ([bound], {"pull": "acme/app#12"}, {"head": 12}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(_decision_row(ids, run_id, "wait-helper").values(category="merge", approval=bad))
+    kept = select(d.c.id, d.c.approval).order_by(d.c.id)
+    assert query(hub_db, kept) == [(before, None), (merge, bound)], "a decision asked before 0184 has none"
+    move_to(hub_db, "0183", down=True)
+    assert "approval" not in columns(hub_db, "decisions")
+    assert query(hub_db, select(func.count()).select_from(d)) == [(2,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0184") :]
+
+
+def test_0185_adds_the_model_used_and_the_routing_of_a_run_model_router(hub_db):
+    move_to(hub_db, "0184")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        before = one(conn, _author_run(ids))
+    move_to(hub_db, "0185")
+    assert {"model_used", "routing"} <= columns(hub_db, "runs")
+    r = hub_tables.runs
+    routing = {"scorer": "haiku", "difficulty": "medium", "scored": False, "model": "sonnet", "cost_usd": None}
+    with live.connect(hub_db) as conn:
+        after = one(conn, _author_run(ids, model_used="claude-sonnet-5-5", routing=routing))
+    read = select(r.c.id, r.c.model_used, r.c.routing).where(r.c.id.in_((before, after))).order_by(r.c.id)
+    assert query(hub_db, read) == [(before, None, None), (after, "claude-sonnet-5-5", routing)]
+    move_to(hub_db, "0184", down=True)
+    assert not {"model_used", "routing"} & columns(hub_db, "runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0185") :]
+
+
+def test_0187_github_merge_check_keeps_one_check_a_pull_request_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0186")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0187")
+    t = hub_tables.merge_checks
+    row = {
+        "project_id": ids["project"],
+        "repo": "shop",
+        "number": 7,
+        "source_branch": "evo/run-1",
+        "base_branch": "main",
+        "head_sha": "a" * 40,
+    }
+    with live.connect(hub_db) as conn:
+        for bad in ({**row, "state": "merged"}, {**row, "judge_attempts": -1}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t).values(bad))
+        conn.execute(insert(t).values(row))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(t).values({**row, "head_sha": "b" * 40}))
+        conn.execute(insert(t).values({**row, "number": 8, "state": "passed"}))
+    assert query(hub_db, select(t.c.number, t.c.state, t.c.judge_attempts).order_by(t.c.id)) == [
+        (7, "judging", 0),
+        (8, "passed", 0),
+    ]
+    move_to(hub_db, "0186", down=True)
+    assert "merge_checks" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0187") :]

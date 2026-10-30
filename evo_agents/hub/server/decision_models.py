@@ -11,6 +11,10 @@ the variable the run needs, the name of the secret that keeps its value and whet
 the hub. Such a decision takes no options of the agent's: the hub gives it those of ``credential_requests.options``.
 The answer to it may carry the variable's value (``AnswerIn.secret``), which no view of the decision, no error and no
 message ever shows.
+
+A decision of category merge may carry the approval it asks for (``approval``, ``evo_agents.hub.approval_heads``):
+the pull request, its head and the hash of its scope. Its answer opens the gate of the agent's merge for that head and
+scope alone; the person asked reads what it is bound to under the context.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from evo_agents.hub import credential_requests, decision_asks, outputs, runs
+from evo_agents.hub import approval_heads, credential_requests, decision_asks, outputs, runs
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
@@ -80,6 +84,26 @@ class CredentialRequest(BaseModel):
         return self
 
 
+class Approval(BaseModel):
+    """What a merge approval holds for: one head of one request, with one scope."""
+
+    pull: str | None = Field(
+        None,
+        max_length=300,
+        pattern=approval_heads.PULL.pattern,
+        description="the request: owner/name#number on GitHub, the repo and !iid of a merge request on GitLab",
+    )
+    head: str = Field(pattern=approval_heads.HEAD.pattern, description="the commit at its head, lower-case hex")
+    scope: str | None = Field(
+        None,
+        pattern=approval_heads.SCOPE.pattern,
+        description="sha256: and the hash of its files, migrations and needs-you lines (approval_heads.scope_of)",
+    )
+
+
+MERGE_CATEGORY = "merge"
+
+
 class DecisionAsk(BaseModel):
     category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")
     question: str = Field(min_length=1, max_length=runs.MAX_QUESTION_CHARS)
@@ -114,6 +138,11 @@ class DecisionAsk(BaseModel):
         description="category credential only: what the run needs of its owner, a variable's value, their hub account "
         "or both; the hub gives the decision its options",
     )
+    approval: Approval | None = Field(
+        None,
+        description="category merge only: the pull request, head and scope its answer holds for; a push that moves "
+        "the head or changes the scope leaves the answer behind",
+    )
 
     @field_validator("evidence")
     @classmethod
@@ -127,6 +156,8 @@ class DecisionAsk(BaseModel):
         if self.context is not None and len(self.context.encode()) > runs.MAX_DECISION_CONTEXT_BYTES:
             raise ValueError(f"a decision's context is at most {runs.MAX_DECISION_CONTEXT_BYTES} bytes of UTF-8")
         self._requested_options()
+        if self.approval is not None and self.category != MERGE_CATEGORY:
+            raise ValueError(f"an approval binds a decision of category {MERGE_CATEGORY}")
         keys = [option.key for option in self.options]
         if len(set(keys)) != len(keys):
             raise ValueError("each option of a decision needs a key of its own")
@@ -189,7 +220,15 @@ class DecisionAsk(BaseModel):
             "undo": self.undo,
             "evidence": self.evidence or None,
             "credential_request": None if request is None else request.model_dump(),
+            "approval": None if self.approval is None else self.approval.model_dump(),
         }
+
+    def stored_context(self) -> str | None:
+        """The context the person asked reads: the agent's, and under it what an approval is bound to."""
+        bound = approval_heads.line(None if self.approval is None else self.approval.model_dump())
+        if not bound:
+            return self.context
+        return runs.clip(f"{self.context}\n\n{bound}" if self.context else bound, runs.MAX_DECISION_CONTEXT_BYTES)
 
 
 class DecisionOption(BaseModel):
@@ -256,6 +295,11 @@ class Decision(BaseModel):
         None,
         description="what a decision of category credential asks the run's owner for: a variable's value, kept as "
         "their secret secret_name, their hub account, or both; null for any other decision",
+    )
+    approval: Approval | None = Field(
+        None,
+        description="a merge approval: the request, head and scope its answer holds for; null for any other decision, "
+        "and for one asked before schema 0184",
     )
 
 

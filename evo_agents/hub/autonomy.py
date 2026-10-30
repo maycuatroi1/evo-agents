@@ -2,15 +2,18 @@
 project's repos, first of all whether it merges their merge requests on GitLab, as keys an admin of the project
 writes and the hub keeps as revisions (``evo_agents.hub.server.autonomy_policies``, table autonomy_policies).
 
-A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit``, ``loop`` and ``context`` hold the keys of KEYS;
-``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its writer set. A key it leaves out
-reads as its default (``effective``), so a key a later release adds reads its default in every revision written
-before it, and a value an older release took that this one refuses reads as the default too. A project with no
-revision has every repo off: the hub merges nothing on its own, as before the policy (criterion a9).
+A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit``, ``loop``, ``context`` and ``routing``
+hold the keys of KEYS; ``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its
+writer set. A key it leaves out reads as its default (``effective``), so a key a later release adds reads its default
+in every revision written before it, and a value an older release took that this one refuses reads as the default too.
+A project with no revision has every repo off: the hub merges nothing on its own, as before the policy (criterion a9).
 
 Outside a body a key is named by its dotted path: ``merge.hold_until``, ``repos.<repo>.mode``,
 ``repos.<repo>.jobs.uat_check``. A repo's name may hold a dot, so ``key_path`` reads a repo key from its known end.
 The policy has no key that caps a diff or the merges of a day (the member's answers 4 and 8 of 2026-10-21).
+
+``repos.<repo>.merge_check`` (plan super-board-parity-2) is off by default: on, for a repo on github.com alone, the hub
+judges a pull request a run opened at its head before the run merges it (``evo_agents.hub.server.merge_check``).
 
 ``loop`` (plan loop-engine, criterion a4) holds the keys of a project's Loop (``evo_agents.hub.server.loop``): whether
 it runs, the worker of its author and plan runs, the time zone of its schedule, how many work items of each cycle run
@@ -25,6 +28,10 @@ document not archived). It has no estimate and no budget (the member's answer 1 
 ``context.answers`` (plan active-context-answers) is false by default: true adds to the prompt of every run of the project
 the confirmed answers that match its work (``evo_agents.hub.server.context_answers``). The revision that sets it true is
 the first week of the trial that compares the 28 days after with the 28 before.
+
+``routing`` (plan super-board-parity-2, criterion a6) is off by default: ``routing.enabled`` true has the worker rate a
+Claude Code run that names no model easy, medium or hard, with one short turn of ``routing.scorer`` on the run's
+prompt, and start its agent on the model ``routing.ladder`` gives that difficulty (``evo_agents.worker.model_router``).
 
 Standard library only: the server checks bodies with it, and the client may import it.
 """
@@ -43,6 +50,7 @@ from urllib.parse import urlsplit
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
 
 OFF, AUTO = MODES = ("off", "auto")  # repos.<repo>.mode
+ON = "on"  # repos.<repo>.merge_check, with OFF
 RELEASES = ("immediate", "after_uat", "manual")  # repos.<repo>.prod_release
 HOLDS = ("merged", "uat_check", "prod_check")  # merge.hold_until
 JOBS = ("uat_check", "prod_deploy", "prod_check", "rollback")  # repos.<repo>.jobs.*
@@ -213,6 +221,18 @@ CONTEXT_KEYS = (  # plan active-context-answers: off by default; the revision th
         "work",
     ),
 )
+ROUTING_KEYS = (  # plan super-board-parity-2, criterion a6: off by default; a run's model chosen by its difficulty
+    Key(
+        "routing.enabled",
+        False,
+        _flag,
+        "true: the worker rates a run that names no model easy, medium or hard and runs it on the ladder's model",
+    ),
+    Key("routing.scorer", "haiku", _line(200), "the model of the short turn that rates a run's difficulty"),
+    Key("routing.ladder.easy", "haiku", _line(200), "the model of a run rated easy"),
+    Key("routing.ladder.medium", "sonnet", _line(200), "the model of a run rated medium, and of one the scorer failed"),
+    Key("routing.ladder.hard", "opus", _line(200), "the model of a run rated hard"),
+)
 KEYS = (
     Key(
         "merge.opt_in_label", "evo-merge", _line(255), "the label a person puts on a merge request to ask for the queue"
@@ -241,6 +261,7 @@ KEYS = (
     Key("audit.sample_rate", 0.10, _number(0, 1), "the share of merged merge requests an admin is asked to check"),
     *LOOP_KEYS,
     *CONTEXT_KEYS,
+    *ROUTING_KEYS,
 )
 REPO_KEYS = (
     Key("mode", OFF, _one_of(*MODES), "auto: the hub merges the repo's merge requests in scope; off: a person does"),
@@ -253,8 +274,15 @@ REPO_KEYS = (
     Key("prod_release", "immediate", _one_of(*RELEASES), "when the hub runs the PROD deploy after the UAT check"),
     Key("after_uat_hours", 4, _number(0, 720), "hours of a green UAT before the PROD deploy, with after_uat"),
     *(Key(f"jobs.{job}", None, _optional(_line(255)), f"the CI job of {job}; null: the repo has none") for job in JOBS),
+    Key(
+        "merge_check",
+        OFF,
+        _one_of(OFF, ON),
+        "on: a run's pull request on github.com is judged at its head before the run merges it; off: it is not",
+    ),
 )
 TARGET_BRANCH = "target_branch"
+MERGE_CHECK = "merge_check"
 
 
 def _tree(keys) -> dict:
@@ -322,6 +350,11 @@ def _repo_problems(value, repos: Mapping[str, RepoFacts]) -> list[str]:
             found.append(
                 f"{where}.mode: {name} is on github.com, where the Curator's tiers decide what the hub merges; auto "
                 "is for a repo on GitLab"
+            )
+        if not found and keys.get(MERGE_CHECK) == ON and not facts.on_github:
+            found.append(
+                f"{where}.{MERGE_CHECK}: {name} is not on github.com; the merge check judges a pull request there, "
+                "the merge queue a merge request on GitLab"
             )
         problems.extend(found)
     return problems

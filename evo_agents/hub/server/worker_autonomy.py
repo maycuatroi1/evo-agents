@@ -7,7 +7,9 @@ made, and the commands of a class in notify its PreToolUse hook let through (``e
 - ``POST /v1/worker/runs/{id}/autonomy-acts``: the hook is about to let a command of ``klass`` through (a class in
   notify, or one in ask whose decision the agent names); the hub answers the class's mode now, the stricter of the
   run's snapshot and the value now (``run_autonomy.recheck``), and whether the decision is one of the run, of a
-  category of the class, answered; it tells the run's principal (and the person an intern reports to) when ``klass``
+  category of the class, answered, and, for a merge approval bound to a head and a scope (``approval_heads``), given
+  for the head and scope the hook read of the request now; one given for another says why (``stale``), and the agent
+  asks again at the new head. It tells the run's principal (and the person an intern reports to) when ``klass``
   is notify for them now (``autonomy_gates.tell_after``, audited ``autonomy.notified``). The decision goes to the
   ledger S1 (``autonomy_ledger``).
 
@@ -23,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from evo_agents.hub import tables
+from evo_agents.hub import approval_heads, tables
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ACTING, ASK, NOTIFY
 from evo_agents.hub.server import audit, autonomy_gates, autonomy_ledger, run_autonomy
@@ -62,6 +64,16 @@ class AutonomyActIn(BaseModel):
         ge=1,
         description="for a class in ask: the decision of the run, of the class's category, that the agent asked first",
     )
+    head: str | None = Field(
+        default=None,
+        pattern=approval_heads.HEAD.pattern,
+        description="for a merge: the head of the request now, as the hook read it; null when it could not",
+    )
+    scope: str | None = Field(
+        default=None,
+        pattern=approval_heads.SCOPE.pattern,
+        description="for a merge: the hash of the request's scope now (approval_heads.scope_of)",
+    )
 
 
 class AutonomyActOut(BaseModel):
@@ -70,7 +82,15 @@ class AutonomyActOut(BaseModel):
         "null for a run without a snapshot"
     )
     told: bool = Field(description="whether the hub told the principal (mode notify)")
-    answered: bool = Field(description="whether decision_id is a decision of the run, of the class, answered")
+    answered: bool = Field(
+        description="whether decision_id is a decision of the run, of the class, answered, and its approval holds for "
+        "head and scope"
+    )
+    stale: str | None = Field(
+        None,
+        description="why the answer of decision_id no longer opens the gate: it was given for another head or scope "
+        "of the request; ask again",
+    )
 
 
 async def _project_id(conn, run_id: int) -> int:
@@ -106,14 +126,20 @@ async def record_backup(request: Request, run_id: RunId, backup: BackupIn, user:
     return BackupOut(seq=seq, made_at=made_at, fresh=fresh)
 
 
-async def _answered(conn, run_id: int, klass: str, decision_id: int | None) -> bool:
-    if decision_id is None:
-        return False
+async def _answered(conn, run_id: int, act: AutonomyActIn) -> tuple[bool, str | None]:
+    """Whether the decision the act names is the run's, of the class, answered, and holds for the act's head and
+    scope; and why not when its approval was given for another."""
+    if act.decision_id is None:
+        return False, None
     d = tables.decisions
-    query = select(d.c.state).where(
-        d.c.id == decision_id, d.c.run_id == run_id, d.c.category.in_(CLASS_CATEGORIES.get(klass, ()))
+    query = select(d.c.state, d.c.approval).where(
+        d.c.id == act.decision_id, d.c.run_id == run_id, d.c.category.in_(CLASS_CATEGORIES.get(act.klass, ()))
     )
-    return (await conn.execute(query)).scalar_one_or_none() == "answered"
+    found = (await conn.execute(query)).one_or_none()
+    if found is None or found.state != "answered":
+        return False, None
+    why = approval_heads.stale(found.approval, act.head, act.scope)
+    return not why, why or None
 
 
 @worker_router.post("/runs/{run_id}/autonomy-acts", response_model=AutonomyActOut, responses=REFUSALS)
@@ -122,10 +148,10 @@ async def autonomy_act(request: Request, run_id: RunId, act: AutonomyActIn, user
     principal told when the mode is notify, as the module says."""
     async with request.app.state.engine.begin() as conn:
         await claimed_run(conn, user, run_id)
-        answered = await _answered(conn, run_id, act.klass, act.decision_id)
+        answered, stale = await _answered(conn, run_id, act)
         found = await run_autonomy.recheck(conn, run_id)
         if found is None:
-            return AutonomyActOut(mode=None, told=False, answered=answered)
+            return AutonomyActOut(mode=None, told=False, answered=answered, stale=stale)
         mode = autonomy_gates.mode_of(found.classes[act.klass], act.klass, False)
         passes = mode in ACTING or (mode == ASK and answered)
         result = autonomy_ledger.ALLOWED if passes else autonomy_ledger.REFUSED
@@ -133,4 +159,4 @@ async def autonomy_act(request: Request, run_id: RunId, act: AutonomyActIn, user
         if mode == NOTIFY:
             title = f"{act.klass}: the agent of run {run_id} ran {act.what}"
             await autonomy_gates.tell_after(conn, run_id, act.klass, key=f"hook {act.what[:200]}", title=title)
-    return AutonomyActOut(mode=mode, told=mode == NOTIFY, answered=answered)
+    return AutonomyActOut(mode=mode, told=mode == NOTIFY, answered=answered, stale=stale)

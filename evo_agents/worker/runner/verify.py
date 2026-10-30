@@ -17,7 +17,7 @@ import signal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import runs
+from evo_agents.hub import proofs, runs
 from evo_agents.worker import credentials, untrusted
 from evo_agents.worker.runner.common import RunFailed, Stopped, cut, log
 from evo_agents.worker.runner.transitions import result_commands, summary_of
@@ -43,7 +43,28 @@ def read_result(run: Run) -> list[str]:
         raise RunFailed(f"{runs.RESULT_FILE} is not JSON: {exc}") from None
     commands = result_commands(data)
     run.summary = summary_of(data)
+    run.proofs = result_proofs(data, run.spec.get("criteria"), run.worktree)
     return commands
+
+
+def result_proofs(data, criteria, worktree) -> list[dict] | None:
+    """The proofs of the result file, one for each criterion the run's step names (``criteria``, ids as its claim
+    has them), each test found in the worktree; None when the step names none and the file gives none. RunFailed
+    naming the criteria left without one."""
+    wanted = [(key, key) for key in criteria or [] if isinstance(key, str)]
+    try:
+        given = proofs.from_result(data) or []
+    except proofs.ProofProblem as exc:
+        raise RunFailed(f"{runs.RESULT_FILE}: {exc}") from None
+    if not wanted and not given:
+        return None
+    why = proofs.problem(wanted, given)
+    if why is None:
+        why = next(filter(None, (proofs.missing_test(item, worktree) for item in given)), None)
+    if why is not None:
+        how = f'give "{proofs.RESULT_KEY}" in {runs.RESULT_FILE} as the prompt says'
+        raise RunFailed(f"{runs.RESULT_FILE}: {why.replace(proofs.FLAG + ' ', '')}; {how}")
+    return proofs.stored(given)
 
 
 def read_summary(run: Run, directory: Path) -> str | None:

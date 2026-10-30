@@ -18,7 +18,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import proofs, runs, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -224,7 +224,8 @@ async def record_heartbeat(
     )
 
 
-SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set
+# what a report without a move may set
+SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage", "model_used", "routing")
 
 
 def _waits_for(run_id: int):
@@ -243,6 +244,8 @@ def _reported_columns(body: StateReport) -> dict:
         "diffstat": body.diffstat.model_dump() if body.diffstat else None,
         "verify": [item.model_dump(exclude_none=True) for item in body.verify] if body.verify is not None else None,
         "usage": body.usage,
+        "model_used": body.model_used,
+        "routing": body.routing.model_dump() if body.routing is not None else None,
     }
     return {name: value for name, value in columns.items() if value is not None}
 
@@ -356,6 +359,8 @@ async def _moved_columns(conn, run_id: int, name: str, body: StateReport, column
             verify=columns.get("verify", found.verify),
         )
         columns["evidence"] = evidence(found, body.summary)
+        if body.proofs:
+            columns["proofs"] = proofs.stored(item.model_dump(exclude_none=True) for item in body.proofs)
     return error
 
 

@@ -67,7 +67,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from evo_agents.hub import autonomy, findings, judge, security_pass, tiers
+from evo_agents.hub import autonomy, findings, judge, proofs, security_pass, tiers
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 
 SOURCES = ("plan", "task", "builder", "label", "revert")
@@ -603,17 +603,28 @@ def build_prompt(
     second: bool = False,
     risk: Iterable[str] = (),
     earlier: Iterable[Mapping] = (),
+    forge: str = "gitlab",
 ) -> str:
-    """The prompt of a judge run of the queue: the rules, the dimensions, the merge request (``mr``: iid, title,
+    """The prompt of a judge run of the queue, or of the merge check of a pull request on github.com when ``forge`` is
+    github (``evo_agents.hub.server.merge_check``, whose checks ran on the head merged with the base): the rules, the dimensions, the merge request (``mr``: iid, title,
     description, web_url, source_branch, target_branch), the plan's goal and each of its steps in the repo (what,
-    verify, acceptance; never their evidence, which the Builder wrote) or the task, for the second Judge why the risk
-    is high, and the findings of earlier rounds still open on its dimensions (``earlier``, of the ledger), to mark
-    first. The worker adds what it ran before the agent starts (``judge.results_text``)."""
+    verify, the criteria of the plan it names with the locators of their proofs; never their evidence or the reason
+    of a proof, which the Builder wrote) or the task, for the second Judge why the risk is high, and the findings of
+    earlier rounds still open on its dimensions (``earlier``, of the ledger), to mark first. The worker adds what it ran before the agent starts (``judge.results_text``)."""
     names = RISK_DIMENSIONS if second else DIMENSIONS
     who = "the second Judge, on its risk," if second else "the Judge"
+    github = forge == "github"
+    intro = (
+        f"You are {who} of a pull request of project {project} on github.com, which a run of the evo-agents hub "
+        "opened. You decide whether the run may merge it; the verify commands and the hidden checks ran on its head "
+        f"merged with the current {base}, and you read the pull request's own diff."
+        if github
+        else f"You are {who} of a merge request of project {project} on the evo-agents hub's merge queue. You decide "
+        "whether the hub may merge it."
+    )
+    header = f"# Pull request #{mr.get('iid')}" if github else f"# Merge request !{mr.get('iid')}"
     lines = [
-        f"You are {who} of a merge request of project {project} on the evo-agents hub's merge queue. You decide "
-        "whether the hub may merge it.",
+        intro,
         "",
         *_rules(base, head, names),
         "",
@@ -621,7 +632,7 @@ def build_prompt(
         *(f"- {name}: {question}" for name, question in names.items()),
         "",
         f"Repository: {repo}, in the worktree {folder or repo}/ under the current directory. Base: {base}.",
-        f"# Merge request !{mr.get('iid')}: {' '.join(str(mr.get('title') or '').split())}",
+        f"{header}: {' '.join(str(mr.get('title') or '').split())}",
         f"From {mr.get('source_branch')} into {mr.get('target_branch')}"
         + (f": {mr['web_url']}" if mr.get("web_url") else "."),
     ]
@@ -634,7 +645,8 @@ def build_prompt(
         goal = plan.get("goal")
         if isinstance(goal, str) and goal.strip():
             lines.append(f"Goal: {' '.join(goal.split())}")
-        lines.append(clip("\n\n".join(_step_text(step) for step in steps_of(plan, repo)) or "No steps.", STEPS_BYTES))
+        shown = "\n\n".join(_step_text(step, plan) for step in steps_of(plan, repo))
+        lines.append(clip(shown or "No steps.", STEPS_BYTES))
     elif task:
         lines += ["", "# The task the change carries out", clip(task.strip(), STEPS_BYTES)]
     else:
@@ -645,14 +657,20 @@ def build_prompt(
     return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
 
 
-def _step_text(step: Mapping) -> str:
+def _step_text(step: Mapping, plan: Mapping | None = None) -> str:
+    """A step as a Judge reads it: its what and verify, and the criteria of ``plan``'s acceptance it names in the
+    plan's words, each with the locator of its proof (a test or a command, ``proofs.judge_lines``), never what the
+    Builder wrote of it; a step that names no criterion of the plan shows its acceptance as written."""
     part = [f"## Step {step.get('id')}: {' '.join(str(step.get('title') or '').split())}"]
     for heading, key in (("What", "what"), ("Verify", "verify")):
         value = step.get(key)
         if isinstance(value, str) and value.strip():
             part.append(f"{heading}: {value.strip()}")
+    proved = proofs.judge_lines(plan, step)
     acceptance = step.get("acceptance")
-    if isinstance(acceptance, list) and acceptance:
+    if proved:
+        part += proved
+    elif isinstance(acceptance, list) and acceptance:
         part.append("Acceptance:")
         part += [f"- {' '.join(str(item).split())}" for item in acceptance]
     return "\n".join(part)
