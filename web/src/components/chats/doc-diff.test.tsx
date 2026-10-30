@@ -2,11 +2,11 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { DocDiff, DocDiffLegend } from "@/components/data/doc-diff";
 import { diffLines } from "@/lib/line-diff";
 import { renderVi } from "@/test/render";
 
 import messages from "../../../messages/vi.json";
-import { DocDiff, DocDiffLegend } from "./doc-diff";
 
 const doc = messages.chats.doc;
 
@@ -75,5 +75,19 @@ describe("DocDiff", () => {
     expect(items[0]).toHaveTextContent(`+${doc.legendAdded}`);
     expect(items[1]).toHaveTextContent(`−${doc.legendRemoved}`);
     expect(items[2]).toHaveTextContent(doc.legendSame);
+  });
+
+  it("says what the marked view's colours mean: added on green, removed in red and struck through, unchanged", () => {
+    renderVi(<DocDiffLegend tracked />);
+    const legend = screen.getByTestId("doc-diff-legend");
+    expect(legend).toHaveAttribute("data-view", "tracked");
+    const items = legend.querySelectorAll("li");
+    expect(Array.from(items, (item) => item.textContent)).toEqual([`Aa${doc.legendAdded}`, `Aa${doc.legendRemoved}`, `Aa${doc.legendSame}`]);
+    expect(doc.legendAdded).toBe("Đã thêm");
+    expect(doc.legendRemoved).toBe("Đã xoá");
+    expect(doc.legendSame).toBe("Giữ nguyên");
+    expect(items[0].querySelector("span")!.className).toContain("bg-success-soft");
+    expect(items[1].querySelector("span")!.className).toContain("line-through");
+    expect(items[1].querySelector("span")!.className).toContain("text-danger");
   });
 });

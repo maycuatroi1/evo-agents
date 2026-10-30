@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileDropFrame } from "@/components/data/attachments";
+import { OpenDocContext } from "@/components/data/doc-buttons";
 import { InFrame } from "@/components/data/data-card";
 import { notifyFailure } from "@/components/feedback/toast";
 import { useLiveSignal } from "@/components/live/live-context";
@@ -28,8 +29,7 @@ import { AgentActionsContext, type AgentTab, type AgentTarget } from "./agent-me
 import type { AgentPanels } from "./agent-sheet";
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
-import { OpenDocContext } from "./doc-model";
-import { DocPanel } from "./doc-panel";
+import { ChatDocPanel } from "./doc-panel";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
 import { preview, type Quote } from "./line-model";
@@ -61,7 +61,7 @@ const useNothingUnder: UseUnder = () => undefined;
 /**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
  * (beside the sidebar and the list, a third column needs that much) or in a sheet below; its members in a sheet. A
- * Markdown document of a message opens beside the chat from lg and in a sheet below (doc-panel.tsx); while it is
+ * text document of a message (Markdown, plain text, JSON, CSV, YAML, code) opens beside the chat from lg and in a sheet below (doc-panel.tsx); while it is
  * a column, a thread opens in its sheet. `?thread=ID` opens a thread, and `?message=ID` (where a notice links)
  * shows that message marked, in its thread when it is a reply of a group chat or older than the page read.
  * `?compose=1` (where an agent's avatar and its Chat button lead) focuses the composer, then leaves the address. In a
@@ -148,7 +148,7 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
   const frame = useRef<HTMLDivElement | null>(null);
   const threadWidth = useThreadWidth();
   const [threadFull, setThreadFull] = useState(false);
-  // The Markdown document read beside the chat (doc-panel.tsx), by its name, and what opened it: the composer stays in
+  // The text document read beside the chat (doc-panel.tsx), by its name, and what opened it: the composer stays in
   // reach, and Close gives the focus back.
   const [doc, setDoc] = useState<string | null>(null);
   const docWide = useMediaQuery(DOC_COLUMN_QUERY);
@@ -251,7 +251,7 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
 
   const docPanel =
     doc !== null ? (
-      <DocPanel key={doc} feed={live.feed} name={doc} me={me} onClose={closeDoc} className={docWide ? `${CARD} w-[min(44rem,48%)] shrink-0` : "h-full"} />
+      <ChatDocPanel key={doc} chatId={chatId} feed={live.feed} name={doc} me={me} onClose={closeDoc} className={docWide ? `${CARD} w-[min(44rem,48%)] shrink-0` : "h-full"} />
     ) : null;
 
   return (
