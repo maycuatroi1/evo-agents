@@ -44,6 +44,8 @@ check that ran and failed still leaves it open, and one still running still make
 the Judge passed goes to the hub's
 merge queue when the project's autonomy policy has its repo in mode auto and a forge secret covers it
 (``evo_agents.hub.merge_gate``), whatever its tier; otherwise it stays open, as before the policy.
+``agent_merge_decision`` says whether the agent of a proposal's thread may merge a change the hub left open: as
+``merge_decision`` with its tier allowed and the signs of protected paths no bar, every other sign still one.
 
 A Curator's plan is the hub's to write (``progress_free``): after the hub made it, a write may change the status,
 done_at, evidence, proofs and note of its steps and the plan's status, nothing else; and a plan whose id starts with
@@ -54,7 +56,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 
 from evo_agents.hub import proofs, tiers
@@ -970,6 +972,16 @@ def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
     if facts.ci != "green":
         return "open", list(facts.ci_reasons) or [f"CI is {facts.ci}"]
     return "merge", []
+
+
+def agent_merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
+    """``("merge", [])`` when the agent of a proposal's thread may merge, for its owner, a change the hub left open,
+    else ``("refuse", why)``: as ``merge_decision`` with the change's tier merged whatever the charter's ``auto_merge``
+    says, and a sign of a protected path no bar; any other sign, CI still running or failed, and every other condition
+    still refuse it."""
+    kept = tuple(item for item in facts.signs if item.get("kind") != "protected_path")
+    decided, why = merge_decision(replace(facts, auto_merge=(facts.tier,), signs=kept))
+    return ("merge", []) if decided == "merge" else ("refuse", why)
 
 
 def check_run_output(passed: bool, reasons: list[str], verify: list[dict], hidden: list[dict], signs: list[dict]):

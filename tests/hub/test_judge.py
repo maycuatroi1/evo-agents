@@ -815,3 +815,41 @@ def test_security_pass_the_filter_prompt_holds_the_filtering_instructions_and_th
     assert '"file": "app/db.py"' in text and "the name goes into the query" in text
     assert "bind it" not in text  # the filter reads the finding, not the fix proposed
     assert "START ANALYSIS" not in text and "sub-task" not in text.split("The finding:")[0]
+
+
+# The agent of a proposal's thread merges a change the hub left open (plan proposals-answer-themselves, a4)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"tier": 2},  # a tier the charter's auto_merge does not name
+        {"tier": 3, "auto_merge": ()},
+        {"signs": ({"kind": "protected_path"}, {"kind": "protected_path"})},  # protected paths alone
+        {"ci": "none", "merge_without_ci": True},
+    ],
+)
+def test_agent_merge_goes_for_a_tier_outside_auto_merge_and_protected_paths_alone(changes):
+    assert judge.agent_merge_decision(facts(**changes)) == ("merge", [])
+
+
+@pytest.mark.parametrize(
+    "changes, why",
+    [
+        ({"signs": ({"kind": "protected_path"}, {"kind": "assert_removed"})}, "signs of score hacking"),
+        ({"signs": ({"kind": "diff_unreadable"},)}, "diff_unreadable"),
+        ({"passed": False}, "the Judge did not pass it"),
+        ({"pr_head": "b" * 40}, "not the commit the Judge passed"),
+        ({"pr_base": "release"}, "not into the default branch main"),
+        ({"mergeable": False}, "conflicts"),
+        ({"repo_checked": False}, "has not checked that the repo's ruleset"),
+        ({"pr_state": "closed"}, "the pull request is closed"),
+        ({"ci": "red", "ci_reasons": ("test ended failure",)}, "test ended failure"),
+        ({"ci": "pending", "ci_reasons": ("test is queued",)}, "test is queued"),
+        ({"ci": "none", "ci_reasons": ("no CI ran on the commit",)}, "no CI ran"),
+        ({"forge": "gitlab"}, "a merge request on GitLab stays open"),
+    ],
+)
+def test_agent_merge_refuses_every_other_case_with_the_reason(changes, why):
+    decided, reasons = judge.agent_merge_decision(facts(tier=2, **changes))
+    assert decided == "refuse" and any(why in reason for reason in reasons), reasons

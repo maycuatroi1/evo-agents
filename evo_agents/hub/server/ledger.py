@@ -8,7 +8,7 @@ proposal (``proposal_recorded``: ``proposed``, or ``dropped`` as a repeat of a r
 it off, ``trigger_for``), when an admin answers it (``proposal_answered``), when its draft becomes the Curator's plan or
 cannot (``change_recorded``), and at each move of its change (``change_moved``, from ``changes._set``): built by its
 Builder, its pull request opened, judged (by the Judge, or by the hub's own detector of score hacking), merged (by the
-hub, or by hand), left open for its owner with why, or closed; a Builder that ends otherwise adds ``build_failed``
+hub, by the agent of the proposal's thread for its owner, or by hand), left open for its owner with why, or closed; a Builder that ends otherwise adds ``build_failed``
 (``build_failed``). The hub's merge of a change whose replays won keeps their verdict under ``details.replay`` and,
 when it releases a global skill, the skill under ``details.release``; ``evo_agents.hub.server.skill_release`` adds the
 line ``skill_release`` once it published the skill, or its version before again after a revert.
@@ -348,8 +348,9 @@ async def _builder_commit(conn: AsyncConnection, run_id: int | None) -> str | No
 
 async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str, extra: dict | None = None) -> None:
     """The lines a move of change ``change_id`` from ``old`` to ``new`` adds, from the change as it is now and
-    ``extra`` (``actor``, ``actor_id``, ``login``, ``before_sha`` of a merge; ``merge_request`` and ``into``, its iid
-    and target branch, of a merge of the queue on GitLab)."""
+    ``extra`` (``actor``, ``actor_id``, ``login``, ``before_sha`` of a merge, and ``agent`` and ``chat_run`` of one the
+    agent of a proposal's thread made for ``login``; ``merge_request`` and ``into``, its iid and target branch, of a
+    merge of the queue on GitLab)."""
     extra = extra or {}
     c = tables.curator_changes
     row = (await conn.execute(select(c).where(c.c.id == change_id))).one()
@@ -408,6 +409,10 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
         if extra.get("merge_request"):  # its merge queue on GitLab merged it
             what = f"{who}'s merge queue merged !{extra['merge_request']} into {extra.get('into')} as {row.merge_sha}"
         details = {"github_login": extra["login"]} if extra.get("login") else {}
+        if extra.get("agent"):  # the agent of the proposal's thread, for its owner (``curator_threads``)
+            what = f"{extra['agent']} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
+            what += f" for {extra.get('login')} (chat run {extra.get('chat_run')})"
+            details = {"agent": extra["agent"], "chat_run": extra.get("chat_run")}
         if actor == "curator":
             details, what = await _replayed_merge(conn, row, details, what)
         await append(
