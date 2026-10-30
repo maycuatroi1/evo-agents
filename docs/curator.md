@@ -855,12 +855,35 @@ row `curator.proposal` and the ledger line with the agent and the chat run (`via
 `details.agent`, `details.chat_run`), and the hub posts a `Decision:` line in the thread in the agent's name. The admins'
 answer on the web, the command line and Telegram stays as it was; with `answer_by: owner`, the default, no thread opens.
 
+When the hub leaves a change of such a proposal open for its owner with a pull request (a tier the charter's
+`auto_merge` does not name, a sign, CI that failed, K5 refusing the merge), it writes in the proposal's thread why,
+with the pull request, its head and whether the Judge passed it, and mentions the agent when the Judge passed it and
+the owner is an admin. The agent reads the diff at that head and merges it for the owner:
+
+```sh
+evo-agents worker curator merge 7
+```
+
+The command calls POST `/v1/worker/runs/{id}/curator/merge`, in the same frame as an answer (the change is of the
+thread's proposal, 403 for another; an owner who is no admin, 403; `answer_by: agent`, 409). The hub reads the pull
+request, its files and checks, and the repo's ruleset from GitHub again, and merges it with the workers' App at the
+head the Judge passed, as it merges a tier 0 change, only when: the change is `open`, its Judge passed it, the head did
+not move, every sign of its files is one of a protected path (a sign of score hacking still refuses it), the pull
+request is open into the default branch and mergeable, the repo's ruleset was checked, CI is as the charter asks, the
+night shift is not paused, and K5 of the chat run's principal lets it (`docs/autonomy.md`). Anything else answers 409
+with the reason, and 503 while GitHub does not answer. A change whose diff touched a protected path when it was judged
+was failed by the Judge's detector, so the agent cannot merge it: its owner decides on GitHub. Each merge writes the
+audit row `curator.merge` with `via=@<agent> in chat run <id>`, the ledger line `merged` with `details.agent` and
+`details.chat_run`, the owner's notice `merge_default_branch`, and a `Decision:` line in the thread; the morning brief
+lists it. The hub's own merge of a change no agent touched stays as it was.
+
 ## The brief, the ledger and the circuit breaker
 
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
 its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
 planned with why each waits, decisions and proposals waiting, the proposals the project's agent answered in the 24
-hours before the brief, with its note and chat run, and the last heartbeat of the worker on duty (`curator_briefs`,
+hours before the brief, with its note and chat run, the pull requests it merged, and the last heartbeat of the worker
+on duty (`curator_briefs`,
 schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
 runs the Loop handed out and the work items it finished in the 24 hours before the brief, and those waiting for a
 person by reason, with a link to the decision board (`docs/hub.md`, "The decision board"); a project whose Loop is off
