@@ -1667,7 +1667,9 @@
       "taskDone": "Done:",
       "taskOpen": "Not done:",
       "codeBlock": "Code block",
-      "table": "Table"
+      "table": "Table",
+      "trackedAdded": "Added:",
+      "trackedRemoved": "Removed:"
     },
     "detail": {
       "title": "Memory",

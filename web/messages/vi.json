@@ -1667,7 +1667,9 @@
       "taskDone": "Đã xong:",
       "taskOpen": "Chưa xong:",
       "codeBlock": "Khối mã",
-      "table": "Bảng"
+      "table": "Bảng",
+      "trackedAdded": "Đã thêm:",
+      "trackedRemoved": "Đã xoá:"
     },
     "detail": {
       "title": "Memory",

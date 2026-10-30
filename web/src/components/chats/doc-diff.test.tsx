@@ -25,6 +25,31 @@ describe("DocDiff", () => {
     expect(rows[0]).toHaveTextContent(/^11 a$/);
   });
 
+  it("strikes a removed line through in red and leaves an added one plain on green", () => {
+    renderVi(<DocDiff lines={diffLines("giữ\nbỏ hẳn dòng này", "giữ\nthêm")} />);
+    const removed = screen.getByTestId("doc-diff").querySelector("[data-kind=del] > span:last-child");
+    expect(removed?.className).toContain("line-through");
+    expect(removed?.className).toContain("text-danger");
+    expect(removed?.querySelector("[data-word]")).toBeNull();
+  });
+
+  it("tints the words that differ in a changed line, Vietnamese words whole", () => {
+    renderVi(<DocDiff lines={diffLines("Người dùng tải tệp lên.", "Học viên tải tệp lên.")} />);
+    const rows = screen.getByTestId("doc-diff").querySelectorAll("[data-kind]");
+    const words = (row: Element) => Array.from(row.querySelectorAll("[data-word]"), (word) => [word.getAttribute("data-word"), word.textContent]);
+    expect(words(rows[0])).toEqual([["del", "Người dùng"]]);
+    expect(words(rows[1])).toEqual([["add", "Học viên"]]);
+    expect(rows[0]).toHaveTextContent(`1−${doc.removedLine} Người dùng tải tệp lên.`);
+    expect(rows[1]).toHaveTextContent(`1+${doc.addedLine} Học viên tải tệp lên.`);
+    expect(rows[0].querySelector("[data-word=del]")?.className).toContain("bg-danger-solid");
+    expect(rows[1].querySelector("[data-word=add]")?.className).toContain("bg-success-solid");
+  });
+
+  it("does not tint words of lines that share too little", () => {
+    renderVi(<DocDiff lines={diffLines("alpha beta", "gamma delta")} />);
+    expect(screen.getByTestId("doc-diff").querySelector("[data-word]")).toBeNull();
+  });
+
   it("folds a long unchanged run into a button that shows it", () => {
     const after = BEFORE.map((line, index) => (index === 1 || index === 27 ? `${line}!` : line));
     renderVi(<DocDiff lines={diffLines(BEFORE.join("\n"), after.join("\n"))} />);

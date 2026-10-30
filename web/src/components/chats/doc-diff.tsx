@@ -5,12 +5,15 @@ import { useMemo, useState } from "react";
 
 import type { DiffKind, DiffLine } from "@/lib/line-diff";
 import { cn } from "@/lib/utils";
+import { lineWords, type WordPart } from "@/lib/word-diff";
 
 /**
  * A git-style unified diff of a document: old and new line numbers, a sign, then the line. Every changed line says what
  * happened in words for screen readers and with a sign for the eye; the tint (`success-soft`, `danger-soft`) is the
- * third cue, never the only one (as a plan's diff, plans/plan-diff.tsx). Unchanged runs keep CONTEXT lines beside each
- * change; a hidden run longer than MIN_HIDDEN lines folds into a button that shows it.
+ * third cue, never the only one (as a plan's diff, plans/plan-diff.tsx). A removed line's text is `danger` and struck
+ * through. When a removed line pairs with the added line in its place (lib/word-diff.ts), the words that differ are
+ * on a stronger tint of the same colour, so an edit inside a long line shows where it is. Unchanged runs keep CONTEXT
+ * lines beside each change; a hidden run longer than MIN_HIDDEN lines folds into a button that shows it.
  */
 
 const CONTEXT = 3;
@@ -19,6 +22,9 @@ const MIN_HIDDEN = 8;
 const ROW: Record<DiffKind, string> = { same: "", add: "bg-success-soft", del: "bg-danger-soft" };
 const SIGN: Record<DiffKind, string> = { same: " ", add: "+", del: "−" };
 const SIGN_TONE: Record<DiffKind, string> = { same: "text-muted-foreground", add: "text-success", del: "text-danger" };
+const TEXT: Record<DiffKind, string> = { same: "", add: "", del: "text-danger line-through decoration-danger" };
+// The words of a paired line that differ: a stronger tint than the row's.
+const WORD: Record<DiffKind, string> = { same: "", add: "rounded-xs bg-success-solid/25", del: "rounded-xs bg-danger-solid/20" };
 
 type Block = { kind: "lines"; start: number; end: number } | { kind: "fold"; start: number; end: number };
 
@@ -52,7 +58,7 @@ function blocks(lines: DiffLine[]): Block[] {
 const GRID = "grid grid-cols-[3.5rem_3.5rem_1.5rem_minmax(0,1fr)]";
 const NUMBER = "select-none px-2 text-right text-muted-foreground tabular-nums";
 
-function Row({ line }: { line: DiffLine }) {
+function Row({ line, words }: { line: DiffLine; words: WordPart[] | null }) {
   const t = useTranslations("chats.doc");
   return (
     <div className={cn(GRID, ROW[line.kind])} data-kind={line.kind}>
@@ -61,9 +67,19 @@ function Row({ line }: { line: DiffLine }) {
       <span className={cn("text-center font-semibold select-none", SIGN_TONE[line.kind])} aria-hidden="true">
         {SIGN[line.kind]}
       </span>
-      <span className="pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
+      <span className={cn("pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]", TEXT[line.kind])}>
         {line.kind === "same" ? null : <span className="sr-only">{line.kind === "add" ? t("addedLine") : t("removedLine")} </span>}
-        {line.text}
+        {words
+          ? words.map((part, index) =>
+              part.kind === "same" ? (
+                part.text
+              ) : (
+                <span key={index} className={WORD[part.kind]} data-word={part.kind}>
+                  {part.text}
+                </span>
+              ),
+            )
+          : line.text}
       </span>
     </div>
   );
@@ -72,6 +88,7 @@ function Row({ line }: { line: DiffLine }) {
 export function DocDiff({ lines, testId = "doc-diff" }: { lines: DiffLine[]; testId?: string }) {
   const t = useTranslations("chats.doc");
   const shown = useMemo(() => blocks(lines), [lines]);
+  const words = useMemo(() => lineWords(lines), [lines]);
   const [opened, setOpened] = useState<ReadonlySet<number>>(() => new Set());
 
   return (
@@ -96,7 +113,9 @@ export function DocDiff({ lines, testId = "doc-diff" }: { lines: DiffLine[]; tes
             </button>
           );
         }
-        return lines.slice(block.start, block.end).map((line, offset) => <Row key={block.start + offset} line={line} />);
+        return lines
+          .slice(block.start, block.end)
+          .map((line, offset) => <Row key={block.start + offset} line={line} words={words[block.start + offset]} />);
       })}
     </div>
   );
