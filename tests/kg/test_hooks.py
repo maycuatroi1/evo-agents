@@ -331,11 +331,19 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     assert "http" not in note and read not in note  # names and numbers only
 
     status = Session(project, "wide").call("kg_status", {})
-    assert f"read    app {read[:7]} of HEAD, 1 behind origin/main" in status["content"][0]["text"].splitlines()
+    (found,) = status["structuredContent"]["reads"]
+    at = found.pop("at")
+    assert f"read    app {read[:7]} of HEAD at {at}, 1 behind origin/main" in status["content"][0]["text"].splitlines()
     url = f"https://github.com/acme/demo-app/commit/{read}"
-    assert status["structuredContent"]["reads"] == [
-        {"source": "app", "commit": read, "ref": "HEAD", "base": "origin/main", "behind": 1, "url": url}
-    ]
+    assert found == {
+        "source": "app",
+        "commit": read,
+        "ref": "HEAD",
+        "base": "origin/main",
+        "behind": 1,
+        "url": url,
+        "recounted": True,
+    }
 
     git(app, "update-ref", "-d", "refs/remotes/origin/main")  # no branch to count against: the count of the sync
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
@@ -353,7 +361,8 @@ def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert code == 0 and f"commits read: 1 source, 0 current; behind unknown: app {read[:7]}" in note.splitlines()
     status = Session(project, "wide").call("kg_status", {})
-    assert f"read    app {read[:7]} of HEAD" in status["content"][0]["text"].splitlines()
+    (found,) = status["structuredContent"]["reads"]
+    assert f"read    app {read[:7]} of HEAD at {found['at']}" in status["content"][0]["text"].splitlines()
 
 
 SINK = """  sinks:
