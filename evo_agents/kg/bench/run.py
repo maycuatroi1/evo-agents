@@ -50,7 +50,7 @@ LIMITS = {datasets.SWE_EXPLORE: 5}
 DEFAULT_LIMIT = 10
 DEFAULT_BUDGET_TOKENS = 3000
 MAX_HOURS = 6.0
-SEARCHES = ("graph", "bm25", "plain", "hybrid")  # plain: plain BM25 (Store.plain_search), the sets' baseline
+SEARCHES = ("graph", "bm25", "plain", "files", "hybrid")  # plain: plain BM25 (Store.plain_search), the sets' baseline
 
 
 @dataclass
@@ -229,14 +229,16 @@ class Asked:
     seconds: float = 0.0
 
 
-def session_of(project, search: str):
+def session_of(project, search: str, files: tuple | None = None):
     """A CLI session on ``project`` that ranks the way ``search`` says, as `kg eval --search` does, or by plain BM25."""
     from evo_agents.kg.serve import Session
 
     session = Session(project, "cli")
     if search != "graph":
         session.semantic = search == "hybrid"
-    session.plain = search == "plain"
+    session.plain = search in ("plain", "files")
+    if search == "files":
+        session.plain_files = files
     return session
 
 
@@ -272,7 +274,9 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
                         _ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
                     report = evaluate(
                         [task.as_question()],
-                        session_for=lambda _project, project=project, search=search: session_of(project, search),
+                        session_for=lambda _project, project=project, search=search, files=(clone, task.commit): (
+                            session_of(project, search, files)
+                        ),
                         checkouts_for=lambda _project, clone=clone: {clone.name: clone},
                         methods=options.methods,
                         limit=options.limit_of(bench),
