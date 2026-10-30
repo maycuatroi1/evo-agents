@@ -36,6 +36,7 @@ import os
 import shutil
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub.client import write_atomic
@@ -133,6 +134,7 @@ class WorkerHome:
         self.spool_dir = self.root / "spool"
         self.runs_dir = self.root / "runs"
         self.worktrees_dir = self.root / "worktrees"
+        self.recovery_path = self.root / "recovery.jsonl"  # the WIP commits of merged runs' worktrees removed
 
     def ensure(self) -> None:
         """Create the directories, mode 0700 whatever the umask, and narrow an older directory that is wider."""
@@ -245,6 +247,14 @@ class WorkerHome:
                     if item.get("repo") == repo and item.get("branch") == branch and isinstance(head, str) and head:
                         found.append(head)
         return found
+
+    def note_recovery(self, entry: dict) -> None:
+        """Add a line to recovery.jsonl for the uncommitted changes of a run's worktree kept before it went: when, the
+        run, the repo, the branch, HEAD, the WIP commit, the ref that names it and the checkout it lies in."""
+        line = json.dumps({"at": datetime.now(UTC).isoformat(), **entry}) + "\n"
+        fd = os.open(self.recovery_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            handle.write(line)
 
     def conflict_path(self, run_id: int) -> Path:
         """Where ``evo-agents worker step`` notes a push of a plan run that went to its side branch instead."""

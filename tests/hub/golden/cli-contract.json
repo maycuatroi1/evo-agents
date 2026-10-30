@@ -53410,6 +53410,68 @@
           }
         }
       },
+      "/v1/worker/merged": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merged",
+          "description": "Of the ended runs the worker whose token asks still keeps, those whose work the hub knows merged.",
+          "operationId": "merged_v1_worker_merged_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergedQuestion"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergedAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -122439,6 +122501,43 @@
             "head_sha"
           ],
           "title": "MergeVerdictIn"
+        },
+        "MergedAnswer": {
+          "properties": {
+            "merged": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Merged",
+              "description": "those of runs whose work the hub knows merged: the daemon may remove their worktrees now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "merged"
+          ],
+          "title": "MergedAnswer"
+        },
+        "MergedQuestion": {
+          "properties": {
+            "runs": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Runs",
+              "description": "ended runs of this worker whose directory and worktrees it still keeps"
+            }
+          },
+          "type": "object",
+          "required": [
+            "runs"
+          ],
+          "title": "MergedQuestion"
         },
         "Message": {
           "properties": {

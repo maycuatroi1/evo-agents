@@ -374,6 +374,118 @@ def test_a_plan_runs_directory_and_worktrees_go_7_days_after_it_ended_and_a_resu
         assert "evo-run/5/" not in branches and "evo-run/6/" in branches
 
 
+class _MergedHub:
+    """The hub's side of POST /v1/worker/merged: the runs it says merged, and each question it got."""
+
+    def __init__(self, merged=(), refused: int | None = None):
+        self.said, self.refused, self.asked = set(merged), refused, []
+
+    async def merged(self, run_ids: list[int]) -> list[int]:
+        from evo_agents.worker.hubapi import Refused
+
+        self.asked.append(list(run_ids))
+        if self.refused is not None:
+            raise Refused("no such route", status=self.refused)
+        return sorted(self.said & set(run_ids))
+
+
+def _committed_checkout(path: Path) -> tuple[Path, dict]:
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "a",
+        "GIT_AUTHOR_EMAIL": "a@b",
+        "GIT_COMMITTER_NAME": "a",
+        "GIT_COMMITTER_EMAIL": "a@b",
+    }
+    checkout = _repo(path)
+    (checkout / "README.md").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True, env=env)
+    subprocess.run(["git", "-C", str(checkout), "commit", "--quiet", "-m", "x"], check=True, env=env)
+    return checkout, env
+
+
+def _git_out(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_merged_work_goes_at_the_next_cleanup_its_uncommitted_changes_kept_on_a_recovery_ref(tmp_path):
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.daemon import Daemon
+    from evo_agents.worker.gitops import Workspace
+
+    checkout, _ = _committed_checkout(tmp_path / "checkout")
+    head = _git_out(checkout, "rev-parse", "HEAD")
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    ended = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+
+    def plan_run(run_id: int, branch: str, **extra) -> Path:
+        directory = home.worktree_path("demo", run_id)
+        directory.mkdir()
+        path = directory / "demo"
+        subprocess.run(["git", "-C", str(checkout), "worktree", "add", "--quiet", "-b", branch, str(path)], check=True)
+        workspace = Workspace("demo", "feat/x", "feat/x", checkout, path, branch, head, ("main",))
+        record = {"id": run_id, "kind": "plan", "dir": str(directory), "repos": [workspace.to_record()]}
+        home.save_run({**record, "finished_at": ended, **extra})
+        return path
+
+    first = plan_run(1, "feat/merged")  # merged, with work never committed
+    (first / "README.md").write_text("changed\n", encoding="utf-8")
+    (first / "new.txt").write_text("not tracked\n", encoding="utf-8")
+    plan_run(2, "evo-run/2/demo")  # merged, nothing uncommitted: its evo-run branch goes
+    plan_run(3, "feat/parked", state="parked")  # merged, but parked
+    plan_run(4, "feat/open")  # its work has not merged
+    shared = plan_run(5, "feat/shared")  # merged, but a run that has not ended works in its directory
+    home.save_run({"id": 6, "kind": "chat", "dir": str(shared.parent), "repos": []})
+    home.save_run({"id": 7, "kind": "plan", "dir": None, "repos": [], "resumed_by": 8, "finished_at": ended})
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    daemon = Daemon(home, config, "evw_x", adapters={})
+    daemon.hub = hub = _MergedHub(merged=(1, 2, 3, 5, 7))
+
+    assert asyncio.run(daemon.cleanup()) == [1, 2]
+    assert hub.asked == [[1, 2, 4]], "parked, adopted and in use are never asked about"
+    assert not home.worktree_path("demo", 1).exists() and not home.worktree_path("demo", 2).exists()
+    for run_id in (3, 4, 5):
+        assert home.worktree_path("demo", run_id).is_dir()
+    assert sorted(record["id"] for record in home.load_runs()) == [3, 4, 5, 6, 7]
+    branches = _git_out(checkout, "branch", "--list", "--format=%(refname:short)").split()
+    assert "evo-run/2/demo" not in branches and "feat/merged" in branches, "only an evo-run branch goes"
+
+    (line,) = home.recovery_path.read_text(encoding="utf-8").splitlines()
+    kept = json.loads(line)
+    assert kept["run"] == 1 and kept["repo"] == "demo" and kept["branch"] == "feat/merged"
+    assert kept["head"] == head and kept["ref"] == "refs/evo-recovery/run-1/demo"
+    assert _git_out(checkout, "rev-parse", kept["ref"]) == kept["wip"]
+    assert _git_out(checkout, "rev-parse", f"{kept['wip']}^") == head
+    assert _git_out(checkout, "show", f"{kept['wip']}:README.md") == "changed"
+    assert _git_out(checkout, "show", f"{kept['wip']}:new.txt") == "not tracked"
+    assert _git_out(checkout, "rev-parse", "feat/merged") == head, "the branch did not move"
+    assert stat.S_IMODE(home.recovery_path.stat().st_mode) == 0o600
+
+
+def test_merged_work_is_not_asked_again_of_a_hub_before_the_route_and_the_7_days_still_hold(tmp_path):
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.daemon import Daemon
+
+    checkout, _ = _committed_checkout(tmp_path / "checkout")
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    now = datetime.now(UTC)
+    for run_id, age in ((1, timedelta(days=8)), (2, timedelta(hours=1))):
+        path = home.worktree_path("demo", run_id)
+        branch = f"evo-run/{run_id}"
+        subprocess.run(["git", "-C", str(checkout), "worktree", "add", "--quiet", "-b", branch, str(path)], check=True)
+        record = {"id": run_id, "checkout": str(checkout), "worktree": str(path), "local_branch": branch}
+        home.save_run({**record, "finished_at": (now - age).isoformat()})
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    daemon = Daemon(home, config, "evw_x", adapters={})
+    daemon.hub = hub = _MergedHub(refused=404)
+    assert asyncio.run(daemon.cleanup()) == [1], "the sweep of 7 days goes on"
+    assert asyncio.run(daemon.cleanup()) == []
+    assert hub.asked == [[2]], "asked once"
+    assert home.worktree_path("demo", 2).is_dir() and not home.recovery_path.exists()
+
+
 def test_a_plan_runs_worktree_folders_are_valid_branch_names_and_never_collide():
     from evo_agents.worker.gitops import folder_name, plan_branches
 

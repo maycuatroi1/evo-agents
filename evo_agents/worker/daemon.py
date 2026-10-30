@@ -44,8 +44,13 @@
   its ``update_now`` (its owner's Update now) stops the claims of every daemon of the install until it updated, while
   the runs held go on to their end (``runs.UPDATE_NOW``).
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
-  ended, their tmux sessions closed and their credential sockets removed. At the start and every hour, the worktrees
-  of runs that ended more than 7 days ago are removed.
+  ended, their tmux sessions closed and their credential sockets removed. At the start and every hour, the cleanup
+  asks the hub which ended runs whose worktrees it keeps had their work merged (POST /v1/worker/merged: the plan marks
+  their repos merged, the Curator's change or the merge request of the queue merged, or GitHub merged a task run's pull
+  requests) and removes those at once, after it committed what each worktree has not to a ref
+  ``refs/evo-recovery/run-<id>/<folder>`` of its checkout and noted it in recovery.jsonl; a run it holds, a parked
+  run, one another run went on from and a directory a run not ended uses stay. The worktrees of runs that ended more
+  than 7 days ago go whatever the hub says. Only the evo-run branch of a run is deleted with its worktree.
 - Each run takes its leases from the hub after the claim and gives them back when it ends here (``credentials``),
   also when the daemon stops.
 - The answer's ``kg_sync`` names the projects whose night shift this worker is on duty for: every
@@ -126,7 +131,8 @@ EXIT_FAILED = 1
 RUNTIMES_EVERY = 300.0  # seconds between looks at the runtimes
 CHECKOUTS_EVERY = 60.0  # and at the checkouts
 CLEANUP_EVERY = 3600.0
-KEEP_WORKTREES = timedelta(days=7)
+KEEP_WORKTREES = timedelta(days=7)  # the sweep's: the worktrees of a run whose work merged go at the next cleanup
+MAX_MERGED_ASKED = 200  # run ids in one POST /v1/worker/merged, as the hub takes them
 # the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
 DIRECTORY_KINDS = (
     "plan",
@@ -174,6 +180,22 @@ def _settings(value) -> dict | None:
         if value["projects"]:
             found["projects"] = list(value["projects"])
     return found
+
+
+def _paths(record: dict) -> list[Path]:
+    """The directory and worktrees a run's record names."""
+    found = [record.get("dir"), record.get("worktree")]
+    found += [item.get("worktree") for item in record.get("repos") or [] if isinstance(item, dict)]
+    return [Path(item) for item in found if isinstance(item, str) and item]
+
+
+def _finished(record: dict, now: datetime) -> datetime:
+    """When a run's record says it ended, in UTC; ``now`` for one that has not, or says it unreadably."""
+    try:
+        finished = datetime.fromisoformat(str(record["finished_at"])) if record.get("finished_at") else now
+    except ValueError:
+        return now
+    return finished.replace(tzinfo=UTC) if finished.tzinfo is None else finished
 
 
 def heartbeat_seconds(env: Mapping[str, str]) -> float:
@@ -238,6 +260,7 @@ class Daemon:
         # the owner's open Install browser, as heartbeats report it: {requested_at, ended, error}; None for none
         self.install_asked: dict | None = None
         self._installing: asyncio.Task | None = None  # the install of Chromium it carries out, while it runs
+        self._asks_merged = True  # until a hub before POST /v1/worker/merged answers 404
 
     # Shared with the runs
 
@@ -977,26 +1000,109 @@ class Daemon:
             await asyncio.sleep(CLEANUP_EVERY)
 
     async def cleanup(self, now: datetime | None = None) -> list[int]:
-        """Remove the worktrees and records of runs that ended more than 7 days ago; their ids."""
+        """Remove the worktrees and records of runs that ended more than 7 days ago, and those of ended runs whose work
+        the hub says merged (``_merged_work``), each worktree's uncommitted changes kept first (``_recover``); their
+        ids."""
         now = now or datetime.now(UTC)
+        records = self.home.load_runs()
+        old = {record["id"] for record in records if now - _finished(record, now) >= KEEP_WORKTREES}
+        merged = await self._merged_work([record for record in records if record["id"] not in old], records)
         removed = []
-        for record in self.home.load_runs():
+        for record in records:
             run_id = record["id"]
             if run_id in self.runs or not record.get("finished_at"):
                 continue
-            try:
-                finished = datetime.fromisoformat(str(record["finished_at"]))
-            except ValueError:
+            if run_id in old:
+                await self._remove_worktree(record)
+                log.info("old worktree removed", extra={"run_id": run_id, "worktree": record.get("worktree")})
+            elif run_id in merged and await self._recover(record):
+                await self._remove_worktree(record)
+                where = record.get("dir") or record.get("worktree")
+                log.info("worktree of merged work removed", extra={"run_id": run_id, "worktree": where})
+            else:
                 continue
-            if finished.tzinfo is None:
-                finished = finished.replace(tzinfo=UTC)
-            if now - finished < KEEP_WORKTREES:
-                continue
-            await self._remove_worktree(record)
             self.home.remove_run(run_id)
             removed.append(run_id)
-            log.info("old worktree removed", extra={"run_id": run_id, "worktree": record.get("worktree")})
         return removed
+
+    async def _merged_work(self, young: list[dict], records: list[dict]) -> set[int]:
+        """Of the runs of ``young`` (within their 7 days) whose worktrees this worker may remove (``_removable``, over
+        all its ``records``), those the hub says the work of merged (POST /v1/worker/merged); none without a hub, from
+        a hub before that route (asked once a daemon), or when it cannot answer now."""
+        if self.hub is None or not self._asks_merged:
+            return set()
+        asked = [record["id"] for record in young if self._removable(record, records)]
+        found: set[int] = set()
+        for start in range(0, len(asked), MAX_MERGED_ASKED):
+            try:
+                found |= set(await self.hub.merged(asked[start : start + MAX_MERGED_ASKED]))
+            except Refused as exc:
+                if exc.status in (404, 405):
+                    self._asks_merged = False
+                    log.info("the hub does not say which runs merged: their worktrees wait out the 7 days")
+                else:
+                    log.warning("the hub refused to say which runs merged", extra={"status": exc.status})
+                break
+            except HubProblem as exc:
+                log.info("the hub did not say which runs merged; the next cleanup asks", extra={"error": str(exc)})
+                break
+        return found
+
+    def _removable(self, record: dict, records: list[dict]) -> bool:
+        """Whether ``record``'s run is one whose worktrees may go once its work merged: it ended and this daemon holds
+        it no more, it is not parked, no run went on from it (``Conversation.adopt``, ``adopt_lost``), its record names
+        a worktree, and no run that has not ended uses its directory or one of its worktrees."""
+        if record["id"] in self.runs or not record.get("finished_at") or record.get("resumed_by"):
+            return False
+        if str(record.get("state") or "").startswith("parked") or record.get("moved_to"):
+            return False
+        mine = _paths(record)
+        if not mine:
+            return False
+        for other in records:
+            if other["id"] == record["id"] or (other.get("finished_at") and other["id"] not in self.runs):
+                continue
+            if any(a == b or a in b.parents or b in a.parents for a in mine for b in _paths(other)):
+                return False
+        return True
+
+    async def _recover(self, record: dict) -> bool:
+        """Commit what each worktree of ``record``'s run has not committed to a ref of its checkout
+        (``gitops.save_wip``, ``refs/evo-recovery/run-<id>/<folder>``) and add a line for it to the worker's recovery
+        file (``WorkerHome.note_recovery``): the run, the repo, the branch, HEAD and the WIP commit. Whether every
+        worktree was kept or had nothing to keep; the run's worktrees stay when one could not be."""
+        run_id = record["id"]
+        items = record.get("repos") if record.get("kind") in DIRECTORY_KINDS else [record]
+        for item in items or []:
+            if not isinstance(item, dict) or not item.get("worktree") or not item.get("checkout"):
+                continue
+            path, checkout = Path(item["worktree"]), Path(item["checkout"])
+            if not path.is_dir() or not checkout.is_dir():
+                continue
+            ref = f"{gitops.RECOVERY_REFS}run-{int(run_id)}/{path.name}"
+            try:
+                async with self.repo_lock(checkout):
+                    wip = await gitops.save_wip(path, ref, f"WIP of run {run_id}, kept before its worktree went")
+            except gitops.GitError as exc:
+                log.warning(
+                    "the uncommitted changes of a merged run were not kept: its worktree stays",
+                    extra={"run_id": run_id, "worktree": str(path), "error": str(exc)},
+                )
+                return False
+            if wip is not None:
+                self.home.note_recovery(
+                    {
+                        "run": run_id,
+                        "repo": item.get("repo"),
+                        "branch": item.get("local_branch") or item.get("branch"),
+                        "head": wip.head,
+                        "wip": wip.wip,
+                        "ref": wip.ref,
+                        "checkout": str(checkout),
+                    }
+                )
+                log.info("uncommitted changes kept", extra={"run_id": run_id, "ref": wip.ref, "wip": wip.wip})
+        return True
 
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
