@@ -182,11 +182,22 @@ def _command(parser: argparse.ArgumentParser) -> dict:
     return {"positionals": positionals, "options": options, "json": output.to_json() if output else None}
 
 
+def own_parser() -> argparse.ArgumentParser:
+    """The CLI's parser as every machine builds it: the plugins' commands are those of the plugins installed with the
+    CLI, never the list a machine kept from its hub (``cli_plugin_commands.BUNDLED_ONLY``)."""
+    from evo_agents.cli import build_parser
+    from evo_agents.hub.cli_plugin_commands import BUNDLED_ONLY
+
+    token = BUNDLED_ONLY.set(True)
+    try:
+        return build_parser()
+    finally:
+        BUNDLED_ONLY.reset(token)
+
+
 def hub_parsers(parser: argparse.ArgumentParser | None = None) -> dict[str, argparse.ArgumentParser]:
     """Every ``evo-agents hub`` command's parser, keyed by its path (``"hub plan step"``)."""
-    from evo_agents.cli import build_parser
-
-    hub = _subparsers(parser or build_parser())["hub"]
+    hub = _subparsers(parser or own_parser())["hub"]
     found: dict[str, argparse.ArgumentParser] = {}
 
     def walk(node: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
@@ -203,9 +214,7 @@ def hub_parsers(parser: argparse.ArgumentParser | None = None) -> dict[str, argp
 def contract_parsers(parser: argparse.ArgumentParser | None = None) -> dict[str, argparse.ArgumentParser]:
     """The parser of every command in the contract: those of ``hub_parsers`` and the agent's ``evo-agents worker``
     commands (AGENT_COMMANDS, keyed ``"worker step"``)."""
-    from evo_agents.cli import build_parser
-
-    root = parser or build_parser()
+    root = parser or own_parser()
     found = hub_parsers(root)
     for name in AGENT_COMMANDS:
         node = _subparsers(root)["worker"]
