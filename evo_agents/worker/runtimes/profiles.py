@@ -26,7 +26,7 @@ Claude Code 2.1.296 through claude-agent-sdk 0.2.165:
 - a PreToolUse hook, which Claude Code consults for subagents too and under bypassPermissions, refuses a call of a
   tool of an MCP server, of a skill or of a subagent on a model the profile leaves out (``claude_call_refusal``).
   The hook of autonomy (``evo_agents.worker.autonomy_hook``) runs beside it in every run with a snapshot of autonomy,
-  under a profile or not.
+  under a profile or not, and the file floor of the same module in every run of the daemon.
 - instructions: after the adapter's own note in ``--append-system-prompt`` (``with_instructions``).
 
 opencode 1.18.34:
@@ -324,11 +324,16 @@ def claude_call_refusal(profile: Profile, name: str, tool_input) -> str | None:
     return None
 
 
-def claude_hooks(profile: Profile | None, autonomy=None) -> dict | None:
+def claude_hooks(profile: Profile | None, autonomy=None, floor=None) -> dict | None:
     """The ``hooks`` of the session: a PreToolUse hook that refuses what ``claude_call_refusal`` refuses, and beside it
-    the hook of autonomy of a run with a snapshot, ``autonomy`` (``autonomy_hook.Gate``, ``RunContext.autonomy``);
-    None when the profile limits no tool, skill or model and the run has no snapshot."""
+    the hook of autonomy of a run with a snapshot, ``autonomy`` (``autonomy_hook.Gate``, ``RunContext.autonomy``), and
+    the file floor of the run, ``floor`` (``autonomy_hook.Floor``, ``RunContext.floor``), first; None when the profile
+    limits no tool, skill or model and the run has neither."""
     hooks = []
+    if floor is not None:
+        from evo_agents.worker.autonomy_hook import claude_floor_hook
+
+        hooks.append(claude_floor_hook(floor))
     if autonomy is not None:
         from evo_agents.worker.autonomy_hook import claude_hook
 
@@ -342,7 +347,7 @@ def claude_hooks(profile: Profile | None, autonomy=None) -> dict | None:
             decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why}
             return {"hookSpecificOutput": decision}
 
-        hooks.insert(0, gate)
+        hooks.insert(1 if floor is not None else 0, gate)
     if not hooks:
         return None
     from claude_agent_sdk import HookMatcher
