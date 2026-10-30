@@ -81,6 +81,7 @@ from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, ships,
 from evo_agents.hub.decision_asks import ASK_RULE
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
+from evo_agents.hub.proofs import criteria, prompt_lines, result_how, worker_how
 from evo_agents.hub.record_rule import record_rule
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
@@ -487,6 +488,7 @@ CONTEXT_BYTES = 4 * 1024
 WHAT_BYTES = 10 * 1024
 VERIFY_BYTES = 3 * 1024
 NOTE_BYTES = 2 * 1024
+ACCEPTANCE_BYTES = 4 * 1024  # the criteria a step names, with the plan's words, and how to prove each
 EVIDENCE_BYTES = 1536  # the evidence of one step this one depends on
 DEPENDENCIES_BYTES = 5 * 1024  # all of it
 LIST_TITLE_BYTES = 120  # the title of a step in a plan run's list of steps
@@ -826,16 +828,22 @@ def _dependencies(plan: dict, step: dict) -> list[str]:
     return ["# Evidence from the steps this one depends on", clip("\n\n".join(parts), DEPENDENCIES_BYTES)]
 
 
-def _step_lines(step: dict, key: str) -> list[str]:
-    """The step's title, what, verify and note, each cut to its own budget, as the prompt of a run of one step has them."""
+def _step_lines(step: dict, key: str, plan: dict | None = None, how: str = "") -> list[str]:
+    """The step's title, what, verify, the criteria of ``plan``'s acceptance it names with ``how`` the agent proves
+    each (none when it names none), and its note, each cut to its own budget, as the prompt of a run of one step has
+    them."""
     lines = ["", f"# Step {key}: {_short(step.get('title'), 'untitled')}"]
     for heading, value, budget in (
         ("## What to do", step.get("what"), WHAT_BYTES),
         ("## How the step is verified", step.get("verify"), VERIFY_BYTES),
-        ("## Note", step.get("note"), NOTE_BYTES),
     ):
         if _text(value):
             lines += ["", heading, clip(_text(value), budget)]
+    wanted = prompt_lines(criteria(plan, step), how)
+    if wanted:
+        lines += ["", clip("\n".join(wanted), ACCEPTANCE_BYTES)]
+    if _text(step.get("note")):
+        lines += ["", "## Note", clip(_text(step.get("note")), NOTE_BYTES)]
     return lines
 
 
@@ -861,7 +869,7 @@ def build_prompt(plan: dict, step: dict, repo: dict | None) -> str:
     ):
         if _text(value):
             lines += ["", heading, clip(_text(value), budget)]
-    lines += _step_lines(step, key)
+    lines += _step_lines(step, key, plan, result_how())
     dependencies = _dependencies(plan, step)
     if dependencies:
         lines += ["", *dependencies]
@@ -888,7 +896,12 @@ def _push_rule(autonomy) -> str:
         "name for that repo, never merge into any other branch, never force-push, and never rewrite history you "
         "pushed. After each push or merge into a repo's default branch that you make yourself (the pushes of "
         "`evo-agents worker step` send their own notice), run `evo-agents worker notify --kind push_default_branch "
-        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits."
+        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits. "
+        "In a repo whose policy has the merge check on, check first and merge after: `evo-agents worker merge-check "
+        "REPO` has the hub judge your pull request at its head (end your turn while it waits), and only a passed "
+        "verdict opens `gh pr merge N --match-head-commit HEAD` (or `gh api -X PUT repos/OWNER/NAME/pulls/N/merge -f "
+        "sha=HEAD`) with that same head; the hook refuses a merge without it, and a push after the verdict needs a new "
+        "check. The hub reads the merge afterwards and tells the owner when it was at another head or off the base."
     )
 
 
@@ -1121,7 +1134,7 @@ def build_step_session_prompt(
     ]
     if _text(plan.get("context")):
         lines += ["", "# Context of the plan, shortened", clip(_text(plan.get("context")), CONTEXT_BYTES)]
-    lines += _step_lines(step, key)
+    lines += _step_lines(step, key, plan, worker_how())
     if handoff and handoff.strip():
         lines += ["", handoff.strip()]
     return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)

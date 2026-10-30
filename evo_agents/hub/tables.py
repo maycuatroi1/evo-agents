@@ -467,6 +467,8 @@ runs = Table(
     Column("kind", Text, nullable=False, server_default="step"),
     Column("repos", JSONB),
     Column("model", Text),
+    Column("model_used", Text),  # the model its runtime ran it on, as its worker reported it (0185)
+    Column("routing", JSONB),  # what the routing by difficulty did: model_router.record (0185); NULL: it did not
     Column("run_seconds", Integer, nullable=False, server_default="0"),
     _when("counted_at"),
     _when("waiting_since"),
@@ -493,6 +495,8 @@ runs = Table(
     Column("claude_email", Text),  # the Claude account that ran the session; 'unknown' when it could not be read
     Column("claude_profile", Text),  # the claude-profiles profile, when it could be read
     _when("last_activity_at"),
+    # The proof of each acceptance criterion its step names, as the worker of a run of one step reported it (0186).
+    Column("proofs", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -601,6 +605,8 @@ decisions = Table(
     Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0155)
     # what a decision of category credential asks for: env_var, secret_name, hub_account; never a value (0167)
     Column("credential_request", JSONB(none_as_null=True)),
+    # a merge approval: the head and the scope of the request its answer holds for (0184, ``approval_heads``)
+    Column("approval", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
@@ -1046,6 +1052,7 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
+merge_checks = tables_merge.check_table(metadata)  # a run's pull request on github.com judged (0187)
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 plugin_records, plugin_record_leases = tables_plugin_records.plugin_record_tables(metadata)  # 0169
 # the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)

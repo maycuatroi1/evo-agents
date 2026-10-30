@@ -278,6 +278,8 @@ class Adapter(abc.ABC):
     # their MCP servers it connects to; an adapter that names none loads no pack (``pack_refusal``).
     pack_kinds: ClassVar[tuple[str, ...]] = ()
     pack_transports: ClassVar[tuple[str, ...]] = ()
+    # The model the runtime says the agent runs on, once it said so; None: the worker records the model it asked for.
+    model_used: str | None = None
 
     @classmethod
     def detect(cls) -> Detection:

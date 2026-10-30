@@ -3011,6 +3011,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -3037,7 +3038,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -7029,7 +7032,8 @@
           "wake_at",
           "wake_on",
           "outputs",
-          "credential_request"
+          "credential_request",
+          "approval"
         ],
         "schema": "Decision"
       }
@@ -7173,7 +7177,8 @@
           "wake_at",
           "wake_on",
           "outputs",
-          "credential_request"
+          "credential_request",
+          "approval"
         ],
         "schema": "Decision"
       }
@@ -18113,6 +18118,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -18139,7 +18145,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18226,6 +18234,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -18252,7 +18261,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18430,6 +18441,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -18456,7 +18468,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18543,6 +18557,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -18569,7 +18584,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18921,6 +18938,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -18947,7 +18965,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19034,6 +19054,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -19060,7 +19081,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19147,6 +19170,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -19173,7 +19197,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19666,6 +19692,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -19692,7 +19719,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19827,6 +19856,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -19853,7 +19883,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19998,6 +20030,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -20024,7 +20057,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -20111,6 +20146,7 @@
           "request",
           "finish_requested_at",
           "steady_wait",
+          "overlap_wait",
           "failure_cause",
           "session_per_step",
           "browser",
@@ -20137,7 +20173,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -23531,6 +23569,14 @@
         },
         {
           "flags": [
+            "--pull"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--attach"
           ],
           "value": "string",
@@ -24346,6 +24392,14 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--proof"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -92922,6 +92976,206 @@
             }
           }
         }
+      },
+      "/v1/worker/runs/{run_id}/merge-check": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask Check",
+          "description": "Have the hub judge the run's pull request on github.com at its head before the run merges it: where the check\nstands, and the wait of the run its verdict answers while it judges.",
+          "operationId": "ask_check_v1_worker_runs__run_id__merge_check_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeCheckIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeCheck"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/merge-gate": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merge Gate Act",
+          "description": "The word of the hub on a merge command of the run's agent (K5): whether the pull request's repo has the merge\ncheck on, and when it has, whether a passed verdict holds for the head the command merges.",
+          "operationId": "merge_gate_act_v1_worker_runs__run_id__merge_gate_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeGateIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeGate"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -95922,6 +96176,49 @@
           ],
           "title": "ApplyResult"
         },
+        "Approval": {
+          "properties": {
+            "pull": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*[#!][1-9][0-9]{0,9}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pull",
+              "description": "the request: owner/name#number on GitHub, the repo and !iid of a merge request on GitLab"
+            },
+            "head": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{7,64}$",
+              "title": "Head",
+              "description": "the commit at its head, lower-case hex"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope",
+              "description": "sha256: and the hash of its files, migrations and needs-you lines (approval_heads.scope_of)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "head"
+          ],
+          "title": "Approval",
+          "description": "What a merge approval holds for: one head of one request, with one scope."
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -96493,6 +96790,32 @@
               ],
               "title": "Decision Id",
               "description": "for a class in ask: the decision of the run, of the class's category, that the agent asked first"
+            },
+            "head": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head",
+              "description": "for a merge: the head of the request now, as the hook read it; null when it could not"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope",
+              "description": "for a merge: the hash of the request's scope now (approval_heads.scope_of)"
             }
           },
           "type": "object",
@@ -96530,7 +96853,19 @@
             "answered": {
               "type": "boolean",
               "title": "Answered",
-              "description": "whether decision_id is a decision of the run, of the class, answered"
+              "description": "whether decision_id is a decision of the run, of the class, answered, and its approval holds for head and scope"
+            },
+            "stale": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale",
+              "description": "why the answer of decision_id no longer opens the gate: it was given for another head or scope of the request; ask again"
             }
           },
           "type": "object",
@@ -106724,6 +107059,12 @@
               ],
               "title": "Pr Url"
             },
+            "merge_result": {
+              "type": "boolean",
+              "title": "Merge Result",
+              "description": "a Judge of a merge check: merge the current base into the head in a scratch worktree and run the checks there; a conflict fails it with needs a rebase",
+              "default": false
+            },
             "judge_key": {
               "anyOf": [
                 {
@@ -107241,6 +107582,17 @@
                 }
               ],
               "description": "what a decision of category credential asks the run's owner for: a variable's value, kept as their secret secret_name, their hub account, or both; null for any other decision"
+            },
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a merge approval: the request, head and scope its answer holds for; null for any other decision, and for one asked before schema 0184"
             }
           },
           "type": "object",
@@ -107419,6 +107771,17 @@
                 }
               ],
               "description": "category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options"
+            },
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind"
             }
           },
           "type": "object",
@@ -118162,6 +118525,17 @@
                 }
               ],
               "description": "category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options"
+            },
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind"
             }
           },
           "type": "object",
@@ -122239,6 +122613,138 @@
           "title": "MergeBreaker",
           "description": "The breaker of a repo of the queue: armed, or tripped until an admin resets it."
         },
+        "MergeCheck": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "head_sha": {
+              "type": "string",
+              "title": "Head Sha",
+              "description": "the head the verdict holds for; a new push needs a new check"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "judging, passed or failed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "web_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Web Url"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the run's wait the verdict answers; null when the verdict is there"
+            },
+            "wake_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wake At",
+              "description": "when the wait wakes at the latest"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "number",
+            "head_sha",
+            "state",
+            "reason",
+            "web_url",
+            "decision_id",
+            "wake_at"
+          ],
+          "title": "MergeCheck",
+          "description": "Where the merge check of a pull request stands, and the wait its verdict answers."
+        },
+        "MergeCheckIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo",
+              "description": "the repo of the run's pull request"
+            },
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the pull request; null: the open one of the run's branch"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "the branch the run pushes, as its worker has it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "MergeCheckIn"
+        },
         "MergeEvent": {
           "properties": {
             "id": {
@@ -122480,6 +122986,94 @@
             "figures"
           ],
           "title": "MergeFigures"
+        },
+        "MergeGate": {
+          "properties": {
+            "gated": {
+              "type": "boolean",
+              "title": "Gated",
+              "description": "false: the repo does not have merge_check on, so the command is not the hub's"
+            },
+            "passed": {
+              "type": "boolean",
+              "title": "Passed",
+              "description": "the hub holds a passed verdict for the head named, and the command may go on"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha",
+              "description": "the head the hub's verdict holds for; the merge pins it"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why the command does not pass"
+            },
+            "command": {
+              "type": "string",
+              "title": "Command",
+              "description": "the command that asks for the check"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gated",
+            "passed",
+            "head_sha",
+            "reason",
+            "command"
+          ],
+          "title": "MergeGate"
+        },
+        "MergeGateIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo",
+              "description": "owner/name of the pull request's repo"
+            },
+            "number": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "Number",
+              "description": "the pull request the merge command merges"
+            },
+            "head": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head",
+              "description": "the head of the pull request as the hook read it now; null when it could not"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "number"
+          ],
+          "title": "MergeGateIn"
         },
         "MergeJudgeInputs": {
           "properties": {
@@ -122882,6 +123476,24 @@
                 }
               ],
               "description": "the security pass of the run, which judges the dimension security apart from the agent"
+            },
+            "conflicts": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "minLength": 1
+                  },
+                  "type": "array",
+                  "maxItems": 3000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conflicts",
+              "description": "a merge check's: the paths where merging the base into the head conflicts; null when it merged"
             }
           },
           "type": "object",
@@ -127432,6 +128044,33 @@
           ],
           "title": "OutputUploadRequest"
         },
+        "OverlapWait": {
+          "properties": {
+            "run_ids": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Run Ids",
+              "description": "the running step runs it waits for, the oldest first"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths",
+              "description": "the files they edited that the step names, at most 10"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_ids",
+            "paths"
+          ],
+          "title": "OverlapWait",
+          "description": "The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names\nin its what or note, so the hub leaves the run in the queue until they end."
+        },
         "Overview": {
           "properties": {
             "counts": {
@@ -131736,7 +132375,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Policy",
-              "description": "sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default"
+              "description": "sections repos, merge, judge, breaker, audit, loop, context, routing; a key left out reads as its default"
             },
             "note": {
               "anyOf": [
@@ -143173,6 +143812,109 @@
           "title": "Role",
           "description": "The runtime and model one role of the Curator runs on."
         },
+        "RoutingLadder": {
+          "properties": {
+            "easy": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Easy"
+            },
+            "medium": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Medium",
+              "description": "also the model of a run the scorer did not rate"
+            },
+            "hard": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Hard"
+            }
+          },
+          "type": "object",
+          "required": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "title": "RoutingLadder"
+        },
+        "RoutingRecord": {
+          "properties": {
+            "scorer": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scorer"
+            },
+            "difficulty": {
+              "type": "string",
+              "enum": [
+                "easy",
+                "medium",
+                "hard"
+              ],
+              "title": "Difficulty",
+              "description": "the difficulty the scorer named; medium when it named none"
+            },
+            "scored": {
+              "type": "boolean",
+              "title": "Scored",
+              "description": "false: the scorer failed or named no difficulty"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the ladder's model the run took; null when its agent profile does not allow it"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "what the scorer's turn cost; null when not reported"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why it did not rate or choose"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scorer",
+            "difficulty",
+            "scored"
+          ],
+          "title": "RoutingRecord",
+          "description": "What the worker's rating of a run did (``model_router.record``)."
+        },
         "RuleCount": {
           "properties": {
             "rule": {
@@ -143373,6 +144115,29 @@
               ],
               "title": "Model",
               "description": "the model the dispatch asked for; null: the runtime's own choice"
+            },
+            "model_used": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Used",
+              "description": "the model its runtime ran it on, as its worker reported it; null until then, or not said"
+            },
+            "routing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RoutingRecord"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the routing by difficulty did; null for a run it did not rate"
             },
             "mode": {
               "type": "string",
@@ -143773,6 +144538,17 @@
                 }
               ],
               "description": "a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only once it is; another worker may take it now unless it is pinned to that one. Null otherwise"
+            },
+            "overlap_wait": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OverlapWait"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a queued step run that waits for another run of the same plan and repo, which has edited files the step names; null otherwise"
             },
             "failure_cause": {
               "anyOf": [
@@ -145849,6 +146625,28 @@
           "title": "RunRepoSource",
           "description": "A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it."
         },
+        "RunRouting": {
+          "properties": {
+            "scorer": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scorer",
+              "description": "the model of the short turn that rates the run's difficulty"
+            },
+            "ladder": {
+              "$ref": "#/components/schemas/RoutingLadder",
+              "description": "the model of each difficulty"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scorer",
+            "ladder"
+          ],
+          "title": "RunRouting",
+          "description": "The routing a claim carries while the project's policy has it on, for a run that names no model."
+        },
         "RunSkill": {
           "properties": {
             "name": {
@@ -146037,6 +146835,17 @@
               "title": "Model",
               "description": "the model the dispatch asked for; null: the runtime's own choice"
             },
+            "routing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunRouting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "while the project's policy has routing on, for a run that names no model: the scorer that rates its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise"
+            },
             "mode": {
               "type": "string",
               "enum": [
@@ -146159,6 +146968,21 @@
               ],
               "title": "Verify",
               "description": "the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)"
+            },
+            "criteria": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Criteria",
+              "description": "the ids of the criteria of the plan's acceptance that the step of a run of one step names: its result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step that names none"
             },
             "session_per_step": {
               "type": "boolean",
@@ -152930,6 +153754,48 @@
               "title": "Summary",
               "description": "the agent's summary, for the evidence"
             },
+            "model_used": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Used",
+              "description": "the model the run's runtime runs it on"
+            },
+            "routing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RoutingRecord"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the routing by difficulty did, for a run it rated"
+            },
+            "proofs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StepProof"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proofs",
+              "description": "with done or review of a run of one step: the proof of each criterion it names, which the step keeps once done"
+            },
             "answer": {
               "anyOf": [
                 {
@@ -153040,6 +153906,64 @@
             "step"
           ],
           "title": "StepEdit"
+        },
+        "StepProof": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 20,
+              "pattern": "^a\\d+$",
+              "title": "Id",
+              "description": "the criterion's id in the plan's acceptance"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "test",
+                "command",
+                "n/a"
+              ],
+              "title": "Kind",
+              "description": "test (path::name), command, or n/a"
+            },
+            "locator": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locator",
+              "description": "the test or the command"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "with n/a: why"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind"
+          ],
+          "title": "StepProof",
+          "description": "The proof of one criterion a step names (``evo_agents.hub.proofs``)."
         },
         "StepReadiness": {
           "properties": {
@@ -153192,6 +154116,22 @@
               ],
               "title": "Commit Sha",
               "description": "the repo's commit the step ends on"
+            },
+            "proofs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StepProof"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proofs",
+              "description": "with done: one proof for each criterion of the plan's acceptance the step names, which the step keeps; 422 when one is missing or names another criterion. Absent from an older worker's report"
             }
           },
           "type": "object",

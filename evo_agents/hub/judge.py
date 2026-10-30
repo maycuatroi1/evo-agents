@@ -42,7 +42,7 @@ merge queue when the project's autonomy policy has its repo in mode auto and a f
 (``evo_agents.hub.merge_gate``), whatever its tier; otherwise it stays open, as before the policy.
 
 A Curator's plan is the hub's to write (``progress_free``): after the hub made it, a write may change the status,
-done_at, evidence and note of its steps and the plan's status, nothing else; and a plan whose id starts with
+done_at, evidence, proofs and note of its steps and the plan's status, nothing else; and a plan whose id starts with
 CURATOR_PLAN_PREFIX is made from an accepted proposal alone.
 """
 
@@ -53,7 +53,7 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from evo_agents.hub import tiers
+from evo_agents.hub import proofs, tiers
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
 from evo_agents.hub.judges import codex_cleared as codex_cleared  # their home before evo_agents.hub.judges
 from evo_agents.hub.judges import judge_runtime as judge_runtime
@@ -344,7 +344,7 @@ def is_curator_branch(name: str | None) -> bool:
     return not re.search(r"\.\.|[\x00-\x20~^:?*\[\\]|//|/$|\.lock$|@\{", name)
 
 
-STEP_PROGRESS = ("status", "done_at", "evidence", "note")  # what a draft's step may say of progress, dropped
+STEP_PROGRESS = ("status", "done_at", "evidence", "proofs", "note")  # what a draft's step may say of progress, dropped
 
 
 def curator_plan(draft: dict, *, plan_id: str, repo: str, branch: str, proposal_id: int, project: str) -> dict:
@@ -387,8 +387,8 @@ PLAN_PROGRESS = ("status",)  # what a write of a Curator's plan may change of th
 
 
 def progress_free(body: dict) -> str:
-    """A Curator's plan without what its progress writes (the plan's status; each step's status, done_at, evidence
-    and note), as canonical JSON: two writes of it differ in anything else exactly when these differ."""
+    """A Curator's plan without what its progress writes (the plan's status; each step's status, done_at, evidence,
+    proofs and note), as canonical JSON: two writes of it differ in anything else exactly when these differ."""
     found = {key: value for key, value in (body if isinstance(body, dict) else {}).items() if key not in PLAN_PROGRESS}
     found.pop("hub", None)
     steps = found.get("steps")
@@ -1005,8 +1005,9 @@ def build_judge_prompt(
     folder: str | None = None,
 ) -> str:
     """The prompt of the judge run of a Curator change: the rules, the proposal (title, kind, tier, summary), the
-    plan's goal and each step's what, verify and acceptance (never its evidence, which the Builder wrote), where the
-    change is. The worker adds the results of the verify commands and the hidden checks it ran before the agent
+    plan's goal and each step's what, verify and acceptance, the criteria of the plan's acceptance it names in the
+    plan's words with the locator of each proof (never its evidence or a proof's reason, which the Builder wrote),
+    where the change is. The worker adds the results of the verify commands and the hidden checks it ran before the agent
     starts."""
     lines = [
         f"You are the Judge of a change the Curator of project {project} proposed and its Builder made, on the "
@@ -1032,8 +1033,11 @@ def build_judge_prompt(
             value = step.get(key)
             if isinstance(value, str) and value.strip():
                 part.append(f"{heading}: {value.strip()}")
+        proved = proofs.judge_lines(plan, step)
         acceptance = step.get("acceptance")
-        if isinstance(acceptance, list) and acceptance:
+        if proved:
+            part += proved
+        elif isinstance(acceptance, list) and acceptance:
             part.append("Acceptance:")
             part += [f"- {' '.join(str(item).split())}" for item in acceptance]
         steps.append("\n".join(part))

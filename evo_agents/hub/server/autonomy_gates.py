@@ -16,6 +16,11 @@ flows that already hold that policy, the merge queue that acts on repos in mode 
 release; the gate acts as before. A run without a snapshot (a local run, one queued before schema 0113) acts as before
 too, and so does a principal at A5.
 
+A merge's act may carry its approval (``approval_heads``): the head of the request and the hash of its scope. The
+decision asked for it keeps them, and its answer holds for that head and scope alone: once a push moves the head or
+changes the scope, the gate asks again at the new head, and cancels the decision still open for the old one. A
+decision asked before schema 0184 has none and holds as it did.
+
 Every refusal names the class, the mode and its source, and writes the audit row ``autonomy.refused`` once for each
 act refused; the ask writes ``autonomy.asked``, the notice ``autonomy.notified``. Every verdict, whatever it is, goes
 to the ledger S1 (``autonomy_ledger``).
@@ -25,10 +30,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import exists, insert, select
+from sqlalchemy import exists, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import autonomy_levels, runs, tables
+from evo_agents.hub import approval_heads, autonomy_levels, runs, tables
 from evo_agents.hub.autonomy_levels import (
     ACTING,
     ASK,
@@ -79,10 +84,19 @@ def mode_of(choice: Choice, klass: str, risk: bool) -> str:
 
 
 async def check(
-    conn: AsyncConnection, run_id: int | None, klass: str, *, key: str, what: str, repo: str | None = None, risk=False
+    conn: AsyncConnection,
+    run_id: int | None,
+    klass: str,
+    *,
+    key: str,
+    what: str,
+    repo: str | None = None,
+    risk=False,
+    approval: dict | None = None,
 ) -> Verdict:
     """The verdict of the gate of ``klass`` on run ``run_id`` for the act ``what`` (a sentence: "merge !4 of api into
-    dev"), named ``key`` among the run's acts; a run of None acts as before."""
+    dev"), named ``key`` among the run's acts, at the head and scope of ``approval`` when it has one; a run of None
+    acts as before."""
     if run_id is None:
         return Verdict(True)
     found = await run_autonomy.recheck(conn, run_id, repo=repo)
@@ -98,7 +112,7 @@ async def check(
     elif mode == DENY:
         verdict = await _refuse(conn, said, f"{what}: {refusal(klass, mode, choice)}", key)
     else:
-        verdict = await _ask(conn, said, choice, key, what)
+        verdict = await _ask(conn, said, choice, key, what, approval)
     result = ACTED if verdict.act else ASKED if verdict.waits else REFUSED
     await autonomy_ledger.record(conn, run_id, klass, mode, result, key)
     return verdict
@@ -121,16 +135,24 @@ async def _refuse(conn: AsyncConnection, said: Verdict, reason: str, key: str) -
     return Verdict(False, said.mode, reason, False, said.principal_id, said.project_id, said.run_id, said.klass)
 
 
-async def _ask(conn: AsyncConnection, said: Verdict, choice: Choice, key: str, what: str) -> Verdict:
-    """Ask the principal, or read the answer of the decision asked before."""
+async def _ask(
+    conn: AsyncConnection, said: Verdict, choice: Choice, key: str, what: str, approval: dict | None = None
+) -> Verdict:
+    """Ask the principal, or read the answer of the decision asked before; one asked for another head or scope than
+    ``approval``'s is left behind, cancelled while open, and the question asked again."""
     d = tables.decisions
     query = (
-        select(d.c.id, d.c.state, d.c.answer_option)
+        select(d.c.id, d.c.state, d.c.answer_option, d.c.approval)
         .where(d.c.run_id == said.run_id, d.c.category == runs.AUTONOMY_DECISION_CATEGORY, d.c.step_key == key)
         .order_by(d.c.id.desc())
         .limit(1)
     )
     found = (await conn.execute(query)).one_or_none()
+    head, scope = (approval or {}).get("head"), (approval or {}).get("scope")
+    if found is not None and approval is not None and not approval_heads.holds(found.approval, head, scope):
+        if found.state == "open":
+            await conn.execute(update(d).values(state="cancelled").where(d.c.id == found.id, d.c.state == "open"))
+        found = None
     if found is not None and found.state == "answered":
         if found.answer_option == APPROVE:
             return Verdict(True, ASK, None, False, said.principal_id, said.project_id, said.run_id, said.klass)
@@ -138,20 +160,25 @@ async def _ask(conn: AsyncConnection, said: Verdict, choice: Choice, key: str, w
         return await _refuse(conn, said, why, key)
     decision_id = found.id if found is not None and found.state not in AGAIN else None
     if decision_id is None:
-        decision_id = await _open(conn, said, choice, key, what)
+        decision_id = await _open(conn, said, choice, key, what, approval)
     reason = f"{what} waits for the principal's answer to decision #{decision_id} ({decision_link(decision_id)})"
     return Verdict(False, ASK, reason, True, said.principal_id, said.project_id, said.run_id, said.klass)
 
 
-async def _open(conn: AsyncConnection, said: Verdict, choice: Choice, key: str, what: str) -> int:
+async def _open(
+    conn: AsyncConnection, said: Verdict, choice: Choice, key: str, what: str, approval: dict | None = None
+) -> int:
     d = tables.decisions
     question = runs.clip(f"May the hub {what} for run {said.run_id}?", runs.MAX_QUESTION_CHARS)
+    bound = approval_heads.line(approval)
     context = runs.clip(
-        f"{refusal(said.klass, ASK, choice)}. The hub acts once you approve, and leaves it undone if you refuse.",
+        f"{refusal(said.klass, ASK, choice)}. The hub acts once you approve, and leaves it undone if you refuse."
+        + (f" {bound}" if bound else ""),
         runs.MAX_DECISION_CONTEXT_BYTES,
     )
     asked = await principals.asked_of(conn, said.run_id)
     values = {"run_id": said.run_id, "project_id": said.project_id, "category": runs.AUTONOMY_DECISION_CATEGORY}
+    values["approval"] = approval
     inserted = insert(d).values(**values, step_key=key, question=question, context=context, options=OPTIONS)
     decision_id = (await conn.execute(inserted.values(asked_of=asked).returning(d.c.id))).scalar_one()
     await notify(
@@ -218,10 +245,12 @@ async def tell_after(
     await told(conn, Verdict(True, NOTIFY, None, False, row.principal_id, row.project_id, run_id, klass), key, title)
 
 
-def pull_act(repo: str, number: int, base: str) -> dict:
-    """The act of merging pull request ``number`` of ``repo`` on GitHub, as the gates name it."""
+def pull_act(repo: str, number: int, base: str, head: str | None = None, scope: str | None = None) -> dict:
+    """The act of merging pull request ``number`` of ``repo`` on GitHub at ``head`` with ``scope``, as the gates name
+    it."""
     return {
         "key": f"merge {repo}#{number}",
         "what": f"merge pull request #{number} of {repo} into {base}",
         "repo": repo,
+        "approval": approval_heads.approval(head, scope, f"{repo}#{number}"),
     }

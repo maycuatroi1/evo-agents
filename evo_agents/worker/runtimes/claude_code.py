@@ -106,7 +106,7 @@ here.
 - The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
-  the CLI takes.
+  the CLI takes. The model the session's init message names is ``model_used``, which the worker records on the run.
 - A turn that ends with an error that reads as the account's usage limit (``limit_of_text``) gives an outcome with
   ``limit`` set, and its ``rate_limit_event`` messages reach the run's log raw: ``evo_agents.worker.runner.limits``
   reports them and moves the run to another account. One whose error reads as the account failing to authenticate
@@ -858,6 +858,9 @@ class ClaudeCodeAdapter(QueueAdapter):
                     session = message.data.get("session_id")
                     if isinstance(session, str) and session:
                         self._session = session
+                    model = message.data.get("model")
+                    if isinstance(model, str) and model:
+                        self.model_used = model  # the full name, where the run may have named an alias
                 self.emit(events_of(message))
                 self._peak = larger(self._peak, context_of(message))
                 self._first = self._first or first_request_of(message)

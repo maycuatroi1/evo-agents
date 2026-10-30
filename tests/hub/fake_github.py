@@ -863,6 +863,8 @@ class FakeGitHub:
                 return refused
             base, _, head = rest[1].partition("...")
             shas = [sha for sha, _ in repo.history]
+            base = repo.heads.get(base, base) if base not in shas and base not in repo.merge_bases else base
+            head = repo.heads.get(head, head) if head not in shas and head not in repo.merge_bases else head
             if head in repo.merge_bases and head not in shas:  # a pushed branch over the default branch
                 merge_base = {"sha": repo.merge_bases[head]}
                 return 200, {

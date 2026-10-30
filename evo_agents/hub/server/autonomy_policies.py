@@ -75,7 +75,8 @@ class PolicyWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     policy: dict[str, Any] = Field(
-        description="sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default"
+        description="sections repos, merge, judge, breaker, audit, loop, context, routing; a key left out reads as its "
+        "default"
     )
     note: str | None = Field(None, max_length=autonomy.MAX_NOTE_CHARS, description="why, for the history")
     if_revision: int | None = Field(None, ge=0, description="409 unless the policy is at this revision now")

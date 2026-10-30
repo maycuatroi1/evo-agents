@@ -56,6 +56,7 @@ RUN_KEYS = (
     "request",
     "finish_requested_at",
     "steady_wait",
+    "overlap_wait",
     "failure_cause",
     "session_per_step",
     "browser",
@@ -69,3 +70,4 @@ RUN_KEYS += ("principal", "autonomy")  # whom it acts for, and the autonomy snap
 RUN_KEYS += ("selector", "tolerations")  # where it goes: the labels it asks of its worker, the taints it tolerates
 RUN_KEYS += ("plan_progress",)  # a plan run's steps done of its plan; null for any other kind
 RUN_KEYS += ("as_owner", "as_owner_since")  # its owner lets it call the hub as them, since then (server/run_access.py)
+RUN_KEYS += ("model_used", "routing")  # the model its runtime used, and what the model routing did (null: none)

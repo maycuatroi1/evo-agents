@@ -28,6 +28,7 @@
 - ``triage rerun|plan|invite|cancel``: what the agent of a triage thread does for a failed or stale run (``triage_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
+- ``merge-check REPO``: a plan run's agent has the hub judge its pull request at its head (``merge_check_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -56,21 +57,24 @@ import platform
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents import __version__
-from evo_agents.hub import credential_requests, decision_asks, runs
+from evo_agents.hub import credential_requests, decision_asks, proofs, runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
     backup_cli,
     chat_cli,
     list_cli,
+    merge_check_cli,
     output_cli,
     playbook_cli,
     pool_cli,
     probe_cli,
     projects_cli,
+    pull_heads,
     step_verify,
     triage_cli,
 )
@@ -517,6 +521,7 @@ MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
 AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
 AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, backup_cli.register_backup)
 AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged change
+AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull request judged at its head
 
 
 @dataclass
@@ -622,7 +627,30 @@ def _step_verify_commands(args) -> list[str]:
         )
     if args.evidence is not None and (not args.evidence.strip() or len(args.evidence) > MAX_EVIDENCE_CHARS):
         raise WorkerStateError(f"--evidence takes 1 to {MAX_EVIDENCE_CHARS} characters")
+    if args.proof and args.status != "done":
+        raise WorkerStateError(f"{proofs.FLAG} goes with done only")
     return verify
+
+
+def _step_proofs(args, body: dict, step, worktree) -> list[dict] | None:
+    """The proofs of ``worker step KEY done``, one for each criterion of the plan's acceptance the step names, each
+    test found in the repo's worktree; None for a step that names none and was given none. WorkerStateError naming
+    the criteria left without one, before anything is verified or pushed."""
+    try:
+        given = proofs.parse_all(args.proof or [])
+    except proofs.ProofProblem as exc:
+        raise WorkerStateError(str(exc)) from None
+    wanted = proofs.criteria(body, step)
+    if not wanted and not given:
+        return None
+    why = proofs.problem(wanted, given)
+    if why is not None:
+        raise WorkerStateError(f"step {args.key} is not done: {why}. Nothing was verified, committed or pushed")
+    for item in given:
+        missing = proofs.missing_test(item, worktree)
+        if missing:
+            raise WorkerStateError(f"the proof of {item['id']}: {missing}. Nothing was verified, committed or pushed")
+    return proofs.stored(given)
 
 
 def _step_workspaces(agent: _AgentRun, repo: str | None) -> dict:
@@ -685,6 +713,9 @@ def cmd_step(args) -> int:
             report["evidence"] = args.evidence
         pushed = None
         if args.status == "done":
+            given = _step_proofs(args, body, step, workspaces[name].worktree)
+            if given is not None:
+                report["proofs"] = given
             done = await step_verify.done_step(hub, agent, args.key, step, body, name, workspaces[name], verify, wait)
             if isinstance(done, int):
                 return done
@@ -727,6 +758,17 @@ def credential_request(args) -> dict | None:
     return request
 
 
+def asked_approval(category: str, ref: str) -> dict:
+    """The approval ``worker ask --pull`` binds its decision to: the pull request's head and scope as gh reads them in
+    the run's directory (``pull_heads``)."""
+    if category != "merge":
+        raise WorkerStateError("--pull binds a merge approval to a pull request's head: use --category merge")
+    bound = pull_heads.read(ref, None, Path.cwd())
+    if bound is None:
+        raise WorkerStateError(f"gh could not read pull request {ref} here: `gh pr view {ref}` says why")
+    return bound
+
+
 def _asked_options(args) -> list[dict]:
     """The options of ``worker ask`` that asks no credential: 2 to 6, each with a key of its own."""
     options = [decision_option(text) for text in args.option or []]
@@ -767,6 +809,8 @@ def cmd_ask(args) -> int:
     body.update(decision_extras(args.recommended, args.recommended_reason, args.reversible, args.undo, args.evidence))
     if args.step is not None:
         body["step_key"] = args.step
+    if getattr(args, "pull", None) is not None:
+        body["approval"] = asked_approval(args.category, args.pull)
     body.update(output_cli.attached(agent.home, agent.run_id, args.attach))  # the outputs the question carries
     if args.recommended is None:
         print(NO_RECOMMENDED, file=sys.stderr)
@@ -1081,6 +1125,12 @@ def _register_ask(wsub) -> None:
         "nothing; repeat it for another",
     )
     ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
+    ask.add_argument(
+        "--pull",
+        metavar="REF",
+        help="with --category merge: the pull request to merge (number, URL or branch); the answer holds for its head "
+        "and scope now alone, and a push that changes them asks again",
+    )
     output_cli.attach_option(ask, "the question")
     ask.set_defaults(func=cmd_ask)
 
@@ -1098,6 +1148,13 @@ def _register_step(wsub) -> None:
     )
     step.add_argument("--repo", help="the run's repo the step is in (default: the plan's repo of the step)")
     step.add_argument("--evidence", help="what was done and how it was checked; a line per decision taken")
+    step.add_argument(
+        proofs.FLAG,
+        action="append",
+        metavar="ID=VALUE",
+        help="with done: the proof of a criterion of the plan's acceptance the step names (a4=path::test_name, "
+        "a4=COMMAND or a4=n/a: why); repeat it, once for each; done is refused without one for each",
+    )
     step.add_argument(
         "--verify",
         action="append",

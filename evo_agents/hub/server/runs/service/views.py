@@ -90,6 +90,8 @@ def run_select():
             r.c.requested_runtime,
             r.c.runtime,
             r.c.model,
+            r.c.model_used,
+            r.c.routing,
             r.c.mode,
             r.c.approval,
             (r.c.timeout_s // 60).label("timeout_min"),
@@ -173,9 +175,21 @@ def runs_of(rows) -> list[Run]:
     return [_run_of(row) for row in rows]
 
 
+async def with_overlap(conn: AsyncConnection, views: list[Run]) -> list[Run]:
+    """``views`` with Run.overlap_wait set on the queued step runs that wait for another run of their plan."""
+    from evo_agents.hub.server.runs.service import overlap
+
+    queued = [view.id for view in views if view.state == "queued" and view.kind == "step"]
+    if queued:
+        for view_id, wait in (await overlap.waits(conn, run_ids=queued)).items():
+            next(view for view in views if view.id == view_id).overlap_wait = wait
+    return views
+
+
 async def run_views(conn: AsyncConnection, run_ids: list[int]) -> list[Run]:
     r = tables.runs
-    return runs_of(await conn.execute(run_select().where(r.c.id.in_(list(run_ids))).order_by(r.c.id)))
+    views = runs_of(await conn.execute(run_select().where(r.c.id.in_(list(run_ids))).order_by(r.c.id)))
+    return await with_overlap(conn, views)
 
 
 async def run_view(conn: AsyncConnection, run_id: int) -> Run:
