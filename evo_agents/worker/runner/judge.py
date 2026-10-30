@@ -1,7 +1,8 @@
 """A judge run (kind ``judge``, ``JudgeRun``): the Curator's Judge of one change, or the Judge of a merge request of
 the hub's merge queue on GitLab, whose claim names no change (``merge_gate.judges_merge_request``): it reads its inputs
 from GET /v1/worker/runs/{id}/merge-judge and posts its verdict, with what the Judge said of each dimension
-(``merge_gate.dimensions_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
+(``merge_gate.dimensions_from_message``), the findings it raised and its marks of earlier ones
+(``merge_gate.findings_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
 
 Once it holds its leases, the worker reads the plan's verify commands and the project's hidden checks from the hub
 (GET /v1/worker/runs/{id}/judge with the run's own key, which the claim handed the daemon and only its memory holds;
@@ -65,6 +66,8 @@ class JudgeRun:
         self.merge_base: str | None = None
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
         self.dimensions: dict | None = None  # what the Judge of a merge request said of each dimension
+        self.findings: list[dict] = []  # what it found wrong
+        self.prior: dict[str, dict] = {}  # its marks of the findings of earlier rounds
 
     async def steps(self) -> None:
         run, change = self.run, self.run.curator or {}
@@ -120,7 +123,7 @@ class JudgeRun:
             "paths": judge.changed_paths(files)[: judge.MAX_PATHS],
         }
         if self.merge:
-            body["dimensions"] = self.dimensions
+            body.update(dimensions=self.dimensions, findings=self.findings, prior=self.prior)
         await self.post(body)
 
     def run_path(self) -> str | None:
@@ -318,6 +321,7 @@ class JudgeRun:
             return None, None
         if self.merge:
             self.dimensions = merge_gate.dimensions_from_message(message)
+            self.findings, self.prior = merge_gate.findings_from_message(message)
         return verdict, reasons or None
 
     def prompt(self) -> str:

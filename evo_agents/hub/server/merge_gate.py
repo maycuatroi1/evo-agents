@@ -33,7 +33,9 @@ A gate that does not pass leaves the merge request ``gating`` with why when it w
 pipeline, the project's settings, the end of its draft), or ``blocked`` with why; a blocked one moves only after a
 new push, or, held at gate 3 for a person, once an admin passes it (``evo_agents.hub.server.merge_pass``). Each new
 reason, and each gate passed at a head, is a line of the ledger (merge_events), and the hub
-comments on the merge request once for each reason that blocks it or each setting it misses. GitLab failing leaves
+comments on the merge request once for each reason that blocks it or each setting it misses; held by a Judge, the
+comment names the Judge's findings open, each one whole the first time and by its id after that. A new patch drops the
+Judges' verdicts and keeps their findings (``findings.carried``), for the next Judge to mark. GitLab failing leaves
 the repo for the next pass. A merge request out of scope, or of a project without a policy, is never written to, as
 before the policy (criterion a9). ``evo_agents.hub.server.merge_view`` shows the queue.
 """
@@ -49,7 +51,7 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import autonomy, judge, merge_gate, runs, tables, task_runs
+from evo_agents.hub import autonomy, findings, judge, merge_gate, runs, tables, task_runs
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, pull_trailers
 from evo_agents.hub.server.autonomy_policies import project_repos
 from evo_agents.hub.server.forge import forge_token, has_forge
@@ -845,7 +847,8 @@ class RepoPass:
             for gate in range(4):
                 why, detail = passed_by if gate == 3 and passed_by is not None else (None, None)
                 await record(conn, row, "gate", gate=gate, passed=True, reason=why, sha=mr.sha, detail=detail)
-            verdict = row.verdict if (row.verdict or {}).get("fingerprint") == fingerprint else None
+            same = (row.verdict or {}).get("fingerprint") == fingerprint
+            verdict = row.verdict if same else findings.carried(row.verdict)  # a new patch: its findings stay
             await set_row(
                 conn,
                 row.id,
@@ -910,19 +913,29 @@ class RepoPass:
         """Say once on GitLab why the queue blocks the merge request, or which setting the project misses."""
         async with self.engine.begin() as conn:
             row = await row_of(conn, row_id)
-        if row is None or not row.reason or row.reason == row.commented:
+        if row is None or not row.reason:
             return
         if row.state != "blocked" and not (row.state == "gating" and row.reason.startswith("gate 0 ")):
             return
+        new, still = [], []
+        if row.state == "blocked" and merge_gate.held_at(row.reason) in (5, 7):  # held by a Judge: its findings
+            new, still = findings.unposted(findings.ledger_of(row.verdict))
+        if row.reason == row.commented and not new:
+            return
         passable = merge_gate.pass_refusal(row.state, row.reason, row.source) is None
         try:
-            note = merge_gate.comment(row.reason, waits=row.state != "blocked", passable=passable)
+            note = merge_gate.comment(row.reason, waits=row.state != "blocked", passable=passable, new=new, still=still)
             await self.gl.comment(self.path, row.iid, note)
         except GitLabRefused as exc:
             log.warning("the merge queue could not comment", extra={"row": row_id, "why": str(exc)})
             return
         async with self.engine.begin() as conn:
-            await set_row(conn, row_id, commented=row.reason)
+            values = {"commented": row.reason}
+            if new:  # the ids named, read again under the lock: a verdict may have come in since
+                locked = await row_of(conn, row_id, lock=True)
+                ledger = findings.mark_posted(findings.ledger_of(locked.verdict), [item["id"] for item in new])
+                values["verdict"] = {**(locked.verdict or {}), "findings": ledger}
+            await set_row(conn, row_id, **values)
 
 
 async def hold_judging(conn: AsyncConnection, row, gate: int, why: str) -> None:

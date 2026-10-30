@@ -1,12 +1,13 @@
 """The rules of the merge queue's gate before merge (``evo_agents.hub.merge_gate``, plan gitlab-merge-queue, criterion
 a4), and who judges (``evo_agents.hub.judges``): pure functions, no database. The repos and projects are fictional."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import judge, judges, merge_gate
+from evo_agents.hub import findings, judge, judges, merge_gate
 from evo_agents.hub.server.gitlab import FileDiff, LabelEvent
 
 HEAD = "a" * 40
@@ -355,3 +356,137 @@ def test_merge_gate_a_merge_request_that_left_the_queue_keeps_what_gitlab_said_o
     assert merge_gate.closed_detail("merged", None, HEAD) == {"gitlab": "merged", "merge_commit_sha": HEAD}
     assert merge_gate.closed_detail("closed", None, HEAD) == {"gitlab": "closed"}
     assert merge_gate.closed_detail("opened", None, HEAD) == {} and merge_gate.closed_detail(None, None, None) == {}
+
+
+# Finding memory (plan super-board-parity-1, step 3)
+
+ROUND_ONE = {
+    **VERDICT,
+    "verdict": "fail",
+    "dimensions": {**VERDICT["dimensions"], "tests": {"verdict": "fail", "reason": "no test of an empty report"}},
+    "findings": [
+        {"dimension": "tests", "path": "kb/report.py", "line": 12, "text": "no test covers an empty report"},
+        {"dimension": "nowhere", "path": "kb/report.py", "line": 1, "text": "a dimension it does not judge"},
+        {"dimension": "tests", "text": ""},
+    ],
+    "prior": {},
+}
+
+
+def round_one() -> list[dict]:
+    """The ledger after a first round that failed tests with one finding."""
+    message = "I read it.\n```json\n" + json.dumps(ROUND_ONE) + "\n```"
+    new, marks = merge_gate.findings_from_message(message)
+    dimensions = merge_gate.dimensions_from_message(message)
+    ledger, raised = findings.record_round(
+        [], names=merge_gate.DIMENSIONS, marks=marks, new=findings.read_new(new, merge_gate.DIMENSIONS),
+        dimensions=dimensions, run_id=10, head=HEAD,
+    )  # fmt: skip
+    assert raised == ledger
+    return ledger
+
+
+def test_merge_gate_finding_memory_gives_each_finding_an_id_dimension_path_line_and_text():
+    ledger = round_one()
+    (finding,) = ledger  # the dimension it does not judge and the empty text are left out
+    assert {key: finding[key] for key in ("id", "dimension", "path", "line", "text", "status")} == {
+        "id": "F1",
+        "dimension": "tests",
+        "path": "kb/report.py",
+        "line": 12,
+        "text": "no test covers an empty report",
+        "status": "open",
+    }
+    assert (finding["run_id"], finding["head_sha"], finding["posted"]) == (10, HEAD, False)
+    failed = {**VERDICT["dimensions"], "scope": {"verdict": "fail", "reason": "it renames the module"}}
+    ledger, raised = findings.record_round(
+        ledger, names=merge_gate.DIMENSIONS, marks={}, new=[], dimensions=failed, run_id=11, head=OTHER
+    )
+    assert [item["id"] for item in raised] == ["F2"]  # a failed dimension without a finding gets one of its reason
+    assert raised[0]["text"] == "it renames the module" and raised[0]["path"] is None
+    assert [item["id"] for item in ledger] == ["F1", "F2"]
+
+
+def test_merge_gate_finding_memory_the_next_prompt_asks_for_a_mark_of_each_open_finding_first():
+    ledger = round_one()
+    mr = {"iid": 7, "title": "t", "description": "d", "source_branch": "plan/lumen", "target_branch": "dev"}
+    text = merge_gate.build_prompt(
+        "northwind", repo="billing", folder=None, mr=mr, base="origin/dev", head=OTHER, plan=PLAN, earlier=ledger
+    )
+    assert "# Findings of earlier rounds" in text and "- F1 (tests, kb/report.py:12): no test covers" in text
+    assert "fixed, not_fixed or no_longer_applies" in text and '"prior"' in text and '"findings"' in text
+    second = merge_gate.build_prompt(
+        "northwind", repo="billing", folder=None, mr=mr, base="origin/dev", head=OTHER, plan=None, second=True,
+        earlier=ledger,
+    )  # fmt: skip
+    assert "# Findings of earlier rounds" not in second  # the second Judge marks only its own dimensions' findings
+    first = merge_gate.build_prompt("northwind", repo="billing", folder=None, mr=mr, base="origin/dev", head=HEAD,
+                                    plan=PLAN)  # fmt: skip
+    assert "# Findings of earlier rounds" not in first
+
+
+@pytest.mark.parametrize(
+    "prior, why",
+    [
+        ({}, "the hub failed tests: the Judge did not say whether F1 is fixed"),
+        ({"F1": {"status": "not_fixed", "where": "kb/report.py:12", "reason": "still none"}},
+         "the hub failed tests: F1 is not fixed: still none"),
+        ({"F1": {"status": "fixed", "where": "", "reason": "added"}},
+         "the hub failed tests: the Judge marked F1 fixed without the file:line that shows it"),
+    ],
+)  # fmt: skip
+def test_merge_gate_finding_memory_the_hub_fails_an_open_finding_whatever_the_judge_says(prior, why):
+    ledger = round_one()
+    dimensions = VERDICT["dimensions"]  # the Judge passes every dimension
+    passed, reasons = merge_gate.judge_round(
+        "pass", dimensions, merge_gate.DIMENSIONS, ledger=ledger, marks=findings.read_marks(prior)
+    )
+    assert not passed and reasons == [why]
+
+
+def test_merge_gate_finding_memory_a_fixed_finding_closes_and_the_round_passes():
+    ledger = round_one()
+    marks = findings.read_marks({"F1": {"status": "fixed", "where": "tests/test_report.py:20", "reason": "a test"}})
+    dimensions = VERDICT["dimensions"]
+    assert merge_gate.judge_round("pass", dimensions, merge_gate.DIMENSIONS, ledger=ledger, marks=marks) == (True, [])
+    ledger, raised = findings.record_round(
+        ledger, names=merge_gate.DIMENSIONS, marks=marks, new=[], dimensions=dimensions, run_id=11, head=OTHER
+    )
+    assert raised == [] and ledger[0]["status"] == "fixed"
+    assert ledger[0]["marks"] == [
+        {"status": "fixed", "where": "tests/test_report.py:20", "reason": "a test", "run_id": 11, "head_sha": OTHER}
+    ]
+    assert findings.open_findings(ledger, merge_gate.DIMENSIONS) == []
+    gone = findings.read_marks({"F1": {"status": "no_longer_applies", "where": "kb/report.py"}})
+    assert merge_gate.judge_round("pass", dimensions, merge_gate.DIMENSIONS, ledger=round_one(), marks=gone)[0]
+
+
+def test_merge_gate_finding_memory_a_new_finding_on_a_passed_dimension_fails_it():
+    new = findings.read_new([{"dimension": "scope", "path": "kb/x.py", "line": 3, "text": "an unrelated rename"}])
+    passed, reasons = merge_gate.judge_round("pass", VERDICT["dimensions"], merge_gate.DIMENSIONS, new=new)
+    assert not passed and reasons == [
+        "the hub failed scope: the Judge raised a finding on scope and passed it: kb/x.py:3"
+    ]
+
+
+def test_merge_gate_finding_memory_an_old_verdict_without_findings_still_reads():
+    old = {"fingerprint": "f" * 64, "first": {"passed": False, "dimensions": VERDICT["dimensions"]}}
+    assert findings.ledger_of(old) == [] and findings.carried(old) is None
+    assert findings.ledger_of(None) == [] and findings.ledger_of({"findings": "junk"}) == []
+    assert merge_gate.findings_from_message("no verdict") == ([], {})
+    message = "```json\n" + json.dumps(VERDICT) + "\n```"  # a verdict with no findings or marks
+    assert merge_gate.findings_from_message(message) == ([], {})
+    ledger = round_one()
+    assert findings.carried({"fingerprint": "f" * 64, "first": {}, "findings": ledger}) == {"findings": ledger}
+
+
+def test_merge_gate_finding_memory_the_comment_names_new_findings_whole_and_old_ones_by_id():
+    ledger = round_one()
+    new, still = findings.unposted(ledger)
+    assert [item["id"] for item in new] == ["F1"] and still == []
+    text = merge_gate.comment("gate 5 (Judge): the Judge failed tests", new=new, still=still)
+    assert "- F1 (tests, kb/report.py:12): no test covers an empty report" in text
+    ledger = findings.mark_posted(ledger, ["F1"])
+    new, still = findings.unposted(ledger)
+    text = merge_gate.comment("gate 5 (Judge): the hub failed tests: F1 is not fixed", new=new, still=still)
+    assert "no test covers" not in text and "Still open from an earlier comment: F1." in text

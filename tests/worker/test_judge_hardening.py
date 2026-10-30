@@ -153,6 +153,37 @@ def test_judge_run_of_a_merge_request_reads_and_posts_on_the_queues_routes_with_
     assert hub.judge_routes == ["merge-judge"] and hub.judge_refused == []
 
 
+def test_judge_run_finding_memory_posts_the_findings_and_marks_of_a_merge_request(machine):  # noqa: F811
+    """The Judge of a merge request posts what it found wrong and its marks of earlier findings (plan
+    super-board-parity-1, step 3), read from its last message as the hub reads them."""
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    said = json.dumps(
+        {
+            "verdict": "fail",
+            "reasons": "No test.",
+            "dimensions": {"tests": {"verdict": "fail", "reason": "none"}},
+            "findings": [{"dimension": "tests", "path": "src/wait.py", "line": 3, "text": "no test of the timeout"}],
+            "prior": {"F1": {"status": "fixed", "where": "src/wait.py:9"}, "F2": {"status": "maybe"}},
+        }
+    )
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, []), "queue_id": 3},
+        [{"say": f"I read it.\n```json\n{said}\n```"}],
+        claim={
+            "change_id": None,
+            "forge": "gitlab",
+            "pr_url": "https://gitlab.example.org/northwind/alpha/-/merge_requests/3",
+        },
+    )
+    (sent,) = found["hub"].verdicts
+    assert sent["findings"] == [
+        {"dimension": "tests", "path": "src/wait.py", "line": 3, "text": "no test of the timeout"}
+    ]
+    assert sent["prior"] == {"F1": {"status": "fixed", "where": "src/wait.py:9", "reason": ""}}
+
+
 def test_judge_run_kills_what_a_command_left_and_reads_no_verdict_file(machine):  # noqa: F811
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
     group, session = machine.tmp / "left-in-group", machine.tmp / "left-in-session"
