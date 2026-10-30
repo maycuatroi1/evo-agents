@@ -314,7 +314,10 @@ def test_an_author_run_posts_each_turn_to_its_chat_and_the_reply_starts_the_next
             "done",
         ]
         assert hub.runs[run_id]["summary"] == "Wrote plan wait-helper for alpha."
-        assert all(message["delivered"] for message in hub.inbox[run_id])
+        await wait_for(
+            lambda: all(message["delivered"] for message in hub.inbox[run_id]),
+            "the daemon to acknowledge the reply, which it does on a poll of its own",
+        )
 
         first, second = machine.starts()
         assert second["resume"] == first["session"], "the reply goes on in the agent's session"
