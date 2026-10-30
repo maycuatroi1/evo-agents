@@ -106,6 +106,7 @@ class Run:
         self.venvs: dict[str, Path] = {}  # repo -> its worktree, whose .venv the worker made (runner.venv)
         self.verify: list[dict] = []
         self.summary: str | None = None
+        self.proofs: list[dict] | None = None  # a run of one step's proof of each criterion its step names
         self.outcome: Outcome | None = None
         found = spec.get("curator")
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role

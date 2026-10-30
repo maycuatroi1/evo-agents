@@ -60,7 +60,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents import __version__
-from evo_agents.hub import credential_requests, decision_asks, runs
+from evo_agents.hub import credential_requests, decision_asks, proofs, runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
@@ -624,7 +624,30 @@ def _step_verify_commands(args) -> list[str]:
         )
     if args.evidence is not None and (not args.evidence.strip() or len(args.evidence) > MAX_EVIDENCE_CHARS):
         raise WorkerStateError(f"--evidence takes 1 to {MAX_EVIDENCE_CHARS} characters")
+    if args.proof and args.status != "done":
+        raise WorkerStateError(f"{proofs.FLAG} goes with done only")
     return verify
+
+
+def _step_proofs(args, body: dict, step, worktree) -> list[dict] | None:
+    """The proofs of ``worker step KEY done``, one for each criterion of the plan's acceptance the step names, each
+    test found in the repo's worktree; None for a step that names none and was given none. WorkerStateError naming
+    the criteria left without one, before anything is verified or pushed."""
+    try:
+        given = proofs.parse_all(args.proof or [])
+    except proofs.ProofProblem as exc:
+        raise WorkerStateError(str(exc)) from None
+    wanted = proofs.criteria(body, step)
+    if not wanted and not given:
+        return None
+    why = proofs.problem(wanted, given)
+    if why is not None:
+        raise WorkerStateError(f"step {args.key} is not done: {why}. Nothing was verified, committed or pushed")
+    for item in given:
+        missing = proofs.missing_test(item, worktree)
+        if missing:
+            raise WorkerStateError(f"the proof of {item['id']}: {missing}. Nothing was verified, committed or pushed")
+    return proofs.stored(given)
 
 
 def _step_workspaces(agent: _AgentRun, repo: str | None) -> dict:
@@ -687,6 +710,9 @@ def cmd_step(args) -> int:
             report["evidence"] = args.evidence
         pushed = None
         if args.status == "done":
+            given = _step_proofs(args, body, step, workspaces[name].worktree)
+            if given is not None:
+                report["proofs"] = given
             done = await step_verify.done_step(hub, agent, args.key, step, body, name, workspaces[name], verify, wait)
             if isinstance(done, int):
                 return done
@@ -1119,6 +1145,13 @@ def _register_step(wsub) -> None:
     )
     step.add_argument("--repo", help="the run's repo the step is in (default: the plan's repo of the step)")
     step.add_argument("--evidence", help="what was done and how it was checked; a line per decision taken")
+    step.add_argument(
+        proofs.FLAG,
+        action="append",
+        metavar="ID=VALUE",
+        help="with done: the proof of a criterion of the plan's acceptance the step names (a4=path::test_name, "
+        "a4=COMMAND or a4=n/a: why); repeat it, once for each; done is refused without one for each",
+    )
     step.add_argument(
         "--verify",
         action="append",

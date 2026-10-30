@@ -109,7 +109,7 @@ def test_the_author_prompt_of_a_plan_names_it_its_revision_and_how_to_put_it_bac
     assert "This run revises plan rollout of the project, at revision 4 when the member asked" in prompt
     assert f"`{author.READ_COMMAND}`" in prompt and f"`{author.PUT_COMMAND} FILE --if-revision REVISION`" in prompt
     assert "Keep its id: this run writes no other plan." in prompt
-    assert "keep the status, done_at, evidence of each step and the status, merged_at of each repo" in prompt
+    assert "keep the status, done_at, evidence, proofs of each step and the status, merged_at of each repo" in prompt
 
 
 def test_an_author_write_keeps_the_progress_of_each_step_and_repo():
