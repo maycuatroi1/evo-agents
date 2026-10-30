@@ -188,10 +188,10 @@ The text is what an agent's model reads, so it is kept short and readable:
   git source on a forge, `kg_node` gives the link at the commit the source read (`.../blob/<sha>/path`), so a span's
   lines match the file it opens; the corpus keeps the link by branch, which does not change an item's hash on every
   commit (`evo_agents/kg/freshness.py`).
-- `kg_status` names, per git source, the commit read and how far behind the remote's default branch it is:
-  `read    app 1550c7a of HEAD, 3 behind origin/main`. On a machine with the checkout the count is taken again from
-  the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout, shows the count of the
-  machine that synced the source.
+- `kg_status` names, per git source, the commit read, when, and how far behind the remote's default branch it is:
+  `read    app 1550c7a of HEAD at 2026-10-30T13:54:33Z, 3 behind origin/main`. On a machine with the checkout the
+  count is taken again from the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout,
+  shows the count of the machine that synced the source, as of the read: `..., 0 behind origin/main then`.
 - The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
   a node with another label names it on its line, and a label with an audience ends with it
   (`internal,U audience chat:5 grant:demo:internal`). `kg_search` prints the status most of its results share once
@@ -448,10 +448,11 @@ The graph is a snapshot of what its sources held when they synced. It says which
 when a source read something new.
 
 **The commit read.** A git source ends each run with a cursor that names what it read (`evo_agents/kg/freshness.py`):
-the commit, the ref, the remote's default branch it compares with (`base`: `origin/<default_branch>` of harness.yaml,
+the commit, the ref, when it was read (`at`, UTC), the remote's default branch it compares with (`base`: `origin/<default_branch>` of harness.yaml,
 else the clone's `origin/HEAD`), how many commits of that branch the commit read lacks (`behind`), and, for an origin
 on a forge, a link to the commit. `behind` is counted from the clone's remote-tracking branch without fetching; a
-clone without that branch has no `base` and no `behind`. A build copies the read into the source's coverage, so the
+clone without that branch has no `base` and no `behind`. The count is true at `at` only: a sync that finds the ref
+still at the commit read keeps no log, so nothing newer reaches the hub. A build copies the read into the source's coverage, so the
 graph says what it holds wherever it is read:
 
 - `kg status` and `kg_status` name, per git source, the commit read and how far behind it is. The SessionStart note
