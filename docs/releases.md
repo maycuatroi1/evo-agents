@@ -176,6 +176,9 @@ same commits with jobs of the same names. Only the newest tag a cycle follows is
 - **Failed**: the hub reads up to 8 failed jobs and the last 64 KiB of each log. It takes the ids of the tests that
   failed (pytest's `FAILED` and `ERROR` node ids, the failed tests of Playwright's summary), else the job's name and
   the step that failed.
+  A gate job such as `ci-ok`, whose log names no test and prints the result of each job it needs, is red whenever
+  another job is: its id and log count only when every failed job is a gate, so it neither stops a cycle as the same
+  test at two tags nor hides a fault of the infrastructure.
 - **Infrastructure**: when every failed job's log matches a rule (the runner lost, the network while installing, PyPI
   answering 5xx) and names no test, the hub runs the failed jobs again, once, and waits for the new attempt.
 - **Fix**: any other failure queues a fix run with what the hub read, unless a stop cause holds.
