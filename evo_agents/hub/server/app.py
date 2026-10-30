@@ -362,6 +362,7 @@ def create_app(config: HubConfig) -> FastAPI:
         history_search,
         kg_health,
         ledger,
+        merged_work,
         org,
         playbook,
         probe_report,
@@ -403,6 +404,7 @@ def create_app(config: HubConfig) -> FastAPI:
         autonomy_page.router,  # what the web's autonomy pages read
         worker_shares.router,  # shared workers narrowed to units (plan credential-sharing)
         worker_doctor.worker_router,  # the doctor reports of workers, which narrowing to units needs
+        merged_work.worker_router,  # the ended runs whose work merged, whose worktrees a worker removes at once
     ):
         app.include_router(routes)
 

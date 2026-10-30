@@ -43,6 +43,8 @@ author run ``"author"``, a chat run ``"chat"``, a task run ``"task"``, a release
 ``"replay/2"``), a probe run ``"probe"`` (its n-th session ``"probe/<n>"``) and a history run ``"history"`` (its second session ``"history/2"``). The
 n-th start of the same run in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after
 its owner answered);
+a judge run's turns after its first are those of its security pass (``"judge/security"``, by default a reply with no
+finding);
 otherwise a run that goes on with a session (after a handback, or a plan run resumed after it was parked) follows
 ``"<key>/resume"`` when the scenarios have it. Each ``cli`` and ``sh`` action is written as a JSON line ``{"run",
 "turn", "cmd", "exit", "stdout", "stderr"}`` to the file EVO_FAKE_CLI names.
@@ -326,6 +328,9 @@ class FakeAdapter(Adapter):
             key = f"{key}/{self.turn}"
         elif context.resume_session and f"{key}/resume" in scenarios:
             key = f"{key}/resume"
+        elif key == "judge" and self.turn > 1:  # the turns of the security pass: it finds nothing unless told
+            key = "judge/security"
+            scenarios.setdefault(key, [{"say": json.dumps({"findings": []})}])
         self.actions = scenarios.get(key, [])
         self.cli_path = context.env.get("EVO_FAKE_CLI")
         self.messages_path = context.env.get("EVO_FAKE_MESSAGES")

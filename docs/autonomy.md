@@ -174,6 +174,36 @@ which answers the commit alone. The refusal names the commit, never the value.
 or through a tool other than Bash gets past it, and only Claude Code runs it so far. The hub's gates (the lease, the
 merge, the deploy, the routes) are what hold; the hook catches the plain cases early and leaves a trace of them.
 
+## The file floor on the worker
+
+Every run of Claude Code on the worker gets a second `PreToolUse` hook, the file floor (`Floor` in
+`evo_agents/worker/autonomy_hook.py`). It is a floor like S2 and S3: it does not follow the level, and a run without a
+snapshot gets it too.
+
+- **No write outside the run.** Edit, Write, MultiEdit and NotebookEdit write only into the run's worktree (with the
+  repos of a multi-repo plan under it), the system's temporary directories (`/tmp`, `/var/tmp`, `TMPDIR`) and the run's
+  own Claude configuration (`CLAUDE_CONFIG_DIR`, else the memory directories under `~/.claude/projects`). The refusal
+  names the directories the agent may write in.
+- **No read of a secret file.** Read, Grep and Glob, and the Bash commands that read or copy a file (`cat`, `head`,
+  `cp`, `scp`, `base64`, `grep` and the other programs of `READERS`, or a `<` redirection), are refused on `.env` and
+  `.env.*` (not `.env.example`, `.env.sample`, `.env.template`), SSH keys `id_*`, `*.pem`, `*.key`, `.npmrc`,
+  `.pypirc`, `.netrc`, `~/.aws/credentials`, `~/.omelet.json` and the credentials under `~/.omelet.d`, and the token
+  files under `~/.evo`. A Glob or Grep pattern that asks for such files (`.env*`, `**/*.pem`) is refused too. A
+  program the agent runs that reads `.env` itself (a test, `docker compose`) is left alone.
+
+The floor resolves every path to the real one (relative to the worktree, `~` expanded, symlinks and `..` followed)
+before it compares it. Each refusal is a `system` event of the run whose `floor` body names the rule (`write_outside`
+or `secret_file`), the tool and the path. A check that fails refuses the call.
+
+| Runtime | The file floor |
+|---|---|
+| Claude Code | yes, the hook above |
+| opencode | not yet: the worker gives the session permission rules for tools, skills and MCP servers, none for paths |
+| Codex | not yet: it runs with `danger-full-access` |
+| ACP | not yet: the worker grants every permission it is asked |
+
+Like the hook of autonomy, the floor reads what a tool is given: a script the agent writes and runs gets past it.
+
 ## The card and the routing of decisions
 
 The hub builds the run's card from its snapshot when a worker claims it (`evo_agents/hub/autonomy_card.py`), and the

@@ -5270,6 +5270,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/merged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merged
+         * @description Of the ended runs the worker whose token asks still keeps, those whose work the hub knows merged.
+         */
+        post: operations["merged_v1_worker_merged_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -24507,6 +24527,22 @@ export interface components {
             dimensions?: {
                 [key: string]: components["schemas"]["Dimension"];
             } | null;
+        };
+        /** MergedAnswer */
+        MergedAnswer: {
+            /**
+             * Merged
+             * @description those of runs whose work the hub knows merged: the daemon may remove their worktrees now
+             */
+            merged: number[];
+        };
+        /** MergedQuestion */
+        MergedQuestion: {
+            /**
+             * Runs
+             * @description ended runs of this worker whose directory and worktrees it still keeps
+             */
+            runs: number[];
         };
         /** Message */
         Message: {
@@ -59888,6 +59924,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merged_v1_worker_merged_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergedQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergedAnswer"];
                 };
             };
             /** @description Unauthorized */

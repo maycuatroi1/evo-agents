@@ -1694,7 +1694,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
-| daemon worktrees | removed 7 days after their run ends |
+| daemon worktrees | removed at the next hourly cleanup once the hub says the run's work merged, 7 days after the run ends at the latest |
 
 ## The daemon
 
@@ -1746,7 +1746,8 @@ output, `verify/`; until the run ends on this machine,
 `agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
-runs' worktrees, and each plan run's directory; `kg/` the harness views, corpora and `state.json` of the graphs it
+runs' worktrees, and each plan run's directory; `recovery.jsonl` (0600) a line for each worktree whose uncommitted
+changes were kept before it was removed ([Worktrees of ended runs](#worktrees-of-ended-runs)); `kg/` the harness views, corpora and `state.json` of the graphs it
 keeps fresh ([Keeping the graph fresh](#keeping-the-graph-fresh)). No lease value is ever written under it. The daemons that run from
 one install of evo-agents also share `~/.evo/installs/<install>/` ([Updating itself to nightly](#updating-itself-to-nightly)).
 
@@ -1769,6 +1770,30 @@ its repos, but a plan names the harness as one of its repos, since its plans liv
 checkout of it too; `evo-agents hub project register` sends the harness among the repos, with the origin its git
 remote names, when harness.yaml does not list it. The daemon reads the project's repos and harness from the hub each
 time it starts, while the machine is signed in with `evo-agents hub login`.
+
+### Worktrees of ended runs
+
+The daemon keeps the directory and worktrees of a run after it ends, for the run that resumes it, a chat that goes on
+and a person who looks. At its start and every hour it cleans up (`Daemon.cleanup`):
+
+- It asks the hub which of its ended runs had their work merged, `POST /v1/worker/merged` with
+  `{"runs": [ids]}` (200 at most a request), and removes their worktrees and directory in that turn. The hub answers
+  with those of its runs that ended and that no run going on resumes, whose plan marks every repo of the run merged
+  or not needed (a person, or the Loop once the pull request of a deliver's plan run merged on GitHub), that built or
+  judged a change of the Curator the hub merged, that made or judged a merge request the merge queue on GitLab merged,
+  or a task run every pull request of which GitHub says merged (`evo_agents.hub.server.merged_work`). It asks only
+  about runs it may remove: not a run it holds, a parked run, a run another run went on from (it adopted the
+  directory), nor one whose directory or a worktree of it a run that has not ended uses. A hub before this route
+  answers 404, and the daemon stops asking until it restarts.
+- Before such a worktree goes, what it has that its HEAD lacks (changes, files not tracked) is committed through an
+  index of its own on top of HEAD, and the ref `refs/evo-recovery/run-<id>/<folder>` of the repo's checkout points at
+  that commit; `recovery.jsonl` gets a line with when, the run, the repo, the branch, HEAD, the WIP commit, the ref and
+  the checkout. `git -C CHECKOUT branch NAME REF` brings it back as a branch. When that commit fails, the run's worktrees stay
+  and wait out the 7 days.
+- Every run that ended more than 7 days ago goes too, merged or not, as a net for what the hub never says merged.
+
+Each removal removes the worktree from its checkout and prunes it, deletes the run's local `evo-run/` branch, and
+keeps every other branch (a plan's, a chat's, a task's and the Curator's), then removes the run's record.
 
 ### Repos a run clones
 

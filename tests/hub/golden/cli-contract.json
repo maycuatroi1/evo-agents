@@ -53410,6 +53410,68 @@
           }
         }
       },
+      "/v1/worker/merged": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merged",
+          "description": "Of the ended runs the worker whose token asks still keeps, those whose work the hub knows merged.",
+          "operationId": "merged_v1_worker_merged_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergedQuestion"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergedAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -111082,6 +111144,44 @@
           ],
           "title": "FindingList"
         },
+        "FindingMark": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "fixed",
+                "not_fixed",
+                "no_longer_applies"
+              ],
+              "title": "Status"
+            },
+            "where": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 520
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Where",
+              "description": "the file:line that shows it"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "title": "Reason",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "FindingMark",
+          "description": "What the Judge says of a finding of an earlier round."
+        },
         "Found": {
           "properties": {
             "read_at": {
@@ -115738,6 +115838,53 @@
           "additionalProperties": false,
           "type": "object",
           "title": "Judge"
+        },
+        "JudgeFinding": {
+          "properties": {
+            "dimension": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Dimension"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "dimension",
+            "text"
+          ],
+          "title": "JudgeFinding",
+          "description": "A thing the Judge found wrong, on one of the dimensions it judges."
         },
         "JudgeInputs": {
           "properties": {
@@ -122322,6 +122469,41 @@
               ],
               "title": "Dimensions",
               "description": "each dimension the Judge judged apart, with its verdict and reason"
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/JudgeFinding"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Findings",
+              "description": "what the Judge found wrong in this round"
+            },
+            "prior": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/FindingMark"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prior",
+              "description": "the Judge's mark of each finding of an earlier round its prompt listed, by id"
+            },
+            "security": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SecurityPass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the security pass of the run, which judges the dimension security apart from the agent"
             }
           },
           "type": "object",
@@ -122330,6 +122512,43 @@
             "head_sha"
           ],
           "title": "MergeVerdictIn"
+        },
+        "MergedAnswer": {
+          "properties": {
+            "merged": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Merged",
+              "description": "those of runs whose work the hub knows merged: the daemon may remove their worktrees now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "merged"
+          ],
+          "title": "MergedAnswer"
+        },
+        "MergedQuestion": {
+          "properties": {
+            "runs": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Runs",
+              "description": "ended runs of this worker whose directory and worktrees it still keeps"
+            }
+          },
+          "type": "object",
+          "required": [
+            "runs"
+          ],
+          "title": "MergedQuestion"
         },
         "Message": {
           "properties": {
@@ -147156,6 +147375,105 @@
           ],
           "title": "SecretWritten"
         },
+        "SecurityFinding": {
+          "properties": {
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "SecurityFinding",
+          "description": "A vulnerability the security pass kept after its filter."
+        },
+        "SecurityPass": {
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "title": "Verdict"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Reason",
+              "default": ""
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/SecurityFinding"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Findings"
+            },
+            "candidates": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Candidates",
+              "description": "the findings the first turn raised, before the filter",
+              "default": 0
+            },
+            "turns": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Turns",
+              "description": "agent turns the pass took: one that finds, one for each candidate",
+              "default": 0
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "what those turns cost, when the runtime reports it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "verdict"
+          ],
+          "title": "SecurityPass",
+          "description": "What the security pass of a Judge run (``evo_agents.hub.security_pass``) said of the change, and what it cost:\nthe dimension ``security``, its findings with path and line, and the turns the pass took."
+        },
         "SelfManagedIn": {
           "properties": {
             "enabled": {
@@ -158004,6 +158322,17 @@
               ],
               "title": "Verdict",
               "description": "the Judge agent's; null when it gave none"
+            },
+            "security": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SecurityPass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the security pass of the run: a verdict without it fails the dimension security"
             },
             "reasons": {
               "anyOf": [

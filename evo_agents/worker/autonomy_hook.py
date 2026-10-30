@@ -22,7 +22,15 @@ The floor S2 (``FLOORS`` of ``autonomy_levels``): a command of K9 whose mode let
 a backup made within the last 24 hours (``evo-agents worker backup``, kept in the run's ``backups.jsonl``); otherwise
 the hook refuses it and says to make a backup first. This holds for every principal, A5 included.
 
-A run without a snapshot (a local run, one queued before schema 0113) gets no hook of autonomy. The hook is a second
+The file floor (``Floor``, plan super-board-parity-1, step 2) holds in every claude-code run of the worker, with a
+snapshot or without one, like S2 and S3: Edit, Write, MultiEdit and NotebookEdit only into the run's directory, the
+system's temporary directories and the run's own Claude configuration (CLAUDE_CONFIG_DIR, else the memory directories
+under ``~/.claude/projects``); Read, Grep, Glob and the Bash commands that read or copy a file (READERS) never on a
+secret file (``secret_file``). A path is resolved to the real one, symlinks and ``..`` followed, before it is compared.
+Each refusal is a ``system`` event of the run (its ``floor`` body), and a check that fails refuses the call. A program
+the agent runs that reads ``.env`` itself is not the floor's business.
+
+A run without a snapshot (a local run, one queued before schema 0113) gets no hook of autonomy, only the floor. The hook is a second
 layer, never the boundary: a command written to a script first, piped through base64, or run in a subshell the
 classifier does not read gets past it (``command_classes``). What the hub leases the run, and its gates on merges,
 deploys and releases, are the boundary.
@@ -32,11 +40,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fnmatch
+import glob
 import json
 import logging
 import os
 import re
 import subprocess
+import tempfile
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -44,7 +55,7 @@ from pathlib import Path
 
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ASK, AUTO, CLASS_NAMES, DENY, NOTIFY
-from evo_agents.worker.command_classes import Hit, classify, repo_slug
+from evo_agents.worker.command_classes import SHELLS, Hit, _shell_script, classify, repo_slug, simple_commands
 
 BACKUPS_FILE = "backups.jsonl"
 BACKUP_FRESH = timedelta(hours=24)
@@ -231,6 +242,191 @@ class Gate:
         return None
 
 
+WRITE_TOOLS = {"Edit": "file_path", "Write": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
+TEMP_DIRS = ("/tmp", "/var/tmp")
+ENV_NAMES = re.compile(r"^\.env(\..+)?$")
+ENV_EXAMPLES = frozenset({".env.example", ".env.sample", ".env.template"})
+SSH_KEYS = re.compile(r"^id_(rsa|dsa|ecdsa|ed25519)(_sk)?$")
+SECRET_NAMES = frozenset({".npmrc", ".pypirc", ".netrc"})
+SECRET_SUFFIXES = (".pem", ".key")
+EVO_TOKENS = re.compile(r"^(token|.+\.token)$")  # the hub's and the worker's token files under ~/.evo
+# A sample of secret names and one plain name: a Glob pattern that matches a secret and not the plain one asks for
+# secret files.
+SECRET_SAMPLES = (".env", ".env.local", "id_rsa", "id_ed25519", "x.pem", "x.key", ".npmrc", ".pypirc", ".netrc")
+PLAIN_SAMPLE = "x.py"
+# The programs whose file arguments the floor reads as files they read or copy: a word of theirs that names an existing
+# secret file refuses the command. ``source`` and the programs that read .env themselves are left alone.
+READERS = frozenset(
+    {
+        *("cat", "tac", "nl", "less", "more", "head", "tail", "bat", "batcat", "view", "vi", "vim", "nvim", "nano"),
+        *("emacs", "cp", "mv", "scp", "rsync", "install", "dd", "base64", "base32", "xxd", "hexdump", "od"),
+        *("strings", "grep", "egrep", "fgrep", "rg", "ag", "ack", "sed", "awk", "gawk", "cut", "sort", "uniq"),
+        *("diff", "cmp", "comm", "paste", "tar", "zip", "gzip", "bzip2", "xz", "7z", "curl", "wget", "jq", "yq"),
+        *("openssl", "gpg", "sha256sum", "md5sum", "column", "fold", "tr", "iconv", "envsubst", "gh"),
+    }
+)
+WRITE_OUTSIDE, SECRET_FILE = "write_outside", "secret_file"
+
+
+def real(path: str | os.PathLike, base: Path) -> Path:
+    """``path`` as the real path it names: ``~`` expanded, relative to ``base``, symlinks and ``..`` resolved."""
+    given = Path(os.path.expanduser(str(path)))
+    return Path(os.path.realpath(given if given.is_absolute() else base / given))
+
+
+def _within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def secret_file(path: Path, home: Path, worktree: Path | None = None) -> bool:
+    """Whether the real ``path`` is a secret file: ``.env`` and ``.env.*`` (not the examples), an SSH key, ``*.pem``,
+    ``*.key``, ``.npmrc``, ``.pypirc``, ``.netrc``, ``~/.aws/credentials``, ``~/.omelet.json`` and the credentials of
+    ``~/.omelet.d``, and a token file under ``~/.evo`` outside the run's worktree."""
+    name = path.name
+    if ENV_NAMES.match(name) and name not in ENV_EXAMPLES:
+        return True
+    if SSH_KEYS.match(name) or name.endswith(SECRET_SUFFIXES) or name in SECRET_NAMES:
+        return True
+    if (name.startswith("id_") and not name.endswith(".pub")) and path.parent == home / ".ssh":
+        return True
+    if path in (home / ".aws" / "credentials", home / ".omelet.json") or _within(path, home / ".omelet.d/credentials"):
+        return True
+    evo = home / ".evo"
+    inside = worktree is not None and _within(path, worktree)
+    return not inside and _within(path, evo) and (EVO_TOKENS.match(name) is not None or _within(path, evo / "secrets"))
+
+
+def secret_pattern(pattern: str) -> bool:
+    """Whether a Glob or Grep pattern asks for secret files: its last part matches a secret name and not a plain
+    one."""
+    last = pattern.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    if not last or fnmatch.fnmatch(PLAIN_SAMPLE, last):
+        return False
+    return any(fnmatch.fnmatch(sample, last) for sample in SECRET_SAMPLES) or secret_file(
+        Path(last), Path("/nonexistent")
+    )
+
+
+def _arguments(word: str) -> list[str]:
+    """The paths a word of a reader may name: itself, after ``@`` (curl), after ``=`` (``if=``, ``--file=``), after
+    ``<``."""
+    found = [] if word.startswith("-") else [word.lstrip("<")]
+    for mark in ("@", "="):
+        if mark in word:
+            found.append(word.split(mark, 1)[1])
+    return [path for path in found if path]
+
+
+@dataclass
+class Floor:
+    """The file floor of one run (module docstring): where its agent may write (``writable``, real paths), its
+    worktree, the home whose secrets it keeps, and how it records a refusal (``record``, a text and a body)."""
+
+    worktree: Path
+    writable: tuple[Path, ...]
+    home: Path
+    record: Callable[[str, dict], None] = field(default=lambda text, body: None)
+    run_id: int | None = None
+    agent: str | None = None
+
+    @classmethod
+    def of(
+        cls,
+        worktree: Path,
+        env: Mapping[str, str] | None = None,
+        home: Path | None = None,
+        temp: tuple | None = None,
+        **given,
+    ) -> Floor:
+        """The floor of a run that works in ``worktree`` with the agent's environment ``env``; ``temp`` the system's
+        temporary directories, TEMP_DIRS and the one ``tempfile`` names by default."""
+        env = env or {}
+        home = Path(os.path.realpath(home or Path.home()))
+        temp = (tempfile.gettempdir(), *TEMP_DIRS) if temp is None else temp
+        roots = [worktree, *temp, env.get("TMPDIR") or ""]
+        config = env.get("CLAUDE_CONFIG_DIR")
+        roots.append(config or home / ".claude" / "projects")
+        writable = tuple(dict.fromkeys(Path(os.path.realpath(os.path.expanduser(str(r)))) for r in roots if str(r)))
+        return cls(Path(os.path.realpath(worktree)), writable, home, **given)
+
+    def refused(self, tool_name: str, tool_input) -> tuple[str, str, str] | None:
+        """(the rule, the path, why) when the floor refuses the call of ``tool_name``; None when it lets it through."""
+        given = tool_input if isinstance(tool_input, Mapping) else {}
+        if tool_name in WRITE_TOOLS:
+            target = given.get(WRITE_TOOLS[tool_name])
+            if not isinstance(target, str) or not target:
+                return None
+            path = real(target, self.worktree)
+            if any(_within(path, root) for root in self.writable):
+                return None
+            where = ", ".join(str(root) for root in self.writable)
+            return WRITE_OUTSIDE, str(path), f"{tool_name} of {path} is outside the run's directories; write in {where}"
+        if tool_name in ("Read", "Grep", "Glob"):
+            return self._reads(tool_name, given)
+        if tool_name == "Bash" and isinstance(given.get("command"), str):
+            return self._command(given["command"])
+        return None
+
+    def _secret(self, tool: str, path: Path) -> tuple[str, str, str] | None:
+        if not secret_file(path, self.home, self.worktree):
+            return None
+        return SECRET_FILE, str(path), f"{tool} of {path}: the run's agent never reads a secret file (the file floor)"
+
+    def _reads(self, tool_name: str, given: Mapping) -> tuple[str, str, str] | None:
+        key = "file_path" if tool_name == "Read" else "path"
+        target = given.get(key)
+        if isinstance(target, str) and target:
+            found = self._secret(tool_name, real(target, self.worktree))
+            if found:
+                return found
+        pattern = given.get("pattern") if tool_name == "Glob" else given.get("glob")
+        if isinstance(pattern, str) and secret_pattern(pattern):
+            why = f"{tool_name} for {pattern} asks for secret files: the run's agent never reads one (the file floor)"
+            return SECRET_FILE, pattern, why
+        return None
+
+    def _command(self, command: str, depth: int = 0) -> tuple[str, str, str] | None:
+        for words in simple_commands(command):
+            script = _shell_script(words) if Path(words[0]).name in SHELLS and depth < 3 else None
+            found = self._command(script, depth + 1) if script else None
+            if found:
+                return found
+            reader = Path(words[0]).name in READERS
+            for index, word in enumerate(words[1:], 1):
+                redirected = words[index - 1] == "<" or word.startswith("<")
+                if not (reader or redirected):
+                    continue
+                for argument in _arguments(word):
+                    for path in self._expand(argument):
+                        found = self._secret(f"the command {Path(words[0]).name}", path)
+                        if found:
+                            return found
+        return None
+
+    def _expand(self, argument: str) -> list[Path]:
+        if not glob.has_magic(argument):  # a word that names no file is a pattern or a value: nothing it reads
+            path = real(argument, self.worktree)
+            return [path] if path.is_file() else []
+        pattern = os.path.expanduser(argument)
+        pattern = pattern if os.path.isabs(pattern) else str(self.worktree / pattern)
+        return [real(found, self.worktree) for found in sorted(glob.glob(pattern, include_hidden=True))[:200]]
+
+    def check(self, tool_name: str, tool_input) -> str | None:
+        """Why the floor refuses the call, recorded as an event of the run; None when it lets it through. A check that
+        fails refuses."""
+        try:
+            found = self.refused(tool_name, tool_input)
+        except Exception as exc:  # the floor holds: a call it cannot read is refused
+            found = ("check_failed", "", f"the file floor could not check the call of {tool_name} ({exc}); refused")
+        if found is None:
+            return None
+        rule, path, why = found
+        body = {"rule": rule, "tool": tool_name, "path": path, "verdict": "refused", "run": self.run_id}
+        body["agent"] = self.agent
+        self.record(f"File floor refused {tool_name} ({rule}): {path}", body)
+        return why
+
+
 def claude_hook(gate: Gate | None):
     """The PreToolUse callback of the Claude Agent SDK for ``gate``, or None without one."""
     if gate is None:
@@ -244,6 +440,35 @@ def claude_hook(gate: Gate | None):
         return {"hookSpecificOutput": decision}
 
     return autonomy_gate
+
+
+def claude_floor_hook(floor: Floor | None):
+    """The PreToolUse callback of the Claude Agent SDK for the file floor, or None without one."""
+    if floor is None:
+        return None
+
+    async def file_floor(data, tool_use_id, context) -> dict:
+        why = floor.check(str(data.get("tool_name") or ""), data.get("tool_input"))
+        if why is None:
+            return {}
+        decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why}
+        return {"hookSpecificOutput": decision}
+
+    return file_floor
+
+
+def floor_for_run(run, env: Mapping[str, str]) -> Floor | None:
+    """The file floor of a run of the daemon whose agent gets ``env``; None for a run without a worktree."""
+    if run.worktree is None:
+        return None
+    profile = run.spec.get("profile")
+    return Floor.of(
+        Path(run.worktree),
+        env,
+        record=lambda text, body: run.note(text, floor=body),
+        run_id=run.id,
+        agent=profile.get("handle") if isinstance(profile, Mapping) else None,
+    )
 
 
 def for_run(run) -> Gate | None:
