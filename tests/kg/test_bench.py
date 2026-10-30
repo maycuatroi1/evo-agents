@@ -345,6 +345,20 @@ def test_one_pass_asks_each_search_on_the_same_graphs_and_prunes_them(bench, tmp
     assert not any((lay.base / "memo").glob("*.sqlite"))
 
 
+def test_a_run_goes_on_from_the_repos_a_dead_run_finished(bench, tmp_path):
+    cache, mirror, git_url, _ = bench
+    assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
+    first, again = tmp_path / "first.json", tmp_path / "again.json"
+    argv = ["kg", "bench", "run", "--cache", str(cache), "--search", "graph", "--prune"]
+    assert main([*argv, "--git-url", git_url, "--out", str(first)]) == 0
+    # the clones and graphs are gone and the remote too: only the kept answers can give the same run
+    gone = "file:///nonexistent/{repo}.git"
+    assert main([*argv, "--git-url", gone, "--out", str(again)]) == 0
+    one, two = compare.load_summary(first), compare.load_summary(again)
+    assert two["tasks"] and all(r["skipped"] is None for r in two["tasks"])
+    assert [(r["id"], r["metrics"]) for r in one["tasks"]] == [(r["id"], r["metrics"]) for r in two["tasks"]]
+
+
 def test_run_reads_the_sealed_test_part_only_with_sealed(bench, tmp_path, capsys):
     cache, mirror, git_url, _ = bench
     assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
