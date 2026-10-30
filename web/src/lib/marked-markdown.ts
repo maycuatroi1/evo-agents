@@ -13,7 +13,9 @@
  *   its new version whole as added. A table whose header and delimiter rows stay is marked row by row instead.
  * - A link reference definition stays out of the marks: a removed one is left out, an added one kept as it is.
  *
- * Both versions have any mark character replaced (by U+FFFD) first, so a document cannot forge a mark.
+ * Both versions have any mark character, and any character reference to one (&#x2E04;, &#11780;), replaced by U+FFFD
+ * first, so a document cannot forge a mark. Every step is linear or bounded in the size of the documents, which are
+ * untrusted input: no regular expression here can backtrack over a long line.
  */
 
 import { type DiffLine, diffLines } from "./line-diff";
@@ -22,11 +24,14 @@ import { type Budget, diffWords, MIN_SHARED, newBudget, sharedShare, type WordPa
 
 const FENCE_OPEN = /^(\s*)(`{3,}|~{3,})/;
 const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
-const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+// Each run of white space has one place to go, so a long line that fails to match fails in linear time.
+const DELIMITER = /^\s*(?:\|\s*)?:?-+:?\s*(?:\|\s*:?-+:?\s*)*(?:\|\s*)?$/;
 const PREFIX = /^[ \t]*(?:>[ \t]?)*[ \t]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?|#{1,6}(?:[ \t]+|$))?/;
 const DEFINITION = /^\s{0,3}\[[^\]]+\]:/;
+/** A numeric character reference CommonMark decodes to a mark (U+2E00 to U+2E05); no named one decodes to a mark. */
+const MARK_REFERENCE = /&#(?:[xX]0*2[eE]0[0-5]|0*1177[6-9]|0*1178[01]);/g;
 const SYNTAX = /[*_~`[\]\\|<>]/;
-const PROTECTED = [/(`+)[\s\S]*?\1/g, /\]\([^)]*\)?/g, /\]\[[^\]]*\]?/g, /<[^>\s]*>?/g, /(?:https?:\/\/|www\.)\S+/g, /&#?\w+;/g];
+const PROTECTED = [/\]\([^)]*\)?/g, /\]\[[^\]]*\]?/g, /<[^>\s]*>?/g, /(?:https?:\/\/|www\.)\S+/g, /&#?\w+;/g];
 
 type Region = { kind: "fence" | "table"; start: number; end: number };
 
@@ -105,8 +110,39 @@ function wholeRow(line: string, kind: TrackedKind): string {
   return out + (wrap(cell, kind) || cell);
 }
 
+/**
+ * The code spans of a line, as CommonMark finds them: a run of backticks opens one that the next run of the same length
+ * closes; a run no later run closes is text. One pass over the runs, so a line of backticks stays linear.
+ */
+function codeSpans(text: string, found: [number, number][]): void {
+  const runs: [number, number][] = [];
+  for (let i = 0; i < text.length; ) {
+    if (text[i] !== "`") {
+      i++;
+      continue;
+    }
+    const start = i;
+    while (i < text.length && text[i] === "`") i++;
+    runs.push([start, i - start]);
+  }
+  // For each run, the index of the next run of the same length.
+  const next = new Int32Array(runs.length).fill(-1);
+  const lastOf = new Map<number, number>();
+  for (let r = runs.length - 1; r >= 0; r--) {
+    next[r] = lastOf.get(runs[r][1]) ?? -1;
+    lastOf.set(runs[r][1], r);
+  }
+  for (let r = 0; r < runs.length; r++) {
+    const close = next[r];
+    if (close < 0) continue;
+    found.push([runs[r][0], runs[close][0] + runs[close][1]]);
+    r = close;
+  }
+}
+
 function ranges(text: string): [number, number][] {
   const found: [number, number][] = [];
+  codeSpans(text, found);
   for (const pattern of PROTECTED) for (const match of text.matchAll(pattern)) found.push([match.index, match.index + match[0].length]);
   return found;
 }
@@ -144,8 +180,8 @@ function pairLines(before: string, after: string, budget: Budget): string[] {
 }
 
 export function markedMarkdown(before: string, after: string, budget: Budget = newBudget()): string {
-  const oldText = before.replace(ANY_MARK, "\uFFFD");
-  const newText = after.replace(ANY_MARK, "\uFFFD");
+  const oldText = before.replace(ANY_MARK, "\uFFFD").replace(MARK_REFERENCE, "\uFFFD");
+  const newText = after.replace(ANY_MARK, "\uFFFD").replace(MARK_REFERENCE, "\uFFFD");
   const lines = diffLines(oldText, newText);
   const oldLines: string[] = [];
   const newLines: string[] = [];
@@ -158,15 +194,31 @@ export function markedMarkdown(before: string, after: string, budget: Budget = n
 
   // Regions of both versions in one numbering, joined in groups through the lines they keep.
   const shift = oldRegions.list.length;
-  const parent = Array.from({ length: shift + newRegions.list.length }, (_, index) => index);
-  const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
+  // Union-find by size with path halving, iterative: thousands of chained regions neither recurse nor go quadratic.
+  const parent = Int32Array.from({ length: shift + newRegions.list.length }, (_, index) => index);
+  const size = new Int32Array(parent.length).fill(1);
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (x: number, y: number) => {
+    let a = find(x);
+    let b = find(y);
+    if (a === b) return;
+    if (size[a] < size[b]) [a, b] = [b, a];
+    parent[b] = a;
+    size[a] += size[b];
+  };
   const touched = new Set<number>();
   const oldOf = (line: DiffLine) => (line.oldNo === null ? -1 : oldRegions.at[line.oldNo - 1]);
   const newOf = (line: DiffLine) => (line.newNo === null ? -1 : newRegions.at[line.newNo - 1]);
   for (const line of lines) {
     const a = oldOf(line);
     const b = newOf(line);
-    if (line.kind === "same" && a >= 0 && b >= 0) parent[find(a)] = find(b + shift);
+    if (line.kind === "same" && a >= 0 && b >= 0) union(a, b + shift);
   }
   for (const line of lines) {
     const a = oldOf(line);
@@ -180,17 +232,31 @@ export function markedMarkdown(before: string, after: string, budget: Budget = n
   const sameAt = new Map<number, number>();
   for (const line of lines) if (line.kind === "same") sameAt.set((line.oldNo ?? 0) - 1, (line.newNo ?? 0) - 1);
   const members = new Map<number, number[]>();
-  for (let id = 0; id < parent.length; id++) members.set(find(id), [...(members.get(find(id)) ?? []), id]);
+  for (let id = 0; id < parent.length; id++) {
+    const root = find(id);
+    const list = members.get(root);
+    if (list) list.push(id);
+    else members.set(root, [id]);
+  }
   const byRows = (group: number) => {
     const ids = members.get(group) ?? [];
-    const olds = ids.filter((id) => id < shift).map((id) => oldRegions.list[id]);
-    const news = ids.filter((id) => id >= shift).map((id) => newRegions.list[id - shift]);
-    if (olds.length !== 1 || news.length !== 1 || olds[0].kind !== "table" || news[0].kind !== "table") return false;
-    return sameAt.get(olds[0].start) === news[0].start && sameAt.get(olds[0].start + 1) === news[0].start + 1;
+    if (ids.length !== 2 || ids[0] >= shift || ids[1] < shift) return false;
+    const old = oldRegions.list[ids[0]];
+    const now = newRegions.list[ids[1] - shift];
+    if (old.kind !== "table" || now.kind !== "table") return false;
+    return sameAt.get(old.start) === now.start && sameAt.get(old.start + 1) === now.start + 1;
   };
+  // Each group's mode once, so a group of thousands of regions is not walked again for each of its lines.
+  const modes = new Map<number, "rows" | "blocks" | null>();
   const mode = (region: number) => {
-    if (region < 0 || !touchedGroups.has(find(region))) return null;
-    return byRows(find(region)) ? "rows" : "blocks";
+    if (region < 0) return null;
+    const group = find(region);
+    let found = modes.get(group);
+    if (found === undefined) {
+      found = touchedGroups.has(group) ? (byRows(group) ? "rows" : "blocks") : null;
+      modes.set(group, found);
+    }
+    return found;
   };
 
   const out: string[] = [];
