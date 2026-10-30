@@ -421,6 +421,9 @@ def test_curator_run_on_claude_code_gets_no_api_key(machine):  # noqa: F811
 
 
 def test_curator_run_on_claude_code_without_a_subscription_login_fails_saying_so(machine):  # noqa: F811
+    # The machine's environment is the one the tests run in; a worker's verify has a subscription login there.
+    for name in (claude_code.OAUTH_TOKEN, "CLAUDE_CONFIG_DIR"):
+        machine.env.pop(name, None)
     machine.env.update(
         {
             "ANTHROPIC_API_KEY": "sk-ant-" + "api03-" + secrets.token_hex(16),
