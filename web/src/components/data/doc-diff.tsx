@@ -7,6 +7,8 @@ import type { DiffKind, DiffLine } from "@/lib/line-diff";
 import { cn } from "@/lib/utils";
 import { lineWords, type WordPart } from "@/lib/word-diff";
 
+import { TRACKED_TONE } from "./tracked-marks";
+
 /**
  * A git-style unified diff of a document: old and new line numbers, a sign, then the line. Every changed line says what
  * happened in words for screen readers and with a sign for the eye; the tint (`success-soft`, `danger-soft`) is the
@@ -121,7 +123,11 @@ export function DocDiff({ lines, testId = "doc-diff" }: { lines: DiffLine[]; tes
   );
 }
 
-export function DocDiffLegend() {
+/**
+ * What the colours of the changes mean: added, removed (struck through), unchanged. The line view shows its row tints
+ * with the + and − signs; the marked view (`tracked`) shows a word as `tracked-marks.tsx` marks it in the document.
+ */
+export function DocDiffLegend({ tracked = false }: { tracked?: boolean }) {
   const t = useTranslations("chats.doc");
   const items: { kind: DiffKind; label: string }[] = [
     { kind: "add", label: t("legendAdded") },
@@ -129,12 +135,18 @@ export function DocDiffLegend() {
     { kind: "same", label: t("legendSame") },
   ];
   return (
-    <ul className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground" data-testid="doc-diff-legend">
+    <ul className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground" data-testid="doc-diff-legend" data-view={tracked ? "tracked" : "lines"}>
       {items.map((item) => (
         <li key={item.kind} className="flex items-center gap-1.5" data-kind={item.kind}>
-          <span className={cn("inline-flex h-4 w-4 items-center justify-center rounded-sm border font-mono", ROW[item.kind], SIGN_TONE[item.kind])} aria-hidden="true">
-            {item.kind === "same" ? "" : SIGN[item.kind]}
-          </span>
+          {tracked ? (
+            <span className={cn("font-medium", item.kind === "same" ? "rounded-xs border px-0.5 text-foreground" : TRACKED_TONE[item.kind])} aria-hidden="true">
+              Aa
+            </span>
+          ) : (
+            <span className={cn("inline-flex h-4 w-4 items-center justify-center rounded-sm border font-mono", ROW[item.kind], SIGN_TONE[item.kind])} aria-hidden="true">
+              {item.kind === "same" ? "" : SIGN[item.kind]}
+            </span>
+          )}
           {item.label}
         </li>
       ))}

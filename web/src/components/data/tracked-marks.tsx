@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
 
 type MarkProps = ComponentPropsWithoutRef<"del"> & { node?: unknown; "data-tracked"?: string; "data-block"?: string };
 
-const INLINE = {
+/** The tone of a word added or removed in place; the legend of the marked view shows it too (`doc-diff.tsx`). */
+export const TRACKED_TONE = {
   add: "rounded-xs bg-success-soft px-0.5 text-success no-underline",
   del: "rounded-xs bg-danger-soft px-0.5 text-danger line-through decoration-danger",
 } as const;
@@ -26,7 +27,7 @@ function Mark({ kind, block, children, className }: { kind: "add" | "del"; block
   const t = useTranslations("memories.markdown");
   const Tag = kind === "add" ? "ins" : "del";
   return (
-    <Tag data-tracked={kind} data-block={block ? "" : undefined} className={cn(block ? BLOCK[kind] : INLINE[kind], className)}>
+    <Tag data-tracked={kind} data-block={block ? "" : undefined} className={cn(block ? BLOCK[kind] : TRACKED_TONE[kind], className)}>
       <span className="sr-only">{kind === "add" ? t("trackedAdded") : t("trackedRemoved")} </span>
       {children}
     </Tag>

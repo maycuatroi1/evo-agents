@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   post: null as null | ((request: Request) => Response),
   login: "octo",
   decisions: {} as Record<string, unknown[]>,
+  docs: {} as Record<string, unknown[]>,
 }));
 
 vi.mock("@/lib/api/browser", () => ({
@@ -30,6 +31,8 @@ vi.mock("@/lib/api/browser", () => ({
         if (url.pathname === "/v1/auth/web/csrf") return Response.json({ csrf: "csrf-1", header: "X-Evo-CSRF" });
         if (url.pathname === "/v1/projects/demo/runs/41/chat") return Response.json(api.chat);
         if (url.pathname === "/v1/auth/whoami") return Response.json({ login: api.login, admin: false, token: {}, grants: [{ project: "demo", role: "writer", max_level: "internal" }] });
+        const docs = /^\/v1\/projects\/demo\/runs\/(\d+)\/doc-versions$/.exec(url.pathname);
+        if (docs) return Response.json({ key: url.searchParams.get("name"), versions: api.docs[docs[1]] ?? [] });
         if (url.pathname === "/v1/projects/demo/decisions" && request.method === "GET") {
           const decisions = api.decisions[url.searchParams.get("run_id") ?? ""] ?? [];
           return Response.json({ decisions, total: decisions.length, limit: 200, offset: 0 });
@@ -125,6 +128,8 @@ beforeEach(() => {
   api.post = null;
   api.login = "octo";
   api.decisions = {};
+  api.docs = {};
+  vi.unstubAllGlobals();
 });
 
 describe("RunChatPanel", () => {
@@ -261,5 +266,56 @@ describe("chatReplyable and chatEndable", () => {
     expect(chatEndable({ status: "working", state: "queued" }, { finish_requested_at: null })).toBe(false);
     expect(chatEndable({ status: "waiting", state: "parked" }, { finish_requested_at: null })).toBe(true);
     expect(chatEndable({ status: "working", state: "running" }, { finish_requested_at: "2026-10-07T03:22:00Z" })).toBe(false);
+  });
+});
+
+describe("RunChatPanel documents", () => {
+  const yaml = (source: "attached" | "sent", id: number, runId: number, at: string, url: string) => ({
+    source,
+    id,
+    name: "deploy.yaml",
+    media_type: "application/yaml",
+    viewer: "text",
+    size: 24,
+    sha256: "e".repeat(64),
+    caption: null,
+    created_at: at,
+    url,
+    message_id: null,
+    seq: null,
+    thread_root_id: null,
+    run_id: source === "sent" ? runId : null,
+    author: source === "attached" ? { kind: "person", login: "octo", name: "octo", deleted: false, avatar_url: null } : null,
+  });
+
+  it("opens a YAML file of a message in the document panel, by line against the version before, over the chat's runs", async () => {
+    const original = "/v1/projects/demo/runs/41/attachments/3/content";
+    const fixed = "/v1/projects/demo/runs/44/outputs/8/content";
+    const texts: Record<string, string> = { [original]: "name: demo\nreplicas: 2\n", [fixed]: "name: demo\nreplicas: 3\n" };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(texts[url])));
+    api.chat = {
+      ...CHAT,
+      messages: [
+        CHAT.messages[0],
+        { ...CHAT.messages[1], attachments: [{ id: 3, name: "deploy.yaml", media_type: "application/yaml", size: 24 }, { id: 4, name: "shot.png", media_type: "image/png", size: 9 }] },
+        CHAT.messages[2],
+      ],
+    };
+    api.docs = { "41": [yaml("attached", 3, 41, "2026-10-07T03:06:00Z", original)], "44": [yaml("sent", 8, 44, "2026-10-07T03:19:00Z", fixed)] };
+    show(RUN, true);
+    const owner = (await screen.findAllByTestId("run-chat-owner"))[0];
+    const open = within(within(owner).getByTestId("run-chat-docs")).getAllByTestId("doc-open");
+    expect(open).toHaveLength(1);
+    await userEvent.click(open[0]);
+    const sheet = await screen.findByTestId("run-doc-sheet");
+    const diff = await within(sheet).findByTestId("doc-diff");
+    expect(within(sheet).getByTestId("doc-panel")).toHaveAttribute("data-mode", "lines");
+    expect(within(sheet).queryByTestId("doc-mode-tracked")).toBeNull();
+    expect(diff.querySelector("[data-kind=del] [data-word=del]")).toHaveTextContent("2");
+    expect(diff.querySelector("[data-kind=add] [data-word=add]")).toHaveTextContent("3");
+    expect(within(within(sheet).getByTestId("doc-base")).getByRole("option")).toHaveTextContent("Bản 1, octo");
+    await userEvent.click(within(sheet).getByTestId("doc-close"));
+    await waitFor(() => expect(screen.queryByTestId("run-doc-sheet")).toBeNull());
+    expect(open[0]).toHaveFocus();
   });
 });
