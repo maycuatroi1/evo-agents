@@ -24,6 +24,7 @@ list kept they win, so the commands of the plugins the CLI ships are the same on
 
 from __future__ import annotations
 
+import contextvars
 import importlib
 import importlib.util
 import json
@@ -128,9 +129,16 @@ def bundled() -> list[dict]:
     return found
 
 
+# True while the contract (``evo_agents.hub.contract``) builds the parser: the bundled plugins alone, so the contract
+# does not depend on the list a machine kept from its hub.
+BUNDLED_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar("bundled_only", default=False)
+
+
 def known_plugins() -> list[dict]:
-    """The bundled plugins, then those of the list kept that no bundled one has the id of."""
+    """The bundled plugins, then those of the list kept that no bundled one has the id of (none under BUNDLED_ONLY)."""
     mine = bundled()
+    if BUNDLED_ONLY.get():
+        return mine
     ids = {plugin["id"] for plugin in mine}
     return mine + [plugin for plugin in cached()["plugins"] if plugin.get("id") not in ids]
 

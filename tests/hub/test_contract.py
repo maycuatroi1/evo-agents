@@ -90,6 +90,19 @@ def test_commands_match_the_golden_copy():
     assert commands() == golden_commands(), f"the hub command line changed; if on purpose: {REGENERATE}"
 
 
+def test_the_contract_leaves_out_the_plugin_commands_a_machine_kept_from_its_hub(monkeypatch, tmp_path):
+    from evo_agents.hub import cli_plugin_commands as cpc
+
+    monkeypatch.setenv("EVO_HUB_HOME", str(tmp_path))
+    held = [
+        {"id": "lumen", "version": "0.1.1", "commands": [{"name": "ask", "http": {"method": "GET", "path": "ask"}}]}
+    ]
+    (tmp_path / cpc.CACHE_FILE).write_text(json.dumps({"plugins": held}), encoding="utf-8")
+    assert "lumen" in {plugin["id"] for plugin in cpc.known_plugins()}
+    assert not [path for path in commands() if path.startswith("hub lumen")]
+    assert commands() == golden_commands(), f"the hub command line changed; if on purpose: {REGENERATE}"
+
+
 def test_print_writes_version_commands_and_the_openapi_document():
     pytest.importorskip("fastapi")
     from evo_agents.hub.openapi import document
