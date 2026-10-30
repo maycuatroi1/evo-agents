@@ -54,7 +54,8 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 4. **The owner answers.** A project admin accepts, rejects or defers a proposal on the web, on the command line or on
    Telegram. Accepting one of a tier the charter's `planned_tiers` names (0 to 2 by default, 3 when added) makes its
    draft plan a plan of the Curator on the hub in the same answer, with a change of state `planned`; accepting one of
-   another tier records the answer and builds nothing.
+   another tier records the answer and builds nothing. With `answer_by: agent` the project's agent answers instead,
+   in a thread of the project's triage chat (The agent answers, below).
 5. **The Builder.** On a later pass of the night shift, a plan run of that plan works on the branch
    `curator/<proposal>-<slug>`, never on a default branch. Until it can, the change keeps why it waits, which the
    proposal's page and the morning brief show.
@@ -110,6 +111,7 @@ brief_at: "07:00"
 planned_tiers: [0, 1, 2]
 auto_merge: [0]
 merge_without_ci: false
+answer_by: owner
 protected_paths: ["evo_agents/hub/migrations/**", "evo-agents:deploy/**"]
 circuit_breaker: {max_failed_in_a_row: 2}
 outcome_days: 7
@@ -140,6 +142,7 @@ env_secrets: [claude-oauth]
 | `planned_tiers` | `[0, 1, 2]` | the tiers whose accepted proposals become the Curator's plans, which the night shift builds; any of `0` to `3`, so tier 3 is built only when named (Tiers, below) |
 | `auto_merge` | none | the tiers the hub may merge by itself, any of `0` to `3` (Merging, below) |
 | `merge_without_ci` | false | true lets the hub merge a change the Judge passed when no CI ran on it, or when the ruleset requires no check and what ran passed; a check that ran and failed still blocks, one still running still makes it wait (Merging, below) |
+| `answer_by` | `owner` | who answers the proposals: `owner`, the project's admins; `agent`, the project's default agent, in a thread of the triage chat for each proposal, for the schedule's owner (The agent answers, below) |
 | `protected_paths` | none | globs no change of the Curator may touch below tier 3 (Tiers, below) |
 | `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed or were reverted before the hub pauses the night shift, 1 to 10 |
 | `outcome_days` | 7 | days after a merge over which the hub counts a change's figures again, 1 to 90 |
@@ -822,12 +825,43 @@ its name, the kind of thing that waits and the link, with no answer button; a pr
 that way is treated the same. No message holds a decision's context, a proposal's summary, a diff or a token.
 `docs/notifications.md`, "Telegram", has the rest.
 
+## The agent answers
+
+With `answer_by: agent` in the charter, the project's default agent answers the Curator's proposals for the schedule's
+owner, so a proposal does not wait for a person. When a review run records a proposal open, or a deferred one opens
+again, the hub opens a thread for it in the project's triage chat ("Triage: <project>", the chat of failed runs,
+`docs/workers.md`, Failure triage), one thread a proposal (`proposal_threads`, schema 0188). Its first message holds
+the proposal's tier and why, its summary, paths and evidence, its draft plan, what accepting it makes, its links, and
+the command and skill to answer with, and it mentions the agent, which starts a chat run for the owner. A proposal
+that opens again after a defer gets a new message in the same thread, and the agent is asked again. The thread needs
+the project's triage on and the hub's chats; an owner who is no admin of the project gets the thread without the
+mention, since only an admin's answer counts.
+
+The agent reads the evidence, checks the cause, and answers with the skill `answering-curator-proposals` of the
+evo-hub plugin:
+
+```sh
+evo-agents worker curator answer 12 accept --note "the run log shows the blocked wait at the commit cited"
+evo-agents worker curator answer 13 reject --note "the cause is the stale graph, not the skill"
+evo-agents worker curator answer 14 defer --days 7 --note "measure kg eval on tune and holdout first"
+```
+
+The command calls POST `/v1/worker/runs/{id}/curator/answer`, which answers as the owner's answer on the web does
+(accepting a tier the charter's `planned_tiers` names makes the Curator's plan) once the hub has checked the frame on
+that call: the chat run is in the thread of that proposal (403 for another proposal, 404 for a chat run in no
+proposal's thread), the person who dispatched it holds the admin role on the project (403), the charter still has
+`answer_by: agent` (409), and the proposal is open or deferred (409). The note is required. Each answer writes the audit
+row `curator.proposal` and the ledger line with the agent and the chat run (`via=@<agent> in chat run <id>`,
+`details.agent`, `details.chat_run`), and the hub posts a `Decision:` line in the thread in the agent's name. The admins'
+answer on the web, the command line and Telegram stays as it was; with `answer_by: owner`, the default, no thread opens.
+
 ## The brief, the ledger and the circuit breaker
 
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
 its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
-planned with why each waits, decisions and proposals waiting, and the last heartbeat of the worker on duty
-(`curator_briefs`, schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
+planned with why each waits, decisions and proposals waiting, the proposals the project's agent answered in the 24
+hours before the brief, with its note and chat run, and the last heartbeat of the worker on duty (`curator_briefs`,
+schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
 runs the Loop handed out and the work items it finished in the 24 hours before the brief, and those waiting for a
 person by reason, with a link to the decision board (`docs/hub.md`, "The decision board"); a project whose Loop is off
 has none, and a project whose Loop is on with no brief of the Curator gets that part alone as the notice `loop_brief`

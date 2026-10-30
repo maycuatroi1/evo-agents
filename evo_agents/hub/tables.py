@@ -1022,6 +1022,7 @@ hub_identity, market_listings, market_bundles, market_orders, market_payouts, ma
 )
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
+proposal_threads = tables_triage.proposal_thread_table(metadata)  # a proposal the agent answers (0188)
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
 push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0156)

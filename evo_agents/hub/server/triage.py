@@ -37,7 +37,8 @@ not clear, a full chat, a database error) rolls back to it and leaves the run fa
 (``release_cycles``): the hub writes it in the project's triage chat, with its owner put in it, and mentions no agent,
 since the owner decides. ``asking_thread`` is the same thread with the project's default agent mentioned, and
 ``tell_thread`` adds the hub's message to the thread a failed run opened: the triage of a work item of the Loop that
-failed twice (``loop.stall``).
+failed twice (``loop.stall``). ``asking_reply`` adds the hub's message to a thread ``asking_thread`` opened and mentions
+the agent again: a proposal of the Curator open again after a defer (``curator_threads``).
 """
 
 from __future__ import annotations
@@ -303,6 +304,31 @@ async def asking_thread(
     return _thread(chat.chat_id, message_id), agent_run
 
 
+async def asking_reply(
+    conn: AsyncConnection, project_id: int, project: str, owner_id: int, thread: Thread, body: str
+) -> tuple[Thread, int | None] | None:
+    """A message of the hub in ``thread`` of the project's triage chat that mentions the project's default agent, as
+    the first message of ``asking_thread`` does: (the thread, the chat run it reaches for the owner, a new one or the
+    session's, which the message goes on in; None when that is refused, which the thread says); None while the
+    project's triage, or the hub's chats, are off, or when ``thread`` is not in the project's triage chat. The caller
+    holds a savepoint."""
+    if not await _due(conn, project_id):
+        return None
+    owner = await _person(conn, owner_id)
+    await conn.execute(_lock(project_id))
+    profile = await ensure_default(conn, project_id)
+    chat = await _joined(conn, About(project_id, project), owner, profile, None)
+    if chat.chat_id != thread.chat_id:
+        return None
+    text = runs.clip(body, chats.MAX_MESSAGE_BYTES - 200) + f"\n\n@{profile.handle}"
+    message_id, _ = await insert_message(conn, chat, text, thread_root_id=thread.root_id)
+    agent_run = await _ask_agent(conn, None, chat, profile, owner, message_id, text, root_id=thread.root_id)
+    log.info(
+        "triage thread asked again", extra={"project": project, "chat_id": chat.chat_id, "agent_run_id": agent_run}
+    )
+    return thread, agent_run
+
+
 async def tell_thread(conn: AsyncConnection, run_id: int, body: str) -> tuple[Thread, int | None] | None:
     """A message of the hub in the thread failed run ``run_id`` opened: (the thread, the chat run of its agent); None
     when the run opened none. The caller holds a savepoint."""
@@ -536,22 +562,25 @@ async def _ask_agent(
     owner: Principal,
     message_id: int,
     body: str,
+    *,
+    root_id: int | None = None,
 ) -> int | None:
-    """Hand the first message of the thread to ``profile`` for the owner (hop 1), with the credential failed run
-    ``found`` was dispatched with (a machine's without one); the chat run it made, if any. A refusal (the writer role,
-    a worker) is said in the thread."""
+    """Hand message ``message_id``, the first of the thread or one in the thread of ``root_id``, to ``profile`` for the
+    owner (hop 1), with the credential failed run ``found`` was dispatched with (a machine's without one); the chat run
+    it made, if any. A refusal (the writer role, a worker) is said in the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, owner, [profile.handle])
     r = tables.runs
     via = MACHINE
     if found is not None:
         query = select(func.coalesce(r.c.dispatched_via, MACHINE)).where(r.c.id == found.run_id)
         via = (await conn.execute(query)).scalar_one()
-    hand = Hand(chat, message_id, message_id, profile, owner.user_id, owner.login, via, 1, "the hub", body)
+    root = message_id if root_id is None else root_id
+    hand = Hand(chat, message_id, root, profile, owner.user_id, owner.login, via, 1, "the hub", body)
     await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
     if refusals:
-        await hub_reply(conn, chat.chat_id, message_id, "\n".join(refusals))
+        await hub_reply(conn, chat.chat_id, root, "\n".join(refusals))
     return next((mention.get("run_id") for mention in kept if mention.get("run_id")), None)
 
 
