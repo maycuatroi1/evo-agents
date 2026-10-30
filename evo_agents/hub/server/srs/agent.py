@@ -208,17 +208,7 @@ async def _documents(conn: AsyncConnection, who: Acting) -> str:
 
 
 def _item_text(doc: store.DocumentRow, row: store.VersionRow, content: Document, ref: str) -> str:
-    wanted = code_key(ref)
-    found = next(
-        (
-            at
-            for at, item in enumerate(content.items)
-            if item.key == ref or wanted in {code_key(code) for code in item.codes()}
-        ),
-        None,
-    )
-    if found is None:
-        raise SrsError(404, f"version {row.number} of {doc.slug} has no item {ref}")
+    found = content.item_index(ref, f"version {row.number} of {doc.slug}")
     item = content.items[found]
     path = " > ".join(content.items[at].title for at in reversed(content.ancestors(found)))
     aliases = f"; also {', '.join(item.aliases)}" if item.aliases else ""
