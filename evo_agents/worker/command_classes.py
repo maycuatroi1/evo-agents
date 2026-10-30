@@ -10,7 +10,7 @@ Each pattern names a class and what it matched:
   ``terraform destroy`` (``apply -destroy`` too), ``kubectl delete``, and the recursive deletion of a bucket
   (``aws s3 rm --recursive``, ``aws s3 rb --force``, ``gsutil rm -r``, ``gcloud storage rm --recursive``, ``mc rm
   --recursive``, ``rclone purge``).
-- K5, merge into a default branch: ``gh pr merge``, ``glab mr merge``, and a push to a default branch (DEFAULT_BRANCHES,
+- K5, merge into a default branch: ``gh pr merge``, ``glab mr merge``, ``gh api`` of ``repos/OWNER/NAME/pulls/N/merge``, and a push to a default branch (DEFAULT_BRANCHES,
   and those the caller names).
 - K6, deploy, publish, tag a release: a push of a tag ``v*`` (or of every tag), ``gh release create``, ``glab release
   create``.
@@ -237,6 +237,9 @@ def _option(words: list[str], *names: str) -> str | None:
     return None
 
 
+API_MERGE = re.compile(r"(?:^|/)repos/([^/\s]+)/([^/\s]+)/pulls/(\d+)/merge/?$")  # gh api: merge a pull request
+
+
 def repo_slug(text: str) -> str:
     """``owner/name`` of a ``--repo`` value: a slug, ``host/owner/name`` or a URL."""
     text = text.strip().lower().removesuffix(".git").rstrip("/")
@@ -247,6 +250,8 @@ def repo_slug(text: str) -> str:
 def _forge(words: list[str], own_repos: Collection[str]) -> list[Hit]:
     rest = words[1:]
     if rest[:2] in (["pr", "merge"], ["mr", "merge"]):
+        return [Hit("K5", _what(words))]
+    if words[0] and _base(words[0]) == "gh" and rest[:1] == ["api"] and any(API_MERGE.search(word) for word in rest):
         return [Hit("K5", _what(words))]
     if rest[:2] == ["release", "create"]:
         return [Hit("K6", _what(words))]

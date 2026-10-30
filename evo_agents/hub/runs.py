@@ -896,7 +896,12 @@ def _push_rule(autonomy) -> str:
         "name for that repo, never merge into any other branch, never force-push, and never rewrite history you "
         "pushed. After each push or merge into a repo's default branch that you make yourself (the pushes of "
         "`evo-agents worker step` send their own notice), run `evo-agents worker notify --kind push_default_branch "
-        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits."
+        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits. "
+        "In a repo whose policy has the merge check on, check first and merge after: `evo-agents worker merge-check "
+        "REPO` has the hub judge your pull request at its head (end your turn while it waits), and only a passed "
+        "verdict opens `gh pr merge N --match-head-commit HEAD` (or `gh api -X PUT repos/OWNER/NAME/pulls/N/merge -f "
+        "sha=HEAD`) with that same head; the hook refuses a merge without it, and a push after the verdict needs a new "
+        "check. The hub reads the merge afterwards and tells the owner when it was at another head or off the base."
     )
 
 
