@@ -61,7 +61,6 @@ SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
-WEAK_LIMIT = 5  # kg_search returns at most this many results when none holds every word of the query
 FULL_LINES = 5  # the results kg_search shows whole; those past them show their id alone (kg_node reads one)
 REPO_POOL = 12  # with a repo, kg_search ranks this many candidates per result asked, since most are of other repos
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
@@ -326,13 +325,12 @@ class Session:
         matched = store.matched(
             [n["id"] for n in direct], query, {n["id"] for n in direct if n["kind"] in SNIPPET_KINDS}
         )
+        # No result holds the whole query: the line under the header says so, and the results stay at ``limit``, since
+        # the evidence of a question in plain words is spread over nodes that each hold some of its words.
         partial = words > 1 and bool(matched) and all(m["words"] < words for m in matched.values())
-        if partial and len(results) > WEAK_LIMIT:  # no result holds the whole query: the few best say as much
-            results = results[:WEAK_LIMIT]
-            via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
         code: dict[str, list[int]] = {}
         if not kinds or "File" in kinds:
-            results, code = self._with_code(store, b, query, results, WEAK_LIMIT if partial else limit, repo)
+            results, code = self._with_code(store, b, query, results, limit, repo)
         explored = self._explore(store, results, hits, via)
         for reached in via.values():
             self._saw(reached["label"])
