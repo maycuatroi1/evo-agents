@@ -885,6 +885,22 @@ Each success posts a line that starts with `Decision:` in the thread, in the age
 undo it, and writes an audit row (`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`,
 `run.triage_cancel`) that names the failed run, the agent and
 the chat run. The agent acts as the owner only: another member's chat run is refused (403).
+
+### Curator proposals the agent answers
+
+A project whose Curator charter has `answer_by: agent` gets a thread in the same triage chat for each proposal a review
+run records open, and a new message in it when a deferred proposal opens again (`docs/curator.md`, The agent answers).
+The thread names the skill `answering-curator-proposals` of the evo-hub plugin and mentions the project's default
+agent, which starts a chat run for the schedule's owner. Its agent answers the proposal with one command, for the
+owner, inside a frame the hub checks on each call (`evo_agents.hub.server.curator_threads`):
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker curator answer PROPOSAL accept\|reject\|defer --note TEXT [--days N]` | `POST /v1/worker/runs/{id}/curator/answer` | answer the proposal of the thread for the person who dispatched the chat run, as their answer on the web does: 200 with the proposal and the `Decision:` line's `message_id`; accepting a tier the charter's `planned_tiers` names makes the Curator's plan. 403 for another proposal than the thread's or a dispatcher who is no admin of the project, 404 for a run that is not a chat run in a proposal's thread, 409 for a proposal neither open nor deferred or a charter whose `answer_by` is `owner` again, 422 for `--days` without defer |
+
+Each answer writes the audit row `curator.proposal` and the ledger line with the agent and the chat run, posts the
+`Decision:` line in the thread, in the agent's name, and shows in the next morning brief.
+
 ## Task runs
 
 A task run (kind `task`, `evo_agents.hub.task_runs`) is one turn of an agent type of a plugin on a task the plugin

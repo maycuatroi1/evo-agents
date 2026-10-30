@@ -9308,6 +9308,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/curator/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer
+         * @description Accept, reject or defer the proposal of this thread for the chat run's dispatcher, an admin of the project, as
+         *     their answer on the web does; 403 for another proposal or a dispatcher who is no admin, 409 for a proposal neither
+         *     open nor deferred or a charter that has its admins answer.
+         */
+        post: operations["answer_v1_worker_runs__run_id__curator_answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/plugins/install-github": {
         parameters: {
             query?: never;
@@ -16282,6 +16304,13 @@ export interface components {
              */
             merge_without_ci: boolean;
             /**
+             * Answer By
+             * @description who answers the proposals: owner, the project's admins; agent, the project's default agent in a thread of the triage chat, for the schedule's owner
+             * @default owner
+             * @enum {string}
+             */
+            answer_by: "owner" | "agent";
+            /**
              * Protected Paths
              * @description globs no change of the Curator may touch below tier 3
              */
@@ -16443,6 +16472,13 @@ export interface components {
              * @default false
              */
             merge_without_ci: boolean;
+            /**
+             * Answer By
+             * @description who answers the proposals: owner, the project's admins; agent, the project's default agent in a thread of the triage chat, for the schedule's owner
+             * @default owner
+             * @enum {string}
+             */
+            answer_by: "owner" | "agent";
             /**
              * Protected Paths
              * @description globs no change of the Curator may touch below tier 3
@@ -17891,6 +17927,39 @@ export interface components {
              * @default X-Evo-CSRF
              */
             header: string;
+        };
+        /** CuratorAnswerIn */
+        CuratorAnswerIn: {
+            /**
+             * Proposal Id
+             * @description the proposal of this thread
+             */
+            proposal_id: number;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "reject" | "defer";
+            /**
+             * Note
+             * @description why, in one line: the ledger and the Decision: line keep it
+             */
+            note: string;
+            /**
+             * Defer Days
+             * @description with defer; 7 by default
+             */
+            defer_days?: number | null;
+        };
+        /** CuratorAnswered */
+        CuratorAnswered: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /** @description the proposal as answered, with the change accepting it made */
+            proposal: components["schemas"]["Proposal"];
         };
         /**
          * CuratorOverview
@@ -77395,6 +77464,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TriageInvited"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_v1_worker_runs__run_id__curator_answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuratorAnswerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorAnswered"];
                 };
             };
             /** @description Unauthorized */

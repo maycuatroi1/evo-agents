@@ -161,6 +161,7 @@ TABLES |= {"kg_eval_sets"}  # migration 0179
 TABLES |= {"kg_semantic"}  # migration 0181
 TABLES |= {"kg_optimize_runs"}  # migration 0182
 TABLES |= {"merge_checks"}  # migration 0187
+TABLES |= {"proposal_threads"}  # migration 0188
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -251,8 +252,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_thirteen_tables(hub_db):
-    assert len(TABLES) == 213  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_fourteen_tables(hub_db):
+    assert len(TABLES) == 214  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5134,3 +5135,43 @@ def test_0187_github_merge_check_keeps_one_check_a_pull_request_and_going_back_d
     move_to(hub_db, "0186", down=True)
     assert "merge_checks" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0187") :]
+
+
+def test_0188_keeps_one_thread_a_proposal_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0187")
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "harness", "kind": "feature"}
+        proposal |= {"title": "A wait helper", "paths": [], "tier": 2, "tier_reasons": ["feature"]}
+        proposal |= {"evidence": [], "evidence_count": 1, "draft": {}, "fingerprint": "f" * 64, "label": label}
+        first = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        second = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        chat_id = one(
+            conn, insert(t.chats).values(title="Triage: demo", created_by=ids["user"]).returning(t.chats.c.id)
+        )
+        roots = [
+            one(
+                conn,
+                insert(t.chat_messages)
+                .values(chat_id=chat_id, seq=seq, body="facts", label=[])
+                .returning(t.chat_messages.c.id),
+            )
+            for seq in (1, 2)
+        ]
+    move_to(hub_db, "0188")
+    threads = t.proposal_threads
+    row = {"proposal_id": first, "chat_id": chat_id, "root_message_id": roots[0], "agent_run_id": run_id}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(threads).values(row))
+        with pytest.raises(errors.UniqueViolation):  # one thread a proposal
+            conn.execute(insert(threads).values({**row, "root_message_id": roots[1]}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):  # one proposal a thread
+        conn.execute(insert(threads).values({**row, "proposal_id": second}))
+    read = select(threads.c.proposal_id, threads.c.root_message_id, threads.c.agent_run_id)
+    assert query(hub_db, read) == [(first, roots[0], run_id)]
+    move_to(hub_db, "0187", down=True)
+    assert "proposal_threads" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0188") :]

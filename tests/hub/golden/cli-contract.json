@@ -5147,6 +5147,7 @@
           "planned_tiers",
           "auto_merge",
           "merge_without_ci",
+          "answer_by",
           "protected_paths",
           "circuit_breaker",
           "outcome_days",
@@ -5216,6 +5217,7 @@
           "planned_tiers",
           "auto_merge",
           "merge_without_ci",
+          "answer_by",
           "protected_paths",
           "circuit_breaker",
           "outcome_days",
@@ -23778,6 +23780,48 @@
             "--fetch"
           ],
           "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker curator answer": {
+      "positionals": [
+        {
+          "name": "proposal",
+          "metavar": "PROPOSAL",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "accept",
+            "reject",
+            "defer"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--days"
+          ],
+          "value": "integer",
           "required": false,
           "repeatable": false
         }
@@ -79609,6 +79653,101 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/curator/answer": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Answer",
+          "description": "Accept, reject or defer the proposal of this thread for the chat run's dispatcher, an admin of the project, as\ntheir answer on the web does; 403 for another proposal or a dispatcher who is no admin, 409 for a proposal neither\nopen nor deferred or a charter that has its admins answer.",
+          "operationId": "answer_v1_worker_runs__run_id__curator_answer_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuratorAnswerIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CuratorAnswered"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/plugins/install-github": {
         "post": {
           "tags": [
@@ -103589,6 +103728,16 @@
               "description": "the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass",
               "default": false
             },
+            "answer_by": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "agent"
+              ],
+              "title": "Answer By",
+              "description": "who answers the proposals: owner, the project's admins; agent, the project's default agent in a thread of the triage chat, for the schedule's owner",
+              "default": "owner"
+            },
             "protected_paths": {
               "items": {
                 "type": "string",
@@ -103933,6 +104082,16 @@
               "title": "Merge Without Ci",
               "description": "the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass",
               "default": false
+            },
+            "answer_by": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "agent"
+              ],
+              "title": "Answer By",
+              "description": "who answers the proposals: owner, the project's admins; agent, the project's default agent in a thread of the triage chat, for the schedule's owner",
+              "default": "owner"
             },
             "protected_paths": {
               "items": {
@@ -106970,6 +107129,74 @@
             "csrf"
           ],
           "title": "Csrf"
+        },
+        "CuratorAnswerIn": {
+          "properties": {
+            "proposal_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Proposal Id",
+              "description": "the proposal of this thread"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "accept",
+                "reject",
+                "defer"
+              ],
+              "title": "Action"
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Note",
+              "description": "why, in one line: the ledger and the Decision: line keep it"
+            },
+            "defer_days": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 90.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Defer Days",
+              "description": "with defer; 7 by default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "proposal_id",
+            "action",
+            "note"
+          ],
+          "title": "CuratorAnswerIn"
+        },
+        "CuratorAnswered": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            },
+            "proposal": {
+              "$ref": "#/components/schemas/Proposal",
+              "description": "the proposal as answered, with the change accepting it made"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "proposal"
+          ],
+          "title": "CuratorAnswered"
         },
         "CuratorOverview": {
           "properties": {

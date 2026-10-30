@@ -76,6 +76,7 @@ from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import (
     audit,
+    curator_threads,
     facet_figures,
     kg_health,
     kg_optimize,
@@ -828,7 +829,8 @@ async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, len
 
 
 async def reopen_deferred(conn: AsyncConnection) -> int:
-    """Open again the proposals deferred until a moment that has passed; how many."""
+    """Open again the proposals deferred until a moment that has passed, and ask the project's agent about each one
+    whose charter has it answer (``curator_threads.on_open``); how many."""
     p = tables.proposals
     opened = await conn.execute(
         update(p)
@@ -836,7 +838,10 @@ async def reopen_deferred(conn: AsyncConnection) -> int:
         .where(p.c.state == "deferred", p.c.deferred_until <= func.now())
         .returning(p.c.id)
     )
-    return len(opened.all())
+    ids = sorted(opened.scalars().all())
+    for proposal_id in ids:
+        await curator_threads.on_open(conn, proposal_id, again=True)
+    return len(ids)
 
 
 async def collect(

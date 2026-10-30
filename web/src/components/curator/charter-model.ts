@@ -28,10 +28,11 @@ export type CharterForm = {
   maxDecisionsPerDay: string;
   briefAt: string;
   autoMerge: boolean;
-  /** Kept as the charter wrote them: `auto_merge` beyond tier 0 (the form switches tier 0 alone), `planned_tiers`, `merge_without_ci`. */
+  /** Kept as the charter wrote them: `auto_merge` beyond tier 0 (the form switches tier 0 alone), `planned_tiers`, `merge_without_ci`, `answer_by`. */
   moreAutoMerge: Tier[];
   plannedTiers: Tier[];
   mergeWithoutCi: boolean;
+  answerBy: "owner" | "agent";
   protectedPaths: string;
   maxFailedInARow: string;
   outcomeDays: string;
@@ -60,7 +61,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "probeModels">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -89,12 +90,7 @@ export type CharterErrors = Partial<Record<CharterField, CharterProblem>>;
 const REPLAY_TASKS = 3;
 const PROBE_K = 3;
 
-function lines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-}
+const lines = (text: string): string[] => text.split("\n").map((line) => line.trim()).filter((line) => line !== "");
 
 const money = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
 
@@ -137,6 +133,7 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
       moreAutoMerge: [],
       plannedTiers: [...PLANNED_TIERS],
       mergeWithoutCi: false,
+      answerBy: "owner",
       protectedPaths: "",
       maxFailedInARow: "2",
       outcomeDays: "7",
@@ -174,6 +171,7 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     moreAutoMerge: (charter.auto_merge ?? []).filter((tier) => tier !== 0),
     plannedTiers: [...(charter.planned_tiers ?? PLANNED_TIERS)],
     mergeWithoutCi: charter.merge_without_ci ?? false,
+    answerBy: charter.answer_by ?? "owner",
     protectedPaths: (charter.protected_paths ?? []).join("\n"),
     maxFailedInARow: String(charter.circuit_breaker?.max_failed_in_a_row ?? 2),
     outcomeDays: String(charter.outcome_days ?? 7),
@@ -331,6 +329,7 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       planned_tiers: [...form.plannedTiers],
       auto_merge: [...(form.autoMerge ? AUTO_MERGE_TIERS : []), ...form.moreAutoMerge].sort((a, b) => a - b),
       merge_without_ci: form.mergeWithoutCi,
+      answer_by: form.answerBy,
       protected_paths: protectedPaths ?? [],
       circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number },
       outcome_days: outcomeDays as number,
