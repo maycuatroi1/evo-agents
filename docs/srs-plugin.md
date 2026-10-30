@@ -434,7 +434,7 @@ Under `/v1/x/srs/{project}/`:
 | `GET documents/{slug}` (`?version=N`) | a document with every version, the newest first, and one version whole |
 | `GET documents/{slug}/versions` | every version with its reviews |
 | `GET documents/{slug}/versions/{number}` | a version whole: its items, its problems and its `use_cases` to review |
-| `GET documents/{slug}/items/{ref}` (`?version=N`) | an item by code, alias or key, with its children |
+| `GET documents/{slug}/items/{ref}` (`?version=N`) | an item by code, alias or key, with its children; a code without its kind word (`ORD-1` for `UC ORD-1`) finds the one item it fits, and a 404 names each item when several fit |
 | `GET documents/{slug}/diff?from=N&to=M` | what changed between two versions, item by item |
 | `GET documents/{slug}/export` (`?version=N&anchors=false`) | a version as Markdown |
 | `POST import` | Markdown as a new document or the next version of `document`; `dry_run` stops at the preview |
@@ -498,7 +498,7 @@ as for any agent.
 
 | Tool | What it does | Who may call it |
 | --- | --- | --- |
-| `srs__read` | the documents; a version as Markdown with its state and problems; an item and the items under it | anyone with a grant |
+| `srs__read` | the documents; a version as Markdown with its state and problems; an item and the items under it, by code (its kind word may be left out), alias or key | anyone with a grant |
 | `srs__search` | items of the latest versions by code, alias or words | anyone with a grant |
 | `srs__diff` | what changed between two versions, item by item | anyone with a grant |
 | `srs__propose` | changes on `base_version` as the document's next version, sent to review at once | the agent of a chat run of @ba, or of a task run of @ba the Loop handed out for a use case |
