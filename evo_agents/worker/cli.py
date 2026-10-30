@@ -28,6 +28,7 @@
 - ``triage rerun|plan|invite|cancel``: what the agent of a triage thread does for a failed or stale run (``triage_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
+- ``merge-check REPO``: a plan run's agent has the hub judge its pull request at its head (``merge_check_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -67,6 +68,7 @@ from evo_agents.worker import (
     backup_cli,
     chat_cli,
     list_cli,
+    merge_check_cli,
     output_cli,
     playbook_cli,
     pool_cli,
@@ -519,6 +521,7 @@ MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
 AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
 AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, backup_cli.register_backup)
 AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged change
+AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull request judged at its head
 
 
 @dataclass

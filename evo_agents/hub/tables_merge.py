@@ -17,6 +17,12 @@ merge_samples (0083) holds the merge requests drawn for an audit sample, one eac
 merge_breakers (0084) holds the breaker of each repo of a project the queue passed over: armed or tripped
 (``merge_breaker.STATES``), what tripped it last and why, when, how often, who reset it last and when, and since when
 the hub has seen its target branch red.
+merge_checks (0187) holds the merge check of each pull request on github.com a run asked for (plan
+super-board-parity-2, ``evo_agents.hub.server.merge_check``): the project, the repo and the pull request's number, the
+run that asked and its plan and model, the pull request as the hub last read it, the head the verdict holds for, where
+the check stands (``merge_check.STATES``) and why, the Judges' verdicts with their findings, the risk, the judge run in
+flight with its own key (a SHA-256) and the runs that ended without a verdict, and the wait of the run that asked,
+which the verdict answers.
 """
 
 from __future__ import annotations
@@ -24,6 +30,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -36,6 +43,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    column,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -201,6 +209,50 @@ def _breakers(metadata: MetaData) -> Table:
         ForeignKeyConstraint(["resumed_by"], ["users.id"], ondelete="SET NULL", name="merge_breakers_resumed_by_fkey"),
         PrimaryKeyConstraint("id", name="merge_breakers_pkey"),
         UniqueConstraint("project_id", "repo", name="merge_breakers_project_id_repo_key"),
+    )
+
+
+def check_table(metadata: MetaData) -> Table:
+    """merge_checks (0187), added to ``metadata``."""
+    return Table(
+        "merge_checks",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("repo", Text, nullable=False),
+        Column("number", Integer, nullable=False),
+        Column("run_id", BigInteger),  # the plan run that asked, whose branch the pull request's head is
+        Column("plan_id", Text),
+        Column("model", Text),  # the asking run's: the first Judge's model is another
+        Column("title", Text),
+        Column("description", Text),
+        Column("web_url", Text),
+        Column("source_branch", Text, nullable=False),
+        Column("base_branch", Text, nullable=False),
+        Column("head_sha", Text, nullable=False),  # the head the verdict holds for; a new one starts the check again
+        Column("base_sha", Text),  # the base the judge run merged into the head
+        Column("state", Text, nullable=False, server_default="judging"),
+        Column("reason", Text),
+        Column("verdict", JSONB),
+        Column("risk", JSONB),
+        Column("judge_run_id", BigInteger),
+        Column("judge_key", Text),
+        Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
+        Column("decision_id", BigInteger),  # the asking run's wait, which the verdict answers
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_checks_project_id_fkey"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_checks_run_id_fkey"),
+        ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="SET NULL", name="merge_checks_judge_run_id_fkey"),
+        ForeignKeyConstraint(
+            ["decision_id"], ["decisions.id"], ondelete="SET NULL", name="merge_checks_decision_id_fkey"
+        ),
+        PrimaryKeyConstraint("id", name="merge_checks_pkey"),
+        CheckConstraint(column("state").in_(("judging", "passed", "failed")), name="merge_checks_state_check"),
+        CheckConstraint(column("judge_attempts") >= 0, name="merge_checks_judge_attempts_check"),
+        UniqueConstraint("project_id", "repo", "number", name="merge_checks_project_id_repo_number_key"),
+        Index("merge_checks_state_idx", "state", "id"),
+        Index("merge_checks_judge_run_idx", "judge_run_id"),
     )
 
 

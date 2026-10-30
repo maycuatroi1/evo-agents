@@ -453,6 +453,7 @@ def create_app(config: HubConfig) -> FastAPI:
         market,
         market_install,
         market_licenses,
+        merge_check,
         merge_judge,
         merge_view,
         model_catalog,
@@ -562,6 +563,7 @@ def create_app(config: HubConfig) -> FastAPI:
         loop_routes.router,
         merge_view.router,
         merge_judge.worker_router,
+        merge_check.worker_router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503

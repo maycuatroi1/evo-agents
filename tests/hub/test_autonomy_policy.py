@@ -119,6 +119,7 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "jobs.prod_deploy": None,
         "jobs.prod_check": None,
         "jobs.rollback": None,
+        "merge_check": "off",  # plan super-board-parity-2: a repo on github.com keeps its behaviour until it is on
     }
     # no cap of a diff, and none of the merges of a day (answers 4 and 8)
     names = [key.name for key in (*autonomy.KEYS, *autonomy.REPO_KEYS)]
@@ -451,3 +452,16 @@ def test_autonomy_policy_from_the_command_line(hub_db, tmp_path, github, monkeyp
         ]
         assert "read the same" in ok(policy("reader", "diff", "2")).out
         assert_json_keys("hub policy diff", as_json(policy("reader", "diff", "0", "--json")))
+
+
+def test_autonomy_policy_github_merge_check_is_off_by_default_and_on_only_for_a_repo_on_github():
+    """Plan super-board-parity-2, step 1: repos.<repo>.merge_check is off unless a revision turns it on, and on only
+    for a repo on github.com, where the hub judges a run's pull request before the run merges it."""
+    assert autonomy.effective(None, FACTS)["repos"][SITE]["merge_check"] == "off"
+    on = {"repos": {SITE: {"merge_check": "on"}}}
+    assert autonomy.problems(on, FACTS) == []
+    assert autonomy.effective(on, FACTS)["repos"][SITE]["merge_check"] == "on"
+    (refused,) = autonomy.problems({"repos": {SHOP: {"merge_check": "on"}}}, FACTS)
+    assert refused.startswith(f"repos.{SHOP}.merge_check: {SHOP} is not on github.com")
+    (wrong,) = autonomy.problems({"repos": {SITE: {"merge_check": "yes"}}}, FACTS)
+    assert wrong.startswith(f"repos.{SITE}.merge_check")
