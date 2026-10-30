@@ -47059,6 +47059,208 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/doc-versions": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Chat Doc Versions",
+          "description": "Every version of the document ``name`` in the chat, threads included, oldest first: the files people attached\nand the outputs agents sent under that name, of the messages the caller reads.",
+          "operationId": "chat_doc_versions_v1_chats__chat_id__doc_versions_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "name",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "description": "the document's name; only its last part after a slash counts, without case",
+                "title": "Name"
+              },
+              "description": "the document's name; only its last part after a slash counts, without case"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocVersions"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/doc-versions": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Run Doc Versions",
+          "description": "Every version of the document ``name`` in the run, oldest first: the files of the messages sent to its agent\nand the outputs of the run under that name, for the run's readers.",
+          "operationId": "run_doc_versions_v1_projects__project__runs__run_id__doc_versions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "name",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "description": "the document's name; only its last part after a slash counts, without case",
+                "title": "Name"
+              },
+              "description": "the document's name; only its last part after a slash counts, without case"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocVersions"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/curator/changes": {
         "get": {
           "tags": [
@@ -107928,6 +108130,182 @@
             "value"
           ],
           "title": "DispatchFrom"
+        },
+        "DocVersion": {
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "attached",
+                "sent",
+                "tool",
+                "outputs"
+              ],
+              "title": "Source",
+              "description": "attached: a file a person attached to a message; sent, tool or outputs: an output of a run"
+            },
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the attachment's id, or the output's: the two are counted apart"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the file's name; an output's may carry its path below .evo-run/outputs/"
+            },
+            "media_type": {
+              "type": "string",
+              "title": "Media Type"
+            },
+            "viewer": {
+              "type": "string",
+              "enum": [
+                "image",
+                "video",
+                "audio",
+                "pdf",
+                "text",
+                "html",
+                "none"
+              ],
+              "title": "Viewer",
+              "description": "what the web opens it with; none offers a download only"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "bytes"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "caption": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Caption",
+              "description": "an output's caption; null for an attachment"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At",
+              "description": "when its message was sent, or when the run sent the output"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "where this hub answers its bytes to the reader of this list"
+            },
+            "message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id",
+              "description": "the chat message that carries it; null for none"
+            },
+            "seq": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seq",
+              "description": "the chat event of that message; null outside a chat"
+            },
+            "thread_root_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Root Id",
+              "description": "the first message of that message's thread; null for none"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run that wrote it, for an output; null for an attachment"
+            },
+            "author": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatAuthor"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "who sent it: the person who attached it, or the agent of the chat message that carries an output; null for an output in a run's list, which the run's agent wrote"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "id",
+            "name",
+            "media_type",
+            "viewer",
+            "size",
+            "sha256",
+            "caption",
+            "created_at",
+            "url",
+            "message_id",
+            "seq",
+            "thread_root_id",
+            "run_id",
+            "author"
+          ],
+          "title": "DocVersion"
+        },
+        "DocVersions": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "the name the versions share: the last part after a slash, lower case"
+            },
+            "versions": {
+              "items": {
+                "$ref": "#/components/schemas/DocVersion"
+              },
+              "type": "array",
+              "title": "Versions",
+              "description": "oldest first; those the reader may not read left out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "versions"
+          ],
+          "title": "DocVersions"
         },
         "DocsDocument": {
           "properties": {

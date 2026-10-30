@@ -5,7 +5,10 @@ import ReactMarkdown, { type Components, defaultUrlTransform, type Options } fro
 import remarkGfm from "remark-gfm";
 
 import { type MentionMark, remarkMentions } from "@/lib/mention-marks";
+import { remarkTracked } from "@/lib/remark-tracked";
 import { cn } from "@/lib/utils";
+
+import { TrackedDel, TrackedIns } from "./tracked-marks";
 
 /**
  * A memory body as Markdown (CommonMark and GitHub's tables, task lists, strikethrough and footnotes), never as
@@ -22,7 +25,9 @@ import { cn } from "@/lib/utils";
  * - headings move down two levels (a memory's # sits under the page's h1 and the card's h2); a document that is the
  *   page itself (`variant="page"`) keeps them under the page's h1 instead: # and ## are h2, ### an h3, and so on;
  * - code blocks and tables scroll inside a focusable region instead of widening the page;
- * - a chat message (`mentions`) marks the members it names, their names without the `@` (`lib/mention-marks.ts`).
+ * - a chat message (`mentions`) marks the members it names, their names without the `@` (`lib/mention-marks.ts`);
+ * - a tracked-changes document (`tracked`, lib/marked-markdown.ts) shows the words added and removed in place, as
+ *   `ins` and `del` elements only lib/remark-tracked.ts makes (`tracked-marks.tsx`).
  */
 const ALLOWED = [
   "p",
@@ -56,7 +61,7 @@ const ALLOWED = [
   "section",
 ];
 
-// Raw HTML never becomes markup here, so a span comes from remarkMentions alone.
+// Raw HTML never becomes markup here, so a span comes from remarkMentions alone, an ins from remarkTracked alone.
 const MENTION_ALLOWED = [...ALLOWED, "span"];
 
 const SAFE_LINK = /^(https?:|mailto:|#)/i;
@@ -243,6 +248,7 @@ export function SafeMarkdown({
   images,
   variant = "card",
   mentions,
+  tracked = false,
 }: {
   children: string;
   className?: string;
@@ -254,10 +260,13 @@ export function SafeMarkdown({
   variant?: "card" | "page";
   /** The members of the chat whose message this is, marked where it names them. */
   mentions?: readonly MentionMark[];
+  /** The text is a tracked-changes document of lib/marked-markdown.ts, its marks shown as added and removed text. */
+  tracked?: boolean;
 }): ReactNode {
   const components = useMemo<Components>(() => {
     const base: Components = variant === "page" ? { ...COMPONENTS, ...PAGE_HEADINGS } : COMPONENTS;
-    const found: Components = mentions ? { ...base, span: Mention } : base;
+    const marked: Components = tracked ? { ...base, ins: TrackedIns, del: TrackedDel } : base;
+    const found: Components = mentions ? { ...marked, span: Mention } : marked;
     if (!images) return found;
     return {
       ...found,
@@ -266,14 +275,26 @@ export function SafeMarkdown({
         return url ? <HeldImage url={url} alt={props.alt ?? ""} title={props.title} /> : <MarkdownImage {...props} />;
       },
     };
-  }, [images, variant, mentions]);
-  const plugins = useMemo<NonNullable<Options["remarkPlugins"]>>(() => (mentions?.length ? [remarkGfm, [remarkMentions, mentions]] : [remarkGfm]), [mentions]);
+  }, [images, variant, mentions, tracked]);
+  const plugins = useMemo<NonNullable<Options["remarkPlugins"]>>(
+    () => {
+      const list: NonNullable<Options["remarkPlugins"]> = [remarkGfm];
+      if (mentions?.length) list.push([remarkMentions, mentions]);
+      if (tracked) list.push(remarkTracked);
+      return list;
+    },
+    [mentions, tracked],
+  );
+  const allowed = useMemo(() => {
+    const base = mentions ? MENTION_ALLOWED : ALLOWED;
+    return tracked ? [...base, "ins"] : base;
+  }, [mentions, tracked]);
   return (
     <div className={cn("text-sm text-foreground [overflow-wrap:anywhere]", className)} data-testid={testId}>
       <ReactMarkdown
         remarkPlugins={plugins}
         components={components}
-        allowedElements={mentions ? MENTION_ALLOWED : ALLOWED}
+        allowedElements={allowed}
         unwrapDisallowed
         urlTransform={(url) => defaultUrlTransform(url)}
       >
