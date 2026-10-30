@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from evo_agents.hub.tables_srs import code_key
+
 ERROR, WARNING = "error", "warning"
 # Problems that refuse a save or an import: nothing is written while one holds. Every other error blocks submitting.
 SAVE_CHECKS = frozenset({"code_pattern", "code_duplicate", "code_taken", "code_changed", "coded_item_dropped"})
@@ -82,6 +84,42 @@ class Document:
             found.append(at)
             at = self.items[at].parent
         return found
+
+    def item_index(self, ref: str, where: str) -> int:
+        """The index of the item ``ref`` names: the first whose key is ``ref`` or one of whose codes is ``ref`` as codes
+        are compared; else the one item with a code that reads ``ref`` once its kind word is left out (``ABC-1`` for
+        ``UC ABC-1``). A 404 when no item does, which names each item when several do; ``where`` is the version the
+        message names (``version 3 of order-flow``)."""
+        wanted = code_key(ref)
+        for at, item in enumerate(self.items):
+            if item.key == ref or wanted in {code_key(code) for code in item.codes()}:
+                return at
+        bare = [(at, code) for at, item in enumerate(self.items) if (code := _bare_code(item, wanted))]
+        if len(bare) == 1:
+            return bare[0][0]
+        message = f"{where} has no item {ref}"
+        if bare:
+            named = "; ".join(_candidate(self.items[at], code) for at, code in bare)
+            message += f"; {len(bare)} items have a code that reads {ref} after its kind word: {named}"
+            message += "; read one by its code or key"
+        raise SrsError(404, message)
+
+
+def _without_kind(code: str) -> str | None:
+    """``code`` as codes are compared, its first word (the kind, ``UC`` of ``UC ABC-1``) left out; None for a code of
+    one word."""
+    _, space, rest = code_key(code).partition(" ")
+    return rest if space else None
+
+
+def _bare_code(item: Item, wanted: str) -> str | None:
+    """The first code of ``item`` that reads ``wanted`` once its kind word is left out."""
+    return next((code for code in item.codes() if _without_kind(code) == wanted), None)
+
+
+def _candidate(item: Item, code: str) -> str:
+    alias = f"alias {code}, " if code != item.code else ""
+    return f"{item.code or '-'} ({item.kind}, {alias}key {item.key})"
 
 
 class SrsError(Exception):

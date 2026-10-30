@@ -477,6 +477,47 @@ def test_ba_agent_leaves_out_an_archived_document_reads_it_by_its_slug_and_write
     assert not error and f"- demo-shop v1: UC ORD-1 (use_case) Place an order [key {order['key']}]" in text, text
 
 
+def test_ba_agent_reads_an_item_by_its_code_without_the_kind_word_and_names_each_item_when_several_fit(client, hub):
+    """An agent that names ``UC ORD-2`` as ``ORD-2`` reads it. A key, a code or an alias finds its item first, as
+    before; else the one item with a code that reads the ref once its kind word is left out. When several do, the read
+    is a 404 that names each with its code and key: here ``ORD-1`` fits ``UC ORD-1`` and the alias ``OLD ORD-1`` of
+    ``UC ORD-2``. The hub's route of an item finds it the same way."""
+    markdown = SAMPLE.read_text(encoding="utf-8").replace(
+        "| ID | UC-ORD-002 (ORD-02) |", "| ID | UC-ORD-002 (ORD-02, OLD ORD-1) |"
+    )
+    answer = client.post(f"{SRS}/import", json={"markdown": markdown, "slug": "demo-shop"}, headers=hub["chi"])
+    assert answer.status_code == 200, answer.text
+    order, pay = item(client, hub["chi"], "UC ORD-1"), item(client, hub["chi"], "UC ORD-2")
+    assert pay["aliases"] == ["UC-ORD-002", "ORD-02", "OLD ORD-1"]
+
+    def read(ref: str) -> tuple[str, bool]:
+        return tool(client, hub["other"], "srs__read", PROJECT, document="demo-shop", item=ref)
+
+    for ref in ("ORD-2", "ord-2", "UC ORD-2", "uc  ord-2", "ORD-02", "OLD ORD-1", pay["key"]):
+        text, error = read(ref)
+        assert not error and f"Item UC ORD-2 (use_case), key {pay['key']}" in text, (ref, text)
+        assert item(client, hub["chi"], ref)["key"] == pay["key"], ref
+    for ref in ("UC ORD-1", order["key"]):
+        text, error = read(ref)
+        assert not error and f"Item UC ORD-1 (use_case), key {order['key']}" in text, (ref, text)
+    text, error = read("ORD2-1")
+    assert not error and "Item BR ORD2-1 (business_rule)" in text, text
+    # several items fit: a 404 that names each, and nothing read
+    named = (
+        "version 1 of demo-shop has no item ORD-1; 2 items have a code that reads ORD-1 after its kind word: "
+        f"UC ORD-1 (use_case, key {order['key']}); UC ORD-2 (use_case, alias OLD ORD-1, key {pay['key']}); "
+        "read one by its code or key"
+    )
+    text, error = read("ORD-1")
+    assert error and text == f"error: {named}", text
+    missed = client.get(f"{DOC}/items/ORD-1", headers=hub["chi"])
+    assert missed.status_code == 404 and missed.json()["message"] == named, missed.text
+    # nothing fits: the 404 it always was
+    text, error = read("ORD-9")
+    assert error and text == "error: version 1 of demo-shop has no item ORD-9", text
+    assert client.get(f"{DOC}/items/ORD-9", headers=hub["chi"]).status_code == 404
+
+
 # Its review of each version
 
 
