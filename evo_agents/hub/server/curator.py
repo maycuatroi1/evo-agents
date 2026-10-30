@@ -81,6 +81,7 @@ from evo_agents.hub import curator, ledger, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.db import one_of
+from evo_agents.hub.judge import PLANNABLE_TIERS, PLANNED_TIERS
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -216,8 +217,18 @@ class CharterBody(BaseModel):
     )
     max_decisions_per_day: int = Field(5, ge=0, le=curator.MAX_DECISIONS_PER_DAY)
     brief_at: TimeOfDay = "07:00"
+    planned_tiers: list[Literal[PLANNABLE_TIERS]] = Field(
+        default_factory=lambda: list(PLANNED_TIERS),
+        description="the tiers whose accepted proposals become the Curator's plans, which the night shift builds; "
+        "tier 3 only when named",
+    )
     auto_merge: list[Literal[curator.AUTO_MERGE_TIERS]] = Field(
         default_factory=list, description="the tiers the hub may merge by itself"
+    )
+    merge_without_ci: bool = Field(
+        False,
+        description="the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no "
+        "check; a check that ran must still pass",
     )
     protected_paths: list[PathGlob] = Field(
         default_factory=list,
@@ -264,7 +275,7 @@ class CharterBody(BaseModel):
     def _once(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))
 
-    @field_validator("auto_merge")
+    @field_validator("auto_merge", "planned_tiers")
     @classmethod
     def _tiers(cls, tiers: list[int]) -> list[int]:
         return sorted(set(tiers))

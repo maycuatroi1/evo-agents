@@ -52,8 +52,9 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
    its kind. Tier 2 proposals with the most evidence reach the owner's Inbox, up to the charter's
    `max_decisions_per_day`.
 4. **The owner answers.** A project admin accepts, rejects or defers a proposal on the web, on the command line or on
-   Telegram. Accepting one of tier 0 to 2 makes its draft plan a plan of the Curator on the hub in the same answer, with
-   a change of state `planned`; accepting one of tier 3 records the answer and builds nothing.
+   Telegram. Accepting one of a tier the charter's `planned_tiers` names (0 to 2 by default, 3 when added) makes its
+   draft plan a plan of the Curator on the hub in the same answer, with a change of state `planned`; accepting one of
+   another tier records the answer and builds nothing.
 5. **The Builder.** On a later pass of the night shift, a plan run of that plan works on the branch
    `curator/<proposal>-<slug>`, never on a default branch. Until it can, the change keeps why it waits, which the
    proposal's page and the morning brief show.
@@ -63,9 +64,9 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 7. **The replays.** A change of a skill, an AGENTS.md or a CLAUDE.md is replayed on tasks of the project's own history:
    an agent does a past step again from the code before it, once with the default branch's harness and once with the
    change's, and the step's verify says which did it (Replays, below). The Judge reads none of it.
-8. **The merge.** The hub merges a tier 0 change itself, at the commit the Judge passed, only when the charter allows
-   tier 0, CI is green and the repo's ruleset keeps the Curator off its default branch. Everything else stays open
-   for the owner.
+8. **The merge.** The hub merges a change itself, at the commit the Judge passed, only when the charter's
+   `auto_merge` names its tier (tier 0 by default), CI is green (or none ran and the charter has `merge_without_ci`),
+   and the repo's ruleset keeps the Curator off its default branch. Everything else stays open for the owner.
 9. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued.
 10. **The brief.** At `brief_at` the owner gets the notice `curator_brief`, on the web and on Telegram.
 11. **Later.** `outcome_days` after a merge the hub counts the same figures again; a change that made them worse gets
@@ -106,7 +107,9 @@ max_runs_per_night: 6
 night_plans: [docs-sweep]
 max_decisions_per_day: 5
 brief_at: "07:00"
+planned_tiers: [0, 1, 2]
 auto_merge: [0]
+merge_without_ci: false
 protected_paths: ["evo_agents/hub/migrations/**", "evo-agents:deploy/**"]
 circuit_breaker: {max_failed_in_a_row: 2}
 outcome_days: 7
@@ -134,7 +137,9 @@ env_secrets: [claude-oauth]
 | `night_plans` | none | the plans the night shift may run as plan runs, in the order it takes them |
 | `max_decisions_per_day` | 5 | tier 2 proposals that reach the owner's Inbox a day, in the charter's time zone |
 | `brief_at` | `07:00` | when the morning brief goes out, in the charter's time zone |
-| `auto_merge` | none | the tiers the hub may merge by itself: only `0` is accepted |
+| `planned_tiers` | `[0, 1, 2]` | the tiers whose accepted proposals become the Curator's plans, which the night shift builds; any of `0` to `3`, so tier 3 is built only when named (Tiers, below) |
+| `auto_merge` | none | the tiers the hub may merge by itself, any of `0` to `3` (Merging, below) |
+| `merge_without_ci` | false | true lets the hub merge a change the Judge passed when no CI ran on it, or when the ruleset requires no check and what ran passed; a check that ran and failed still blocks, one still running still makes it wait (Merging, below) |
 | `protected_paths` | none | globs no change of the Curator may touch below tier 3 (Tiers, below) |
 | `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed or were reverted before the hub pauses the night shift, 1 to 10 |
 | `outcome_days` | 7 | days after a merge over which the hub counts a change's figures again, 1 to 90 |
@@ -228,12 +233,18 @@ evo-agents hub curator resume --project demo
 The tier of a proposal says how far it may go without its owner. The hub computes it (`tiers.tier_of`), never an
 agent:
 
-| Tier | What happens to an accepted change |
+| Tier | What happens to an accepted change, with the charter's defaults |
 | --- | --- |
 | 0 | the night shift builds it, and the hub merges it once CI and the Judge pass, when `auto_merge` holds `0` |
 | 1 | the night shift builds it and the Judge judges it; the pull request stays open for the owner |
 | 2 | it reaches the owner's Inbox; once accepted, the night shift builds it and the Judge judges it, and the pull request stays open for the owner |
 | 3 | it stays in the list; accepting it builds nothing, and the owner alone makes the change |
+
+The charter moves these lines. `planned_tiers` names the tiers whose accepted proposals the night shift builds: `[0, 1,
+2]` by default, and a charter that adds `3` has an accepted tier 3 proposal become the Curator's plan and a change
+`planned` as tiers 0 to 2 do; without `3` accepting it still builds nothing. `auto_merge` names the tiers the hub merges
+by itself once the Judge passed the change, any of `0` to `3`; a tier it does not name stays open for the owner. A
+sign of score hacking or a protected path leaves the pull request open whatever the charter names (Merging, below).
 
 The tier is the highest of these rules, and the proposal lists in words which rule raised it:
 
@@ -352,16 +363,16 @@ it: the night shift alone does, at any hour, not only inside its window. Run pla
 /v1/projects/{p}/curator/plans/{plan_id}/build`, a writer of the project) asks for its Builder now: the night shift's
 Builder in every other way, queued beside the night shift's other runs instead of after them, and refused (409 with
 why) while the night shift is paused, past its caps, or the change is not ready; audited as `curator.build_now`. Its
-agent holds no push credential: the daemon alone pushes, only the branch
-`curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
-accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
-the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
-may. A proposal's page on the web has a Change card once accepting it made one: the change's state, the Curator's plan
-as a link to its page, the branch (a link to it on GitHub or GitLab), the pull request once the hub opened it, and the
-reason the change keeps while it waits or stays open, and the tier it merges at; under it a Replays card says whether
-its replays won and why, sets arm b beside arm a and lists each replay. `evo-agents hub curator proposal show ID`
-prints the same, and `evo-agents hub curator replay show CHANGE` its replays. The proposal's ledger adds the verdict of
-the replays a merge rests on, and each skill release.
+agent holds no push credential: the daemon alone pushes, only the branch `curator/...`, and never a default branch
+whatever the plan says. On GitLab the push opens the merge request. An accepted proposal of a tier the charter plans
+that has no change yet, such as one of tier 2 accepted while that tier still recorded the answer alone, becomes its plan
+with `evo-agents hub curator proposal plan ID`, which only an admin of the project may. A proposal's page on the web has
+a Change card once accepting it made one: the change's state, the Curator's plan as a link to its page, the branch (a
+link to it on GitHub or GitLab), the pull request once the hub opened it, and the reason the change keeps while it waits
+or stays open, and the tier it merges at; under it a Replays card says whether its replays won and why, sets arm b
+beside arm a and lists each replay. `evo-agents hub curator proposal show ID` prints the same, and `evo-agents hub
+curator replay show CHANGE` its replays. The proposal's ledger adds the verdict of the replays a merge rests on, and
+each skill release.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -765,15 +776,24 @@ a ruleset: a change whose repo's check did not pass keeps, as its reason, which 
 it up as above. A Builder runs on a GitHub repo only after a check within 2 days that passed; a repo whose ruleset no
 longer keeps the Curator off gets no token.
 
-**Merging tier 0.** The hub merges a pull request with the workers' App, as a merge commit, at the head the Judge
-passed, only when all of these hold: the change is tier 0 and `auto_merge` holds `0`; the Judge passed it; the repo's
-ruleset still keeps the Curator off, checked again then; the pull request is open into the default branch; its files
-show no sign and no protected path; and CI is green. Green means each check the default branch's active rulesets
+**Merging.** The hub merges a pull request with the workers' App, as a merge commit, at the head the Judge passed,
+only when all of these hold: the change's tier is one `auto_merge` names (tier 0 alone, unless the charter names more);
+the Judge passed it; the repo's ruleset still keeps the Curator off, checked again then; the pull request is open into
+the default branch and GitHub can merge it; its files show no sign and no protected path; the gate K5 of the Builder's
+principal lets it go (`docs/autonomy.md`); and CI is green. Green means each check the default branch's active rulesets
 require concluded success (as a check run of the App the rule names, when it names one), every other check run ended
-success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit
-whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while CI runs, and merges
-nothing while the night shift is paused. A tier 1 or 2 change and a refusal stay open for the owner with the reason, as
-does a GitLab merge request, unless the project's autonomy policy puts its repo in the merge queue (GitLab, below).
+success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, a commit no CI ran
+on, or a head commit whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while
+CI runs, and merges nothing while the night shift is paused. A change of a tier `auto_merge` does not name and a
+refusal stay open for the owner with the reason, as does a GitLab merge request, unless the project's autonomy policy
+puts its repo in the merge queue (GitLab, below).
+
+**Merging without CI.** A repo that runs no CI on pull requests never turns green. With `merge_without_ci: true` in
+the charter, the Judge's pass stands in for CI: a commit no CI ran on merges, and so does one whose ruleset requires no
+check, once every check that did run passed. What ran still counts: a check that ended in failure leaves the pull
+request open, one still running makes the hub wait, and a head commit that asks CI to skip it stays open. A check the
+ruleset requires must still pass, so with one required and nothing run the hub waits for it. A sign of score hacking,
+a protected path and every other condition above hold as they do with CI.
 
 **GitLab.** The charter's `git_secret` names the owner's git secret for the repo's origin, which should hold the
 Developer role: GitLab then keeps it off a protected default branch. A Builder pushes with push options that open the
@@ -874,7 +894,8 @@ queues their runs and `curator.brief` sends their weekly report.
 
 ## What the Curator does not do
 
-- It never pushes to, or merges into, a default branch with its own credentials, and it merges nothing above tier 0.
+- It never pushes to, or merges into, a default branch with its own credentials, and it merges no tier the charter's
+  `auto_merge` does not name, nor a change with a sign of score hacking or a protected path, whatever it names.
 - It merges nothing on GitHub for a project whose charter leaves `auto_merge` empty. On GitLab it merges nothing
   itself: the hub's merge queue merges its merge request when the project's autonomy policy has the repo in mode `auto`
   (`docs/merge-queue.md`), and it stays open otherwise.

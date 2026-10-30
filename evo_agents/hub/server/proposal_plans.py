@@ -1,19 +1,22 @@
 """An accepted proposal of the Curator as its plan. ``evo_agents.hub.server.changes`` moves the change on from there:
-the night shift's Builder, the pull request, the Judge, and the merge of a tier 0 change alone.
+the night shift's Builder, the pull request, the Judge, and the merge of a change of a tier the charter's auto_merge
+names.
 
-Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``; ``proposals.answer_proposal_as``, on the web, the command
-line or Telegram) makes its draft a plan on the hub in the same transaction (``plan_from_proposal``), as the admin who
+Accepting a proposal of a tier the charter's ``planned_tiers`` names (``proposals.planned_tiers_of``: tiers 0 to 2
+unless the charter names others, tier 3 included; ``proposals.answer_proposal_as``, on the web, the command line or
+Telegram) makes its draft a plan on the hub in the same transaction (``plan_from_proposal``), as the admin who
 accepted it, labelled as the proposal: the Curator's plan ``curator-<proposal>-<slug>``, in the one repo the proposal
 names, on the branch ``curator/<proposal>-<slug>``, and a row of curator_changes, state ``planned``, with the line
 ``planned`` in the proposal's ledger. A proposal that names several repos, a repo the project does not have or one
 without an origin cannot become one: its change is recorded ``open``, without a plan, with the reason and the line
-``left_open``, and nothing of it runs. Either way the change is audited as curator.plan. Accepting a proposal of tier 3
-makes nothing: its owner alone makes the change.
+``left_open``, and nothing of it runs. Either way the change is audited as curator.plan. Accepting a proposal of a
+tier the charter does not plan, tier 3 unless it names it, makes nothing: its owner alone makes the change.
 
 POST /v1/projects/{p}/curator/proposals/{id}/plan does the same for a proposal accepted without becoming a plan, such as
 one of tier 2 accepted while that tier still recorded the answer alone: for the project's admins (403 otherwise), on an
-accepted proposal of tier 0 to 2 that has no change yet (409 with why for one that is not accepted, is tier 3 or has a
-change already). It answers the change, planned or left open with the reason.
+accepted proposal of a tier the charter plans that has no change yet (409 with why for one that is not accepted, is of
+a tier the charter does not plan or has a change already). It answers the change, planned or left open with the
+reason.
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.proposals import ItemId, readable_proposal
+from evo_agents.hub.server.proposals import ItemId, planned_tiers_of, readable_proposal
 from evo_agents.hub.server.protection import reason_line, repo_origins
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -139,17 +142,18 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
 # A proposal accepted before it could become one
 
 
-async def _refusal(conn: AsyncConnection, proposal) -> str | None:
-    """Why ``proposal`` does not become the Curator's plan now: it is not accepted, it promotes memories, it is tier
-    3, or it has a change already; None when it does."""
+async def _refusal(conn: AsyncConnection, project_id: int, proposal) -> str | None:
+    """Why ``proposal`` does not become the Curator's plan now: it is not accepted, it promotes memories, its tier is
+    not one the charter plans (tier 3 unless the charter names it), or it has a change already; None when it does."""
     if proposal.state != "accepted":
         return f"proposal {proposal.id} is {proposal.state}: only an accepted proposal becomes the Curator's plan"
     if proposal.promotion is not None:
         return f"proposal {proposal.id} promotes agents' memories: accepting it wrote them, and it becomes no plan"
-    if proposal.tier not in judge.PLANNED_TIERS:
+    planned = await planned_tiers_of(conn, project_id)
+    if proposal.tier not in planned:
         return (
-            f"proposal {proposal.id} is tier {proposal.tier}: the night shift builds tiers {judge.PLANNED_TIERS[0]} "
-            f"to {judge.PLANNED_TIERS[-1]} alone, and its owner makes a change of tier {proposal.tier}"
+            f"proposal {proposal.id} is tier {proposal.tier}: the night shift builds {judge.tier_words(planned)} "
+            f"alone, and its owner makes a change of tier {proposal.tier}"
         )
     c = tables.curator_changes
     found = (await conn.execute(select(c.c.id, c.c.state).where(c.c.proposal_id == proposal.id))).one_or_none()
@@ -176,7 +180,7 @@ async def plan_proposal(request: Request, project: ProjectName, proposal_id: Ite
                 f"{access.role or 'no role'}",
             )
         row = await readable_proposal(conn, access, proposal_id, None, user, lock=True)
-        why = await _refusal(conn, row)
+        why = await _refusal(conn, access.project_id, row)
         if why is not None:
             raise HTTPException(409, f"{why}; nothing was made")
         change_id = await plan_from_proposal(conn, access, user, row)

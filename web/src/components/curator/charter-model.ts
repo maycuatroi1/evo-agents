@@ -1,7 +1,7 @@
 import { PLAN_ID } from "@/lib/plans";
 
 import type { Charter, CharterWrite, Runtime } from "./queries";
-import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, POOL_DUTY, POOL_NAME, TIME_OF_DAY, TIME_ZONE, WORKER_NAME } from "./vocab";
+import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, POOL_DUTY, POOL_NAME, type Tier, TIME_OF_DAY, TIME_ZONE, WORKER_NAME } from "./vocab";
 
 /**
  * The charter as a form and back (curator.CharterBody): every number as typed, every list one entry a line, checked
@@ -28,6 +28,10 @@ export type CharterForm = {
   maxDecisionsPerDay: string;
   briefAt: string;
   autoMerge: boolean;
+  /** Kept as the charter wrote them: `auto_merge` beyond tier 0 (the form switches tier 0 alone), `planned_tiers`, `merge_without_ci`. */
+  moreAutoMerge: Tier[];
+  plannedTiers: Tier[];
+  mergeWithoutCi: boolean;
   protectedPaths: string;
   maxFailedInARow: string;
   outcomeDays: string;
@@ -56,7 +60,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "probeModels">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "probeModels">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -130,6 +134,9 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
       maxDecisionsPerDay: "5",
       briefAt: "07:00",
       autoMerge: false,
+      moreAutoMerge: [],
+      plannedTiers: [...PLANNED_TIERS],
+      mergeWithoutCi: false,
       protectedPaths: "",
       maxFailedInARow: "2",
       outcomeDays: "7",
@@ -164,6 +171,9 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     maxDecisionsPerDay: String(charter.max_decisions_per_day ?? 5),
     briefAt: charter.brief_at ?? "07:00",
     autoMerge: (charter.auto_merge ?? []).includes(0),
+    moreAutoMerge: (charter.auto_merge ?? []).filter((tier) => tier !== 0),
+    plannedTiers: [...(charter.planned_tiers ?? PLANNED_TIERS)],
+    mergeWithoutCi: charter.merge_without_ci ?? false,
     protectedPaths: (charter.protected_paths ?? []).join("\n"),
     maxFailedInARow: String(charter.circuit_breaker?.max_failed_in_a_row ?? 2),
     outcomeDays: String(charter.outcome_days ?? 7),
@@ -318,7 +328,9 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       night_plans: nightPlans ?? [],
       max_decisions_per_day: maxDecisionsPerDay as number,
       brief_at: form.briefAt.trim(),
-      auto_merge: form.autoMerge ? [...AUTO_MERGE_TIERS] : [],
+      planned_tiers: [...form.plannedTiers],
+      auto_merge: [...(form.autoMerge ? AUTO_MERGE_TIERS : []), ...form.moreAutoMerge].sort((a, b) => a - b),
+      merge_without_ci: form.mergeWithoutCi,
       protected_paths: protectedPaths ?? [],
       circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number },
       outcome_days: outcomeDays as number,

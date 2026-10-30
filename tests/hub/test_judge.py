@@ -7,7 +7,12 @@ assertion removed, a skip or xfail added, a threshold loosened in a test, a plan
 lint configuration changed, ``__eq__`` overloaded, ``sys.exit`` in a test, a protected path) is found, and a clean
 change shows none; the Judge runs Codex only when the project's policy clears it, else Claude Code with a model other
 than the Builder's; the merge goes only for a tier 0 change on GitHub that the Judge passed at the pull request's head,
-with CI green, its repo's ruleset checked and tier 0 in the charter's auto_merge, and every other case stays open."""
+with CI green, its repo's ruleset checked and tier 0 in the charter's auto_merge, and every other case stays open.
+
+Criteria a2, a3 and a5 of the plan proposals-answer-themselves: a charter's planned_tiers (0 to 2 when it names none)
+and auto_merge (any of 0 to 3) say which tiers are built and merged, and merge_without_ci takes no CI, or a ruleset
+that requires no check, as passed once the Judge passed; a check that failed or still runs, a sign and a protected path
+still stop it."""
 
 from __future__ import annotations
 
@@ -685,6 +690,81 @@ def test_merge_ci_is_green_only_once_the_required_checks_passed():
         {"type": "required_status_checks", "ruleset_id": 1, "parameters": {"required_status_checks": from_app}},
     ]
     assert judge.required_checks(rules) == from_app
+
+
+# A charter that builds and merges more tiers, and merges without CI (plan proposals-answer-themselves, a2, a3, a5)
+
+
+def test_planned_tiers_are_0_to_2_unless_the_charter_names_others():
+    assert judge.planned_tiers(None) == judge.planned_tiers({}) == (0, 1, 2)  # a charter written before the key
+    assert judge.planned_tiers({"planned_tiers": [3, 0, 1, 2, 3]}) == (0, 1, 2, 3)
+    assert judge.planned_tiers({"planned_tiers": []}) == ()
+    assert judge.planned_tiers({"planned_tiers": [0, 4, "1", True, None]}) == (0,)  # what no charter takes is dropped
+    assert judge.planned_tiers({"planned_tiers": "0-3"}) == (0, 1, 2)
+    words = [judge.tier_words(found) for found in ((0, 1, 2), (0, 1, 2, 3), (0, 3), (3,), ())]
+    assert words == ["tiers 0 to 2", "tiers 0 to 3", "tiers 0, 3", "tier 3", "no tier"]
+
+
+@pytest.mark.parametrize("tier", [0, 1, 2, 3])
+def test_merge_goes_for_each_tier_the_charters_auto_merge_names(tier):
+    assert judge.merge_decision(facts(tier=tier, auto_merge=(0, 1, 2, 3))) == ("merge", [])
+    decided, reasons = judge.merge_decision(facts(tier=tier, auto_merge=tuple(t for t in range(4) if t != tier)))
+    assert decided == "open"
+    assert reasons == (
+        ["the charter's auto_merge does not name tier 0"]
+        if tier == 0
+        else [f"tier {tier} waits for its owner to merge it"]
+    )
+
+
+ALL_TIERS = {"tier": 3, "auto_merge": (0, 1, 2, 3), "merge_without_ci": True}
+
+
+@pytest.mark.parametrize(
+    "changes, decided, why",
+    [
+        ({"ci": "none", "ci_reasons": ("no CI ran on the commit",)}, "merge", None),
+        ({"ci": "green"}, "merge", None),
+        ({"ci": "red", "ci_reasons": ("test ended failure",)}, "open", "test ended failure"),
+        ({"ci": "pending", "ci_reasons": ("test is queued",)}, "wait", "test is queued"),
+        ({"ci": "unreadable"}, "open", "CI is unreadable"),
+        ({"ci": "none", "signs": ({"kind": "protected_path"},)}, "open", "protected paths: protected_path"),
+        ({"ci": "none", "signs": ({"kind": "assert_removed"},)}, "open", "signs of score hacking"),
+        ({"ci": "none", "passed": False}, "open", "the Judge did not pass it"),
+        ({"ci": "none", "pr_head": "b" * 40}, "open", "not the commit the Judge passed"),
+        ({"ci": "none", "pr_base": "release"}, "open", "not into the default branch main"),
+        ({"ci": "none", "mergeable": False}, "open", "conflicts"),
+        ({"ci": "none", "repo_checked": False}, "open", "has not checked that the repo's ruleset"),
+        ({"ci": "none", "auto_merge": (0, 1, 2)}, "open", "tier 3 waits for its owner"),
+    ],
+)
+def test_merge_without_ci_takes_no_ci_as_passed_and_still_stops_on_the_rest(changes, decided, why):
+    found, reasons = judge.merge_decision(facts(**{**ALL_TIERS, **changes}))
+    assert found == decided, reasons
+    assert why is None and reasons == [] or any(why in reason for reason in reasons), reasons
+
+
+def test_merge_without_ci_off_leaves_no_ci_open_as_before():
+    decided, reasons = judge.merge_decision(facts(ci="none", ci_reasons=("no CI ran on the commit",)))
+    assert (decided, reasons) == ("open", ["no CI ran on the commit"])
+
+
+def test_merge_without_ci_reads_what_ran_when_the_ruleset_requires_no_check():
+    def state(runs, statuses=NO_STATUS, **given):
+        return judge.ci_state(runs, statuses, without_ci=True, **given)[0]
+
+    assert state([], required=[]) == "none"  # nothing ran, and nothing is required
+    assert state(GREEN, required=[]) == "green"  # what ran passed, though the ruleset requires nothing
+    assert state([{"name": "lint", "status": "completed", "conclusion": "failure"}], required=[]) == "red"
+    assert state([{"name": "lint", "status": "in_progress"}], required=[]) == "pending"
+    assert state(GREEN, {"state": "failure", "total_count": 1}, required=[]) == "red"
+    assert state(GREEN, required=[], head_message="wip [skip ci]") == "red"
+    assert state([], required=REQUIRED) == "pending"  # a check the ruleset requires still has to report
+    assert state(GREEN, required=REQUIRED) == "green"
+    assert state([{"name": "test", "status": "completed", "conclusion": "failure"}], required=REQUIRED) == "red"
+    assert state(GREEN, None, required=[]) == "unreadable"
+    assert judge.ci_state(GREEN, NO_STATUS, required=[])[0] == "red"  # without it, as before
+    assert judge.ci_state([], NO_STATUS, required=REQUIRED)[0] == "none"
 
 
 # The security pass of every Judge (plan super-board-parity-1, step 4)
