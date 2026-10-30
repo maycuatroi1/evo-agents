@@ -42,6 +42,7 @@ const CHARTER: Charter = {
   planned_tiers: [0, 1, 2],
   auto_merge: [0],
   merge_without_ci: false,
+  answer_by: "owner",
   protected_paths: ["curator.yaml", ".github/workflows/**"],
   circuit_breaker: { max_failed_in_a_row: 2 },
   outcome_days: 7,
@@ -193,13 +194,13 @@ describe("the charter as a form", () => {
     expect(result.body).toEqual(body);
   });
 
-  it("keeps the tiers it plans and merges and merging without CI, though it switches tier 0 alone", () => {
-    const wide: Charter = { ...CHARTER, planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true };
+  it("keeps the tiers it plans and merges, merging without CI and who answers, though it switches tier 0 alone", () => {
+    const wide: Charter = { ...CHARTER, planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true, answer_by: "agent" };
     const form = charterForm(wide, { worker: "", timezone: "" });
-    expect(charterBody(form).body).toMatchObject({ planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true });
+    expect(charterBody(form).body).toMatchObject({ planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true, answer_by: "agent" });
     expect(charterBody({ ...form, autoMerge: false }).body?.auto_merge).toEqual([1, 2, 3]);
     const old = charterForm({ ...CHARTER, planned_tiers: undefined, auto_merge: [] }, { worker: "", timezone: "" });
-    expect(charterBody({ ...old, autoMerge: true }).body).toMatchObject({ planned_tiers: [0, 1, 2], auto_merge: [0] });
+    expect(charterBody({ ...old, autoMerge: true }).body).toMatchObject({ planned_tiers: [0, 1, 2], auto_merge: [0], answer_by: "owner" });
   });
 
   it("fills a first charter with the hub's defaults, the visitor's worker and time zone", () => {
@@ -215,6 +216,7 @@ describe("the charter as a form", () => {
       planned_tiers: [0, 1, 2],
       auto_merge: [],
       merge_without_ci: false,
+      answer_by: "owner",
       judge: { runtime: "claude-code", model: null, hidden_checks: [] },
     });
   });

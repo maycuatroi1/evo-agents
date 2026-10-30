@@ -259,8 +259,11 @@ async def proposal_answered(
     note: str | None,
     days: int | None,
     via: str | None,
+    agent: str | None = None,
+    chat_run_id: int | None = None,
 ) -> None:
-    """The line of an admin's answer: accepted, rejected or deferred, by them."""
+    """The line of an admin's answer: accepted, rejected or deferred, by them, or by the project's ``agent`` for them in
+    chat run ``chat_run_id`` (``curator_threads``), which ``details`` names."""
     state = review.ANSWERED[action]
     what = f"{login} {state} it"
     if action == "defer" and days:
@@ -277,7 +280,12 @@ async def proposal_answered(
         actor="user",
         actor_id=user_id,
         what=what,
-        details={"note": note, "via": via, **({"days": days} if days else {})},
+        details={
+            "note": note,
+            "via": via,
+            **({"days": days} if days else {}),
+            **({"agent": agent, "chat_run": chat_run_id} if agent else {}),
+        },
     )
 
 

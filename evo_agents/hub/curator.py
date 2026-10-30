@@ -27,6 +27,10 @@ budget also says what the run spent already (``spent_usd``, ``spent_seconds``), 
 At the charter's ``brief_at``, in its time zone, the hub sends the schedule's owner the morning brief of the night
 (``brief_due``, ``evo_agents.hub.server.brief``).
 
+The charter's ``answer_by`` (ANSWERERS) says who answers the Curator's proposals: ``owner``, the default, leaves them
+to the project's admins; ``agent`` has the hub open a thread for each proposal in the project's triage chat, where the
+project's default agent answers it for the schedule's owner (``evo_agents.hub.server.curator_threads``).
+
 The circuit breaker stops a night shift that keeps failing: once the charter's ``circuit_breaker.max_failed_in_a_row``
 jobs of one night failed in a row (``failed_in_a_row``), a run of the schedule that ended failed or a merged change of
 the project whose figures the hub found worse (an outcome ``revert``), the hub pauses the project's schedules and tells
@@ -50,6 +54,7 @@ from datetime import date, datetime, time, timedelta
 SCHEDULE_KINDS = ("night_shift",)  # the schedules a charter makes; later kinds join this tuple
 TIERS = (0, 1, 2, 3)  # of a change the Curator proposes, from what merges by itself to what the owner alone merges
 AUTO_MERGE_TIERS = TIERS  # the tiers a charter may let the hub merge (auto_merge); none unless it names them
+ANSWERERS = ("owner", "agent")  # who answers the proposals (answer_by): an admin, or the project's agent
 DEFAULT_RUNTIME = "claude-code"
 
 TIME_OF_DAY = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"  # HH:MM, 24 hours

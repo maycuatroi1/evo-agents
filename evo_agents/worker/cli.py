@@ -26,6 +26,7 @@
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
 - ``triage rerun|plan|invite|cancel``: what the agent of a triage thread does for a failed or stale run (``triage_cli``).
+- ``curator answer``: the agent of a proposal's thread answers the Curator's proposal for its owner (``curator_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
 - ``merge-check REPO``: a plan run's agent has the hub judge its pull request at its head (``merge_check_cli``).
@@ -67,6 +68,7 @@ from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
     backup_cli,
     chat_cli,
+    curator_cli,
     list_cli,
     merge_check_cli,
     output_cli,
@@ -522,6 +524,7 @@ AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.regi
 AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, backup_cli.register_backup)
 AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged change
 AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull request judged at its head
+AGENT_PARSERS += (curator_cli.register_curator,)  # a proposal's thread answers the proposal
 
 
 @dataclass

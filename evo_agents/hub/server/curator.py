@@ -230,6 +230,11 @@ class CharterBody(BaseModel):
         description="the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no "
         "check; a check that ran must still pass",
     )
+    answer_by: Literal[curator.ANSWERERS] = Field(
+        "owner",
+        description="who answers the proposals: owner, the project's admins; agent, the project's default agent in a "
+        "thread of the triage chat, for the schedule's owner",
+    )
     protected_paths: list[PathGlob] = Field(
         default_factory=list,
         max_length=curator.MAX_PROTECTED_PATHS,

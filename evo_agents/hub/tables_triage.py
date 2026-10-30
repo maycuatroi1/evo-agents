@@ -1,5 +1,6 @@
 """The tables of the triage of failed runs (0039), which ``evo_agents.hub.tables`` adds to its metadata and exposes as
-its own attributes (``tables.triage_chats``, ``tables.run_triage``): queries name them there.
+its own attributes (``tables.triage_chats``, ``tables.run_triage``, ``tables.proposal_threads``): queries name them
+there.
 
 triage_chats holds the group chats the hub opened for the triage of failed runs: the project's (``plan_id`` NULL), one
 per project, which the failed runs of all its plans and its runs with no plan open their threads in; and one per plan
@@ -9,6 +10,11 @@ the thread of each failed run: its chat and the first message of the thread, the
 guessed it, the chat run its mention made, and how far a chain of reruns went. A run has one row at most, which is what
 makes the hub open one thread for a run however often it handles its failure. ``projects.triage_enabled`` is the switch
 of a project: off, a failed run sends its owner the notice ``run_failed`` and opens no thread.
+
+proposal_threads (0188) holds the thread of each proposal of the Curator the project's agent answers (a charter whose
+``answer_by`` is ``agent``, ``evo_agents.hub.server.curator_threads``): its chat and the first message of the thread,
+the chat run the latest mention made, and when the hub last asked the agent. A proposal has one row at most, so it has
+one thread however often it opens again after a defer.
 """
 
 from __future__ import annotations
@@ -76,3 +82,25 @@ def triage_tables(metadata: MetaData, projects: Table, runs: Table) -> tuple[Tab
     )
     Index("run_triage_chat_idx", triage.c.chat_id)
     return chats, triage
+
+
+def proposal_thread_table(metadata: MetaData) -> Table:
+    """proposal_threads (0188), added to ``metadata``."""
+    return Table(
+        "proposal_threads",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("proposal_id", BigInteger, nullable=False),
+        Column("chat_id", BigInteger, nullable=False),
+        Column("root_message_id", BigInteger, nullable=False),
+        Column("agent_run_id", BigInteger),
+        Column("opened_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("asked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        _fk("proposal_threads", "proposal_id", "proposals.id", ondelete="CASCADE"),
+        _fk("proposal_threads", "chat_id", "chats.id", ondelete="CASCADE"),
+        _fk("proposal_threads", "root_message_id", "chat_messages.id", ondelete="CASCADE"),
+        _fk("proposal_threads", "agent_run_id", "runs.id", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="proposal_threads_pkey"),
+        UniqueConstraint("proposal_id", name="proposal_threads_proposal_id_key"),
+        UniqueConstraint("chat_id", "root_message_id", name="proposal_threads_root_key"),
+    )

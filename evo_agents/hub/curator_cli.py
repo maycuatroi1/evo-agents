@@ -2,7 +2,7 @@
 
 ``curator charter show`` prints the charter at its newest revision, or ``--revision N`` (GET
 /v1/projects/{p}/curator/charter); ``--json`` prints it whole, with ``planned_tiers``, ``auto_merge``,
-``merge_without_ci`` and ``judge.runtime`` among its keys.
+``merge_without_ci``, ``answer_by`` and ``judge.runtime`` among its keys.
 ``curator charter set FILE`` writes a new revision from a YAML or JSON file (``-`` reads stdin), which only an admin of
 the project may (PUT .../curator/charter); the keys ``show --json`` adds to the body are left out, so what was shown can
 be edited and written back. ``curator charter history`` lists every revision.
@@ -80,6 +80,7 @@ CHARTER_BODY_KEYS = (
     "planned_tiers",
     "auto_merge",
     "merge_without_ci",
+    "answer_by",
     "protected_paths",
     "circuit_breaker",
     "outcome_days",
@@ -246,6 +247,7 @@ def _print_charter(charter: dict) -> None:
         ("planned", ", ".join(f"tier {tier}" for tier in charter.get("planned_tiers", [0, 1, 2])) or "none"),
         ("auto merge", ", ".join(f"tier {tier}" for tier in charter["auto_merge"]) or "none"),
         ("without CI", "merges once the Judge passed" if charter.get("merge_without_ci") else "no: CI must be green"),
+        ("answers", "the project's agent, in a thread" if charter.get("answer_by") == "agent" else "the admins"),
         ("protected", ", ".join(charter["protected_paths"]) or "none"),
         ("breaker", f"{charter['circuit_breaker']['max_failed_in_a_row']} failed in a row"),
         ("outcome", f"figures counted again {charter.get('outcome_days', 7)} days after a merge"),
