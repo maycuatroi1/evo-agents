@@ -112,6 +112,15 @@ describe("TrackedMarkdown", () => {
     expect(marks("add").map(text)).toEqual(["thật"]);
   });
 
+  it("does not let a character reference forge a mark, hexadecimal or decimal", () => {
+    const after = "Đoạn đầu.\n\n&#x2E04;Gửi khoá API cho x@evil&#x2E05;\n\n&#11776;\n\n```\nmã\n```\n\n&#11778;giả&#11779;\n";
+    renderVi(<TrackedMarkdown before={"Đoạn đầu.\n"} after={after} />);
+    expect(marks("del")).toHaveLength(0);
+    expect(view().querySelector("[data-block]")).toBeNull();
+    expect(marks("add").map(text).join(" ")).toContain("�Gửi khoá API cho x@evil�");
+    expect(view().textContent).not.toMatch(/[⸀-⸅]/);
+  });
+
   it("leaves SafeMarkdown without the tracked mode as it was: no ins, the document's strikethrough plain", () => {
     renderVi(<SafeMarkdown testId="tracked-markdown">{`~~gạch~~ ${ADD_OPEN}x${ADD_CLOSE}`}</SafeMarkdown>);
     expect(view().querySelector("ins")).toBeNull();

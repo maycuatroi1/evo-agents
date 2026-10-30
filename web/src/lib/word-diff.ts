@@ -5,27 +5,30 @@
  * precomposed or decomposed. Within each changed run the removed words come before the added ones, and a space kept
  * between two changed runs joins them, so "a b c" to "x y z" reads as one replacement rather than three.
  *
- * Every search is bounded: a pair of lines whose search would keep over MAX_CELLS diagonal entries, or that comes after
- * a document's pairs have spent WORD_BUDGET entries, has no word diff and is marked whole.
+ * Every search is bounded: a pair of lines whose search would keep over MAX_CELLS diagonal entries or make over
+ * MAX_STEPS comparisons, or that comes after a document's pairs have spent WORD_BUDGET entries or WORD_STEPS
+ * comparisons, has no word diff and is marked whole.
  */
 
-import { type DiffKind, type DiffLine, editScript, MAX_CELLS, toIds } from "./line-diff";
+import { type DiffKind, type DiffLine, editScript, MAX_CELLS, MAX_STEPS, toIds } from "./line-diff";
 
 export type WordPart = { kind: DiffKind; text: string };
 
 /** The entries all the pairs of one document may spend, so a document of 2 MiB rewritten line by line stays fast. */
 export const WORD_BUDGET = 4 * MAX_CELLS;
+/** The comparisons all the pairs of one document may make. */
+export const WORD_STEPS = 4 * MAX_STEPS;
 
 /** Below this share of unchanged characters, two lines read better as one replaced by the other than word by word. */
 export const MIN_SHARED = 0.3;
 
 const TOKEN = /[\p{L}\p{M}\p{N}]+|\s+|[^\p{L}\p{M}\p{N}\s]\p{M}*/gu;
 
-/** A budget of diagonal entries shared by the searches of one document. */
-export type Budget = { left: number };
+/** A budget of diagonal entries, and of comparisons, shared by the searches of one document. */
+export type Budget = { left: number; steps: number };
 
-export function newBudget(cells: number = WORD_BUDGET): Budget {
-  return { left: cells };
+export function newBudget(cells: number = WORD_BUDGET, steps: number = WORD_STEPS): Budget {
+  return { left: cells, steps };
 }
 
 export function tokenize(text: string): string[] {
@@ -47,7 +50,7 @@ export function diffWords(before: string, after: string, budget: Budget = newBud
   while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
 
   const [ai, bi] = toIds(a.slice(head, a.length - tail), b.slice(head, b.length - tail));
-  const middle = editScript(ai, bi, Math.min(MAX_CELLS, budget.left), budget);
+  const middle = editScript(ai, bi, Math.min(MAX_CELLS, budget.left), budget, Math.min(MAX_STEPS, budget.steps));
   if (middle === null) return null;
   const script: DiffKind[] = [...new Array<DiffKind>(head).fill("same"), ...middle, ...new Array<DiffKind>(tail).fill("same")];
 
