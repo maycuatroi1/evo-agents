@@ -167,6 +167,25 @@ def check(
     return failed
 
 
+def supersede(ledger: Iterable[Mapping], dimension: str, *, run_id: int | None, head: str | None) -> list[dict]:
+    """The ledger with each finding still open on ``dimension`` closed as no longer applying: the security pass reads
+    the whole change again at every head and raises what it still sees as new findings, so it marks nothing of
+    earlier rounds."""
+    kept = [dict(item) for item in ledger]
+    for item in kept:
+        if item.get("status") == OPEN and item.get("dimension") == dimension:
+            line = {
+                "status": GONE,
+                "where": None,
+                "reason": f"the {dimension} pass ran again; a finding it still sees is raised again",
+                "run_id": run_id,
+                "head_sha": head,
+            }
+            item["marks"] = [*(item.get("marks") or []), line][-MAX_MARKS:]
+            item["status"] = GONE
+    return kept
+
+
 def next_id(ledger: Iterable[Mapping]) -> int:
     """The number of the next finding of a change."""
     return 1 + max((int(str(item["id"])[1:]) for item in ledger), default=0)

@@ -82,7 +82,7 @@ from sqlalchemy import exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, judge, runs, tables, tiers
+from evo_agents.hub import curator, findings, judge, runs, security_pass, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
@@ -212,8 +212,44 @@ class Sign(BaseModel):
     text: str = Field("", max_length=judge.MAX_SIGN_TEXT)
 
 
+class SecurityFinding(BaseModel):
+    """A vulnerability the security pass kept after its filter."""
+
+    path: str | None = Field(None, max_length=findings.MAX_PATH_CHARS)
+    line: int | None = Field(None, ge=1)
+    text: str = Field(min_length=1, max_length=findings.MAX_TEXT_CHARS)
+
+
+class SecurityPass(BaseModel):
+    """What the security pass of a Judge run (``evo_agents.hub.security_pass``) said of the change, and what it cost:
+    the dimension ``security``, its findings with path and line, and the turns the pass took."""
+
+    verdict: Literal[judge.VERDICTS]
+    reason: str = Field("", max_length=2000)
+    findings: list[SecurityFinding] = Field(default_factory=list, max_length=findings.MAX_NEW)
+    candidates: int = Field(0, ge=0, description="the findings the first turn raised, before the filter")
+    turns: int = Field(0, ge=0, description="agent turns the pass took: one that finds, one for each candidate")
+    cost_usd: float | None = Field(None, ge=0, description="what those turns cost, when the runtime reports it")
+
+
+def security_dimension(security: SecurityPass | None) -> dict:
+    """The dimension ``security`` of a verdict from the pass; a verdict without the pass fails it."""
+    if security is None:
+        return {"verdict": "fail", "reason": "the security pass gave no result"}
+    return {"verdict": security.verdict, "reason": security.reason}
+
+
+def security_findings(security: SecurityPass | None) -> list[dict]:
+    """The findings of the pass as ``findings.read_new`` reads them."""
+    found = [] if security is None else [item.model_dump() for item in security.findings]
+    return findings.read_new([{**item, "dimension": security_pass.DIMENSION} for item in found])
+
+
 class VerdictIn(BaseModel):
     verdict: Literal[judge.VERDICTS] | None = Field(description="the Judge agent's; null when it gave none")
+    security: SecurityPass | None = Field(
+        None, description="the security pass of the run: a verdict without it fails the dimension security"
+    )
     reasons: str | None = Field(None, max_length=judge.MAX_REASONS_CHARS)
     head_sha: str = Field(pattern=OBJECT_NAME, description="the commit the worktree was at")
     base_sha: str | None = Field(None, pattern=OBJECT_NAME)
@@ -950,10 +986,29 @@ async def record_verdict(
             signs=signs,
             head_matches=body.head_sha == head,
         )
+        dimension = security_dimension(body.security)
+        ledger = findings.supersede(
+            findings.ledger_of(change.verdict), security_pass.DIMENSION, run_id=run_id, head=body.head_sha
+        )
+        ledger, _ = findings.record_round(
+            ledger,
+            names=[security_pass.DIMENSION],
+            marks={},
+            new=security_findings(body.security),
+            dimensions={security_pass.DIMENSION: dimension},
+            run_id=run_id,
+            head=body.head_sha,
+        )
+        if dimension["verdict"] != "pass" and not signs:  # with signs the Judge did not start, nor the pass
+            passed = False
+            failures.append(f"the Judge failed {security_pass.DIMENSION}: {dimension['reason']}")
         verdict = {
             "run_id": run_id,
             "agent": body.verdict,
             "reasons": body.reasons,
+            "dimensions": {security_pass.DIMENSION: dimension},
+            "security": body.security.model_dump(exclude={"findings"}) if body.security else None,
+            "findings": ledger,
             "head_sha": body.head_sha,
             "base_sha": body.base_sha,
             "verify": verify,

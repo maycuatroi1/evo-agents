@@ -501,3 +501,79 @@ def test_curator_login_where_claude_code_keeps_a_subscription_login(tmp_path):
         curator_context
     )
     assert not claude_code.drops_api_key(context({"ANTHROPIC_API_KEY": "k" * 30}, {"kind": "plan"}))
+
+
+# The security pass of a Judge (plan super-board-parity-1, step 4)
+
+
+def security_pass_run(machine, extra: dict, *, merge: bool = False):  # noqa: F811
+    """A judge run that passes the change, its security pass following ``extra`` (the scenarios of its turns after the
+    first: ``judge/2`` finds, ``judge/3`` and on filter); (the verdict it posted, the starts of its agent)."""
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    machine.scenarios({"judge": [{"say": json.dumps({"verdict": "pass", "reasons": "Fine."})}], **extra})
+    found = {}
+
+    async def body(hub, daemon):
+        claim = {
+            "change_id": None,
+            "forge": "gitlab",
+            "pr_url": "https://gitlab.example.org/n/alpha/-/merge_requests/3",
+        }
+        run_id = hub.queue_judge_run("alpha", {**curator(head), **(claim if merge else {})}, judge_inputs(head, []))
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    (sent,) = found["hub"].verdicts
+    return sent, [item for item in machine.starts() if item["run"] == found["run"]]
+
+
+SQL_FINDING = {
+    "file": "src/wait.py",
+    "line": 3,
+    "severity": "HIGH",
+    "category": "command_injection",
+    "description": "the name reaches a shell",
+    "exploit_scenario": "a crafted name",
+    "recommendation": "pass a list",
+}
+
+
+@pytest.mark.parametrize("merge", [False, True], ids=["curator", "merge_request"])
+def test_judge_run_security_pass_finds_then_filters_each_finding_in_sessions_of_its_own(machine, merge):  # noqa: F811
+    extra = {
+        "judge/2": [{"say": "Looked.\n" + json.dumps({"findings": [SQL_FINDING]})}],
+        "judge/3": [{"say": json.dumps({"confidence": 9, "reason": "a clear path"})}],
+    }
+    sent, starts = security_pass_run(machine, extra, merge=merge)
+    assert sent["verdict"] == "pass"  # the Judge's own verdict is its own
+    security = sent["security"]
+    assert (security["verdict"], security["candidates"], security["turns"]) == ("fail", 1, 2)
+    assert [(item["path"], item["line"]) for item in security["findings"]] == [("src/wait.py", 3)]
+    assert (
+        "command_injection" in security["findings"][0]["text"]
+        and "[confidence 9/10]" in security["findings"][0]["text"]
+    )
+    assert "src/wait.py:3" in security["reason"]
+    assert len(starts) == 3  # the Judge, the turn that finds, the turn that filters its one finding
+    find, filtering = starts[1]["prompt"], starts[2]["prompt"]
+    assert "origin/HEAD" not in find and f"git diff --merge-base {sent['base_sha']}" in find
+    assert "HARD EXCLUSIONS" in filtering and "the name reaches a shell" in filtering
+    assert "Fine." not in find and "Fine." not in filtering  # neither sees what the Judge said
+
+
+def test_judge_run_security_pass_drops_a_finding_the_filter_scores_under_8(machine):  # noqa: F811
+    extra = {
+        "judge/2": [{"say": json.dumps({"findings": [SQL_FINDING]})}],
+        "judge/3": [{"say": json.dumps({"confidence": 7, "reason": "not reachable"})}],
+    }
+    sent, _ = security_pass_run(machine, extra)
+    assert sent["security"]["verdict"] == "pass" and sent["security"]["findings"] == []
+    assert (sent["security"]["candidates"], sent["security"]["turns"]) == (1, 2)
+
+
+def test_judge_run_security_pass_with_no_findings_object_fails_the_dimension(machine):  # noqa: F811
+    sent, _ = security_pass_run(machine, {"judge/2": [{"say": "I found nothing, I think."}]})
+    security = sent["security"]
+    assert security["verdict"] == "fail" and "no findings object" in security["reason"] and security["turns"] == 1
+    assert [item["path"] for item in security["findings"]] == [None]

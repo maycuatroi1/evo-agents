@@ -128,7 +128,10 @@ def test_judge_run_reads_the_change_runs_the_checks_and_posts_its_verdict(machin
     at, branch = commands[0]["stdout"].split()
     assert (at, branch) == (head, "detached")  # at the commit judged, on no branch
     assert commands[1]["stdout"].split() == ["tests/test_wait.py"]
-    (start,) = [item for item in machine.starts() if item["run"] == run_id]
+    start, *security_pass = [
+        item for item in machine.starts() if item["run"] == run_id
+    ]  # the Judge, then its security pass
+    assert len(security_pass) == 1  # a find turn, and no finding to filter
     assert (
         "hidden check 1 exited 0" in start["prompt"]
         and "verify `test -f tests/test_wait.py` exited 0" in (start["prompt"])

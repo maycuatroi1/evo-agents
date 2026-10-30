@@ -147,9 +147,9 @@ a new push moves. The hub comments on the merge request once for each reason tha
 | 2, the plan's repo | the merge request is of the repo's GitLab project and from the branch the plan, task run or Curator's change names; a person's passes |
 | 3, score hacking | the diff shows no sign of score hacking (`judge.hack_signs`); one sign holds the merge request for a person |
 | 4, the checks | the judge run runs the verify of the plan's steps for the repo and the project's hidden checks before its agent reads the diff; each exits 0 |
-| 5, the Judge | Claude, in a context of its own that never holds the Builder's transcript, passes each of `work`, `description` (the title and description match the diff), `tests`, `scope` and `safety`, and no finding of an earlier round is left open on them (Findings across rounds, below) |
+| 5, the Judge | Claude, in a context of its own that never holds the Builder's transcript, passes each of `work`, `description` (the title and description match the diff), `tests`, `scope` and `safety`, and no finding of an earlier round is left open on them (Findings across rounds, below); and a security pass of its own passes `security` (The security pass, below) |
 | 6, the risk | computed, not judged: high when a changed path matches the risk paths (migrations, SQL, auth, security, permissions, deploy files, Docker, Kubernetes, Helm, Terraform, `.env`, secrets, dependency manifests and lockfiles) or `merge.risk_paths`, when the path rules of the Curator's tiers give it level 2 or more, or when the knowledge graph says the diff reaches such a path; a graph that cannot tell is named in the reasons, and the risk then comes from the paths alone |
-| 7, the second Judge | for a high risk alone: Opus, on `migration`, `auth`, `deploy`, `dependencies` and `rollback` |
+| 7, the second Judge | for a high risk alone: Opus, on `migration`, `auth`, `deploy`, `dependencies` and `rollback`, and the same security pass on its model |
 
 **A hold for a person.** Gate 3 is the one gate that holds a merge request for a person: the signs of score hacking
 may be the work the plan asked for, such as a plan run that adds its tests to `.gitlab-ci.yml`. An admin of the project
@@ -180,6 +180,22 @@ finding the Judge marked `not_fixed`, left unmarked, or closed without a file:li
 new finding on a dimension the Judge passed. The hub's comment on a merge request a Judge blocks gives each open
 finding in full the first time, and after that names it by its id alone. A verdict kept before findings existed reads
 as one with none. The Judge still never reads the Builder's transcript.
+
+**The security pass.** Both Judges also run a security review that is a separate turn of an agent, in the same judge run
+and after the Judge's own turn, so `security` is judged by an agent that has not read the Judge's reasoning, the
+description of the merge request or anything the Builder wrote (`evo_agents/hub/security_pass.py`). The text is the
+`security-review` command of anthropics/claude-code-security-review (MIT), copied at a pinned commit into
+`evo_agents/hub/security_review/` with its license beside it; the one change is that its diff starts at the merge base
+of the merge request, not at `origin/HEAD`. A first turn finds the vulnerabilities the change adds, at most 10. Then one
+turn for each finding, in a session of its own, filters false positives and scores it from 1 to 10; a finding under 8
+goes. A finding left fails `security` and enters the merge request's findings (Findings across rounds) with its path and
+line; none left passes it. A pass that gives no readable findings, a score that cannot be read (the finding stays) or a
+verdict posted without the pass also fails `security`, so a pass that did not run never passes. The pass reads the
+whole change again at every head, so it marks nothing: the hub closes the `security` findings still open as
+`no_longer_applies` and raises again what the pass still sees. The verdict and the `judged` line of the ledger keep
+`security`: the turns it took, the candidates before the filter and its cost in USD where the runtime reports it. The
+pass adds one turn that finds and one for each finding, on top of the Judge's own turn; a change with no finding costs
+one more turn. Changing the model of the Judge's route changes the cost of the pass with it.
 
 ### The principal's K5 and K6
 

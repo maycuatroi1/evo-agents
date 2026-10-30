@@ -490,3 +490,101 @@ def test_merge_gate_finding_memory_the_comment_names_new_findings_whole_and_old_
     new, still = findings.unposted(ledger)
     text = merge_gate.comment("gate 5 (Judge): the hub failed tests: F1 is not fixed", new=new, still=still)
     assert "no test covers" not in text and "Still open from an earlier comment: F1." in text
+
+
+# The security pass of every Judge (plan super-board-parity-1, step 4)
+
+
+def pass_reply(*items) -> str:
+    return "I looked.\n```json\n" + json.dumps({"findings": list(items)}) + "\n```"
+
+
+SQL = {
+    "file": "app/db.py",
+    "line": 12,
+    "severity": "high",
+    "category": "sql_injection",
+    "description": "the name goes into the query",
+    "exploit_scenario": "a crafted name",
+    "recommendation": "bind it",
+}
+
+
+def test_security_pass_a_dimension_of_every_judge_the_agent_is_not_asked_for():
+    from evo_agents.hub import security_pass
+
+    assert merge_gate.gate_names() == [*merge_gate.DIMENSIONS, "security"]
+    assert merge_gate.gate_names(True) == [*merge_gate.RISK_DIMENSIONS, "security"]
+    assert "security" not in merge_gate.DIMENSIONS and "security" not in merge_gate.RISK_DIMENSIONS
+    for second in (False, True):
+        prompt = merge_gate.build_prompt(
+            "p", repo="r", folder=None, mr={"iid": 1, "title": "t"}, base="origin/main", head="c" * 40,
+            plan=None, task="do it", second=second, risk=["a"],
+        )  # fmt: skip
+        assert "- security:" not in prompt and "separate security review judges security" in prompt
+    assert security_pass.DIMENSION == merge_gate.SECURITY
+
+
+def test_security_pass_reads_what_the_agent_says_and_scores():
+    from evo_agents.hub import security_pass
+
+    found = security_pass.candidates(pass_reply(SQL, {"file": "a.py", "description": "x", "severity": "LOW"}, 5, {}))
+    assert [item["file"] for item in found] == ["app/db.py", "a.py"]  # the most severe first
+    assert found[0]["severity"] == "HIGH" and found[0]["line"] == 12 and found[1]["line"] is None
+    assert security_pass.candidates(pass_reply()) == []
+    assert security_pass.candidates("no object here") is None
+    assert security_pass.candidates('{"findings": []} and then more') is None
+    assert security_pass.score('Reasoning.\n{"confidence": 9, "reason": "a clear path"}') == (9, "a clear path")
+    assert security_pass.score('{"confidence": 11}') == (None, "")
+    assert security_pass.score("nothing") == (None, "")
+
+
+def test_security_pass_keeps_findings_scored_8_or_more_and_fails_the_dimension_with_path_and_line():
+    from evo_agents.hub import security_pass
+
+    found = security_pass.candidates(pass_reply(SQL, {**SQL, "file": "app/x.py", "line": 3}, {**SQL, "file": "y.py"}))
+    scored = list(zip(found, [8, 7, None], strict=True))
+    outcome = security_pass.result(found, scored)
+    assert outcome["dimension"]["verdict"] == "fail"
+    assert [(item["path"], item["line"]) for item in outcome["findings"]] == [("app/db.py", 12), ("y.py", 12)]
+    assert all(item["dimension"] == "security" for item in outcome["findings"])
+    assert "[confidence 8/10]" in outcome["findings"][0]["text"] and "not scored" in outcome["findings"][1]["text"]
+    assert "app/db.py:12" in outcome["dimension"]["reason"]
+    assert findings.read_new(outcome["findings"], ["security"]) == outcome["findings"]
+
+
+def test_security_pass_no_finding_left_passes_and_a_pass_that_gave_nothing_readable_fails():
+    from evo_agents.hub import security_pass
+
+    assert security_pass.result([], [])["dimension"]["verdict"] == "pass"
+    found = security_pass.candidates(pass_reply(SQL))
+    outcome = security_pass.result(found, [(found[0], 3)])
+    assert outcome == {"dimension": {"verdict": "pass", "reason": "1 candidate(s), 1 filtered out as false positives"},
+                       "findings": []}  # fmt: skip
+    broken = security_pass.result(None, [])
+    assert broken["dimension"]["verdict"] == "fail" and len(broken["findings"]) == 1
+    over = security_pass.result(found, [(found[0], 2)], over=3)
+    assert over["dimension"]["verdict"] == "fail" and "went unfiltered" in over["findings"][0]["text"]
+
+
+def test_security_pass_findings_enter_the_ledger_and_a_later_round_supersedes_them():
+    from evo_agents.hub import security_pass
+
+    found = security_pass.candidates(pass_reply(SQL))
+    outcome = security_pass.result(found, [(found[0], 9)])
+    names = merge_gate.gate_names()
+    dimensions = {name: {"verdict": "pass", "reason": "fine"} for name in names}
+    dimensions["security"] = outcome["dimension"]
+    new = findings.read_new(outcome["findings"], names)
+    passed, why = merge_gate.judge_round("pass", dimensions, names, new=new)
+    assert not passed and any("failed security" in line for line in why)
+    ledger, raised = findings.record_round(
+        [], names=names, marks={}, new=new, dimensions=dimensions, run_id=7, head="c" * 40
+    )
+    assert [(item["id"], item["dimension"], item["path"], item["line"]) for item in raised] == [
+        ("F1", "security", "app/db.py", 12)
+    ]
+    later = findings.supersede(ledger, "security", run_id=8, head="d" * 40)
+    assert later[0]["status"] == "no_longer_applies" and later[0]["marks"][0]["run_id"] == 8
+    assert findings.open_findings(later, names) == []
+    assert ledger[0]["status"] == "open"  # the ledger it was given is not changed

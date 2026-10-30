@@ -204,8 +204,19 @@ def inputs(world, run_id: int, worker=None, key: str | None = None):
     return world.client.get(f"/v1/worker/runs/{run_id}/judge", headers=headers)
 
 
+SECURITY_PASS = {
+    "verdict": "pass",
+    "reason": "none found",
+    "findings": [],
+    "candidates": 0,
+    "turns": 1,
+    "cost_usd": 0.02,
+}
+
+
 def verdict(world, run_id: int, *, key: str | None = None, **body):
     sent = {
+        "security": SECURITY_PASS,
         "verdict": "pass",
         "reasons": "The test covers the helper.",
         "head_sha": HEAD,
@@ -973,6 +984,37 @@ def test_judge_a_verdict_without_its_hidden_checks_run_fails_the_change(world):
     world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
     moved_on(world)
     assert one_change(world)["state"] == "open" and world.github.merges == []
+
+
+def test_judge_security_pass_finding_fails_the_change_with_its_path_and_line_in_the_findings(world):
+    found = {"path": "src/wait.py", "line": 3, "text": "command_injection (high): the name reaches a shell"}
+    security = {**SECURITY_PASS, "verdict": "fail", "reason": "1 vulnerability: src/wait.py:3", "findings": [found]}
+    change = through_the_judge(world, security=security)
+    assert change["passed"] is False
+    assert change["verdict"]["failures"] == ["the Judge failed security: 1 vulnerability: src/wait.py:3"]
+    assert change["verdict"]["dimensions"] == {
+        "security": {"verdict": "fail", "reason": "1 vulnerability: src/wait.py:3"}
+    }
+    (raised,) = change["verdict"]["findings"]
+    assert (raised["id"], raised["dimension"], raised["path"], raised["line"], raised["status"]) == (
+        "F1", "security", "src/wait.py", 3, "open"
+    )  # fmt: skip
+    assert change["verdict"]["security"] == {**{k: v for k, v in security.items() if k != "findings"}}
+
+
+def test_judge_security_pass_a_verdict_without_the_pass_fails_the_change(world):
+    change = through_the_judge(world, security=None)
+    assert change["passed"] is False
+    assert change["verdict"]["failures"] == ["the Judge failed security: the security pass gave no result"]
+    assert change["verdict"]["security"] is None
+
+
+def test_judge_security_pass_with_no_finding_left_passes_and_keeps_its_cost(world):
+    change = through_the_judge(world)
+    assert change["passed"] is True
+    assert change["verdict"]["dimensions"]["security"]["verdict"] == "pass"
+    assert (change["verdict"]["security"]["turns"], change["verdict"]["security"]["cost_usd"]) == (1, 0.02)
+    assert change["verdict"]["findings"] == []
 
 
 # The merge
