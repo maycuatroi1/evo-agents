@@ -384,11 +384,12 @@ class Agent:
     def context(self, prompt: str, session_id: str | None) -> RunContext:
         """What the adapter of an agent that starts now gets."""
         run = self.run
+        env = self.env()
         return RunContext(
             run=dict(run.spec),
             worktree=run.worktree,
             prompt=prompt,
-            env=self.env(),
+            env=env,
             resume_session=session_id,
             leased=run.credentials.withheld,
             spent_usd=run.watchdog.spent_usd,
@@ -396,6 +397,7 @@ class Agent:
             environment=self.environment,
             packs=self.with_browser(self._packs or ()),
             autonomy=self.gate(),
+            floor=autonomy_hook.floor_for_run(run, env),
         )
 
     def gate(self):
