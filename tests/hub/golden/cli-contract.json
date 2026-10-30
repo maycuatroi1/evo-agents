@@ -111082,6 +111082,44 @@
           ],
           "title": "FindingList"
         },
+        "FindingMark": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "fixed",
+                "not_fixed",
+                "no_longer_applies"
+              ],
+              "title": "Status"
+            },
+            "where": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 520
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Where",
+              "description": "the file:line that shows it"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "title": "Reason",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "FindingMark",
+          "description": "What the Judge says of a finding of an earlier round."
+        },
         "Found": {
           "properties": {
             "read_at": {
@@ -115738,6 +115776,53 @@
           "additionalProperties": false,
           "type": "object",
           "title": "Judge"
+        },
+        "JudgeFinding": {
+          "properties": {
+            "dimension": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Dimension"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "dimension",
+            "text"
+          ],
+          "title": "JudgeFinding",
+          "description": "A thing the Judge found wrong, on one of the dimensions it judges."
         },
         "JudgeInputs": {
           "properties": {
@@ -122322,6 +122407,30 @@
               ],
               "title": "Dimensions",
               "description": "each dimension the Judge judged apart, with its verdict and reason"
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/JudgeFinding"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Findings",
+              "description": "what the Judge found wrong in this round"
+            },
+            "prior": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/FindingMark"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prior",
+              "description": "the Judge's mark of each finding of an earlier round its prompt listed, by id"
             }
           },
           "type": "object",

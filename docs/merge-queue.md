@@ -147,7 +147,7 @@ a new push moves. The hub comments on the merge request once for each reason tha
 | 2, the plan's repo | the merge request is of the repo's GitLab project and from the branch the plan, task run or Curator's change names; a person's passes |
 | 3, score hacking | the diff shows no sign of score hacking (`judge.hack_signs`); one sign holds the merge request for a person |
 | 4, the checks | the judge run runs the verify of the plan's steps for the repo and the project's hidden checks before its agent reads the diff; each exits 0 |
-| 5, the Judge | Claude, in a context of its own that never holds the Builder's transcript, passes each of `work`, `description` (the title and description match the diff), `tests`, `scope` and `safety` |
+| 5, the Judge | Claude, in a context of its own that never holds the Builder's transcript, passes each of `work`, `description` (the title and description match the diff), `tests`, `scope` and `safety`, and no finding of an earlier round is left open on them (Findings across rounds, below) |
 | 6, the risk | computed, not judged: high when a changed path matches the risk paths (migrations, SQL, auth, security, permissions, deploy files, Docker, Kubernetes, Helm, Terraform, `.env`, secrets, dependency manifests and lockfiles) or `merge.risk_paths`, when the path rules of the Curator's tiers give it level 2 or more, or when the knowledge graph says the diff reaches such a path; a graph that cannot tell is named in the reasons, and the risk then comes from the paths alone |
 | 7, the second Judge | for a high risk alone: Opus, on `migration`, `auth`, `deploy`, `dependencies` and `rollback` |
 
@@ -168,6 +168,18 @@ policy's newest revision. A project has one judge run active at a time, the Cura
 without a verdict is queued again, three times in all, then the merge request is blocked. A verdict holds for a patch,
 not a commit: the lines each file adds and removes, without line numbers or context. A rebase that keeps the patch keeps
 the verdict, and the Judge does not run again.
+
+**Findings across rounds.** A Judge names each thing it finds wrong as a finding: an id that stays the same for the
+merge request (`F1`, `F2`, and on), the dimension it fails, the file and line, and what is wrong. A dimension the Judge
+fails without a finding gets one with the dimension's reason. The findings live in the merge request's verdict
+(`merge_queue.verdict`, key `findings`), and the `judged` line of the ledger has those the round raised and its marks.
+A new patch drops the Judges' verdicts and keeps the findings. The prompt of the next Judge lists those still open on
+its own dimensions, and asks it to mark each one `fixed`, `not_fixed` or `no_longer_applies` with the file:line that
+shows it before it reviews the change again. The hub checks the marks itself (`evo_agents/hub/findings.py`): an open
+finding the Judge marked `not_fixed`, left unmarked, or closed without a file:line fails its dimension, and so does a
+new finding on a dimension the Judge passed. The hub's comment on a merge request a Judge blocks gives each open
+finding in full the first time, and after that names it by its id alone. A verdict kept before findings existed reads
+as one with none. The Judge still never reads the Builder's transcript.
 
 ### The principal's K5 and K6
 

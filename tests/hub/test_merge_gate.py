@@ -221,9 +221,11 @@ def dimensions(names=merge_gate.DIMENSIONS, **failed) -> dict:
     }
 
 
-def judged(world, *, head: str, names=merge_gate.DIMENSIONS, verdict: str = "pass", **failed) -> tuple[dict, dict]:
-    """The judge run the queue queued, claimed by mac-mini, its inputs read and its verdict posted, then ended
-    done; (its claim, the verdict's answer)."""
+def judged(
+    world, *, head: str, names=merge_gate.DIMENSIONS, verdict: str = "pass", extra: dict | None = None, **failed
+) -> tuple[dict, dict]:
+    """The judge run the queue queued, claimed by mac-mini, its inputs read and its verdict posted (with ``extra``,
+    its findings and marks), then ended done; (its claim, the verdict's answer)."""
     spec = claim(world.client, world.worker)
     assert spec["kind"] == "judge" and not spec["plan_id"], spec
     headers = judge_headers(world, spec)
@@ -238,6 +240,7 @@ def judged(world, *, head: str, names=merge_gate.DIMENSIONS, verdict: str = "pas
         "hidden": [],
         "signs": [],
         "dimensions": dimensions(names, **failed),
+        **(extra or {}),
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.status_code == 200, answer.text
@@ -551,6 +554,85 @@ def test_merge_gate_a_head_with_the_same_patch_keeps_the_verdict(world):
     assert len(sql(world.db, select(tables.runs.c.id).where(tables.runs.c.kind == "judge"))) == 1
     kept = [event for event in entry["events"] if event["gate"] == 5 and event["reason"]]
     assert kept and "its verdict holds" in kept[0]["reason"]
+
+
+# Finding memory (plan super-board-parity-1, step 3)
+
+
+def pushed(world, merge_request, name: str, line: str) -> None:
+    """A new head of ``merge_request`` whose patch differs: the report returns ``line``."""
+    merge_request.sha = sha_of(name)
+    files = [{**CLEAN[0], "diff": f"@@ -0,0 +1,2 @@\n+def total():\n+    {line}\n"}, CLEAN[1]]
+    green(world, merge_request, files)
+
+
+def test_merge_gate_finding_memory_a_later_round_marks_the_findings_of_the_one_before(world):
+    plan_done(world)
+    gate_pass(world)
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    gate_pass(world)
+    raised = {"dimension": "tests", "path": "kb/report.py", "line": 2, "text": "no test covers an empty report"}
+    _, answer = judged(
+        world, head=merge_request.sha, verdict="fail", extra={"findings": [raised], "prior": {}},
+        tests="no test of an empty report",
+    )  # fmt: skip
+    assert answer["state"] == "blocked"
+    entry = one(world)
+    (finding,) = entry["verdict"]["findings"]
+    assert (finding["id"], finding["dimension"], finding["path"], finding["line"]) == ("F1", "tests", "kb/report.py", 2)
+    assert entry["verdict"]["first"]["findings"] == ["F1"]
+    event = next(event for event in entry["events"] if event["kind"] == "judged")
+    assert [item["id"] for item in event["detail"]["findings"]] == ["F1"]
+    gate_pass(world)
+    (note,) = [text for _, text in world.project.notes]
+    assert "- F1 (tests, kb/report.py:2): no test covers an empty report" in note
+    assert one(world)["verdict"]["findings"][0]["posted"] is True
+
+    # A new patch: the verdict goes, its finding stays, and the next Judge must mark it; passing alone is not enough.
+    pushed(world, merge_request, "second", "return 4")
+    assert gate_pass(world) == {"judging": 1}
+    entry = one(world)
+    assert "first" not in entry["verdict"] and entry["verdict"]["findings"][0]["status"] == "open"
+    spec, answer = judged(world, head=merge_request.sha, extra={"findings": [], "prior": {}})
+    assert "# Findings of earlier rounds" in spec["prompt"] and "- F1 (tests, kb/report.py:2)" in spec["prompt"]
+    assert answer["state"] == "blocked"
+    assert one(world)["reason"] == "gate 5 (Judge): the hub failed tests: the Judge did not say whether F1 is fixed"
+    gate_pass(world)
+    assert len(world.project.notes) == 2
+    assert "no test covers" not in world.project.notes[1][1]  # an id posted before is named, not posted again
+    assert "Still open from an earlier comment: F1." in world.project.notes[1][1]
+
+    pushed(world, merge_request, "third", "return 5")
+    gate_pass(world)
+    not_fixed = {"F1": {"status": "not_fixed", "where": "kb/report.py:2", "reason": "still no test"}}
+    _, answer = judged(world, head=merge_request.sha, extra={"findings": [], "prior": not_fixed})
+    assert answer["state"] == "blocked"
+    assert one(world)["reason"] == "gate 5 (Judge): the hub failed tests: F1 is not fixed: still no test"
+
+    pushed(world, merge_request, "fourth", "return 6")
+    gate_pass(world)
+    fixed = {"F1": {"status": "fixed", "where": "tests/test_report.py:2", "reason": "a test covers it"}}
+    _, answer = judged(world, head=merge_request.sha, extra={"findings": [], "prior": fixed})
+    assert answer["state"] == "ready"
+    entry = one(world)
+    (finding,) = entry["verdict"]["findings"]
+    assert finding["status"] == "fixed" and [mark["status"] for mark in finding["marks"]] == ["not_fixed", "fixed"]
+    event = next(event for event in entry["events"] if event["kind"] == "judged")
+    assert event["detail"]["prior"]["F1"]["status"] == "fixed"
+
+
+def test_merge_gate_finding_memory_a_verdict_kept_before_findings_still_reads(world):
+    plan_done(world)
+    gate_pass(world)
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    gate_pass(world)
+    old = {"fingerprint": "f" * 64, "hidden_count": 0, "first": {"passed": False, "dimensions": dimensions()}}
+    sql(world.db, update(tables.merge_queue).values(verdict=old))
+    _, answer = judged(world, head=merge_request.sha)  # an older worker: no findings and no marks
+    assert answer["state"] == "ready"
+    assert one(world)["verdict"]["findings"] == []
 
 
 # Who comes in
