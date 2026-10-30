@@ -3,13 +3,16 @@
 (``evo_agents.hub.server.proposal_plans``): criteria a4 and a5 of the plan accepted-proposals-move-on.
 
 The night shift builds a tier 2 change, the Judge judges it and its pull request stays open for its owner: the hub
-merges tier 0 alone, and the charter's auto_merge takes 0 alone. Accepting a tier 3 proposal records the answer alone. A
-tier 2 change that signs of score hacking, or the files its diff really touches, put at tier 3 stops as tier 1 does.
-The world, GitHub and its helpers are ``tests.hub.test_curator_changes``'s."""
+merges tier 0 alone unless the charter's auto_merge names more. Accepting a tier 3 proposal records the answer alone,
+unless the charter's planned_tiers names tier 3 (criterion a2 of the plan proposals-answer-themselves): then it becomes
+the Curator's plan, is built and judged, and merges when auto_merge names tier 3. A tier 2 change that signs of score
+hacking, or the files its diff really touches, put at tier 3 stops as tier 1 does. The world, GitHub and its helpers
+are ``tests.hub.test_curator_changes``'s."""
 
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import pytest
 
@@ -21,13 +24,13 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from evo_agents.hub import judge, tables
+from evo_agents.hub import tables
 from evo_agents.hub.curator_cli import CHANGE_KEYS
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (app_key is a fixture)
-from tests.hub.test_curator import NIGHT, PROJECT, fire, put_charter
+from tests.hub.test_curator import NIGHT, PROJECT, fire, written
 from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
     BRANCH,
     CLEAN,
@@ -59,6 +62,16 @@ WAIT_TEST = [{"repo": "evo-agents", "path": "tests/test_wait.py"}]
 FEATURE = {"kind": "feature", "paths": WAIT_TEST}  # tier 2, from its kind alone
 CI_CHANGE = {"kind": "ci_change", "paths": [{"repo": "evo-agents", "path": ".github/workflows/ci.yml"}]}  # tier 3
 TWO_REPOS = {"kind": "feature", "paths": [*WAIT_TEST, {"repo": "lumen-identity", "path": "tests/test_x.py"}]}
+RULES_CHANGE = {"kind": "curator_rules", "paths": WAIT_TEST}  # tier 3 from its kind, on a path no rule protects
+ALL_TIERS = [0, 1, 2, 3]
+
+
+@contextmanager
+def planning(world, tiers: list[int]):  # noqa: F811
+    """The charter planning ``tiers`` alone while the block runs, then the world's charter again."""
+    written(world.client, world.headers["owner"], curator_charter(planned_tiers=tiers))
+    yield
+    written(world.client, world.headers["owner"], curator_charter())
 
 
 def audited_plans(world) -> list[str]:  # noqa: F811
@@ -131,9 +144,34 @@ def test_curator_plan_a_tier_2_change_is_built_judged_and_left_open_for_its_owne
     assert json.loads(check.body)["conclusion"] == "success"
 
 
-def test_curator_plan_auto_merge_still_takes_tier_0_alone(world):  # noqa: F811
-    refused = put_charter(world.client, world.headers["owner"], curator_charter(auto_merge=[0, 2]))
-    assert refused.status_code == 422, refused.text
+def test_curator_plan_a_tier_3_proposal_is_planned_built_and_merged_when_the_charter_names_tier_3(world):  # noqa: F811
+    written(world.client, world.headers["owner"], curator_charter(planned_tiers=ALL_TIERS, auto_merge=ALL_TIERS))
+    proposal = accepted(world, **RULES_CHANGE)
+    assert (proposal["state"], proposal["tier"]) == ("accepted", 3)
+    change = one_change(world)
+    assert (change["plan_id"], change["branch"], change["tier"], change["state"]) == (PLAN_ID, BRANCH, 3, "planned")
+    assert proposal["change"] == change
+    assert acts(ledger_of(world, proposal["id"]))[-2:] == [("accepted", "user"), ("planned", "curator")]
+    assert audited_plans(world) == [f"{PROJECT}/{PLAN_ID} proposal:1 change:1 branch={BRANCH}"]
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    assert (judged(world)["passed"], one_change(world)["tier"]) == (True, 3)
+    world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    assert one_change(world)["state"] == "merged"
+    (merged,) = calls(world.github, "PUT", "/merge")
+    assert json.loads(merged.body)["commit_title"] == "Merge the Curator's change #1 (proposal #1, tier 3)"
+
+
+def test_curator_plan_a_tier_2_change_merges_when_the_charters_auto_merge_names_tier_2(world):  # noqa: F811
+    written(world.client, world.headers["owner"], curator_charter(auto_merge=[0, 2]))
+    accepted(world, **FEATURE)
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    assert judged(world)["tier"] == 2
+    world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    assert one_change(world)["state"] == "merged" and len(world.github.merges) == 1
 
 
 SIGNED = [*CLEAN, {"filename": "curator.yaml", "status": "modified", "patch": "@@ -1 +1 @@\n-a: 1\n+a: 2\n"}]
@@ -172,9 +210,8 @@ def test_curator_plan_a_tier_2_change_raised_to_tier_3_stops_as_tier_1_does(worl
 # a5: POST .../proposals/{id}/plan for a proposal accepted without a change
 
 
-def test_curator_plan_route_makes_an_accepted_proposal_without_a_change_the_curators_plan(world, monkeypatch):  # noqa: F811
-    with monkeypatch.context() as patched:  # accepted while tier 2 still recorded the answer alone
-        patched.setattr(judge, "PLANNED_TIERS", (0, 1))
+def test_curator_plan_route_makes_an_accepted_proposal_without_a_change_the_curators_plan(world):  # noqa: F811
+    with planning(world, [0, 1]):  # accepted while the charter did not plan tier 2
         (old,) = answered_all(world, (FEATURE, "accept"))
     assert changes(world) == []
 
@@ -208,9 +245,8 @@ def test_curator_plan_route_makes_an_accepted_proposal_without_a_change_the_cura
     assert fire(world.client, NIGHT)["builder"] == 1  # the night shift builds it as any planned change
 
 
-def test_curator_plan_route_refuses_a_proposal_not_accepted_or_of_tier_3(world, monkeypatch):  # noqa: F811
-    with monkeypatch.context() as patched:
-        patched.setattr(judge, "PLANNED_TIERS", (0, 1))
+def test_curator_plan_route_refuses_a_proposal_not_accepted_or_of_tier_3(world):  # noqa: F811
+    with planning(world, [0, 1]):
         deferred, top, wide = answered_all(world, (FEATURE, "defer"), (CI_CHANGE, "accept"), (TWO_REPOS, "accept"))
     assert (deferred["state"], top["tier"], wide["tier"]) == ("deferred", 3, 2)
 
@@ -234,6 +270,28 @@ def test_curator_plan_route_refuses_a_proposal_not_accepted_or_of_tier_3(world, 
     assert {item["proposal_id"] for item in changes(world)} == {wide["id"], deferred["id"]}  # accepting it plans it
 
 
+def test_curator_plan_route_makes_a_tier_3_proposal_the_curators_plan_once_the_charter_plans_tier_3(world):  # noqa: F811
+    with planning(world, []):  # a charter that plans no tier: accepting records the answer alone
+        top, feature = answered_all(world, (RULES_CHANGE, "accept"), (FEATURE, "accept"))
+        assert (top["tier"], feature["tier"], top["change"], feature["change"], changes(world)) == (
+            3,
+            2,
+            None,
+            None,
+            [],
+        )
+        refused = plan_of(world, feature["id"])
+        assert refused.status_code == 409 and "the night shift builds no tier alone" in refused.text
+    refused = plan_of(world, top["id"])  # the world's charter plans tiers 0 to 2
+    assert refused.status_code == 409 and "the night shift builds tiers 0 to 2 alone" in refused.text
+    written(world.client, world.headers["owner"], curator_charter(planned_tiers=[0, 3]))
+    made = plan_of(world, top["id"])
+    assert made.status_code == 201, made.text
+    assert (made.json()["tier"], made.json()["state"], made.json()["plan_id"]) == (3, "planned", PLAN_ID)
+    refused = plan_of(world, feature["id"])
+    assert refused.status_code == 409 and "is tier 2: the night shift builds tiers 0, 3 alone" in refused.text
+
+
 def test_curator_plan_the_brief_lists_a_change_with_no_plan_to_build_not_to_merge(world):  # noqa: F811
     from tests.hub.test_brief import BRIEF, body_of, briefed, briefs_of
 
@@ -252,8 +310,7 @@ def test_curator_plan_the_brief_lists_a_change_with_no_plan_to_build_not_to_merg
 
 
 def test_curator_plan_route_on_the_command_line(world, tmp_path, monkeypatch, capsys):  # noqa: F811
-    with monkeypatch.context() as patched:
-        patched.setattr(judge, "PLANNED_TIERS", (0, 1))
+    with planning(world, [0, 1]):
         first, second = answered_all(world, (FEATURE, "accept"), (TWO_REPOS, "accept"))
     with serving(create_app(world.app.state.config)) as url:
         token = world.headers["owner"]["Authorization"].removeprefix("Bearer ")

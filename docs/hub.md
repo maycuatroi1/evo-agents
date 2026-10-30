@@ -1667,8 +1667,9 @@ how many of the project's proposals wait for an answer; `GET /v1/me/overview` sa
 charter (`projects[].curator`). `GET .../curator/nights` lists the latest nights (14 by default, up to 90): the runs
 the night shift queued for each by how they stand, their cost, the night's review run with what it wrote, and whether
 the night's figures were counted. `proposal list` (`GET .../curator/proposals`) answers `counts` with its proposals:
-what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 to 2 also
-makes it a plan of the night shift (The Curator's changes, below); accepting one of tier 3 records the answer alone.
+what each state, tier and lens would list with the other filters applied. Accepting a proposal of a tier the
+charter's `planned_tiers` names (0 to 2 unless it names others, 3 included) also makes it a plan of the night shift
+(The Curator's changes, below); accepting one of another tier records the answer alone.
 `proposal show` (`GET .../curator/proposals/{id}`) answers, as `change`, the change accepting it made, when the caller
 may read that change's plan: its state, plan, branch, pull request and reason; null otherwise.
 
@@ -1719,8 +1720,9 @@ curator status` names the last one (`last_brief`).
 
 ## The Curator's changes
 
-Accepting a proposal of tier 0 to 2 makes its draft plan the Curator's plan on the hub, in the same transaction, as
-the admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
+Accepting a proposal of a tier the charter's `planned_tiers` names (`judge.planned_tiers`: tiers 0 to 2 unless it
+names others, tier 3 included) makes its draft plan the Curator's plan on the hub, in the same transaction, as the
+admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
 or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
@@ -1729,8 +1731,9 @@ names another repo or branch, or changes anything but the progress of its steps 
 id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
 Curator's plan or a plan run of it (409): the night shift alone runs it, at any hour. `evo-agents hub curator proposal plan ID`
 (`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
-accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
-the answer alone; one not accepted, of tier 3 or with a change already is 409 with the reason.
+accepted proposal of a tier the charter plans that has no change yet, such as one of tier 2 accepted while that tier
+still recorded the answer alone; one not accepted, of a tier the charter does not plan or with a change already is 409
+with the reason.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
@@ -1774,20 +1777,22 @@ every verify command and hidden check ran and exited 0, the worker found no sign
 pull request's head; the paths the worker read in the diff give the proposal its tier again. For a change whose
 `curator_changes.knowledge` is set, the judge inputs' `knowledge` names two more checks the worker runs, `evo-agents
 harness validate` and a trial sync of each source the change edits, and the verdict's verify results must hold each
-of them, exited 0. The hub writes the
-verdict on the pull request as a check run of the workers' App, `evo-agents Judge`, and merges the pull request with
-the workers' App, at the head the Judge passed, only when the change is tier 0, tier 0 is in the charter's
-`auto_merge`, the repo's ruleset still keeps the Curator off (checked again then), the pull request is open into the
-default branch, its files show no sign and no protected path, and CI is green: each check the default branch's active
-rulesets require (`required_status_checks`) concluded success, as a check run of the App the rule names when it names
-one, every other check run ended success, neutral or skipped, and the commit statuses are success. A ruleset that
-requires no check, or a head commit whose message asks CI to skip it (`[skip ci]`, `[ci skip]`, `[no ci]`,
-`[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the pull request open. It waits while CI runs, up to 6
-hours, and while the project's night shift is paused (by a member or its circuit breaker) it merges nothing: a judged
-change waits for it. Any other change, tier 1, a GitLab merge request, or a refusal, stays open for its owner with the
-reason, which for a change of a harness says what its replays came to; the morning brief lists it with the runs that
-wait in review. Each pass also releases the global skill of a merge whose replays won (`skill_release.release`, The
-Curator's replays, below).
+of them, exited 0. The hub writes the verdict on the pull request as a check run of the workers' App, `evo-agents
+Judge`, and merges the pull request with the workers' App, at the head the Judge passed, only when the change's tier is
+in the charter's `auto_merge` (0 to 3; tier 0 alone unless it names more), the repo's ruleset still keeps the Curator
+off (checked again then), the pull request is open into the default branch, its files show no sign and no protected
+path, and CI is green: each check the default branch's active rulesets require (`required_status_checks`) concluded
+success, as a check run of the App the rule names when it names one, every other check run ended success, neutral or
+skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit whose message asks CI
+to skip it (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the
+pull request open. A charter with `merge_without_ci: true` lets the Judge's pass stand in for CI: a commit no CI ran on
+merges, and so does one whose ruleset requires no check once every check that ran passed; a check that ended in failure
+still leaves it open, one still running still makes it wait, and a check the ruleset requires still has to pass. It
+waits while CI runs, up to 6 hours, and while the project's night shift is paused (by a member or its circuit breaker)
+it merges nothing: a judged change waits for it. Any other change, of a tier `auto_merge` does not name, a GitLab merge
+request, or a refusal, stays open for its owner with the reason, which for a change of a harness says what its replays
+came to; the morning brief lists it with the runs that wait in review. Each pass also releases the global skill of a
+merge whose replays won (`skill_release.release`, The Curator's replays, below).
 
 ```sh
 evo-agents hub curator changes                        # what each accepted proposal became: plan, branch, PR, verdict

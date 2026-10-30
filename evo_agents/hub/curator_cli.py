@@ -1,7 +1,8 @@
 """``evo-agents hub curator``: the night shift of a project, as its charter sets it (``evo_agents.hub.curator``).
 
 ``curator charter show`` prints the charter at its newest revision, or ``--revision N`` (GET
-/v1/projects/{p}/curator/charter); ``--json`` prints it whole, with ``auto_merge`` and ``judge.runtime`` among its keys.
+/v1/projects/{p}/curator/charter); ``--json`` prints it whole, with ``planned_tiers``, ``auto_merge``,
+``merge_without_ci`` and ``judge.runtime`` among its keys.
 ``curator charter set FILE`` writes a new revision from a YAML or JSON file (``-`` reads stdin), which only an admin of
 the project may (PUT .../curator/charter); the keys ``show --json`` adds to the body are left out, so what was shown can
 be edited and written back. ``curator charter history`` lists every revision.
@@ -16,13 +17,14 @@ cancels the runs they queued that are still queued; within a minute nothing of t
 with its tier's reasons, its evidence, its draft plan and the change accepting it made, with why that change waits;
 ``curator proposal accept|reject|defer ID`` answers it, which only an admin of the project may (POST
 .../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
-Accepting a proposal of tier 0 to 2 makes it the Curator's plan, which the night shift builds; one of tier 3 builds
-nothing. ``curator proposal plan ID`` makes an accepted proposal of tier 0 to 2 that has no change yet the Curator's
-plan, as accepting it does now, which only an admin of the project may (POST .../curator/proposals/{id}/plan); it
-prints the change. ``curator findings`` lists what the review runs found (GET .../curator/findings), and ``curator
-figures`` prints the figures of the latest night, or of ``--night`` (GET .../curator/figures).
+Accepting a proposal of a tier the charter's ``planned_tiers`` names (0 to 2 unless it names others, 3 included) makes
+it the Curator's plan, which the night shift builds; one of another tier builds nothing. ``curator proposal plan ID``
+makes an accepted proposal of such a tier that has no change yet the Curator's plan, as accepting it does now, which
+only an admin of the project may (POST .../curator/proposals/{id}/plan); it prints the change. ``curator findings``
+lists what the review runs found (GET .../curator/findings), and ``curator figures`` prints the figures of the latest
+night, or of ``--night`` (GET .../curator/figures).
 
-``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
+``curator changes`` lists what the accepted proposals the charter plans became: the Curator's plan, its branch, its pull
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator change close ID --reason
 TEXT`` closes a change left open with no pull request, such as one whose proposal named no repo, which only an admin of
 the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|show``
@@ -75,7 +77,9 @@ CHARTER_BODY_KEYS = (
     "night_plans",
     "max_decisions_per_day",
     "brief_at",
+    "planned_tiers",
     "auto_merge",
+    "merge_without_ci",
     "protected_paths",
     "circuit_breaker",
     "outcome_days",
@@ -239,7 +243,9 @@ def _print_charter(charter: dict) -> None:
         ("each run", f"{run_cap}, {charter['run_max_turns']} turns, {charter['run_minutes']} minutes of agent time"),
         ("plans", ", ".join(charter["night_plans"]) or "none"),
         ("decisions", f"at most {charter['max_decisions_per_day']} a day, brief at {charter['brief_at']}"),
+        ("planned", ", ".join(f"tier {tier}" for tier in charter.get("planned_tiers", [0, 1, 2])) or "none"),
         ("auto merge", ", ".join(f"tier {tier}" for tier in charter["auto_merge"]) or "none"),
+        ("without CI", "merges once the Judge passed" if charter.get("merge_without_ci") else "no: CI must be green"),
         ("protected", ", ".join(charter["protected_paths"]) or "none"),
         ("breaker", f"{charter['circuit_breaker']['max_failed_in_a_row']} failed in a row"),
         ("outcome", f"figures counted again {charter.get('outcome_days', 7)} days after a merge"),
