@@ -1,7 +1,8 @@
 """The moves of a run reported to the hub, and its log and diff uploaded once it ended.
 
 A hub that does not answer holds nothing up: each report is sent again with the backoff until the hub answers, or
-says the run is no longer this worker's. Every event is sent before the report that ends the run. After the last
+says the run is no longer this worker's. Every event is sent before the report that ends the run. The reports that the
+agent runs and the one that ends the run say its model (``Agent.model_fields``). After the last
 report the log (the run's events) and the diff are uploaded as blobs when the hub has a blob store.
 """
 
@@ -80,7 +81,7 @@ class Reports:
     async def report_session(self, state: str, only_from: tuple[str, ...], session_id: str | None) -> None:
         run = self.run
         try:
-            await self.report(state, only_from=only_from, session_id=session_id)
+            await self.report(state, only_from=only_from, session_id=session_id, **run.agent.model_fields())
             run.agent.session_reported = session_id
         except RunGone as exc:
             log.warning("run is not this worker's any more", extra={"run_id": run.id, "error": str(exc)})
@@ -95,7 +96,7 @@ class Reports:
         if not await run.sender.drained():
             log.warning("ending the run with events unsent", extra={"run_id": run.id, "why": run.sender.gave_up})
         adapter = run.agent.adapter
-        fields = end_fields(fields, adapter.session_id if adapter is not None else None)
+        fields = end_fields({**run.agent.model_fields(), **fields}, adapter.session_id if adapter is not None else None)
         await self.report(state, **fields)
         run.ended = True
         log.info("run ended", extra={"run_id": run.id, "state": state, "error": fields.get("error")})

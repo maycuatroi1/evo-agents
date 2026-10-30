@@ -3038,7 +3038,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18143,7 +18145,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18257,7 +18261,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18462,7 +18468,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18576,7 +18584,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -18955,7 +18965,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19069,7 +19081,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19183,7 +19197,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19703,7 +19719,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -19865,7 +19883,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -20037,7 +20057,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -20151,7 +20173,9 @@
           "tolerations",
           "plan_progress",
           "as_owner",
-          "as_owner_since"
+          "as_owner_since",
+          "model_used",
+          "routing"
         ],
         "schema": "Run"
       }
@@ -131899,7 +131923,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Policy",
-              "description": "sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default"
+              "description": "sections repos, merge, judge, breaker, audit, loop, context, routing; a key left out reads as its default"
             },
             "note": {
               "anyOf": [
@@ -143336,6 +143360,109 @@
           "title": "Role",
           "description": "The runtime and model one role of the Curator runs on."
         },
+        "RoutingLadder": {
+          "properties": {
+            "easy": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Easy"
+            },
+            "medium": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Medium",
+              "description": "also the model of a run the scorer did not rate"
+            },
+            "hard": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Hard"
+            }
+          },
+          "type": "object",
+          "required": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "title": "RoutingLadder"
+        },
+        "RoutingRecord": {
+          "properties": {
+            "scorer": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scorer"
+            },
+            "difficulty": {
+              "type": "string",
+              "enum": [
+                "easy",
+                "medium",
+                "hard"
+              ],
+              "title": "Difficulty",
+              "description": "the difficulty the scorer named; medium when it named none"
+            },
+            "scored": {
+              "type": "boolean",
+              "title": "Scored",
+              "description": "false: the scorer failed or named no difficulty"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the ladder's model the run took; null when its agent profile does not allow it"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "what the scorer's turn cost; null when not reported"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why it did not rate or choose"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scorer",
+            "difficulty",
+            "scored"
+          ],
+          "title": "RoutingRecord",
+          "description": "What the worker's rating of a run did (``model_router.record``)."
+        },
         "RuleCount": {
           "properties": {
             "rule": {
@@ -143536,6 +143663,29 @@
               ],
               "title": "Model",
               "description": "the model the dispatch asked for; null: the runtime's own choice"
+            },
+            "model_used": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Used",
+              "description": "the model its runtime ran it on, as its worker reported it; null until then, or not said"
+            },
+            "routing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RoutingRecord"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the routing by difficulty did; null for a run it did not rate"
             },
             "mode": {
               "type": "string",
@@ -146023,6 +146173,28 @@
           "title": "RunRepoSource",
           "description": "A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it."
         },
+        "RunRouting": {
+          "properties": {
+            "scorer": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scorer",
+              "description": "the model of the short turn that rates the run's difficulty"
+            },
+            "ladder": {
+              "$ref": "#/components/schemas/RoutingLadder",
+              "description": "the model of each difficulty"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scorer",
+            "ladder"
+          ],
+          "title": "RunRouting",
+          "description": "The routing a claim carries while the project's policy has it on, for a run that names no model."
+        },
         "RunSkill": {
           "properties": {
             "name": {
@@ -146210,6 +146382,17 @@
               ],
               "title": "Model",
               "description": "the model the dispatch asked for; null: the runtime's own choice"
+            },
+            "routing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunRouting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "while the project's policy has routing on, for a run that names no model: the scorer that rates its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise"
             },
             "mode": {
               "type": "string",
@@ -153103,6 +153286,32 @@
               ],
               "title": "Summary",
               "description": "the agent's summary, for the evidence"
+            },
+            "model_used": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Used",
+              "description": "the model the run's runtime runs it on"
+            },
+            "routing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RoutingRecord"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the routing by difficulty did, for a run it rated"
             },
             "answer": {
               "anyOf": [

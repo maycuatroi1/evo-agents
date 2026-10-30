@@ -5084,3 +5084,21 @@ def test_0184_keeps_the_approval_head_of_a_decision_and_going_back_drops_it(hub_
     assert "approval" not in columns(hub_db, "decisions")
     assert query(hub_db, select(func.count()).select_from(d)) == [(2,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0184") :]
+
+
+def test_0185_adds_the_model_used_and_the_routing_of_a_run_model_router(hub_db):
+    move_to(hub_db, "0184")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        before = one(conn, _author_run(ids))
+    move_to(hub_db, "0185")
+    assert {"model_used", "routing"} <= columns(hub_db, "runs")
+    r = hub_tables.runs
+    routing = {"scorer": "haiku", "difficulty": "medium", "scored": False, "model": "sonnet", "cost_usd": None}
+    with live.connect(hub_db) as conn:
+        after = one(conn, _author_run(ids, model_used="claude-sonnet-5-5", routing=routing))
+    read = select(r.c.id, r.c.model_used, r.c.routing).where(r.c.id.in_((before, after))).order_by(r.c.id)
+    assert query(hub_db, read) == [(before, None, None), (after, "claude-sonnet-5-5", routing)]
+    move_to(hub_db, "0184", down=True)
+    assert not {"model_used", "routing"} & columns(hub_db, "runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0185") :]

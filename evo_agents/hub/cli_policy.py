@@ -3,9 +3,9 @@ over GET and PUT /v1/projects/{p}/policy and the routes below it.
 
 ``show`` prints every key of the policy now, or of revision ``--revision``, each marked ``(default)`` when the
 revision does not set it. ``set --file FILE`` writes the policy whole as its next revision, from a YAML or JSON file
-(``-`` for stdin) of the sections ``repos``, ``merge``, ``judge``, ``breaker`` and ``audit``, and prints the keys whose
-value changed; a file equal to the newest revision writes nothing. Only ``true`` and ``false`` are booleans in the
-file, so ``mode: off`` stays the word YAML 1.1 would read as false. ``history`` lists the revisions, newest first, with
+(``-`` for stdin) of the sections ``repos``, ``merge``, ``judge``, ``breaker``, ``audit``, ``loop``, ``context`` and
+``routing``, and prints the keys whose value changed; a file equal to the newest revision writes nothing. Only ``true``
+and ``false`` are booleans in the file, so ``mode: off`` stays the word YAML 1.1 would read as false. ``history`` lists the revisions, newest first, with
 the keys each changed, and ``diff FROM [TO]`` the keys whose value differs between two revisions (0 is no policy).
 
 Every member of the project reads the policy; writing it needs the admin role on the project. Every command finds
@@ -183,7 +183,9 @@ def read_policy(name: str) -> dict:
         raise ValueError(f"{name} is not YAML: {exc}") from None
     body = {} if body is None else body
     if not isinstance(body, dict):
-        raise ValueError(f"{name} holds no object of sections (repos, merge, judge, breaker, audit, loop)")
+        raise ValueError(
+            f"{name} holds no object of sections (repos, merge, judge, breaker, audit, loop, context, routing)"
+        )
     try:
         json.dumps(body)
     except (TypeError, ValueError):
@@ -238,7 +240,7 @@ def register_policy(hsub) -> None:
         required=True,
         metavar="PATH",
         help="the policy as YAML or JSON, - for stdin (sections: repos, "
-        "merge, judge, breaker, audit, loop; a key left out reads as its default)",
+        "merge, judge, breaker, audit, loop, context, routing; a key left out reads as its default)",
     )
     written.add_argument("--note", help="why, for the history (at most 1000 characters)")
     written.add_argument("--if-revision", type=int, metavar="N", help="refuse unless the policy is at revision N")

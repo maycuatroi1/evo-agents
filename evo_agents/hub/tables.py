@@ -467,6 +467,8 @@ runs = Table(
     Column("kind", Text, nullable=False, server_default="step"),
     Column("repos", JSONB),
     Column("model", Text),
+    Column("model_used", Text),  # the model its runtime ran it on, as its worker reported it (0185)
+    Column("routing", JSONB),  # what the routing by difficulty did: model_router.record (0185); NULL: it did not
     Column("run_seconds", Integer, nullable=False, server_default="0"),
     _when("counted_at"),
     _when("waiting_since"),

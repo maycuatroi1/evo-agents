@@ -115,7 +115,7 @@ PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cance
 CAUSED_KINDS = ("step", "plan", "author", "chat")
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
-MOVE_COLUMNS |= {"evidence", "usage", "failure_cause"}
+MOVE_COLUMNS |= {"evidence", "usage", "failure_cause", "model_used", "routing"}
 
 
 # Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.

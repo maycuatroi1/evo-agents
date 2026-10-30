@@ -90,6 +90,8 @@ def run_select():
             r.c.requested_runtime,
             r.c.runtime,
             r.c.model,
+            r.c.model_used,
+            r.c.routing,
             r.c.mode,
             r.c.approval,
             (r.c.timeout_s // 60).label("timeout_min"),
