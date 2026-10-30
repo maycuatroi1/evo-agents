@@ -5144,7 +5144,9 @@
           "night_plans",
           "max_decisions_per_day",
           "brief_at",
+          "planned_tiers",
           "auto_merge",
+          "merge_without_ci",
           "protected_paths",
           "circuit_breaker",
           "outcome_days",
@@ -5211,7 +5213,9 @@
           "night_plans",
           "max_decisions_per_day",
           "brief_at",
+          "planned_tiers",
           "auto_merge",
+          "merge_without_ci",
           "protected_paths",
           "circuit_breaker",
           "outcome_days",
@@ -103551,14 +103555,39 @@
               "description": "HH:MM, 24 hours, in the window's zone",
               "default": "07:00"
             },
+            "planned_tiers": {
+              "items": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "type": "array",
+              "title": "Planned Tiers",
+              "description": "the tiers whose accepted proposals become the Curator's plans, which the night shift builds; tier 3 only when named"
+            },
             "auto_merge": {
               "items": {
                 "type": "integer",
-                "const": 0
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
               },
               "type": "array",
               "title": "Auto Merge",
               "description": "the tiers the hub may merge by itself"
+            },
+            "merge_without_ci": {
+              "type": "boolean",
+              "title": "Merge Without Ci",
+              "description": "the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass",
+              "default": false
             },
             "protected_paths": {
               "items": {
@@ -103871,14 +103900,39 @@
               "description": "HH:MM, 24 hours, in the window's zone",
               "default": "07:00"
             },
+            "planned_tiers": {
+              "items": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              },
+              "type": "array",
+              "title": "Planned Tiers",
+              "description": "the tiers whose accepted proposals become the Curator's plans, which the night shift builds; tier 3 only when named"
+            },
             "auto_merge": {
               "items": {
                 "type": "integer",
-                "const": 0
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
               },
               "type": "array",
               "title": "Auto Merge",
               "description": "the tiers the hub may merge by itself"
+            },
+            "merge_without_ci": {
+              "type": "boolean",
+              "title": "Merge Without Ci",
+              "description": "the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass",
+              "default": false
             },
             "protected_paths": {
               "items": {

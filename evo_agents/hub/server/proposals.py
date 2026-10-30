@@ -38,12 +38,13 @@ branch, pull request and why it waits) when the caller may read that change's pl
 .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
-curator.proposal. Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) also makes its draft the Curator's
-plan, which the night shift builds on a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST
-.../proposals/{id}/plan does the same for an accepted proposal that has no change yet); a draft that cannot become one
-leaves a change open with the reason, and nothing of it runs. Accepting one of tier 3 records the answer alone. The hub
-merges a change of tier 0 alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time has
-passed (the job curator.collect). A proposal of kind memory may promote agents' memories in place of a plan
+curator.proposal. Accepting a proposal of a tier the charter's ``planned_tiers`` names (``planned_tiers_of``: tiers 0
+to 2 unless it names others, tier 3 included) also makes its draft the Curator's plan, which the night shift builds on
+a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST .../proposals/{id}/plan does the same for an
+accepted proposal that has no change yet); a draft that cannot become one leaves a change open with the reason, and
+nothing of it runs. Accepting one of another tier records the answer alone. The hub merges a change of a tier the
+charter's ``auto_merge`` names alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time
+has passed (the job curator.collect). A proposal of kind memory may promote agents' memories in place of a plan
 (``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
@@ -569,12 +570,20 @@ def _check_draft(plan: dict) -> None:
             raise _refused(where, f"step {key} has no verify: an outcome step says how it is checked")
 
 
-async def _protected(conn: AsyncConnection, project_id: int) -> list[str]:
+async def _charter_body(conn: AsyncConnection, project_id: int) -> dict:
     c = tables.charters
-    body = (
-        await conn.execute(select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1))
-    ).scalar_one_or_none()
-    return list((body or {}).get("protected_paths") or [])
+    query = select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
+    return (await conn.execute(query)).scalar_one_or_none() or {}
+
+
+async def _protected(conn: AsyncConnection, project_id: int) -> list[str]:
+    return list((await _charter_body(conn, project_id)).get("protected_paths") or [])
+
+
+async def planned_tiers_of(conn: AsyncConnection, project_id: int) -> tuple[int, ...]:
+    """The tiers whose accepted proposals become the Curator's plans in the project, as its newest charter says
+    (``judge.planned_tiers``): tiers 0 to 2 for a project without a charter or a charter that names none."""
+    return judge.planned_tiers(await _charter_body(conn, project_id))
 
 
 async def _finding_evidence(conn: AsyncConnection, access: ProjectAccess, ids: list[int]) -> int:
@@ -980,7 +989,7 @@ async def answer_proposal_as(
     )
     if body.action == "accept" and row.promotion is not None:
         await memory_promotion.promote(conn, access, user, proposal_id, row.promotion)
-    elif body.action == "accept" and row.tier in judge.PLANNED_TIERS:
+    elif body.action == "accept" and row.tier in await planned_tiers_of(conn, access.project_id):
         from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
 
         await plan_from_proposal(conn, access, user, row)

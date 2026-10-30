@@ -621,6 +621,7 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "history_key": None,
         "probe": None,  # a probe run's alone
         "probe_key": None,
+        "merge_result": False,  # a merge check's alone
     }
     lease = next(
         item for item in leased(world.client, world.worker, spec["id"])["leases"] if item["provider"] == "github-app"
@@ -1100,6 +1101,102 @@ def test_merge_refusals_leave_the_pull_request_open(world, setup, why):
             {"filename": ".github/workflows/ci.yml", "status": "modified", "patch": "@@ -1 +1 @@\n-a\n+b\n"},
         ]
         world.github.repos[(MINE.lower(), "evo-agents")].files[BRANCH] = files
+    found = moved_on(world)
+    assert found.get("open") == 1 and "merged" not in found, found
+    change = one_change(world)
+    assert change["state"] == "open" and why in change["reason"], change
+    assert world.github.merges == [] and calls(world.github, "PUT", "/merge") == []
+
+
+# A charter that merges more tiers, and merges without CI (plan proposals-answer-themselves, a3)
+
+
+def without_ci(world, *, auto_merge=(0, 1, 2, 3), required=None) -> None:
+    """The charter with ``merge_without_ci`` and ``auto_merge``, and the ruleset requiring ``required`` (none)."""
+    written(world.client, world.headers["owner"], curator_charter(auto_merge=list(auto_merge), merge_without_ci=True))
+    world.github.repos[(MINE.lower(), "evo-agents")].rulesets = [{**RULESET, "required_checks": required or []}]
+
+
+def test_merge_a_tier_1_change_when_the_charters_auto_merge_names_tier_1(world):
+    written(world.client, world.headers["owner"], curator_charter(auto_merge=[0, 1]))
+    accepted(world, kind="fix", paths=[{"repo": "evo-agents", "path": "tests/test_wait.py"}])
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    assert judged(world)["tier"] == 1
+    world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    change = one_change(world)
+    assert (change["state"], change["tier"]) == ("merged", 1)
+    (merged,) = calls(world.github, "PUT", "/merge")
+    assert json.loads(merged.body)["commit_title"] == "Merge the Curator's change #1 (proposal #1, tier 1)"
+    n = tables.notifications
+    (body,) = sql(world.db, select(n.c.body).where(n.c.notice_kind == "merge_default_branch"))
+    assert "(proposal #1, tier 1) passed its Judge" in body[0] and "with CI green" in body[0]
+
+
+def test_merge_without_ci_merges_a_change_no_ci_ran_on(world):
+    through_the_judge(world)
+    without_ci(world)
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    change = one_change(world)
+    assert change["state"] == "merged" and world.github.merges == [(MINE, "evo-agents", 1, HEAD, "workers")]
+    n = tables.notifications
+    (body,) = sql(world.db, select(n.c.body).where(n.c.notice_kind == "merge_default_branch"))
+    assert "with no CI" in body[0]
+
+
+def test_merge_without_ci_merges_on_what_ran_when_the_ruleset_requires_no_check(world):
+    through_the_judge(world)
+    without_ci(world)
+    world.github.ci(HEAD, runs=[{"name": "lint", "status": "completed", "conclusion": "success"}])
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    assert one_change(world)["state"] == "merged"
+
+
+def test_merge_without_ci_still_waits_for_a_check_that_runs_and_stops_on_one_that_failed(world):
+    through_the_judge(world)
+    without_ci(world)
+    world.github.ci(HEAD, runs=[{"name": "lint", "status": "in_progress"}])
+    assert moved_on(world) == {"checked": 1, "wait": 1}
+    assert one_change(world)["state"] == "judged" and "lint is in_progress" in one_change(world)["reason"]
+    world.github.ci(HEAD, runs=[{"name": "lint", "status": "completed", "conclusion": "failure"}])
+    assert moved_on(world) == {"open": 1}
+    change = one_change(world)
+    assert (change["state"], change["reason"]) == ("open", "lint ended failure") and world.github.merges == []
+
+
+def test_merge_without_ci_still_waits_for_a_check_the_ruleset_requires(world):
+    through_the_judge(world)
+    without_ci(world, required=["test"])
+    assert moved_on(world) == {"checked": 1, "wait": 1}
+    change = one_change(world)
+    assert change["state"] == "judged" and "the required check test has not reported" in change["reason"]
+    assert world.github.merges == []
+
+
+@pytest.mark.parametrize(
+    "files, why",
+    [
+        (
+            [*CLEAN, {"filename": "curator.yaml", "status": "modified", "patch": "@@ -1 +1 @@\n-a: 1\n+a: 2\n"}],
+            "protected paths: protected_path",
+        ),
+        (
+            [
+                {
+                    "filename": "tests/test_wait.py",
+                    "status": "modified",
+                    "patch": "@@ -1,2 +1,2 @@\n def test_wait():\n-    assert wait_for()\n+    wait_for()\n",
+                }
+            ],
+            "signs of score hacking or protected paths: assert_removed",
+        ),
+    ],
+)
+def test_merge_without_ci_and_every_tier_still_leaves_a_sign_open(world, files, why):
+    through_the_judge(world)
+    without_ci(world)
+    world.github.repos[(MINE.lower(), "evo-agents")].files[BRANCH] = files
     found = moved_on(world)
     assert found.get("open") == 1 and "merged" not in found, found
     change = one_change(world)

@@ -49,7 +49,7 @@ from datetime import date, datetime, time, timedelta
 
 SCHEDULE_KINDS = ("night_shift",)  # the schedules a charter makes; later kinds join this tuple
 TIERS = (0, 1, 2, 3)  # of a change the Curator proposes, from what merges by itself to what the owner alone merges
-AUTO_MERGE_TIERS = (0,)  # the tiers a charter may let the hub merge; tier 1 waits for a plan of its own
+AUTO_MERGE_TIERS = TIERS  # the tiers a charter may let the hub merge (auto_merge); none unless it names them
 DEFAULT_RUNTIME = "claude-code"
 
 TIME_OF_DAY = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"  # HH:MM, 24 hours

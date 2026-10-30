@@ -269,6 +269,30 @@ def test_a_charter_shown_can_be_written_back_as_it_is(night, hub_db):
     assert again["revision"] == 1
 
 
+def test_a_charter_plans_and_merges_tiers_0_to_2_by_default_and_names_3_when_its_owner_adds_it(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    first = written(client, owner, charter_body())  # names none of the keys: tiers 0 to 2 built, CI asked for
+    assert (first["planned_tiers"], first["auto_merge"], first["merge_without_ci"]) == ([0, 1, 2], [0], False)
+    wide = charter_body(planned_tiers=[3, 0, 1, 2, 3], auto_merge=[3, 0, 2, 1], merge_without_ci=True)
+    second = written(client, owner, wide)
+    assert (second["revision"], second["planned_tiers"], second["auto_merge"]) == (2, [0, 1, 2, 3], [0, 1, 2, 3])
+    assert second["merge_without_ci"] is True
+    assert shown(client, night.headers["reader"])["merge_without_ci"] is True
+    assert written(client, owner, wide)["revision"] == 2  # the same body writes nothing
+
+
+def test_a_charter_written_before_the_keys_reads_with_their_defaults(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    written(client, owner, charter_body())
+    c = tables.charters
+    ((body,),) = sql(hub_db, select(c.c.body))  # a revision stored before planned_tiers and merge_without_ci existed
+    old = {key: value for key, value in body.items() if key not in ("planned_tiers", "merge_without_ci")}
+    sql(hub_db, update(c).values(body=old))
+    assert "planned_tiers" not in sql(hub_db, select(c.c.body))[0][0]
+    read = shown(client, owner)
+    assert (read["planned_tiers"], read["auto_merge"], read["merge_without_ci"]) == ([0, 1, 2], [0], False)
+
+
 @pytest.mark.parametrize(
     "changes, status, words",
     [
@@ -277,7 +301,9 @@ def test_a_charter_shown_can_be_written_back_as_it_is(night, hub_db):
         ({"window": {"start": "24:00", "end": "06:00", "timezone": "UTC"}}, 422, None),
         ({"run_budget_usd": 5.0}, 422, "run_budget_usd is over night_budget_usd"),
         ({"night_budget_usd": 0}, 422, None),
-        ({"auto_merge": [1]}, 422, None),
+        ({"auto_merge": [4]}, 422, None),
+        ({"planned_tiers": [4]}, 422, None),
+        ({"merge_without_ci": "sometimes"}, 422, None),
         ({"run_minutes": 5}, 422, None),
         ({"goals": [{"id": "a", "what": "one"}, {"id": "a", "what": "two"}]}, 422, "named once each"),
         ({"surprise": True}, 422, None),

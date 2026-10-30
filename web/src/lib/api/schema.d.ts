@@ -16266,10 +16266,21 @@ export interface components {
              */
             brief_at: string;
             /**
+             * Planned Tiers
+             * @description the tiers whose accepted proposals become the Curator's plans, which the night shift builds; tier 3 only when named
+             */
+            planned_tiers?: (0 | 1 | 2 | 3)[];
+            /**
              * Auto Merge
              * @description the tiers the hub may merge by itself
              */
-            auto_merge?: 0[];
+            auto_merge?: (0 | 1 | 2 | 3)[];
+            /**
+             * Merge Without Ci
+             * @description the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass
+             * @default false
+             */
+            merge_without_ci: boolean;
             /**
              * Protected Paths
              * @description globs no change of the Curator may touch below tier 3
@@ -16417,10 +16428,21 @@ export interface components {
              */
             brief_at: string;
             /**
+             * Planned Tiers
+             * @description the tiers whose accepted proposals become the Curator's plans, which the night shift builds; tier 3 only when named
+             */
+            planned_tiers?: (0 | 1 | 2 | 3)[];
+            /**
              * Auto Merge
              * @description the tiers the hub may merge by itself
              */
-            auto_merge?: 0[];
+            auto_merge?: (0 | 1 | 2 | 3)[];
+            /**
+             * Merge Without Ci
+             * @description the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass
+             * @default false
+             */
+            merge_without_ci: boolean;
             /**
              * Protected Paths
              * @description globs no change of the Curator may touch below tier 3
