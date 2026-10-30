@@ -891,15 +891,17 @@ the chat run. The agent acts as the owner only: another member's chat run is ref
 A project whose Curator charter has `answer_by: agent` gets a thread in the same triage chat for each proposal a review
 run records open, and a new message in it when a deferred proposal opens again (`docs/curator.md`, The agent answers).
 The thread names the skill `answering-curator-proposals` of the evo-hub plugin and mentions the project's default
-agent, which starts a chat run for the schedule's owner. Its agent answers the proposal with one command, for the
-owner, inside a frame the hub checks on each call (`evo_agents.hub.server.curator_threads`):
+agent, which starts a chat run for the schedule's owner. Its agent answers the proposal, and merges the change the hub left open, with
+one command each, for the owner, inside a frame the hub checks on each call (`evo_agents.hub.server.curator_threads`):
 
 | Command | Route | What |
 | --- | --- | --- |
 | `evo-agents worker curator answer PROPOSAL accept\|reject\|defer --note TEXT [--days N]` | `POST /v1/worker/runs/{id}/curator/answer` | answer the proposal of the thread for the person who dispatched the chat run, as their answer on the web does: 200 with the proposal and the `Decision:` line's `message_id`; accepting a tier the charter's `planned_tiers` names makes the Curator's plan. 403 for another proposal than the thread's or a dispatcher who is no admin of the project, 404 for a run that is not a chat run in a proposal's thread, 409 for a proposal neither open nor deferred or a charter whose `answer_by` is `owner` again, 422 for `--days` without defer |
+| `evo-agents worker curator merge CHANGE` | `POST /v1/worker/runs/{id}/curator/merge` | merge the pull request of a change of the thread's proposal the hub left open, for the same person, with the workers' App at the head the Judge passed: 200 with the change, merged, and the `Decision:` line's `message_id`. 403 for a change of another proposal or a dispatcher who is no admin, 404 for no such change in the project, 409 with the reason for anything the merge does not allow (the change not open, its Judge not passed, the head moved, a sign other than a protected path, the pull request not open into the default branch or not mergeable, CI, the night shift paused, K5, a charter whose `answer_by` is `owner` again), 503 while GitHub does not answer |
 
-Each answer writes the audit row `curator.proposal` and the ledger line with the agent and the chat run, posts the
-`Decision:` line in the thread, in the agent's name, and shows in the next morning brief.
+Each answer writes the audit row `curator.proposal`, and each merge the audit row `curator.merge`, with the ledger line
+naming the agent and the chat run; each posts the `Decision:` line in the thread, in the agent's name, and shows in the
+next morning brief.
 
 ## Task runs
 

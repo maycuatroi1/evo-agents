@@ -956,7 +956,10 @@ A Curator charter with `answer_by: agent` has the hub open a thread in the same 
 or open again after a defer (`proposal_threads`, schema 0188), and its agent answers the proposal for the schedule's
 owner through `POST /v1/worker/runs/{id}/curator/answer` (`evo_agents/hub/server/curator_threads.py`,
 `docs/curator.md`, "The agent answers"): only the proposal of its thread, only for a dispatcher who is an admin of the
-project, only while the charter still says `agent` and the proposal is open or deferred.
+project, only while the charter still says `agent` and the proposal is open or deferred. A change of that proposal the
+hub leaves open for its owner is told in the thread, and the agent merges it through `POST
+/v1/worker/runs/{id}/curator/merge` at the head the Judge passed, only when every sign of its files is one of a
+protected path and the rest of the hub's merge allows it, K5 of the chat run's principal included.
 
 ## Plans and their copies in git
 

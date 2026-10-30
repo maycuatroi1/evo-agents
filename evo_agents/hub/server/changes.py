@@ -50,9 +50,11 @@ CI must be green, or, when the charter has ``merge_without_ci``, may be none at 
 check, what ran: a check that ran and failed still leaves the change open, and one still running makes it wait. A
 change of a harness alone whose replays won merges as tier 0 (``change_tiers.merge_tier``), and the merge of one
 releases its global skill (``evo_agents.hub.server.skill_release``, part of each pass).
-While the project's night shift is paused the hub merges nothing: a judged change waits for it. Every WATCH_EVERY
-it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at which commit), closed
-without a merge, ``closed`` (``_settle``). A branch merged by hand outside the hub is read the same way
+A change left open for its owner is told in its proposal's thread when the charter has the agent answer, and the agent
+may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head`` and ``record_merge``, which the
+hub's own merge uses too). While the project's night shift is paused the hub merges nothing: a judged change waits for
+it. Every WATCH_EVERY it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at
+which commit), closed without a merge, ``closed`` (``_settle``). A branch merged by hand outside the hub is read the same way
 (``_settle_by_branch``): when GitHub refuses to open the pull request of a change (no commits between the default
 branch and its branch, say), and every WATCH_EVERY for a planned change whose plan has no step ready to run, the job
 looks for a pull request of the change's branch in any state, and a merged one, else a closed one, settles the change,
@@ -306,6 +308,19 @@ async def change_of_plan(conn: AsyncConnection, project_id: int, plan_id: str | 
     query = select(c).where(c.c.project_id == project_id, c.c.plan_id == plan_id)
     if lock:
         query = query.with_for_update()
+    return (await conn.execute(query)).one_or_none()
+
+
+async def change_with_origin(conn: AsyncConnection, project_id: int, change_id: int, *, lock: bool = False):
+    """Change ``change_id`` of the project with its repo's origin, as the job reads a change it moves on, or None."""
+    c, pr = tables.curator_changes, tables.project_repos
+    query = (
+        select(c, pr.c.origin)
+        .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
+        .where(c.c.id == change_id, c.c.project_id == project_id)
+    )
+    if lock:
+        query = query.with_for_update(of=c)
     return (await conn.execute(query)).one_or_none()
 
 
@@ -1287,11 +1302,19 @@ async def _files_of(app: GitHubApp, token: str, target: Target, number: int, exp
     return files, None
 
 
-async def _night_paused(conn: AsyncConnection, project_id: int) -> bool:
+async def night_paused(conn: AsyncConnection, project_id: int) -> bool:
     """Whether the project's night shift is paused (a member paused it, or its circuit breaker): it merges nothing."""
     s = tables.schedules
     query = select(exists().where(s.c.project_id == project_id, s.c.kind == NIGHT_SHIFT, s.c.paused_at.is_not(None)))
     return bool((await conn.execute(query)).scalar_one())
+
+
+async def _left_for_owner(conn: AsyncConnection, change_id: int) -> None:
+    """Tell the thread of the change's proposal, when it has the agent answer, that the hub left the change open for
+    its owner (``curator_threads.on_left_open``, in a savepoint of this transaction)."""
+    from evo_agents.hub.server.curator_threads import on_left_open  # it reads changes through this module
+
+    await on_left_open(conn, change_id)
 
 
 async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None) -> str:
@@ -1300,6 +1323,7 @@ async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None
     async with engine.begin() as conn:
         if kept is None:
             await _set(conn, change.id, state="open", reason=why)
+            await _left_for_owner(conn, change.id)
         else:
             c = tables.curator_changes
             await conn.execute(update(c).values(reason=why).where(c.c.id == change.id))
@@ -1402,33 +1426,47 @@ async def _tier_again(engine: AsyncEngine, app: GitHubApp, change, target: Targe
     return tier
 
 
-async def _merge(
-    engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | None, change, reader: change_tiers.GraphReader
-) -> str:
+@dataclass(frozen=True)
+class MergeRead:
+    """What the hub read of a judged change's pull request just before a merge: the facts ``judge.merge_decision``
+    reads, the pull request as GitHub has it now, and its files as a diff."""
+
+    facts: judge.MergeFacts
+    pull: dict
+    diff: list
+
+
+@dataclass(frozen=True)
+class MergedBy:
+    """The agent of a proposal's thread that merged a change for its owner (``curator_threads``): its handle, its chat
+    run, and the owner it acted for."""
+
+    agent: str
+    chat_run_id: int
+    user_id: int
+    login: str
+
+
+def _auto(charter: dict) -> tuple[int, ...]:
+    return tuple(item for item in charter.get("auto_merge") or [] if isinstance(item, int))
+
+
+async def merge_read(
+    engine: AsyncEngine,
+    app: GitHubApp,
+    curator_app: GitHubApp | None,
+    change,
+    charter: dict,
+    body: dict,
+    reader: change_tiers.GraphReader | None = None,
+) -> MergeRead:
+    """Read judged ``change``'s pull request again from GitHub, and its repo's ruleset with the Curator's App, and
+    gather the facts of its merge: the signs of its files now, its tier again from them with ``reader`` (the change's
+    own without one), and its CI as ``charter`` reads it. GitHubUnavailable and GitHubRefused go to the caller."""
     from evo_agents.hub.server import pulls
 
-    if not change.passed:
-        failures = (change.verdict or {}).get("failures") or []
-        return await _reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
     target = github_target(change.origin)
-    async with engine.begin() as conn:
-        charter = await _charter(conn, change.project_id)
-        tier, waits = await change_tiers.merge_tier(conn, change)
-        body = (
-            await conn.execute(
-                select(tables.plans.c.body).where(
-                    tables.plans.c.project_id == change.project_id, tables.plans.c.plan_id == change.plan_id
-                )
-            )
-        ).scalar_one_or_none() or {}
-        paused = await _night_paused(conn, change.project_id)
-    auto = tuple(item for item in charter.get("auto_merge") or [] if isinstance(item, int))
     without_ci = charter.get("merge_without_ci") is True
-    if tier not in auto:  # no call to GitHub for a change the hub would never merge
-        why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
-        return await _reopen(engine, change, why)
-    if paused:
-        return await _reopen(engine, change, PAUSED, "paused")
     ruleset = await _ruleset_now(engine, curator_app, change, target)
     seen = await pulls.with_token(app, target.owner, target.name, "read", partial(_read_merge, app, target, change))
     found = seen["pull"]
@@ -1443,7 +1481,9 @@ async def _merge(
         signs.insert(
             0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": seen["cut"]}
         )
-    tier = await _tier_again(engine, app, change, target, diff, found, charter, reader)
+    tier = change.tier
+    if reader is not None:
+        tier = await _tier_again(engine, app, change, target, diff, found, charter, reader)
     if isinstance(seen["message"], str):
         ci, ci_reasons = judge.ci_state(
             seen["runs"],
@@ -1457,7 +1497,7 @@ async def _merge(
     facts = judge.MergeFacts(
         forge=change.forge,
         tier=tier,
-        auto_merge=auto,
+        auto_merge=_auto(charter),
         repo_checked=ruleset is not None and ruleset.protected,
         passed=bool(change.passed),
         judged_sha=change.head_sha,
@@ -1472,7 +1512,110 @@ async def _merge(
         mergeable=found.get("mergeable") if isinstance(found.get("mergeable"), bool) else None,
         merge_without_ci=without_ci,
     )
-    decided, reasons = judge.merge_decision(facts)
+    return MergeRead(facts, found, diff)
+
+
+def merge_act(change, read: MergeRead) -> dict:
+    """The act of merging ``change``'s pull request at the head the Judge passed, as the gate K5 names it."""
+    scope = approval_heads.scope_of(judge.changed_paths(read.diff), read.pull.get("body"))
+    return autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch, change.head_sha, scope)
+
+
+async def merge_at_head(app: GitHubApp, change, tier: int) -> str:
+    """Merge ``change``'s pull request with the workers' App at the head the Judge passed; the merge commit.
+    GitHubRefused when GitHub refuses it (the head moved, a conflict)."""
+    from evo_agents.hub.server import pulls
+
+    target = github_target(change.origin)
+
+    async def merge(token: str) -> str:
+        title = f"Merge the Curator's change #{change.id} (proposal #{change.proposal_id}, tier {tier})"
+        return await pulls.merge_pull(
+            app, token, target.owner, target.name, change.pr_number, sha=change.head_sha, title=title
+        )
+
+    return await pulls.with_token(app, target.owner, target.name, "merge", merge)
+
+
+async def record_merge(
+    conn: AsyncConnection, change, merged: str, read: MergeRead, act: dict, by: MergedBy | None = None
+) -> None:
+    """``change`` merged as commit ``merged``: its state, the ledger line, the owner's notice, the audit row and the
+    notice of K5 for the run the gate read (the Builder's, or the chat run of ``by``, the agent that merged it)."""
+    tier, ci = read.facts.tier, read.facts.ci
+    extra = {"before_sha": (read.pull.get("base") or {}).get("sha")}  # the default branch it merged into
+    if by is not None:
+        extra.update(actor="user", actor_id=by.user_id, login=by.login, agent=by.agent, chat_run=by.chat_run_id)
+    await _set(conn, change.id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None, ledger_extra=extra)
+    project = (
+        await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
+    ).scalar_one()
+    who = "The hub" if by is None else by.agent
+    owner_id = await _owner_of(conn, change.project_id) if by is None else by.user_id
+    if owner_id is not None:
+        from evo_agents.hub.server.notifications import notify, run_link
+
+        how = "" if by is None else f" for {by.login} in chat run {by.chat_run_id}"
+        await notify(
+            conn,
+            user_id=owner_id,
+            kind="notice",
+            notice_kind="merge_default_branch",
+            project_id=change.project_id,
+            run_id=change.builder_run_id,
+            title=f"{who} merged pull request #{change.pr_number} of {change.repo} into {change.base_branch}",
+            body=(
+                f"The Curator's change #{change.id} (proposal #{change.proposal_id}, tier {tier}) passed its "
+                f"Judge at {change.head_sha} with {'CI green' if ci == 'green' else 'no CI'}; "
+                f"{'the hub' if by is None else by.agent} merged {change.pr_url} as {merged}{how}."
+            ),
+            details={
+                "repo": change.repo,
+                "branch": change.base_branch,
+                "commits": [merged],
+                "change_id": change.id,
+                "pr": change.pr_url,
+            },
+            link=run_link(project, change.builder_run_id) if change.builder_run_id else None,
+        )
+    via = "" if by is None else f" via={by.agent} in chat run {by.chat_run_id}"
+    await audit.record(
+        conn,
+        actor_id=None if by is None else by.user_id,
+        token_id=None,
+        action=MERGE,
+        target=f"{project}/{change.plan_id} change:{change.id} pr={change.pr_url} sha={merged}{via}",
+        project_id=change.project_id,
+    )
+    run_id = change.builder_run_id if by is None else by.chat_run_id
+    told = f"{who} merged pull request #{change.pr_number} of {change.repo} for run {run_id}"
+    await autonomy_gates.tell_after(conn, run_id, "K5", key=act["key"], title=told, repo=change.repo)
+
+
+async def _merge(
+    engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | None, change, reader: change_tiers.GraphReader
+) -> str:
+    if not change.passed:
+        failures = (change.verdict or {}).get("failures") or []
+        return await _reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
+    async with engine.begin() as conn:
+        charter = await _charter(conn, change.project_id)
+        tier, waits = await change_tiers.merge_tier(conn, change)
+        body = (
+            await conn.execute(
+                select(tables.plans.c.body).where(
+                    tables.plans.c.project_id == change.project_id, tables.plans.c.plan_id == change.plan_id
+                )
+            )
+        ).scalar_one_or_none() or {}
+        paused = await night_paused(conn, change.project_id)
+    if tier not in _auto(charter):  # no call to GitHub for a change the hub would never merge
+        why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
+        return await _reopen(engine, change, why)
+    if paused:
+        return await _reopen(engine, change, PAUSED, "paused")
+    read = await merge_read(engine, app, curator_app, change, charter, body, reader)
+    decided, reasons = judge.merge_decision(read.facts)
     if decided == "wait":
         async with engine.begin() as conn:
             verdict_at = change.updated_at  # when the verdict, then its check run, was written
@@ -1483,6 +1626,7 @@ async def _merge(
                     state="open",
                     reason=reason_line(f"CI did not finish within 6 hours: {'; '.join(reasons)}"),
                 )
+                await _left_for_owner(conn, change.id)
                 return "open"
             await conn.execute(
                 update(tables.curator_changes)
@@ -1494,75 +1638,19 @@ async def _merge(
         return await _reopen(engine, change, reason_line("; ".join(reasons)))
 
     async with engine.begin() as conn:
-        paused = paused or await _night_paused(conn, change.project_id)  # paused while the hub read GitHub
-        scope = approval_heads.scope_of(judge.changed_paths(diff), found.get("body"))
-        act = autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch, change.head_sha, scope)
+        paused = paused or await night_paused(conn, change.project_id)  # paused while the hub read GitHub
+        act = merge_act(change, read)
         said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
     if paused:
         return await _reopen(engine, change, PAUSED, "paused")
     if not said.act:  # K5 of the principal of the Builder's run (``autonomy_gates``)
         return await _reopen(engine, change, reason_line(said.reason), "wait" if said.waits else None)
-
-    async def merge(token: str) -> str:
-        title = f"Merge the Curator's change #{change.id} (proposal #{change.proposal_id}, tier {tier})"
-        return await pulls.merge_pull(
-            app, token, target.owner, target.name, change.pr_number, sha=change.head_sha, title=title
-        )
-
     try:
-        merged = await pulls.with_token(app, target.owner, target.name, "merge", merge)
+        merged = await merge_at_head(app, change, read.facts.tier)
     except GitHubRefused as exc:
         return await _reopen(engine, change, reason_line(f"GitHub refused the merge: {exc}"))
     async with engine.begin() as conn:
-        before = (found.get("base") or {}).get("sha")  # the default branch the pull request merged into
-        await _set(
-            conn,
-            change.id,
-            state="merged",
-            merged_at=func.now(),
-            merge_sha=merged,
-            reason=None,
-            ledger_extra={"before_sha": before},
-        )
-        project = (
-            await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
-        ).scalar_one()
-        owner_id = await _owner_of(conn, change.project_id)
-        if owner_id is not None:
-            from evo_agents.hub.server.notifications import notify, run_link
-
-            await notify(
-                conn,
-                user_id=owner_id,
-                kind="notice",
-                notice_kind="merge_default_branch",
-                project_id=change.project_id,
-                run_id=change.builder_run_id,
-                title=f"The hub merged pull request #{change.pr_number} of {change.repo} into {change.base_branch}",
-                body=(
-                    f"The Curator's change #{change.id} (proposal #{change.proposal_id}, tier {tier}) passed its "
-                    f"Judge at {change.head_sha} with {'CI green' if ci == 'green' else 'no CI'}; the hub merged "
-                    f"{change.pr_url} as {merged}."
-                ),
-                details={
-                    "repo": change.repo,
-                    "branch": change.base_branch,
-                    "commits": [merged],
-                    "change_id": change.id,
-                    "pr": change.pr_url,
-                },
-                link=run_link(project, change.builder_run_id) if change.builder_run_id else None,
-            )
-        await audit.record(
-            conn,
-            actor_id=None,
-            token_id=None,
-            action=MERGE,
-            target=f"{project}/{change.plan_id} change:{change.id} pr={change.pr_url} sha={merged}",
-            project_id=change.project_id,
-        )
-        told = f"The hub merged pull request #{change.pr_number} of {change.repo} for run {change.builder_run_id}"
-        await autonomy_gates.tell_after(conn, change.builder_run_id, "K5", key=act["key"], title=told, repo=change.repo)
+        await record_merge(conn, change, merged, read, act)
     log.info("curator change merged", extra={"change_id": change.id, "sha": merged})
     return "merged"
 

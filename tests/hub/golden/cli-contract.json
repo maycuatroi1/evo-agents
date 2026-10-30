@@ -23828,6 +23828,19 @@
       ],
       "json": null
     },
+    "worker curator merge": {
+      "positionals": [
+        {
+          "name": "change",
+          "metavar": "CHANGE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
     "worker finding": {
       "positionals": [],
       "options": [
@@ -79748,6 +79761,111 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/curator/merge": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merge",
+          "description": "Merge the pull request of a change of this thread's proposal that the hub left open, for the chat run's\ndispatcher, an admin of the project, at the head the Judge passed, with the workers' App: 403 for a change of\nanother proposal, 409 with the reason for anything the merge does not allow, 503 while GitHub does not answer.",
+          "operationId": "merge_v1_worker_runs__run_id__curator_merge_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CuratorMergeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CuratorMerged"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/plugins/install-github": {
         "post": {
           "tags": [
@@ -107197,6 +107315,41 @@
             "proposal"
           ],
           "title": "CuratorAnswered"
+        },
+        "CuratorMergeIn": {
+          "properties": {
+            "change_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Change Id",
+              "description": "the change of this thread's proposal the hub left open"
+            }
+          },
+          "type": "object",
+          "required": [
+            "change_id"
+          ],
+          "title": "CuratorMergeIn"
+        },
+        "CuratorMerged": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            },
+            "change": {
+              "$ref": "#/components/schemas/Change",
+              "description": "the change as merged, with its merge commit"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "change"
+          ],
+          "title": "CuratorMerged"
         },
         "CuratorOverview": {
           "properties": {
