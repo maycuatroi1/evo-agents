@@ -240,3 +240,144 @@ def test_github_merge_check_a_check_turned_off_while_judging_fails_and_wakes_the
     put_policy(world.client, world.headers["owner"], policy("off"))
     assert checks_pass(world) == {"checks_off": 1}
     assert decision(world, found["decision_id"]).state == "answered"
+
+
+# The gate of the agent's merge command (K5) and the ancestry of its merge
+
+
+MERGED_AT = "2026-10-30T12:00:00Z"
+MERGE = "c3" * 20
+
+
+def passed_check(world) -> int:
+    """Ask for the check of pull request #7 at HEAD and have the Judge pass it; the wait's decision."""
+    found = ask(world).json()
+    checks_pass(world)
+    spec, headers = judge_run(world)
+    assert verdict(world, spec, headers, HEAD).status_code == 200
+    moved(world.client, world.worker, spec["id"], "verifying", "done")
+    assert checks_pass(world) == {"checks_passed": 1}
+    return found["decision_id"]
+
+
+def gate(world, head: str | None = HEAD, **body):
+    payload = {"repo": f"{MINE}/{REPO}", "number": 7, "head": head, **body}
+    response = world.client.post(
+        f"/v1/worker/runs/{world.run_id}/merge-gate", json=payload, headers=world.worker["headers"]
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_merge_gate_k5_holds_a_merge_until_a_passed_verdict_holds_for_the_head(world):
+    unasked = gate(world)
+    assert (unasked["gated"], unasked["passed"]) == (True, False)
+    assert unasked["command"] == "evo-agents worker merge-check evo-agents"
+    assert "no merge check" in unasked["reason"]
+    ask(world)
+    judging = gate(world)
+    assert not judging["passed"] and "still judges" in judging["reason"]
+    passed_check(world)
+    ok = gate(world)
+    assert (ok["gated"], ok["passed"], ok["head_sha"], ok["reason"]) == (True, True, HEAD, None)
+    moved_on = gate(world, NEWER)
+    assert not moved_on["passed"] and moved_on["head_sha"] == HEAD
+    assert "verdict holds for " + HEAD[:12] in moved_on["reason"]
+    assert not gate(world, None)["passed"], "a head the hook could not read passes nothing"
+
+
+def test_merge_gate_k5_a_repo_left_off_is_not_the_hubs_to_gate(world):
+    put_policy(world.client, world.headers["owner"], policy("off"))
+    off = gate(world)
+    assert (off["gated"], off["passed"], off["reason"]) == (False, True, None)
+    other = gate(world, repo="someone/else")
+    assert other["gated"] is False
+
+
+def test_merge_gate_k5_a_failed_check_holds_the_merge(world):
+    ask(world)
+    checks_pass(world)
+    spec, headers = judge_run(world)
+    failed = verdict(world, spec, headers, HEAD, verdict="fail", reasons="no")
+    assert failed.status_code == 200, failed.text
+    held = gate(world)
+    assert held["gated"] and not held["passed"]
+
+
+def settle_merges(world) -> dict:
+    from evo_agents.hub.server import merge_ancestry
+
+    state = world.client.app.state
+    return world.client.portal.call(partial(merge_ancestry.settle, state.engine, state.github_app))
+
+
+def merge_record(world) -> dict:
+    m = tables.merge_checks
+    return sql(world.db, select(m.c.verdict))[0][0]["merged"]
+
+
+def merged_pull(world, *, head: str = HEAD, sha: str = MERGE, on_main: bool = True):
+    pull = world.github.pulls[(MINE.lower(), REPO, 7)]
+    pull.state, pull.merged, pull.merge_sha, pull.merged_at, pull.head_sha = "closed", True, sha, MERGED_AT, head
+    if on_main:
+        world.github.commit(MINE, REPO, sha, MERGED_AT, {})
+
+
+def notices(world) -> list:
+    n = tables.notifications
+    return sql(world.db, select(n.c.title, n.c.body).where(n.c.title.like("Merge of pull request%")))
+
+
+def test_merge_ancestry_records_a_merge_at_the_judged_head_on_the_base_and_tells_nobody(world):
+    passed_check(world)
+    assert settle_merges(world) == {}, "an open pull request has no merge to read"
+    merged_pull(world)
+    assert settle_merges(world) == {"merged": 1}
+    record = merge_record(world)
+    assert (record["merge_sha"], record["merged_head"], record["on_base"], record["problems"]) == (
+        MERGE,
+        HEAD,
+        True,
+        [],
+    )
+    assert settle_merges(world) == {}, "a merge is read once"
+    assert notices(world) == []
+
+
+def test_merge_ancestry_a_merge_at_another_head_opens_a_notice_for_the_owner(world):
+    passed_check(world)
+    merged_pull(world, head=NEWER)
+    assert settle_merges(world) == {"merged": 1, "notified": 1}
+    record = merge_record(world)
+    assert record["merged_head"] == NEWER and record["judged_head"] == HEAD
+    ((title, body),) = notices(world)
+    assert "pull request #7 of evo-agents" in title
+    assert NEWER[:12] in body and HEAD[:12] in body
+
+
+def test_merge_ancestry_a_merge_commit_off_the_base_opens_a_notice(world):
+    passed_check(world)
+    merged_pull(world, on_main=False)
+    assert settle_merges(world) == {"merged": 1, "notified": 1}
+    record = merge_record(world)
+    assert record["on_base"] is False and record["compare"] == "missing"
+    ((_, body),) = notices(world)
+    assert "not on the base branch" in body
+
+
+def test_merge_ancestry_judges_what_github_says_alone():
+    from types import SimpleNamespace
+
+    from evo_agents.hub.server import merge_ancestry
+
+    assert merge_ancestry.problems(HEAD, HEAD, MERGE, "ahead") == []
+    assert merge_ancestry.problems(HEAD, HEAD, MERGE, "identical") == []
+    assert len(merge_ancestry.problems(HEAD, NEWER, MERGE, "ahead")) == 1
+    assert len(merge_ancestry.problems(HEAD, HEAD, MERGE, "diverged")) == 1
+    assert len(merge_ancestry.problems(HEAD, None, None, None)) == 2
+    row = SimpleNamespace(head_sha=HEAD, base_branch="main")
+    pull = {"merge_commit_sha": MERGE, "head": {"sha": HEAD}}
+    from datetime import UTC, datetime
+
+    now = datetime(2026, 10, 30, tzinfo=UTC)
+    assert merge_ancestry.merged_record(row, pull, "behind", now)["on_base"] is False

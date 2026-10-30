@@ -18,6 +18,13 @@ the agent, as the card gives it (an ask a project policy sets reads auto: the me
   the event saying the principal was not told.
 - auto: it lets the command through and records the event.
 
+A merge command (``gh pr merge``, or ``gh api`` of ``repos/OWNER/NAME/pulls/N/merge``) the modes let through meets one
+more gate when the repo has ``merge_check`` on (plan super-board-parity-2, K5 in docs/autonomy.md): the hook reads the
+pull request's head, the hub (``POST /v1/worker/runs/{id}/merge-gate``) says whether it holds a passed merge check for
+that head, and the command must pin it (``--match-head-commit HEAD``, or ``-f sha=HEAD`` for the API). Without the
+verdict the refusal names ``evo-agents worker merge-check``. A repo with the check off, or a hub that does not answer,
+leaves the command as the modes said.
+
 Each event of the hook is a decision of the ledger S1 (plan autonomy-levels, criterion a10): its ``autonomy`` body names
 the class, the mode, the command, the verdict, and the run, its principal and its agent.
 
@@ -170,6 +177,10 @@ class Gate:
     agent: str | None = None  # the handle of the run's agent profile
     # the approval of the pull request a merge command merges, its head and scope now (``pull_heads.of_command``)
     pull: Callable[[str], dict | None] | None = None
+    # the repo, number, head and pinned head of the pull request a merge command merges (``pull_heads.facts_of_command``)
+    merge_facts: Callable[[str], dict | None] | None = None
+    # the hub's word on a merge command in a repo with the merge check on (``POST .../merge-gate``)
+    merge_gate: Callable[[dict], Awaitable[dict | None]] | None = None
 
     @classmethod
     def of(cls, autonomy: Mapping | None, worktree: Path, backups: Path, **given) -> Gate | None:
@@ -209,6 +220,8 @@ class Gate:
         if not acted:
             return None
         why = self.refused(acted, decision) or await self._hub(acted, decision, given["command"])
+        if why is None and any(hit.klass == "K5" for hit, _ in acted):
+            why = await self._merge_gate(given["command"])
         for hit, mode in acted:
             body = {"class": hit.klass, "mode": mode, "what": hit.what, "verdict": "refused" if why else "allowed"}
             body |= {"run": self.run_id, "principal": self.principal, "agent": self.agent}  # the ledger S1
@@ -218,6 +231,34 @@ class Gate:
             text = f"Autonomy hook {body['verdict']} a command of {hit.klass} ({mode}){told}: {hit.what}"
             self.record(text, body)
         return why
+
+    async def _merge_gate(self, command: str) -> str | None:
+        """The merge gate of the hub (plan super-board-parity-2): a merge of a pull request in a repo with the merge check
+        on goes only at the head the hub judged and passed, and the command pins that head. A repo with it off, a
+        command that merges no pull request and a hub that does not answer leave the command through."""
+        if self.merge_facts is None or self.merge_gate is None:
+            return None
+        facts = await asyncio.to_thread(self.merge_facts, command)
+        if facts is None:
+            return None
+        answer = await self.merge_gate({"repo": facts["repo"], "number": facts["number"], "head": facts["head"]})
+        if answer is None or not answer.get("gated"):
+            return None
+        ask = answer.get("command") or "evo-agents worker merge-check"
+        if not answer.get("passed"):
+            return (
+                f"the hub's merge check holds this merge: {answer.get('reason') or 'no passed verdict for the head'}. "
+                f"Ask the hub with `{ask}`, end your turn while it judges, and merge when it passes."
+            )
+        head = answer["head_sha"]
+        pin = "--match-head-commit" if facts["how"] == "pr" else "-f sha="
+        if facts["pin"] != head:
+            seen = f"pins {facts['pin'][:12]}" if facts["pin"] else "pins no head"
+            return (
+                f"the hub's merge check passed pull request #{facts['number']} at {head[:12]} alone, and the command "
+                f"{seen}: run it again with {pin}{'=' if pin.startswith('--') else ''}{head}"
+            )
+        return None
 
     async def _hub(self, acted: list[tuple[Hit, str]], decision: int | None, command: str = "") -> str | None:
         """The hub's word on the classes in notify and ask: refused when it reads one stricter now, or when the
@@ -505,6 +546,13 @@ def for_run(run, env: Callable[[], Mapping[str, str]] | None = None) -> Gate | N
             log.info("autonomy act unanswered", extra={"run_id": run.id, "error": str(exc)[:200]})
             return None
 
+    async def merge_gate(body: dict) -> dict | None:
+        try:
+            return await asyncio.wait_for(run.daemon.hub.merge_gate(run.id, body, timeout=ACT_TIMEOUT), ACT_TIMEOUT)
+        except Exception as exc:  # the hub's silence leaves the command through, as for a class in notify
+            log.info("merge gate unanswered", extra={"run_id": run.id, "error": str(exc)[:200]})
+            return None
+
     return Gate.of(
         autonomy,
         Path(run.worktree),
@@ -515,6 +563,10 @@ def for_run(run, env: Callable[[], Mapping[str, str]] | None = None) -> Gate | N
         act=act,
         run_id=run.id,
         pull=lambda command: pull_heads.of_command(command, Path(run.worktree), env() if env is not None else None),
+        merge_facts=lambda command: pull_heads.facts_of_command(
+            command, Path(run.worktree), env() if env is not None else None
+        ),
+        merge_gate=merge_gate,
         principal=autonomy.get("principal") if isinstance(autonomy, Mapping) else None,
         agent=(run.spec.get("profile") or {}).get("handle") if isinstance(run.spec.get("profile"), Mapping) else None,
     )

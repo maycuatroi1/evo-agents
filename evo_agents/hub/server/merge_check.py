@@ -41,7 +41,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy, findings, judge, merge_gate, runs, tables
-from evo_agents.hub.server import audit, change_tiers, pulls, run_waits
+from evo_agents.hub.server import audit, change_tiers, pulls, run_events, run_waits
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import merge_judge as judging
 from evo_agents.hub.server.decisions import OptionIn, store_decision
@@ -277,6 +277,88 @@ async def ask_check(request: Request, run_id: RunId, body: MergeCheckIn, user: C
         web_url=row.web_url,
         decision_id=decision_id,
         wake_at=wake_at,
+    )
+
+
+# The gate of the agent's merge command
+
+
+class MergeGateIn(BaseModel):
+    repo: str = Field(min_length=1, max_length=200, pattern=LINE, description="owner/name of the pull request's repo")
+    number: int = Field(ge=1, description="the pull request the merge command merges")
+    head: str | None = Field(
+        None, description="the head of the pull request as the hook read it now; null when it could not"
+    )
+
+
+class MergeGate(BaseModel):
+    gated: bool = Field(description="false: the repo does not have merge_check on, so the command is not the hub's")
+    passed: bool = Field(description="the hub holds a passed verdict for the head named, and the command may go on")
+    head_sha: str | None = Field(description="the head the hub's verdict holds for; the merge pins it")
+    reason: str | None = Field(description="why the command does not pass")
+    command: str = Field(description="the command that asks for the check")
+
+
+def _slug(target) -> str:
+    return f"{target.owner}/{target.name}".lower()
+
+
+def gate_of(row, number: int, repo: str, head: str | None) -> tuple[bool, str | None]:
+    """(whether the merge may go on, why not) for pull request ``number`` of ``repo`` whose head now is ``head``, given
+    its merge check ``row`` (None when the run never asked)."""
+    ask = f"ask with `{COMMAND} {repo}`"
+    if row is None:
+        return False, f"the hub has no merge check of pull request #{number}: {ask}, and merge when it passes"
+    if row.state == JUDGING:
+        return False, f"the hub still judges pull request #{number} at {row.head_sha[:12]}: wait for the verdict"
+    if row.state == FAILED:
+        return (
+            False,
+            f"the merge check of pull request #{number} failed at {row.head_sha[:12]}: {row.reason or 'no reason'}",
+        )
+    if head is None:
+        return (
+            False,
+            f"the hook could not read the head of pull request #{number}: the hub's verdict holds for {row.head_sha[:12]} alone",
+        )
+    if head != row.head_sha:
+        return (
+            False,
+            f"pull request #{number} is at {head[:12]} now and the hub's verdict holds for {row.head_sha[:12]}: {ask} again",
+        )
+    return True, None
+
+
+@worker_router.post(
+    "/runs/{run_id}/merge-gate", response_model=MergeGate, responses={**REFUSALS, 422: {"model": ErrorBody}}
+)
+async def merge_gate_act(request: Request, run_id: RunId, body: MergeGateIn, user: CurrentUser) -> MergeGate:
+    """The word of the hub on a merge command of the run's agent (K5): whether the pull request's repo has the merge
+    check on, and when it has, whether a passed verdict holds for the head the command merges."""
+    head = body.head.lower() if body.head and judge.is_sha(body.head.lower()) else None
+    async with request.app.state.engine.begin() as conn:
+        await run_events.claimed_run(conn, user, run_id)
+        r = tables.runs
+        project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
+        project = await queue._load(conn, project_id)
+        name = next(
+            (
+                repo
+                for repo, facts in project.repos.items()
+                if (target := github_target(facts.origin)) is not None and _slug(target) == body.repo.lower()
+            ),
+            None,
+        )
+        settings = project.policy[autonomy.REPOS].get(name) if name else None
+        command = f"{COMMAND} {name or body.repo}"
+        if settings is None or settings[autonomy.MERGE_CHECK] != autonomy.ON:
+            return MergeGate(gated=False, passed=True, head_sha=None, reason=None, command=command)
+        m = tables.merge_checks
+        query = select(m).where(m.c.project_id == project_id, m.c.repo == name, m.c.number == body.number)
+        row = (await conn.execute(query)).one_or_none()
+    passed, why = gate_of(row, body.number, name, head)
+    return MergeGate(
+        gated=True, passed=passed, head_sha=row.head_sha if row is not None else None, reason=why, command=command
     )
 
 

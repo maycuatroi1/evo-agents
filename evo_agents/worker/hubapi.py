@@ -361,6 +361,9 @@ class WorkerHub:
     async def autonomy_act(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/autonomy-acts", body, timeout=timeout)
 
+    async def merge_gate(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-gate", body, timeout=timeout)
+
     # A review run: its findings and proposals
 
     async def finding(self, run_id: int, body: dict) -> dict:
