@@ -1529,6 +1529,27 @@ of a chat run names the chat message that opened it in `RunSpec.chat_message_id`
 files go to `.evo-run/inbox/chat-<id>/`, and the hub's prompt of that run names them after the message to answer in a
 `[files attached: ...]` line. A message without files reaches the agent as before.
 
+## Versions of a document
+
+A document is every file of one name in a chat or a run: a file a person attached and the outputs an agent sent back
+under the same name are its versions (`evo_agents.hub.server.doc_versions`). The name is the last part after a slash,
+without case, as the web's document panel keys it, so `drafts/Spec.md` and `spec.md` are one document. The web reads
+the whole list from the hub, so a document opened again after a reload shows every version even when the messages of
+the older ones are not on the page it loaded.
+
+- `GET /v1/chats/{id}/doc-versions?name=NAME`, to a member of the chat: the files attached to its messages and the
+  outputs its messages carry, threads included, of the messages whose label the caller clears, in the order of the
+  messages (a message's attachments before its outputs, an output carried twice counted once).
+- `GET /v1/projects/{p}/runs/{id}/doc-versions?name=NAME`, to the run's readers (by sink): the files of the messages
+  its inbox took and the outputs of the run, in the order they came. The files of the chat message that opened a
+  chat run are in the chat's list, whose route serves them.
+
+The answer is `DocVersions`: the `key` and the `versions`, oldest first, each with its `source` (`attached`, or the
+output's `sent`, `tool` or `outputs`), id, name, media type, viewer, size, SHA-256, caption, `created_at`, the `url`
+of its bytes on the route that serves them to the same reader, the chat message that carries it (`message_id`, `seq`,
+`thread_root_id`), the `run_id` of an output and its `author`. Anyone else gets 404. Nothing is stored for it: the
+list is read from the tables of attachments and outputs.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
