@@ -92976,6 +92976,111 @@
             }
           }
         }
+      },
+      "/v1/worker/runs/{run_id}/merge-check": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask Check",
+          "description": "Have the hub judge the run's pull request on github.com at its head before the run merges it: where the check\nstands, and the wait of the run its verdict answers while it judges.",
+          "operationId": "ask_check_v1_worker_runs__run_id__merge_check_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeCheckIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeCheck"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -106858,6 +106963,12 @@
                 }
               ],
               "title": "Pr Url"
+            },
+            "merge_result": {
+              "type": "boolean",
+              "title": "Merge Result",
+              "description": "a Judge of a merge check: merge the current base into the head in a scratch worktree and run the checks there; a conflict fails it with needs a rebase",
+              "default": false
             },
             "judge_key": {
               "anyOf": [
@@ -122407,6 +122518,138 @@
           "title": "MergeBreaker",
           "description": "The breaker of a repo of the queue: armed, or tripped until an admin resets it."
         },
+        "MergeCheck": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "head_sha": {
+              "type": "string",
+              "title": "Head Sha",
+              "description": "the head the verdict holds for; a new push needs a new check"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "judging, passed or failed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "web_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Web Url"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the run's wait the verdict answers; null when the verdict is there"
+            },
+            "wake_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wake At",
+              "description": "when the wait wakes at the latest"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "number",
+            "head_sha",
+            "state",
+            "reason",
+            "web_url",
+            "decision_id",
+            "wake_at"
+          ],
+          "title": "MergeCheck",
+          "description": "Where the merge check of a pull request stands, and the wait its verdict answers."
+        },
+        "MergeCheckIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo",
+              "description": "the repo of the run's pull request"
+            },
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the pull request; null: the open one of the run's branch"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "the branch the run pushes, as its worker has it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "MergeCheckIn"
+        },
         "MergeEvent": {
           "properties": {
             "id": {
@@ -123050,6 +123293,24 @@
                 }
               ],
               "description": "the security pass of the run, which judges the dimension security apart from the agent"
+            },
+            "conflicts": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "minLength": 1
+                  },
+                  "type": "array",
+                  "maxItems": 3000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conflicts",
+              "description": "a merge check's: the paths where merging the base into the head conflicts; null when it merged"
             }
           },
           "type": "object",

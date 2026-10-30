@@ -104,11 +104,14 @@ async def _judge_worker(conn: AsyncConnection, project) -> tuple[int | None, str
     return next((node for node in duty.nodes if runs.MERGE_JUDGE in node.features), duty.nodes[0]).id, None
 
 
-async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> str | None:
-    """Queue the judge run of merge request ``row`` of ``project`` (``merge_gate.Project``), its second Judge when
-    ``second``; None once queued, else why it waits."""
+async def queue_judge_run(
+    conn: AsyncConnection, project, *, repo: str, branch: str, title: str, builder_model, built: bool, second: bool
+) -> tuple[int | None, str | None, str]:
+    """Queue a judge run of ``project`` (``merge_gate.Project``) on ``branch`` of ``repo``, its second Judge when
+    ``second``: (its id, its model, why that model), or (None, None, why it waits). The merge queue's and the merge
+    check's (``merge_check``) judge runs both start here."""
     if project.owner_id is None:
-        return "the project's policy has no revision to name who dispatches its Judge"
+        return None, None, "the project's policy has no revision to name who dispatches its Judge"
     u = tables.users
     login = (await conn.execute(select(u.c.login).where(u.c.id == project.owner_id))).scalar_one()
     member = Principal(user_id=project.owner_id, login=login, admin=False, token_id=0, kind=MACHINE, token_hash="")
@@ -117,28 +120,32 @@ async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> s
     except HTTPException:
         access = None
     if access is None or not has_role(access.role, "writer"):
-        return f"{login}, who wrote the policy, no longer holds writer on project {project.name}"
+        return None, None, f"{login}, who wrote the policy, no longer holds writer on project {project.name}"
     worker_id, why = await _judge_worker(conn, project)
     if worker_id is None:
-        return why
+        return None, None, why
     try:
         worker = await pinnable(conn, member, access, worker_id)
     except HTTPException as exc:
-        return f"its worker cannot take it: {exc.detail}"
+        return None, None, f"its worker cannot take it: {exc.detail}"
     if runs.MERGE_JUDGE not in worker.features:
-        return f"the daemon of worker {worker.name} does not say it judges merge requests: upgrade it and restart it"
-    problems = unfit(worker, project.name, "judge", [row.repo], judges.CLAUDE_CODE)
+        return (
+            None,
+            None,
+            f"the daemon of worker {worker.name} does not say it judges merge requests: upgrade it and restart it",
+        )
+    problems = unfit(worker, project.name, "judge", [repo], judges.CLAUDE_CODE)
     if problems:
-        return f"worker {worker.name} cannot take it: {'; '.join(problems)}"
-    built = row.source != "label"
-    model, chosen = judges.merge_judge_model(project.policy["judge"]["model"], row.model, built=built, second=second)
-    which = "the second Judge" if second else "the Judge"
+        return None, None, f"worker {worker.name} cannot take it: {'; '.join(problems)}"
+    model, chosen = judges.merge_judge_model(
+        project.policy["judge"]["model"], builder_model, built=built, second=second
+    )
     values = {
         "kind": "judge",
         "project_id": project.id,
         "plan_id": None,
         "plan_revision": None,
-        "title": f"{'Second Judge' if second else 'Judge'} of !{row.iid} of {row.repo}: {row.title or ''}"[:200],
+        "title": title[:200],
         "dispatched_by": project.owner_id,
         "dispatched_via": MACHINE,
         "pinned_worker_id": worker.id,
@@ -148,13 +155,32 @@ async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> s
         "mode": "headless",
         "approval": "auto",
         "timeout_s": JUDGE_TIMEOUT_S,
-        "repos": [{"repo": row.repo, "branch": row.source_branch}],
+        "repos": [{"repo": repo, "branch": branch}],
         "max_attempts": 1,  # a judge run that ends without a verdict is tried again by the queue, not the reaper
     }
     try:
         run_id = await insert_run(conn, values)
     except IntegrityError:
-        return "another judge run of the project is active: this one comes after it"
+        return None, None, "another judge run of the project is active: this one comes after it"
+    return run_id, model, chosen
+
+
+async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> str | None:
+    """Queue the judge run of merge request ``row`` of ``project`` (``merge_gate.Project``), its second Judge when
+    ``second``; None once queued, else why it waits."""
+    run_id, model, chosen = await queue_judge_run(
+        conn,
+        project,
+        repo=row.repo,
+        branch=row.source_branch,
+        title=f"{'Second Judge' if second else 'Judge'} of !{row.iid} of {row.repo}: {row.title or ''}",
+        builder_model=row.model,
+        built=row.source != "label",
+        second=second,
+    )
+    if run_id is None:
+        return chosen
+    which = "the second Judge" if second else "the Judge"
     await queue.set_row(conn, row.id, judge_run_id=run_id, judge_key=None, reason=None)
     head = (row.head_sha or "")[:12]
     text = (
@@ -193,7 +219,9 @@ async def merge_claim(conn: AsyncConnection, view) -> dict | None:
         return None
     row = await _judged(conn, view.id, lock=True)
     if row is None:
-        return None
+        from evo_agents.hub.server import merge_check  # it reads this module
+
+        return await merge_check.claim(conn, view)
     charter = await queue.charter_of(conn, row.project_id)
     found = {
         "role": "judge",
@@ -226,7 +254,9 @@ async def merge_prompt(conn: AsyncConnection, view) -> str | None:
         return None
     row = await _judged(conn, view.id)
     if row is None:
-        return None
+        from evo_agents.hub.server import merge_check  # it reads this module
+
+        return await merge_check.prompt(conn, view)
     plan, task = await _plan_and_task(conn, row)
     mr = {
         "iid": row.iid,
@@ -315,6 +345,11 @@ class MergeVerdictIn(BaseModel):
     security: SecurityPass | None = Field(
         None, description="the security pass of the run, which judges the dimension security apart from the agent"
     )
+    conflicts: list[Annotated[str, Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)]] | None = Field(
+        None,
+        max_length=judge.MAX_PATHS,
+        description="a merge check's: the paths where merging the base into the head conflicts; null when it merged",
+    )
 
 
 class MergeVerdict(BaseModel):
@@ -324,10 +359,9 @@ class MergeVerdict(BaseModel):
     reason: str | None
 
 
-async def _held(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
-    """(run row, queue row) of the judge run ``run_id`` of the queue the worker of ``user`` holds, whose merge request
-    waits for its verdict, asked with the run's key; 404 for any other run, 409 for a merge request that waits for no
-    verdict of it, 403 without the key."""
+async def held_judge(conn: AsyncConnection, user: Principal, run_id: int):
+    """The row of judge run ``run_id`` of the queue or of a merge check, which the worker of ``user`` holds, locked;
+    404 for any other run."""
     worker_id = (await worker_of(conn, user))[0]
     r = tables.runs
     run = (
@@ -341,20 +375,41 @@ async def _held(conn: AsyncConnection, user: Principal, run_id: int, key: str | 
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if run.kind != "judge" or run.plan_id is not None:
         raise HTTPException(404, f"run {run_id} is no judge run of the merge queue")
-    row = await _judged(conn, run_id, lock=True)
-    if row is None or row.state != "judging":
-        raise HTTPException(409, f"run {run_id} judges no merge request that waits for its verdict")
-    if not key or row.judge_key is None or not hmac.compare_digest(_digest(key), row.judge_key):
+    return run
+
+
+def require_key(run_id: int, key: str | None, stored: str | None) -> None:
+    """403 unless ``key`` is the run's own key, whose digest is ``stored``."""
+    if not key or stored is None or not hmac.compare_digest(_digest(key), stored):
         raise HTTPException(
             403,
             f"run {run_id} is a judge run: what it reads and its verdict take the run's own key "
             f"({judge.JUDGE_KEY_HEADER}), which its claim handed the daemon",
         )
+
+
+async def _held(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
+    """(run row, queue row) of the judge run ``run_id`` of the queue the worker of ``user`` holds, whose merge request
+    waits for its verdict, asked with the run's key; 404 for any other run, 409 for a merge request that waits for no
+    verdict of it, 403 without the key."""
+    run = await held_judge(conn, user, run_id)
+    row = await _judged(conn, run_id, lock=True)
+    if row is None or row.state != "judging":
+        raise HTTPException(409, f"run {run_id} judges no merge request that waits for its verdict")
+    require_key(run_id, key, row.judge_key)
     return run, row
 
 
-def _hidden(charter: dict) -> list[str]:
+def hidden_of(charter: dict) -> list[str]:
+    """The hidden checks of a project's ``charter``, which only its judge runs read."""
     return [item for item in (charter.get("judge") or {}).get("hidden_checks") or [] if isinstance(item, str)]
+
+
+async def _checks(conn: AsyncConnection, run_id: int):
+    """The module of the merge checks when judge run ``run_id`` judges one; None for a run of the queue."""
+    from evo_agents.hub.server import merge_check  # it reads this module
+
+    return merge_check if await merge_check.judged_check(conn, run_id) is not None else None
 
 
 @worker_router.get("/runs/{run_id}/merge-judge", response_model=MergeJudgeInputs, responses=REFUSALS)
@@ -363,9 +418,14 @@ async def merge_judge_inputs(
 ) -> MergeJudgeInputs:
     """What the judge run of the queue this worker holds reads, with the run's own key."""
     async with request.app.state.engine.begin() as conn:
+        checks = await _checks(conn, run_id)
+        if checks is not None:  # a pull request on github.com
+            found = await checks.inputs(conn, user, run_id, judge_key)
+            response.headers.update(NO_STORE)
+            return found
         run, row = await _held(conn, user, run_id, judge_key)
         charter = await queue.charter_of(conn, row.project_id)
-        hidden = _hidden(charter)
+        hidden = hidden_of(charter)
         plan, _ = await _plan_and_task(conn, row)
         verify = merge_gate.verify_of(plan, row.repo)
         verdict = {**(row.verdict or {}), "hidden_count": len(hidden), "fingerprint": row.fingerprint}
@@ -400,12 +460,15 @@ async def merge_verdict(
     if body.prior is not None and len(body.prior) > findings.MAX_LEDGER:
         raise HTTPException(422, f"a verdict marks at most {findings.MAX_LEDGER} findings")
     async with request.app.state.engine.begin() as conn:
+        checks = await _checks(conn, run_id)
+        if checks is not None:  # a pull request on github.com
+            return await checks.verdict(conn, user, run_id, body, judge_key)
         run, row = await _held(conn, user, run_id, judge_key)
         second = queue.next_round(row.verdict, row.risk) == "second"
         plan, _ = await _plan_and_task(conn, row)
         hidden_count = (row.verdict or {}).get("hidden_count")
         if not isinstance(hidden_count, int):
-            hidden_count = len(_hidden(await queue.charter_of(conn, row.project_id)))
+            hidden_count = len(hidden_of(await queue.charter_of(conn, row.project_id)))
         found = Judged(
             body=body,
             second=second,

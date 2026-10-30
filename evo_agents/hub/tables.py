@@ -1052,6 +1052,7 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
+merge_checks = tables_merge.check_table(metadata)  # a run's pull request on github.com judged (0187)
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 plugin_records, plugin_record_leases = tables_plugin_records.plugin_record_tables(metadata)  # 0169
 # the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)

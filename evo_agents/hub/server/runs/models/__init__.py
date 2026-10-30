@@ -524,6 +524,11 @@ class CuratorSpec(BaseModel):
     base_branch: str | None = Field(None, description="the default branch the pull request goes into, when known")
     head_sha: str | None = Field(None, description="a Judge's commit to judge; null: the branch's tip")
     pr_url: str | None = None
+    merge_result: bool = Field(
+        False,
+        description="a Judge of a merge check: merge the current base into the head in a scratch worktree and run the "
+        "checks there; a conflict fails it with needs a rebase",
+    )
     judge_key: str | None = Field(
         None,
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
