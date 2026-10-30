@@ -28,7 +28,7 @@ from sqlalchemy import BigInteger, Text, and_, any_, case, column, exists, func,
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import author, autonomy_card, curator, runs, tables
+from evo_agents.hub import author, autonomy_card, curator, model_router, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
@@ -772,6 +772,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         lost_attempt=await _lost_attempt(conn, view),
         runtime=view.runtime,
         model=view.model,
+        routing=await _routing(conn, project_id, view),
         mode=view.mode,
         approval=view.approval,
         timeout_min=view.timeout_min,
@@ -795,6 +796,16 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         attachments=await _opening_files(conn, view),
         chat_message_id=view.chat_message_id if view.kind == "chat" else None,
     )
+
+
+async def _routing(conn: AsyncConnection, project_id: int, view: Run) -> dict | None:
+    """The routing by difficulty the claim of run ``view`` carries (``model_router.claim_routing``); the project's
+    policy is read only for a run of a routed kind and runtime that names no model."""
+    if view.model or view.kind not in model_router.ROUTED_KINDS or view.runtime not in model_router.ROUTED_RUNTIMES:
+        return None
+    from evo_agents.hub.server.autonomy_policies import effective_policy  # it imports the Loop, which reads runs
+
+    return model_router.claim_routing(await effective_policy(conn, project_id), view.kind, view.runtime, view.model)
 
 
 async def _opening_files(conn: AsyncConnection, view: Run) -> list:

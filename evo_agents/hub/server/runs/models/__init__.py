@@ -21,6 +21,7 @@ from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
 from evo_agents.hub.server.runs.models.placement import PlacementFields, RunPlacement
+from evo_agents.hub.server.runs.models.routing import RoutingRecord, RunRouting
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     LostAttempt,
@@ -309,6 +310,12 @@ class Run(RunPlacement):
     requested_runtime: str = Field(description="as the dispatch asked: any, a runtime of the core or a plugin's")
     runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
+    model_used: str | None = Field(
+        None, description="the model its runtime ran it on, as its worker reported it; null until then, or not said"
+    )
+    routing: RoutingRecord | None = Field(
+        None, description="what the routing by difficulty did; null for a run it did not rate"
+    )
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
@@ -566,6 +573,11 @@ class RunSpec(BaseModel):
     )
     runtime: str = Field(description="a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
+    routing: RunRouting | None = Field(
+        None,
+        description="while the project's policy has routing on, for a run that names no model: the scorer that rates "
+        "its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise",
+    )
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
@@ -981,6 +993,8 @@ class StateReport(BaseModel):
         "the run as its failure_cause, and ignored with any other state",
     )
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
+    model_used: ModelName | None = Field(None, description="the model the run's runtime runs it on")
+    routing: RoutingRecord | None = Field(None, description="what the routing by difficulty did, for a run it rated")
     answer: str | None = Field(
         None,
         min_length=1,

@@ -224,7 +224,8 @@ async def record_heartbeat(
     )
 
 
-SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set
+# what a report without a move may set
+SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage", "model_used", "routing")
 
 
 def _waits_for(run_id: int):
@@ -243,6 +244,8 @@ def _reported_columns(body: StateReport) -> dict:
         "diffstat": body.diffstat.model_dump() if body.diffstat else None,
         "verify": [item.model_dump(exclude_none=True) for item in body.verify] if body.verify is not None else None,
         "usage": body.usage,
+        "model_used": body.model_used,
+        "routing": body.routing.model_dump() if body.routing is not None else None,
     }
     return {name: value for name, value in columns.items() if value is not None}
 

@@ -476,6 +476,7 @@ class OpencodeAdapter(QueueAdapter):
         self.server_url = self._server.url
         self._http = aiohttp.ClientSession(auth=aiohttp.BasicAuth(self._server.username, self._server.password))
         self.model = await self._resolve_model()
+        self.model_used = "/".join(self.model)
         rules = RUN_RULES + await self._profile_rules()
         if self.context.resume_session:
             await self._request("GET", f"/session/{self.context.resume_session}")

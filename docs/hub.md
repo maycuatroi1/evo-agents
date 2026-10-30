@@ -1263,6 +1263,16 @@ evo-agents hub run send 42 "keep the old route until 0.10"    # your reply in th
 evo-agents hub run finish 42                                  # end the chat: the run ends done
 ```
 
+A run dispatched without `--model` (and without a profile that allows exactly one model) runs on the model its runtime
+picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the
+claim of a step, plan, author or task run on claude-code carries the policy's scorer and ladder, and the worker rates
+the run easy, medium or hard before its agent starts, with one short turn of the scorer model on the run's prompt, and
+runs it on the ladder's model for that difficulty (`docs/workers.md`, Model routing). The hub calls no model at the
+dispatch. A model `--model` names that the profile's allowlist leaves out is refused (422) as before, and the Judge of
+the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the
+run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
+and for every run `model_used`, the model its runtime used, also with routing off.
+
 `run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
 has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`
 let take it), whose agent writes an execution plan from REQUEST

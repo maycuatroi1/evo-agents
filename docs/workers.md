@@ -1053,7 +1053,8 @@ whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
-from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
+from), with the run's `kind`, `model` and `routing` (the scorer and the ladder when the policy has model routing on,
+see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
@@ -1239,7 +1240,9 @@ causes of [Preflight and failure causes](#preflight-and-failure-causes), or a ne
 as they come. The hub keeps it with the run (`failure_cause` of the run, null when the report has none, as a daemon
 before it sends none) and ignores it with any other state. Reporting the state the run is in already moves
 nothing and keeps the session id, commit, diffstat, verify results and usage it carries, so a resend after a lost
-answer is safe. The answer is the run as the hub holds it.
+answer is safe. A report may also carry `model_used`, the model the runtime used, and `routing`, what the
+model routing did ([Model routing](#model-routing)); the hub keeps the last it got of each, and an older hub ignores
+them. The answer is the run as the hub holds it.
 
 ### Events
 
@@ -1982,6 +1985,34 @@ and the package the adapter needs is installed at least at the version checked: 
 claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
 used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
 hands it no run.
+
+### Model routing
+
+A run's model is the one the dispatch named (`--model`), else the one its agent profile allows when it allows exactly
+one, else the runtime's own choice as [Runtime adapters](#runtime-adapters) says. When the project's policy has the
+section `routing` on (`routing.enabled`, false by default; `docs/hub.md`, Workers and runs), a run that is pinned
+neither way has its model chosen by its difficulty, on the worker, before its agent starts:
+
+- The claim of a step, plan, author or task run on claude-code carries `routing`: `{"scorer": "haiku", "ladder":
+  {"easy": "haiku", "medium": "sonnet", "hard": "opus"}}` as the policy sets them; null for any other run, and for a
+  run with a model. The hub calls no model at the dispatch. The Judge of the merge queue and of the Curator keeps the
+  rules of `evo_agents/hub/judges.py`, and the Curator's other runs the model of the charter.
+- The daemon skips a run its agent profile pins to one model. For any other, once the run's account is ready and before
+  the first headless agent starts, it runs `claude --print --model <scorer> --output-format json --max-turns 1` with
+  no tool, no MCP server and no session kept, in an empty directory and the agent's environment, asking for one word,
+  easy, medium or hard, about the start of the run's prompt (12,000 characters). The turn is cut off after 120
+  seconds.
+- The run takes the ladder's model for that difficulty. When the scorer fails, times out or names no difficulty, it
+  takes the medium one. A ladder model the run's profile does not allow is not taken, and the session keeps the model
+  it would have had. Nothing here fails the run, and a run that starts in the terminal UI is not rated.
+- The run's log gets a note (`Model routing: ...`), and the reports of the run carry `routing`: `scorer`,
+  `difficulty`, `scored` (false when the scorer gave none), `model` (null when it took none), `cost_usd` of the
+  scorer's turn and `error`. The hub keeps it as the run's `routing` (schema 0185).
+
+Every run, routed or not, reports `model_used`: the model the runtime said it used (the model of Claude Code's init
+message, opencode's `provider/model`), else the one the daemon asked for, else none. The hub keeps it as the run's
+`model_used`, so what runs cost can be read by model. The rules both sides share are in
+`evo_agents/hub/model_router.py`, the daemon's part in `evo_agents/worker/model_router.py`.
 
 ### Runtimes of plugins
 

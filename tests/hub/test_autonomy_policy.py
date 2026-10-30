@@ -102,6 +102,12 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "loop.use_cases": "auto",
         # plan active-context-answers: the prompt of a run carries the confirmed answers that match it
         "context.answers": False,
+        # plan super-board-parity-2: no model routing; when on, the ladder of Claude Code's models by difficulty
+        "routing.enabled": False,
+        "routing.scorer": "haiku",
+        "routing.ladder.easy": "haiku",
+        "routing.ladder.medium": "sonnet",
+        "routing.ladder.hard": "opus",
     }
     assert not [name for name in defaults if "budget" in name or "estimate" in name or "usd" in name]
     assert {key.name: key.default for key in autonomy.REPO_KEYS} == {
@@ -187,10 +193,10 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         'Minh"',
         "loop.budget: no such key; loop takes enabled, worker, pool, labels, timezone, business, development, repo_max_running, "
         "dispatches_per_hour, max_items_per_hour, stable_hours, brainstorm, require_sprint, caps, use_cases",
-        "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop, context",
+        "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop, context, routing",
     ]
     assert autonomy.problems(["merge"], FACTS) == [
-        'the policy is an object of sections (repos, merge, judge, breaker, audit, loop, context), not ["merge"]'
+        'the policy is an object of sections (repos, merge, judge, breaker, audit, loop, context, routing), not ["merge"]'
     ]
     assert autonomy.problems({"merge": {"risk_paths": ["x" * 70_000]}}, FACTS)[0].startswith("the policy is 70")
 

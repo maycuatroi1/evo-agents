@@ -40,6 +40,11 @@ first agent starts (``build_packs``, ``evo_agents.worker.packs``), and every age
 is of a plugin the owner did not accept), or that holds what the runtime does not load (``Adapter.pack_refusal``),
 fails the run with cause runtime before its agent starts, saying why. A run with packs is never handed to a person in
 a terminal UI, which loads none.
+
+A run whose claim carries ``routing`` (the project's policy has it on, and the run names no model) is rated before its
+first headless agent starts, and runs on the model the ladder gives its difficulty (``route_model``,
+``evo_agents.worker.model_router``). Every report of the run says the model its runtime used, as the runtime named it
+(``Adapter.model_used``), else the model the worker asked for, and what the routing did (``model_fields``).
 """
 
 from __future__ import annotations
@@ -53,7 +58,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import browser_login, curator, runs
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import autonomy_hook, environments, interactive, orphans, packs, venvs
+from evo_agents.worker import autonomy_hook, environments, interactive, model_router, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
@@ -66,7 +71,7 @@ from evo_agents.worker.runner.transitions import running_from, why_stopped
 from evo_agents.worker.runtimes import claude_home, gateway, hub_tools, profiles
 from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.runtimes.claude_code import compact_window, leased_oauth
-from evo_agents.worker.runtimes.common import with_first_request
+from evo_agents.worker.runtimes.common import SETTING_PREFIXES, with_first_request
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -104,6 +109,9 @@ class Agent:
         self.logins_seen: set[int] = set()  # the login decisions whose answer was handled
         self.credentials_seen: set[int] = set()  # the credential requests whose answer took the leases again
         self._gate: list = []  # the run's hook of autonomy (``autonomy_hook.for_run``), built for its first agent
+        self.routed = False  # the run's model was chosen by its difficulty, or is not to be (``route_model``)
+        self.routing: dict | None = None  # what the routing did (``model_router.record``); None: it did not run
+        self.model_asked: str | None = None  # the model the worker started the last agent on; None: the runtime's own
 
     # The runtime
 
@@ -570,6 +578,8 @@ class Agent:
         await self.build_packs(cls)
         context = self.context(prompt, session_id)
         await self.check_login(cls, context)
+        if await self.route_model(context):
+            context = self.context(prompt, session_id)
         lacking = cls.environment_refusal(context)
         if lacking:
             raise RunFailed(lacking, cause="credentials")
@@ -586,6 +596,7 @@ class Agent:
             log.warning("agent did not start", extra={"run_id": run.id}, exc_info=True)
             raise RunFailed(f"{run.runtime} did not start: {type(exc).__name__}: {exc}") from None
         self.running = True
+        self.model_asked = self.asked_model(context)
         run.agent_starts()
         pid = self.group_of(adapter)
         await self.note_agent(pid)
@@ -606,6 +617,43 @@ class Agent:
         # Claude Code's total is the session's running total, which the next agent in the session starts from.
         run.watchdog.spent_usd = max(run.watchdog.spent_usd, curator.run_cost(outcome.usage))
         return outcome
+
+    # The model
+
+    async def route_model(self, context: RunContext) -> bool:
+        """Rate the run's difficulty with the scorer of its claim's routing and take the ladder's model for it, before
+        its first headless agent; whether the run's model changed. Nothing for a run whose claim carries no routing or
+        that is pinned to a model, and nothing after its first agent."""
+        if self.routed:
+            return False
+        self.routed = True
+        run = self.run
+        found = await model_router.route(run.spec, context.env)
+        if found is None:
+            return False
+        self.routing = found
+        chosen = found["model"]
+        how = "the scorer rated it" if found["scored"] else f"the scorer did not rate it ({found['error']}), so"
+        cost = f", for ${found['cost_usd']:.4f}" if found["cost_usd"] is not None else ""
+        if chosen:
+            run.note(f"Model routing: {how} {found['difficulty']}{cost}; the agent runs on {chosen}.")
+            run.spec["model"] = chosen
+        else:
+            run.note(f"Model routing: {how} {found['difficulty']}{cost}; {found['error']}, so the model stays.")
+        return chosen is not None
+
+    def asked_model(self, context: RunContext) -> str | None:
+        """The model the worker starts the agent on: the session's (``profiles.session_model``), else the run's."""
+        if self.run.runtime in SETTING_PREFIXES:
+            return profiles.session_model(context, self.run.runtime)
+        model = context.run.get("model")
+        return model.strip() if isinstance(model, str) and model.strip() else None
+
+    def model_fields(self) -> dict:
+        """What a report of the run says of its model: the one its runtime used (``Adapter.model_used``), else the one
+        the worker asked for, and what the routing did; each None while unknown."""
+        used = getattr(self.adapter, "model_used", None) if self.adapter is not None else None
+        return {"model_used": used or self.model_asked, "routing": self.routing}
 
     def group_of(self, adapter) -> int | None:
         try:
