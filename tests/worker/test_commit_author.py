@@ -151,6 +151,27 @@ def test_commit_run_without_an_author_keeps_the_machine_identity(tmp_path):
     assert head(path)["author"] == MACHINE
 
 
+@pytest.mark.parametrize("ignored_by", [None, ".gitignore", "info/exclude"])
+def test_commit_run_keeps_the_result_directory_out_whether_or_not_the_work_tree_ignores_it(tmp_path, ignored_by):
+    # An agent that wrote .evo-run/ inside a repo that ignores it failed the run: git refused the excluding pathspec.
+    path = repository(tmp_path)
+    if ignored_by == ".gitignore":
+        (path / ".gitignore").write_text(".evo-run/\n", encoding="utf-8")
+        subprocess.run(["git", "add", ".gitignore"], cwd=path, check=True)
+        subprocess.run(["git", "commit", "--quiet", "-m", "ignore"], cwd=path, check=True)
+    elif ignored_by == "info/exclude":
+        with (path / ".git" / "info" / "exclude").open("a", encoding="utf-8") as exclude:
+            exclude.write(".evo-run\n")
+    (path / ".evo-run").mkdir()
+    (path / ".evo-run" / "result.json").write_text("{}\n", encoding="utf-8")
+    (path / "feature.txt").write_text("x\n", encoding="utf-8")
+    committed = asyncio.run(gitops.commit_run(path, "feature"))
+    assert committed == gitops.Committed(True, ())
+    tree = subprocess.run(["git", "ls-tree", "-r", "--name-only", "HEAD"], cwd=path, check=True, capture_output=True)
+    assert ".evo-run/result.json" not in tree.stdout.decode().splitlines()
+    assert "feature.txt" in tree.stdout.decode().splitlines()
+
+
 # The agent's own commits
 
 
