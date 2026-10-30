@@ -446,6 +446,7 @@ def create_app(config: HubConfig) -> FastAPI:
         context_answer_reuse,
         credential_shares,
         credentials,
+        curator_threads,
         features,
         gateway_proxy,
         goals,
@@ -526,6 +527,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_agents.worker_router,
         chat_read.worker_router,
         triage_actions.worker_router,
+        curator_threads.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
         plugin_publishers.router,

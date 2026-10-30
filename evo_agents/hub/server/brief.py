@@ -22,6 +22,8 @@ included, through the outbox (``notifications.notify``). The brief holds:
   finished in the 24 hours before the brief, and those waiting for a person by reason (``loop.notices.facts``); a
   project whose Loop is off has none;
 - the KG optimize run of the project that ended in the 24 hours before the brief, in a line (``kg_optimize``).
+- the proposals the project's agent answered for the owner in the 24 hours before the brief, with its note and its chat
+  run (``curator_threads``), when it answered any.
 
 curator_briefs keeps one row a project and local day, with what the brief said and its notification; a second pass of
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
@@ -136,6 +138,31 @@ async def _merged(conn: AsyncConnection, run_ids: list[int]) -> list[dict]:
             }
         )
     return merged
+
+
+async def _agent_answers(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
+    """The answers the project's agent gave to proposals in the 24 hours before the brief, as their ledger lines say
+    (``curator_threads``): how many, and the first few, oldest first."""
+    cl = tables.curator_ledger
+    where = (
+        cl.c.project_id == project_id,
+        cl.c.action.in_(("accepted", "rejected", "deferred")),
+        cl.c.details.has_key("chat_run"),
+        cl.c.created_at > func.now() - timedelta(hours=24),
+    )
+    total = (await conn.execute(select(func.count()).where(*where))).scalar_one()
+    query = select(cl.c.proposal_id, cl.c.action, cl.c.details).where(*where).order_by(cl.c.id).limit(MAX_LISTED)
+    listed = [
+        {
+            "proposal_id": row.proposal_id,
+            "state": row.action,
+            "agent": row.details.get("agent"),
+            "chat_run": row.details.get("chat_run"),
+            "note": one_line(row.details.get("note") or "", QUESTION_CHARS),
+        }
+        for row in (await conn.execute(query)).all()
+    ]
+    return total, listed
 
 
 WAITING_CHANGES = ("judge_pending", "judging", "judged", "open")  # a Curator change whose pull request is still open
@@ -327,6 +354,18 @@ def _count(number: int, word: str) -> str:
     return f"{number} {word}" + ("" if number == 1 else "s")
 
 
+def _answer_blocks(answers: dict | None) -> list[str]:
+    """The paragraphs of the answers the project's agent gave to proposals for the owner; none when it gave none."""
+    if not answers:
+        return []
+    listed = [
+        f"- proposal #{item['proposal_id']} {item['state']} by {item['agent']} (chat run #{item['chat_run']}): "
+        f"{item['note']}"
+        for item in answers["listed"]
+    ]
+    return [f"Proposals the project's agent answered for you: {answers['total']}.", "\n".join(listed)]
+
+
 def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     """(title, body in markdown) of a brief with ``facts``, its times in the charter's time zone ``zone``: a paragraph a
     subject, each with its list."""
@@ -401,6 +440,7 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
             )
         )
     blocks.extend(loop_notices.blocks(project, facts.get("loop")))
+    blocks.extend(_answer_blocks(facts.get("agent_answers")))
     optimized = facts.get("kg_optimize")
     if optimized:
         blocks.append(f"KG optimize run #{optimized['id']} ({optimized['state']}): {optimized['summary']}")
@@ -455,6 +495,9 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
     optimized = await brief_facts(conn, due.project_id)
     if optimized is not None:
         found["kg_optimize"] = optimized
+    answered, answers = await _agent_answers(conn, due.project_id)
+    if answered:
+        found["agent_answers"] = {"total": answered, "listed": answers}
     return found if loop is None else {**found, "loop": loop}
 
 

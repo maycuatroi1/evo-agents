@@ -44,7 +44,9 @@ a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST .../pr
 accepted proposal that has no change yet); a draft that cannot become one leaves a change open with the reason, and
 nothing of it runs. Accepting one of another tier records the answer alone. The hub merges a change of a tier the
 charter's ``auto_merge`` names alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time
-has passed (the job curator.collect). A proposal of kind memory may promote agents' memories in place of a plan
+has passed (the job curator.collect). With the charter's ``answer_by`` agent, a proposal recorded open, or open
+again, gets a thread in the project's triage chat whose agent answers it for the review run's owner
+(``evo_agents.hub.server.curator_threads``). A proposal of kind memory may promote agents' memories in place of a plan
 (``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
@@ -789,6 +791,9 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}
         await write_event(conn, run_id, event)
+        from evo_agents.hub.server.curator_threads import on_open  # it answers through this module
+
+        await on_open(conn, proposal_id)
         row = (await conn.execute(_proposals().where(p.c.id == proposal_id))).one()
         probe = await stored_probes.of_proposal(conn, run.project, proposal_id, shown=False)
     log.info(
@@ -952,10 +957,14 @@ async def answer_proposal_as(
     body: ProposalAnswer,
     *,
     via: str | None = None,
+    agent: tuple[str, int] | None = None,
 ) -> Proposal:
     """Accept, reject or defer proposal ``proposal_id`` of ``project`` as ``user``, an admin of it, in the caller's
-    transaction, and read its notifications. The answer route and the Telegram channel (``via="telegram"``, which the
-    audit row names) both answer through it; it raises the HTTPException the route answers with."""
+    transaction, and read its notifications. The answer route, the Telegram channel (``via="telegram"``, which the
+    audit row names) and the project's agent for ``user`` (``agent``: its handle and chat run, ``curator_threads``)
+    answer through it; it raises the HTTPException the route answers with."""
+    if agent is not None:
+        via = f"@{agent[0]} in chat run {agent[1]}"
     p, n = tables.proposals, tables.notifications
     access = await project_access(conn, user, project)
     _reader(access)
@@ -986,6 +995,8 @@ async def answer_proposal_as(
         note=body.note,
         days=days if body.action == "defer" else None,
         via=via,
+        agent=None if agent is None else f"@{agent[0]}",
+        chat_run_id=None if agent is None else agent[1],
     )
     if body.action == "accept" and row.promotion is not None:
         await memory_promotion.promote(conn, access, user, proposal_id, row.promotion)
