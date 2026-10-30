@@ -3,14 +3,15 @@ merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the
 ``evo_agents.hub.server.proposal_plans`` how an accepted proposal becomes the Curator's plan and its change, and
 ``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch.
 
-Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) makes its draft the Curator's plan
-``curator-<proposal>-<slug>``, on the branch ``curator/<proposal>-<slug>`` of its one repo, and a row of
-curator_changes, state ``planned``; a draft that cannot become one leaves its change ``open``, with the reason, and
-nothing of it runs (``proposal_plans.plan_from_proposal``). A write of a Curator's plan that names another repo or
-branch for it, or changes anything but the progress of its steps (status, done_at, evidence and note) and its status,
-is refused (``plan_write_refusal``, from ``plans._store``): its what, goal, context, verify and acceptance stay as the
-hub made them. A plan whose id starts with ``curator-`` is made this way alone, never by hand. No member dispatches a
-run of a Curator's plan, step or plan (``refuse_manual_dispatch``): the night shift alone runs it, at any hour.
+Accepting a proposal of a tier the charter's ``planned_tiers`` names (tiers 0 to 2 unless it names others,
+``judge.planned_tiers``) makes its draft the Curator's plan ``curator-<proposal>-<slug>``, on the branch
+``curator/<proposal>-<slug>`` of its one repo, and a row of curator_changes, state ``planned``; a draft that cannot
+become one leaves its change ``open``, with the reason, and nothing of it runs (``proposal_plans.plan_from_proposal``).
+A write of a Curator's plan that names another repo or branch for it, or changes anything but the progress of its steps
+(status, done_at, evidence and note) and its status, is refused (``plan_write_refusal``, from ``plans._store``): its
+what, goal, context, verify and acceptance stay as the hub made them. A plan whose id starts with ``curator-`` is made
+this way alone, never by hand. No member dispatches a run of a Curator's plan, step or plan
+(``refuse_manual_dispatch``): the night shift alone runs it, at any hour.
 
 The night shift (``curator.gate_of`` and ``_fire``) queues, after the night's review run and outside its window too
 (``shift_hours``), the judge run of a change waiting for one (``queue_judge``), then the Builder of a planned change
@@ -42,9 +43,12 @@ says, and a sign of the worker's detector puts the proposal at tier 3 too; the p
 the proposal its tier again. A judge run that ends without a verdict queues another, JUDGE_ATTEMPTS in all, then leaves
 the change open. The job then writes the Judge's check run on the pull request with the workers' App, and merges it
 when ``judge.merge_decision`` says so, reading everything again from GitHub first (the ruleset with the Curator's App,
-the files and the tier they give, the checks the ruleset requires and the head commit's message), and merging a tier 0
-change at the head the Judge passed; anything else, tiers 1 and 2 included, stays open for its owner with the reason.
-A change of a harness alone whose replays won merges as tier 0 (``change_tiers.merge_tier``), and the merge of one
+the files and the tier they give, the checks the ruleset requires and the head commit's message), and merging a change
+of a tier the charter's ``auto_merge`` names (tier 0 alone unless it names more, up to 3) at the head the Judge passed;
+anything else, a tier the charter does not name, a sign or a protected path, stays open for its owner with the reason.
+CI must be green, or, when the charter has ``merge_without_ci``, may be none at all or, with a ruleset that requires no
+check, what ran: a check that ran and failed still leaves the change open, and one still running makes it wait. A
+change of a harness alone whose replays won merges as tier 0 (``change_tiers.merge_tier``), and the merge of one
 releases its global skill (``evo_agents.hub.server.skill_release``, part of each pass).
 While the project's night shift is paused the hub merges nothing: a judged change waits for it. Every WATCH_EVERY
 it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at which commit), closed
@@ -1160,7 +1164,8 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
         f"The Curator of project {project} on the evo-agents hub made this change from proposal "
         f"#{change.proposal_id} (tier {change.tier}): {proposal_title}.\n\n"
         f"Its plan on the hub is {change.plan_id}. The Judge writes its verdict as the check run "
-        f'"{judge.JUDGE_CHECK_NAME}"; the hub merges only a change of tier 0 that the Judge passed, with CI green.'
+        f'"{judge.JUDGE_CHECK_NAME}"; the hub merges only a change the Judge passed, of a tier the charter of the '
+        "project lets it merge, with CI green unless that charter merges without CI."
     )
 
 
@@ -1418,7 +1423,8 @@ async def _merge(
         ).scalar_one_or_none() or {}
         paused = await _night_paused(conn, change.project_id)
     auto = tuple(item for item in charter.get("auto_merge") or [] if isinstance(item, int))
-    if tier != 0 or 0 not in auto:  # no call to GitHub for a change the hub would never merge
+    without_ci = charter.get("merge_without_ci") is True
+    if tier not in auto:  # no call to GitHub for a change the hub would never merge
         why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
         return await _reopen(engine, change, why)
     if paused:
@@ -1444,6 +1450,7 @@ async def _merge(
             seen["statuses"],
             required=ruleset.required_checks if ruleset is not None else [],
             head_message=seen["message"],
+            without_ci=without_ci,
         )
     else:
         ci, ci_reasons = "unreadable", ["the hub could not read the message of the pull request's head commit"]
@@ -1463,6 +1470,7 @@ async def _merge(
         ci=ci,
         ci_reasons=tuple(ci_reasons),
         mergeable=found.get("mergeable") if isinstance(found.get("mergeable"), bool) else None,
+        merge_without_ci=without_ci,
     )
     decided, reasons = judge.merge_decision(facts)
     if decided == "wait":
@@ -1496,7 +1504,7 @@ async def _merge(
         return await _reopen(engine, change, reason_line(said.reason), "wait" if said.waits else None)
 
     async def merge(token: str) -> str:
-        title = f"Merge the Curator's change #{change.id} (proposal #{change.proposal_id}, tier 0)"
+        title = f"Merge the Curator's change #{change.id} (proposal #{change.proposal_id}, tier {tier})"
         return await pulls.merge_pull(
             app, token, target.owner, target.name, change.pr_number, sha=change.head_sha, title=title
         )
@@ -1532,8 +1540,9 @@ async def _merge(
                 run_id=change.builder_run_id,
                 title=f"The hub merged pull request #{change.pr_number} of {change.repo} into {change.base_branch}",
                 body=(
-                    f"The Curator's change #{change.id} (proposal #{change.proposal_id}, tier 0) passed its Judge at "
-                    f"{change.head_sha} with CI green; the hub merged {change.pr_url} as {merged}."
+                    f"The Curator's change #{change.id} (proposal #{change.proposal_id}, tier {tier}) passed its "
+                    f"Judge at {change.head_sha} with {'CI green' if ci == 'green' else 'no CI'}; the hub merged "
+                    f"{change.pr_url} as {merged}."
                 ),
                 details={
                     "repo": change.repo,

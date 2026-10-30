@@ -39,7 +39,9 @@ const CHARTER: Charter = {
   night_plans: ["fleet"],
   max_decisions_per_day: 5,
   brief_at: "06:30",
+  planned_tiers: [0, 1, 2],
   auto_merge: [0],
+  merge_without_ci: false,
   protected_paths: ["curator.yaml", ".github/workflows/**"],
   circuit_breaker: { max_failed_in_a_row: 2 },
   outcome_days: 7,
@@ -191,6 +193,15 @@ describe("the charter as a form", () => {
     expect(result.body).toEqual(body);
   });
 
+  it("keeps the tiers it plans and merges and merging without CI, though it switches tier 0 alone", () => {
+    const wide: Charter = { ...CHARTER, planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true };
+    const form = charterForm(wide, { worker: "", timezone: "" });
+    expect(charterBody(form).body).toMatchObject({ planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true });
+    expect(charterBody({ ...form, autoMerge: false }).body?.auto_merge).toEqual([1, 2, 3]);
+    const old = charterForm({ ...CHARTER, planned_tiers: undefined, auto_merge: [] }, { worker: "", timezone: "" });
+    expect(charterBody({ ...old, autoMerge: true }).body).toMatchObject({ planned_tiers: [0, 1, 2], auto_merge: [0] });
+  });
+
   it("fills a first charter with the hub's defaults, the visitor's worker and time zone", () => {
     const form = charterForm(null, { worker: "mini", timezone: "Europe/Paris" });
     const result = charterBody(form);
@@ -201,7 +212,9 @@ describe("the charter as a form", () => {
       night_budget_usd: 5,
       run_budget_usd: null,
       max_runs_per_night: 6,
+      planned_tiers: [0, 1, 2],
       auto_merge: [],
+      merge_without_ci: false,
       judge: { runtime: "claude-code", model: null, hidden_checks: [] },
     });
   });
