@@ -403,7 +403,7 @@ class Agent:
     def gate(self):
         """The run's hook of autonomy, None for a run without a snapshot: built once a run."""
         if not self._gate:
-            self._gate.append(autonomy_hook.for_run(self.run))
+            self._gate.append(autonomy_hook.for_run(self.run, self.env))
         return self._gate[0]
 
     def with_browser(self, built: tuple) -> tuple:

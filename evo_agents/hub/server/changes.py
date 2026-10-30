@@ -82,7 +82,7 @@ from sqlalchemy import exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, findings, judge, runs, security_pass, tables, tiers
+from evo_agents.hub import approval_heads, curator, findings, judge, runs, security_pass, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
@@ -1487,7 +1487,8 @@ async def _merge(
 
     async with engine.begin() as conn:
         paused = paused or await _night_paused(conn, change.project_id)  # paused while the hub read GitHub
-        act = autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch)
+        scope = approval_heads.scope_of(judge.changed_paths(diff), found.get("body"))
+        act = autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch, change.head_sha, scope)
         said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
     if paused:
         return await _reopen(engine, change, PAUSED, "paused")

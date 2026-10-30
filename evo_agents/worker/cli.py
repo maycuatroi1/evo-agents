@@ -56,6 +56,7 @@ import platform
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents import __version__
@@ -71,6 +72,7 @@ from evo_agents.worker import (
     pool_cli,
     probe_cli,
     projects_cli,
+    pull_heads,
     step_verify,
     triage_cli,
 )
@@ -727,6 +729,17 @@ def credential_request(args) -> dict | None:
     return request
 
 
+def asked_approval(category: str, ref: str) -> dict:
+    """The approval ``worker ask --pull`` binds its decision to: the pull request's head and scope as gh reads them in
+    the run's directory (``pull_heads``)."""
+    if category != "merge":
+        raise WorkerStateError("--pull binds a merge approval to a pull request's head: use --category merge")
+    bound = pull_heads.read(ref, None, Path.cwd())
+    if bound is None:
+        raise WorkerStateError(f"gh could not read pull request {ref} here: `gh pr view {ref}` says why")
+    return bound
+
+
 def _asked_options(args) -> list[dict]:
     """The options of ``worker ask`` that asks no credential: 2 to 6, each with a key of its own."""
     options = [decision_option(text) for text in args.option or []]
@@ -767,6 +780,8 @@ def cmd_ask(args) -> int:
     body.update(decision_extras(args.recommended, args.recommended_reason, args.reversible, args.undo, args.evidence))
     if args.step is not None:
         body["step_key"] = args.step
+    if getattr(args, "pull", None) is not None:
+        body["approval"] = asked_approval(args.category, args.pull)
     body.update(output_cli.attached(agent.home, agent.run_id, args.attach))  # the outputs the question carries
     if args.recommended is None:
         print(NO_RECOMMENDED, file=sys.stderr)
@@ -1081,6 +1096,12 @@ def _register_ask(wsub) -> None:
         "nothing; repeat it for another",
     )
     ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
+    ask.add_argument(
+        "--pull",
+        metavar="REF",
+        help="with --category merge: the pull request to merge (number, URL or branch); the answer holds for its head "
+        "and scope now alone, and a push that changes them asks again",
+    )
     output_cli.attach_option(ask, "the question")
     ask.set_defaults(func=cmd_ask)
 

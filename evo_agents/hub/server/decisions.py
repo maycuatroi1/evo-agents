@@ -169,6 +169,7 @@ def _decisions():
         d.c.wake_at,
         d.c.wake_on,
         d.c.credential_request,
+        d.c.approval,
     ).select_from(
         d.join(p, p.c.id == d.c.project_id)
         .join(r, r.c.id == d.c.run_id)
@@ -421,7 +422,7 @@ async def store_decision(
             step_key=key,
             category=body.category,
             question=body.question,
-            context=body.context,
+            context=body.stored_context(),
             options=body.stored_options(),
             **body.stored_extras(),
             asked_of=asked,
