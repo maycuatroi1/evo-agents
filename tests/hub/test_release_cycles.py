@@ -97,6 +97,16 @@ INFRA_LOG = logged(
     "##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped.",
     "##[error]The operation was canceled.",
 )
+GATE_LOG = logged(
+    '##[group]Run echo "$NEEDS" | jq -r \'to_entries[] | "\\(.key): \\(.value.result)"\'',
+    "##[endgroup]",
+    "changes: success",
+    "test: failure",
+    "web-check: success",
+    "false",
+    "##[error]Process completed with exit code 1.",
+)
+GATE = {"name": "ci / ci-ok", "conclusion": "failure", "step": "Run echo", "log": GATE_LOG}
 GREEN = [{"name": "version"}, {"name": "ci / test (ubuntu-latest, 3.12)"}, {"name": "build"}, {"name": "publish"}]
 
 
@@ -263,6 +273,19 @@ def test_the_infra_rules_name_a_lost_runner_the_network_while_installing_and_pyp
     assert infra["infra"] == "runner_lost" and tested["infra"] is None, "a job that names a failed test is no infra"
     assert release_ci.summary([infra])["infra"] is True and release_ci.summary([infra, tested])["infra"] is False
     assert release_ci.same_tests([TEST_A, TEST_B], [TEST_B, "x"]) == [TEST_B]
+
+
+def test_a_gate_job_counts_only_when_every_failed_job_is_a_gate():
+    gate = release_ci.job_failure({"name": "ci / ci-ok", "conclusion": "failure"}, GATE_LOG)
+    assert gate["gate"] is True and gate["infra"] is None and gate["ids"] == ["ci / ci-ok: failure"]
+    assert release_ci.gate(logged("changes: success", "test: success")) is False, "no needed job failed"
+    assert release_ci.gate(logged("test: failure")) is False, "one line is no gate"
+    tested = release_ci.job_failure({"name": "ci / test", "conclusion": "failure"}, PYTEST_LOG + "\n" + GATE_LOG)
+    assert tested["gate"] is False, "a job that names a failed test is no gate"
+    assert release_ci.summary([tested, gate])["ids"] == [TEST_A, TEST_B]
+    infra = release_ci.job_failure({"name": "build", "conclusion": "failure"}, INFRA_LOG)
+    assert release_ci.summary([infra, gate])["infra"] is True, "a gate hides no fault of the infrastructure"
+    assert release_ci.summary([gate])["ids"] == ["ci / ci-ok: failure"], "a gate alone keeps its id"
 
 
 def patch(path: str, *lines: str, status: str = "modified") -> dict:
@@ -490,6 +513,18 @@ def test_the_same_test_red_at_two_tags_in_a_row_stops_the_cycle(world):
     assert found["stop_cause"] == "same_test" and TEST_B in found["stop_reason"]
     assert "v0.25.0 and v0.25.1" in found["stop_reason"]
     assert [row[1] for row in release_rows(world.db)] == ["cut", "fix"], "no third run"
+
+
+def test_a_gate_red_at_two_tags_in_a_row_with_other_tests_under_it_queues_the_next_fix(world):
+    _, merge = tagged(world)
+    ci(world, "v0.25.0", merge, "failure", [*red_jobs(), GATE])
+    assert watch(world) == {"fix": 1}
+    assert fixed(world, claimed(world)["id"]) == {"tagged": 1}
+    jobs = [*red_jobs(PLAYWRIGHT_LOG, "ci / web-e2e"), GATE]
+    ci(world, "v0.25.1", tag_of(world.github, "v0.25.1")[0], "failure", jobs)
+    assert watch(world) == {"fix": 1}, "ci-ok red at both tags is no same test"
+    assert cycle(world.db)["stop_cause"] is None
+    assert release_rows(world.db)[-1][1:] == ("fix", "v0.25.1")
 
 
 def test_another_test_red_at_the_next_tag_queues_the_next_fix(world):

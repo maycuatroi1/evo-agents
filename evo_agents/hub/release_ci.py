@@ -17,7 +17,10 @@ pytest's FAILED and ERROR lines, the failed tests of Playwright's summary), else
 failed. A job whose log matches one of INFRA_RULES and names no test failed of the runner, the network while installing,
 or PyPI answering 5xx (``infra_rule``, rules on the log alone); a failure all of whose jobs did is the infrastructure's,
 and the hub runs the failed jobs again, INFRA_RERUNS times at most. Any other one queues a fix run with what it read
-(``failures_text``), unless the same test id failed at the cycle's tag before (``same_tests``).
+(``failures_text``), unless the same test id failed at the cycle's tag before (``same_tests``). A gate job (``gate``:
+ci-ok of ci.yml, whose log names no test and gives the result of each job it needs, one failed) is red whenever another
+job is, so its id and its log count only when every failed job is a gate (``summary``): else two unrelated failures
+share its id, and its log hides a fault of the infrastructure.
 
 A fix the hub lands must show no sign of test hacking (``release_signs``): of the signs ``judge.hack_signs`` reads, a
 test removed, an assertion removed or loosened (an assertion of a test changed in any way but its numbers, an assert
@@ -71,6 +74,8 @@ PLAYWRIGHT_SUMMARY = re.compile(r"^\s*\d+ failed\s*$")
 PLAYWRIGHT_TEST = re.compile(
     r"^\s*(?:\d+\)\s*)?\[([\w .-]+)\] (?:›|>) (\S+?\.(?:spec|test)\.[cm]?[jt]sx?)(?::\d+){0,2} (?:›|>) (.+?)\s*[─-]*\s*$"
 )
+NEEDS_RESULT = re.compile(r"^[\w.-]+: (success|failure|cancelled|skipped)$")  # a gate's line: a needed job's result
+GATE_FAILED = ("failure", "cancelled")  # the results of a needed job that turn a gate red
 INFRA_RULES = (
     (
         "runner_lost",
@@ -149,6 +154,13 @@ def infra_rule(log: str | None) -> str | None:
     return next((name for name, rule in INFRA_RULES if rule.search(text)), None)
 
 
+def gate(log: str | None) -> bool:
+    """Whether a job's log reads as a gate's: two or more lines that each give the result of a job it needs
+    (NEEDS_RESULT), one of them failed or cancelled."""
+    results = [match.group(1) for match in map(NEEDS_RESULT.match, _lines(log or "")) if match]
+    return len(results) > 1 and any(result in GATE_FAILED for result in results)
+
+
 def failed_step(job: dict) -> str | None:
     """The name of the first step of ``job`` (as GitHub lists a job) that failed."""
     steps = job.get("steps") if isinstance(job.get("steps"), list) else []
@@ -158,7 +170,8 @@ def failed_step(job: dict) -> str | None:
 
 def job_failure(job: dict, log: str | None) -> dict:
     """What the hub keeps of one failed job: its name, link and failed step, the tests its log says failed (else the
-    job and the step as one id), the infrastructure rule its log matched when it names no test, and its log's end."""
+    job and the step as one id), the infrastructure rule its log matched when it names no test, whether it is a gate
+    when it names no test, and its log's end."""
     name, step = str(job.get("name") or f"job {job.get('id')}"), failed_step(job)
     tests = failed_tests(log)
     ids = tests or [f"{name}: {step or job.get('conclusion') or 'failed'}"[:MAX_ID_CHARS]]
@@ -171,15 +184,17 @@ def job_failure(job: dict, log: str | None) -> dict:
         "ids": ids,
         "tests": bool(tests),
         "infra": None if tests else infra_rule(log),
+        "gate": not tests and gate(log),
         "tail": tail[-KEPT_TAIL_CHARS:] if log is not None else None,
     }
 
 
 def summary(jobs: list[dict]) -> dict:
     """The failure of a red tag of its failed jobs (``job_failure``): them, every id once, and whether the
-    infrastructure alone failed it."""
-    ids = list(dict.fromkeys(item for job in jobs for item in job["ids"]))[:MAX_IDS]
-    return {"jobs": jobs, "ids": ids, "infra": bool(jobs) and all(job["infra"] for job in jobs)}
+    infrastructure alone failed it; the ids and the infrastructure of gates only when every failed job is one."""
+    own = [job for job in jobs if not job.get("gate")] or jobs
+    ids = list(dict.fromkeys(item for job in own for item in job["ids"]))[:MAX_IDS]
+    return {"jobs": jobs, "ids": ids, "infra": bool(own) and all(job["infra"] for job in own)}
 
 
 def failed_jobs(jobs: list[dict]) -> list[dict]:
