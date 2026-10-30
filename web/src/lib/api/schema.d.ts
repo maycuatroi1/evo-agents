@@ -4139,6 +4139,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/doc-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Doc Versions
+         * @description Every version of the document ``name`` in the chat, threads included, oldest first: the files people attached
+         *     and the outputs agents sent under that name, of the messages the caller reads.
+         */
+        get: operations["chat_doc_versions_v1_chats__chat_id__doc_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/doc-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Doc Versions
+         * @description Every version of the document ``name`` in the run, oldest first: the files of the messages sent to its agent
+         *     and the outputs of the run under that name, for the run's readers.
+         */
+        get: operations["run_doc_versions_v1_projects__project__runs__run_id__doc_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/changes": {
         parameters: {
             query?: never;
@@ -18409,6 +18451,91 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DocVersion */
+        DocVersion: {
+            /**
+             * Source
+             * @description attached: a file a person attached to a message; sent, tool or outputs: an output of a run
+             * @enum {string}
+             */
+            source: "attached" | "sent" | "tool" | "outputs";
+            /**
+             * Id
+             * @description the attachment's id, or the output's: the two are counted apart
+             */
+            id: number;
+            /**
+             * Name
+             * @description the file's name; an output's may carry its path below .evo-run/outputs/
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Viewer
+             * @description what the web opens it with; none offers a download only
+             * @enum {string}
+             */
+            viewer: "image" | "video" | "audio" | "pdf" | "text" | "html" | "none";
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Caption
+             * @description an output's caption; null for an attachment
+             */
+            caption: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description when its message was sent, or when the run sent the output
+             */
+            created_at: string;
+            /**
+             * Url
+             * @description where this hub answers its bytes to the reader of this list
+             */
+            url: string;
+            /**
+             * Message Id
+             * @description the chat message that carries it; null for none
+             */
+            message_id: number | null;
+            /**
+             * Seq
+             * @description the chat event of that message; null outside a chat
+             */
+            seq: number | null;
+            /**
+             * Thread Root Id
+             * @description the first message of that message's thread; null for none
+             */
+            thread_root_id: number | null;
+            /**
+             * Run Id
+             * @description the run that wrote it, for an output; null for an attachment
+             */
+            run_id: number | null;
+            /** @description who sent it: the person who attached it, or the agent of the chat message that carries an output; null for an output in a run's list, which the run's agent wrote */
+            author: components["schemas"]["ChatAuthor"] | null;
+        };
+        /** DocVersions */
+        DocVersions: {
+            /**
+             * Key
+             * @description the name the versions share: the last part after a slash, lower case
+             */
+            key: string;
+            /**
+             * Versions
+             * @description oldest first; those the reader may not read left out
+             */
+            versions: components["schemas"]["DocVersion"][];
         };
         /** DocsDocument */
         DocsDocument: {
@@ -55914,6 +56041,131 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    chat_doc_versions_v1_chats__chat_id__doc_versions_get: {
+        parameters: {
+            query: {
+                /** @description the document's name; only its last part after a slash counts, without case */
+                name: string;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocVersions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_doc_versions_v1_projects__project__runs__run_id__doc_versions_get: {
+        parameters: {
+            query: {
+                /** @description the document's name; only its last part after a slash counts, without case */
+                name: string;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocVersions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

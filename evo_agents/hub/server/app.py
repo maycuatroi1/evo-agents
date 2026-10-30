@@ -309,6 +309,7 @@ def create_app(config: HubConfig) -> FastAPI:
         curator,
         decisions,
         digests,
+        doc_versions,
         kg_worker,
         local_runs,
         notifications,
@@ -348,6 +349,8 @@ def create_app(config: HubConfig) -> FastAPI:
         attachments.router,  # the files people attach to messages (evo_agents.hub.attachments)
         attachments.chat_router,
         attachments.worker_router,
+        doc_versions.chat_router,  # the versions of a document in a chat or a run
+        doc_versions.router,
     ):
         app.include_router(routes)
 
