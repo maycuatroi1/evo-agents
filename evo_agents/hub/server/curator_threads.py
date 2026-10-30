@@ -23,6 +23,21 @@ the charter's ``planned_tiers`` names makes the Curator's plan. The note, the re
 (``curator.proposal``) and the ledger line name the agent and the chat run, the hub posts a ``Decision:`` line in the
 thread in the agent's name, and the morning brief lists the answers of the agent (``brief``). The admins' answer route
 stays as it is.
+
+When the hub leaves a change of such a proposal open for its owner with a pull request (``changes._reopen``: a tier the
+charter's ``auto_merge`` does not name, a sign, CI that failed, K5 refusing), it says so in the proposal's thread with
+the reason and the pull request (``on_left_open``, in a savepoint of the caller's transaction), and mentions the agent
+when the Judge passed the change and the owner is an admin. POST /v1/worker/runs/{id}/curator/merge, behind
+``evo-agents worker curator merge``, then merges that pull request for the owner, in the same frame as an answer (the
+thread's proposal, 403 for a change of another; an owner who is no admin, 403; answer_by ``agent``, 409), with the
+workers' App at the head the Judge passed, as the hub merges one (``changes.merge_read``, ``changes.merge_at_head``),
+only when ``judge.agent_merge_decision`` allows it on what the hub reads from GitHub then: the change left ``open``,
+its Judge passed, its head the one judged, every sign of its files one of a protected path, its pull request open
+into the default branch and mergeable, the repo's ruleset checked, CI as the charter asks; and when the project's night
+shift is not paused and K5 of the chat run's principal lets it (``autonomy_gates``). Anything else is refused, 409 with
+the reason (503 while GitHub does not answer). The merge writes what the hub's own does (``changes.record_merge``),
+with the agent and the chat run in the audit row, the ledger line and the owner's notice, posts a ``Decision:`` line in
+the thread, and the morning brief lists it.
 """
 
 from __future__ import annotations
@@ -39,11 +54,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import chat_agents, triage
+from evo_agents.hub.server import autonomy_gates, changes, chat_agents, merge_gate, triage
+from evo_agents.hub.server.changes import Change
 from evo_agents.hub.server.chat_runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.proposals import Proposal, ProposalAnswer, answer_proposal_as, planned_tiers_of
+from evo_agents.hub.server.protection import github_target
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -79,6 +97,15 @@ class CuratorAnswerIn(BaseModel):
 class CuratorAnswered(BaseModel):
     message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
     proposal: Proposal = Field(description="the proposal as answered, with the change accepting it made")
+
+
+class CuratorMergeIn(BaseModel):
+    change_id: int = Field(ge=1, le=MAX_ID, description="the change of this thread's proposal the hub left open")
+
+
+class CuratorMerged(BaseModel):
+    message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
+    change: Change = Field(description="the change as merged, with its merge commit")
 
 
 @dataclass(frozen=True)
@@ -219,6 +246,16 @@ async def _post(conn: AsyncConnection, row, existing: triage.Thread | None, body
     return asked or await triage.asking_thread(*args, body)
 
 
+async def _keep(conn: AsyncConnection, proposal_id: int, thread: triage.Thread, agent_run: int | None) -> None:
+    """Keep ``thread`` as the proposal's, with the chat run its latest mention made."""
+    t = tables.proposal_threads
+    values = {"chat_id": thread.chat_id, "root_message_id": thread.root_id, "agent_run_id": agent_run}
+    statement = pg_insert(t).values(proposal_id=proposal_id, **values)
+    await conn.execute(
+        statement.on_conflict_do_update(index_elements=[t.c.proposal_id], set_={**values, "asked_at": func.now()})
+    )
+
+
 async def _ask(conn: AsyncConnection, proposal_id: int, *, again: bool) -> triage.Thread | None:
     row = await _proposal_row(conn, proposal_id)
     if row.state != "open" or await answer_by(conn, row.project_id) != "agent":
@@ -236,12 +273,7 @@ async def _ask(conn: AsyncConnection, proposal_id: int, *, again: bool) -> triag
     if posted is None:
         return None
     thread, agent_run = posted
-    t = tables.proposal_threads
-    values = {"chat_id": thread.chat_id, "root_message_id": thread.root_id, "agent_run_id": agent_run}
-    statement = pg_insert(t).values(proposal_id=proposal_id, **values)
-    await conn.execute(
-        statement.on_conflict_do_update(index_elements=[t.c.proposal_id], set_={**values, "asked_at": func.now()})
-    )
+    await _keep(conn, proposal_id, thread, agent_run)
     log.info(
         "curator thread opened",
         extra={"proposal_id": proposal_id, "chat_id": thread.chat_id, "agent_run_id": agent_run, "again": again},
@@ -263,10 +295,75 @@ async def on_open(conn: AsyncConnection, proposal_id: int, *, again: bool = Fals
         return None
 
 
+def _left_lines(change, row, *, ask: bool, role: str | None) -> list[str]:
+    """The lines of the thread's message about ``change``, which the hub left open for its owner."""
+    head = change.head_sha[:12] if change.head_sha else "(none)"
+    lines = [
+        f"Change #{change.id} of Curator proposal #{row.id} of {row.project} (tier {change.tier}) is left open for its "
+        f"owner: {_line(change.reason) or 'no reason given'}",
+        f"Pull request: {change.pr_url}, head {head}, into {change.base_branch}. The Judge "
+        + ("passed it." if change.passed else "did not pass it."),
+    ]
+    if ask:
+        lines.append(
+            f"Merge it for {row.owner} with `evo-agents worker curator merge {change.id}` once you have read its diff "
+            f"at {head}, as the skill {SKILL} says. The hub merges it only at the head the Judge passed, with no sign "
+            "but of protected paths, open into the default branch, and with K5 letting it; it refuses anything else "
+            "with the reason."
+        )
+    elif not change.passed:
+        lines.append("A change its Judge did not pass is not the agent's to merge: its owner decides on GitHub.")
+    else:
+        lines.append(
+            f"{row.owner} holds {role or 'no role'} on {row.project}, not admin: the hub asks no agent; an admin of "
+            "the project merges it on GitHub."
+        )
+    return lines
+
+
+async def _left(conn: AsyncConnection, change_id: int) -> triage.Thread | None:
+    c, p = tables.curator_changes, tables.proposals
+    query = select(c, p.c.run_id.label("review_run")).join_from(c, p, p.c.id == c.c.proposal_id)
+    change = (await conn.execute(query.where(c.c.id == change_id))).one()
+    if change.state != "open" or change.pr_url is None or change.review_run is None:
+        return None
+    if await answer_by(conn, change.project_id) != "agent":
+        return None
+    row = await _proposal_row(conn, change.proposal_id)
+    role = await _role(conn, row.owner_id, row.project_id)
+    ask = bool(change.passed) and has_role(role, "admin")
+    existing = await thread_of(conn, change.proposal_id)
+    posted = await _post(conn, row, existing, "\n".join(_left_lines(change, row, ask=ask, role=role)), ask=ask)
+    if posted is None:
+        return None
+    thread, agent_run = posted
+    if existing is None or agent_run is not None:
+        await _keep(conn, change.proposal_id, thread, agent_run)
+    log.info(
+        "curator thread told of a change left open",
+        extra={"change_id": change_id, "proposal_id": change.proposal_id, "agent_run_id": agent_run},
+    )
+    return thread
+
+
+async def on_left_open(conn: AsyncConnection, change_id: int) -> triage.Thread | None:
+    """The thread of the proposal of change ``change_id``, which the hub just left open for its owner with a pull
+    request, told so with the reason and the pull request, and the agent asked to merge it when its Judge passed it;
+    None when the charter has its admins answer or nothing is written, in a savepoint: nothing inside it undoes the
+    change's move."""
+    try:
+        async with conn.begin_nested():
+            return await _left(conn, change_id)
+    except Exception as exc:  # a thread is a help: the change waits for its owner without it
+        log.warning("curator thread not told", extra={"change_id": change_id, "error": f"{type(exc).__name__}: {exc}"})
+        return None
+
+
 # The answer
 
 
-async def _frame(conn: AsyncConnection, user: Principal, run_id: int, proposal_id: int) -> Frame:
+async def _frame(conn: AsyncConnection, user: Principal, run_id: int, proposal_id: int | None) -> Frame:
+    """The frame of chat run ``run_id`` in a proposal's thread; with ``proposal_id``, 403 for another proposal."""
     agent = await chat_agents.agent_run(conn, user, run_id)
     found = await chat_run(conn, run_id) if agent.kind == "chat" else None
     if found is None:
@@ -278,7 +375,7 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int, proposal_i
     held = (await conn.execute(query)).scalar_one_or_none()
     if held is None:
         raise HTTPException(404, f"chat run {run_id} is in no thread the hub opened for a proposal of the Curator")
-    if held != proposal_id:
+    if proposal_id is not None and held != proposal_id:
         raise HTTPException(
             403, f"chat run {run_id} is in the thread of proposal {held}: its agent answers that proposal alone"
         )
@@ -344,3 +441,112 @@ async def answer(request: Request, run_id: RunId, body: CuratorAnswerIn, user: C
         extra={"proposal_id": frame.proposal_id, "action": body.action, "agent_run_id": run_id},
     )
     return CuratorAnswered(message_id=message_id, proposal=proposal)
+
+
+# The merge
+
+
+def _not_left(change) -> str | None:
+    """Why the agent may not merge ``change``, from the hub's own record of it; None when it may try."""
+    if change.state != "open":
+        return f"it is {change.state}: the agent merges only a change the hub left open for its owner"
+    if change.forge != "github" or change.pr_number is None or github_target(change.origin) is None:
+        return "it has no pull request on GitHub, and the hub merges no other"
+    if not change.passed:
+        failures = "; ".join((change.verdict or {}).get("failures") or []) or "no verdict"
+        return f"the Judge did not pass it: {failures}"
+    if not judge.is_sha(change.head_sha):
+        return "it names no head the Judge passed"
+    return None
+
+
+async def _left_change(conn: AsyncConnection, frame: Frame, change_id: int):
+    change = await changes.change_with_origin(conn, frame.agent.project_id, change_id)
+    if change is None:
+        raise HTTPException(404, f"no change #{change_id} of the Curator in project {frame.project}")
+    if change.proposal_id != frame.proposal_id:
+        raise HTTPException(
+            403,
+            f"change #{change_id} is of proposal {change.proposal_id}, and chat run {frame.chat_run_id} is in the "
+            f"thread of proposal {frame.proposal_id}: its agent merges that proposal's change alone",
+        )
+    why = _not_left(change)
+    if why is not None:
+        raise HTTPException(409, f"change #{change_id} is not merged: {why}")
+    if await changes.night_paused(conn, change.project_id):
+        raise HTTPException(409, f"change #{change_id} is not merged: {changes.PAUSED}")
+    if await agent_access(conn, frame.chat_id, frame.agent.profile, frame.owner.user_id) is None:
+        raise HTTPException(409, f"@{frame.agent.profile.handle} is not in chat {frame.chat_id} any more")
+    return change
+
+
+def merge_line(change: Change, owner: str) -> str:
+    """The ``Decision:`` line of a merge: what the agent merged, for whom, at which head and as which commit."""
+    return (
+        f"Decision: merged pull request #{change.pr_number} of {change.repo} (change #{change.id}, proposal "
+        f"#{change.proposal_id}, tier {change.tier}) for {owner} at {change.head_sha}, as {change.merge_sha}."
+    )
+
+
+async def _merge_now(
+    engine, app, frame: Frame, change, read: changes.MergeRead
+) -> tuple[str | None, int, Change | None]:
+    """Merge ``change`` once the gates let it, under a lock on it: (why not, or None; the Decision: line; the change).
+    A refusal commits what the gate K5 wrote (its ask, its audit row and its ledger line)."""
+    async with engine.begin() as conn:
+        locked = await changes.change_with_origin(conn, frame.agent.project_id, change.id, lock=True)
+        moved = locked is None or _not_left(locked) is not None or locked.head_sha != change.head_sha
+        if moved:
+            return f"change #{change.id} moved while the hub read GitHub: run the command again", 0, None
+        if await changes.night_paused(conn, change.project_id):  # paused while the hub read GitHub
+            return changes.PAUSED, 0, None
+        act = changes.merge_act(change, read)
+        said = await autonomy_gates.check(conn, frame.chat_run_id, "K5", **act)
+        if not said.act:
+            return said.reason or "K5 of the chat run's principal does not let it", 0, None
+        try:
+            merged = await changes.merge_at_head(app, change, read.facts.tier)
+        except GitHubRefused as exc:
+            return f"GitHub refused the merge: {exc}", 0, None
+        handle = f"@{frame.agent.profile.handle}"
+        by = changes.MergedBy(handle, frame.chat_run_id, frame.owner.user_id, frame.owner.login)
+        await changes.record_merge(conn, change, merged, read, act, by)
+        view = await changes.change_view(conn, change.id)
+        message_id = await _said(conn, frame, merge_line(view, frame.owner.login))
+    return None, message_id, view
+
+
+@worker_router.post(
+    "/runs/{run_id}/curator/merge",
+    response_model=CuratorMerged,
+    responses={**REFUSALS, 503: {"model": ErrorBody}},
+)
+async def merge(request: Request, run_id: RunId, body: CuratorMergeIn, user: CurrentUser) -> CuratorMerged:
+    """Merge the pull request of a change of this thread's proposal that the hub left open, for the chat run's
+    dispatcher, an admin of the project, at the head the Judge passed, with the workers' App: 403 for a change of
+    another proposal, 409 with the reason for anything the merge does not allow, 503 while GitHub does not answer."""
+    state = request.app.state
+    async with state.engine.begin() as conn:
+        frame = await _frame(conn, user, run_id, None)
+        change = await _left_change(conn, frame, body.change_id)
+        charter = await merge_gate.charter_of(conn, change.project_id)
+        plan = await merge_gate.plan_body(conn, change.project_id, change.plan_id) or {}
+    if state.github_app is None:
+        raise HTTPException(409, f"change #{change.id} is not merged: this hub has no GitHub App of the workers")
+    try:
+        read = await changes.merge_read(state.engine, state.github_app, state.curator_app, change, charter, plan)
+        decided, why = judge.agent_merge_decision(read.facts)
+        if decided != "merge":
+            raise HTTPException(409, f"change #{change.id} is not merged: {'; '.join(why)}")
+        refused, message_id, view = await _merge_now(state.engine, state.github_app, frame, change, read)
+    except GitHubUnavailable as exc:
+        raise HTTPException(503, f"GitHub did not answer, so change #{change.id} is not merged: {exc}") from None
+    except GitHubRefused as exc:
+        raise HTTPException(409, f"change #{change.id} is not merged: GitHub refused to read it: {exc}") from None
+    if refused is not None:
+        raise HTTPException(409, f"change #{change.id} is not merged: {refused}")
+    log.info(
+        "curator change merged by the agent",
+        extra={"change_id": change.id, "sha": view.merge_sha, "agent_run_id": run_id},
+    )
+    return CuratorMerged(message_id=message_id, change=view)

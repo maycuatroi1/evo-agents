@@ -23,7 +23,8 @@ included, through the outbox (``notifications.notify``). The brief holds:
   project whose Loop is off has none;
 - the KG optimize run of the project that ended in the 24 hours before the brief, in a line (``kg_optimize``).
 - the proposals the project's agent answered for the owner in the 24 hours before the brief, with its note and its chat
-  run (``curator_threads``), when it answered any.
+  run (``curator_threads``), when it answered any; and the pull requests of the Curator's changes it merged for the
+  owner, with its chat run, when it merged any.
 
 curator_briefs keeps one row a project and local day, with what the brief said and its notification; a second pass of
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
@@ -159,6 +160,33 @@ async def _agent_answers(conn: AsyncConnection, project_id: int) -> tuple[int, l
             "agent": row.details.get("agent"),
             "chat_run": row.details.get("chat_run"),
             "note": one_line(row.details.get("note") or "", QUESTION_CHARS),
+        }
+        for row in (await conn.execute(query)).all()
+    ]
+    return total, listed
+
+
+async def _agent_merges(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
+    """The pull requests of the Curator's changes the project's agent merged in the 24 hours before the brief, as their
+    ledger lines say (``curator_threads``): how many, and the first few, oldest first."""
+    cl = tables.curator_ledger
+    where = (
+        cl.c.project_id == project_id,
+        cl.c.action == "merged",
+        cl.c.details.has_key("chat_run"),
+        cl.c.created_at > func.now() - timedelta(hours=24),
+    )
+    total = (await conn.execute(select(func.count()).where(*where))).scalar_one()
+    columns = (cl.c.proposal_id, cl.c.change_id, cl.c.pr_url, cl.c.after_sha, cl.c.details)
+    query = select(*columns).where(*where).order_by(cl.c.id).limit(MAX_LISTED)
+    listed = [
+        {
+            "proposal_id": row.proposal_id,
+            "change_id": row.change_id,
+            "pull_request": row.pr_url,
+            "sha": row.after_sha,
+            "agent": row.details.get("agent"),
+            "chat_run": row.details.get("chat_run"),
         }
         for row in (await conn.execute(query)).all()
     ]
@@ -366,6 +394,18 @@ def _answer_blocks(answers: dict | None) -> list[str]:
     return [f"Proposals the project's agent answered for you: {answers['total']}.", "\n".join(listed)]
 
 
+def _merge_blocks(merges: dict | None) -> list[str]:
+    """The paragraphs of the pull requests the project's agent merged for the owner; none when it merged none."""
+    if not merges:
+        return []
+    listed = [
+        f"- change #{item['change_id']} of proposal #{item['proposal_id']}: {item['pull_request']} merged by "
+        f"{item['agent']} (chat run #{item['chat_run']}) as {item['sha']}"
+        for item in merges["listed"]
+    ]
+    return [f"Pull requests the project's agent merged for you: {merges['total']}.", "\n".join(listed)]
+
+
 def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     """(title, body in markdown) of a brief with ``facts``, its times in the charter's time zone ``zone``: a paragraph a
     subject, each with its list."""
@@ -441,6 +481,7 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
         )
     blocks.extend(loop_notices.blocks(project, facts.get("loop")))
     blocks.extend(_answer_blocks(facts.get("agent_answers")))
+    blocks.extend(_merge_blocks(facts.get("agent_merges")))
     optimized = facts.get("kg_optimize")
     if optimized:
         blocks.append(f"KG optimize run #{optimized['id']} ({optimized['state']}): {optimized['summary']}")
@@ -498,6 +539,9 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
     answered, answers = await _agent_answers(conn, due.project_id)
     if answered:
         found["agent_answers"] = {"total": answered, "listed": answers}
+    merged, merges = await _agent_merges(conn, due.project_id)
+    if merged:
+        found["agent_merges"] = {"total": merged, "listed": merges}
     return found if loop is None else {**found, "loop": loop}
 
 
