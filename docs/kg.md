@@ -298,8 +298,10 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - Each result `kg_search` found by its words that holds only some of the query's words says how many its name, path
   or body holds whole (` words=2/3` on its line; `matched` in the structured result counts them all), and a query of
   two words or more whose results hold none of them all says so under the header (`no result holds all N words of the
-  query`) and gets at most 5 results (`WEAK_LIMIT`): the reader can tell a question the graph does not answer from one
-  it does, instead of opening one file after another. A node listed
+  query`): the reader can tell a question the graph does not answer from one it does, instead of opening one file
+  after another. Such a query still gets `limit` results: a question in plain words that chains facts finds each fact
+  in a node holding only some of its words, and the 5-result cap it had until 0.53.3 kept recall@10 at recall@5 on a
+  MuSiQue bench (200 answerable questions: 0.468 to 0.541 once lifted, at 94 more tokens a search). A node listed
   because a hit mentions it gets no count. A document, named by its path, is also quoted: the passage of its body
   where the query's words gather, about 16 words, on the line below it (`    > ...`). A section is named by its
   heading and is not quoted. The count and the passage come from the same index rows the search read
