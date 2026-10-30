@@ -442,11 +442,18 @@ async def staged_paths(cwd: Path) -> list[str]:
     return [path for path in out.split("\0") if path]
 
 
+async def _result_pathspec(cwd: Path) -> tuple[str, ...]:
+    """The pathspec that keeps the result directory out of ``git add --all``: none when the work tree already ignores
+    it, since git exits 1 on a pathspec naming an ignored path, an excluding one too ("paths are ignored")."""
+    code, _, _ = await git(cwd, "check-ignore", "--quiet", "--", RESULT_DIR, check=False)
+    return () if code == 0 else (EXCLUDE_RESULT,)
+
+
 async def commit_run(cwd: Path, message: str, *, author: str | None = None) -> Committed:
     """Stage every change of the work tree but the result directory, put the paths a run never commits back as HEAD
     has them (see the module's docstring), and commit what is left as ``message``, with ``author`` (``Name <email>``)
     as its author when given; the committer is this machine's git identity either way."""
-    await git(cwd, "add", "--all", "--", ".", EXCLUDE_RESULT)
+    await git(cwd, "add", "--all", "--", ".", *await _result_pathspec(cwd))
     staged = await staged_paths(cwd)
     left = sorted(await asyncio.to_thread(_left_out, cwd, staged))
     for start in range(0, len(left), PATHS_PER_CALL):
