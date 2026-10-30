@@ -631,7 +631,7 @@ def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg
     assert hidden["mentioned_by"] == {} and all(not r["id"].startswith("app:") for r in hidden["results"])
 
 
-def test_search_lines_say_once_what_every_result_shares_and_few_results_when_none_holds_the_query(tmp_path, kg_env):
+def test_search_lines_say_once_what_every_result_shares_and_when_none_holds_the_query(tmp_path, kg_env):
     session = Session(built(tmp_path, kg_env), "agent")
     text = session.call("kg_search", {"query": "Wire the server to search"})["content"][0]["text"].splitlines()
     assert text[0] == "10 result(s) in project demo (build 1), status parsed"  # the status every result shares
@@ -643,7 +643,9 @@ def test_search_lines_say_once_what_every_result_shares_and_few_results_when_non
     weak = session.call("kg_search", {"query": "server search zebra", "limit": 10})
     lines = weak["content"][0]["text"].splitlines()
     assert lines[2] == "no result holds all 3 words of the query"
-    assert len(weak["structuredContent"]["results"]) == serve.WEAK_LIMIT  # none holds the query: the few best
+    assert len(weak["structuredContent"]["results"]) == 10  # none holds the query: still the limit asked
+    listed = [line.removeprefix("  mentions ") for line in lines[3:] if line.lstrip().startswith(("[", "mentions ["))]
+    assert len(listed) == 10 and all(re.fullmatch(r"\[[^\]]+\]", line) for line in listed[serve.FULL_LINES :])
 
     step = {
         "id": "plan:demo/step:3",
