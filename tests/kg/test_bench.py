@@ -560,3 +560,10 @@ def test_merge_adds_the_sets_and_names_where_hybrid_vectors_came_from(tmp_path):
     other["extractor"] = "y"
     with pytest.raises(BenchError, match="extractor"):
         compare.merge([summary("a"), other])
+
+
+def test_whole_file_bm25_ranks_files_by_their_whole_text():
+    from evo_agents.kg.bench import filebm25
+
+    index = filebm25.Index({"a.py": "def parse_config(path): read config file", "b.py": "cats " * 50, "c.py": "config"})
+    assert index.rank("how to parse the config file", 5) == ["a.py", "c.py"]

@@ -107,6 +107,7 @@ class Session:
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None
         self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
+        self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (bench.filebm25)
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -336,7 +337,18 @@ class Session:
 
     def _plain_search(self, store: Store, b: int, query: str, kinds: list | None, limit: int) -> tuple[str, dict]:
         """kg_search by plain BM25: the nodes in its order, no mention, cut or exploring; the passages matched."""
-        ids = store.plain_search(query, limit * 4, kinds)
+        if self.plain_files:
+            from evo_agents.kg.bench import filebm25
+
+            clone, commit = self.plain_files
+            files = {
+                i.split(":", 1)[1]: i
+                for (i,) in store.db.execute("SELECT node_id FROM nodes WHERE kind = 'File' AND tx_to IS NULL")
+                if ":" in i
+            }
+            ids = [files[p] for p in filebm25.rank_files(clone, commit, set(files), query, limit * 4)]
+        else:
+            ids = store.plain_search(query, limit * 4, kinds)
         found = store.nodes(ids, b)
         results = [found[i] for i in ids if i in found and self.seen(found[i])][:limit]
         matched = store.matched(
