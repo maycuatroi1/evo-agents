@@ -373,7 +373,11 @@ two more checks, whose results join the verify results and must exit 0 too: `evo
 worktree, as code it does not trust, and a trial sync of each edited source by the daemon's own code, from the
 knowledge.yaml of the commit judged into a corpus of the run's own (a git source fetched under the lock of its
 checkout, and failed when the worker's nightly sync would skip it; a harness source over the worktree; nothing
-pushed). On GitHub the hub
+pushed). The Judge also runs a security pass, its own agent turns after its verdict: one that finds the vulnerabilities
+the change adds and one for each finding that filters false positives, both from anthropics/claude-code-security-review
+(MIT, copied at a pinned commit with its license; `docs/merge-queue.md`, "The security pass"). A finding scored 8 or more
+fails the dimension `security` of the verdict and so the change, with its path and line, in the findings of the
+change's verdict (`evo_agents/hub/findings.py`); a verdict posted without the pass fails it too. On GitHub the hub
 writes the verdict on the pull request as the check run `evo-agents Judge`. The Judge's inputs and verdict travel with
 the run's own key, which the hub hands the daemon in the claim alone and keeps as a SHA-256 (schema 0019): code on the
 worker's machine that reads the worker token neither reads a hidden check nor writes a verdict.

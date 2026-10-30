@@ -1,7 +1,8 @@
 """A judge run (kind ``judge``, ``JudgeRun``): the Curator's Judge of one change, or the Judge of a merge request of
 the hub's merge queue on GitLab, whose claim names no change (``merge_gate.judges_merge_request``): it reads its inputs
 from GET /v1/worker/runs/{id}/merge-judge and posts its verdict, with what the Judge said of each dimension
-(``merge_gate.dimensions_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
+(``merge_gate.dimensions_from_message``), the findings it raised and its marks of earlier ones
+(``merge_gate.findings_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
 
 Once it holds its leases, the worker reads the plan's verify commands and the project's hidden checks from the hub
 (GET /v1/worker/runs/{id}/judge with the run's own key, which the claim handed the daemon and only its memory holds;
@@ -20,7 +21,12 @@ commit judged before it, and every process it left killed after it. For a change
 agent, unless a sign
 already fails the change, on the worktree put back again, the hub's prompt and what it ran (exit codes alone for the
 hidden checks). The agent's verdict is the JSON object that ends its last message (``judge.verdict_from_message``),
-which reaches the worker from the agent's own output: no file the code under test could write. The worker posts the
+which reaches the worker from the agent's own output: no file the code under test could write.
+
+Once a verdict exists and no sign fails the change, the run also does the security pass (``run_security_pass``,
+``evo_agents.hub.security_pass``): a find turn and one false-positive filter turn per finding, each a new session of the
+agent that never sees the Builder's transcript, whose outcome (the dimension ``security``, its findings with path and
+line, the turns and their cost) is posted with the verdict. The worker posts the
 verdict with the run's key and the paths the diff touches (POST /v1/worker/runs/{id}/verdict) and ends the run done,
 committing and pushing nothing.
 """
@@ -30,7 +36,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import judge, knowledge_diff, merge_gate, runs
+from evo_agents.hub import judge, knowledge_diff, merge_gate, runs, security_pass
 from evo_agents.worker import gitops, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
@@ -38,6 +44,7 @@ from evo_agents.worker.runner import access, judge_knowledge, origin, verify
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.sessions import LARGEST, add_usage
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 from evo_agents.worker.runner.verify import verify_event
 
@@ -65,6 +72,9 @@ class JudgeRun:
         self.merge_base: str | None = None
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
         self.dimensions: dict | None = None  # what the Judge of a merge request said of each dimension
+        self.findings: list[dict] = []  # what it found wrong
+        self.prior: dict[str, dict] = {}  # its marks of the findings of earlier rounds
+        self.usage: dict | None = None  # the Judge's turns and the security pass's, added up
 
     async def steps(self) -> None:
         run, change = self.run, self.run.curator or {}
@@ -109,6 +119,8 @@ class JudgeRun:
         if knowledge is not None:  # a change of knowledge.yaml: harness validate, a trial sync of each source
             checks += await judge_knowledge.run_checks(self, workspace.worktree, knowledge)
         verdict, reasons = await self.ask_judge(cls, workspace.worktree, checks, results, signs)
+        self.usage = run.outcome.usage if run.outcome else None
+        security = await self.run_security_pass(cls, workspace.worktree) if verdict is not None and not signs else None
         body = {
             "verdict": verdict,
             "reasons": reasons,
@@ -118,9 +130,10 @@ class JudgeRun:
             "hidden": results,
             "signs": signs,
             "paths": judge.changed_paths(files)[: judge.MAX_PATHS],
+            "security": security,
         }
         if self.merge:
-            body["dimensions"] = self.dimensions
+            body.update(dimensions=self.dimensions, findings=self.findings, prior=self.prior)
         await self.post(body)
 
     def run_path(self) -> str | None:
@@ -242,6 +255,51 @@ class JudgeRun:
         await self.conversation.turns(cls, prompt, None)
         return self.read_verdict()
 
+    def last_message(self) -> str | None:
+        outcome = self.run.outcome
+        return outcome.summary if outcome is not None else None
+
+    async def run_security_pass(self, cls, cwd: Path) -> dict:
+        """The security pass (``evo_agents.hub.security_pass``): a turn that finds, in a session of its own on the
+        worktree put back at the commit judged, then a turn for each finding it raised that filters false positives,
+        each a session of its own too; none sees the Judge's reply or anything the Builder wrote. The result for the
+        verdict, with the turns and cost the pass added. A pass that gives no findings object fails the dimension."""
+        run, base = self.run, self.merge_base
+        spent: dict | None = None
+        turns = 0
+
+        async def turn(prompt: str) -> str | None:
+            nonlocal spent, turns
+            await self.restore(cwd)
+            await self.conversation.turns(cls, prompt, None)
+            turns += 1
+            spent = add_usage(spent, run.outcome.usage if run.outcome else None, largest=LARGEST)
+            return self.last_message()
+
+        found = security_pass.candidates(await turn(security_pass.find_prompt(base)))
+        scored = []
+        for item in (found or [])[: security_pass.MAX_CANDIDATES]:
+            scored.append((item, security_pass.score(await turn(security_pass.filter_prompt(base, item)))[0]))
+        over = max(len(found or []) - security_pass.MAX_CANDIDATES, 0)
+        outcome = security_pass.result(found, scored, over=over)
+        self.usage = add_usage(self.usage, spent, largest=LARGEST)
+        cost = (spent or {}).get("total_cost_usd")
+        cost = round(float(cost), 6) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+        run.note(
+            f"Security pass: {len(found or [])} candidate(s), {len(outcome['findings'])} finding(s) kept, {turns} "
+            f"agent turn(s)" + (f", ${cost} on top of the Judge's own cost." if cost is not None else "."),
+            security_turns=turns,
+            security_cost_usd=cost,
+        )
+        return {
+            "verdict": outcome["dimension"]["verdict"],
+            "reason": outcome["dimension"]["reason"],
+            "findings": [{k: item[k] for k in ("path", "line", "text")} for item in outcome["findings"]],
+            "candidates": len(found or []),
+            "turns": turns,
+            "cost_usd": cost,
+        }
+
     async def post(self, body: dict) -> None:
         """Post the verdict with the run's own key, and end the run done."""
         run = self.run
@@ -257,8 +315,7 @@ class JudgeRun:
         await self.conversation.ensure_running()
         await run.reports.report("verifying")
         run.check()
-        usage = run.outcome.usage if run.outcome else None
-        await run.reports.end("done", summary=cut(run.summary, MAX_SUMMARY_CHARS), usage=usage)
+        await run.reports.end("done", summary=cut(run.summary, MAX_SUMMARY_CHARS), usage=self.usage)
 
     async def restore(self, cwd: Path) -> None:
         """Put the worktree back at the commit judged: what a command of the change wrote in it before goes."""
@@ -318,6 +375,7 @@ class JudgeRun:
             return None, None
         if self.merge:
             self.dimensions = merge_gate.dimensions_from_message(message)
+            self.findings, self.prior = merge_gate.findings_from_message(message)
         return verdict, reasons or None
 
     def prompt(self) -> str:

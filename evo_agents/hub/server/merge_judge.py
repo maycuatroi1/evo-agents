@@ -17,7 +17,12 @@ reads. POST /v1/worker/runs/{id}/merge-verdict, with the key, takes its verdict:
 (gate 3 again), the checks (gate 4), and the Judge (gate 5, or 7 for the second Judge), every dimension passed. The
 first Judge passing records the risk (gate 6): a normal risk lets the merge request into the queue (``ready``), a
 high one has the job queue the second Judge. Each gate is a line of the ledger, the Judge's verdict another
-(``judged``: its run, its model, each dimension, the patch); a gate not passed blocks the merge request with why.
+(``judged``: its run, its model, each dimension, the patch, the findings it raised and its marks of earlier ones); a
+gate not passed blocks the merge request with why.
+
+The findings (``evo_agents.hub.findings``) live in the verdict (merge_queue.verdict ``findings``), which a new patch
+hands on (``findings.carried``): the prompt of a later round lists those still open on its Judge's dimensions, and the
+verdict's marks of them are checked here (``merge_gate.judge_round``), not taken on the Judge's word.
 """
 
 from __future__ import annotations
@@ -34,12 +39,19 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import judge, judges, merge_gate, runs, tables, tiers
+from evo_agents.hub import findings, judge, judges, merge_gate, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.changes import HiddenResult, JudgeKey, Sign
+from evo_agents.hub.server.changes import (
+    HiddenResult,
+    JudgeKey,
+    SecurityPass,
+    Sign,
+    security_dimension,
+    security_findings,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.projects import project_access
@@ -235,6 +247,7 @@ async def merge_prompt(conn: AsyncConnection, view) -> str | None:
         task=task,
         second=queue.next_round(row.verdict, row.risk) == "second",
         risk=(row.risk or {}).get("reasons") or [],
+        earlier=findings.ledger_of(row.verdict),
     )
 
 
@@ -262,6 +275,23 @@ class Dimension(BaseModel):
     reason: str = Field("", max_length=2000)
 
 
+class JudgeFinding(BaseModel):
+    """A thing the Judge found wrong, on one of the dimensions it judges."""
+
+    dimension: str = Field(min_length=1, max_length=findings.MAX_DIMENSION_CHARS)
+    path: str | None = Field(None, max_length=findings.MAX_PATH_CHARS)
+    line: int | None = Field(None, ge=1)
+    text: str = Field(min_length=1, max_length=findings.MAX_TEXT_CHARS)
+
+
+class FindingMark(BaseModel):
+    """What the Judge says of a finding of an earlier round."""
+
+    status: Literal[findings.MARKS]
+    where: str | None = Field(None, max_length=findings.MAX_WHERE_CHARS, description="the file:line that shows it")
+    reason: str = Field("", max_length=findings.MAX_TEXT_CHARS)
+
+
 class MergeVerdictIn(BaseModel):
     verdict: Literal[judge.VERDICTS] | None = Field(description="the Judge agent's; null when it gave none")
     reasons: str | None = Field(None, max_length=judge.MAX_REASONS_CHARS)
@@ -275,6 +305,15 @@ class MergeVerdictIn(BaseModel):
     )
     dimensions: dict[str, Dimension] | None = Field(
         None, description="each dimension the Judge judged apart, with its verdict and reason"
+    )
+    findings: list[JudgeFinding] = Field(
+        default_factory=list, max_length=findings.MAX_NEW, description="what the Judge found wrong in this round"
+    )
+    prior: dict[str, FindingMark] | None = Field(
+        None, description="the Judge's mark of each finding of an earlier round its prompt listed, by id"
+    )
+    security: SecurityPass | None = Field(
+        None, description="the security pass of the run, which judges the dimension security apart from the agent"
     )
 
 
@@ -358,6 +397,8 @@ async def merge_verdict(
     """The verdict of the judge run of the queue this worker holds, with the run's own key: the gates it closes."""
     if body.dimensions is not None and len(body.dimensions) > MAX_DIMENSIONS:
         raise HTTPException(422, f"a verdict names at most {MAX_DIMENSIONS} dimensions")
+    if body.prior is not None and len(body.prior) > findings.MAX_LEDGER:
+        raise HTTPException(422, f"a verdict marks at most {findings.MAX_LEDGER} findings")
     async with request.app.state.engine.begin() as conn:
         run, row = await _held(conn, user, run_id, judge_key)
         second = queue.next_round(row.verdict, row.risk) == "second"
@@ -371,9 +412,16 @@ async def merge_verdict(
             expected=merge_gate.verify_of(plan, row.repo),
             hidden_count=hidden_count,
             head=row.head_sha,
+            ledger=findings.ledger_of(row.verdict),
+            run_id=run_id,
         )
         entry = found.entry(run_id, run.model)
-        verdict = {**(row.verdict or {}), "fingerprint": row.fingerprint, ("second" if second else "first"): entry}
+        verdict = {
+            **(row.verdict or {}),
+            "fingerprint": row.fingerprint,
+            ("second" if second else "first"): entry,
+            "findings": found.ledger,
+        }
         await queue.set_row(conn, row.id, verdict=verdict, judge_run_id=None, judge_key=None, judge_attempts=0)
         row = await queue.row_of(conn, row.id)
         await _close_gates(conn, row, found, entry)
@@ -388,12 +436,23 @@ async def merge_verdict(
 class Judged:
     """What a verdict of the queue's Judge says of each gate it closes."""
 
-    def __init__(self, *, body: MergeVerdictIn, second: bool, expected: list[str], hidden_count: int, head):
+    def __init__(
+        self,
+        *,
+        body: MergeVerdictIn,
+        second: bool,
+        expected: list[str],
+        hidden_count: int,
+        head,
+        ledger: list[dict] | None = None,
+        run_id: int | None = None,
+    ):
         self.body, self.second = body, second
         self.verify = [item.model_dump(exclude_none=True) for item in body.verify]
         self.hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
         self.signs = [sign.model_dump() for sign in body.signs]
         self.dimensions = {name: item.model_dump() for name, item in (body.dimensions or {}).items()}
+        self.dimensions[merge_gate.SECURITY] = security_dimension(body.security)
         self.checks_ok, self.checks_why = judge.final_verdict(
             agent="pass",
             verify=self.verify,
@@ -403,8 +462,24 @@ class Judged:
             signs=[],
             head_matches=True,
         )
-        names = merge_gate.RISK_DIMENSIONS if second else merge_gate.DIMENSIONS
-        self.judge_ok, self.judge_why = merge_gate.judge_gate(body.verdict, self.dimensions, names)
+        names = merge_gate.gate_names(second)
+        ledger = ledger or []
+        if body.security is not None:  # the pass ran on this head: what it finds now is all it finds
+            ledger = findings.supersede(ledger, merge_gate.SECURITY, run_id=run_id, head=body.head_sha)
+        new = findings.read_new([item.model_dump() for item in body.findings], names) + security_findings(body.security)
+        self.marks = findings.read_marks({key: item.model_dump() for key, item in (body.prior or {}).items()})
+        self.judge_ok, self.judge_why = merge_gate.judge_round(
+            body.verdict, self.dimensions, names, ledger=ledger, marks=self.marks, new=new
+        )
+        self.ledger, self.raised = findings.record_round(
+            ledger,
+            names=names,
+            marks=self.marks,
+            new=new,
+            dimensions=merge_gate.read_dimensions(self.dimensions),
+            run_id=run_id,
+            head=body.head_sha,
+        )
         if body.head_sha != head:
             self.judge_ok = False
             self.judge_why.append("the Judge read another commit than the merge request's head")
@@ -423,6 +498,9 @@ class Judged:
             "signs": self.signs,
             "failures": self.checks_why + self.judge_why,
             "passed": passed,
+            "findings": [item["id"] for item in self.raised],
+            "prior": self.marks,
+            "security": self.body.security.model_dump(exclude={"findings"}) if self.body.security else None,
         }
 
 
@@ -449,7 +527,13 @@ async def _close_gates(conn: AsyncConnection, row, found: Judged, entry: dict) -
         await queue.hold(conn, row, 4, "; ".join(found.checks_why), blocked=True)
         return
     gate = 7 if found.second else 5
-    detail = {"model": entry["model"], "dimensions": entry["dimensions"], "fingerprint": row.fingerprint}
+    detail = {
+        "model": entry["model"],
+        "dimensions": entry["dimensions"],
+        "fingerprint": row.fingerprint,
+        "findings": found.raised,
+        "prior": found.marks,
+    }
     await queue.record(
         conn, row, "judged", passed=found.judge_ok, reason=found.body.reasons, sha=sha, run_id=run_id, detail=detail
     )

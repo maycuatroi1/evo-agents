@@ -1620,3 +1620,42 @@ def test_run_events_are_kept_30_days_unless_evo_hub_run_log_days_says_otherwise(
         with pytest.raises(ConfigError) as caught:
             load_config({**env, "EVO_HUB_RUN_LOG_DAYS": value})
         assert caught.value.variable == "EVO_HUB_RUN_LOG_DAYS"
+
+
+def merged_of(client, worker: dict, run_ids) -> list[int]:
+    response = client.post("/v1/worker/merged", json={"runs": list(run_ids)}, headers=worker["headers"])
+    assert response.status_code == 200, response.text
+    return response.json()["merged"]
+
+
+def test_merged_work_names_the_ended_runs_of_the_worker_whose_plan_or_merge_request_merged(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    other = add_worker(client, hub["other"], "linux-box")
+    run_id = dispatched(client, hub["owner"], [2])[0]["id"]
+    claim(client, worker)
+    moved(client, worker, run_id, "running")
+    assert merged_of(client, worker, [run_id]) == [], "a run the worker holds never"
+    set_run(hub_db, run_id, state="done", lease_expires_at=None, finished_at=func.now())
+    assert merged_of(client, worker, [run_id, 999_999]) == [], "its plan does not mark evo-agents merged yet"
+
+    ((project_id,),) = of_run(hub_db, run_id, "project_id")
+    q = tables.merge_queue
+    row = {"project_id": project_id, "repo": "evo-agents", "iid": 7, "source": "task", "target_branch": "main"}
+    sql(hub_db, insert(q).values(**row, source_branch="evo-run/x", run_id=run_id, state="ready"))
+    assert merged_of(client, worker, [run_id]) == []
+    sql(hub_db, update(q).values(state="merged", merged_at=func.now()).where(q.c.run_id == run_id))
+    assert merged_of(client, worker, [run_id]) == [run_id], "the merge queue merged its merge request"
+    assert merged_of(client, other, [run_id]) == [], "another worker's run is never named"
+    sql(hub_db, q.delete().where(q.c.run_id == run_id))
+
+    held = plan(client, hub["owner"])
+    body = held["body"]
+    body["repos"][0]["status"] = "merged"
+    replace = {"body": body, "if_revision": held["revision"]}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json=replace, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    assert merged_of(client, worker, [run_id]) == [run_id], "its plan marks every repo of the run merged"
+    set_run(hub_db, run_id, state="parked", finished_at=None, parked_at=func.now())
+    assert merged_of(client, worker, [run_id]) == [], "a parked run keeps its worktrees"
+    member = {**hub["owner"], **PROTOCOL}
+    assert client.post("/v1/worker/merged", json={"runs": [run_id]}, headers=member).status_code == 403

@@ -119,7 +119,8 @@ here.
   tool allowlist, the adapter asks the CLI for its MCP servers once it is connected, before the prompt, and raises
   ``ProfileRefused`` on one the profile leaves out (the owner's own settings may allow more).
 - A run with a snapshot of autonomy gets the PreToolUse hook of ``evo_agents.worker.autonomy_hook`` on its Bash
-  commands, with a profile or without one (``RunContext.autonomy``).
+  commands, with a profile or without one (``RunContext.autonomy``); every run of the daemon gets its file floor on
+  Edit, Write, MultiEdit, NotebookEdit, Read, Grep, Glob and Bash (``RunContext.floor``).
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -793,7 +794,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         else:
             servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
         settings.update({"mcp_servers": servers} if servers else {})
-        hooks = profiles.claude_hooks(profile, self.context.autonomy)  # the run's hook of autonomy beside the profile's
+        # the run's file floor and hook of autonomy beside the profile's
+        hooks = profiles.claude_hooks(profile, self.context.autonomy, self.context.floor)
         if hooks is not None:
             settings["hooks"] = hooks
         if self.budget is not None:

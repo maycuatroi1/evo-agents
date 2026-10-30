@@ -57,6 +57,7 @@ import os
 import re
 import secrets
 import shutil
+import tempfile
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +92,8 @@ RUN_COMMIT_EXCLUDES = (
     f"{RESULT_DIR}/",
 )
 PATHS_PER_CALL = 200  # paths in one `git reset`, well within any argv limit
+RECOVERY_REFS = "refs/evo-recovery/"  # the WIP commits of a worktree removed with changes not committed (``save_wip``)
+WIP_IDENTITY = {"name": "evo-agents worker", "email": "worker@evo-agents.invalid"}  # when the machine sets none
 # What git prints when the remote did not take its credential, or it had none to send (GitHub, GitLab, any http).
 AUTH_FAILURE = re.compile(
     r"Authentication failed|could not read (?:Username|Password)|Invalid username or password"
@@ -939,6 +942,38 @@ async def attach(cwd: Path, branch: str) -> None:
 
 async def remove_worktree(cwd: Path, path: Path) -> None:
     await git(cwd, "worktree", "remove", "--force", str(path))
+
+
+@dataclass(frozen=True)
+class Wip:
+    """What ``save_wip`` kept of a worktree: its HEAD, the WIP commit on top of it and the ref that names it."""
+
+    head: str | None
+    wip: str
+    ref: str
+
+
+async def save_wip(worktree: Path, ref: str, message: str) -> Wip | None:
+    """Commit what the work tree ``worktree`` has that HEAD lacks (tracked or not, ignored files aside) on top of HEAD,
+    through an index of its own so the worktree's stays as it was, and point ``ref`` (under RECOVERY_REFS, shared by
+    every worktree of the checkout) at that commit; None when nothing is uncommitted. HEAD and its branch do not move."""
+    _, status, _ = await git(worktree, "status", "--porcelain", "--untracked-files=all")
+    if not status.strip():
+        return None
+    head = await rev(worktree, "HEAD")
+    with tempfile.TemporaryDirectory(prefix="evo-wip-") as scratch:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch) / "index")}
+        for role in ("AUTHOR", "COMMITTER"):
+            env.setdefault(f"GIT_{role}_NAME", WIP_IDENTITY["name"])
+            env.setdefault(f"GIT_{role}_EMAIL", WIP_IDENTITY["email"])
+        if head is not None:
+            await git(worktree, "read-tree", head, env=env)
+        await git(worktree, "add", "--all", "--", ".", env=env)
+        _, tree, _ = await git(worktree, "write-tree", env=env)
+        parents = ("-p", head) if head is not None else ()
+        _, wip, _ = await git(worktree, "commit-tree", tree.strip(), *parents, "-m", message, env=env)
+    await git(worktree, "update-ref", ref, wip.strip())
+    return Wip(head, wip.strip(), ref)
 
 
 async def prune_worktrees(cwd: Path) -> None:
