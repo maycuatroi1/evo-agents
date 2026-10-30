@@ -9,6 +9,7 @@ import { Fragment, type ReactNode, useLayoutEffect, useRef, useState } from "rea
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import type { WriteFailure } from "@/components/admin/notice";
 import { FileDropFrame } from "@/components/data/attachments";
+import { DocButtons } from "@/components/data/doc-buttons";
 import { OutputStrip } from "@/components/data/output-strip";
 import { notify } from "@/components/feedback/toast";
 import { SafeMarkdown } from "@/components/memories/markdown";
@@ -26,6 +27,7 @@ import { ChatStatusPill, Typing } from "./chat-parts";
 import { useRunFailure } from "./hooks";
 import { type ChatMessage, chatKey, chatQuery, finishChat, type Run, runHref, runKeys, type RunChat } from "./queries";
 import { ChatDecision, useChatDecisions } from "./run-decisions";
+import { RunDocs } from "./run-docs";
 import { ChatReply } from "./run-composer";
 import { chatDecisionSlots, chatEndable, chatReplyable } from "./run-model";
 
@@ -37,7 +39,8 @@ import { chatDecisionSlots, chatEndable, chatReplyable } from "./run-model";
  * next message; and End chat, which ends the run done once the agent's turn is over. With `fill`, from xl the panel
  * fills the session card, as the Trace, Raw log and Terminal do: the messages take what the head and the reply box
  * leave, and scroll on their own; below xl, and without it, they keep their own height. Each decision the agent asked
- * shows as the kit's DecisionCard after the agent's message that ended the turn which asked it.
+ * shows as the kit's DecisionCard after the agent's message that ended the turn which asked it. A text file of a
+ * message opens in the document panel (`run-docs.tsx`), with its versions over the chat's runs.
  */
 export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; owner: boolean; shown: boolean; fill?: boolean }) {
   const t = useTranslations("runs.author.chat");
@@ -80,7 +83,9 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
   const stale = chat.isError; // a read failed after one worked: what shows is the chat as last read
   const slots = chatDecisionSlots(data.messages, decisions.list);
   const card = (decision: (typeof decisions.list)[number]) => <ChatDecision key={decision.id} decision={decision} onSettled={decisions.keep} />;
+  const runIds = [...new Set([run.id, data.run_id, ...data.messages.map((message) => message.run_id)])];
   return (
+    <RunDocs project={run.project} runIds={runIds} live={data.status !== "ended"} title={t("label", { id: run.id })}>
     <FileDropFrame
       className={cn("flex min-w-0 flex-col", fill && "xl:min-h-0 xl:flex-1")}
       data-testid="run-chat"
@@ -141,6 +146,7 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
         </p>
       ) : null}
     </FileDropFrame>
+    </RunDocs>
   );
 }
 
@@ -272,6 +278,7 @@ function Message({
           </div>
         ) : null}
         <OutputStrip outputs={files} label={tFiles("files")} className={cn(!agent && "justify-end")} testId="run-chat-files" />
+        <DocButtons files={files} className={cn(!agent && "justify-end")} testId="run-chat-docs" />
       </div>
     </article>
   );
