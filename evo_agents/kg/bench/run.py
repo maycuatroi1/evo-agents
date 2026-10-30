@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import pickle
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -293,6 +294,25 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
     return asked
 
 
+def ask_repo_kept(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:
+    """``ask_repo``, keeping each repo's answer in the cache so a run that dies (out of memory, a reboot) goes on from
+    the repos it finished: the shard is named by the extractor, the searches, the question budget and the task ids."""
+    lay = graphs.layout(cache)
+    key = json.dumps(
+        [lay.extractor, bench, options.searches, options.methods, options.limit_of(bench), options.budget_tokens]
+        + [options.line_budget, [t.id for t in tasks]]
+    )
+    shard = lay.base / "shards" / f"{hashlib.sha256(key.encode()).hexdigest()[:20]}.pkl"
+    try:
+        return pickle.loads(shard.read_bytes())
+    except (OSError, pickle.PickleError, EOFError, AttributeError):
+        pass
+    asked = ask_repo(cache, bench, tasks, options)
+    shard.parent.mkdir(parents=True, exist_ok=True)
+    shard.write_bytes(pickle.dumps(asked))
+    return asked
+
+
 def by_repo(tasks: list[Task]) -> list[list[Task]]:
     """The tasks in groups of one repo each, in the order the repos first come, each in its tasks' order."""
     groups: dict[str, list[Task]] = {}
@@ -303,7 +323,7 @@ def by_repo(tasks: list[Task]) -> list[list[Task]]:
 
 def _asked_all(cache: Path, bench: str, groups: list[list[Task]], options: Options) -> list[Asked]:
     if options.jobs <= 1 or len(groups) <= 1:
-        return [ask_repo(cache, bench, group, options) for group in groups]
+        return [ask_repo_kept(cache, bench, group, options) for group in groups]
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
 
@@ -311,7 +331,7 @@ def _asked_all(cache: Path, bench: str, groups: list[list[Task]], options: Optio
     context = multiprocessing.get_context("spawn")
     with ProcessPoolExecutor(max_workers=options.jobs, mp_context=context) as pool:
         largest = sorted(range(len(groups)), key=lambda g: -len(groups[g]))  # the long repos start first
-        futures = {g: pool.submit(ask_repo, cache, bench, groups[g], options) for g in largest}
+        futures = {g: pool.submit(ask_repo_kept, cache, bench, groups[g], options) for g in largest}
         return [futures[g].result() for g in range(len(groups))]
 
 
