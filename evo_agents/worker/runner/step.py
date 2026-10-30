@@ -35,6 +35,7 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from evo_agents.hub import runs
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.runner import access, origin, push, venv, verify
@@ -96,7 +97,7 @@ class StepRun:
             error, cause = failure
             raise RunFailed(error, verify=run.verify, usage=run.outcome.usage if run.outcome else None, cause=cause)
         run.check()
-        commit_sha, diffstat = await self.commit_and_push()
+        commit_sha, diffstat = await self.commit_and_push(commands)
         await run.reports.end(
             final_state(run.approval),
             commit_sha=commit_sha,
@@ -164,11 +165,29 @@ class StepRun:
                 cause=run.outcome.cause,
             )
 
-    async def commit_and_push(self) -> tuple[str, dict]:
+    def step_replay(self, commands: list[str]) -> gitops.Replay:
+        """How the push puts the run's commits on top of a plan branch other step runs moved on: the step's verify
+        runs again at the replayed head."""
+        run = self.run
+
+        async def verify_again(head: str) -> str | None:
+            run.note(f"{run.branch} moved on at origin: the commits were put on top of it, verify runs at {head[:12]}.")
+            results = await verify.run_verify(run, commands)
+            bad = [f"`{r['command']}` exited {r['exit_code']}" for r in results if r["exit_code"] != 0]
+            return ", ".join(bad) or None
+
+        return gitops.Replay(
+            scratch=run.worktree.parent / runs.RESULT_DIR / f"replay-{run.worktree.name}",
+            side_branch=gitops.SIDE_BRANCH.format(id=run.id),
+            verify=verify_again,
+        )
+
+    async def commit_and_push(self, commands: list[str] | None = None) -> tuple[str, dict]:
         """Commit what the agent left, and push the worktree's branch to the plan's branch on origin; the commit and
         the diffstat of the run."""
         run = self.run
         wt = run.worktree
+        commands = commands or []
         try:
             await push.commit(run, wt)
         except gitops.GitError as exc:
@@ -192,12 +211,16 @@ class StepRun:
 
         async def pushed_branch() -> gitops.Pushed:
             with run.credentials.ticketed(run.daemon.env) as env:
-                return await gitops.push(wt, run.branch, protected=self.protected, kind="step", env=env)
+                return await gitops.push(
+                    wt, run.branch, protected=self.protected, kind="step", env=env, replay=self.step_replay(commands)
+                )
 
         try:  # a default branch was refused before the agent started; gitops refuses it again before every push
             pushed = await run.credentials.with_renewal(run.repo, pushed_branch)
         except gitops.PushRefused as exc:
             raise RunFailed(str(exc), verify=run.verify) from None
+        except gitops.PushConflict as exc:
+            raise RunFailed(f"{exc}", verify=run.verify, cause="push_conflict") from None
         except gitops.GitError as exc:
             raise RunFailed(
                 f"git push to {run.branch} on origin failed: {exc}", verify=run.verify, cause=push_cause(exc)
