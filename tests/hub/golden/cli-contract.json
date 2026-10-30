@@ -7030,7 +7030,8 @@
           "wake_at",
           "wake_on",
           "outputs",
-          "credential_request"
+          "credential_request",
+          "approval"
         ],
         "schema": "Decision"
       }
@@ -7174,7 +7175,8 @@
           "wake_at",
           "wake_on",
           "outputs",
-          "credential_request"
+          "credential_request",
+          "approval"
         ],
         "schema": "Decision"
       }
@@ -23536,6 +23538,14 @@
         {
           "flags": [
             "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--pull"
           ],
           "value": "string",
           "required": false,
@@ -95934,6 +95944,49 @@
           ],
           "title": "ApplyResult"
         },
+        "Approval": {
+          "properties": {
+            "pull": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*[#!][1-9][0-9]{0,9}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pull",
+              "description": "the request: owner/name#number on GitHub, the repo and !iid of a merge request on GitLab"
+            },
+            "head": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{7,64}$",
+              "title": "Head",
+              "description": "the commit at its head, lower-case hex"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope",
+              "description": "sha256: and the hash of its files, migrations and needs-you lines (approval_heads.scope_of)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "head"
+          ],
+          "title": "Approval",
+          "description": "What a merge approval holds for: one head of one request, with one scope."
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -96505,6 +96558,32 @@
               ],
               "title": "Decision Id",
               "description": "for a class in ask: the decision of the run, of the class's category, that the agent asked first"
+            },
+            "head": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head",
+              "description": "for a merge: the head of the request now, as the hook read it; null when it could not"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope",
+              "description": "for a merge: the hash of the request's scope now (approval_heads.scope_of)"
             }
           },
           "type": "object",
@@ -96542,7 +96621,19 @@
             "answered": {
               "type": "boolean",
               "title": "Answered",
-              "description": "whether decision_id is a decision of the run, of the class, answered"
+              "description": "whether decision_id is a decision of the run, of the class, answered, and its approval holds for head and scope"
+            },
+            "stale": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale",
+              "description": "why the answer of decision_id no longer opens the gate: it was given for another head or scope of the request; ask again"
             }
           },
           "type": "object",
@@ -107253,6 +107344,17 @@
                 }
               ],
               "description": "what a decision of category credential asks the run's owner for: a variable's value, kept as their secret secret_name, their hub account, or both; null for any other decision"
+            },
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a merge approval: the request, head and scope its answer holds for; null for any other decision, and for one asked before schema 0184"
             }
           },
           "type": "object",
@@ -107431,6 +107533,17 @@
                 }
               ],
               "description": "category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options"
+            },
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind"
             }
           },
           "type": "object",
@@ -118174,6 +118287,17 @@
                 }
               ],
               "description": "category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options"
+            },
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind"
             }
           },
           "type": "object",

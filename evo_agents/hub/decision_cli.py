@@ -31,7 +31,7 @@ import json
 import sys
 from urllib.parse import urlencode
 
-from evo_agents.hub import credential_requests
+from evo_agents.hub import approval_heads, credential_requests
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
@@ -74,6 +74,7 @@ DECISION_KEYS = (
     "wake_on",
     "outputs",
     "credential_request",
+    "approval",
 )
 DECISION_LIST_KEYS = ("decisions", "total", "limit", "offset")
 NOTIFICATION_LIST_KEYS = ("notifications", "total", "limit", "offset")
@@ -248,6 +249,16 @@ def _request_lines(decision: dict) -> list[tuple[str, str]]:
     return lines
 
 
+def _approval_lines(decision: dict) -> list[tuple[str, str]]:
+    """What a merge approval holds for: the request, its head and its scope."""
+    approval = decision.get("approval")
+    if not approval:
+        return []
+    pull = f" of {approval['pull']}" if approval.get("pull") else ""
+    scope = f", scope {approval_heads.short(approval['scope'])}" if approval.get("scope") else ""
+    return [("holds for", f"head {approval_heads.short(approval['head'])}{pull}{scope}")]
+
+
 def _run_line(decision: dict, step: str) -> str:
     """The run of a decision, with its plan and step, or the run alone when it has put no plan."""
     run = f"#{decision['run_id']} ({decision['run_state']})"
@@ -272,6 +283,7 @@ def cmd_show(args) -> int:
         ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
         ("asked", f"{_when(decision['asked_at'])} UTC"),
         *_request_lines(decision),
+        *_approval_lines(decision),
         *_reversible_lines(decision),
         *_wait_lines(decision),
         *_answer_lines(decision),

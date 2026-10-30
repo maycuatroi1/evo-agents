@@ -98,7 +98,7 @@ def test_autonomy_level_hook_act_in_notify_tells_the_principal(client, hub, hub_
     act = {"klass": "K10", "what": "gh issue create --repo other/lib"}
     response = client.post(f"/v1/worker/runs/{run_id}/autonomy-acts", json=act, headers=worker["headers"])
     assert response.status_code == 200, response.text
-    assert response.json() == {"mode": "notify", "told": True, "answered": False}
+    assert response.json() == {"mode": "notify", "told": True, "answered": False, "stale": None}
     (notice,) = notices(client, hub["owner"])
     assert "K10" in notice["title"] and "gh issue create --repo other/lib" in notice["title"]
     ((target, login, _, _),) = audit_rows(hub_db, "autonomy.notified")
@@ -106,7 +106,7 @@ def test_autonomy_level_hook_act_in_notify_tells_the_principal(client, hub, hub_
     auto = client.post(
         f"/v1/worker/runs/{run_id}/autonomy-acts", json={**act, "klass": "K5"}, headers=worker["headers"]
     )
-    assert auto.json() == {"mode": "auto", "told": False, "answered": False}
+    assert auto.json() == {"mode": "auto", "told": False, "answered": False, "stale": None}
     assert len(notices(client, hub["owner"])) == 1
 
 
@@ -119,11 +119,11 @@ def test_autonomy_level_hook_act_in_ask_needs_an_answered_decision_of_the_class(
     decision_id = decision.json()["id"]
     act = {"klass": "K9", "what": "psql -c 'DROP TABLE users'", "decision_id": decision_id}
     before = client.post(f"/v1/worker/runs/{run_id}/autonomy-acts", json=act, headers=worker["headers"])
-    assert before.json() == {"mode": "ask", "told": False, "answered": False}
+    assert before.json() == {"mode": "ask", "told": False, "answered": False, "stale": None}
     path = f"/v1/projects/{PROJECT}/decisions/{decision_id}/answer"
     assert client.post(path, json={"option": "drop"}, headers=hub["owner"]).status_code == 200
     after = client.post(f"/v1/worker/runs/{run_id}/autonomy-acts", json=act, headers=worker["headers"])
-    assert after.json() == {"mode": "ask", "told": False, "answered": True}
+    assert after.json() == {"mode": "ask", "told": False, "answered": True, "stale": None}
     other_class = client.post(
         f"/v1/worker/runs/{run_id}/autonomy-acts", json={**act, "klass": "K6"}, headers=worker["headers"]
     )

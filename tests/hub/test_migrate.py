@@ -5061,3 +5061,26 @@ def test_0183_backfills_the_usage_of_runs_the_reaper_ended_from_their_events_and
     assert query(hub_db, usage) == filled, "going back keeps what it wrote"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0183") :]
     assert query(hub_db, usage) == filled, "a second pass changes nothing"
+
+
+def test_0184_keeps_the_approval_head_of_a_decision_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0183")
+    d = hub_tables.decisions
+    assert "approval" not in columns(hub_db, "decisions")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        before = one(conn, _decision_row(ids, run_id, "wait-helper"))
+    move_to(hub_db, "0184")
+    bound = {"pull": "acme/app#12", "head": "a" * 40, "scope": "sha256:" + "0" * 64}
+    with live.connect(hub_db) as conn:
+        merge = one(conn, _decision_row(ids, run_id, "wait-helper").values(category="merge", approval=bound))
+        for bad in ([bound], {"pull": "acme/app#12"}, {"head": 12}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(_decision_row(ids, run_id, "wait-helper").values(category="merge", approval=bad))
+    kept = select(d.c.id, d.c.approval).order_by(d.c.id)
+    assert query(hub_db, kept) == [(before, None), (merge, bound)], "a decision asked before 0184 has none"
+    move_to(hub_db, "0183", down=True)
+    assert "approval" not in columns(hub_db, "decisions")
+    assert query(hub_db, select(func.count()).select_from(d)) == [(2,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0184") :]

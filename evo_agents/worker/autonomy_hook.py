@@ -8,7 +8,10 @@ the agent, as the card gives it (an ask a project policy sets reads auto: the me
 - ask: it refuses the command and tells the agent to ask first, ``evo-agents worker ask --category <the class's
   category>``, and once the answer lets it, to run the command again after ``EVO_DECISION=<the decision's id>``. The
   hub then checks that the decision is the run's, of a category of the class, and answered (``POST
-  /v1/worker/runs/{id}/autonomy-acts``); without the hub's word the command stays refused.
+  /v1/worker/runs/{id}/autonomy-acts``); without the hub's word the command stays refused. For a ``gh pr merge`` the
+  hook reads the pull request's head and scope (``pull_heads``) and sends them too: a decision of category merge
+  asked with ``--pull`` holds for the head and scope it was asked at alone, so a push since then refuses the command,
+  saying why, and the agent asks again at the new head.
 - notify: it lets the command through, records a ``system`` event of the run, and has the hub tell the principal (the
   same route), which also answers the mode now, the stricter of the snapshot and the value now: a class the hub reads
   deny or ask now is refused as above. A hub that does not answer in ACT_TIMEOUT seconds leaves the command through,
@@ -55,6 +58,7 @@ from pathlib import Path
 
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ASK, AUTO, CLASS_NAMES, DENY, NOTIFY
+from evo_agents.worker import pull_heads
 from evo_agents.worker.command_classes import SHELLS, Hit, _shell_script, classify, repo_slug, simple_commands
 
 BACKUPS_FILE = "backups.jsonl"
@@ -129,8 +133,9 @@ def refusal(hit: Hit, mode: str, source: str) -> str:
 def ask_refusal(hit: Hit, mode: str, source: str) -> str:
     categories = CLASS_CATEGORIES.get(hit.klass, ("scope",))
     other = f" (or --category {categories[1]} for a change of real data)" if len(categories) > 1 else ""
+    pull = " --pull <the pull request's number>" if hit.klass == "K5" else ""
     return (
-        f"{refusal(hit, mode, source)}. Ask first: `evo-agents worker ask --category {categories[0]}`{other}, with "
+        f"{refusal(hit, mode, source)}. Ask first: `evo-agents worker ask --category {categories[0]}{pull}`{other}, with "
         "the option you recommend and why (`--recommended KEY --recommended-reason TEXT`) and whether the command can "
         "be undone (`--reversible yes --undo TEXT`, or `--reversible no`), and wait for the answer; when it lets you, "
         f"run the command again as `{DECISION_VARIABLE}=<the decision's id> <command>`."
@@ -163,6 +168,8 @@ class Gate:
     run_id: int | None = None
     principal: str | None = None  # the login of the run's principal, from its card
     agent: str | None = None  # the handle of the run's agent profile
+    # the approval of the pull request a merge command merges, its head and scope now (``pull_heads.of_command``)
+    pull: Callable[[str], dict | None] | None = None
 
     @classmethod
     def of(cls, autonomy: Mapping | None, worktree: Path, backups: Path, **given) -> Gate | None:
@@ -201,7 +208,7 @@ class Gate:
         acted, decision = self.read(given["command"])
         if not acted:
             return None
-        why = self.refused(acted, decision) or await self._hub(acted, decision)
+        why = self.refused(acted, decision) or await self._hub(acted, decision, given["command"])
         for hit, mode in acted:
             body = {"class": hit.klass, "mode": mode, "what": hit.what, "verdict": "refused" if why else "allowed"}
             body |= {"run": self.run_id, "principal": self.principal, "agent": self.agent}  # the ledger S1
@@ -212,15 +219,19 @@ class Gate:
             self.record(text, body)
         return why
 
-    async def _hub(self, acted: list[tuple[Hit, str]], decision: int | None) -> str | None:
+    async def _hub(self, acted: list[tuple[Hit, str]], decision: int | None, command: str = "") -> str | None:
         """The hub's word on the classes in notify and ask: refused when it reads one stricter now, or when the
-        decision of a class in ask is not answered."""
+        decision of a class in ask is not answered, or was answered for another head or scope of the pull request."""
         for hit, mode in acted:
             if mode not in (ASK, NOTIFY):
                 continue
             body = {"klass": hit.klass, "what": hit.what}
             if mode == ASK:
                 body["decision_id"] = decision
+                if hit.klass == "K5" and decision is not None and self.pull is not None:
+                    bound = await asyncio.to_thread(self.pull, command)
+                    if bound is not None:
+                        body |= {"head": bound["head"], "scope": bound["scope"]}
             answer = await self.act(body) if self.act is not None else None
             if answer is None:
                 if mode == ASK:
@@ -233,6 +244,13 @@ class Gate:
             if now == DENY:
                 return refusal(hit, now, "the principal's autonomy now (stricter than the run's snapshot)")
             if (mode == ASK or now == ASK) and not answer.get("answered"):
+                if decision is not None and answer.get("stale"):
+                    return (
+                        f"{refusal(hit, ASK, self.source(hit.klass))}: the answer to decision #{decision} no longer "
+                        f"opens the gate, {answer['stale']}. Ask again at the head now (`evo-agents worker ask "
+                        "--category merge --pull <the pull request's number>`), and once the answer lets you, run "
+                        f"the command again as `{DECISION_VARIABLE}=<the new decision's id> <command>`."
+                    )
                 if decision is None:
                     return ask_refusal(hit, now, "the principal's autonomy now (stricter than the run's snapshot)")
                 return (
@@ -471,9 +489,10 @@ def floor_for_run(run, env: Mapping[str, str]) -> Floor | None:
     )
 
 
-def for_run(run) -> Gate | None:
+def for_run(run, env: Callable[[], Mapping[str, str]] | None = None) -> Gate | None:
     """The gate of a run of the daemon (``runner.context.Run``) with a snapshot of autonomy: its events go to the run's
-    log, its questions to the hub with the worker's token; None for a run without a snapshot or a worktree."""
+    log, its questions to the hub with the worker's token, and gh reads a pull request it merges with the agent's
+    environment ``env()``; None for a run without a snapshot or a worktree."""
     autonomy = run.spec.get("autonomy")
     if not autonomy or run.worktree is None:
         return None
@@ -495,6 +514,7 @@ def for_run(run) -> Gate | None:
         record=lambda text, body: run.note(text, autonomy=body),
         act=act,
         run_id=run.id,
+        pull=lambda command: pull_heads.of_command(command, Path(run.worktree), env() if env is not None else None),
         principal=autonomy.get("principal") if isinstance(autonomy, Mapping) else None,
         agent=(run.spec.get("profile") or {}).get("handle") if isinstance(run.spec.get("profile"), Mapping) else None,
     )

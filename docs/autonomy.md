@@ -229,6 +229,24 @@ sponsor of its agent; for any other run, its principal. An intern never answers 
 notice of a class in notify goes to the principal, and to the person they report to when they are an intern. The
 Inbox, Telegram and the decision board name the person asked (`docs/notifications.md`).
 
+**A merge approval holds for one head and one scope** (plan super-board-parity-2, a3; `evo_agents/hub/approval_heads.py`).
+A yes to a merge is a yes to the code the person saw. The decision keeps what it approves in `decisions.approval`:
+the pull request, its head (the commit) and its scope, a hash of the files it touches, the migrations among them and
+the lines of its description that say needs-you. Two kinds of decision carry one:
+
+- a decision of category `merge` that an agent asks with `evo-agents worker ask --category merge --pull N`: the worker
+  reads the head, the files and the description with `gh pr view` in the run's directory. When the hook later sees
+  `EVO_DECISION=<id> gh pr merge N`, it reads the pull request again and sends its head and scope with the act. The
+  hub lets the merge through only at the same head and scope; otherwise it answers why (`stale`), and the hook tells
+  the agent to ask again at the new head;
+- a decision the hub's gate opens for a merge (the key `merge owner/name#N` of the Curator's tier merge, with head
+  and scope, or `merge repo!N` of the GitLab queue, with the head alone). When the head or the scope moves, the gate
+  cancels the open question of the old head, or leaves the old answer behind, and asks again at the new head.
+
+The question shows what the answer is bound to (`This answer holds for head ... alone`). A bound approval never
+opens the gate for another head, nor when the head of the act could not be read. A decision without one, such as a
+decision asked before schema 0184 or one that named no pull request, opens the gate as it did.
+
 ## The floors S1 to S5
 
 The floors hold for every principal, at A5 too, and no mode lifts them.
@@ -261,6 +279,7 @@ The web's `/org` page has Stop and Lift buttons, with a confirmation that counts
 | `evo-agents hub autonomy set --level A2 [--class K6=deny]... [--reset]` | your own preference; class overrides merge onto those before, `--reset` drops them (A5 unless `--level`) |
 | `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text> [--class Kn=mode]... [--environment E]... [--worker W]...` | the next ceiling revision, whole: what it leaves out it drops |
 | `evo-agents hub stop (--login L \| --unit SLUG \| --all) [--reason TEXT] [--lift] [--json]` | the stop S4 of a scope, or `--lift` to lift it |
+| `evo-agents worker ask --category merge --pull N [...]` | inside a run: asks a merge decision bound to the head and scope of pull request N, which `gh` reads in the run's directory |
 | `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | inside a run: records a backup (floor S2); the run's log, the audit row `autonomy.backup` and the run's `backups.jsonl` |
 
 A person sees their own autonomy, a lead those of the people in the units they lead, a hub admin everyone's; anyone
@@ -280,5 +299,7 @@ lift, and `GET /v1/autonomy/stops/preview` answers what a stop would cancel, wri
 
 The worker's routes, with the token of the worker that claimed the run: `POST /v1/worker/runs/{id}/backups` records a
 backup (201: `seq`, `made_at`, `fresh`; 422 for a time in the future), and `POST /v1/worker/runs/{id}/autonomy-acts`
-takes a class, the command and a decision's id, and answers the mode now, whether the principal was told, and whether
-the decision is answered.
+takes a class, the command, a decision's id and, for a merge, the `head` and `scope` of its pull request, and answers
+the mode now, whether the principal was told, whether the decision is answered and, when its approval was given for
+another head or scope, why (`stale`). Schema 0184 adds `decisions.approval`, `{"pull", "head", "scope"}`, which the
+ask route takes for a decision of category `merge` alone and the decision view shows.
