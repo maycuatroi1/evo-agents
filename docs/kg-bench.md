@@ -256,8 +256,8 @@ Step 4 must not assume the gate holds on these two sets.
 `baseline.json` uses 633 questions rebuilt from local checkouts (`kg eval-questions --project evo-agents`): 600 tune, 33
 holdout (the hub withholds holdout answers). Tune hit@5 is 0.28 against 81.08 from `kg eval` on the hub because most
 answers no longer exist in a checkout of this branch: only 170 of the 600 tune questions name a file that is there, and hit@5 on
-those 170 is 0.88. The rest are 365 plan-step answers on files since renamed or removed, 71 transcript questions (6 answerable,
-1 hit), and 12 chat questions (none answerable). The 33 holdout plan-step questions score 0.94. As a no-regression gate the
+those 170 is 0.88. The other 430 are 275 plan-step and 78 identifier questions whose files were renamed or removed or never lived in
+this branch, 65 of 71 transcript questions and all 12 chat questions (these name no file); I did not check each one. The 33 holdout plan-step questions score 0.94. As a no-regression gate the
 set is sound only for questions with an existing answer; compare runs on the same summary, not against the hub's figure.
 
 ### ContextBench by language
