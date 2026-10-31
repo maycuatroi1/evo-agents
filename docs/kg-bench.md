@@ -195,3 +195,76 @@ graph, plus the first clone. A second commit of the same repo is quicker. Large 
 - `swe-explore` and `contextbench`: the SWE-bench repos, in 8 languages for ContextBench, with few small ones.
 
 The first full measurement of each set is in the baseline summary under `benches.SET.build`.
+
+## Baselines (step 3)
+
+`bench/results/baseline.json` (shipped ranking, with the evo-agents set), `baseline-bm25.json` (plain BM25) and
+`baseline-hybrid.json` (BM25 plus bge-m3) hold the tune and holdout parts of the four code sets: 300 tasks a set sampled
+by repo (`--sample 300 --seed 0`), extractor `8418fefbc7d7eafc`, evo-ak 0.52.1. One `kg bench run` pass asked the three
+searches on the same graphs; the per-set summaries were joined with `kg bench merge`. `odoo/odoo` is excluded in every
+set (`--exclude-repo odoo/odoo`, recorded in each set's `sample.excluded_repos`): its clone filled the worker's disk.
+After an out-of-memory kill the run goes on from per-repo answer shards (`ask_repo_kept`, under `kg/<extractor>/shards`),
+one repo at a time with `--jobs 1`; the largest resident set of those builds was 4.3 GB (reactivex/rxjava), so no other
+repo needed excluding.
+
+| Holdout primary metric | shipped | plain BM25 | BM25 + bge-m3 |
+|---|---|---|---|
+| ContextBench line F1 (126) | 0.066 | 0.045 | 0.086 |
+| SWE-Explore line F1 (230) | 0.118 | 0.069 | 0.138 |
+| LocBench Acc@5 (300) | 0.403 | 0.283 | 0.397 |
+| MuLocBench Acc@5 (183) | 0.159 | 0.131 | 0.153 |
+| evo-agents hit@5 (33) | 0.939 | - | - |
+
+Failures kept in the summaries: ContextBench 26 tasks without a graph (24 of mui/material, whose clone URL moved to
+mui/material-ui: `graphs.RENAMED` now maps it, and the finished run keeps the 24 failures; zeromicro/go 1; anuraghazra/github 1).
+LocBench has 53 tasks whose answers are not `.py` files, which the Python extractor cannot rank.
+
+### Hybrid vectors came from OpenRouter
+
+The bge-m3 vectors of `baseline-hybrid.json` came from OpenRouter's embeddings API (model `baai/bge-m3`, 1,024
+dimensions), not from a local model. The spend ledger lists provider Parasail for 666 M tokens and DeepInfra for 150 M
+(OpenRouter routed part of the calls there; the summary's `settings.embeddings.providers` names both). Cost 8.16 USD, under the
+50 USD line. A sample of the API vectors against local bge-m3 (fastembed) has cosine >= 0.99997. The backend is opt-in
+(`EVO_KG_EMBEDDINGS=openrouter`); the local path stays the default, and vectors are reused across snapshots by content hash.
+
+### Plain BM25 against the published rows
+
+| | ours (nodes) | ours (whole files) | published BM25 |
+|---|---|---|---|
+| LocBench Acc@5 | 28.3 | 44.0 | 49.3 |
+| MuLocBench Acc@5 | 13.1 (183 holdout tasks); 10.7 on the 300-task holdout sample the file run used | 15.0 | 24.5 |
+| SWE-Explore line F1 | 0.069 | - | 0.024 |
+
+Whole-file BM25 (`kg bench run --search files`, `bench/filebm25.py`) ranks the files of the task's commit by Okapi BM25
+over their whole text, on the same 300 LocBench holdout tasks. It lifts LocBench from 28.3 to 44.0, so ranking
+nodes (symbols, sections, files) rather than files is the main cause of the gap, 16 of 21 points; scoring and sample are
+sound. The rest (about 5 points) is probably the 53 non-Python answers; I did not measure that split. Counting distinct files
+instead of result positions adds 2 points to plain BM25 (`acc_dfile@k`). MuLocBench rises only from 10.7 to 15.0 and stays
+9.5 points under 24.5: that gap is not explained, and I cannot say whether it is the issue text, the answers or the sample.
+Step 4 should aggregate node scores per file before it ranks. Our SWE-Explore plain row is above the published 0.024; I have not
+looked for why (the published figure may use another line budget).
+
+### p95 latency on an idle worker
+
+Searches only, over built graphs, 60 holdout tasks a set, seed 1, no other job on the worker (the baseline p95s, 426, 376 and
+303 ms, were measured beside graph builds): LocBench 159 ms, ContextBench 499 ms, MuLocBench 566 ms. ContextBench and
+MuLocBench stay above the 300 ms gate of a5 even idle; each task opens a cold graph, so the figure includes loading it.
+Step 4 must not assume the gate holds on these two sets.
+
+### The evo-agents set as a gate
+
+`baseline.json` uses 633 questions rebuilt from local checkouts (`kg eval-questions --project evo-agents`): 600 tune, 33
+holdout (the hub withholds holdout answers). Tune hit@5 is 0.28 against 81.08 from `kg eval` on the hub because most
+answers no longer exist in a checkout of this branch: only 170 of the 600 tune questions name a file that is there, and hit@5 on
+those 170 is 0.88. The rest are 365 plan-step answers on files since renamed or removed, 71 transcript questions (6 answerable,
+1 hit), and 12 chat questions (none answerable). The 33 holdout plan-step questions score 0.94. As a no-regression gate the
+set is sound only for questions with an existing answer; compare runs on the same summary, not against the hub's figure.
+
+### ContextBench by language
+
+The parts are uneven: tune is mostly C++, Rust and JavaScript (line F1 0.022), holdout mostly Python (75 of 126; 0.066). Rows
+by language (holdout, shipped ranking): python 0.093 (75), javascript 0.120 (9), go 0.018 (11), java 0.004 (8), typescript
+0.002 (15), c 0.000 (8); tune: javascript 0.044 (61), python 0.051 (7), rust 0.003 (25), cpp 0.000 (23), c 0.000 (4). C and
+C++ score 0 on both. The per-task `language` field keeps these rows in each summary. For step 4: a tune-time gain on tune is
+mostly JavaScript and cannot show a Python gain, and holdout cannot show a C or C++ one; tune per language and report the
+language rows next to the primary.
