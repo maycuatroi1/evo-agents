@@ -340,6 +340,19 @@ runs as root at first boot, and the machine joins the pool, gets its name and la
 doctor report is clean. The user-data holds the token, so keep `--max-nodes` to the machines meant and the TTL short,
 and revoke the token once they joined.
 
+**One machine, several agents.** Each agent has a pool of its own, `agent-<handle>`. Run as root,
+`EVO_HUB_URL=... EVO_AGENT_TOKENS="sandbox=evj_... lms=evj_..." bash bootstrap.sh` (or the user-data of
+`evo-agents worker pool user-data --agent sandbox --agent lms`, which makes one join token per agent pool) adds a node
+per agent. Each gets the Unix user `evo-<handle>` without sudo and outside the docker group, a home of mode 0700, its
+own tools, worker token and systemd user unit. Running it again with another agent adds that node and leaves the
+others alone. Without root, `evo-agents worker service install --agent HANDLE` (or `EVO_WORKER_AGENT=HANDLE`)
+installs the node of one agent under the current user: set `EVO_WORKER_HOME` to a state directory of its own for
+`worker join` and for the install, and the service is `evo-agents-worker-<handle>.service` (systemd user unit) or
+`io.github.maycuatroi1.evo-agents.worker.<handle>` (LaunchAgent), next to the nodes of other agents. `service
+status` and `uninstall` take the same `--agent`. A machine with one node keeps the fixed service names. No port is
+opened, and the doctor reports nothing for the other node users: they are not administrators and their homes are
+closed.
+
 ## Worker status
 
 A worker's status follows from three columns and the clock (`worker_status` in `runs.py`), checked in this order:
