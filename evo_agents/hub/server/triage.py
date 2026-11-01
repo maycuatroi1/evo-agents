@@ -24,6 +24,10 @@ stop in its log) while no account of its owner for that variable is ready for th
 and no agent: the chat run of the agent would take the same accounts (``account_choice``) and fail at once. The thread
 says when the first of them is ready again.
 
+A run that failed for a program its worker lacks (``triage_rules.lacks_program``) and that no other worker is left to
+take (``runs.service.reroute``) has its agent put on a worker it was tried on, its owner's own before a shared one
+(``_install_worker``), so the agent installs the program on that machine and runs the run again from there.
+
 A run that stops moving gets a thread too, once (``run_triage`` holds it): one running or verifying that has written
 no event for STALE_MINUTES while its worker still heartbeats, which each pass of the reaper finds (``open_stale``), with
 the cause ``stale``; and one the reaper failed on its last attempt (cause ``lease_lost``), as any failed run. The first
@@ -64,11 +68,12 @@ from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.profile_store import by_id, ensure_default
 from evo_agents.hub.server.run_state import RunStep, run_step
 from evo_agents.hub.server.runs.service.candidates import candidates_of
+from evo_agents.hub.server.runs.service.reroute import tried_on
 from evo_agents.hub.server.security import MACHINE, Principal
 
 log = logging.getLogger(__name__)
 
-KINDS = ("step", "plan", "author")  # the kinds of run whose failure opens a thread
+KINDS = triage_rules.KINDS
 ERROR_CHARS = 1200
 SHOWN = 3  # candidates of each sort the message names
 STALE_MINUTES = 45  # a run running or verifying with no event this long, while its worker heartbeats, opens a thread
@@ -564,10 +569,12 @@ async def _ask_agent(
     body: str,
     *,
     root_id: int | None = None,
+    on_worker: int | None = None,
 ) -> int | None:
     """Hand message ``message_id``, the first of the thread or one in the thread of ``root_id``, to ``profile`` for the
-    owner (hop 1), with the credential failed run ``found`` was dispatched with (a machine's without one); the chat run
-    it made, if any. A refusal (the writer role, a worker) is said in the thread."""
+    owner (hop 1), with the credential failed run ``found`` was dispatched with (a machine's without one), on worker
+    ``on_worker`` when it can take it; the chat run it made, if any. A refusal (the writer role, a worker) is said in
+    the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, owner, [profile.handle])
     r = tables.runs
     via = MACHINE
@@ -575,13 +582,42 @@ async def _ask_agent(
         query = select(func.coalesce(r.c.dispatched_via, MACHINE)).where(r.c.id == found.run_id)
         via = (await conn.execute(query)).scalar_one()
     root = message_id if root_id is None else root_id
-    hand = Hand(chat, message_id, root, profile, owner.user_id, owner.login, via, 1, "the hub", body)
+    hand = Hand(
+        chat, message_id, root, profile, owner.user_id, owner.login, via, 1, "the hub", body, on_worker=on_worker
+    )
     await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
     if refusals:
         await hub_reply(conn, chat.chat_id, root, "\n".join(refusals))
     return next((mention.get("run_id") for mention in kept if mention.get("run_id")), None)
+
+
+async def _install_worker(conn: AsyncConnection, found: RunStep) -> tuple[int, str, list[str]] | None:
+    """(the id and name of the worker the agent of failed run ``found`` installs what is missing on, the names of the
+    workers the run was tried on) when the run lacks a program: the first of them that is its owner's own, so another
+    member's machine is changed only when no other is left, else the one it failed on; None for any other failure."""
+    if not triage_rules.lacks_program(found.failure_cause, found.error):
+        return None
+    tried, _ = await tried_on(conn, found.run_id)
+    w = tables.workers
+    rows = (await conn.execute(select(w.c.id, w.c.name, w.c.owner_id).where(w.c.id.in_(tried)))).all()
+    by_id = {row.id: row for row in rows}
+    held = [by_id[worker_id] for worker_id in tried if worker_id in by_id]
+    if not held:
+        return None
+    own = [row for row in reversed(held) if row.owner_id == found.dispatcher_id]
+    chosen = own[0] if own else held[0]
+    return chosen.id, chosen.name, [row.name for row in reversed(held)]
+
+
+def _install_lines(worker: str, tried: list[str]) -> list[str]:
+    return [
+        f"No worker with the program is left: the run was tried on {', '.join(tried)}.",
+        f"The agent of this thread runs on {worker}: install what the error names there, on the PATH its shell has, "
+        "which is the one the worker gives its runs; check each with `command -v`; then run it again with "
+        "`evo-agents worker triage rerun`. A word of the error that is no program is a verify to fix, not to install.",
+    ]
 
 
 async def open_thread(conn: AsyncConnection, found: RunStep, *, stale: bool = False) -> Thread | None:
@@ -617,9 +653,15 @@ async def open_thread(conn: AsyncConnection, found: RunStep, *, stale: bool = Fa
     elif waiting is not None:
         lines.append(waiting)
     ask = not full and waiting is None
+    install = await _install_worker(conn, found) if ask and not stale else None
+    if install is not None:
+        lines += _install_lines(install[1], install[2])
+    on_worker = None if install is None else install[0]
     body = runs.clip("\n".join(lines), chats.MAX_MESSAGE_BYTES - 200) + (f"\n\n@{profile.handle}" if ask else "")
     message_id, _ = await insert_message(conn, chat, body, thread_root_id=None)
-    agent_run = await _ask_agent(conn, found, chat, profile, owner, message_id, body) if ask else None
+    agent_run = (
+        await _ask_agent(conn, found, chat, profile, owner, message_id, body, on_worker=on_worker) if ask else None
+    )
     await conn.execute(
         insert(tables.run_triage).values(
             run_id=found.run_id,
