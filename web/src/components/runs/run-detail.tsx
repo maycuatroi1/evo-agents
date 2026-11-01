@@ -293,8 +293,10 @@ function RunPage({ run }: { run: Run }) {
     // From xl the page is one window tall (the window less the top bar and the gutters), and the split below the
     // timeline takes what the head leaves: as tall as the window allows, at least 30rem, the page scrolling past the
     // head only when a short window leaves less (min-h-fit, with the split's size contained so its content does not
-    // count). A phone's trace screen is as tall as the window. Every mode keeps each part in its place in the tree, so
-    // the session (and a connected terminal) stays mounted when the width crosses 768 px.
+    // count). A decision above the split is outside that size: however tall, it takes its own height from the page and
+    // the page scrolls, so it never eats the session's. A phone's trace screen is as tall as the window. Every mode keeps
+    // each part in its place in the tree, so the session (and a connected terminal) stays mounted when the width crosses
+    // 768 px.
     <div
       className={screen ? "flex h-[calc(100dvh-5.25rem)] min-h-[28rem] flex-col gap-3" : "flex flex-col gap-6 xl:h-[calc(100dvh-6.25rem)] xl:min-h-fit"}
       data-testid="run-detail"
@@ -329,8 +331,9 @@ function RunPage({ run }: { run: Run }) {
       )}
       {screen || local ? null : <RunNotices run={run} controls={controls} />}
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
-      {/* Under 768 px: the decision, the subagents and background commands running, the trace's latest rows, then the details. */}
-      {overview ? decisionCard : null}
+      {/* Above the session while Details is closed, as it needs the owner; open, it heads the side column. */}
+      {overview || (!screen && !details) ? decisionCard : null}
+      {/* Under 768 px: then the subagents and background commands running, the trace's latest rows, then the details. */}
       {overview ? tasks : null}
       {overview ? <TracePreview events={log.events} active={active} loading={log.status === "connecting"} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
       {overview ? <OutputsPreview state={outputs} onOpenAll={() => openScreen("outputs")} /> : null}
@@ -353,8 +356,6 @@ function RunPage({ run }: { run: Run }) {
           )}
           data-testid={screen ? undefined : "run-split"}
         >
-          {/* Closed, the trace has the page; a decision the run waits on shows above it, as it needs the owner. */}
-          {screen || details ? null : decisionCard}
           {/* The side column's 4 px of padding, taken back by its margin, keep the cards' focus outlines inside its
               scroll region. Relative, so what its cards place absolutely (the words for screen readers) is clipped. */}
           {!screen && details ? (
