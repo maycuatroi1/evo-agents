@@ -14,7 +14,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -5175,3 +5175,40 @@ def test_0188_keeps_one_thread_a_proposal_and_going_back_drops_it(hub_db):
     move_to(hub_db, "0187", down=True)
     assert "proposal_threads" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0188") :]
+
+
+def test_migration_0189_gives_every_agent_a_pool_and_leaves_it_in_legacy(hub_db):
+    move_to(hub_db, "0188")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        profile = {"project_id": ids["project"], "handle": "helper", "name": "Helper", "color": "#336699"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        helper = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
+        gone = one(
+            conn,
+            insert(t.agent_profiles)
+            .values({**profile, "handle": "gone", "deleted_at": datetime.now(UTC)})
+            .returning(t.agent_profiles.c.id),
+        )
+        member = {"owner_id": ids["user"], "name": "agent-ci"}
+        conn.execute(insert(t.worker_pools).values(member))
+    move_to(hub_db, "0189")
+    p, a = t.worker_pools, t.agent_profiles
+    read = select(p.c.name, p.c.agent_id, p.c.owner_id).order_by(p.c.name)
+    assert query(hub_db, read) == [
+        ("agent-helper", helper, ids["user"]),
+        ("pool-ci", None, ids["user"]),
+    ]
+    assert gone not in {row[1] for row in query(hub_db, read)}
+    served = select(t.worker_pool_projects.c.project_id)
+    assert query(hub_db, served) == [(ids["project"],)]
+    assert query(hub_db, select(a.c.handle, a.c.placement).order_by(a.c.handle)) == [
+        ("gone", "legacy"),
+        ("helper", "legacy"),
+    ]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(a).values(placement="elsewhere").where(a.c.id == helper))
+    move_to(hub_db, "0188", down=True)
+    assert query(hub_db, select(p.c.name)) == [("pool-ci",)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0189") :]

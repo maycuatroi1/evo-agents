@@ -6,7 +6,9 @@ hub, soft-deleted profiles included, so an old message keeps its author), name, 
 avatar (a blob of kind agent-avatar the project holds), whether it is its project's default (one per project), its
 permissions on the axes of ``evo_agents.hub.profiles.AXES`` (seven in 0030, eight since 0040), the agent packs of
 plugins it attaches, each pinned at a version of its plugin (since 0041), its version, who created it and when, and
-when it was soft-deleted.
+when it was soft-deleted. Since 0189 it also has its placement, ``legacy`` (a run of the agent goes to a worker as
+before) or ``pool`` (to a node of the agent's own pool, ``worker_pools.agent_id``); the column is a bridge that the
+step moving every agent to ``pool`` removes.
 agent_profile_versions holds the profile as each version had it, written in the transaction that made the version.
 
 The same revision gives runs and credential_leases a profile_id and profile_version: the profile a run was
@@ -73,6 +75,7 @@ def profile_tables(metadata: MetaData, runs: Table, credential_leases: Table) ->
         Column("is_default", Boolean, nullable=False, server_default=false()),
         Column("permissions", JSONB, nullable=False),
         Column("packs", JSONB, nullable=False, server_default="[]"),  # since 0041
+        Column("placement", Text, nullable=False, server_default="legacy"),  # since 0189: legacy or pool
         Column("version", Integer, nullable=False, server_default="1"),
         Column("created_by", BigInteger, nullable=False),
         _stamp("created_at"),

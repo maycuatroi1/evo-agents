@@ -622,6 +622,7 @@ lease row records the profile and version it was handed out under.
 | `POST .../agents` | `hub agent create HANDLE --name NAME [...]` | an admin of the project |
 | `PATCH .../agents/{handle}` (`if_version`: 409 when it moved on) | `hub agent edit HANDLE [...]` | an admin of the project |
 | `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
+| `PUT .../agents/{handle}/placement` (`{"placement": "pool"}` or `"legacy"`) | `hub agent placement HANDLE pool\|legacy` | an admin of the project or of the hub |
 | `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
 | `GET .../agents/{handle}/avatar` | | a member |
 | `GET .../agent-packs`, the agent packs a profile of the project may attach | | a member |
@@ -643,6 +644,17 @@ its first bytes; the hub stores it in the blob store as a blob of kind `agent-av
 from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Without one, `icon_url` is null and the
 web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
 and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
+
+Each agent has a pool of its own, `agent-<handle>`, made in the transaction that makes the agent (and by schema 0189
+for the agents that exist); `home_pool` names it in the agent's JSON. It is a worker pool owned by the member who
+created the agent and serving the agent's project. An admin of the project or of the hub sees and manages it with the
+routes, the CLI and the page of worker pools: join tokens, labels, taints, slots and the doctor codes it accepts. A
+member who is not an admin is refused (403, or 404 without a grant on the project), and the pool's `projects` do not
+change (422). A member's pool cannot take a name that starts with `agent-`. Each agent also has a `placement`: `legacy`,
+where a run of the agent is placed as before, or `pool`, where it goes to a node of its own pool. Schema 0189 leaves
+the agents that exist in `legacy`, and the hub creates new ones in `pool`; `PUT .../placement` moves one, audited as
+`agent.placement`, without a new version of the profile. The column is a bridge, which the plan agent-dedicated-pools
+removes when every agent is in `pool`. Worker protocol version 1 and `local` runs do not change.
 
 Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
 `agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
