@@ -4376,6 +4376,28 @@
         "projectTitle": "Dự án {project}",
         "open": "Mở @{handle} của {project}",
         "loadFailed": "Không tải được tài khoản của các agent."
+      },
+      "pools": {
+        "title": "Nhóm tài khoản",
+        "description": "Tập tài khoản có tên mà admin gắn cho agent. Agent ở chế độ nhóm chỉ chạy bằng nhóm của nó.",
+        "none": "Chưa có nhóm tài khoản.",
+        "hint": "Mỗi agent có một nhóm tài khoản. Khi nhóm không có tài khoản dùng được, lần chạy chờ trong hàng đợi.",
+        "failed": "Không đổi được nhóm tài khoản.",
+        "added": "Đã thêm tài khoản vào {pool}.",
+        "accountCount": "{count, plural, other {# tài khoản}}",
+        "agentCount": "{count, plural, other {# agent}}",
+        "delete": "Xóa",
+        "inUse": "Một agent đang dùng nhóm này: gỡ ra trước.",
+        "noAccounts": "Nhóm chưa có tài khoản.",
+        "remove": "Gỡ {name}",
+        "accountName": "Tên tài khoản",
+        "agentHandle": "Handle của agent (tùy chọn)",
+        "addAccount": "Thêm tài khoản",
+        "attachFor": "Nhóm tài khoản của @{handle}",
+        "noPool": "Không có nhóm",
+        "poolName": "Tên nhóm mới",
+        "create": "Tạo nhóm",
+        "agents": "Agent"
       }
     },
     "variables": "{provider}, {count, plural, other {# biến}}",

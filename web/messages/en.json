@@ -4376,6 +4376,28 @@
         "projectTitle": "Project {project}",
         "open": "Open @{handle} of {project}",
         "loadFailed": "The agents' accounts could not be loaded."
+      },
+      "pools": {
+        "title": "Account pools",
+        "description": "Named sets of accounts an admin attaches to agents. An agent in pool mode runs on its pool alone.",
+        "none": "No account pool.",
+        "hint": "An agent has one account pool. With no usable account in it, its run waits in the queue.",
+        "failed": "The account pool could not be changed.",
+        "added": "Account added to {pool}.",
+        "accountCount": "{count, plural, one {# account} other {# accounts}}",
+        "agentCount": "{count, plural, one {# agent} other {# agents}}",
+        "delete": "Delete",
+        "inUse": "An agent uses this pool: detach it first.",
+        "noAccounts": "No account in this pool.",
+        "remove": "Remove {name}",
+        "accountName": "Account name",
+        "agentHandle": "Agent handle (optional)",
+        "addAccount": "Add account",
+        "attachFor": "Account pool of @{handle}",
+        "noPool": "No pool",
+        "poolName": "New pool name",
+        "create": "Create pool",
+        "agents": "Agents"
       }
     },
     "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",

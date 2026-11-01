@@ -24,6 +24,7 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_chat_runs import (  # noqa: F401  (fixtures and helpers of the chat tests)
     ADMIN_GRANT,
@@ -72,11 +73,15 @@ def worker(client, headers, name: str) -> dict:
     return chat_worker(client, headers, name, checkouts=RUN_CHECKOUTS)
 
 
-def make_agent(client, headers, handle: str, **body) -> dict:
+def make_agent(client, headers, handle: str, *, db=None, account_pool: bool = True, **body) -> dict:
+    """An agent in pool mode, with an account pool of the headers' member (an agent in pool mode with none is refused
+    a dispatch: ``tests.hub.test_account_pools``)."""
     response = client.post(
         f"/v1/projects/{PROJECT}/agents", json={"handle": handle, "name": handle.title(), **body}, headers=headers
     )
     assert response.status_code == 201, response.text
+    if account_pool and db is not None:
+        give_account_pool(db, PROJECT, handle, OWNER)
     return response.json()
 
 
@@ -131,7 +136,7 @@ def grant_admin(client, hub, login: str) -> None:
 def test_a_run_of_an_agent_in_pool_mode_gets_its_pools_selector_and_taints_and_only_its_nodes_claim_it(
     client, hub, hub_db
 ):
-    make_agent(client, hub["owner"], "helper")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
     taints = client.patch(f"{POOLS}/agent-helper", json={"taints": ["gpu"]}, headers=hub["owner"])
     assert taints.status_code == 200, taints.text
     mine = worker(client, hub["owner"], "mine")  # the dispatcher's own worker, outside the pool
@@ -146,7 +151,7 @@ def test_a_run_of_an_agent_in_pool_mode_gets_its_pools_selector_and_taints_and_o
 
 
 def test_a_pool_node_that_is_not_ready_takes_no_run_and_the_run_waits_for_a_ready_one(client, hub, hub_db):
-    make_agent(client, hub["owner"], "helper")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
     node = join(client, hub_db, worker(client, hub["owner"], "node"), "helper", HIGH)
     (run,) = dispatched(client, hub["owner"], [2], profile="helper")
     assert claim(client, node) is None
@@ -155,8 +160,8 @@ def test_a_pool_node_that_is_not_ready_takes_no_run_and_the_run_waits_for_a_read
 
 
 def test_a_node_of_an_agents_pool_takes_the_runs_of_that_agent_alone(client, hub, hub_db):
-    make_agent(client, hub["owner"], "helper")
-    make_agent(client, hub["owner"], "other-agent")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
+    make_agent(client, hub["owner"], "other-agent", db=hub_db)
     node = join(client, hub_db, worker(client, hub["owner"], "node"), "helper")
     (elsewhere,) = dispatched(client, hub["owner"], [2], profile="other-agent")
     assert claim(client, node) is None, "the run of another agent in pool mode is not its"
@@ -167,7 +172,7 @@ def test_a_node_of_an_agents_pool_takes_the_runs_of_that_agent_alone(client, hub
 
 
 def test_an_agent_in_legacy_mode_runs_as_before(client, hub, hub_db):
-    make_agent(client, hub["owner"], "old")
+    make_agent(client, hub["owner"], "old", db=hub_db)
     placement(client, hub["owner"], "old", "legacy")
     mine = worker(client, hub["owner"], "mine")
     (run,) = dispatched(client, hub["owner"], [2], profile="old", worker_id=mine["id"])
@@ -180,10 +185,11 @@ def test_an_agent_in_legacy_mode_runs_as_before(client, hub, hub_db):
 
 def test_the_default_agent_runs_in_the_same_way_in_pool_mode(client, hub, hub_db):
     """A run that names no agent goes to the project's default agent, and so to its pool when that is in pool mode."""
-    make_agent(client, hub["owner"], "helper")  # makes the project's default agent too, when it has none
+    make_agent(client, hub["owner"], "helper", db=hub_db)  # makes the project's default agent too, when it has none
     default = client.get(f"/v1/projects/{PROJECT}/agents/{PROJECT}", headers=hub["owner"])
     assert default.status_code == 200, default.text
     assert default.json()["placement"] == "pool"
+    give_account_pool(hub_db, PROJECT, PROJECT, OWNER)  # the default agent needs an account pool too
     mine = worker(client, hub["owner"], "mine")
     (run,) = dispatched(client, hub["owner"], [2])
     assert run_row(hub_db, run["id"])[:2] == ([f"pool=agent-{PROJECT}"], [])
@@ -196,7 +202,7 @@ def test_the_default_agent_runs_in_the_same_way_in_pool_mode(client, hub, hub_db
 
 
 def test_a_dispatch_that_picks_the_machine_of_an_agent_in_pool_mode_is_refused_with_guidance(client, hub, hub_db):
-    make_agent(client, hub["owner"], "helper")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
     mine = worker(client, hub["owner"], "mine")
     before = runs_count(hub_db)
     asked = [
@@ -225,7 +231,7 @@ def test_a_dispatch_that_picks_the_machine_of_an_agent_in_pool_mode_is_refused_w
 
 
 def test_a_rerun_of_a_run_of_an_agent_in_pool_mode_stays_in_the_pool_and_refuses_a_machine(client, hub, hub_db):
-    make_agent(client, hub["owner"], "helper")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
     node = join(client, hub_db, worker(client, hub["owner"], "node"), "helper")
     mine = worker(client, hub["owner"], "mine")
     (run,) = dispatched(client, hub["owner"], [2], profile="helper")
@@ -250,7 +256,7 @@ def test_a_rerun_of_a_run_of_an_agent_in_pool_mode_stays_in_the_pool_and_refuses
 
 def test_a_run_with_no_ready_node_stays_queued_and_the_admins_hear_of_each_outage_once(client, hub, hub_db):
     grant_admin(client, hub, OTHER)
-    make_agent(client, hub["owner"], "helper")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
     node = join(client, hub_db, worker(client, hub["owner"], "node"), "helper", HIGH)  # not ready
     first = dispatched(client, hub["owner"], [2], profile="helper")[0]
     second = dispatched(client, hub["owner"], [4], profile="helper")[0]
@@ -285,7 +291,7 @@ def chat_client(hub_db, tmp_path, github, app_key):  # noqa: F811
 
 
 @pytest.fixture
-def chat_hub(chat_client, github) -> dict:
+def chat_hub(chat_client, hub_db, github) -> dict:
     """The project of the chat tests, with the agent @reviewer in pool mode."""
     client = chat_client
     headers = {
@@ -299,7 +305,7 @@ def chat_hub(chat_client, github) -> dict:
     for login, grant in ((OWNER, ADMIN_GRANT), (OTHER, credentials_api.WRITER)):
         response = client.put(f"/v1/admin/projects/{PROJECT}/grants/{login}", json=grant, headers=headers["admin"])
         assert response.status_code == 200, response.text
-    make_agent(client, headers["owner"], "reviewer")
+    make_agent(client, headers["owner"], "reviewer", db=hub_db)
     return headers
 
 
@@ -367,7 +373,7 @@ def test_a_chat_run_with_no_ready_node_waits_in_the_queue_and_tells_the_admins(c
 
 
 def test_a_local_run_does_not_ask_for_a_node_of_a_pool(client, hub, hub_db):
-    make_agent(client, hub["owner"], "helper")
+    make_agent(client, hub["owner"], "helper", db=hub_db)
     registered = client.put(
         f"/v1/projects/{PROJECT}/local-runs/0199a3c1-0000-7000-8000-0000000000a1",
         json={"machine": "mac-mini", "cwd": "/Users/me/evo-agents", "claude_email": "me@example.com"},

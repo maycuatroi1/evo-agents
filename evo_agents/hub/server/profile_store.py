@@ -56,6 +56,8 @@ class Profile:
     packs: list  # the agent packs it attaches, each {"plugin", "name", "version"} (agent_packs)
     placement: str  # PLACEMENTS: where a run of the agent goes
     home_pool: str | None  # the name of its own pool (``agent-<handle>``); None for an agent deleted before 0189
+    account_pool_id: int | None  # its account pool (``account_pools``); None until an admin attaches one
+    account_pool: str | None  # that pool's name
     version: int
     created_by: str
     created_at: datetime
@@ -90,6 +92,11 @@ def profile_select() -> Select:
             ap.c.packs,
             ap.c.placement,
             select(wp.c.name).where(wp.c.agent_id == ap.c.id).scalar_subquery().label("home_pool"),
+            ap.c.account_pool_id,
+            select(tables.account_pools.c.name)
+            .where(tables.account_pools.c.id == ap.c.account_pool_id)
+            .scalar_subquery()
+            .label("account_pool"),
             ap.c.version,
             u.c.login.label("created_by"),
             ap.c.created_at,

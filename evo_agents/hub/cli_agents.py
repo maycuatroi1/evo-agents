@@ -56,6 +56,7 @@ AGENT_KEYS = (
     "packs",
     "placement",
     "home_pool",
+    "account_pool",
     "version",
     "created_by",
     "created_at",
@@ -330,6 +331,7 @@ def _handle(parser) -> None:
 
 
 def register_agents(hsub) -> None:
+    from evo_agents.hub.cli_account_pools import register_account_pools, register_agent_account_pool
     from evo_agents.hub.cli_agent_accounts import register_agent_accounts
 
     agent = hsub.add_parser("agent", help="the agent profiles of a project: who its agents are and what they may use")
@@ -383,3 +385,5 @@ def register_agents(hsub) -> None:
     json_option(placement, returns_object(*AGENT_KEYS, schema="Agent"))
     placement.set_defaults(func=cmd_placement)
     register_agent_accounts(asub)
+    register_agent_account_pool(asub)
+    register_account_pools(hsub)

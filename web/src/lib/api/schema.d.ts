@@ -1962,7 +1962,8 @@ export interface paths {
         };
         /**
          * List Pools
-         * @description The caller's pools, by name, each with its nodes that are not revoked.
+         * @description The caller's pools, and the pools of the agents whose project the caller administers (every agent's for a hub
+         *     admin), by name, each with its nodes that are not revoked.
          */
         get: operations["list_pools_v1_worker_pools_get"];
         put?: never;
@@ -8099,6 +8100,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Placement
+         * @description Move the agent to ``pool`` or back to ``legacy`` (an admin of the project or of the hub). It changes no version
+         *     of the profile: it is where its runs go, not who the agent is.
+         */
+        put: operations["set_placement_v1_projects__project__agents__handle__placement_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/account-pool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Account Pool
+         * @description Attach an account pool of the project to the agent, or detach it (an admin of the project or of the hub): the
+         *     agent has one, and a pool may serve many agents. In pool mode its runs lease the accounts of that pool alone.
+         */
+        put: operations["set_account_pool_v1_projects__project__agents__handle__account_pool_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/avatar": {
         parameters: {
             query?: never;
@@ -8157,6 +8200,94 @@ export interface paths {
          * @description Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it.
          */
         patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Pools
+         * @description The account pools of the project, by name, each with its accounts and the agents that use it (an admin of the
+         *     project or of the hub).
+         */
+        get: operations["list_account_pools_v1_projects__project__account_pools_get"];
+        put?: never;
+        /**
+         * Create Account Pool
+         * @description Make an empty account pool named ``name`` (an admin of the project or of the hub); 409 when the project has one
+         *     of that name.
+         */
+        post: operations["create_account_pool_v1_projects__project__account_pools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools/{pool}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Account Pool */
+        get: operations["get_account_pool_v1_projects__project__account_pools__pool__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account Pool
+         * @description Delete a pool and its list of accounts (the accounts stay); 409 while an agent uses it.
+         */
+        delete: operations["delete_account_pool_v1_projects__project__account_pools__pool__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools/{pool}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Account
+         * @description Add an account to the pool: an env account (a Claude account among them) or a provider account of yours, or of an
+         *     agent of the project. 409 when the pool holds an account of that name already.
+         */
+        put: operations["add_account_v1_projects__project__account_pools__pool__accounts_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools/{pool}/accounts/{secret_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Account
+         * @description Take an account out of the pool; the account stays where it is. The runs that hold it keep it.
+         */
+        delete: operations["remove_account_v1_projects__project__account_pools__pool__accounts__secret_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/projects/{project}/agents/{handle}/provider-accounts": {
@@ -9324,6 +9455,28 @@ export interface paths {
          *     open nor deferred or a charter that has its admins answer.
          */
         post: operations["answer_v1_worker_runs__run_id__curator_answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/curator/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge
+         * @description Merge the pull request of a change of this thread's proposal that the hub left open, for the chat run's
+         *     dispatcher, an admin of the project, at the head the Judge passed, with the workers' App: 403 for a change of
+         *     another proposal, 409 with the reason for anything the merge does not allow, 503 while GitHub does not answer.
+         */
+        post: operations["merge_v1_worker_runs__run_id__curator_merge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11886,6 +12039,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/merge-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Check
+         * @description Have the hub judge the run's pull request on github.com at its head before the run merges it: where the check
+         *     stands, and the wait of the run its verdict answers while it judges.
+         */
+        post: operations["ask_check_v1_worker_runs__run_id__merge_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/merge-gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Gate Act
+         * @description The word of the hub on a merge command of the run's agent (K5): whether the pull request's repo has the merge
+         *     check on, and when it has, whether a passed verdict holds for the head the command merges.
+         */
+        post: operations["merge_gate_act_v1_worker_runs__run_id__merge_gate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -12030,6 +12225,19 @@ export interface components {
             /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
             gateway?: components["schemas"]["GatewayAccount"] | null;
         };
+        /** AccountAdd */
+        AccountAdd: {
+            /**
+             * Name
+             * @description the name of the account: one of yours, or an agent's
+             */
+            name: string;
+            /**
+             * Agent
+             * @description the handle of the agent of the project that owns the account; null: your own account
+             */
+            agent?: string | null;
+        };
         /** AccountCandidate */
         AccountCandidate: {
             /** Name */
@@ -12127,6 +12335,37 @@ export interface components {
              * @default 3
              */
             max_failovers: number;
+        };
+        /** AccountPool */
+        AccountPool: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Accounts */
+            accounts: components["schemas"]["PoolAccount"][];
+            /**
+             * Agents
+             * @description the handles of the agents that use it
+             */
+            agents: string[];
+        };
+        /** AccountPoolChoice */
+        AccountPoolChoice: {
+            /**
+             * Account Pool
+             * @description the name of an account pool of the project to attach; null detaches the agent's
+             */
+            account_pool: string | null;
         };
         /**
          * AccountUsage
@@ -12267,6 +12506,22 @@ export interface components {
              * @description the agent packs it attaches, in order, each at the version it pins
              */
             packs: components["schemas"]["PinnedPack"][];
+            /**
+             * Placement
+             * @description where a run of the agent goes: legacy, as before, or pool, a node of its own pool
+             * @enum {string}
+             */
+            placement: "legacy" | "pool";
+            /**
+             * Home Pool
+             * @description the name of the agent's own pool, agent-<handle>; null for none
+             */
+            home_pool: string | null;
+            /**
+             * Account Pool
+             * @description the name of the account pool its runs lease accounts from in pool mode; null until an admin attaches one
+             */
+            account_pool: string | null;
             /** Version */
             version: number;
             /** Created By */
@@ -17961,6 +18216,24 @@ export interface components {
             /** @description the proposal as answered, with the change accepting it made */
             proposal: components["schemas"]["Proposal"];
         };
+        /** CuratorMergeIn */
+        CuratorMergeIn: {
+            /**
+             * Change Id
+             * @description the change of this thread's proposal the hub left open
+             */
+            change_id: number;
+        };
+        /** CuratorMerged */
+        CuratorMerged: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /** @description the change as merged, with its merge commit */
+            change: components["schemas"]["Change"];
+        };
         /**
          * CuratorOverview
          * @description Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter.
@@ -18032,6 +18305,12 @@ export interface components {
             head_sha?: string | null;
             /** Pr Url */
             pr_url?: string | null;
+            /**
+             * Merge Result
+             * @description a Judge of a merge check: merge the current base into the head in a scratch worktree and run the checks there; a conflict fails it with needs a rebase
+             * @default false
+             */
+            merge_result: boolean;
             /**
              * Judge Key
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
@@ -24596,6 +24875,60 @@ export interface components {
              */
             red_since: string | null;
         };
+        /**
+         * MergeCheck
+         * @description Where the merge check of a pull request stands, and the wait its verdict answers.
+         */
+        MergeCheck: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /** Number */
+            number: number;
+            /**
+             * Head Sha
+             * @description the head the verdict holds for; a new push needs a new check
+             */
+            head_sha: string;
+            /**
+             * State
+             * @description judging, passed or failed
+             */
+            state: string;
+            /** Reason */
+            reason: string | null;
+            /** Web Url */
+            web_url: string | null;
+            /**
+             * Decision Id
+             * @description the run's wait the verdict answers; null when the verdict is there
+             */
+            decision_id: number | null;
+            /**
+             * Wake At
+             * @description when the wait wakes at the latest
+             */
+            wake_at: string | null;
+        };
+        /** MergeCheckIn */
+        MergeCheckIn: {
+            /**
+             * Repo
+             * @description the repo of the run's pull request
+             */
+            repo: string;
+            /**
+             * Number
+             * @description the pull request; null: the open one of the run's branch
+             */
+            number?: number | null;
+            /**
+             * Branch
+             * @description the branch the run pushes, as its worker has it
+             */
+            branch?: string | null;
+        };
         /** MergeEvent */
         MergeEvent: {
             /** Id */
@@ -24684,6 +25017,52 @@ export interface components {
             days: number;
             /** Figures */
             figures: components["schemas"]["MergeFigure"][];
+        };
+        /** MergeGate */
+        MergeGate: {
+            /**
+             * Gated
+             * @description false: the repo does not have merge_check on, so the command is not the hub's
+             */
+            gated: boolean;
+            /**
+             * Passed
+             * @description the hub holds a passed verdict for the head named, and the command may go on
+             */
+            passed: boolean;
+            /**
+             * Head Sha
+             * @description the head the hub's verdict holds for; the merge pins it
+             */
+            head_sha: string | null;
+            /**
+             * Reason
+             * @description why the command does not pass
+             */
+            reason: string | null;
+            /**
+             * Command
+             * @description the command that asks for the check
+             */
+            command: string;
+        };
+        /** MergeGateIn */
+        MergeGateIn: {
+            /**
+             * Repo
+             * @description owner/name of the pull request's repo
+             */
+            repo: string;
+            /**
+             * Number
+             * @description the pull request the merge command merges
+             */
+            number: number;
+            /**
+             * Head
+             * @description the head of the pull request as the hook read it now; null when it could not
+             */
+            head?: string | null;
         };
         /**
          * MergeJudgeInputs
@@ -24836,6 +25215,11 @@ export interface components {
             } | null;
             /** @description the security pass of the run, which judges the dimension security apart from the agent */
             security?: components["schemas"]["SecurityPass"] | null;
+            /**
+             * Conflicts
+             * @description a merge check's: the paths where merging the base into the head conflicts; null when it merged
+             */
+            conflicts?: string[] | null;
         };
         /** MergedAnswer */
         MergedAnswer: {
@@ -27369,6 +27753,15 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** Placement */
+        Placement: {
+            /**
+             * Placement
+             * @description pool: a run of the agent goes to a node of its own pool; legacy: as before the pools of agents
+             * @enum {string}
+             */
+            placement: "legacy" | "pool";
+        };
         /** Plan */
         Plan: {
             /** Project */
@@ -28805,9 +29198,14 @@ export interface components {
             name: string;
             /**
              * Owner
-             * @description the login of the member who made it
+             * @description the login of the member who made it, or who created the agent of an agent's pool
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent whose pool it is; null for a member's pool
+             */
+            agent?: string | null;
             /** Projects */
             projects: string[];
             /** Slots */
@@ -28835,6 +29233,59 @@ export interface components {
              * @description its nodes that are not revoked, newest first
              */
             nodes: components["schemas"]["PoolNode"][];
+        };
+        /** PoolAccount */
+        PoolAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @description env or provider
+             */
+            kind: string;
+            /**
+             * Env Var
+             * @description the variable an env account sets; null for a provider account
+             */
+            env_var: string | null;
+            /**
+             * Provider
+             * @description who it signs in to: claude, anthropic, openai ... or a catalog id
+             */
+            provider: string;
+            /**
+             * Category
+             * @description model: the runtime's own sign-in or a provider account; service: any other
+             */
+            category: string;
+            /**
+             * Owner
+             * @description the member who owns it; null for an agent's account
+             */
+            owner: string | null;
+            /**
+             * Agent
+             * @description the agent that owns it; null for a member's account
+             */
+            agent: string | null;
+            /** Paused */
+            paused: boolean;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Added By */
+            added_by: string;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
         };
         /** PoolNode */
         PoolNode: {
@@ -28937,6 +29388,14 @@ export interface components {
              * @description days a node stays offline before the hub revokes it
              */
             reap_after_days?: number | null;
+        };
+        /** PoolWrite */
+        PoolWrite: {
+            /**
+             * Name
+             * @description 1 to 40 characters, unique in the project in any case
+             */
+            name: string;
         };
         /**
          * PrefSet
@@ -35266,6 +35725,12 @@ export interface components {
              * @default false
              */
             own_home: boolean;
+            /**
+             * Account Pool
+             * @description true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none of the owner's
+             * @default false
+             */
+            account_pool: boolean;
             /** @description the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it */
             origin?: components["schemas"]["RunOrigin"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
@@ -39463,7 +39928,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -39477,7 +39942,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -72078,6 +72543,152 @@ export interface operations {
             };
         };
     };
+    set_placement_v1_projects__project__agents__handle__placement_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Placement"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_account_pool_v1_projects__project__agents__handle__account_pool_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountPoolChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_avatar_v1_projects__project__agents__handle__avatar_get: {
         parameters: {
             query?: never;
@@ -72608,6 +73219,423 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_account_pools_v1_projects__project__account_pools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_account_pool_v1_projects__project__account_pools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_account_pool_v1_projects__project__account_pools__pool__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_account_pool_v1_projects__project__account_pools__pool__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_account_v1_projects__project__account_pools__pool__accounts_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_account_v1_projects__project__account_pools__pool__accounts__secret_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+                secret_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -77580,6 +78608,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_v1_worker_runs__run_id__curator_merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuratorMergeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorMerged"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -87152,6 +88260,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_check_v1_worker_runs__run_id__merge_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    merge_gate_act_v1_worker_runs__run_id__merge_gate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeGateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeGate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

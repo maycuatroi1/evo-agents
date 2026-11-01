@@ -43,6 +43,7 @@ from evo_agents.hub.server import (
     attachment_store,
     autonomy_hold,
     gateway_accounts,
+    pool_accounts,
     run_access_rules,
     run_autonomy,
 )
@@ -579,6 +580,8 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         refusal = await _run_as_refusal(conn, hand) or await _seat_refusal(conn, hand.route.user_id, hand.route.login)
         if refusal is not None:
             return None, refusal
+    if (why := pool_accounts.needs_pool(hand.profile, hand.profile.project)) is not None:
+        return None, why
     session = await _session(conn, hand)
     if session is not None and session.state in runs.MESSAGE_STATES:
         await _to_inbox(conn, session.id, hand)
