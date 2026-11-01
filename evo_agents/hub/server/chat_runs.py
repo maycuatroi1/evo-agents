@@ -64,7 +64,8 @@ class Hand:
     """What one mention asks: work of ``profile`` for ``dispatcher_id`` (``dispatcher``), the person at the origin of
     the chain, at ``hop``, in the thread of ``root_id`` of ``chat``, woken by message ``message_id`` that ``author``
     wrote, with the credential kind ``via`` (runs.dispatched_via). ``route`` is set by ``hand_work`` for a profile
-    whose agent type sends its chat runs to the workers of its run_as."""
+    whose agent type sends its chat runs to the workers of its run_as. ``on_worker`` is the worker a new session goes to
+    when that worker can take it: the machine the work is about (a program to install, ``triage``)."""
 
     chat: ChatAccess
     message_id: int
@@ -77,6 +78,7 @@ class Hand:
     author: str
     body: str
     route: Route | None = None
+    on_worker: int | None = None
 
     @property
     def owner_id(self) -> int:
@@ -129,8 +131,8 @@ def _no_worker(hand: Hand) -> str:
 async def pick_worker(conn: AsyncConnection, hand: Hand):
     """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher or one another member
     shares in the project, or of the run_as of the agent's type among its own workers the type names (``hand.route``),
-    fit for the profile (``unfit_worker``); the dispatcher's own before a shared one, then the one with a checkout of
-    the most repos of the project, then the most free slots."""
+    fit for the profile (``unfit_worker``); ``hand.on_worker`` when it is one of them, else the dispatcher's own before
+    a shared one, then the one with a checkout of the most repos of the project, then the most free slots."""
     profile = hand.profile
     rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id))).all()
     if hand.route is not None:
@@ -147,6 +149,9 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
             unfit.append(f"{row.name} {why}")
     if not fit:
         return None, f"no worker of {hand.owner} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
+    asked = next((row for row in fit if row.id == hand.on_worker), None)
+    if asked is not None:
+        return asked, None
 
     def rank(row):
         held = sum(1 for name in repos if f"{profile.project}/{name}" in (row.checkouts or {}))

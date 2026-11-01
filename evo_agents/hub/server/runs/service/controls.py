@@ -15,7 +15,8 @@ from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.run_state import move_run
+from evo_agents.hub.server.run_retry import next_attempt
+from evo_agents.hub.server.run_state import move_run, notify_queued
 from evo_agents.hub.server.runs.models import AccessChange, Rerun, Run
 from evo_agents.hub.server.runs.service import browsers
 from evo_agents.hub.server.runs.service.accounts import rerun_picks
@@ -298,6 +299,31 @@ async def rerun_in(
         granted = f"{run_target(project, plan_id, key, new_id)} by=rerun of run:{run_id}"
         await run_access.record(conn, user, access.project_id, granted, granted=True)
     return await run_view(conn, new_id)
+
+
+async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, run_id: int, worker_id: int) -> int:
+    """Queue failed plan run ``run_id`` again on worker ``worker_id``, in the caller's transaction, for the triage of a
+    program it lacked (``evo_agents.hub.server.triage_actions``; a member dispatches the plan again instead): what the
+    run asked for, at the plan's revision now, a first attempt, and never as its owner. The id of the new run; 409 while
+    another run of the plan is active."""
+    access, row = await owned_run(conn, user, project, run_id, "rerun")
+    check_dispatcher(access)
+    await check_seat(conn, user, "running a run again")
+    held = await plan_routes._visible(conn, access, row.plan_id, None)
+    await refuse_curator_plan(conn, access, row.plan_id)
+    await pinnable(conn, user, access, worker_id)
+    await lock_plan(conn, access.project_id, row.plan_id)
+    activity = await plan_activity(conn, access.project_id, row.plan_id)
+    if activity.plan_run is not None or activity.steps:
+        raise HTTPException(409, f"plan {row.plan_id} has an active run: nothing was queued")
+    new_id = (await conn.execute(next_attempt(run_id))).scalar_one()
+    r = tables.runs
+    values = {"pinned_worker_id": worker_id, "attempt": 1, "plan_revision": held.revision}
+    await conn.execute(update(r).values(**values, as_owner=False, as_owner_since=None).where(r.c.id == new_id))
+    await notify_queued(conn, new_id)
+    target = f"{run_target(project, row.plan_id, None, new_id)} rerun of run:{run_id}"
+    await audit_run(conn, user, access, audit.RUN_RERUN, target)
+    return new_id
 
 
 async def _rerun_as_owner(conn: AsyncConnection, run_id: int, body: Rerun | None) -> bool:
