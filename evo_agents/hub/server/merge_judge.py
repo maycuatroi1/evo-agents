@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import findings, judge, judges, merge_gate, runs, tables, tiers
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import agent_placement, audit
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.changes import (
@@ -121,22 +121,24 @@ async def queue_judge_run(
         access = None
     if access is None or not has_role(access.role, "writer"):
         return None, None, f"{login}, who wrote the policy, no longer holds writer on project {project.name}"
-    worker_id, why = await _judge_worker(conn, project)
-    if worker_id is None:
-        return None, None, why
-    try:
-        worker = await pinnable(conn, member, access, worker_id)
-    except HTTPException as exc:
-        return None, None, f"its worker cannot take it: {exc.detail}"
-    if runs.MERGE_JUDGE not in worker.features:
-        return (
-            None,
-            None,
-            f"the daemon of worker {worker.name} does not say it judges merge requests: upgrade it and restart it",
-        )
-    problems = unfit(worker, project.name, "judge", [repo], judges.CLAUDE_CODE)
-    if problems:
-        return None, None, f"worker {worker.name} cannot take it: {'; '.join(problems)}"
+    worker = None
+    if await agent_placement.default_home(conn, project.id) is None:  # in pool mode a node of the pool takes it
+        worker_id, why = await _judge_worker(conn, project)
+        if worker_id is None:
+            return None, None, why
+        try:
+            worker = await pinnable(conn, member, access, worker_id)
+        except HTTPException as exc:
+            return None, None, f"its worker cannot take it: {exc.detail}"
+        if runs.MERGE_JUDGE not in worker.features:
+            return (
+                None,
+                None,
+                f"the daemon of worker {worker.name} does not say it judges merge requests: upgrade it and restart it",
+            )
+        problems = unfit(worker, project.name, "judge", [repo], judges.CLAUDE_CODE)
+        if problems:
+            return None, None, f"worker {worker.name} cannot take it: {'; '.join(problems)}"
     model, chosen = judges.merge_judge_model(
         project.policy["judge"]["model"], builder_model, built=built, second=second
     )
@@ -148,7 +150,7 @@ async def queue_judge_run(
         "title": title[:200],
         "dispatched_by": project.owner_id,
         "dispatched_via": MACHINE,
-        "pinned_worker_id": worker.id,
+        "pinned_worker_id": None if worker is None else worker.id,
         "requested_runtime": judges.CLAUDE_CODE,
         "runtime": judges.CLAUDE_CODE,
         "model": model,

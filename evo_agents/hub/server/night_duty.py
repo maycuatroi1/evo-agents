@@ -23,6 +23,7 @@ from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.server import agent_placement
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.models.placement import selector_of
 from evo_agents.hub.server.runs.service.dispatch import Pinned, unfit
@@ -251,6 +252,12 @@ async def _pool_duty(conn: AsyncConnection, pool_id: int, project_id: int) -> tu
 
 async def on_duty(conn: AsyncConnection, due) -> tuple[Duty | None, str | None]:
     """Where schedule ``due``'s runs go now (``Duty``), or why nothing of it takes a run now."""
+    home = await agent_placement.default_home(conn, due.project_id)
+    if home is not None:  # the default agent is in pool mode: its pool's nodes take the night shift's runs
+        duty, why = await _pool_duty(conn, home.pool_id, due.project_id)
+        if duty is None:
+            await agent_placement.watch(conn, home)
+        return duty, why
     if due.pool_id is not None:
         return await _pool_duty(conn, due.pool_id, due.project_id)
     return await _worker_duty(conn, due.worker_id, due.project_id)

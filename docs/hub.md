@@ -656,6 +656,18 @@ the agents that exist in `legacy`, and the hub creates new ones in `pool`; `PUT 
 `agent.placement`, without a new version of the profile. The column is a bridge, which the plan agent-dedicated-pools
 removes when every agent is in `pool`. Worker protocol version 1 and `local` runs do not change.
 
+In `pool` mode the hub places every run of the agent, of any kind and whoever dispatches it (`server/agent_placement.py`):
+the run gets the selector `pool=agent-<handle>` and tolerations for the pool's taints when it is inserted
+(`insert_run`), and only a node of that pool that is online, not draining and ready claims it; a member's worker or a
+shared worker outside the pool never does, and a node of an agent's pool takes no run of another agent. A chat run
+prefers the node that ran the previous turn of the same chat while it is ready, else another node of the pool. Runs that
+name no agent, those of the Curator, `loop`, `judge` and an agent type that names no agent, go to the project's default
+agent, in its pool when it is in `pool` mode. When the pool has no ready node the run stays queued and each admin of the
+project gets one notice `agent_pool_empty` for the outage (`worker_pools.empty_notified_at`, schema 0190, cleared when a
+node is ready again). The dispatch, plan-run, author-run, rerun and triage-rerun routes answer 422 with guidance when
+`worker_id`, `pool`, `labels` or `tolerations` is given for an agent in `pool` mode. An agent in `legacy` mode is placed
+as before.
+
 Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
 `agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
 the project, at version 1; and `profile_id` with `profile_version` on `runs` and on `credential_leases`, both null or

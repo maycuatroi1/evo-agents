@@ -125499,7 +125499,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 32,
+              "maxItems": 33,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -157960,7 +157960,8 @@
                 "market_install_request",
                 "market_license_expiring",
                 "today",
-                "kg_optimize"
+                "kg_optimize",
+                "agent_pool_empty"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -158026,7 +158027,8 @@
                 "market_install_request",
                 "market_license_expiring",
                 "today",
-                "kg_optimize"
+                "kg_optimize",
+                "agent_pool_empty"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

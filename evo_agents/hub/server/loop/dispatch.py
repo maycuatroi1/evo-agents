@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
+from evo_agents.hub.server import agent_placement, audit, autonomy_hold, run_autonomy
 from evo_agents.hub.server.loop import act, caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker, loop_worker
 from evo_agents.hub.server.loop.model import (
@@ -73,6 +73,11 @@ async def _project(conn: AsyncConnection, project_id: int) -> str:
     return await conn.scalar(select(p.c.name).where(p.c.id == project_id))
 
 
+async def _project_id(conn: AsyncConnection, project: str) -> int:
+    p = tables.projects
+    return await conn.scalar(select(p.c.id).where(p.c.name == project))
+
+
 def _refused(why: str) -> Handed:
     return Handed(reason=WORKER, why=why)
 
@@ -94,6 +99,8 @@ async def _unfit(conn: AsyncConnection, project: str, worker: LoopWorker, kind: 
     """Why ``worker`` could never claim a run of ``kind`` over ``repos`` on ``runtime``; None when it can."""
     from evo_agents.hub.server.runs.service.dispatch import unfit, worker_as_pinned  # it imports the routes' modules
 
+    if await agent_placement.default_home(conn, await _project_id(conn, project)) is not None:
+        return None  # the default agent is in pool mode: its pool's nodes take the run, not the Loop's worker
     pinned = await worker_as_pinned(conn, worker.id)
     problems = ["it is gone"] if pinned is None else unfit(pinned, project, kind, list(repos), runtime)
     return f"worker {worker.name} cannot take the {kind} run: {'; '.join(problems)}" if problems else None
