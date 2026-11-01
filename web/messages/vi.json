@@ -3752,6 +3752,21 @@
       "allowed": "Worker, label và pool được phép",
       "defaultNote": "Agent mặc định của dự án giữ mọi quyền: mọi worker của người giao việc đều nhận run của nó.",
       "deletedNote": "Agent này đã bị xoá: nó không nhận run mới, nên nơi chạy không đổi được nữa."
+    },
+    "placement": {
+      "title": "Vị trí chạy",
+      "mode": "Chế độ",
+      "modePool": "Pool: run đi tới một node của pool riêng",
+      "modeLegacy": "Cũ: run đi tới các worker mà trục worker cho phép",
+      "pool": "Pool",
+      "nodes": "Node",
+      "noNodes": "Chưa có node nào tham gia",
+      "nodesFailed": "Không đọc được các node",
+      "accountPool": "Pool tài khoản",
+      "none": "Không có",
+      "legacyNote": "Agent theo kiểu cũ vẫn nhận worker chọn bằng tay. Chuyển sang chế độ pool thì run của nó chỉ đi tới một node của pool.",
+      "switch": "Chuyển sang chế độ pool",
+      "switched": "@{handle} giờ chạy trong pool của nó"
     }
   },
   "chats": {

@@ -1288,10 +1288,10 @@ Runs are driven from any machine signed in to the hub:
 
 ```sh
 evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
-evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run dispatch rollout 5 --runtime codex --mode interactive --timeout 90
 evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
 evo-agents hub run dispatch rollout 7 --account claude-b     # this account of yours, kept, never failed over
-evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
+evo-agents hub run plan rollout --timeout-h 8                 # one plan run: every step not done yet
 evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
 evo-agents hub run plan rollout --as-me                       # its agent calls the hub as you, secrets, tokens and workers aside
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
@@ -1307,8 +1307,8 @@ evo-agents hub run rerun 41 --account-by-rule                # the same, the rul
 evo-agents hub run candidates 41                              # after it failed: which worker or agent could run it again, and why
 evo-agents hub run credentials 41                             # the leases the run got, never their values
 evo-agents hub run access 41 --revoke                         # it no longer runs as you: its token ends at once
-evo-agents hub run author "a plan to move the hub's blobs to R2" --worker mac-mini  # an agent writes a new plan
-evo-agents hub run author "split step 3 in two" --plan rollout --worker mac-mini   # or revises one
+evo-agents hub run author "a plan to move the hub's blobs to R2"                                   # an agent writes a new plan
+evo-agents hub run author "split step 3 in two" --plan rollout   # or revises one
 evo-agents hub run chat 42                                    # an author run's chat, and whose turn it is
 evo-agents hub run send 42 "keep the old route until 0.10"    # your reply in that chat
 evo-agents hub run finish 42                                  # end the chat: the run ends done
@@ -1324,9 +1324,8 @@ the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gi
 run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
 and for every run `model_used`, the model its runtime used, also with routing off.
 
-`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
-has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`
-let take it), whose agent writes an execution plan from REQUEST
+`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on a node of the pool of its
+agent that has the project's harness checked out, whose agent writes an execution plan from REQUEST
 (at most 16 KiB of UTF-8, `-` reads it from stdin) with the create-exec-plan skill the hub holds, and puts it on the
 hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (1, 2 or 4 hours of agent time, 2 by
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
@@ -1371,14 +1370,12 @@ KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (
 a queued attempt whose run before it was lost on a worker that is not steady yet has a `waits for` line naming that
 worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
-`dispatch`, `plan`, `author` and `rerun` take where the run may go besides `--worker`: `--pool NAME` (one of your
-worker pools: only its nodes take the run, as the label `pool=NAME`), `--label LABEL` (a label the claiming worker must
-have, a word or key=value: its own, its pool's, or one the hub gives it, `os=`, `arch=`, `runtime=NAME`,
-`feature=browser`; repeat it, and every one is needed) and `--tolerate TAINT` (a taint of a worker the run accepts;
-repeat it). They go to the body as `pool`, `labels` and `tolerations`, and the run keeps them as `selector` and
-`tolerations`; only what is given is sent, so an older hub takes the rest. A worker with a taint the run does not
-tolerate leaves it to others unless the run is pinned to it, and a node of a pool whose doctor report is not clean
-takes none (`docs/workers.md`, Pools). A `rerun` without any of the three keeps the run's own.
+`dispatch`, `plan`, `author` and `rerun` do not pick the machine: they have no `--worker`, `--pool`, `--label` or
+`--tolerate`, and `worker triage rerun` has no `--worker`. The agent of the run decides: an agent in `pool` mode runs on
+its own pool, `agent-<handle>` (the paragraphs on the pool of an agent, under the agent profiles), and the hub answers 422 with guidance when the body of the API
+names `worker_id`, `pool`, `labels` or `tolerations` for it. Until plan agent-dedicated-pools removes the `legacy`
+mode, the API still takes those fields for an agent in `legacy` mode, and `run list --worker` still filters the runs a
+worker claimed. A rerun keeps the run's own selector and tolerations.
 
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
