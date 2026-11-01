@@ -11,6 +11,7 @@ import { browserApi } from "@/lib/api/browser";
 
 import { Day } from "./account-cells";
 import type { Actions } from "./account-columns";
+import { LazyAccountPoolsGroup } from "./account-pools-lazy";
 import { LazyAgentAccountsGroup } from "./agent-accounts-lazy";
 import { preloadLogin } from "./login-lazy";
 import { isClaudeAccount, renewalDue, sharedVariables } from "./model";
@@ -146,6 +147,7 @@ export function ProvidersTab({
         )}
       </div>
       <LazyAgentAccountsGroup now={now} onlyIfAny={models.length === 0} />
+      <LazyAccountPoolsGroup />
     </div>
   );
 }

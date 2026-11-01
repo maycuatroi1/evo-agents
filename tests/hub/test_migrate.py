@@ -5212,3 +5212,48 @@ def test_migration_0189_gives_every_agent_a_pool_and_leaves_it_in_legacy(hub_db)
     move_to(hub_db, "0188", down=True)
     assert query(hub_db, select(p.c.name)) == [("pool-ci",)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0189") :]
+
+
+def test_migration_0191_adds_account_pools_and_the_account_pool_of_an_agent(hub_db):
+    move_to(hub_db, "0190")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        profile = {"project_id": ids["project"], "handle": "helper", "name": "Helper", "color": "#336699"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        helper = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
+    move_to(hub_db, "0191")
+    pools, members, a = t.account_pools, t.account_pool_members, t.agent_profiles
+    assert query(hub_db, select(a.c.account_pool_id).where(a.c.id == helper)) == [(None,)]  # no agent has one yet
+    with live.connect(hub_db) as conn:
+        pool = one(
+            conn,
+            insert(pools).values(project_id=ids["project"], name="Main", created_by=ids["user"]).returning(pools.c.id),
+        )
+        secret = one(
+            conn,
+            insert(t.secrets)
+            .values(
+                owner_id=ids["user"],
+                name="claude",
+                kind="env",
+                env_var="CLAUDE_CODE_OAUTH_TOKEN",
+                sealed=b"x" * 32,
+                nonce=b"n" * 12,
+                key_id="0123abcd",
+            )
+            .returning(t.secrets.c.id),
+        )
+        conn.execute(insert(members).values(pool_id=pool, secret_id=secret, added_by=ids["user"]))
+        conn.execute(update(a).values(account_pool_id=pool).where(a.c.id == helper))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):  # a name once in a project, in any case
+        conn.execute(insert(pools).values(project_id=ids["project"], name="MAIN", created_by=ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 1 to 40 characters
+        conn.execute(insert(pools).values(project_id=ids["project"], name="x" * 41, created_by=ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):  # a secret in a pool once
+        conn.execute(insert(members).values(pool_id=pool, secret_id=secret, added_by=ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):  # a pool in use is not deleted
+        conn.execute(delete(pools).where(pools.c.id == pool))
+    move_to(hub_db, "0190", down=True)
+    assert {"account_pools", "account_pool_members"}.isdisjoint(tables(hub_db))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0191") :]

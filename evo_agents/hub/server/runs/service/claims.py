@@ -36,6 +36,7 @@ from evo_agents.hub.server import (
     agent_placement,
     attachment_store,
     gateway_accounts,
+    pool_accounts,
     principals,
     run_autonomy,
     worker_placement,
@@ -488,6 +489,7 @@ async def _claim_once(
                 browsers.claim_gate(worker_id, features),
                 gateway_accounts.claim_gate(version),
                 agent_placement.claim_gate(worker_id),
+                pool_accounts.claim_gate(),
                 or_(agent_placement.home_run(worker_id), node.gate(worker_id)),
             ),
         )
@@ -804,6 +806,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         browser_identities=view.browser_identities,
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
+        account_pool=await pool_accounts.is_pooled(conn, run_id),
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
         autonomy=autonomy,

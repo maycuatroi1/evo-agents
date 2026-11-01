@@ -42,7 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, profiles, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server import audit, profile_store, route_autonomy
+from evo_agents.hub.server import account_pools, audit, profile_store, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_accounts import retire_profile_accounts
 from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
@@ -202,6 +202,10 @@ class Agent(BaseModel):
         description="where a run of the agent goes: legacy, as before, or pool, a node of its own pool"
     )
     home_pool: str | None = Field(description="the name of the agent's own pool, agent-<handle>; null for none")
+    account_pool: str | None = Field(
+        description="the name of the account pool its runs lease accounts from in pool mode; null until an admin "
+        "attaches one"
+    )
     version: int
     created_by: str
     created_at: datetime
@@ -241,6 +245,7 @@ def agent_view(profile: Profile) -> Agent:
         packs=pinned_view(profile.packs),
         placement=profile.placement,
         home_pool=profile.home_pool,
+        account_pool=profile.account_pool,
         version=profile.version,
         created_by=profile.created_by,
         created_at=profile.created_at,
@@ -486,6 +491,34 @@ async def set_placement(
             await _record(conn, user, access, audit.AGENT_PLACEMENT, target)
             profile = await _profile(conn, access, handle)
     log.info("agent placement changed", extra={"project": project, "handle": handle, "placement": body.placement})
+    return agent_view(profile)
+
+
+class AccountPoolChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_pool: str | None = Field(
+        description="the name of an account pool of the project to attach; null detaches the agent's"
+    )
+
+
+@router.put("/{project}/agents/{handle}/account-pool", response_model=Agent, responses=WRITE_REFUSALS)
+async def set_account_pool(
+    request: Request, project: ProjectName, handle: Handle, body: AccountPoolChoice, user: CurrentUser
+) -> Agent:
+    """Attach an account pool of the project to the agent, or detach it (an admin of the project or of the hub): the
+    agent has one, and a pool may serve many agents. In pool mode its runs lease the accounts of that pool alone."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        if not user.admin:
+            _admin(access, "attaching an account pool to")
+        profile = await _profile(conn, access, handle, lock=True)
+        if profile.deleted_at is not None:
+            raise HTTPException(409, f"@{handle} was deleted at {profile.deleted_at.isoformat()}: it changes no more")
+        if profile.account_pool != body.account_pool:
+            await account_pools.attach(conn, user, access, profile.id, handle, body.account_pool)
+            profile = await _profile(conn, access, handle)
+    log.info("agent account pool changed", extra={"project": project, "handle": handle})
     return agent_view(profile)
 
 

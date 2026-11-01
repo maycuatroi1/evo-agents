@@ -31,6 +31,7 @@ _PREFIXES: tuple[tuple[str, Provider], ...] = (
 )
 _SUFFIXES: tuple[tuple[str, Provider], ...] = (("_SSH_KEY", "ssh"),)
 MODEL_PROVIDERS = frozenset({"claude", "anthropic", "openai"})
+MODEL_ENV_VARS = tuple(sorted(name for name, provider in _NAMES.items() if provider in MODEL_PROVIDERS))
 
 
 def provider_of(env_var: str) -> Provider:

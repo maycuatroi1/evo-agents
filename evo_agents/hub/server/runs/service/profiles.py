@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement, gateway_accounts, run_autonomy, worker_placement
+from evo_agents.hub.server import agent_placement, gateway_accounts, pool_accounts, run_autonomy, worker_placement
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -287,6 +287,8 @@ async def choose(
         profile = await _named(conn, user, access, handle)
     if asked.by_hand and profile.placement == agent_placement.POOL_MODE:
         raise agent_placement.refuse_by_hand(profile.handle)  # the hub places the runs of an agent in pool mode
+    if (why := pool_accounts.needs_pool(profile, access.name)) is not None:
+        raise HTTPException(422, why)  # a run of it would wait for an account no one can give it
     _runtime(profile, asked)
     await _environment(conn, access, profile, asked)
     model = _model(profile, asked.model)
@@ -466,7 +468,7 @@ async def own_home(conn: AsyncConnection, run_id: int) -> bool:
     r, ap = tables.runs, tables.agent_profiles
     query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
     default = (await conn.execute(query)).scalar_one_or_none()
-    return default is False
+    return default is False or await pool_accounts.is_pooled(conn, run_id)
 
 
 async def run_origin(conn: AsyncConnection, run_id: int) -> RunOrigin:
