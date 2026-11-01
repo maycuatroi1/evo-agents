@@ -981,6 +981,26 @@ test("from 1280 px the session and the side column scroll on their own, as tall 
   expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
 });
 
+test("from 1280 px a decision above a closed side column leaves the session its height, the page scrolling past it", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { run } = await planRunUnderway(me, project, uniqueName("decision"), { waiting: true });
+
+  // A window too short for both: the decision keeps its height and the session its 30rem, one under the other.
+  await page.setViewportSize({ width: 1280, height: 620 });
+  await open(page, runPath(project, run.id));
+  const decision = main(page).getByTestId("run-decisions");
+  await expect(decision.getByTestId("decision-form")).toBeVisible();
+  const session = main(page).getByTestId("run-log");
+  await expect(main(page).getByTestId("run-split").getByTestId("run-decisions")).toHaveCount(0);
+  const card = (await decision.boundingBox())!;
+  const box = (await session.boundingBox())!;
+  expect(card.y + card.height, "the decision ends above the session").toBeLessThanOrEqual(box.y);
+  expect(box.height, "the session keeps its height").toBeGreaterThanOrEqual(479);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(620);
+});
+
 test("a turn of a chat session heads its page with the session's title, which turn it is and a link to each turn", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
