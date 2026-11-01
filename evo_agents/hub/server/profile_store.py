@@ -21,7 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import profiles, tables
 
 DEFAULT_DESCRIPTION = "The project's default agent: every permission, no instructions."
-PLACEMENTS = ("legacy", "pool")  # a bridge: ``pool`` sends the agent's runs to its own pool's nodes
+POOL_MODE = "pool"
+NEW_AGENT_PLACEMENT = POOL_MODE  # the placement of an agent made now (an agent that existed before keeps legacy)
+PLACEMENTS = ("legacy", POOL_MODE)  # a bridge: ``pool`` sends the agent's runs to its own pool's nodes
 POOL_PREFIX = "agent-"  # an agent's pool is ``agent-<handle>``; a member's pool never starts with it
 SNAPSHOT = (
     "handle",
@@ -157,7 +159,7 @@ async def ensure_default(conn: AsyncConnection, project_id: int) -> Profile:
         "permissions": profiles.all_access(),
         "packs": [],
     }
-    row_values = {**values, "created_by": project.created_by, "placement": "pool"}
+    row_values = {**values, "created_by": project.created_by, "placement": NEW_AGENT_PLACEMENT}
     statement = pg_insert(ap).values(**row_values).on_conflict_do_nothing().returning(ap.c.id)
     created = (await conn.execute(statement)).scalar_one_or_none()
     if created is not None:

@@ -65,6 +65,9 @@ def pools_table(metadata: MetaData) -> Table:
         Column("reap_after_days", SmallInteger, nullable=False, server_default="7"),
         _stamp("created_at"),
         _stamp("updated_at"),
+        Column(
+            "empty_notified_at", DateTime(timezone=True)
+        ),  # since 0190: the admins heard that no node was ready; cleared when one is
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="worker_pools_owner_id_fkey"),
         ForeignKeyConstraint(
             ["agent_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="worker_pools_agent_id_fkey"

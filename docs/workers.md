@@ -240,6 +240,7 @@ agents the caller administers; every one for a hub admin). The admin of the agen
 owner, shows it, makes and revokes its join tokens and changes its slots, labels, taints and accepted findings with the
 routes of this section and `evo-agents worker pool`; the pool serves the agent's project alone. See "Routes and
 commands" under the agent profiles in `docs/hub.md` for the placement that sends an agent's runs to it.
+A node of an agent's pool claims the runs of that agent alone, and only while it is ready; no other worker claims them.
 
 **A join token.** `POST /v1/worker-pools/{name}/tokens` makes one: `evj_` and 32 random bytes in base64url, shown
 once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by default) and joins `max_uses` machines

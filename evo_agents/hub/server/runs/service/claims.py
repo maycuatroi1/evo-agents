@@ -32,7 +32,14 @@ from evo_agents.hub import author, autonomy_card, curator, model_router, proofs,
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import attachment_store, gateway_accounts, principals, run_autonomy, worker_placement
+from evo_agents.hub.server import (
+    agent_placement,
+    attachment_store,
+    gateway_accounts,
+    principals,
+    run_autonomy,
+    worker_placement,
+)
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -281,8 +288,9 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
     admit (``worker_fit.unit_admits``), none of the night shift's kinds (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
     agents of two members never run side by side as the daemon's user (``docs/workers.md``, Shared workers)."""
     r = tables.runs
+    home = agent_placement.home_run(worker_id)  # a node of an agent's pool takes the agent's runs of any dispatcher
     if not shared:
-        return r.c.dispatched_by == owner_id
+        return or_(home, r.c.dispatched_by == owner_id)
     held = tables.runs.alias("held")
     member = and_(
         r.c.dispatched_by != owner_id,
@@ -295,7 +303,7 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
         held.c.state.in_(runs.HELD_STATES),
         held.c.dispatched_by != r.c.dispatched_by,
     )
-    return and_(or_(r.c.dispatched_by == owner_id, member), ~other)
+    return or_(home, and_(or_(r.c.dispatched_by == owner_id, member), ~other))
 
 
 def _task_worker(worker_id: int):
@@ -304,9 +312,10 @@ def _task_worker(worker_id: int):
     w, t, r = tables.workers, tables.project_agent_types, tables.runs
     own = (w.c.id == worker_id) & (w.c.owner_id == r.c.dispatched_by)
     name = select(func.lower(w.c.name)).where(own).correlate(r).scalar_subquery()
-    return exists().where(
+    named = exists().where(
         t.c.id == r.c.agent_type_id, or_(func.cardinality(t.c.workers) == 0, name == any_(t.c.workers))
     )
+    return or_(agent_placement.pooled_run(), named)  # a run of an agent in pool mode goes to its pool, not the type's
 
 
 class ClaimAbandoned(Exception):
@@ -430,6 +439,8 @@ async def _claim_once(
         node = await worker_placement.placement(conn, worker_id)
         if not node.ready:  # a node of a pool whose doctor report is stale or has a high finding it does not accept
             return None
+        if agent_placement.is_agent_pool(node.pool):  # a ready node: the pool is not out of nodes
+            await agent_placement.recovered_by(conn, worker_id)
         r = tables.runs
         holding = select(func.count()).select_from(r).where(r.c.worker_id == worker_id, r.c.state.in_(runs.HELD_STATES))
         if (await conn.execute(holding)).scalar_one() >= slots:
@@ -476,7 +487,8 @@ async def _claim_once(
                 claim_clause(name, labels, runtimes, features, offered, environments, plugins, node.pool),
                 browsers.claim_gate(worker_id, features),
                 gateway_accounts.claim_gate(version),
-                node.gate(worker_id),
+                agent_placement.claim_gate(worker_id),
+                or_(agent_placement.home_run(worker_id), node.gate(worker_id)),
             ),
         )
         waiting = await overlap.blocked(conn, list(served))

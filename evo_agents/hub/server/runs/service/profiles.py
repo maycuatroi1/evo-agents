@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import gateway_accounts, run_autonomy, worker_placement
+from evo_agents.hub.server import agent_placement, gateway_accounts, run_autonomy, worker_placement
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -85,6 +85,7 @@ class Asked:
     picked: tuple = ()
     selector: tuple = ()  # the labels the run asks of its worker, and the taints it tolerates (worker_placement)
     tolerations: tuple = ()
+    by_hand: bool = False  # the dispatch names a worker, pool, labels or tolerations itself
 
 
 def _refuse(profile: Profile, why: str) -> HTTPException:
@@ -284,10 +285,15 @@ async def choose(
     profile = await ensure_default(conn, access.project_id) if handle is None else None
     if profile is None:
         profile = await _named(conn, user, access, handle)
+    if asked.by_hand and profile.placement == agent_placement.POOL_MODE:
+        raise agent_placement.refuse_by_hand(profile.handle)  # the hub places the runs of an agent in pool mode
     _runtime(profile, asked)
     await _environment(conn, access, profile, asked)
     model = _model(profile, asked.model)
-    await _worker(conn, user, access, profile, asked)
+    if (
+        profile.placement != agent_placement.POOL_MODE
+    ):  # an agent in pool mode runs on its pool, whatever its worker axis
+        await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
     await _own_account(conn, profile, asked)
     return Chosen(profile, model, await _gateway(conn, user, access, profile, asked, model))
@@ -367,7 +373,11 @@ def claim_clause(
     conditions = [
         v.c.profile_id == r.c.profile_id,
         v.c.version == r.c.profile_version,
-        or_(_all(permissions, "worker"), permissions["worker"]["allow"].has_any(literal(names, ARRAY(Text)))),
+        or_(
+            _all(permissions, "worker"),
+            permissions["worker"]["allow"].has_any(literal(names, ARRAY(Text))),
+            agent_placement.pooled_run(),  # an agent in pool mode runs on its pool, whatever its worker axis
+        ),
         or_(
             _all(permissions, "runtime"),
             allow.has_any(literal(runtimes, ARRAY(Text))),

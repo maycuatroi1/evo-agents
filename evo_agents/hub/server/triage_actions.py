@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
-from evo_agents.hub.server import audit, chat_agents
+from evo_agents.hub.server import agent_placement, audit, chat_agents
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import put_agent
@@ -381,7 +381,14 @@ async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, 
         state="failed",
         run_id=failed.id,
     )
-    worker_id, runtime = _unfit(found, options, frame)
+    r = tables.runs
+    home = await agent_placement.home_of(conn, await conn.scalar(select(r.c.profile_id).where(r.c.id == failed.id)))
+    if home is not None:  # the run is of an agent in pool mode: its pool's nodes take the rerun, nobody picks one
+        if options.worker is not None:
+            raise agent_placement.refuse_by_hand(home.handle)
+        worker_id, runtime = None, options.runtime
+    else:
+        worker_id, runtime = _unfit(found, options, frame)
     # the agent of the triage reruns the step as a run of the owner's that does not run as them: only the owner lets
     # a run act as them (``run_access``), never an agent on their behalf
     if plan_run:

@@ -371,7 +371,12 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         values["packs"] = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
         statement = (
             pg_insert(ap)
-            .values(project_id=access.project_id, created_by=user.user_id, placement="pool", **values)
+            .values(
+                project_id=access.project_id,
+                created_by=user.user_id,
+                placement=profile_store.NEW_AGENT_PLACEMENT,
+                **values,
+            )
             .on_conflict_do_nothing(index_elements=[ap.c.handle])
             .returning(ap.c.id)
         )

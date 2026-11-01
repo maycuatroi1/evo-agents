@@ -11,7 +11,7 @@ from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import audit, run_access
+from evo_agents.hub.server import agent_placement, audit, run_access
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
@@ -258,11 +258,15 @@ async def rerun_in(
     model = None if runtime else model
     held = await plan_routes._visible(conn, access, plan_id, None)
     await refuse_curator_plan(conn, access, plan_id)
-    pin_to = pinned if worker_id is None else worker_id
+    r = tables.runs
+    profile_id = (await conn.execute(select(r.c.profile_id).where(r.c.id == run_id))).scalar_one_or_none()
+    pooled = await agent_placement.home_of(conn, profile_id) is not None  # its pool, not the old pin, takes the rerun
+    by_hand = worker_id is not None or (body is not None and body.placed())
+    pin_to = worker_id if (worker_id is not None or pooled) else pinned
     worker = None if pin_to is None else await pinnable(conn, user, access, pin_to)
     placed = await _rerun_placement(conn, run_id, body)
     picked = await rerun_picks(conn, user, access, run_id, body, worker, placed["selector"])
-    asked = Asked(kind, runtime_now, model, worker, tuple(picked), **placed)
+    asked = Asked(kind, runtime_now, model, worker, tuple(picked), by_hand=by_hand, **placed)
     chosen = await rerun_choice(conn, user, access, run_id, asked)
     await lock_plan(conn, access.project_id, plan_id)
     activity = await plan_activity(conn, access.project_id, plan_id)
@@ -301,7 +305,9 @@ async def rerun_in(
     return await run_view(conn, new_id)
 
 
-async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, run_id: int, worker_id: int) -> int:
+async def rerun_plan_in(
+    conn: AsyncConnection, user: Principal, project: str, run_id: int, worker_id: int | None
+) -> int:
     """Queue failed plan run ``run_id`` again on worker ``worker_id``, in the caller's transaction, for the triage of a
     program it lacked (``evo_agents.hub.server.triage_actions``; a member dispatches the plan again instead): what the
     run asked for, at the plan's revision now, a first attempt, and never as its owner. The id of the new run; 409 while
@@ -311,14 +317,17 @@ async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, ru
     await check_seat(conn, user, "running a run again")
     held = await plan_routes._visible(conn, access, row.plan_id, None)
     await refuse_curator_plan(conn, access, row.plan_id)
-    await pinnable(conn, user, access, worker_id)
+    if worker_id is not None:  # none: the run keeps its placement (a run of an agent in pool mode)
+        await pinnable(conn, user, access, worker_id)
     await lock_plan(conn, access.project_id, row.plan_id)
     activity = await plan_activity(conn, access.project_id, row.plan_id)
     if activity.plan_run is not None or activity.steps:
         raise HTTPException(409, f"plan {row.plan_id} has an active run: nothing was queued")
     new_id = (await conn.execute(next_attempt(run_id))).scalar_one()
     r = tables.runs
-    values = {"pinned_worker_id": worker_id, "attempt": 1, "plan_revision": held.revision}
+    values = {"attempt": 1, "plan_revision": held.revision}
+    if worker_id is not None:
+        values["pinned_worker_id"] = worker_id
     await conn.execute(update(r).values(**values, as_owner=False, as_owner_since=None).where(r.c.id == new_id))
     await notify_queued(conn, new_id)
     target = f"{run_target(project, row.plan_id, None, new_id)} rerun of run:{run_id}"
