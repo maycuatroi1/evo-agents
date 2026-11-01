@@ -119,9 +119,9 @@ every worker starts unshared, and the audit row `worker.update` names the change
 - **Dispatch.** A member who holds writer on a project the worker serves may pin a run to it, while its owner holds
   writer there too, and a run they dispatch without a pin may go to it as well as to their own workers. A token pinning
   a run to it still gets 403 when the owner keeps it to runs dispatched from the web (`dispatch_from`). The web's
-  dispatch picker, `evo-agents hub run dispatch`, `plan` and `author --worker`, and a rerun list a shared worker after
-  the member's own; `--worker` takes an id, a name (the member's own worker first, then the one worker of that name
-  shared with them) or `owner/name`.
+  dispatch picker lists a shared worker after the member's own, for an agent in `legacy` mode; the command line no
+  longer pins a run (`hub run dispatch`, `plan`, `author` and `rerun` have no `--worker`), and an agent in `pool` mode
+  runs on its own pool whoever dispatches.
 - **Claim.** A claim of a shared worker takes the queued runs of its owner and of every member who holds writer on the
   run's project now, never a run of the night shift's kinds of another member, and only while every run the worker
   holds is of the same member: the agents of two members never run side by side as the daemon's user, so one of them
@@ -271,9 +271,9 @@ node: a clean doctor report is the approval. A worker of no pool is always ready
 **Selector and taints.** A run may name where it goes: `pool` (the label `pool=<name>`, which must be one of the
 dispatcher's pools), `labels`, every one of which the claiming worker must have among its labels and `auto_labels`,
 and `tolerations`, the taints it accepts. The run's `selector` and `tolerations` hold them (`POST .../runs`,
-`.../plan-runs` and `.../author-runs`; `--pool`, `--label` and `--tolerate` on `hub run dispatch|plan|author|rerun`,
-`docs/hub.md`). A worker claims a run when its labels hold the run's whole selector and the run tolerates each of the
-worker's taints, a pool's taints included. A run pinned to a worker with `--worker` skips the taint check but still
+`.../plan-runs` and `.../author-runs`; `docs/hub.md`; the command line has no flag for them any more, and the hub
+refuses them for an agent in `pool` mode). A worker claims a run when its labels hold the run's whole selector and the
+run tolerates each of the worker's taints, a pool's taints included. A run pinned to a worker by the API skips the taint check but still
 needs every label of its selector. A run with no selector on a worker with no taint is claimed as before, so a daemon
 that knows nothing of pools claims, heartbeats and joins by code unchanged. A rerun that names none of the three keeps
 the run's own selector and tolerations. A worker's owner sets its own taints with `PATCH /v1/workers/{id}`
@@ -675,8 +675,9 @@ and always on another worker, the attempt starts a new session in new worktrees,
 
 An author run (kind `author`, `evo_agents.hub.author`) writes an execution plan from a member's request with the
 create-exec-plan skill. A writer of the project dispatches it with `POST /v1/projects/{p}/author-runs` or
-`evo-agents hub run author REQUEST --worker W --project P`: a request of at most 16 KiB of UTF-8 (422 over it), the
-worker it runs on, which must be one of the member's own (403 otherwise; an author run is always pinned), runtime
+`evo-agents hub run author REQUEST --project P`: a request of at most 16 KiB of UTF-8 (422 over it), the
+worker it runs on (an agent in `pool` mode: a node of its pool; `worker_id` in the API stays for `legacy` agents and
+must be one of the member's own, 403 otherwise), runtime
 claude-code (422 for opencode or codex, saying why), an optional model and 1, 2 or 4 hours of agent time (2 by
 default). A reader gets 403. Its repos are the project's harness first, where plans live, then each repo of the
 project the worker has a checkout of; a project registered without its harness gets 409, and so does a worker whose
@@ -905,7 +906,7 @@ as they were.
 
 | Command | Route | What |
 | --- | --- | --- |
-| `evo-agents worker triage rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a worker, runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, or the run was rerun by its agent; 404 for a run that is not the chat run of a triage thread |
+| `evo-agents worker triage rerun --reason TEXT [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate of its agent's pool, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, or the run was rerun by its agent; 404 for a run that is not the chat run of a triage thread |
 | `evo-agents worker triage plan STEP --if-revision N [--verify TEXT] [--what TEXT] --reason TEXT [--rerun]`, or `... plan --edits FILE --if-revision N --reason TEXT [--rerun]` | `POST .../triage/plan` | write a revision of the failed run's plan under the owner's name that changes the `verify` (no command fewer) or narrows the `what` of a step that is `pending` and of the run's repos; `--edits` (body `steps`) does it for several steps in one revision and one `Decision:` line, FILE (`-` for stdin) a JSON list of `{"step": ID, "verify": TEXT, "what": TEXT, "why": TEXT}` (`why` when a step needs a reason of its own), and the hub writes all of them or none; 422 for anything else (a step that is `done`, a key other than those two, `acceptance`, `goal`, `non_goals`, a step of another repo); with `--rerun` the rerun follows in the same transaction and a refused rerun leaves the plan as it was; `verify_failed` is rerun only this way |
 | `evo-agents worker triage cancel --reason TEXT` | `POST .../triage/cancel` | in the thread of a stale run (cause `stale`), ask its worker to stop it, for its owner, as their cancel of a held run does: 200 with `run_id` and the `Decision:` line's `message_id`; 409 in a failed run's thread, for a run its worker holds no more, or when a stop was asked already. Once the run has ended, `triage rerun` runs it again for the cause `stale` (409 while it is still held) |
 | `evo-agents worker triage invite HANDLE --reason TEXT` | `POST .../triage/invite` | invite the agent of another project that the failed run's error names (`rerun-candidates` lists it under `other_projects` with the owner's role there) into the thread's chat, so a mention (`worker chat mention`, hop 3 at most) hands it work; the owner needs the writer role on that project and every person in the chat must clear the label it brings (the group chat's own rule, 409), otherwise the hub says so in the thread, in the agent's name, and invites no one; 422 for an agent of a project the error does not name or the owner holds no grant on |

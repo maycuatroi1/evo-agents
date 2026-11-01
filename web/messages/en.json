@@ -3752,6 +3752,21 @@
       "allowed": "Allowed workers, labels and pools",
       "defaultNote": "The project's default agent keeps every permission: any worker of the person who hands it work takes its runs.",
       "deletedNote": "This agent was deleted: it takes no new run, so where its runs go no longer changes."
+    },
+    "placement": {
+      "title": "Placement",
+      "mode": "Mode",
+      "modePool": "Pool: runs go to a node of its own pool",
+      "modeLegacy": "Legacy: runs go to the workers its worker axis allows",
+      "pool": "Pool",
+      "nodes": "Nodes",
+      "noNodes": "No node has joined yet",
+      "nodesFailed": "The nodes could not be read",
+      "accountPool": "Account pool",
+      "none": "None",
+      "legacyNote": "A legacy agent still takes a worker named by hand. Switch it to pool mode and its runs go only to a node of its pool.",
+      "switch": "Switch to pool mode",
+      "switched": "@{handle} now runs in its pool"
     }
   },
   "chats": {

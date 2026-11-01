@@ -1,8 +1,8 @@
 """``evo-agents worker triage rerun|plan|invite|cancel``: what the agent of a triage thread does on its own for a failed run
 (``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules`` is the frame the hub enforces).
 
-- ``rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]``: run the failed run of
-  the thread again for its owner, on a worker, runtime or account that is a fit candidate.
+- ``rerun --reason TEXT [--runtime NAME] [--account NAME] [--confirm-cause]``: run the failed run of
+  the thread again for its owner, with a runtime or account that is a fit candidate.
 - ``plan STEP --reason TEXT --if-revision N [--verify TEXT] [--what TEXT] [--rerun ...]``: change the ``verify`` or
   narrow the ``what`` of a pending step of the failed run's plan, as a new revision under the owner's name.
   ``plan --edits FILE ...`` does it for several steps at once, one revision and one ``Decision:`` line: FILE (``-``
@@ -38,7 +38,6 @@ def _text(value: str) -> str:
 
 def _options(args) -> dict:
     found = {
-        "worker": args.worker,
         "runtime": args.runtime,
         "account": args.account,
         "cause_confirmed": True if args.confirm_cause else None,
@@ -122,7 +121,6 @@ def cmd_cancel(args) -> int:
 
 def _frame_options(parser) -> None:
     parser.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
-    parser.add_argument("--worker", metavar="NAME", help="rerun on this worker of the owner, a fit candidate")
     parser.add_argument("--runtime", metavar="NAME", help="rerun with this runtime, one the worker has")
     parser.add_argument("--account", metavar="NAME", help="rerun with this account of the owner, ready on the worker")
     parser.add_argument(

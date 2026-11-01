@@ -15,6 +15,7 @@ import { MAX_ALLOW, validItem } from "@/lib/agent-rules";
 import { type Agent, allowed } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 
+import { AgentPlacement } from "./agent-placement";
 import { AxisField } from "./axis-field";
 import { useAgentAdmin, useAgentFailure, useEditAgent } from "./hooks";
 import { type AxisDraft, draftOf, permissionsBody, sameAxis } from "./model";
@@ -81,6 +82,7 @@ function WorkersForm({
   return (
     <div className="flex flex-col gap-4" data-testid="agent-workers" data-handle={agent.handle} data-editable={editable}>
       <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground">{t("lead", { handle: agent.handle })}</p>
+      {admin && !agent.is_default ? <AgentPlacement project={project} agent={agent} editable={editable} /> : null}
       {editable ? null : <ReadOnly project={project} agent={agent} admin={admin} />}
       {editable ? (
         <>

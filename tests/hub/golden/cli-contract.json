@@ -18708,14 +18708,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--runtime"
           ],
           "value": "string",
@@ -18748,30 +18740,6 @@
             2,
             4
           ]
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
         },
         {
           "flags": [
@@ -19186,14 +19154,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--approval"
           ],
           "value": "string",
@@ -19225,30 +19185,6 @@
         {
           "flags": [
             "--identity"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
           ],
           "value": "string",
           "required": false,
@@ -19920,14 +19856,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--runtime"
           ],
           "value": "string",
@@ -19987,30 +19915,6 @@
         {
           "flags": [
             "--identity"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
           ],
           "value": "string",
           "required": false,
@@ -20179,30 +20083,6 @@
           "value": null,
           "required": false,
           "repeatable": false
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
         },
         {
           "flags": [
@@ -24983,14 +24863,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--runtime"
           ],
           "value": "string",
@@ -25025,14 +24897,6 @@
           ],
           "value": "string",
           "required": true,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
           "repeatable": false
         },
         {
