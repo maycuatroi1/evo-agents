@@ -31,7 +31,7 @@ from evo_agents.hub.server.runs.models import (
     StateReport,
     WorkerSettings,
 )
-from evo_agents.hub.server.runs.service import plugin_runtimes
+from evo_agents.hub.server.runs.service import plugin_runtimes, reroute
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
@@ -268,17 +268,23 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         await _check_answer(conn, run_id, kind, body)
         error = await _moved_columns(conn, run_id, name, body, columns)
         reason = _move_reason(body, name, error, cancel_requested_at)
-        await move_run(
-            conn,
-            run_id,
-            state,
-            body.state,
-            "worker",
-            reason=reason,
-            error=error,
-            columns=columns,
-            token_id=user.token_id,
-        )
+        other = None
+        if body.state == "failed":
+            other = await reroute.next_worker(conn, run_id, state, body.failure_cause, error)
+        if other is not None:
+            await reroute.move_on(conn, run_id, state, other, error=error, columns=columns, token_id=user.token_id)
+        else:
+            await move_run(
+                conn,
+                run_id,
+                state,
+                body.state,
+                "worker",
+                reason=reason,
+                error=error,
+                columns=columns,
+                token_id=user.token_id,
+            )
         if body.state == "waiting" and kind == "author":
             from evo_agents.hub.server import author_chat  # it reads runs through this package
             from evo_agents.hub.server.loop.author_mode import turn_ended

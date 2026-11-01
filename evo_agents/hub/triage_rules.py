@@ -6,7 +6,8 @@ whatever the agent was told:
 
 - run the failed step again for its owner (``RERUN_CAUSES``: the causes the policy table of the design report gives
   an automatic rerun), at most ``RERUN_CAP`` times in a chain of reruns and ``CAUSE_CAP`` time for each cause; a cause
-  the hub guessed first has to be confirmed by the agent after it read the log;
+  the hub guessed first has to be confirmed by the agent after it read the log; a failed plan run is run again only
+  for a program missing, once the agent installed it on the worker it runs on (``lacks_program``);
 - change the ``verify`` or narrow the ``what`` of a step of the failed run's plan that is still ``pending`` and
   names a repo of that run (``edit_problems``), as a new revision under the owner's name, never losing a clause of
   the ``verify``; the ``verify_failed`` cause is rerun only together with such an edit.
@@ -25,14 +26,18 @@ from __future__ import annotations
 
 import re
 
+KINDS = ("step", "plan", "author")  # the kinds of run whose failure opens a thread
 RERUN_CAP = 2  # automatic reruns in one chain of runs (each rerun has its failed run as ``parent_run_id``)
 CAUSE_CAP = 1  # automatic reruns of one chain for one cause
 EDITABLE = ("verify", "what")  # the keys of a step the agent may change
 VERIFY_WITH_EDIT = "verify_failed"  # rerun only by an edit of the plan (``triage plan --rerun``)
+MISSING_TOOL = "missing_tool"
+OFF_PATH = re.compile(r"not on (?:this worker's|the run's) PATH", re.I)  # what the preflight says of a program
+NOT_A_COMMAND = "not runnable as a shell command"  # a verify in prose, which fails on every worker alike
 
 # The causes a failed run is run again of by the agent, with what each needs of the rerun.
 RERUN_CAUSES = {
-    "missing_tool": "on the worker the run was on, once the program is installed there",
+    MISSING_TOOL: "on the worker the agent runs on, once the program is installed there",
     "rate_limit": "with another account of the owner, or another runtime",
     "account_auth": "with another account of the owner, or another runtime",
     "worker_stopped": "on a worker of the owner that is fit",
@@ -56,8 +61,15 @@ def named_in(text: str | None, names) -> dict[str, str]:
     return found
 
 
-SAME_WORKER = ("missing_tool", "network", "hub_5xx")  # the rerun stays on the worker of the failed run
+SAME_WORKER = (MISSING_TOOL, "network", "hub_5xx")  # the rerun stays on the worker of the failed run
 NEW_ACCOUNT = ("rate_limit", "account_auth")  # the rerun takes an account the run did not, or another runtime
+
+
+def lacks_program(cause: str | None, error: str | None) -> bool:
+    """Whether a worker failed a run for a program it does not have, which another worker or an install there mends,
+    as the preflight says it; a verify that is no command fails on every worker, so no move or install mends it."""
+    text = error or ""
+    return cause == MISSING_TOOL and OFF_PATH.search(text) is not None and NOT_A_COMMAND not in text
 
 
 def clauses(verify: str) -> list[str]:

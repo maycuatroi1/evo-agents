@@ -8,7 +8,7 @@ chat run does, and the hub checks the frame again on each call, so an agent that
 
 - POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on a worker, runtime or
   account that is a fit candidate (``candidates.candidates_of``), for the causes of ``triage_rules.RERUN_CAUSES``, within
-  the chain cap. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
+  the chain cap; a plan run only for a program it lacked (``controls.rerun_plan_in``), on the worker the agent runs on. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
   run act as them.
 - POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
   the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
@@ -54,7 +54,7 @@ from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import REFUSALS, AccountName, Rerun, RunId
 from evo_agents.hub.server.runs.service.candidates import RerunCandidates, candidates_of
-from evo_agents.hub.server.runs.service.controls import rerun_in
+from evo_agents.hub.server.runs.service.controls import rerun_in, rerun_plan_in
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, refuse_curator_plan
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.server.triage import STALE_CAUSE, chain_of
@@ -189,6 +189,7 @@ class Frame:
     access: ProjectAccess
     cause: str | None = None  # the failed run's cause; ``stale`` for a stale run's thread until the run failed
     stale: bool = False  # the thread was opened for a stale run (``triage.open_stale``)
+    on_worker: int | None = None  # the worker the chat run is on: where the agent installed what the run lacks
 
 
 async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
@@ -244,6 +245,7 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
         )
     owner = agent.principal
     access = await project_access(conn, owner, failed.project)
+    on_worker = (await conn.execute(select(r.c.worker_id).where(r.c.id == run_id))).scalar_one()
     return Frame(
         agent,
         run_id,
@@ -258,6 +260,7 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
         access,
         cause=failed.failure_cause if failed.state == "failed" or not stale else STALE_CAUSE,
         stale=stale,
+        on_worker=on_worker,
     )
 
 
@@ -292,13 +295,16 @@ async def _audit(conn: AsyncConnection, frame: Frame, action: str, tail: str) ->
     )
 
 
-def _unfit(found: RerunCandidates, options: RerunOptions, failed) -> tuple[int | None, str | None]:
+def _unfit(found: RerunCandidates, options: RerunOptions, frame: Frame) -> tuple[int | None, str | None]:
     """(the worker id the rerun is pinned to, or None to keep the run's pin; the runtime to ask for, or None): from the
-    options, against the candidates; 422 for a worker, runtime or account that is no candidate or no fit."""
+    options, against the candidates; 422 for a worker, runtime or account that is no candidate or no fit. A run that
+    lacked a program goes on the worker the agent installed it on, the one its chat run is on."""
+    failed = frame.failed
     cause = failed.failure_cause
+    same = frame.on_worker if cause == triage_rules.MISSING_TOOL else failed.worker_id
     name = options.worker
     if name is None and cause in triage_rules.SAME_WORKER:
-        name = next((w.worker for w in found.workers if w.worker_id == failed.worker_id), None)
+        name = next((w.worker for w in found.workers if w.worker_id == same), None)
         if name is None:
             raise HTTPException(
                 422, f"cause {cause} is rerun on the worker the run was on, which the owner has no more"
@@ -314,7 +320,7 @@ def _unfit(found: RerunCandidates, options: RerunOptions, failed) -> tuple[int |
             )
         if not chosen.fit:
             raise HTTPException(422, f"worker {name} is no fit to run it: {'; '.join(chosen.reasons)}")
-        if cause in triage_rules.SAME_WORKER and chosen.worker_id != failed.worker_id:
+        if cause in triage_rules.SAME_WORKER and chosen.worker_id != same:
             raise HTTPException(422, f"cause {cause} is rerun on the worker the run was on, not on {name}")
     pool = [chosen] if chosen is not None else [w for w in found.workers if w.fit]
     if options.runtime is not None and not any(options.runtime in w.runtimes for w in pool):
@@ -341,7 +347,8 @@ def _unfit(found: RerunCandidates, options: RerunOptions, failed) -> tuple[int |
 async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, edited: bool) -> int:
     """Run the failed run again as ``options`` say, once the frame allows it; the id of the new run."""
     failed = frame.failed
-    if failed.kind != "step":
+    plan_run = failed.kind == "plan" and frame.cause == triage_rules.MISSING_TOOL
+    if failed.kind != "step" and not plan_run:
         raise HTTPException(
             422,
             f"run {failed.id} is a {failed.kind} run: the agent reruns a step run only; ask the owner to dispatch the "
@@ -374,14 +381,20 @@ async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, 
         state="failed",
         run_id=failed.id,
     )
-    worker_id, runtime = _unfit(found, options, failed)
+    worker_id, runtime = _unfit(found, options, frame)
     # the agent of the triage reruns the step as a run of the owner's that does not run as them: only the owner lets
     # a run act as them (``run_access``), never an agent on their behalf
-    body = Rerun(account=options.account, as_me=False)
-    view = await rerun_in(conn, frame.owner, frame.project, failed.id, body, worker_id=worker_id, runtime=runtime)
+    if plan_run:
+        if options.account is not None or runtime is not None:
+            raise HTTPException(422, f"plan run {failed.id} goes on with the account and the runtime it asked for")
+        new_id = await rerun_plan_in(conn, frame.owner, frame.project, failed.id, worker_id)
+    else:
+        body = Rerun(account=options.account, as_me=False)
+        view = await rerun_in(conn, frame.owner, frame.project, failed.id, body, worker_id=worker_id, runtime=runtime)
+        new_id = view.id
     t = tables.run_triage
     await conn.execute(update(t).where(t.c.id == frame.triage_id).values(auto_reruns=t.c.auto_reruns + 1))
-    return view.id
+    return new_id
 
 
 def _where(options: RerunOptions, run) -> str:

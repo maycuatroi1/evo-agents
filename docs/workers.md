@@ -866,6 +866,15 @@ the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.t
 `evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
 
+A run a worker fails at its preflight for a program it does not have opens no thread while another worker can take it:
+the hub ends it `lost` and pins its next attempt to the best fit worker it was not tried on, the owner's own before a
+shared one (`evo_agents.hub.server.runs.service.reroute`), with no notice. It fails as any run does when a person pinned
+it, on its last attempt, once no fit worker is left, or when the agent had started; a verify that is no shell command
+fails at once, since it fails on every worker. With no worker left, the agent of its thread runs on a worker the run was
+tried on, the owner's own first, and the thread's first message says which: it installs the program there, checks it
+with `command -v`, and runs the run again with `evo-agents worker triage rerun`, which pins the rerun to that worker.
+For this cause a plan run is rerun too; any other failed plan run is its owner's to dispatch again.
+
 Everyone in the project's chat clears its label, the project's default label (`evo_agents.hub.server.chat_access`). A
 plan whose label is not at or below it (a higher level or location), or that is no longer on the hub, keeps a chat of
 its own, "Triage: PLAN", as every plan had before: a member of the project's chat whose grant stops below the plan's
@@ -3062,7 +3071,8 @@ A check that does not pass is a `system` event of the run, "Preflight: ..." with
 problem in its error ("preflight: ...; the agent did not start") and the cause of the first as its `failure_cause`.
 Its agent does not start, no worktree is made, the hub queues no next attempt of a failed run, and its owner gets the
 notice `run_failed` (a run of one step or an author run for these causes, a plan, review or judge run for any failure).
-The hub refuses to dispatch a step or a plan whose repo the project lists no origin for (409, naming the repo), so a
+The one exception is a program the worker lacks while another worker can take the run: the hub moves the run there
+([Failure triage](#failure-triage)). The hub refuses to dispatch a step or a plan whose repo the project lists no origin for (409, naming the repo), so a
 run reaches that check only when the registration changed after its dispatch, or the night shift queued it.
 
 The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):

@@ -22,11 +22,18 @@ The hub checks each of these on every call and refuses anything outside it with 
 negotiable, so do not retry it in another form.
 
 - Rerun the failed step for its owner: `evo-agents worker triage rerun --reason TEXT` with `--worker NAME`,
-  `--runtime NAME` or `--account NAME` when the cause asks for another. By cause: `missing_tool` and `network` and
-  `hub_5xx` on the worker the run was on (install the program there first for `missing_tool`); `rate_limit` and
-  `account_auth` with an account the run did not use, or another runtime; `worker_stopped`, `runtime`, `lease_lost` on
-  a worker that is a fit candidate; `checkout` on a worker that has every repo. When the hub only guessed the cause,
-  read the log and add `--confirm-cause` only if the guess is right.
+  `--runtime NAME` or `--account NAME` when the cause asks for another. By cause: `network` and `hub_5xx` on the worker
+  the run was on; `rate_limit` and `account_auth` with an account the run did not use, or another runtime;
+  `worker_stopped`, `runtime`, `lease_lost` on a worker that is a fit candidate; `checkout` on a worker that has every
+  repo. When the hub only guessed the cause, read the log and add `--confirm-cause` only if the guess is right.
+- For `missing_tool`, install the program yourself; never stop at a report or ask the owner to. The hub moves a run to
+  another worker by itself, so reaching you means no worker with the program is left, and you run on the worker to
+  install it on, which the first message names. Install what the error names on the PATH your shell has, the one the
+  worker gives its runs: a Python tool with `uv tool install`, a Node tool with `pnpm add -g`, others from the
+  project's own docs or the system's package manager when you have the rights. Check each with `command -v`, then rerun
+  without `--worker`: the rerun stays on your worker, a plan run too. A word of the error that is no program (the run
+  read a sentence as a command) is a verify to fix with `triage plan`, not to install. When the machine refuses the
+  install, ask the owner with the exact command it needs.
 - Change the `verify` or narrow the `what` of a step that is still `pending` and of the run's repo:
   `evo-agents worker triage plan STEP --if-revision N --verify TEXT --reason TEXT [--rerun]`. A new `verify` keeps
   every command of the old one; dropping a command is the owner's to decide. A `what` only gets shorter. Use `--rerun`
@@ -59,8 +66,8 @@ repeat the diagnosis or list again what the `Decision:` line already lists.
 
 ## What you ask instead
 
-Any other cause (`credentials`, `origin`, `branch_mismatch`, a verify that fails because the code is wrong, a plan,
-author or review run), or a refusal of the hub: ask the owner with a decision of the category `triage`, 2 to 6 options,
+Any other cause (`credentials`, `origin`, `branch_mismatch`, a verify that fails because the code is wrong, a plan run
+of any cause but `missing_tool`, an author or review run), or a refusal of the hub: ask the owner with a decision of the category `triage`, 2 to 6 options,
 each one an action you can do or a choice the owner makes (`evo-agents worker ask`, see the `using-agent-hub` skill).
 State the diagnosis before you ask, and recommend one option with `--recommended KEY --recommended-reason TEXT`, the
 reason in a sentence the owner can act on from a phone. For an action, add `--reversible yes --undo TEXT` or
