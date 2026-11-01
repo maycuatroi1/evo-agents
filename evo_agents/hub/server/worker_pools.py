@@ -39,14 +39,17 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.profile_store import POOL_PREFIX
+from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser, Principal, hash_token
 from evo_agents.hub.server.worker_models import WORKER_NAME
 from evo_agents.hub.server.worker_placement import Placement, all_labels, columns
 from evo_agents.hub.server.worker_pool_models import (
-    POOL_NAME,
+    POOL_PATH_NAME,
     IssuedJoinToken,
     JoinToken,
     JoinTokenRequest,
@@ -70,7 +73,7 @@ SETTINGS = ("projects", "slots", "labels", "taints", "accepted_findings", "reap_
 
 router = APIRouter(prefix="/v1/worker-pools", tags=["worker pools"], responses={401: {"model": ErrorBody}})
 
-PoolName = Path(pattern=POOL_NAME, description="the pool's name")
+PoolName = Path(pattern=POOL_PATH_NAME, description="the pool's name")
 
 
 # Reading pools
@@ -80,15 +83,44 @@ def _no_pool(name: str) -> HTTPException:
     return HTTPException(404, f"you have no pool named {name} on this hub: see GET /v1/worker-pools")
 
 
+async def _agent_pool_row(conn: AsyncConnection, user: Principal, name: str, *, lock: bool = False):
+    """The pool of the agent ``name`` names (``agent-<handle>``) when the caller administers the agent's project or
+    the hub; 403 for a member of the project who does not, 404 for anyone else, as for a name the hub never had."""
+    p, ap, projects = tables.worker_pools, tables.agent_profiles, tables.projects
+    statement = (
+        select(p, projects.c.name.label("project"))
+        .join_from(p, ap, ap.c.id == p.c.agent_id)
+        .join(projects, projects.c.id == ap.c.project_id)
+        .where(func.lower(p.c.name) == name.lower(), ap.c.deleted_at.is_(None))
+    )
+    if lock:
+        statement = statement.with_for_update(of=p)
+    row = (await conn.execute(statement)).one_or_none() if name.lower().startswith(POOL_PREFIX) else None
+    if row is None:
+        raise _no_pool(name)
+    access = await project_access(conn, user, row.project)
+    if not (user.admin or has_role(access.role, "admin")):
+        held = access.role or "no grant"
+        raise HTTPException(
+            403,
+            f"pool {row.name} is the pool of an agent of project {row.project}: managing it needs the admin role on "
+            f"the project or on the hub; you hold {held}",
+        )
+    return row
+
+
 async def _pool_row(conn: AsyncConnection, user: Principal, name: str, *, lock: bool = False):
-    """The row of the caller's pool ``name``, in any case; 404 for none."""
+    """The row of the caller's pool ``name``, in any case, or of the agent's pool it names when the caller
+    administers that agent; 404 for none."""
     p = tables.worker_pools
-    statement = select(p).where(p.c.owner_id == user.user_id, func.lower(p.c.name) == name.lower())
+    statement = select(p).where(
+        p.c.owner_id == user.user_id, p.c.agent_id.is_(None), func.lower(p.c.name) == name.lower()
+    )
     if lock:
         statement = statement.with_for_update()
     row = (await conn.execute(statement)).one_or_none()
     if row is None:
-        raise _no_pool(name)
+        return await _agent_pool_row(conn, user, name, lock=lock)
     return row
 
 
@@ -140,10 +172,16 @@ async def _nodes(conn: AsyncConnection, pool_id: int) -> list[PoolNode]:
 
 async def _shown(conn: AsyncConnection, user: Principal, row) -> Pool:
     fields = {name: row._mapping[name] for name in ("id", "name", "slots", "reap_after_days", "created_at")}
+    ap, users = tables.agent_profiles, tables.users
+    owner = (await conn.execute(select(users.c.login).where(users.c.id == row.owner_id))).scalar_one()
+    handle = None
+    if row.agent_id is not None:
+        handle = (await conn.execute(select(ap.c.handle).where(ap.c.id == row.agent_id))).scalar_one()
     return Pool(
         **fields,
         updated_at=row.updated_at,
-        owner=user.login,
+        owner=owner,
+        agent=handle,
         projects=list(await _pool_projects(conn, row.id)),
         labels=list(row.labels),
         taints=list(row.taints),
@@ -154,9 +192,18 @@ async def _shown(conn: AsyncConnection, user: Principal, row) -> Pool:
 
 @router.get("", response_model=list[Pool])
 async def list_pools(request: Request, user: CurrentUser) -> list[Pool]:
-    """The caller's pools, by name, each with its nodes that are not revoked."""
-    p = tables.worker_pools
-    statement = select(p).where(p.c.owner_id == user.user_id).order_by(func.lower(p.c.name))
+    """The caller's pools, and the pools of the agents whose project the caller administers (every agent's for a hub
+    admin), by name, each with its nodes that are not revoked."""
+    p, ap, g = tables.worker_pools, tables.agent_profiles, tables.grants
+    administered = (
+        select(ap.c.id)
+        .join_from(ap, g, (g.c.project_id == ap.c.project_id) & (g.c.user_id == user.user_id))
+        .where(ap.c.deleted_at.is_(None), g.c.role == "admin")
+    )
+    if user.admin:
+        administered = select(ap.c.id).where(ap.c.deleted_at.is_(None))
+    mine = (p.c.owner_id == user.user_id) & p.c.agent_id.is_(None)
+    statement = select(p).where(mine | p.c.agent_id.in_(administered)).order_by(func.lower(p.c.name))
     async with request.app.state.engine.begin() as conn:
         return [await _shown(conn, user, row) for row in (await conn.execute(statement)).all()]
 
@@ -183,6 +230,12 @@ def _target(pool_id: int, name: str) -> str:
 async def create_pool(request: Request, body: PoolRequest, user: CurrentUser) -> Pool:
     """A new pool of the caller's, without nodes until a machine joins with one of its join tokens."""
     p, pp = tables.worker_pools, tables.worker_pool_projects
+    if body.name.lower().startswith(POOL_PREFIX):
+        raise HTTPException(
+            422,
+            f"{POOL_PREFIX} starts the names of the pools of agents, which the hub makes with the agent: "
+            "choose another name",
+        )
     values = body.model_dump(include={"name", "slots", "labels", "taints", "accepted_findings", "reap_after_days"})
     async with request.app.state.engine.begin() as conn:
         project_ids = await writable(conn, user, body.projects)
@@ -240,6 +293,8 @@ async def update_pool(request: Request, body: PoolUpdate, user: CurrentUser, nam
     p, w = tables.worker_pools, tables.workers
     async with request.app.state.engine.begin() as conn:
         row = await _pool_row(conn, user, name, lock=True)
+        if row.agent_id is not None and "projects" in wanted:
+            raise HTTPException(422, f"pool {row.name} serves the project of its agent alone: leave projects out")
         was_projects = await _pool_projects(conn, row.id)
         now = {field: row._mapping[field] for field in SETTINGS if field != "projects"}
         now = {field: list(value) if isinstance(value, list) else value for field, value in now.items()}

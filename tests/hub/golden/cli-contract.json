@@ -1995,6 +1995,8 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
           "version",
           "created_by",
           "created_at",
@@ -2047,6 +2049,8 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
           "version",
           "created_by",
           "created_at",
@@ -2223,6 +2227,8 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
           "version",
           "created_by",
           "created_at",
@@ -2275,6 +2281,73 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
+    "hub agent placement": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "placement",
+          "metavar": "PLACEMENT",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "pool",
+            "legacy"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "packs",
+          "placement",
+          "home_pool",
           "version",
           "created_by",
           "created_at",
@@ -2327,6 +2400,8 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
           "version",
           "created_by",
           "created_at",
@@ -35239,7 +35314,7 @@
             "worker pools"
           ],
           "summary": "List Pools",
-          "description": "The caller's pools, by name, each with its nodes that are not revoked.",
+          "description": "The caller's pools, and the pools of the agents whose project the caller administers (every agent's for a hub\nadmin), by name, each with its nodes that are not revoked.",
           "operationId": "list_pools_v1_worker_pools_get",
           "responses": {
             "200": {
@@ -35364,7 +35439,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35428,7 +35503,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35524,7 +35599,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35618,7 +35693,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35688,7 +35763,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -71874,6 +71949,112 @@
           }
         }
       },
+      "/v1/projects/{project}/agents/{handle}/placement": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Set Placement",
+          "description": "Move the agent to ``pool`` or back to ``legacy`` (an admin of the project or of the hub). It changes no version\nof the profile: it is where its runs go, not who the agent is.",
+          "operationId": "set_placement_v1_projects__project__agents__handle__placement_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Placement"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents/{handle}/avatar": {
         "put": {
           "tags": [
@@ -94258,6 +94439,27 @@
               "title": "Packs",
               "description": "the agent packs it attaches, in order, each at the version it pins"
             },
+            "placement": {
+              "type": "string",
+              "enum": [
+                "legacy",
+                "pool"
+              ],
+              "title": "Placement",
+              "description": "where a run of the agent goes: legacy, as before, or pool, a node of its own pool"
+            },
+            "home_pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Pool",
+              "description": "the name of the agent's own pool, agent-<handle>; null for none"
+            },
             "version": {
               "type": "integer",
               "title": "Version"
@@ -94304,6 +94506,8 @@
             "permissions",
             "restricted",
             "packs",
+            "placement",
+            "home_pool",
             "version",
             "created_by",
             "created_at",
@@ -129835,6 +130039,25 @@
           "title": "PinnedPack",
           "description": "A pack a profile attaches, at the version of its plugin it pins."
         },
+        "Placement": {
+          "properties": {
+            "placement": {
+              "type": "string",
+              "enum": [
+                "legacy",
+                "pool"
+              ],
+              "title": "Placement",
+              "description": "pool: a run of the agent goes to a node of its own pool; legacy: as before the pools of agents"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "placement"
+          ],
+          "title": "Placement"
+        },
         "Plan": {
           "properties": {
             "project": {
@@ -132936,7 +133159,19 @@
             "owner": {
               "type": "string",
               "title": "Owner",
-              "description": "the login of the member who made it"
+              "description": "the login of the member who made it, or who created the agent of an agent's pool"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent whose pool it is; null for a member's pool"
             },
             "projects": {
               "items": {

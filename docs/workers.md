@@ -235,6 +235,12 @@ change it, and another member's pool is 404. Each node is a worker of that membe
 [Shared workers](#shared-workers). Each write is audited (`worker_pool.create`, `worker_pool.update`, `worker_pool.token` and
 `worker_pool.token_revoke`), naming the pool and the token's id, never the token.
 
+**The pool of an agent.** Each agent has a pool named `agent-<handle>` (`GET /v1/worker-pools` lists those of the
+agents the caller administers; every one for a hub admin). The admin of the agent's project or of the hub, not its
+owner, shows it, makes and revokes its join tokens and changes its slots, labels, taints and accepted findings with the
+routes of this section and `evo-agents worker pool`; the pool serves the agent's project alone. See "Routes and
+commands" under the agent profiles in `docs/hub.md` for the placement that sends an agent's runs to it.
+
 **A join token.** `POST /v1/worker-pools/{name}/tokens` makes one: `evj_` and 32 random bytes in base64url, shown
 once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by default) and joins `max_uses` machines
 (1 to 100, 1 by default). `GET .../tokens` lists them with their uses and never their values, and `POST

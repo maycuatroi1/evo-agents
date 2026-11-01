@@ -42,14 +42,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, profiles, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server import audit, route_autonomy
+from evo_agents.hub.server import audit, profile_store, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_accounts import retire_profile_accounts
 from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.browser_identities import retire_profile_identities
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select, write_version
+from evo_agents.hub.server.profile_store import Profile, create_pool, profile_of, profile_select, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -198,6 +198,10 @@ class Agent(BaseModel):
     permissions: AgentPermissions
     restricted: list[str] = Field(description="the axes that are allowlists, in the order of the eight")
     packs: list[PinnedPack] = Field(description="the agent packs it attaches, in order, each at the version it pins")
+    placement: Literal[profile_store.PLACEMENTS] = Field(
+        description="where a run of the agent goes: legacy, as before, or pool, a node of its own pool"
+    )
+    home_pool: str | None = Field(description="the name of the agent's own pool, agent-<handle>; null for none")
     version: int
     created_by: str
     created_at: datetime
@@ -235,6 +239,8 @@ def agent_view(profile: Profile) -> Agent:
         permissions=AgentPermissions.model_validate(profile.permissions),
         restricted=profiles.restricted_axes(profile.permissions),
         packs=pinned_view(profile.packs),
+        placement=profile.placement,
+        home_pool=profile.home_pool,
         version=profile.version,
         created_by=profile.created_by,
         created_at=profile.created_at,
@@ -365,7 +371,7 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         values["packs"] = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
         statement = (
             pg_insert(ap)
-            .values(project_id=access.project_id, created_by=user.user_id, **values)
+            .values(project_id=access.project_id, created_by=user.user_id, placement="pool", **values)
             .on_conflict_do_nothing(index_elements=[ap.c.handle])
             .returning(ap.c.id)
         )
@@ -375,6 +381,7 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
                 409, f"@{body.handle} is taken by another agent, deleted ones included: pick another handle"
             )
         await write_version(conn, profile_id, 1, values, user.user_id)
+        await create_pool(conn, profile_id, body.handle, access.project_id, user.user_id)
         created = await _profile(conn, access, body.handle)
         await _record(conn, user, access, audit.AGENT_CREATE, _target(created))
     log.info("agent created", extra={"project": project, "handle": body.handle, "login": user.login})
@@ -441,6 +448,39 @@ async def edit_agent(
             await _record(conn, user, access, audit.AGENT_UPDATE, f"{_target(profile, version)} fields={fields}")
             profile = await _profile(conn, access, handle)
     log.info("agent edited", extra={"project": project, "handle": handle, "changed": sorted(changes)})
+    return agent_view(profile)
+
+
+class Placement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    placement: Literal[profile_store.PLACEMENTS] = Field(
+        description="pool: a run of the agent goes to a node of its own pool; legacy: as before the pools of agents"
+    )
+
+
+@router.put("/{project}/agents/{handle}/placement", response_model=Agent, responses=WRITE_REFUSALS)
+async def set_placement(
+    request: Request, project: ProjectName, handle: Handle, body: Placement, user: CurrentUser
+) -> Agent:
+    """Move the agent to ``pool`` or back to ``legacy`` (an admin of the project or of the hub). It changes no version
+    of the profile: it is where its runs go, not who the agent is."""
+    ap = tables.agent_profiles
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        if not user.admin:
+            _admin(access, "moving")
+        profile = await _profile(conn, access, handle, lock=True)
+        if profile.deleted_at is not None:
+            raise HTTPException(409, f"@{handle} was deleted at {profile.deleted_at.isoformat()}: it changes no more")
+        if profile.placement != body.placement:
+            if profile.home_pool is None:
+                raise HTTPException(409, f"@{handle} has no pool of its own: nothing changed")
+            await conn.execute(update(ap).values(placement=body.placement).where(ap.c.id == profile.id))
+            target = f"{_target(profile)} placement={profile.placement}->{body.placement}"
+            await _record(conn, user, access, audit.AGENT_PLACEMENT, target)
+            profile = await _profile(conn, access, handle)
+    log.info("agent placement changed", extra={"project": project, "handle": handle, "placement": body.placement})
     return agent_view(profile)
 
 

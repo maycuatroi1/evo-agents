@@ -161,6 +161,7 @@ ACCOUNT_FAILOVER = "account.failover"
 AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
+AGENT_PLACEMENT = "agent.placement"  # an admin moved it between legacy and its own pool: placement=<was>-><now>
 # The accounts of an agent profile (evo_agents.hub.server.agent_accounts), in the project; the target is
 # "<project>/@<handle> secret:<id>", with " fields=<names>" for a change, never a name of the account or a value.
 AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
