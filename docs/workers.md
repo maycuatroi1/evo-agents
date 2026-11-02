@@ -1573,8 +1573,8 @@ pools of the project's agents with their nodes, the ready ones and whether the r
 on why no worker can take the run, with the command that fixes it (null when one can): `no worker serves project P:
 ...`, `agent @H runs in pool mode, and its pool agent-H has no node: ...`, or the nearest worker's reasons. The answer of
 a dispatch (`POST .../runs`, `.../plan-runs`, `.../author-runs`) carries the same line in each run's `warning` when no
-worker can take it as it queues; the command line prints it on stderr, the web in a toast, and `evo-agents hub inbox
---show` of the run says it as its diagnosis.
+worker can take it as it queues; the command line prints it on stderr, the web in a toast, and the inbox
+says it as the diagnosis of the run (`evo-agents hub inbox --show r41`).
 
 ### Reading runs
 
