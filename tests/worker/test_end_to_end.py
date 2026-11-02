@@ -83,6 +83,12 @@ VERIFY_LINE = (
 )
 DECISION_WAIT_SECONDS = 2  # EVO_HUB_DECISION_WAIT_SECONDS of the job worker in the test of a parked run
 ORPHAN_DEALT_WITH = "the agent a previous daemon left was dealt with"  # the line of worker.log on an orphan agent
+# hub serve with new agents placed ``legacy``, as web/e2e/hub_serve.py and tests/hub/conftest.py do: the runs here queue
+# with worker_id and without an account pool, which an agent in pool mode refuses.
+HUB_SERVE_LEGACY = (
+    "import sys; from evo_agents.hub.server import profile_store; profile_store.NEW_AGENT_PLACEMENT = 'legacy'; "
+    "from evo_agents.cli import main; raise SystemExit(main(sys.argv[1:]))"
+)
 LEASE_SECONDS = 8  # EVO_HUB_RUN_LEASE_SECONDS of the hub here; the daemons beat every second
 WAIT = 120.0
 REAPER_EVERY = 2.0  # seconds between the reaper jobs the test defers once a lease may have run out
@@ -143,7 +149,7 @@ class Hub:
         for _ in range(3):
             start = self.api_log.stat().st_size if self.api_log.exists() else 0
             command = ["hub", "serve", "--host", "127.0.0.1", "--port", str(self.port)]
-            self.api = _spawn([sys.executable, "-m", "evo_agents", *command], self.env, self.api_log)
+            self.api = _spawn([sys.executable, "-c", HUB_SERVE_LEGACY, *command], self.env, self.api_log)
             if wait_until(functools.partial(self._bound, start), "hub serve to listen", 60, self.logs) == "running":
                 break
             self.port = pg.free_port()
