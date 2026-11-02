@@ -69,6 +69,7 @@ repos/OWNER__NAME.git                a bare clone of each repo
 kg/EXTRACTOR/home/                   the EVO_KG_HOME of the bench: a project per repo and base commit
 kg/EXTRACTOR/memo/OWNER__NAME.sqlite the extraction memo of each repo, shared by its snapshots
 kg/EXTRACTOR/builds.jsonl            how long each build took
+kg/EXTRACTOR/home/PROJECT/bench.json the marker of a finished build: its size; its mtime is the graph's last use
 ```
 
 - **Snapshot.** A snapshot is the base commit, read straight from the bare clone together with its history. The
@@ -102,9 +103,21 @@ graphs and tasks.
 
 `plain` is the BM25 row the published benches report, so the deviation from them reads the ranking alone.
 
-**Room and time.** `--prune` deletes each snapshot's graph after its last task, and each repo's clone and memo after
-its last snapshot, so a run needs room for the graphs in flight only. `--jobs N` builds and asks N repos at once, the
-largest first, each in its own process.
+**Room and time.** The graphs are a cache that grows by up to 700 MB a snapshot; the four sets once made 400 GB of
+them and filled a worker's disk. Before each build, `build` and `run` make room:
+
+- They evict graphs while the graphs pass `--cache-gb` (default 200; 0: no cap) or the disk would have less than
+  `--reserve-gb` free after the build (default 50, or a tenth of a smaller disk).
+- Another extractor's graphs go first, since no run reads them any more; an extractor left with none goes whole, with
+  its memo and shards. Then this extractor's graphs go, the least recently used first.
+- A graph the run still needs for its repo's later tasks stays, and so does any graph a run used within the last hour,
+  since another process may be reading it. The cap can be passed by that hour's graphs; the reserve cannot.
+- When evicting cannot keep the reserve, the run stops with an error before it writes anything: no summary, and the
+  repos it finished stay in the cache's shards, so the same command goes on from them once there is room.
+
+Clones (`repos/`) and memos are outside the cap; the reserve covers them. `--prune` also deletes each snapshot's graph
+after its last task, and each repo's clone and memo after its last snapshot, so a run needs room for the graphs in
+flight only. `--jobs N` builds and asks N repos at once, the largest first, each in its own process.
 
 **Sampling.** A set whose missing graphs would take longer than `--max-hours` (default 6) to build is sampled:
 
