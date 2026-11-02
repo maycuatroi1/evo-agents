@@ -5,6 +5,8 @@ no Postgres; ``test_approval_heads_routes`` has the routes and the gate."""
 from __future__ import annotations
 
 import pytest
+
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 from pydantic import ValidationError
 
 from evo_agents.hub import approval_heads

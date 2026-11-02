@@ -1060,7 +1060,7 @@ const PAGES: Entry[] = [
       const dialog = page.getByTestId("dispatch-dialog");
       await dialog.getByTestId("dispatch-step-2").click();
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
-      await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
+      await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
       // A click moves the pointer and clicks at once, so the timer of the hover could open the tip just before the
       // click toggles it closed. Once the hover has shown it, a click keeps it shown.
@@ -1557,7 +1557,7 @@ const PAGES: Entry[] = [
       await page.locator("#main").getByTestId("run-plan").click();
       const dialog = page.getByTestId("plan-run-dialog");
       await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
-      await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
+      await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
       await expectNoSeriousViolations(page, "run plan dialog");
       await dialog.getByTestId("plan-run-model-select").selectOption({ label: "Another model…" });
       await dialog.getByTestId("plan-run-model-input").fill("sonnet");

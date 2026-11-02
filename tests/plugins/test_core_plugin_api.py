@@ -50,7 +50,7 @@ from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP, core_plugins
-from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
+from tests.hub.conftest import _new_agents_legacy, github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker
 from tests.hub.test_curator import night  # noqa: F401 (a fixture, on this module's web_client)
