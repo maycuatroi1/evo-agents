@@ -477,7 +477,7 @@ test("the accounts of the agents of the visitor's projects follow the provider c
   await expect(agents.getByTestId("accounts-group-agent-count")).toHaveText("1");
   await expect(main(page).getByTestId("accounts-group-service")).toHaveCount(0);
   const titles = main(page).locator("section[aria-labelledby^='provider-card-'] h3, section[aria-labelledby^='accounts-group-'] h2");
-  await expect(titles).toHaveText(["Claude subscription", "Agent accounts"]);
+  await expect(titles).toHaveText(["Claude subscription", "Agent accounts", "Account pools"]);
   const agentRow = agents.locator("tbody").filter({ has: page.locator('[data-account-name="openai-agent"]') });
   await expect(agentRow.getByTestId("agent-account-project")).toHaveText(project);
   await expect(agentRow.getByTestId("agent-avatar")).toHaveAttribute("data-avatar", "initial");
