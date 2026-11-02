@@ -52,10 +52,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.credential_shares import ALL, UNIT, USER
 from evo_agents.hub.credentials import LEASED_KINDS
-from evo_agents.hub.server import org_store
+from evo_agents.hub.server import (
+    org_store,
+    worker_placement,  # a module: importing it may reach this one before it is whole
+)
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.account_views import month_start, usage_cost
-from evo_agents.hub.server.worker_placement import bound_here, bound_on
 
 ESTIMATE_USD = Decimal("1.00")  # what a run under a share is taken to cost before any of its runs reported a cost
 MIN_ESTIMATE_USD = Decimal("0.01")
@@ -105,7 +107,9 @@ def _live(refreshable: bool):
 
 def _on_worker(project_id: int, worker_id: int):
     s, b = tables.secrets, tables.secret_bindings
-    return exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, bound_here(b, worker_id))
+    return exists().where(
+        b.c.secret_id == s.c.id, b.c.project_id == project_id, worker_placement.bound_here(b, worker_id)
+    )
 
 
 def own_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool, refreshable: bool = False):
@@ -115,7 +119,7 @@ def own_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool, r
     bound = exists().where(
         b.c.secret_id == s.c.id,
         b.c.project_id == project_id,
-        bound_on(b, worker_id),
+        worker_placement.bound_on(b, worker_id),
     )
     statement = (
         select(*_secret_columns(), _on_worker(project_id, worker_id).label("on_worker"))
