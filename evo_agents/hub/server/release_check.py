@@ -9,7 +9,9 @@ the newest tag (``release_watch.red_tag``), then, under the schedule's row lock,
 the check. A stopped cycle keeps the check busy until its owner answers, unless the newest tag is newer than any the
 cycle knows (its base tag and the tags it made) and no run of it is active: a release made outside the cycle superseded
 it, so the check closes it, cancels the decision that waits on it and its notification, says so in the cycle's thread of
-the triage chat, and goes on from that tag as if no cycle were there. A newest tag whose CI is red (its run of the
+the triage chat, and goes on from that tag as if no cycle were there. A stopped cycle that waits on no open decision
+(none could be asked, or it was cancelled or expired) and has no run active is closed too, saying so in its thread:
+nobody can answer it any more, and it would keep the check busy for good. A newest tag whose CI is red (its run of the
 workflow completed, did not publish, and a job of it failed), whoever made it, opens a cycle that starts with a fix: the
 cycle follows that tag with the failures read, and its first run, of kind release in mode fix, fixes it forward, whether
 a packaging path changed or not. Otherwise, with a packaging path changed, it opens a cycle and queues its first run in
@@ -274,8 +276,10 @@ async def _decide_red(conn: AsyncConnection, row, how: dict, read: Reading, ci: 
 
 async def _decide(conn: AsyncConnection, row, how: dict, read: Reading | str, ci: Read | None = None) -> Checked:
     """Record the check of ``row`` once GitHub was read, under the schedule's row lock the caller holds."""
-    if not isinstance(read, str) and row.paused_at is None:
-        await supersede(conn, row, read.base_tag)
+    if row.paused_at is None:
+        if not isinstance(read, str):
+            await supersede(conn, row, read.base_tag)
+        await close_unanswerable(conn, row)
     gated = await _gate(conn, row)
     if gated is not None:
         return await _record(conn, row, how, gated[0], reason=gated[1])
@@ -399,6 +403,31 @@ async def supersede(conn: AsyncConnection, row, newest: str) -> int | None:
         said = f"{why}: the hub closed the cycle{cancelled}; the release goes on from {newest}."
         await hub_reply(conn, found.triage_chat_id, found.triage_root_id, said)
     log.info("release cycle superseded", extra={"cycle_id": found.id, "tag": newest, "decision_id": found.decision_id})
+    return found.id
+
+
+async def close_unanswerable(conn: AsyncConnection, row) -> int | None:
+    """Close the stopped cycle of schedule ``row`` that waits on no open decision (see the module) when no run of it is
+    active, and say so in its thread; the cycle's id, or None when there is none to close."""
+    cycle = await unfinished(conn, row.id)
+    if cycle is None or cycle.state != "stopped":
+        return None
+    c, d, rr, r = tables.release_cycles, tables.decisions, tables.release_runs, tables.runs
+    found = (await conn.execute(select(c).where(c.c.id == cycle.id, c.c.state == "stopped").with_for_update())).one()
+    asked = None
+    if found.decision_id is not None:
+        asked = (await conn.execute(select(d.c.state).where(d.c.id == found.decision_id))).scalar_one_or_none()
+    active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
+    if asked == "open" or (await conn.execute(select(active))).scalar_one():
+        return None
+    gone = f"its decision #{found.decision_id} is {asked or 'gone'}" if found.decision_id else "no decision was asked"
+    why = f"{gone}: nobody can answer it, so the check closed cycle #{found.id}"
+    reason = releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}")
+    closed = {"state": "closed", "stop_reason": reason, "ended_at": func.now(), "updated_at": func.now()}
+    await conn.execute(update(c).where(c.c.id == found.id).values(**closed))
+    if found.triage_chat_id and found.triage_root_id:
+        await hub_reply(conn, found.triage_chat_id, found.triage_root_id, f"{why}; the release goes on from its check.")
+    log.info("release cycle closed unanswerable", extra={"cycle_id": found.id, "decision_id": found.decision_id})
     return found.id
 
 
