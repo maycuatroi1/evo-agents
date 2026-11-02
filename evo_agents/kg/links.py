@@ -473,6 +473,32 @@ def _test_stem(path: str) -> str | None:
     return m.group("a") or m.group("b") or m.group("c")
 
 
+def _is_test(path: str | None) -> bool:
+    return bool(path) and (_test_stem(path) is not None or path.startswith("tests/") or "/tests/" in path)
+
+
+def _lang(path: str | None) -> str:
+    ext = posixpath.splitext(path or "")[1].lower()
+    return {".tsx": ".ts", ".jsx": ".js", ".mjs": ".js", ".cjs": ".js", ".pyi": ".py"}.get(ext, ext)
+
+
+def _path(g: LinkGraph, i: int) -> str | None:
+    """A node's path, or for a symbol the path its id names (``repo:path::name``)."""
+    if g.paths[i]:
+        return g.paths[i]
+    nid = g.ids[i]
+    return nid.split("::", 1)[0].rsplit(":", 1)[-1] if "::" in nid else None
+
+
+def _plausible(g: LinkGraph, h: int, rel: str, t: int) -> bool:
+    """Whether a candidate is worth a reviewer's time: a test is a target only of a test, and a call stays within
+    one language. The graph model scores central nodes high whatever their kind, so it cannot tell these apart."""
+    src, dst = _path(g, h), _path(g, t)
+    if _is_test(dst) and not _is_test(src):
+        return False
+    return rel != "calls" or _lang(src) == _lang(dst)
+
+
 class _Names:
     """The nodes of a LinkGraph by base name (files and documents), by name and last name part (symbols), by stem
     (code files that are not tests)."""
@@ -523,7 +549,7 @@ def candidates(
 
     def add(h: int, rel: str, t: int, why: str, name: str) -> None:
         key = (g.ids[h], rel, g.ids[t])
-        if h == t or key in seen:
+        if h == t or key in seen or not _plausible(g, h, rel, t):
             return
         r = g.rel_index.get(rel)
         if r is not None and t in g.known.get((h, r), ()):

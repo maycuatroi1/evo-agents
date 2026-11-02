@@ -101,6 +101,22 @@ def test_candidates_come_from_review_items_resolved_rivals_and_tests():
     assert not any(c[2] == "r:app/b.py" and c[0] == "r:docs/guide.md" for c in found)  # not a rule it reads
 
 
+def test_candidates_leave_out_tests_named_by_non_tests_and_calls_across_languages():
+    g = links.LinkGraph()
+    g.add_node("r:docs/auth.md", "Document", "auth.md", "docs/auth.md")
+    g.add_node("r:web/q.ts", "File", "q.ts", "web/q.ts")
+    g.add_node("r:app/a.py::call", "Symbol", "call", None)
+    g.add_node("r:tests/test_a.py::call", "Symbol", "call", None)
+    g.add_node("r:web/x.ts::call", "Symbol", "call", None)
+    g.add_edge("r:web/q.ts", "calls", "r:web/x.ts::call", "resolved")
+    review = [{"rule": "ambiguous_match", "nodes": [{"id": "r:docs/auth.md"}], "detail": {"samples": ["call"]}}]
+    found = {(c.src, c.rel, c.dst) for c in links.candidates(g, review)}
+    assert ("r:docs/auth.md", "mentions", "r:app/a.py::call") in found
+    assert ("r:docs/auth.md", "mentions", "r:tests/test_a.py::call") not in found
+    assert ("r:web/q.ts", "calls", "r:app/a.py::call") not in found
+    assert not any(dst == "r:tests/test_a.py::call" for _, _, dst in found)
+
+
 def test_proposals_keep_a_clear_winner_above_the_threshold():
     c = links.Candidate
     scored = [

@@ -27,9 +27,9 @@ def _base(project: str) -> str:
 def _hub(hub: Hub | None) -> Hub:
     if hub is not None:
         return hub
-    from evo_agents.hub.mcp_proxy import session_credentials
+    from evo_agents.hub.client import load_credentials
 
-    credentials = session_credentials()
+    credentials = load_credentials()  # inside a run, the run's own REST token of EVO_HUB_TOKEN, not the worker's
     return Hub(credentials.url, credentials.token)
 
 
