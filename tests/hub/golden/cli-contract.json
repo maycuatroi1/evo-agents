@@ -23190,6 +23190,83 @@
         "schema": "StopView"
       }
     },
+    "hub storage check": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--env"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--create-bucket"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "hub storage migrate": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--from"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--to"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--parallel"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 8
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--scratch"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "hub task block": {
       "positionals": [
         {
