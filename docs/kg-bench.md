@@ -336,3 +336,63 @@ graphs had been evicted): text order with the cut lifted 0.057 and 0.052, locate
 (none of Python's 199 tasks; 52 of 67 C, 52 of 57 C++, 49 of 57 Java, 47 of 61 Rust, 52 of 101 Go tasks: most of the
 near-zero rows by language). The reader in `datasets.py` should strip that prefix; doing so changes the
 answers, so it needs the baselines asked again and is left to a later step.
+
+## Memory sets: LongMemEval and MemoryAgentBench (step 8)
+
+Two more sets score how well `kg_search` finds the chats a question needs. Each case is a haystack of chat sessions,
+built into a graph of its own the way the hub puts its chats into the graph (`evo_agents/hub/server/chat_graph.py`):
+
+- A session becomes a Chat item.
+- The Chat has one ChatThread item, rooted at its first turn.
+- Each turn becomes a ChatMessage item. The user is a person named `user`, the assistant an agent named `@assistant`,
+  and the message is sent at the session's date.
+
+The items reach the build through an in-process connector, `evo_agents.kg.bench.memory:connector`. The code is in
+`evo_agents/kg/bench/memory.py`.
+
+```sh
+evo-agents kg bench fetch longmemeval memoryagentbench
+evo-agents kg bench run longmemeval memoryagentbench --jobs 4 --out bench/results/memory-baseline.json
+evo-agents kg bench show bench/results/memory-baseline.json --require longmemeval,memoryagentbench --split holdout
+```
+
+| Set | Source (Hugging Face, pinned, MIT) | Cases | Scored |
+|---|---|---|---|
+| `longmemeval` | `xiaowu0162/longmemeval-cleaned`, `longmemeval_s_cleaned.json` (the cleaned S variant) | 500 questions, about 48 sessions each | 470, leaving out the 30 abstention questions |
+| `memoryagentbench` | `ai-hyz/MemoryAgentBench`, `data/Accurate_Retrieval-*.parquet` and `data/Conflict_Resolution-*.parquet` (selective forgetting) | 30 contexts, 2800 questions | the 300 questions of its 5 `longmemeval_s*` contexts, less abstention |
+
+**Scoring.** The scoring follows LongMemEval's `print_retrieval_metrics.py`:
+
+- A question whose id holds `_abs` is left out.
+- `kg_search` gets the question verbatim, with its largest limit (25).
+- Each result counts for the session its message, thread or chat is in. Sessions count in the order they first
+  appear.
+- `recall_all@k` is 1 when every answer session is among the first k sessions, and `recall_any@k` when one is.
+  `ndcg_any@k` follows the set's `eval_utils`.
+- The primary metric is `recall_all@5`.
+
+The answer sessions are LongMemEval's `answer_session_ids`. In MemoryAgentBench they are the sessions its
+`haystack_sessions` names for each question, matched to the context's sessions by their turns. One of the 300 matches
+no session, so its question can never reach `recall_all`.
+
+The other MemoryAgentBench datasets give no evidence to score retrieval by: EventQA, RULER QA and FactConsolidation.
+Their graphs are built, and the summary marks each of them `no retrieval labels`. Their context, a novel, documents
+or a list of facts, becomes one chat of chunks of at most 2048 characters each. The summary also gives every metric
+per LongMemEval question type and per ability, and for MemoryAgentBench per dataset.
+
+**Parts.** A question's part comes from `repo_split("longmemeval/<question id>")`. MemoryAgentBench's `longmemeval_s*`
+questions are LongMemEval questions, so each falls in the same part in both sets. A case without labels is built
+whatever its part, since nothing in it is scored.
+
+**Baseline** (`bench/results/memory-baseline.json`). This baseline uses `kg_search` as it ships, the ranker off, and
+extractor `8418fefbc7d7eafc`. Builds took 953 s for the 365 LongMemEval graphs and 96 s for MemoryAgentBench's 30
+(tune and holdout, `--jobs 4`). The memory sets were not optimised.
+
+| `recall_all@5` (`@10`) | tune | holdout |
+|---|---|---|
+| LongMemEval S, all | 0.833 (0.900), 251 | 0.816 (0.886), 114 |
+| information extraction | 0.938 (0.975), 81 | 0.946 (0.973), 37 |
+| multi-session reasoning | 0.590 (0.721), 61 | 0.679 (0.821), 28 |
+| knowledge update | 1.000 (1.000), 47 | 1.000 (1.000), 15 |
+| temporal reasoning | 0.806 (0.903), 62 | 0.706 (0.794), 34 |
+| MemoryAgentBench `longmemeval_s*` (about 111 sessions a context) | 0.715 (0.808), 151 | 0.620 (0.732), 71 |

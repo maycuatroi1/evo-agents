@@ -1,4 +1,4 @@
-"""``evo-agents kg bench``: fetch, build, run, merge, compare and show the code benches (docs/kg-bench.md)."""
+"""``evo-agents kg bench``: fetch, build, run, merge, compare and show the code and memory benches (docs/kg-bench.md)."""
 
 from __future__ import annotations
 
@@ -19,12 +19,33 @@ def _names(text: str | None) -> list[str]:
 
 def _benches(given: list[str] | None) -> list[str]:
     from evo_agents.kg.bench.datasets import CODE_BENCHES, BenchError
+    from evo_agents.kg.bench.memory import MEMORY_BENCHES
 
     names = given or list(CODE_BENCHES)
-    unknown = [n for n in names if n not in CODE_BENCHES]
+    known = (*CODE_BENCHES, *MEMORY_BENCHES)
+    unknown = [n for n in names if n not in known]
     if unknown:
-        raise BenchError(f"no code bench {', '.join(unknown)}: one of {', '.join(CODE_BENCHES)}")
+        raise BenchError(f"no bench {', '.join(unknown)}: one of {', '.join(known)}")
     return names
+
+
+def _memory_options(options):
+    """The options of a memory set (evo_agents.kg.bench.memory), from those of a run or build."""
+    from evo_agents.kg.bench import memory
+    from evo_agents.kg.bench.datasets import BenchError
+
+    if options.limit is not None and not 1 <= options.limit <= memory.LIMIT:
+        raise BenchError(f"a memory set asks kg_search with --limit 1 to {memory.LIMIT}, not {options.limit}")
+    return memory.Options(
+        parts=options.parts,
+        limit=options.limit or memory.LIMIT,
+        sample=options.sample,
+        seed=options.seed,
+        max_hours=options.max_hours,
+        room=options.room,
+        jobs=options.jobs,
+        progress=options.progress,
+    )
 
 
 def _options(args):
@@ -57,12 +78,13 @@ def _options(args):
 
 
 def cmd_fetch(args) -> int:
-    from evo_agents.kg.bench import datasets
+    from evo_agents.kg.bench import datasets, memory
 
     try:
         cache = datasets.cache_dir(args.cache)
         for bench in _benches(args.sets):
-            got = datasets.fetch(bench, cache, mirror=Path(args.mirror) if args.mirror else None, force=args.force)
+            fetch = memory.fetch if memory.is_memory(bench) else datasets.fetch
+            got = fetch(bench, cache, mirror=Path(args.mirror) if args.mirror else None, force=args.force)
             size = sum(f["bytes"] for f in got["files"])
             left = ", ".join(f"{n} {why}" for why, n in sorted(got["skipped"].items())) or "none"
             print(f"{bench}: {got['tasks']} tasks, {size / 1e6:.1f} MB in {cache}; left out: {left}")
@@ -72,13 +94,20 @@ def cmd_fetch(args) -> int:
 
 
 def cmd_build(args) -> int:
-    from evo_agents.kg.bench import datasets, run
+    from evo_agents.kg.bench import datasets, memory, run
 
     try:
         cache = datasets.cache_dir(args.cache)
         options = _options(args)
         failed = 0
         for bench in _benches(args.sets):
+            if memory.is_memory(bench):
+                cases, done = memory.build_memory(cache, bench, _memory_options(options))
+                failed += sum(1 for b in done if b.error)
+                built = sum(1 for b in done if not b.reused and not b.error)
+                reused = sum(1 for b in done if b.reused)
+                print(f"{bench}: {len(done)} graphs for {len(cases)} cases: {built} built, {reused} reused")
+                continue
             selection, done = run.build_bench(cache, bench, options)
             failed += sum(1 for b in done if b.error)
             built = sum(1 for b in done if not b.reused and not b.error)
@@ -104,7 +133,7 @@ def _local_sets(entries: list[str] | None) -> list[tuple[str, Path]]:
 
 
 def cmd_run(args) -> int:
-    from evo_agents.kg.bench import compare, datasets, run
+    from evo_agents.kg.bench import compare, datasets, memory, run
     from evo_agents.kg.evaluate import load_set, project_checkouts
     from evo_agents.kg.project import ProjectError, resolve_project
 
@@ -119,6 +148,13 @@ def cmd_run(args) -> int:
         parts: dict[str, dict] = {s: {} for s in options.searches}
         records: dict[str, list[dict]] = {s: [] for s in options.searches}
         for bench in benches:
+            if memory.is_memory(bench):
+                if options.searches != ("graph",):
+                    raise datasets.BenchError(f"{bench} is asked with --search graph only")
+                part, mine = memory.run_memory(cache, bench, _memory_options(options))
+                parts["graph"][bench] = part
+                records["graph"] += mine
+                continue
             part, mine, _ = run.run_bench(cache, bench, options)
             for search in options.searches:
                 parts[search][bench] = part[search]
@@ -233,7 +269,9 @@ def _selection_args(parser) -> None:
     from evo_agents.kg.bench import graphs, run
     from evo_agents.kg.bench.tasks import PARTS
 
-    parser.add_argument("sets", nargs="*", help="code benches (default: all four; docs/kg-bench.md)")
+    parser.add_argument(
+        "sets", nargs="*", help="code benches (default: all four) or longmemeval, memoryagentbench (docs/kg-bench.md)"
+    )
     parser.add_argument("--cache", help="bench cache, outside any repo (default $EVO_KG_BENCH_CACHE or ~/.cache/...)")
     parser.add_argument(
         "--part", action="append", choices=PARTS, help="only this part (repeatable; default tune and holdout)"
@@ -297,7 +335,9 @@ def register(ksub) -> None:
     )
     go.add_argument("--project", help="project of the local sets (default: from the cwd)")
     go.add_argument("--method", action="append", choices=ev.METHODS, help="method (repeatable; first is primary)")
-    go.add_argument("--limit", type=int, help="kg_search's limit (default 5 for swe-explore, else 10)")
+    go.add_argument(
+        "--limit", type=int, help="kg_search's limit (default 5 for swe-explore, 25 for the memory sets, else 10)"
+    )
     go.add_argument("--budget-tokens", type=int, default=run.DEFAULT_BUDGET_TOKENS, help="kg_context's budget")
     go.add_argument("--line-budget", type=int, default=ev.LINE_BUDGET, help="lines scored per answer (default 500)")
     go.add_argument(
