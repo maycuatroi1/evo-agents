@@ -110,7 +110,8 @@ def test_candidates_are_the_owners_for_a_run_that_failed(client, hub):
     run_id = failed_on(client, hub, old, None)
     assert candidates(client, hub["other"], run_id).status_code == 403
     assert candidates(client, hub["stranger"], run_id).status_code == 404
-    (queued,) = dispatched(client, hub["owner"], [4])
-    refusal = candidates(client, hub["owner"], queued["id"])
+    (running,) = dispatched(client, hub["owner"], [4])
+    assert claim(client, old)["id"] == running["id"]
+    refusal = candidates(client, hub["owner"], running["id"])
     assert refusal.status_code == 409 and "only a failed run has candidates" in refusal.json()["message"]
     assert CHECKOUTS  # the checkouts the workers above report

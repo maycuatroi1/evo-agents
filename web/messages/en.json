@@ -5894,7 +5894,8 @@
       "dispatched": "{count, plural, one {Run {ids} dispatched} other {# runs dispatched: {ids}}}",
       "dispatchedText": "{count, plural, one {It waits in the queue for a worker.} other {They wait in the queue for a worker.}}",
       "openRun": "Open run",
-      "openRuns": "Open active runs"
+      "openRuns": "Open active runs",
+      "noWorker": "No worker can take run #{id} now"
     },
     "author": {
       "kind": "Author run",
