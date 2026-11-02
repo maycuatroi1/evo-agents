@@ -13,7 +13,8 @@ in ``--split``; a summary with a ``test`` part fails without ``--sealed``. The t
 required set (``benches.SET.parts.SPLIT``): ``abstain`` (share of questions without an answer the method abstained
 on) for ``--abstain-min``, ``false_abstain`` (share of answerable ones it abstained on) for ``--false-abstain-max``,
 ``precision`` (mean line precision) for ``--precision-min``; ``--arms`` reads the summary's ``arms`` and
-``--cost-max`` its ``cost.usd``. A key the summary lacks fails the check that reads it.
+``--cost-max`` its ``cost.usd``. A key the summary lacks fails the check that reads it. A summary of one part only
+(``kg links eval``) names it as its ``split``, which the checks read when ``--split`` is not given.
 """
 
 from __future__ import annotations
@@ -310,6 +311,7 @@ def check(
 ) -> list[tuple[str, bool, str]]:
     """The checks ``show`` was asked for (see the module), each (name, passed, detail)."""
     checks: list[tuple[str, bool, str]] = []
+    split = split or summary.get("split")
     benches = summary.get("benches", {})
     tested = sorted(b for b, n in benches.items() if TEST in n.get("parts", {}))
     if tested and not sealed:

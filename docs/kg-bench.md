@@ -170,6 +170,8 @@ The checks below make the exit code non-zero when they fail. Without any of them
 - `--arms A,B` reads the summary's `arms` list.
 - `--cost-max USD` reads `cost.usd`.
 - A key the summary lacks fails the check that reads it. A later step that adds abstaining or arms writes these keys.
+- A summary of one part names it as its `split` (the edge model's `kg links eval` writes `"split": "holdout"`), and
+  the checks read that part when `--split` is not given ([docs/kg-links.md](kg-links.md)).
 
 ## On a laptop, on a worker
 

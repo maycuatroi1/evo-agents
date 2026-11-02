@@ -647,6 +647,10 @@ of the hub's plans into questions whose answers are the files their commits chan
 questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
 tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.
 
+Edges a build left out, the names that matched several nodes or none, are scored by a graph model trained on the
+parsed edges: `kg links propose` proposes the likely ones to the hub, where a writer or the Curator accepts or rejects
+each ([docs/kg-links.md](kg-links.md)).
+
 ## The optimize loop
 
 Each project with a night shift and a knowledge config on the hub gets a KG optimize run a night, inside the charter's
