@@ -94,18 +94,24 @@ export function useDispatchAuthorRun(project: string) {
   });
 }
 
-/** The toast after New plan or Revise with agent: "Author run #15 dispatched", with a link to its chat. */
+/**
+ * The toast after New plan or Revise with agent: "Author run #15 dispatched", with a link to its chat; and the hub's
+ * warning, if it gave one.
+ */
 export function useAuthorRunToast() {
   const t = useTranslations("runs.author.toast");
+  const warn = useNoWorkerToast();
   return useCallback(
-    (run: Run) =>
-      void notify({
+    (run: Run) => {
+      notify({
         tone: "success",
         text: t("dispatched", { id: run.id }),
         description: run.plan_id ? t("reviseText", { plan: run.plan_id }) : t("newText"),
         link: { label: t("openChat"), href: runChatHref(run.project, run.id) },
-      }),
-    [t],
+      });
+      warn([run]);
+    },
+    [t, warn],
   );
 }
 
@@ -130,12 +136,35 @@ export function useViewer(): Viewer | null {
 }
 
 /**
+ * The toast that stays after a dispatch whose run no worker can take now: the hub's warning, which says why and the
+ * command that fixes it, with a link to the run.
+ */
+function useNoWorkerToast() {
+  const t = useTranslations("runs.toast");
+  return useCallback(
+    (runs: Run[]) => {
+      for (const run of runs) {
+        if (!run.warning) continue;
+        notify({
+          tone: "error",
+          text: t("noWorker", { id: run.id }),
+          description: run.warning,
+          link: { label: t("openRun"), href: runHref(run.project, run.id) },
+        });
+      }
+    },
+    [t],
+  );
+}
+
+/**
  * The toast after a dispatch: "Run #12 dispatched" with a link to it, or "2 runs dispatched: #12 and #13" with a link
- * to the project's active runs.
+ * to the project's active runs; and for a run no worker can take now, the hub's warning (`useNoWorkerToast`).
  */
 export function useDispatchedToast() {
   const t = useTranslations("runs.toast");
   const format = useFormatter();
+  const warn = useNoWorkerToast();
   return useCallback(
     (runs: Run[]) => {
       if (runs.length === 0) return;
@@ -153,23 +182,27 @@ export function useDispatchedToast() {
             ? { label: t("openRun"), href: runHref(first.project, first.id) }
             : { label: t("openRuns"), href: `${projectHref(first.project, "runs")}?state=active` as Route },
       });
+      warn(runs);
     },
-    [t, format],
+    [t, format, warn],
   );
 }
 
-/** The toast after Run plan: "Plan run #14 dispatched", with a link to it. */
+/** The toast after Run plan: "Plan run #14 dispatched", with a link to it; and the hub's warning, if it gave one. */
 export function usePlanRunToast() {
   const t = useTranslations("runs.planRun.toast");
+  const warn = useNoWorkerToast();
   return useCallback(
-    (run: Run) =>
-      void notify({
+    (run: Run) => {
+      notify({
         tone: "success",
         text: t("dispatched", { id: run.id }),
         description: t("dispatchedText", { plan: run.plan_id }),
         link: { label: t("openRun"), href: runHref(run.project, run.id) },
-      }),
-    [t],
+      });
+      warn([run]);
+    },
+    [t, warn],
   );
 }
 

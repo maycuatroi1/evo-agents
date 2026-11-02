@@ -144,6 +144,8 @@ CANDIDATES = {
     ],
     "cause_inferred": False,
     "triage": None,
+    "pools": [],
+    "diagnosis": None,
 }
 
 
@@ -674,6 +676,30 @@ def hub(hub_db, tmp_path, github):
 
 def runs_of(hub, monkeypatch, capsys, who: str, *args: str) -> SimpleNamespace:
     return cli(monkeypatch, capsys, hub.homes[who], "hub", "run", *args, "--project", PROJECT)
+
+
+@needs_pg
+def test_a_dispatch_no_worker_can_take_warns_and_its_candidates_say_why(hub, monkeypatch, capsys):
+    from sqlalchemy import delete
+
+    from evo_agents.hub import tables
+
+    worker = add_worker(hub.client, hub.headers["owner"], "laptop")
+    served = tables.worker_projects
+    live.sql(hub.db, delete(served).where(served.c.worker_id == worker["id"]))
+    printed = ok(runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "2"))
+    run_id = int(printed.out.split("#")[1].split(":")[0])
+    fix = f"`evo-agents worker projects --worker laptop --add {PROJECT}`"
+    assert printed.err == (
+        f"Warning: run #{run_id} is queued, but no worker serves project {PROJECT}: {fix}. More: `evo-agents hub run "
+        f"candidates {run_id} --project {PROJECT}`.\n"
+    )
+    shown = ok(runs_of(hub, monkeypatch, capsys, "owner", "candidates", str(run_id))).out
+    assert shown.splitlines()[:2] == [
+        f"Run #{run_id} (step) is queued: who can take it now",
+        f"No worker can take it: no worker serves project {PROJECT}: {fix}",
+    ]
+    assert f"laptop  no   claude-code  1     does not serve project {PROJECT}: {fix}" in shown
 
 
 @needs_pg

@@ -371,6 +371,11 @@ class Run(RunPlacement):
         description="a queued step run that waits for another run of the same plan and repo, which has edited files "
         "the step names; null otherwise",
     )
+    warning: str | None = Field(
+        None,
+        description="set on the answer of a dispatch alone: no worker could take the run as it queued, why, and the "
+        "command that fixes it (`evo-agents hub run candidates` says more); null otherwise",
+    )
     failure_cause: str | None = Field(
         None,
         description="why the run failed, as its worker reported it: origin, credentials or missing_tool when its "

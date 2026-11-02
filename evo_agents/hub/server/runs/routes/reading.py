@@ -1,6 +1,6 @@
 """Reading a plan's runs: GET /v1/projects/{p}/plans/{plan}/ready-steps, every step of the plan with whether a
 dispatch of it would be taken now, and why not; and GET /v1/projects/{p}/runs/{id}/rerun-candidates, who could run a
-failed run again, with why each can or cannot."""
+failed run again, or take a queued one now, with why each can or cannot."""
 
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ async def ready_steps(
 @router.get("/{project}/runs/{run_id}/rerun-candidates", response_model=RerunCandidates, responses=REFUSALS)
 async def run_candidates(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> RerunCandidates:
     """The workers of the run's owner and the agent profiles of the project that could run a failed run again, each
-    with why it fits or why not, the best first; the owner's alone (403 for another member), 409 for a run that did
-    not fail."""
+    with why it fits or why not, the best first; for a queued run, the workers that could take it now as the claim
+    counts it, the agent pools of the project and why no worker can (``diagnosis``). The owner's alone (403 for
+    another member), 409 for a run neither failed nor queued."""
     return await rerun_candidates(request.app.state.engine, user, project, run_id)

@@ -537,8 +537,20 @@ def _tail(hub: Hub, project: str, run: dict, count: int) -> list[dict]:
     return (_get(hub, path) or {}).get("events", [])[-count:]
 
 
-def diagnose(run: dict, decision: dict | None, now: datetime, stale: int = STALE_MINUTES) -> str:
-    """One line on where the run stands and what moves it."""
+def queued_why(hub: Hub, project: str, run: dict) -> str | None:
+    """Why no worker can take the queued ``run``, with the command that fixes it, as the hub says it (the diagnosis of
+    GET .../rerun-candidates); None when a worker can, or the hub does not say (another member's run, an older hub)."""
+    try:
+        found = _get(hub, f"{_project_path(project)}/runs/{run['id']}/rerun-candidates")
+    except HubError:
+        return None
+    return (found or {}).get("diagnosis")
+
+
+def diagnose(
+    run: dict, decision: dict | None, now: datetime, stale: int = STALE_MINUTES, nobody: str | None = None
+) -> str:
+    """One line on where the run stands and what moves it; ``nobody`` is why no worker can take a queued run."""
     state = run["state"]
     idle = age_minutes(run.get("last_activity_at") or run.get("started_at") or run.get("queued_at"), now)
     if decision and decision.get("state") == "open":
@@ -551,6 +563,8 @@ def diagnose(run: dict, decision: dict | None, now: datetime, stale: int = STALE
         if idle is not None and idle >= stale:
             return f"{state} on {run.get('worker') or 'no worker'}, no event for {idle} min (lease until {lease or '-'}): read the last events; cancel and rerun if the worker is gone"
         return f"{state} on {run.get('worker') or 'no worker'}, last event {idle} min ago: it is working"
+    if state == "queued" and nobody:
+        return f"queued {age_minutes(run.get('queued_at'), now)} min ago, and {nobody}"
     if state == "queued":
         return f"queued {age_minutes(run.get('queued_at'), now)} min ago: `evo-agents hub run candidates {run['id']}` says which workers can take it"
     if state in ("failed", "lost"):
@@ -577,6 +591,7 @@ def detail(ref: Ref, found: list[Login], first: str | None = None, events: int =
         listed = _get(hub, f"{_project_path(project)}/decisions?{query}")
         decision = ((listed or {}).get("decisions") or [None])[0]
     leases = _get(hub, f"{_project_path(project)}/runs/{run['id']}/credentials") if run else None
+    nobody = queued_why(hub, project, run) if run and run.get("state") == "queued" else None
     nexts = []
     if decision and decision.get("state") == "open":
         nexts.append(decision_item(decision, login, now)["next"])
@@ -584,6 +599,8 @@ def detail(ref: Ref, found: list[Login], first: str | None = None, events: int =
         found_kind = _run_kind(run, now, STALE_MINUTES)
         if found_kind and found_kind[0] in ("review", "failed", "lost") or (found_kind and run.get("kind") == "author"):
             nexts.append(_run_next(found_kind[0], run, login))
+        if nobody:
+            nexts.append(f"{login.prefix}evo-agents hub run candidates {run['id']} --project {project}")
         nexts.append(f"{login.prefix}evo-agents hub run logs {run['id']} --project {project} --follow")
     tail = _tail(hub, project, run, events) if run else []
     if run and not run.get("last_activity_at") and tail:
@@ -595,6 +612,6 @@ def detail(ref: Ref, found: list[Login], first: str | None = None, events: int =
         "run": run,
         "leases": leases,
         "events": tail,
-        "diagnosis": diagnose(run, decision, now) if run else None,
+        "diagnosis": diagnose(run, decision, now, nobody=nobody) if run else None,
         "next": nexts,
     }
