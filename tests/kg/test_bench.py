@@ -2,6 +2,8 @@
 
 import json
 import os
+import time
+from collections import namedtuple
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,8 @@ from tests.kg.projects import commit, git, make_project, write
 
 FIXTURE = Path(__file__).parent / "fixtures" / "eval" / "demo.jsonl"
 TUNE_REPO, HOLDOUT_REPO, TEST_REPO = "acme/r0", "acme/r7", "acme/r4"  # their parts by the hash of the name
+Usage = namedtuple("Usage", "total used free")
+ROOMY = Usage(4000 * graphs.GB, 0, 2000 * graphs.GB)  # a disk the reserve never stops, whatever this machine has
 
 WIDGETS = '''"""Widgets and their config."""
 
@@ -114,6 +118,7 @@ def _jsonl(path: Path, rows: list[dict]) -> None:
 @pytest.fixture
 def bench(tmp_path, monkeypatch, kg_env):
     """Three repos of one commit each, the four sets about them in a mirror, and the cache: (cache, mirror, shas)."""
+    monkeypatch.setattr(graphs, "disk_usage", lambda path: ROOMY)
     src = tmp_path / "src"
     shas = {}
     for repo in (TUNE_REPO, HOLDOUT_REPO, TEST_REPO):
@@ -329,11 +334,12 @@ def test_one_pass_asks_each_search_on_the_same_graphs_and_prunes_them(bench, tmp
     graph, bm25 = tmp_path / "graph.json", tmp_path / "plain.json"
     argv = ["kg", "bench", "run", "--cache", str(cache), "--git-url", git_url, "--search", "graph", "--search", "plain"]
     assert main([*argv, "--out", str(graph)]) == 1  # one --out a search
-    assert main([*argv, "--out", str(graph), "--out", str(bm25), "--prune", "--jobs", "2"]) == 0
+    # --jobs asks in processes of their own, which read this machine's disk: no reserve
+    assert main([*argv, "--out", str(graph), "--out", str(bm25), "--prune", "--jobs", "2", "--reserve-gb", "0"]) == 0
     one, two = compare.load_summary(graph), compare.load_summary(bm25)
     assert (one["settings"]["search"], two["settings"]["search"]) == ("graph", "plain")
     for summary in (one, two):
-        assert all(n["build"]["failed"] == 0 for n in summary["benches"].values())
+        assert all(n["build"]["failed"] == 0 for n in summary["benches"].values()), summary["tasks"]
         assert summary["tasks"] and all(r["skipped"] is None for r in summary["tasks"])
     assert sorted((r["bench"], r["id"]) for r in one["tasks"]) == sorted((r["bench"], r["id"]) for r in two["tasks"])
     loc = next(r for r in two["tasks"] if r["bench"] == "locbench")
@@ -357,6 +363,87 @@ def test_a_run_goes_on_from_the_repos_a_dead_run_finished(bench, tmp_path):
     one, two = compare.load_summary(first), compare.load_summary(again)
     assert two["tasks"] and all(r["skipped"] is None for r in two["tasks"])
     assert [(r["id"], r["metrics"]) for r in one["tasks"]] == [(r["id"], r["metrics"]) for r in two["tasks"]]
+
+
+def _three(cache: Path, mirror: Path) -> tuple[tasks.Task, tasks.Task, tasks.Task]:
+    """A task on each repo (tune, holdout, test), from the fetched sets."""
+    assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
+    (mu,), _ = tasks.load_tasks(cache, datasets.MULOCBENCH)
+    holdout, test = tasks.load_tasks(cache, datasets.CONTEXTBENCH)[0]
+    return mu, holdout, test
+
+
+def _used(lay: graphs.Layout, task: tasks.Task, ago: float) -> None:
+    marker = lay.project_dir(task) / graphs.MARKER
+    os.utime(marker, (time.time() - ago, time.time() - ago))
+
+
+def test_a_build_past_the_cap_evicts_another_extractors_graphs_then_the_least_recently_used(bench):
+    cache, mirror, git_url, _ = bench
+    one, two, three = _three(cache, mirror)
+    lay = graphs.layout(cache)
+    free = graphs.Room(cap_gb=None, reserve_gb=0)
+    for task in (one, two):
+        assert graphs.build_graph(lay, task, git_url=git_url, room=free).error is None
+    sizes = [json.loads((lay.project_dir(t) / graphs.MARKER).read_text())["bytes"] for t in (one, two)]
+    assert all(size > 0 for size in sizes)  # the marker holds the graph's size
+    old = cache / "kg" / "0123456789abcdef"  # an extractor no run builds any more, with a memo
+    write(old / "home" / "acme__r0-aaaaaaaaaaaa" / graphs.MARKER, json.dumps({"bytes": 10}))
+    write(old / "memo" / "acme__r0.sqlite", "memo")
+    gone = time.time() - 2 * graphs.GRACE
+    os.utime(old / "home" / "acme__r0-aaaaaaaaaaaa" / graphs.MARKER, (gone, gone))
+    _used(lay, one, 3 * graphs.GRACE)  # used before two, so evicted before it
+    _used(lay, two, 2 * graphs.GRACE)
+
+    need = sum(sizes) // 2  # the mean graph: what the next build is taken to need
+    cap = graphs.Room(cap_gb=(sizes[1] + need + 100) / graphs.GB, reserve_gb=0)
+    # the old extractor's graph goes first though used last, then one; two fits under the cap and stays
+    assert graphs.build_graph(lay, three, git_url=git_url, room=cap).error is None
+    assert not old.exists() and not lay.built(one) and lay.built(two) and lay.built(three)
+    assert not lay.harness(one).exists()
+
+
+def test_a_build_short_of_the_reserve_evicts_what_no_run_uses_or_stops_before_writing(
+    bench, monkeypatch, tmp_path, capsys
+):
+    cache, mirror, git_url, _ = bench
+    one, two, _ = _three(cache, mirror)
+    lay = graphs.layout(cache)
+    assert graphs.build_graph(lay, one, git_url=git_url).error is None
+    tight = graphs.Room(cap_gb=None, reserve_gb=10)
+    # 5 GB free while one is on the disk, 20 GB once it is gone
+    monkeypatch.setattr(
+        graphs, "disk_usage", lambda path: Usage(100 * graphs.GB, 0, (5 if lay.built(one) else 20) * graphs.GB)
+    )
+    with pytest.raises(graphs.DiskFull, match="under the 10.0 GB reserve"):
+        graphs.build_graph(lay, two, git_url=git_url, room=tight)  # one was used just now: another run may read it
+    _used(lay, one, 2 * graphs.GRACE)
+    with pytest.raises(graphs.DiskFull):
+        graphs.build_graph(lay, two, git_url=git_url, room=tight, keep=frozenset({lay.name(one)}))
+    assert lay.built(one) and not lay.project_dir(two).exists() and not lay.clone(two.repo).exists()  # nothing written
+
+    out = tmp_path / "run.json"
+    argv = ["kg", "bench", "run", "contextbench", "--cache", str(cache), "--git-url", git_url, "--out", str(out)]
+    assert main([*argv, "--reserve-gb", "30"]) == 1  # one goes, yet 20 GB is short of 30: the run stops, no summary
+    assert "reserve" in capsys.readouterr().err and not out.exists()
+    assert main([*argv, "--reserve-gb", "10"]) == 0
+    assert not lay.built(one) and lay.built(two)
+
+
+def test_a_marker_without_the_graphs_size_gets_it_and_keeps_its_last_use(bench):
+    cache, mirror, git_url, _ = bench
+    one, _, _ = _three(cache, mirror)
+    lay = graphs.layout(cache)
+    assert graphs.build_graph(lay, one, git_url=git_url).error is None
+    marker = lay.project_dir(one) / graphs.MARKER
+    body = json.loads(marker.read_text())
+    marker.write_text(json.dumps({k: v for k, v in body.items() if k != "bytes"}))
+    _used(lay, one, 5000)
+    before = marker.stat().st_mtime
+    (found,) = graphs.cached(lay)
+    assert found.bytes == graphs.tree_bytes(lay.project_dir(one)) == json.loads(marker.read_text())["bytes"]
+    assert marker.stat().st_mtime == before
+    assert graphs.build_graph(lay, one, git_url=git_url).reused and marker.stat().st_mtime > before  # used now
 
 
 def test_run_reads_the_sealed_test_part_only_with_sealed(bench, tmp_path, capsys):

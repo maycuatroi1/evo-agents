@@ -28,7 +28,7 @@ def _benches(given: list[str] | None) -> list[str]:
 
 
 def _options(args):
-    from evo_agents.kg.bench import run
+    from evo_agents.kg.bench import graphs, run
     from evo_agents.kg.bench.tasks import HOLDOUT, TEST, TUNE
 
     parts = tuple(args.part) if args.part else (TUNE, HOLDOUT, *((TEST,) if args.sealed else ()))
@@ -45,6 +45,10 @@ def _options(args):
         max_hours=None if args.max_hours <= 0 else args.max_hours,
         git_url=args.git_url,
         prune=getattr(args, "prune", False),
+        room=graphs.Room(
+            None if args.cache_gb <= 0 else args.cache_gb,
+            None if args.reserve_gb is None else max(0.0, args.reserve_gb),
+        ),
         jobs=getattr(args, "jobs", 1),
         exclude=tuple(getattr(args, "exclude_repo", None) or ()),
         progress=None if getattr(args, "json", False) and not args.verbose else run.progress_to_stderr,
@@ -246,6 +250,18 @@ def _selection_args(parser) -> None:
         "--git-url",
         default=graphs.GITHUB_URL,
         help="where repos are cloned from, {repo} standing for OWNER/NAME (default GitHub)",
+    )
+    parser.add_argument(
+        "--cache-gb",
+        type=float,
+        default=graphs.CAP_GB,
+        help=f"graphs kept at most, the least recently used evicted past it (default {graphs.CAP_GB:g}; 0: no cap)",
+    )
+    parser.add_argument(
+        "--reserve-gb",
+        type=float,
+        help=f"free disk a build leaves, else the run stops before it (default {graphs.RESERVE_GB:g}, a tenth of a "
+        "smaller disk)",
     )
     parser.add_argument("--verbose", action="store_true", help="progress lines on stderr even with --json")
 

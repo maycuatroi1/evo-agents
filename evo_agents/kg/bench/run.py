@@ -67,6 +67,7 @@ class Options:
     max_hours: float | None = MAX_HOURS
     git_url: str = graphs.GITHUB_URL
     prune: bool = False  # delete each graph after its last task, each clone after its repo's (graphs.prune_*)
+    room: graphs.Room = graphs.Room()  # the cap on the graphs and the free space a build leaves (graphs.make_room)
     jobs: int = 1  # repos asked at once, each in a process of its own
     exclude: tuple[str, ...] = ()  # repos (OWNER/NAME) left out before sampling, for ones too big for the disk
     progress: object = None  # a callable(str) for progress lines
@@ -250,7 +251,8 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
     asked = Asked({s: [] for s in options.searches}, {s: {} for s in options.searches})
     last = {(t.repo.lower(), t.commit.lower()): i for i, t in enumerate(tasks)}
     for i, task in enumerate(tasks):
-        result = graphs.build_graph(lay, task, git_url=options.git_url)
+        ahead = frozenset(lay.name(t) for t in tasks[i:])  # graphs this repo's later tasks read: never evicted
+        result = graphs.build_graph(lay, task, git_url=options.git_url, room=options.room, keep=ahead)
         if result.error:
             asked.failed += 1
             say(f"{bench} {task.id}: {result.error}")
@@ -336,7 +338,11 @@ def _asked_all(cache: Path, bench: str, groups: list[list[Task]], options: Optio
     with ProcessPoolExecutor(max_workers=options.jobs, mp_context=context) as pool:
         largest = sorted(range(len(groups)), key=lambda g: -len(groups[g]))  # the long repos start first
         futures = {g: pool.submit(ask_repo_kept, cache, bench, groups[g], options) for g in largest}
-        return [futures[g].result() for g in range(len(groups))]
+        try:
+            return [futures[g].result() for g in range(len(groups))]
+        except BaseException:  # a full disk (graphs.DiskFull) or a crash: no repo not started yet starts
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
 
 
 def run_bench(cache: Path, bench: str, options: Options) -> tuple[dict[str, dict], dict[str, list[dict]], Selection]:
@@ -470,7 +476,8 @@ def build_bench(cache: Path, bench: str, options: Options) -> tuple[Selection, l
     done = []
     wanted = graphs.snapshots(selection.tasks)
     for number, task in enumerate(wanted, 1):
-        result = graphs.build_graph(lay, task, git_url=options.git_url)
+        ahead = frozenset(lay.name(t) for t in wanted[number - 1 :])
+        result = graphs.build_graph(lay, task, git_url=options.git_url, room=options.room, keep=ahead)
         done.append(result)
         state = "reused" if result.reused else f"failed: {result.error}" if result.error else f"{result.seconds}s"
         say(f"{bench} {number}/{len(wanted)} {task.repo}@{task.commit[:12]} {state}")
