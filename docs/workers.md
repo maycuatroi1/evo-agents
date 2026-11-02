@@ -1502,7 +1502,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST .../runs/{id}/finish` | owner | end the chat of an author run: it ends done |
 | `POST .../runs/{id}/takeover`, `/handback` | owner | switch between headless and interactive |
 | `POST .../runs/{id}/cancel`, `/approve`, `/rerun` | owner | stop, approve a run in review, run the step again |
-| `GET .../runs/{id}/rerun-candidates` | owner | who could run a failed run again: each of the owner's workers and each agent profile of the project with why it fits or not, ranked, and the owner's accounts bound to the project |
+| `GET .../runs/{id}/rerun-candidates` | owner | who could run a failed run again: each of the owner's workers and each agent profile of the project with why it fits or not, ranked, and the owner's accounts bound to the project; for a queued run, who can take it now as the claim counts it, the agent pools of the project and why no worker can |
 | websocket `/v1/projects/{p}/runs/{id}/terminal` | owner, on a worker of theirs | the browser's end of the terminal |
 
 ### Dispatching and the owner's controls
@@ -1542,8 +1542,8 @@ current revision, with the same requested runtime, model, mode, approval, timeou
 by hand for the old run unless its body names another one (`account`) or asks the rules (`account_by_rule`), attempt 1
 and `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
 
-`.../rerun-candidates` (`evo-agents hub run candidates RUN [--json]`) answers, for a run that failed (409 otherwise, 403
-for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
+`.../rerun-candidates` (`evo-agents hub run candidates RUN [--json]`) answers, for a run that failed (409 for a run neither
+failed nor queued, 403 for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
 that serves the project has `fit`, a `rank` (1 is best; null when it is no fit) and `reasons`: what makes it fit, or
 each thing that makes it not. A worker is fit when it is online, not draining, runs the run's kind, takes the way the run
 was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run or a daemon that
@@ -1560,6 +1560,21 @@ The answer also says `cause_inferred` (true when `failure_cause` was guessed by 
 system event `failure_cause_inferred` records, and no worker named it) and `triage` (`chat_id`, `root_message_id` and
 `link`, the web page `/chats/ID?message=ID` of the thread the hub opened for the run; null when it opened none). The
 run's page in the web shows both over its trace (web/DESIGN.md, Run detail).
+
+For a queued run the same route says who can take it now, as the claim counts it (`runs/service/queue_fit.py`): the hub
+reads each worker as its claim does and checks the run against each condition of that claim on its own, so the answer
+never drifts from what the claim does. `workers` lists the owner's workers and those shared in the project, or, for a
+run of an agent in pool mode, the nodes of the agent's pool, whoever owns them. A worker is `fit` when nothing but a wait
+keeps it from the run (no free slot, a run of another member on a shared worker, a lost attempt while it is not steady,
+another run of the plan editing the same files, a browser in use); every other reason, an offline worker included, keeps
+it from the run until someone acts, and says what fixes it: `does not serve project P: evo-agents worker projects
+--worker W --add P`, `is offline`, `does not report codex available`, `is not a node of pool agent-H`. `pools` lists the
+pools of the project's agents with their nodes, the ready ones and whether the run goes there. `diagnosis` is one line
+on why no worker can take the run, with the command that fixes it (null when one can): `no worker serves project P:
+...`, `agent @H runs in pool mode, and its pool agent-H has no node: ...`, or the nearest worker's reasons. The answer of
+a dispatch (`POST .../runs`, `.../plan-runs`, `.../author-runs`) carries the same line in each run's `warning` when no
+worker can take it as it queues; the command line prints it on stderr, the web in a toast, and `evo-agents hub inbox
+--show` of the run says it as its diagnosis.
 
 ### Reading runs
 

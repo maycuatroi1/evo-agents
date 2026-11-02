@@ -2,7 +2,9 @@
 hub computes it (GET /v1/projects/{p}/runs/{id}/rerun-candidates, ``evo_agents.hub.server.runs.service.candidates``). It
 prints each worker of yours that serves the project, and each one another member shares with you there, each agent
 profile of the project and each of your accounts bound to it, the workers and agents with whether they fit, their rank
-and why. Standard library only, like the rest of the client."""
+and why. For a queued run it prints who can take it now, as the claim counts it (``queue_fit``): each worker that
+could, the agent pools of the project, and why no worker can with the command that fixes it. Standard library only,
+like the rest of the client."""
 
 from __future__ import annotations
 
@@ -23,6 +25,8 @@ CANDIDATES_KEYS = (
     "other_projects",
     "cause_inferred",
     "triage",
+    "pools",
+    "diagnosis",
 )
 
 
@@ -35,8 +39,41 @@ def _fit(candidate: dict) -> str:
     return f"#{candidate['rank']}" if candidate["fit"] else "no"
 
 
+def _print_queued(found: dict) -> None:
+    """The answer of the hub for a queued run: why it waits, the workers and the agent pools."""
+    print(f"Run #{found['run_id']} ({found['kind']}) is queued: who can take it now")
+    if found.get("diagnosis"):
+        print(f"No worker can take it: {found['diagnosis']}")
+    print("Workers")
+    rows = [
+        (_worker(w), _fit(w), ", ".join(w["runtimes"]) or "-", w["free_slots"], "; ".join(w["reasons"]))
+        for w in found["workers"]
+    ]
+    table(("WORKER", "FIT", "RUNTIMES", "FREE", "WHY"), rows) if rows else print("  none could take it")
+    pools = found.get("pools") or []
+    if pools:
+        print("Agent pools")
+        table(
+            ("POOL", "AGENT", "NODES", "READY", "THIS RUN", "WHY"),
+            [
+                (
+                    p["pool"],
+                    f"@{p['agent']}",
+                    p["nodes"],
+                    p["ready_nodes"],
+                    "yes" if p["takes_run"] else "no",
+                    "; ".join(p["reasons"]),
+                )
+                for p in pools
+            ],
+        )
+
+
 def _print(found: dict) -> None:
     """The answer of the hub as three tables, each under its heading."""
+    if found.get("state") == "queued":
+        _print_queued(found)
+        return
     print(
         f"Run #{found['run_id']} ({found['kind']}) failed, cause {found['failure_cause'] or 'unknown'}: who can run it again"
     )
@@ -107,8 +144,8 @@ def register_candidates(rsub, with_run, project_of) -> None:
 
     candidates = rsub.add_parser(
         "candidates",
-        help="who can run a failed run again: your workers and the project's agents, each with why it fits or not, "
-        "and your accounts (owner only)",
+        help="who can run a failed run again, or take a queued one now: your workers and the project's agents or "
+        "agent pools, each with why it fits or not, and your accounts (owner only)",
     )
     with_run(candidates)
     json_option(candidates, returns_object(*CANDIDATES_KEYS, schema="RerunCandidates"))

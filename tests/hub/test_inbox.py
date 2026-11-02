@@ -313,3 +313,25 @@ def test_inbox_lines_print_each_item_with_its_command():
     assert lines[1].split() == ["DECISION", "#5", "30m", "lumen,", "run", "#7,", "northwind-sync", "step", "3"]
     assert lines[3].strip().startswith("-> EVO_HUB_HOME=~/.evo/hub-north evo-agents hub decision answer 5")
     assert lines[5] == "https://down.example: cannot read it: cannot reach"
+
+
+def test_detail_of_a_queued_run_says_why_no_worker_takes_it(monkeypatch):
+    nobody = "no worker serves project lumen: `evo-agents worker projects --worker w1 --add lumen`"
+    answers = {
+        "/v1/projects": [{"name": "lumen", "role": "writer"}],
+        "/v1/projects/lumen/runs/80": run(80, "queued", queued_at=ago(12)),
+        "/v1/projects/lumen/runs/80/rerun-candidates": {"state": "queued", "workers": [], "diagnosis": nobody},
+        "/v1/projects/lumen/runs/81": run(81, "queued", queued_at=ago(2)),
+        "/v1/projects/lumen/runs/81/rerun-candidates": {"state": "queued", "workers": [], "diagnosis": None},
+        "/v1/projects/lumen/runs/82": run(82, "queued", queued_at=ago(3)),  # a hub that lists no candidates of it
+    }
+    hub = FakeHub(answers)
+    monkeypatch.setattr(inbox.Login, "hub", lambda self: hub)
+    stuck = inbox.detail(inbox.Ref("run", 80), [ANA])
+    assert stuck["diagnosis"] == f"queued 12 min ago, and {nobody}"
+    assert "evo-agents hub run candidates 80 --project lumen" in stuck["next"]
+    for run_id, minutes in ((81, 2), (82, 3)):
+        waiting = inbox.detail(inbox.Ref("run", run_id), [ANA])
+        assert waiting["diagnosis"] == (
+            f"queued {minutes} min ago: `evo-agents hub run candidates {run_id}` says which workers can take it"
+        )
