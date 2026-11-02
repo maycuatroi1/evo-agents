@@ -714,7 +714,7 @@ def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, 
         assert response.status_code == 200, response.text
         return response.json()
 
-    settings = {"plugins": [], "version_locked": False, "projects": ["demo"]}
+    settings = {"plugins": [], "version_locked": False, "projects": ["demo"], "guard": ""}
     assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"], **settings}
     patched = client.patch(f"/v1/workers/{worker_id}", json={"slots": 6, "name": "big-mac"}, headers=hub["owner"])
     assert patched.status_code == 200, patched.text
@@ -783,7 +783,7 @@ def test_the_owner_locks_the_worker_version_with_a_patch_audited_once_and_the_he
     assert (unlocked.json()["version_locked"], unlocked.json()["slots"]) == (False, 2)
     assert (f"{target} slots=1->2 version_locked=true->false", OWNER) in audit_rows(hub_db, "worker.update")
     unlocked_settings = {"slots": 2, "name": "mac-mini", "labels": [], "plugins": [], "version_locked": False}
-    assert beat() == {**unlocked_settings, "projects": ["demo"]}
+    assert beat() == {**unlocked_settings, "projects": ["demo"], "guard": ""}
 
 
 def test_a_patch_of_the_version_lock_is_refused_to_all_but_its_owner_and_for_bad_values(client, hub, hub_db, github):

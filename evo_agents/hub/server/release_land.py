@@ -40,7 +40,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import judge, release_ci, release_runs, releases, tables
+from evo_agents.hub import guard, judge, release_ci, release_runs, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, autonomy_gates, pull_trailers, pulls
@@ -273,16 +273,11 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
     if number is None:
         async with engine.connect() as conn:
             signed = await pull_trailers.block(conn, row.run_id)
-        made = await pulls.open_pull(
-            app,
-            token,
-            owner,
-            name,
-            branch=row.branch,
-            base=default,
-            title=f"Release {row.version}",
-            body=_pull_text(row, row.tag) + signed,
+            policy = await guard.policy(conn)
+        title, body = guard.scrub(
+            policy, f"github.com/{owner}/{name}", f"Release {row.version}", _pull_text(row, row.tag) + signed
         )
+        made = await pulls.open_pull(app, token, owner, name, branch=row.branch, base=default, title=title, body=body)
         number, url = made.get("number"), made.get("html_url")
         if type(number) is not int:
             raise GitHubUnavailable(f"GitHub answered without the number of the pull request of {row.branch}")

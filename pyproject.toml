@@ -81,6 +81,7 @@ git = "evo_agents.kg.connectors.git:run"
 [project.entry-points."evo_agents.plugins"]
 browser = "evo_agents.core_plugins.browser:MANIFEST"
 builder = "evo_agents.core_plugins.builder:MANIFEST"
+guard = "evo_agents.core_plugins.guard:MANIFEST"
 
 # The Python environment a worker's run makes in a worktree of this repo (evo_agents.worker.venvs, docs/workers.md):
 # the extras CI tests with and the core plugins the hub's image installs, so `python -m pytest` and `python -m
