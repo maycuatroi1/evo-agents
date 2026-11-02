@@ -25,17 +25,11 @@ import { AccountField, useAccountChoice } from "./account-field";
 import { accountField } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
 import { AsMeField } from "./as-me-field";
-import { Outlook, WorkerField, type WorkerChoice } from "./dispatch-fields";
 import { FieldLabel } from "./field-label";
 import { useDispatchPlanRun } from "./hooks";
 import {
-  chosenWorker,
-  dispatchOutlook,
   dispatchWorkers,
-  fitWorker,
   modelSuggestions,
-  outlookFine,
-  pinRefused,
   planRunScope,
   readModel,
   runtimeCount,
@@ -78,11 +72,11 @@ type Props = {
 };
 
 /**
- * Run plan: one run, on one of the visitor's workers, that does every step of the plan not done yet, in depends_on
+ * Run plan: one run, on a node of the agent's own pool, that does every step of the plan not done yet, in depends_on
  * order, in one session or, switched on, in a new session for each step (docs/workers.md, A plan run on the machine).
  * The dialog says what the run will do (its steps, repos, checkpoints, and where the agent may push and merge) and takes
- * the agent, runtime, model, mode, worker, account, timeout and sessions. It fills the worker and the account with the
- * ones it finds for the run, which the visitor may change; what a field means shows from its info icon, and below a
+ * the agent, runtime, model, mode, account, timeout and sessions, and no worker. It fills the account with the one it
+ * finds for the run, which the visitor may change; what a field means shows from its info icon, and below a
  * field only what is wrong with the choice. The content mounts each time the dialog opens.
  */
 export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched, onCloseAutoFocus }: Props) {
@@ -137,7 +131,6 @@ function PlanRunForm({
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
   const [modelText, setModelText] = useState("");
   const [mode, setMode] = useState<RunMode>("headless");
-  const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [timeout, setTimeoutHours] = useState<PlanTimeout>(DEFAULT_PLAN_TIMEOUT);
   const [perStep, setPerStep] = useState(false);
   const [asMe, setAsMe] = useState(false);
@@ -149,16 +142,12 @@ function PlanRunForm({
   const blockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null, planId) : [];
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
-  const repos = scope?.repos.map((repo) => repo.repo) ?? [];
-  const request = { project, runtime, repos, sessionPerStep: perStep };
-  const pinned = chosenWorker(mine, request, workerPick);
-  const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
+  const [account, setAccount] = useAccountChoice(project, runtime, null);
   const models = Object.fromEntries(RUNTIMES.map((name) => [name, agentModels(agents.agent, modelSuggestions(mine, name))])) as Record<RuntimeName, string[]>;
   const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
   const model = readModel(modelText, runtime, gateway.map((item) => item.model));
   const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
   const runnable = scope !== null && blockers.length === 0 && problems.length === 0;
-  const outlook = dispatchOutlook(runnable ? 1 : 0, mine, request, pinned);
   const pending = write.isPending;
   const loading = plan.isPending || ready.isPending;
   const loadFailed = !loading && (plan.isError || ready.isError) && scope === null;
@@ -179,7 +168,6 @@ function PlanRunForm({
       const each = perStep ? { session_per_step: true as const } : {}; // sent only when on: an older hub ignores it
       run = await write.mutateAsync({
         plan_id: planId,
-        worker_id: pinned,
         runtime,
         model: model.model,
         mode,
@@ -250,17 +238,6 @@ function PlanRunForm({
             disabled={pending}
           />
           <ModeField value={mode} onChange={setMode} />
-          <WorkerField
-            project={project}
-            fits={mine.map((worker) => fitWorker(worker, request))}
-            value={pinned}
-            onChange={setWorkerPick}
-            loading={workersState.isPending || me.isPending}
-            registered={own.length}
-            subject="plan"
-            note={outlookFine(outlook) || outlook.kind === "noWorker" ? null : <Outlook outlook={outlook} project={project} subject="plan" className="text-xs" />}
-            disabled={pending}
-          />
           <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
           <div className="flex min-w-0 flex-col gap-1.5">
             <FieldLabel htmlFor={`${ids}-timeout`} label={t("timeout")} info={t("timeoutHint")} testId="plan-run-timeout-info" />
@@ -302,7 +279,7 @@ function PlanRunForm({
               {tDispatch("cancel")}
             </Button>
           </DialogClose>
-          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null || pinRefused(outlook)} busy={pending} data-testid="plan-run-submit">
+          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} busy={pending} data-testid="plan-run-submit">
             <Play aria-hidden="true" />
             {pending ? t("submitting") : t("submit")}
           </Button>

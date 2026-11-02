@@ -36,7 +36,7 @@ A worker can also take a whole plan as one plan run: its agent does every step n
 and pushed on the plan's branch. Decisions that require a person under the run's [autonomy policy](autonomy.md) wait in the Inbox on the web or on the command line:
 
 ```sh
-evo-agents hub run plan rollout --worker mac-mini --timeout-h 8 --project demo
+evo-agents hub run plan rollout --timeout-h 8 --project demo
 evo-agents hub run plan rollout --session-per-step --project demo   # each step in a new session, with the handoff
 evo-agents hub decision list --state open --project demo
 evo-agents hub decision answer 7 --option postgres --project demo

@@ -1,9 +1,14 @@
-"""``evo-agents hub agent list|show|create|edit|delete``: the agent profiles of a project (``evo_agents.hub.profiles``),
+"""``evo-agents hub agent list|show|create|edit|delete|placement``: the agent profiles of a project (``evo_agents.hub.profiles``),
 over GET, POST, PATCH and DELETE /v1/projects/{p}/agents. ``agent account`` is in ``cli_agent_accounts``.
 
 ``list`` prints the project's profiles, the default first, with the axes each one limits; ``--deleted`` adds the
 deleted ones. ``show`` prints one profile whole, each axis with its allowlist. Every member of the project may read
 them. ``create``, ``edit`` and ``delete`` need the admin role on the project.
+
+Each agent has a pool of its own, ``agent-<handle>``, made with it (manage it with ``evo-agents worker pool``), and a
+placement: ``legacy``, where a run of the agent is placed as before, or ``pool``, where it goes to a node of that pool.
+``placement HANDLE pool|legacy`` moves an agent, with the admin role on the project or on the hub; an agent made now
+starts in ``pool``, one that existed before the pools of agents in ``legacy``.
 
 A profile's permissions are eight axes (credential, tool, skill, worker, project, model, runtime, environment), each
 ``all`` or an allowlist; an axis a profile does not name, as a hub older than the axis answers, reads as ``all``. ``--allow AXIS:ITEM`` (repeatable) makes AXIS an allowlist of the items given for it, such as ``--allow
@@ -49,6 +54,9 @@ AGENT_KEYS = (
     "permissions",
     "restricted",
     "packs",
+    "placement",
+    "home_pool",
+    "account_pool",
     "version",
     "created_by",
     "created_at",
@@ -103,6 +111,7 @@ def _show(agent: dict) -> None:
         print(f"  {label}{_axis_text(agent['permissions'].get(axis) or {})}")
     packs = [f"{pack['plugin']}/{pack['name']}@{pack['version']}" for pack in agent.get("packs") or ()]
     print(f"  {'packs:'.ljust(12)}{', '.join(packs) or 'none'}")
+    print(f"  {'placement:'.ljust(12)}{agent['placement']}, pool {agent.get('home_pool') or 'none'}")
     print(f"  created by {agent['created_by']} at {when(agent['created_at'])} UTC, changed {when(agent['updated_at'])}")
 
 
@@ -124,11 +133,12 @@ def cmd_list(args) -> int:
             a["version"],
             "yes" if a["is_default"] else "",
             ", ".join(a["restricted"]) or "-",
+            a["placement"],
             when(a["deleted_at"]) if a.get("deleted_at") else "",
         )
         for a in found
     ]
-    table(("HANDLE", "NAME", "VERSION", "DEFAULT", "LIMITS", "DELETED (UTC)"), rows)
+    table(("HANDLE", "NAME", "VERSION", "DEFAULT", "LIMITS", "PLACEMENT", "DELETED (UTC)"), rows)
     return 0
 
 
@@ -279,6 +289,17 @@ def cmd_delete(args) -> int:
     return _done(args, agent, "Deleted")
 
 
+@client_command
+def cmd_placement(args) -> int:
+    hub, _ = signed_in()
+    agent = hub.call("PUT", _path(project_of(args), args.handle) + "/placement", {"placement": args.placement})
+    if args.json:
+        print_json(agent)
+    else:
+        print(f"@{agent['handle']} of project {agent['project']} is placed by {agent['placement']}.")
+    return 0
+
+
 # Registering
 
 
@@ -310,6 +331,7 @@ def _handle(parser) -> None:
 
 
 def register_agents(hsub) -> None:
+    from evo_agents.hub.cli_account_pools import register_account_pools, register_agent_account_pool
     from evo_agents.hub.cli_agent_accounts import register_agent_accounts
 
     agent = hsub.add_parser("agent", help="the agent profiles of a project: who its agents are and what they may use")
@@ -353,4 +375,15 @@ def register_agents(hsub) -> None:
     delete.add_argument("--project", help=PROJECT_HELP)
     json_option(delete, returns_object(*AGENT_KEYS, schema="Agent"))
     delete.set_defaults(func=cmd_delete)
+
+    placement = asub.add_parser(
+        "placement", help="move an agent to its own pool or back to the old placement (an admin of the project or hub)"
+    )
+    _handle(placement)
+    placement.add_argument("placement", choices=("pool", "legacy"), help="pool: its runs go to its pool's nodes")
+    placement.add_argument("--project", help=PROJECT_HELP)
+    json_option(placement, returns_object(*AGENT_KEYS, schema="Agent"))
+    placement.set_defaults(func=cmd_placement)
     register_agent_accounts(asub)
+    register_agent_account_pool(asub)
+    register_account_pools(hsub)

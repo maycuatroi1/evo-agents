@@ -224,6 +224,11 @@ async def _ended_event(conn: AsyncConnection, run: Run, env_var: str) -> None:
     await write_event(conn, run.id, {"text": text, "env_var": env_var, "secret_id": None})
 
 
+def follows_default(secret: Secret) -> bool:
+    """Whether the account is one of an agent or of an account pool: chosen by DEFAULT_POLICY, never a member's."""
+    return secret.agent is not None or getattr(secret, "pool", None) is not None
+
+
 async def choose_accounts(
     conn: AsyncConnection, run: Run, secrets: list[Secret], held: set[int], ended: tuple[str, ...] = ()
 ) -> list[Secret]:
@@ -244,7 +249,7 @@ async def choose_accounts(
         if env_var not in by_var:  # every account of the agent for it has ended, and the dispatcher's is not leased
             await _ended_event(conn, run, env_var)
             continue
-        owned = by_var[env_var][0].agent is not None  # the agent's accounts follow DEFAULT_POLICY, never a member's
+        owned = follows_default(by_var[env_var][0])  # the agent's accounts follow DEFAULT_POLICY, never a member's
         context = (DEFAULT_POLICY["strategy"] if owned else member, run.curator is not None and not owned)
         choice = _decide(env_var, by_var[env_var], states, kept.get(env_var), held, context)
         if choice.note is not None:
@@ -329,7 +334,7 @@ async def fail_over(
     None, the cooldown's reason). A run that moved already answers the account it moved to, as a retry would."""
     resets_at, reason = limit
     own = [s for s in secrets if s.kind == "env" and s.env_var == env_var]
-    owned = any(s.id == current and s.agent is not None for s in own)  # an agent's accounts: DEFAULT_POLICY
+    owned = any(s.id == current and follows_default(s) for s in own)  # an agent's accounts: DEFAULT_POLICY
     policy = dict(DEFAULT_POLICY) if owned else await account_policy(conn, run.owner_id, run.project_id)
     states = await _lock_accounts(conn, [s.id for s in own] + [current])
     now = datetime.now(UTC)

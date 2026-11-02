@@ -23,12 +23,12 @@ import { accountField } from "./account-model";
 import { AsMeField } from "./as-me-field";
 import { BrowserField, browserFields } from "./browser-field";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
-import { Outlook, Section, Tile, WorkerField, type WorkerChoice } from "./dispatch-fields";
+import { Section, Tile } from "./dispatch-fields";
 import { FieldLabel } from "./field-label";
 import { StepPicker } from "./dispatch-step-picker";
-import { readySelection, selectedRepos } from "./dispatch-steps";
+import { readySelection } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
-import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, modelSuggestions, outlookFine, pinRefused, readModel, runtimeCount, type RuntimeName } from "./model";
+import { dispatchWorkers, modelSuggestions, readModel, runtimeCount, type RuntimeName } from "./model";
 import { ModelField } from "./model-field";
 import {
   type Approval,
@@ -58,10 +58,10 @@ type Props = {
 };
 
 /**
- * Dispatching runs: the ready steps of an active plan, each one queued as a run that a worker of the visitor claims.
- * Steps that are not ready are listed with the reason and cannot be picked. The dialog fills the worker and the account
- * with the ones it finds for the runs, which the visitor may change; what a field means shows from its info icon. The
- * content mounts each time the dialog opens, so it starts from the defaults.
+ * Dispatching runs: the ready steps of an active plan, each one queued as a run that the agent's own pool claims.
+ * Steps that are not ready are listed with the reason and cannot be picked. The dialog names no worker; it fills the
+ * account with the one it finds for the runs, which the visitor may change; what a field means shows from its info
+ * icon. The content mounts each time the dialog opens, so it starts from the defaults.
  */
 export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step, onCloseAutoFocus }: Props) {
   const write = useDispatch(project);
@@ -135,7 +135,6 @@ function DispatchForm({
   const [modelText, setModelText] = useState("");
   const gateway = useQuery(runnableModelsQuery(browserApi, project)).data ?? [];
   const [mode, setMode] = useState<RunMode>("headless");
-  const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [approval, setApproval] = useState<Approval>("review");
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
   const agents = useAgentChoice(project);
@@ -147,11 +146,8 @@ function DispatchForm({
   const mine = agentWorkers(own, agents.agent);
   const model = readModel(modelText, runtime, gateway.map((item) => item.model));
   const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
-  const request = { project, runtime, repos: selectedRepos(selected, steps) };
-  const pinned = chosenWorker(mine, request, workerPick, Math.max(selected.length, 1));
-  const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
+  const [account, setAccount] = useAccountChoice(project, runtime, null);
   const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
-  const outlook = dispatchOutlook(selected.length, mine, request, pinned);
   const models = Object.fromEntries(RUNTIMES.map((name) => [name, agentModels(agents.agent, modelSuggestions(mine, name))])) as Record<RuntimeName, string[]>;
   const tooMany = selected.length > MAX_DISPATCH_STEPS;
   const pending = write.isPending;
@@ -185,7 +181,6 @@ function DispatchForm({
         mode,
         approval,
         timeout_min: timeout,
-        worker_id: pinned,
         ...accountField(account),
         ...profileField(agents.agent),
         ...browserFields(browser),
@@ -297,17 +292,6 @@ function DispatchForm({
             problem={model.problem}
             disabled={pending}
           />
-          <WorkerField
-            project={project}
-            fits={mine.map((worker) => fitWorker(worker, request))}
-            value={pinned}
-            onChange={setWorkerPick}
-            loading={workersState.isPending || me.isPending}
-            registered={own.length}
-            subject="runs"
-            note={outlookFine(outlook) || outlook.kind === "noWorker" ? null : <Outlook outlook={outlook} project={project} className="text-xs" />}
-            disabled={pending}
-          />
           <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
           <BrowserField project={project} value={browser} onChange={setBrowser} disabled={pending} />
           <ModeField value={mode} onChange={setMode} />
@@ -356,7 +340,7 @@ function DispatchForm({
           <Button
             type="submit"
             size="lg"
-            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0 || model.problem !== null || pinRefused(outlook)}
+            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0 || model.problem !== null}
             busy={pending}
             data-testid="dispatch-submit"
           >

@@ -6,7 +6,7 @@ A version row holds the profile whole as that version had it (``snapshot``), its
 pins; it is written in the transaction that makes the version. A row written before the packs (schema 0041) has no
 ``packs`` key, read as none. ``ensure_default`` gives a project its default profile when it has none: the registration of a new
 project calls it, and so does a run queued in a project that has none (one inserted outside the API), so that every
-run records a profile.
+run records a profile. ``create_pool`` gives an agent its own pool when the agent is created (since 0189).
 """
 
 from __future__ import annotations
@@ -21,6 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import profiles, tables
 
 DEFAULT_DESCRIPTION = "The project's default agent: every permission, no instructions."
+POOL_MODE = "pool"
+NEW_AGENT_PLACEMENT = POOL_MODE  # the placement of an agent made now (an agent that existed before keeps legacy)
+PLACEMENTS = ("legacy", POOL_MODE)  # a bridge: ``pool`` sends the agent's runs to its own pool's nodes
+POOL_PREFIX = "agent-"  # an agent's pool is ``agent-<handle>``; a member's pool never starts with it
 SNAPSHOT = (
     "handle",
     "name",
@@ -50,6 +54,10 @@ class Profile:
     is_default: bool
     permissions: dict
     packs: list  # the agent packs it attaches, each {"plugin", "name", "version"} (agent_packs)
+    placement: str  # PLACEMENTS: where a run of the agent goes
+    home_pool: str | None  # the name of its own pool (``agent-<handle>``); None for an agent deleted before 0189
+    account_pool_id: int | None  # its account pool (``account_pools``); None until an admin attaches one
+    account_pool: str | None  # that pool's name
     version: int
     created_by: str
     created_at: datetime
@@ -67,7 +75,7 @@ class Profile:
 
 def profile_select() -> Select:
     """The fields of Profile, a profile with its project's name and its creator's login."""
-    ap, p, u = tables.agent_profiles, tables.projects, tables.users
+    ap, p, u, wp = tables.agent_profiles, tables.projects, tables.users, tables.worker_pools
     return (
         select(
             ap.c.id,
@@ -82,6 +90,13 @@ def profile_select() -> Select:
             ap.c.is_default,
             ap.c.permissions,
             ap.c.packs,
+            ap.c.placement,
+            select(wp.c.name).where(wp.c.agent_id == ap.c.id).scalar_subquery().label("home_pool"),
+            ap.c.account_pool_id,
+            select(tables.account_pools.c.name)
+            .where(tables.account_pools.c.id == ap.c.account_pool_id)
+            .scalar_subquery()
+            .label("account_pool"),
             ap.c.version,
             u.c.login.label("created_by"),
             ap.c.created_at,
@@ -111,6 +126,21 @@ async def by_id(conn: AsyncConnection, profile_id: int) -> Profile | None:
     return None if row is None else profile_of(row)
 
 
+async def create_pool(conn: AsyncConnection, profile_id: int, handle: str, project_id: int, owner_id: int) -> None:
+    """The pool of the agent ``profile_id``, ``agent-<handle>``, owned by ``owner_id`` (who created the agent) and
+    serving the agent's project; nothing when the agent has one already."""
+    wp, pp = tables.worker_pools, tables.worker_pool_projects
+    statement = (
+        pg_insert(wp)
+        .values(owner_id=owner_id, name=POOL_PREFIX + handle, agent_id=profile_id)
+        .on_conflict_do_nothing()
+        .returning(wp.c.id)
+    )
+    pool_id = (await conn.execute(statement)).scalar_one_or_none()
+    if pool_id is not None:
+        await conn.execute(insert(pp).values(pool_id=pool_id, project_id=project_id))
+
+
 async def write_version(conn: AsyncConnection, profile_id: int, version: int, body: dict, changed_by: int) -> None:
     v = tables.agent_profile_versions
     await conn.execute(insert(v).values(profile_id=profile_id, version=version, body=body, changed_by=changed_by))
@@ -135,13 +165,14 @@ async def ensure_default(conn: AsyncConnection, project_id: int) -> Profile:
         "is_default": True,
         "permissions": profiles.all_access(),
         "packs": [],
-        "created_by": project.created_by,
     }
-    statement = pg_insert(ap).values(**values).on_conflict_do_nothing().returning(ap.c.id)
+    row_values = {**values, "created_by": project.created_by, "placement": NEW_AGENT_PLACEMENT}
+    statement = pg_insert(ap).values(**row_values).on_conflict_do_nothing().returning(ap.c.id)
     created = (await conn.execute(statement)).scalar_one_or_none()
     if created is not None:
         body = {key: values[key] for key in SNAPSHOT}
         await write_version(conn, created, 1, body, project.created_by)
+        await create_pool(conn, created, project.name, project_id, project.created_by)
     row = (await conn.execute(profile_select().where(ap.c.project_id == project_id, ap.c.is_default))).one()
     return profile_of(row)
 

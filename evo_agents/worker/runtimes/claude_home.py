@@ -30,6 +30,8 @@ that ignores all of it, even when the run's directory is a step run's worktree.
   fresh. A refresh that fails fails the run before the agent starts, with cause credentials (``RefreshFailed``),
   unless another process (the owner's Claude Code) made the file fresh meanwhile. A login of the keychain item is
   copied as it is: the daemon writes no keychain item. No token value is ever logged.
+- for a run of an agent in pool mode (the claim's ``account_pool``), the lease's token alone: no copy of the owner's
+  login, no refresh of it, and no login of this machine (``POOL_REFUSAL`` when none was leased);
 - ``gh-config``, an empty dir beside the config dir: the agent's GH_CONFIG_DIR (``gh_dir``), so ``gh`` in the run
   sees none of the owner's logins (``~/.config/gh``) and speaks with GH_TOKEN of the run's leases alone.
 
@@ -88,6 +90,11 @@ REFUSAL = (
     f"owner's Claude Code config dir, no keychain item {KEYCHAIN_ITEM}. Sign Claude Code in on the worker, or give "
     f"the run a lease of {OAUTH_TOKEN} made by `claude setup-token`"
 )
+POOL_REFUSAL = (
+    "this agent runs in pool mode, whose run takes its model account from the agent's account pool alone, and the "
+    f"hub leased the run none ({OAUTH_TOKEN}); the machine's own login is never used for it: an admin must add a "
+    "usable account to the agent's account pool"
+)
 GATEWAY_LOGIN = "the run's token to the hub's gateway route (ANTHROPIC_AUTH_TOKEN), and no Claude login"
 OWNER_HOME_NOTE = (
     "{runtime} runs with this machine's home and its configuration there: only a claude-code agent under a profile "
@@ -103,7 +110,17 @@ def wanted(spec: Mapping, runtime: str, gateway: bool = False) -> bool:
     """Whether the agent of the run of claim ``spec`` on ``runtime`` gets a config dir of its own: a claude-code run
     the claim says ``own_home`` of, or one through the gateway route (``gateway``), on this machine (not in a
     container)."""
-    return (bool(spec.get("own_home")) or gateway) and runtime == RUNTIME and not spec.get("environment")
+    return (
+        (bool(spec.get("own_home")) or bool(spec.get("account_pool")) or gateway)
+        and runtime == RUNTIME
+        and not spec.get("environment")
+    )
+
+
+def pooled(spec: Mapping) -> bool:
+    """Whether the claim says the run is one of an agent in pool mode (``account_pool``): its login is the lease's alone,
+    never one stored on this machine nor a copy of the owner's."""
+    return bool(spec.get("account_pool"))
 
 
 def keeps_owner_home(spec: Mapping, runtime: str) -> bool:
@@ -357,13 +374,15 @@ def prepare(
     keychain: Callable[[], str | None] | None = None,
     lock: Path | None = None,
     post: Callable[[dict], dict] | None = None,
+    pooled: bool = False,
 ) -> str | None:
     """Write the config dir ``directory`` for an agent that starts now (see the module): ``leased`` says a lease of
     the run sets CLAUDE_CODE_OAUTH_TOKEN, ``gateway`` that the run goes through the gateway route, which gives the dir
     no login (GATEWAY_LOGIN), ``owner_env`` is the daemon's environment, whose config dir has the owner's
     login, refreshed first under the lock of file ``lock`` when it expires soon (``refresh_owner``). Where the
     agent's login comes from; None when there is none (``REFUSAL``). OSError when the dir is not written,
-    RefreshFailed when the owner's login expires soon and was not refreshed."""
+    RefreshFailed when the owner's login expires soon and was not refreshed. A ``pooled`` run (``pooled``) takes the
+    lease's login or none: it never copies nor refreshes the owner's."""
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     (directory / ".gitignore").write_text("*\n", encoding="utf-8")
     _write_private(directory / GLOBAL_FILE, _global_config(directory, server))
@@ -375,6 +394,9 @@ def prepare(
     if leased:
         copy.unlink(missing_ok=True)
         return f"the lease's {OAUTH_TOKEN}"
+    if pooled:
+        copy.unlink(missing_ok=True)
+        return None
     own = owner_dir(owner_env).resolve() == directory.resolve()
     refreshed = False if own else refresh_owner(owner_env, lock, post)
     found = None if own else owner_login(owner_env, keychain)

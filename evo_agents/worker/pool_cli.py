@@ -10,7 +10,9 @@ the machine token of ``evo-agents hub login`` (/v1/worker-pools, ``evo_agents.hu
   revoke NAME ID``.
 - ``pool user-data NAME``: a new join token, and the cloud-init user-data of a new machine of the pool on stdout:
   ``deploy/worker/bootstrap.sh`` (shipped in the package as ``evo_agents/worker/bootstrap.sh``) with the hub and the
-  token written in.
+  token written in. With ``--agent HANDLE`` (once per agent) instead of NAME: a join token for the pool
+  ``agent-<handle>`` of each agent, and user-data that makes the machine hold one node per agent, each under its own
+  Unix user ``evo-<handle>``.
 
 A machine joins a pool with ``evo-agents worker join --url URL --token evj_...``, or with the token in
 EVO_JOIN_TOKEN (``join_secret``), so it stays out of the shell's history and the process list. Each command prints
@@ -22,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import sys
 from importlib import resources
@@ -29,6 +32,8 @@ from importlib import resources
 from evo_agents.hub.client import Hub, HubError, load_credentials
 
 JOIN_TOKEN_ENV = "EVO_JOIN_TOKEN"
+AGENT_TOKENS_ENV = "EVO_AGENT_TOKENS"
+AGENT_POOL_PREFIX = "agent-"  # the pool of each agent: agent-<handle>
 POOLS = "/v1/worker-pools"
 BOOTSTRAP = "bootstrap.sh"  # in evo_agents.worker, a copy of deploy/worker/bootstrap.sh
 SETTINGS_MARK = "# evo-bootstrap settings:"
@@ -151,23 +156,67 @@ def bootstrap_script() -> str:
     return resources.files("evo_agents.worker").joinpath(BOOTSTRAP).read_text(encoding="utf-8")
 
 
-def render_user_data(url: str, token: str, script: str | None = None) -> str:
-    """The bootstrap script as cloud-init user-data: its settings line replaced with the hub and the join token."""
+def render_user_data(
+    url: str, token: str | None, script: str | None = None, agent_tokens: dict[str, str] | None = None
+) -> str:
+    """The bootstrap script as cloud-init user-data: its settings line replaced with the hub and the join token, or,
+    with ``agent_tokens`` (handle to the join token of that agent's pool), the hub and one node per agent."""
     script = bootstrap_script() if script is None else script
     lines = script.splitlines(keepends=True)
     marks = [index for index, line in enumerate(lines) if line.startswith(SETTINGS_MARK)]
     if len(marks) != 1 or not lines[0].startswith("#!"):
         raise HubError(f"{BOOTSTRAP} of this install has no single settings line; install evo-agents again")
+    if agent_tokens:
+        pairs = " ".join(f"{handle}={agent_token}" for handle, agent_token in agent_tokens.items())
+        secret = f"{AGENT_TOKENS_ENV}={shlex.quote(pairs)}\n"
+    else:
+        secret = f"{JOIN_TOKEN_ENV}={shlex.quote(token or '')}\n"
     settings = (
         f"{SETTINGS_MARK} written by `evo-agents worker pool user-data`; the join token is a secret\n"
         f"EVO_HUB_URL={shlex.quote(url)}\n"
-        f"{JOIN_TOKEN_ENV}={shlex.quote(token)}\n"
+        f"{secret}"
     )
     lines[marks[0]] = settings
     return "".join(lines)
 
 
+def _agent_handles(values: list[str]) -> list[str]:
+    handles = list(dict.fromkeys(value.strip().lstrip("@").lower() for value in values))
+    bad = [handle for handle in handles if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,26}", handle)]
+    if bad:
+        raise HubError(f"not an agent handle: {', '.join(bad)} (lower case letters, digits, - and _)")
+    return handles
+
+
+def cmd_user_data_agents(args) -> int:
+    hub = _hub()
+    script = bootstrap_script()
+    tokens: dict[str, str] = {}
+    issued = []
+    for handle in _agent_handles(args.agent):
+        answer = hub.call(
+            "POST", _path(AGENT_POOL_PREFIX + handle, "tokens"), {"hours": args.ttl, "max_uses": args.max_nodes}
+        )
+        tokens[handle] = answer["token"]
+        issued.append(f"{answer['pool']} {answer['id']}")
+    sys.stdout.write(render_user_data(hub.url, None, script, tokens))
+    print(
+        f"The join tokens of {len(issued)} agent pool(s) are in this user-data until {answer['expires_at']}; keep it "
+        "as a secret, and revoke each with "
+        + ", ".join(f"`evo-agents worker pool token revoke {item}`" for item in issued)
+        + ".",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def cmd_user_data(args) -> int:
+    if args.agent:
+        if args.name:
+            raise HubError("give a pool NAME or --agent, not both")
+        return cmd_user_data_agents(args)
+    if not args.name:
+        raise HubError("give a pool NAME, or --agent HANDLE for the nodes of agents")
     hub = _hub()
     script = bootstrap_script()
     answer = hub.call("POST", _path(args.name, "tokens"), {"hours": args.ttl, "max_uses": args.max_nodes})
@@ -264,7 +313,15 @@ def register_pool(wsub) -> None:
     data = psub.add_parser(
         "user-data", help="a new join token, and the cloud-init user-data that makes a new machine a node of the pool"
     )
-    data.add_argument("name", help="the pool")
+    data.add_argument("name", nargs="?", help="the pool")
+    data.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        metavar="HANDLE",
+        help="instead of NAME: a node of this agent's pool agent-<handle>, under the Unix user evo-<handle> "
+        "(repeat for more agents on the machine)",
+    )
     data.add_argument(
         "--ttl", type=_int_in(1, 720), default=24, help="hours its join token works, 1 to 720 (default 24)"
     )

@@ -18,6 +18,13 @@
 # `evo-agents worker join` with the token and `evo-agents worker service install` (a systemd user unit whose PATH
 # has ~/.local/bin). Running it again on the same machine skips what is there and never joins twice: a machine that
 # is a worker already keeps its worker, and the token may then be left out.
+#
+# Several agents on one machine: as root, set EVO_AGENT_TOKENS to "handle=join-token" pairs (the join token of each
+# agent's own pool, from `evo-agents worker pool token create agent-<handle>`), separated by spaces or line breaks.
+# Each agent gets the Unix user evo-<handle> (no sudo, not in the docker group, home mode 0700), its own tools, its own
+# worker token and its own systemd user unit; running it again with another agent adds that node and leaves the nodes
+# there alone. Without root, one node per agent runs under the current user: set EVO_WORKER_AGENT to the handle and
+# EVO_WORKER_HOME to a state directory of its own, and the service is named after the agent.
 set -euo pipefail
 
 # evo-bootstrap settings: `evo-agents worker pool user-data` writes the hub and the join token here.
@@ -25,8 +32,10 @@ set -euo pipefail
 EVO_HUB_URL=${EVO_HUB_URL:-}
 EVO_JOIN_TOKEN=${EVO_JOIN_TOKEN:-}
 EVO_BOOTSTRAP_USER=${EVO_BOOTSTRAP_USER:-evo}
+EVO_AGENT_TOKENS=${EVO_AGENT_TOKENS:-}
+EVO_WORKER_AGENT=${EVO_WORKER_AGENT:-}
 EVO_AK_REQUIREMENT=${EVO_AK_REQUIREMENT:-evo-ak[graphify,worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly}
-export EVO_HUB_URL EVO_JOIN_TOKEN EVO_BOOTSTRAP_USER EVO_AK_REQUIREMENT
+export EVO_HUB_URL EVO_JOIN_TOKEN EVO_BOOTSTRAP_USER EVO_AK_REQUIREMENT EVO_AGENT_TOKENS EVO_WORKER_AGENT
 
 # what any node needs from apt
 SYSTEM_PACKAGES="ca-certificates curl git tmux jq ripgrep xz-utils unzip"
@@ -79,14 +88,15 @@ install_system_packages() {
 }
 
 # The user the root run installs for: created without sudo and outside the docker group, lingering on.
-make_user() {
-    local user=$EVO_BOOTSTRAP_USER group
+make_user() {  # [user]
+    local user=${1:-$EVO_BOOTSTRAP_USER} group
     if id "$user" >/dev/null 2>&1; then
         say "user $user is there already"
     else
         say "creating user $user, without sudo"
         useradd --create-home --shell /bin/bash "$user"
     fi
+    chmod 0700 "$(getent passwd "$user" | cut -d: -f6)"  # 22.04 makes a home 0755: other nodes must not read it
     for group in sudo admin wheel docker; do
         if id -nG "$user" | tr ' ' '\n' | grep -qx "$group"; then
             say "warning: user $user is in the group $group; a worker should not be (gpasswd -d $user $group)"
@@ -154,6 +164,11 @@ install_npm_tool() {  # command, package
     npm install --global --prefix "$HOME/.local" --no-fund --no-audit "$2"
 }
 
+# An agent handle: what `evo-<handle>` and the unit name can hold.
+valid_handle() {
+    [[ $1 =~ ^[a-z0-9][a-z0-9_-]{0,26}$ ]]
+}
+
 # The part that runs as the worker's user, in its home. Root runs it through runuser, which keeps the environment.
 user_phase() {
     set -euo pipefail
@@ -164,7 +179,13 @@ user_phase() {
     if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
         export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
     fi
-    local state="${EVO_WORKER_HOME:-$HOME/.evo/worker}" joined=no
+    local state="${EVO_WORKER_HOME:-$HOME/.evo/worker}" joined=no unit=$UNIT
+    if [ -n "${EVO_WORKER_AGENT:-}" ]; then
+        valid_handle "$EVO_WORKER_AGENT" || die "EVO_WORKER_AGENT=$EVO_WORKER_AGENT is not an agent handle"
+        [ -n "${EVO_WORKER_HOME:-}" ] || die "the node of agent $EVO_WORKER_AGENT needs EVO_WORKER_HOME, a state \
+directory of its own (for example ~/.evo/worker-$EVO_WORKER_AGENT)"
+        unit="${UNIT%.service}-$EVO_WORKER_AGENT.service"
+    fi
     if [ -f "$state/config.json" ] && [ -f "$state/token" ]; then
         joined=yes
     elif [ -z "$EVO_HUB_URL" ] || [ -z "$EVO_JOIN_TOKEN" ]; then
@@ -213,8 +234,8 @@ tmux jq ripgrep curl), or run this script as root"
         say "joining $EVO_HUB_URL with the join token"
         evo-agents worker join --url "$EVO_HUB_URL"  # the token is read from EVO_JOIN_TOKEN, out of the process list
     fi
-    if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT" ]; then
-        say "the service $UNIT is installed already"
+    if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$unit" ]; then
+        say "the service $unit is installed already"
     else
         if [ "$(id -u)" -ne 0 ] && [ ! -e "/var/lib/systemd/linger/$(id -un)" ] && has loginctl; then
             loginctl enable-linger "$(id -un)" || say "warning: lingering is off, so the worker stops at logout \
@@ -225,20 +246,54 @@ tmux jq ripgrep curl), or run this script as root"
     say "done: \`evo-agents worker status\` shows the worker, and the hub hands it runs once its doctor is clean"
 }
 
+# Install and join as one user: root runs this through runuser, which keeps the environment.
+install_for() {  # user, join token
+    local user=$1 home
+    say "installing for user $user"
+    home=$(getent passwd "$user" | cut -d: -f6)
+    # runuser without --login keeps the environment and sets HOME, USER and LOGNAME; the token travels in it, never in
+    # the process list
+    EVO_JOIN_TOKEN=$2 runuser -u "$user" -- env -u EVO_WORKER_HOME -u EVO_WORKER_AGENT HOME="$home" \
+        XDG_RUNTIME_DIR="/run/user/$(id -u "$user")" \
+        bash -c "UNIT=$UNIT; $(declare -f say die has valid_handle install_node install_pnpm install_npm_tool user_phase); \
+user_phase"
+}
+
+# One node per agent: the user evo-<handle> with the join token of the pool of that agent.
+agent_phase() {
+    local pair handle
+    local -a pairs
+    # shellcheck disable=SC2206 # the pairs are words
+    pairs=($EVO_AGENT_TOKENS)
+    [ "${#pairs[@]}" -gt 0 ] || die "EVO_AGENT_TOKENS holds no handle=token pair"
+    for pair in "${pairs[@]}"; do
+        handle=${pair%%=*}
+        { valid_handle "$handle" && [ "$handle" != "$pair" ] && [ -n "${pair#*=}" ]; } ||
+            die "EVO_AGENT_TOKENS: expected handle=join-token, with a handle of lower case letters, digits, - and _"
+    done
+    for pair in "${pairs[@]}"; do
+        handle=${pair%%=*}
+        make_user "evo-$handle"
+        install_for "evo-$handle" "${pair#*=}"
+    done
+}
+
 main() {
     check_system
+    if [ -n "$EVO_AGENT_TOKENS" ]; then
+        [ "$(id -u)" -eq 0 ] || die "EVO_AGENT_TOKENS adds a Unix user per agent, which takes root; without root set \
+EVO_WORKER_AGENT and EVO_WORKER_HOME for one agent's node"
+        install_system_packages
+        agent_phase
+        return
+    fi
     if [ "$(id -u)" -ne 0 ]; then
         user_phase
         return
     fi
     install_system_packages
     make_user
-    say "installing for user $EVO_BOOTSTRAP_USER"
-    local home
-    home=$(getent passwd "$EVO_BOOTSTRAP_USER" | cut -d: -f6)
-    # runuser without --login keeps the environment (EVO_JOIN_TOKEN among it) and sets HOME, USER and LOGNAME
-    runuser -u "$EVO_BOOTSTRAP_USER" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$(id -u "$EVO_BOOTSTRAP_USER")" \
-        bash -c "UNIT=$UNIT; $(declare -f say die has install_node install_pnpm install_npm_tool user_phase); user_phase"
+    install_for "$EVO_BOOTSTRAP_USER" "$EVO_JOIN_TOKEN"
 }
 
 main "$@"
