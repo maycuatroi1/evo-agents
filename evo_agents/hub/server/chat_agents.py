@@ -47,7 +47,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, outputs, profiles, runs, tables
+from evo_agents.hub import chats, guard, outputs, profiles, runs, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pull_trailers, pulls
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
@@ -457,6 +457,7 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
         first = rules.session_of(body.branch) or run_id
         title = (await conn.execute(select(r.c.title).where(r.c.id == first))).scalar_one_or_none() or body.branch
         signed = await pull_trailers.block(conn, run_id)
+        policy = await guard.policy(conn)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
     url, number, opened, problem, draft = None, None, False, None, True
@@ -467,7 +468,8 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
             + signed
         )
         try:
-            made, opened = await open_draft(app, target, body.branch, title[:240], text)
+            title, text = guard.scrub(policy, f"github.com/{target[0]}/{target[1]}", title[:240], text)
+            made, opened = await open_draft(app, target, body.branch, title, text)
             url, number, draft = made.get("html_url"), made.get("number"), made.get("draft") is not False
         except (GitHubRefused, GitHubUnavailable) as exc:
             problem = str(exc)

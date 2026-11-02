@@ -438,7 +438,7 @@ to hold a plugin's tables: the hub's chain compares none of the tables core plug
 (`evo_agents/hub/migrations/owned.py`, and those of the installed plugins' metadata), and
 `tests/hub/test_schema_metadata.py` requires none of them.
 
-evo-ak ships its core plugins builder, pm, crm, marketing and browser in `evo_agents.core_plugins`, declared in its own
+evo-ak ships its core plugins builder, guard, pm, crm, marketing and browser in `evo_agents.core_plugins`, declared in its own
 entry points, so every install has them, the hub's image among them. No package of evo_agents imports them
 (import-linter contract core-plugins-by-entry-point): the hub reaches them through their manifests.
 
@@ -454,6 +454,9 @@ Features): off by default, on for each project that enabled canvas, srs or tasks
 a hub admin in Features or by an admin of the project on its Plugins page, where each is listed with `builtin` true. While
 on, it may do what its manifest asks for, with no grant of its own to keep. Going back below 0147 puts back the rows of
 `project_plugins` that 0147 kept in `retired_project_plugins`.
+
+evo-ak also ships **guard**, which keeps the private names of the hub's projects out of the repos they publish: its
+lists, its policy and the guards of workers, members and the hub are in `docs/guard.md`.
 
 telegram, chats, crm, pm, marketing, editorial and okr are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as

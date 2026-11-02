@@ -99,6 +99,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from evo_agents import __version__
+from evo_agents.guard_check import ENV as GUARD_ENV
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
@@ -106,6 +107,7 @@ from evo_agents.worker import (
     checkouts,
     doctor_report,
     gitops,
+    guard,
     interactive,
     kg_sync,
     orphans,
@@ -224,6 +226,7 @@ class Daemon:
         self.token = token
         self.adapters = dict(adapters)
         self.env = dict(os.environ if env is None else env)
+        self.env[GUARD_ENV] = str(guard.policy_path(home.root))  # the hub's private names, kept by _take_guard
         self.heartbeat_s = heartbeat_seconds(self.env)
         self.budget = SpoolBudget()
         self.runs: dict[int, Run] = {}
@@ -260,6 +263,7 @@ class Daemon:
         # the owner's open Install browser, as heartbeats report it: {requested_at, ended, error}; None for none
         self.install_asked: dict | None = None
         self._installing: asyncio.Task | None = None  # the install of Chromium it carries out, while it runs
+        self._guarding: asyncio.Task | None = None  # the fetch of the hub's guard policy, while it runs
         self._asks_merged = True  # until a hub before POST /v1/worker/merged answers 404
 
     # Shared with the runs
@@ -562,6 +566,7 @@ class Daemon:
             self.slot_free.set()
         if answer.get("settings") is not None:
             self._take_settings(answer["settings"])
+            self._guarding = guard.heard(self._guarding, self.hub, self.home.root, answer["settings"])
         else:
             self.updater.hear_lock(None)
         self.updater.hear_answer(answer.get("nightly"), answer.get("update_now"))
