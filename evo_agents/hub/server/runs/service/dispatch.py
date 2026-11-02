@@ -310,6 +310,20 @@ async def insert_run(conn: AsyncConnection, values: dict, who: run_autonomy.For 
         return (await conn.execute(insert(r).values(**values).returning(r.c.id))).scalar_one()
 
 
+async def warned(conn: AsyncConnection, view: Run) -> Run:
+    """``view`` of a run the dispatch just queued, with the warning ``queue_fit`` gives when no worker can take it now.
+    It is read in a savepoint: a warning the hub cannot read leaves the dispatch as it was."""
+    from evo_agents.hub.server.runs.service import queue_fit  # it reads the candidates, whose controls import this
+
+    try:
+        async with conn.begin_nested():
+            said = await queue_fit.warning(conn, view.id)
+    except Exception:
+        log.exception("the warning of a dispatch could not be read", extra={"run_id": view.id})
+        return view
+    return view if said is None else view.model_copy(update={"warning": said})
+
+
 async def queue_run(
     conn: AsyncConnection,
     access: ProjectAccess,
@@ -505,7 +519,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 granted = f"{run_target(project, body.plan_id, key, run_id)} by=dispatch"
                 await run_access.record(conn, user, access.project_id, granted, granted=True)
             queued.append(run_id)
-        views = await run_views(conn, queued)
+        views = [await warned(conn, view) for view in await run_views(conn, queued)]
     log.info(
         "runs dispatched",
         extra={"project": project, "plan_id": body.plan_id, "runs": queued, "login": user.login},
@@ -628,7 +642,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         if body.as_me:
             granted = f"{run_target(project, held.plan_id, None, run_id)} by=dispatch"
             await run_access.record(conn, user, access.project_id, granted, granted=True)
-        view = await run_view(conn, run_id)
+        view = await warned(conn, await run_view(conn, run_id))
     log.info(
         "plan run dispatched",
         extra={
@@ -733,7 +747,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         await notify_queued(conn, run_id)
         target = f"{project}/author run:{run_id}{_account_text(picked)}{chosen.audit_text()}"
         await audit_run(conn, user, access, audit.RUN_DISPATCH_AUTHOR, target)
-        view = await run_view(conn, run_id)
+        view = await warned(conn, await run_view(conn, run_id))
     log.info(
         "author run dispatched",
         extra={

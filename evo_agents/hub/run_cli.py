@@ -160,6 +160,13 @@ def _timeout(run: dict) -> str:
     return f"{minutes // 60} h" if hours else f"{minutes} min"
 
 
+def _warn(run: dict, args, project: str) -> None:
+    """On stderr, the warning the hub gave with a run it queued: no worker can take it now, and why."""
+    if run.get("warning"):
+        where = _with_project(args, project)
+        print(f"Warning: {run['warning']}. More: `evo-agents hub run candidates {run['id']}{where}`.", file=sys.stderr)
+
+
 def _model_check(args) -> str | None:
     """Why ``--model`` cannot go with the ``--runtime`` given, or None."""
     if args.model is None:
@@ -385,6 +392,7 @@ def cmd_dispatch(args) -> int:
             f"Queued run #{run['id']}: {_step(run)}, repo {run['repo']}; runtime {_runtime(run)}, "
             f"{run['mode']}, approval {run['approval']}, timeout {run['timeout_min']} min{pinned}{_as_you(run)}."
         )
+        _warn(run, args, project)
     print(f"Follow it with `evo-agents hub run logs {queued[0]['id']} --follow{_with_project(args, project)}`.")
     return 0
 
@@ -411,6 +419,7 @@ def cmd_plan(args) -> int:
         f"Queued plan run #{run['id']}: {_step(run)}, every step not done yet{each}, in {_repos(run)}; runtime "
         f"{_runtime(run)}, {run['mode']}, timeout {_timeout(run)} of agent time{pinned}{_as_you(run)}."
     )
+    _warn(run, args, project)
     where = _with_project(args, project)
     print(
         f"Follow it with `evo-agents hub run logs {run['id']} --follow{where}`; the decisions its agent asks you: "
@@ -442,6 +451,7 @@ def cmd_author(args) -> int:
         f"Queued author run #{run['id']}: {_step(run)}, {_author_on(run)} over {_repos(run)}; "
         f"runtime {_runtime(run)}, timeout {_timeout(run)} of agent time. It reads only and pushes nothing."
     )
+    _warn(run, args, project)
     print(f"Follow it with `evo-agents hub run logs {run['id']} --follow{_with_project(args, project)}`.")
     return 0
 
