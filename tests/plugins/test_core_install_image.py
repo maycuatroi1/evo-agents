@@ -189,8 +189,11 @@ class _Prefixed:
 
     def read(self, size: int = -1) -> bytes:
         if self.prefix:
+            if 0 <= size < len(self.prefix):  # never more than asked for: gzip reads its 2-byte magic first
+                out, self.prefix = self.prefix[:size], self.prefix[size:]
+                return out
             out, self.prefix = self.prefix, b""
-            return out + (self.stream.read(size - len(out)) if size > len(out) else b"")
+            return out + (self.stream.read(size - len(out)) if size < 0 or size > len(out) else b"")
         return self.stream.read(size)
 
 

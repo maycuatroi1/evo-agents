@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("fastapi", reason="needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.harness import load_schema, load_yaml
 from evo_agents.hub import judge, merge_gate, proofs, record_rule
 from evo_agents.hub.plans import step_key

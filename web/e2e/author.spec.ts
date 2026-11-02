@@ -9,7 +9,6 @@ import {
   chatOf,
   dispatchAuthor,
   ensureAuthorSkill,
-  HARNESS_CHECKOUT,
   startAuthor,
 } from "./support/author";
 import { expect, isDeployed, test } from "./support/fixtures";
@@ -72,9 +71,7 @@ test("a writer starts New plan, answers the agent in the run's chat, follows the
   const dialog = page.getByTestId("author-run-dialog");
   await expect(dialog.getByRole("heading", { name: "New plan" })).toBeVisible();
   await expect(dialog.getByTestId("author-run-runtime")).toContainText("Claude Code");
-  await expect(dialog.getByTestId("author-run-worker-select")).toHaveValue(String(live.worker.id));
-  await expect(dialog.getByTestId("author-run-worker")).toContainText(HARNESS_CHECKOUT);
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveText(`${live.worker.name} can take it now.`);
+  await expect(dialog.getByTestId("author-run-worker-select")).toHaveCount(0); // the hub places the run, no machine picker
   await dialog.getByTestId("author-run-submit").click();
   await expect(dialog.getByTestId("author-run-request-problem")).toHaveText("Say what the plan should achieve first.");
   await axeBoth(page, "the New plan dialog, with a blank request refused");
@@ -94,7 +91,7 @@ test("a writer starts New plan, answers the agent in the run's chat, follows the
     requested_runtime: "claude-code",
     model: MODELS[1],
     timeout_min: 240,
-    pinned_worker_id: live.worker.id,
+    pinned_worker_id: null,
     dispatched_by: me.login,
   });
   const dispatched = toast(page, `Author run #${run.id} dispatched`);
@@ -178,7 +175,7 @@ test("Revise with agent from a plan's page and from the palette queues an author
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
-  const live = await authorWorker(me, project, uniqueName("desk"));
+  await authorWorker(me, project, uniqueName("desk"));
 
   await open(page, `/p/${project}/plans/${RUN_PLAN}`);
   const actions = main(page).getByTestId("plan-actions");
@@ -193,7 +190,7 @@ test("Revise with agent from a plan's page and from the palette queues an author
   await dialog.getByTestId("author-run-submit").click();
   await expect(dialog).toBeHidden();
   const [run] = await runsOf(me, project);
-  expect(run).toMatchObject({ kind: "author", plan_id: RUN_PLAN, state: "queued", pinned_worker_id: live.worker.id, timeout_min: 120 });
+  expect(run).toMatchObject({ kind: "author", plan_id: RUN_PLAN, state: "queued", pinned_worker_id: null, timeout_min: 120 });
   await expect(toast(page, `Author run #${run.id} dispatched`)).toContainText(RUN_PLAN);
 
   // The palette offers both: New plan at once, Revise with agent once the plan is typed.
@@ -358,7 +355,7 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
     }
     await main(page).getByTestId("new-plan").click();
     const dialog = page.getByTestId("author-run-dialog");
-    await expect(dialog.getByTestId("author-run-worker-select")).toBeVisible();
+    await expect(dialog.getByTestId("author-run-request")).toBeVisible();
     const box = await dialog.boundingBox();
     expect.soft(box && box.x >= 0 && box.x + box.width <= width, `the dialog fits ${width} px`).toBe(true);
     const inner = await dialog.getByTestId("author-run-body").evaluate((element) => element.scrollWidth - element.clientWidth);
