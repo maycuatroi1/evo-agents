@@ -281,3 +281,56 @@ by language (holdout, shipped ranking): python 0.093 (75), javascript 0.120 (9),
 C++ score 0 on both. The per-task `language` field keeps these rows in each summary. For step 4: a tune-time gain on tune is
 mostly JavaScript and cannot show a Python gain, and holdout cannot show a C or C++ one; tune per language and report the
 language rows next to the primary.
+
+## Without training (step 4)
+
+`bench/results/no-train.json` holds the holdout part of the four code sets and both parts of the evo-agents set, asked
+with `kg_search` as it ships after step 4: the same tasks as `baseline.json` (`run --like bench/results/baseline.json
+--part holdout`), the same graphs (extractor `8418fefbc7d7eafc`), each set run apart with `--jobs 2` and joined with
+`kg bench merge`. The runner now reads each graph once before it asks (`graphs.warm`): the baseline's p95 timed a cold
+disk read of graphs built hours before (django: 829 ms on the first search, 160 ms on the next), which a served graph
+does not pay.
+
+What changed in the ranking (docs/kg.md, `kg_search`): a caller that names a `limit` gets that many results even when
+none holds the whole query; on a code graph the text matches are read again by `evo_agents/kg/locate.py` (exact
+anchors from the issue, expansion along parsed or confident edges, tests and co-changed files, scores per file, one
+symbol per file before any file's second).
+
+| Holdout primary metric | baseline | no-train | difference (95% interval) |
+|---|---|---|---|
+| ContextBench line F1 (126) | 0.066 | 0.082 | +0.016 (+0.003, +0.031) |
+| SWE-Explore line F1 (230) | 0.118 | 0.160 | +0.042 (+0.019, +0.065) |
+| LocBench Acc@5 (300) | 0.403 | 0.490 | +0.087 (+0.050, +0.127) |
+| MuLocBench Acc@5 (183) | 0.159 | 0.186 | +0.027 (-0.016, +0.071), within the interval |
+| evo-agents hit@5 (33 paired) | 0.939 | 0.939 | 0 |
+
+The evo-agents set was asked from 437 questions made by `kg eval-questions --project evo-agents` on this branch (303 tune,
+134 holdout), against 633 in the baseline; `compare` pairs them by id, so its row holds the 33 holdout questions both ask.
+kg_search p95 over the holdout of all five sets: 188 ms (each set alone 169 to 244 ms). ContextBench by language (holdout): python 0.093 to 0.116
+(75), javascript 0.120 to 0.156 (9), go, java, typescript and c unchanged near 0. SWE-Explore: python 0.132 to 0.183 (194).
+
+**Tuning, on the tune part only.** The weights of `locate.Params` came from a random search over pools of candidates
+gathered once per tune task of SWE-Explore (70), ContextBench (172) and MuLocBench (117), scored offline with the
+bench's own metrics; LocBench has no tune part. No holdout task was read while tuning. Each direction, on those pools
+(line F1, line F1, Acc@5):
+
+| On the tune pools | SWE-Explore | ContextBench | MuLocBench |
+|---|---|---|---|
+| text order of the matches | 0.043 | 0.042 | 0.197 |
+| locate as shipped | 0.119 | 0.067 | 0.291 |
+| without anchors | 0.078 | 0.059 | 0.248 |
+| without expansion along edges | 0.114 | 0.045 | 0.282 |
+| one spot per file first off (`second=0`) | 0.137 | 0.062 | 0.128 |
+| per-token packing (`size_pen` 0.5) | 0.115 | 0.065 | 0.291 |
+| cut files under 0.2 of the best (`weak`) | 0.122 | 0.063 | 0.231 |
+
+Through the real `kg_search` path on the tune graphs still built (SWE-Explore 70, ContextBench 172; the MuLocBench tune
+graphs had been evicted): text order with the cut lifted 0.057 and 0.052, locate with the `WEAK_LIMIT` cut kept 0.106 and
+0.049, locate without it 0.106 and 0.070. A coordinate search that raised the pool objective from 0.825 to 0.891
+(anchor 3, expand 0.3, file_extra 0, test_path 0.3) moved the real path to 0.111 and 0.063, so the shipped weights stay.
+
+**ContextBench answers under `/workspace/`.** 354 of the 811 ContextBench tasks give their answer paths as
+`/workspace/<owner>__<repo>__<version>/<path>`, which no graph path matches, so those tasks score 0 with any ranking
+(none of Python's 199 tasks; 52 of 67 C, 52 of 57 C++, 49 of 57 Java, 47 of 61 Rust, 52 of 101 Go tasks: most of the
+near-zero rows by language). The reader in `datasets.py` should strip that prefix; doing so changes the
+answers, so it needs the baselines asked again and is left to a later step.
