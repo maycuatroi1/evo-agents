@@ -147,6 +147,7 @@ def test_gh_texts_names_the_commands_that_write_text_and_what_they_write(args, c
     assert (found is not None) is checked
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the gh shim and the fake gh are POSIX shell scripts")
 def test_the_gh_shim_refuses_a_name_for_a_guarded_repo_and_runs_the_real_gh_otherwise(tmp_path, repo, policy_file):
     real = tmp_path / "real-bin"
     real.mkdir()
