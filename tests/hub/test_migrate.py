@@ -163,6 +163,7 @@ TABLES |= {"kg_optimize_runs"}  # migration 0182
 TABLES |= {"merge_checks"}  # migration 0187
 TABLES |= {"proposal_threads"}  # migration 0188
 TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
+TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -5258,3 +5259,29 @@ def test_migration_0191_adds_account_pools_and_the_account_pool_of_an_agent(hub_
     move_to(hub_db, "0190", down=True)
     assert {"account_pools", "account_pool_members"}.isdisjoint(tables(hub_db))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0191") :]
+
+
+def test_migration_0192_adds_the_guards_lists_of_a_project(hub_db):
+    move_to(hub_db, "0191")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0192")
+    terms, targets = t.guard_terms, t.guard_targets
+    term = {"project_id": ids["project"], "term": "Northwind", "words": "northwind", "created_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(terms).values(term))
+        conn.execute(
+            insert(targets).values(project_id=ids["project"], pattern="github.com/acme/*", created_by=ids["user"])
+        )
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):  # the same words once in a project
+        conn.execute(insert(terms).values({**term, "term": "NORTHWIND"}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 1 to 200 characters
+        conn.execute(insert(terms).values({**term, "term": "x" * 201, "words": "x"}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # a note of at most 200
+        conn.execute(
+            insert(targets).values(project_id=ids["project"], pattern="a/b", note="n" * 201, created_by=ids["user"])
+        )
+    move_to(hub_db, "0191", down=True)
+    assert {"guard_terms", "guard_targets"}.isdisjoint(tables(hub_db))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0192") :]

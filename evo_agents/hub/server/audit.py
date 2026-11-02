@@ -170,6 +170,12 @@ ACCOUNT_POOL_DELETE = "account-pool.delete"  # an admin deleted a pool no agent 
 ACCOUNT_POOL_ADD = "account-pool.add"  # an admin added an account to it
 ACCOUNT_POOL_REMOVE = "account-pool.remove"  # an admin took an account out of it
 ACCOUNT_POOL_ATTACH = "account-pool.attach"  # an admin attached it to an agent, or detached it (none)
+# The lists of the core plugin guard (evo_agents.core_plugins.guard), in the project; the target is
+# "<project> guard-term:<id>" or "<project> guard-target:<id>", never the term itself.
+GUARD_TERM_ADD = "guard-term.add"  # an admin added a private name of the project
+GUARD_TERM_REMOVE = "guard-term.remove"  # an admin removed one
+GUARD_TARGET_ADD = "guard-target.add"  # an admin added a pattern of the repos the project publishes
+GUARD_TARGET_REMOVE = "guard-target.remove"  # an admin removed one
 # The accounts of an agent profile (evo_agents.hub.server.agent_accounts), in the project; the target is
 # "<project>/@<handle> secret:<id>", with " fields=<names>" for a change, never a name of the account or a value.
 AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name

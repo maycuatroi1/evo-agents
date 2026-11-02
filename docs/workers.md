@@ -198,6 +198,10 @@ its projects as the hub lists them; `--worker W` changes another of the owner's 
 machine signed in to its hub. On the web, the owner checks or unchecks them in the Settings card of the worker's page.
 A project added still needs its checkouts on the machine, as at registration ([Runtimes and checkouts](#runtimes-and-checkouts)).
 
+The heartbeat answer's `settings.guard` is the digest of the hub's guard policy, the private names its projects keep
+out of the repos they publish; the daemon fetches the policy when the digest changes and puts its git hooks and a
+`gh` shim in front of every run ([docs/guard.md](guard.md)).
+
 ## Pools
 
 A pool is a set of machines a member adds with one join token instead of a pairing code each: servers made for runs,
