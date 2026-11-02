@@ -326,6 +326,9 @@ LOOP_DECISION_CATEGORY = "loop"
 AUTONOMY_DECISION_CATEGORY = "autonomy"
 # the hub does what the answer chooses
 HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY, AUTONOMY_DECISION_CATEGORY)
+# those of them about what the run they hang on stands for (a release cycle, a work item of the Loop) rather than the run
+# itself: the run's end leaves them open (``server.run_state.move_run``)
+OUTLIVING_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY)
 # what the agent of a plan run opens with `evo-agents worker wait` to wait for a time or an event of the hub rather than
 # for its owner (``server.run_waits``): the hub answers it when either comes, the owner may answer it sooner
 WAIT_DECISION_CATEGORY = "wait"
