@@ -10,5 +10,9 @@ a concrete workflow and the first steps. Put command catalogs, protocols, hooks 
   or [web](web/README.md).
 - Check live source against the graph snapshot before changing code. Keep documentation examples executable;
   when moving one, update its links and the tests that read it.
-- Keep project-specific data, internal hosts and credentials out of this public repository.
+- Keep project-specific data, internal hosts and credentials out of this public repository. That covers code,
+  comments, tests, fixtures, docs, commit messages, PR titles and bodies, review comments and release notes: never
+  name a member's or customer's project, its hosts, domains, groups or repos. Write fictional names instead
+  (`northwind`, `lumen-*`, `lumenops.example`); hub projects that are part of evo-agents itself may be named. Before
+  committing or opening a PR, read the diff, the message and the PR body for such names.
 - Use plain language in documentation. Do not use the middle-dot character as a separator.
