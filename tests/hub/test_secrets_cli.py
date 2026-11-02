@@ -475,8 +475,11 @@ def test_run_credentials_lists_each_lease_of_a_run_for_its_owner_alone(hub, monk
 @needs_pg
 def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(hub, monkeypatch, capsys):
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "mac-mini")
-    pinned = ("dispatch", PLAN, str(STEPS["notes"]), "--worker", "mac-mini", "--json")
-    queued = as_json(run_of(hub, monkeypatch, capsys, "owner", *pinned))
+    # the CLI no longer pins a worker (the agent's pool places the run); the API keeps worker_id for legacy agents
+    pinned = {"plan_id": PLAN, "steps": [STEPS["notes"]], "worker_id": worker["id"]}
+    made = hub.client.post(f"/v1/projects/{PROJECT}/runs", json=pinned, headers=hub.headers["owner"])
+    assert made.status_code == 201, made.text
+    queued = made.json() if isinstance(made.json(), list) else [made.json()]
     ok(run_of(hub, monkeypatch, capsys, "owner", "cancel", str(queued[0]["id"])))
     from sqlalchemy import update
 
@@ -489,13 +492,7 @@ def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(h
         "error: worker mac-mini takes only runs dispatched from a web session, as its owner set it, so a token cannot "
         "hand it work: dispatch on the web, or to another worker; nothing was dispatched\n"
     )
-    for args in (
-        ("dispatch", PLAN, str(STEPS["evo-agents"]), "--worker", "mac-mini"),
-        ("dispatch", PLAN, str(STEPS["evo-agents"]), "--worker", str(worker["id"])),
-        ("plan", PLAN, "--worker", "mac-mini"),
-        ("rerun", str(queued[0]["id"])),
-    ):
-        refused = run_of(hub, monkeypatch, capsys, "owner", *args)
-        assert (refused.code, refused.out, refused.err) == (1, "", why), args
+    refused = run_of(hub, monkeypatch, capsys, "owner", "rerun", str(queued[0]["id"]))
+    assert (refused.code, refused.out, refused.err) == (1, "", why)
     listed = as_json(run_of(hub, monkeypatch, capsys, "owner", "list", "--json"))
     assert [run["id"] for run in listed["runs"]] == [queued[0]["id"]]  # nothing was queued

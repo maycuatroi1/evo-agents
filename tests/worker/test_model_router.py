@@ -16,6 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("aiohttp", reason="needs the worker extra, evo-ak[worker]")
+
 from evo_agents.hub import model_router
 from evo_agents.worker import model_router as worker_router
 from evo_agents.worker.adapter import RunContext
