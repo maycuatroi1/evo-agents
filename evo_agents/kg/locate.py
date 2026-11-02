@@ -98,6 +98,8 @@ class Pool:
     order: list[str] = field(default_factory=list)  # the text order
     links: dict[str, list[tuple[str, str, float]]] = field(default_factory=dict)  # id -> [(other, rel, conf)]
     text: bool = True  # the matches were scored by BM25 (False: by rank alone)
+    exact: set[str] = field(default_factory=set)  # the matches the search gave no score: an id or a name is the query
+    scores: dict[str, float] = field(default_factory=dict)  # the text score of each match, as the search gave it
 
 
 # -- what a question names -----------------------------------------------------------------------------------------
@@ -314,10 +316,14 @@ def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: l
     rels = _rels(scored)
     pool = Pool(text=any(s is not None for _, s in scored))
     nodes = store.nodes([i for i, _ in scored], b)
-    for node_id, _ in scored:
+    for node_id, score in scored:
         if node_id in nodes:
             pool.cands[node_id] = _cand(nodes[node_id], rels[node_id])
             pool.order.append(node_id)
+            if score is None:
+                pool.exact.add(node_id)
+            else:
+                pool.scores[node_id] = score
     named = _lookup(store, b, anchors(query) if found is None else found, params)
     fresh = [i for i in named if i not in pool.cands]
     for node_id, node in store.nodes(fresh, b).items():
@@ -453,9 +459,10 @@ def scores(pool: Pool, params: Params = DEFAULT) -> dict[str, float]:
     return total
 
 
-def order(pool: Pool, params: Params = DEFAULT) -> list[str]:
-    """The ids of the candidates in the order ``arrange`` lists them (see the module)."""
-    total = scores(pool, params)
+def files(pool: Pool, params: Params = DEFAULT, total: dict[str, float] | None = None) -> list[tuple[float, str, list]]:
+    """(score, path, ids best first) of each file of the candidates, best first: a file scores its best node and
+    ``file_extra`` of its next two. A candidate without a path is a file of its own."""
+    total = scores(pool, params) if total is None else total
     groups: dict[str, list[str]] = {}
     for node_id, c in pool.cands.items():
         if total[node_id] <= 0:
@@ -469,6 +476,12 @@ def order(pool: Pool, params: Params = DEFAULT) -> list[str]:
     ranked.sort(key=lambda t: (-t[0], t[1]))
     if ranked and params.weak:
         ranked = [t for t in ranked if t[0] >= params.weak * ranked[0][0]]
+    return ranked
+
+
+def place(ranked: list[tuple[float, str, list]], params: Params = DEFAULT) -> list[str]:
+    """The ids of ranked files in reading order: each file's best node in the files' order, then the next ones, a
+    file's second node after ``second`` files' first ones."""
     placed = []
     for g, (_, _, ids) in enumerate(ranked):
         for r, node_id in enumerate(ids[:8]):
@@ -477,17 +490,23 @@ def order(pool: Pool, params: Params = DEFAULT) -> list[str]:
     return [node_id for _, _, _, node_id in placed]
 
 
+def order(pool: Pool, params: Params = DEFAULT) -> list[str]:
+    """The ids of the candidates in the order ``arrange`` lists them (see the module)."""
+    return place(files(pool, params), params)
+
+
 def code_like(pool: Pool, top: int = 10) -> bool:
     """Whether most of the best text matches are code."""
     best = [pool.cands[i] for i in pool.order[:top] if i in pool.cands]
     return bool(best) and sum(c.kind in CODE_KINDS for c in best) * 2 > len(best)
 
 
-def arrange(store, b: int, query: str, scored, params: Params = DEFAULT) -> list[str] | None:
+def arrange(store, b: int, query: str, scored, params: Params = DEFAULT, ranker=None) -> list[str] | None:
     """The ids of a question's candidates in reading order, or None when the graph is not code (the text order stands).
 
     ``scored`` is ``Store.search_scored``: (id, text score) of the text matches, best first. The text matches that the
-    reading leaves out follow the ones it lists.
+    reading leaves out follow the ones it lists. ``ranker``, a learned model of ``evo_agents.kg.rank``, orders the
+    files again before their nodes are placed; None keeps the order of step 3.
     """
     scored = list(scored)
     if not scored:
@@ -495,6 +514,9 @@ def arrange(store, b: int, query: str, scored, params: Params = DEFAULT) -> list
     pool = gather(store, b, query, scored, params)
     if not code_like(pool):
         return None
-    listed = order(pool, params)
+    ranked = files(pool, params)
+    if ranker is not None:
+        ranked = ranker.rerank(store, b, query, pool, ranked, params)
+    listed = place(ranked, params)
     seen = set(listed)
     return listed + [i for i, _ in scored if i not in seen]

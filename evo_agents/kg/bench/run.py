@@ -324,9 +324,11 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
 
 def ranking_digest() -> str:
     """Digest of the code that ranks and serves a search (not of the graph's extractor): a change of it asks again."""
-    from evo_agents.kg import asked, locate, search, semantic, serve, store, text
+    from evo_agents.kg import asked, locate, rank, search, semantic, serve, store, text
 
-    parts = [Path(m.__file__).read_bytes() for m in (asked, locate, search, semantic, serve, store, text)]
+    parts = [Path(m.__file__).read_bytes() for m in (asked, locate, rank, search, semantic, serve, store, text)]
+    # the learned order: on or off, and which model (a run with it on never reuses the answers of one without)
+    parts.append(json.dumps(rank.state(), sort_keys=True).encode())
     return hashlib.sha256(b"\0".join(parts)).hexdigest()[:12]
 
 
@@ -476,6 +478,13 @@ def local_checkouts(project: str | None):
     return lambda question_project: project_checkouts(question_project or project)
 
 
+def rank_state() -> dict:
+    """The learned order of kg_search the run asked with ($EVO_KG_RANK, evo_agents.kg.rank)."""
+    from evo_agents.kg import rank
+
+    return rank.state()
+
+
 def summary(benches: dict[str, dict], records: list[dict], options: Options, search: str | None = None) -> dict:
     """The summary of a run (see the module): what it ran, with what, and its numbers per set, part and task."""
     return {
@@ -493,6 +502,7 @@ def summary(benches: dict[str, dict], records: list[dict], options: Options, sea
             "seed": options.seed,
             "sample": options.sample,
             "max_hours": options.max_hours,
+            "rank": rank_state(),
         },
         "cost": {
             "usd": 0.0,

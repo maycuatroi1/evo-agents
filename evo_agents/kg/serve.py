@@ -36,6 +36,7 @@ from collections import Counter, deque
 
 from evo_agents import __version__
 from evo_agents.kg import locate, semantic
+from evo_agents.kg import rank as learned
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
     CONTEXT_MIN_LINE,
@@ -108,6 +109,8 @@ class Session:
         self.semantic: bool | None = None
         self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
         self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (kg.filebm25)
+        # kg_search orders files by the learned model (evo_agents.kg.rank): None as the setting says, True or False always
+        self.rank: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -289,7 +292,7 @@ class Session:
         ids = None
         if not kinds:
             scored = store.search_scored(query, b, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
-            ids = locate.arrange(store, b, query, scored)
+            ids = locate.arrange(store, b, query, scored, ranker=learned.ranker_for(self.rank))
             if ids is None:
                 ids = [i for i, _ in scored][: limit * 12]  # as many as store.search read before
             else:
