@@ -251,6 +251,12 @@ def _past_options(head: str, words: list[str]) -> tuple[list[str], bool]:
     return (rest[1:] if duration and rest else rest), path_set
 
 
+def _past_assignments(words: list[str]) -> tuple[list[str], list[str]]:
+    """(the names the assignments that start ``words`` set, the words after them)."""
+    assigned = [word.split("=", 1)[0] for word in itertools.takewhile(ASSIGNMENT.fullmatch, words)]
+    return assigned, words[len(assigned) :]
+
+
 def _past_lead(head: str, words: list[str]) -> tuple[list[str], bool]:
     """(the words after the lead ``head`` of SHELL_LEADS and its options, LEAD_OPTIONS; whether it only looks a name
     up and runs nothing, as ``command -v`` does)."""
@@ -269,8 +275,8 @@ def _past_lead(head: str, words: list[str]) -> tuple[list[str], bool]:
 
 def programs(command: str) -> list[str]:
     """The programs a shell command line runs from PATH, each once, in order: the first word of each simple command
-    (past assignments, and past the keywords that start a compound command and the options of LEAD_OPTIONS; nothing
-    after ``command -v``), of the program a wrapper of RUNS_ANOTHER runs (``timeout 60 pytest`` names timeout and
+    (past assignments and the keywords that start a compound command, in any order, and the options of LEAD_OPTIONS;
+    nothing after ``command -v``), of the program a wrapper of RUNS_ANOTHER runs (``timeout 60 pytest`` names timeout and
     pytest), of a ``sh -c`` argument and of a ``$(...)`` (``_shell_words``). Not counted: the shell's builtins and
     keywords, a word the shell expands (``$``, a backtick, a glob), a relative path (a file of the worktree, which the
     preflight cannot see yet), the program of a command with ``PATH=...`` before it, and anything after a simple
@@ -279,8 +285,7 @@ def programs(command: str) -> list[str]:
     PATH."""
     found: list[str] = []
     for words in _shell_words(command) or []:
-        assigned = [word.split("=", 1)[0] for word in itertools.takewhile(ASSIGNMENT.fullmatch, words)]
-        rest = words[len(assigned) :]
+        assigned, rest = _past_assignments(words)
         if "PATH" in assigned and not rest:
             break
         while rest:
@@ -291,6 +296,10 @@ def programs(command: str) -> list[str]:
                 rest, looked_up = _past_lead(head, rest[1:])
                 if looked_up:
                     break
+                more, rest = _past_assignments(rest)  # ``then x=1``: an assignment, not a program
+                assigned += more
+                if "PATH" in more and not rest:
+                    return list(dict.fromkeys(found))
                 continue
             if head in SHELL_BUILTINS or "PATH" in assigned or re.search(r"[$`*?\[\]]", head):
                 break
