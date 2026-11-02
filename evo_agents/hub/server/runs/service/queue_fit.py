@@ -284,8 +284,15 @@ async def _verdict(conn: AsyncConnection, run, row, profile, home) -> Verdict:
     return verdict
 
 
+def _distance(verdict: Verdict) -> tuple:
+    """How far a worker is from taking the run: serving its project, online, the fewest reasons it cannot, then the
+    most free slots and the smallest id; the nearest names the command a diagnosis gives."""
+    row = verdict.row
+    return (not row.serves, not row.online, len(verdict.blocking), verdict.claimer.holding - row.slots, row.id)
+
+
 def _nearest(verdicts: list[Verdict]) -> Verdict:
-    return min(verdicts, key=lambda v: (not v.row.serves, not v.row.online, len(v.blocking), v.row.id))
+    return min(verdicts, key=_distance)
 
 
 def _diagnosis(run, verdicts: list[Verdict], home) -> str | None:
@@ -429,7 +436,7 @@ async def queued_candidates(conn: AsyncConnection, run_id: int, project: str, ki
         key=lambda v: (bool(v.waiting), v.claimer.holding - v.row.slots, v.row.id),
     )
     workers = [_candidate(v, run, place) for place, v in enumerate(fit, 1)]
-    workers += [_candidate(v, run, None) for v in found.verdicts if not v.fit]
+    workers += [_candidate(v, run, None) for v in sorted((v for v in found.verdicts if not v.fit), key=_distance)]
     return RerunCandidates(
         run_id=run_id,
         project=project,
