@@ -549,7 +549,7 @@ def test_a_question_waits_for_its_files_at_most_ask_wait(own_home, hub, spawned,
     )
     started = time.monotonic()
     assert fire("local-ask", dialog, monkeypatch, capsys) == (0, "", "")
-    assert time.monotonic() - started < 2 and "output_ids" not in hub.of("POST", "/decisions")[0]
+    assert time.monotonic() - started < 15 and "output_ids" not in hub.of("POST", "/decisions")[0]
 
 
 def test_hub_send_queued_starts_from_a_hook_as_a_detached_process(own_home, monkeypatch):

@@ -174,6 +174,12 @@ def kept_state(client, run_id: int) -> bytes | None:
     return None if channel is None else channel.state
 
 
+def attached(client, run_id: int) -> bool:
+    """The hub has attached the worker's end: it accepts the socket first and attaches after checking the worker."""
+    channel = client.app.state.browser_views.get(run_id)
+    return channel is not None and channel.worker is not None
+
+
 def target(run_id: int, step: int = 2) -> str:
     return f"{PROJECT}/rollout#{step} run:{run_id}"
 
@@ -405,6 +411,7 @@ def test_browser_view_audits_control_as_the_worker_state_says_and_never_what_was
     token = web_session(hub_db, OWNER)
     secret = "hunter2-northwind"
     with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
+        wait_until(lambda: attached(client, run_id), "the worker's end attached")
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
         end.send_bytes(state("human"))
@@ -441,6 +448,7 @@ def test_browser_view_a_run_waiting_on_a_login_decision_opens_in_human_mode(clie
     moved(client, worker, run_id, "waiting")
     token = web_session(hub_db, OWNER)
     with worker_end(client, worker, run_id) as end:
+        wait_until(lambda: attached(client, run_id), "the worker's end attached")
         with viewer(client, run_id, token) as view:
             opened(client, view, token, worker=True)
             assert body(received(end), frames.VIEW) == {"viewing": True, "login": False}  # a decision, not a login
