@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_login, runs, tables
 from evo_agents.hub.credentials import dispatch_credential
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import agent_placement, audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.browser_identities import (
     REFUSALS,
@@ -73,6 +73,11 @@ def _manager(row, user: Principal, access: ProjectAccess, what: str) -> None:
         )
 
 
+async def _profile_version(conn: AsyncConnection, profile_id: int) -> int:
+    ap = tables.agent_profiles
+    return await conn.scalar(select(ap.c.version).where(ap.c.id == profile_id))
+
+
 async def _open_session(conn: AsyncConnection, identity_id: int) -> int | None:
     """The id of a login session of the identity that has not ended, if there is one."""
     r = tables.runs
@@ -111,6 +116,18 @@ async def login_browser_identity(
             raise HTTPException(409, f"login session {waiting} of this browser identity has not ended")
         worker_id = await identity_worker(conn, user, access, body.worker) if move else row.worker_id
         pinned = await dispatch.pinnable(conn, user, access, worker_id)
+        home = await (
+            agent_placement.home_of(conn, row.profile_id)
+            if row.owner_kind == "agent"
+            else agent_placement.default_home(conn, access.project_id)
+        )
+        if home is not None and pinned.pool != home.pool:
+            raise HTTPException(
+                409,
+                f"the agent whose runs these are runs in pool mode, on the nodes of pool {home.pool}, and worker "
+                f"{pinned.name} is not one: move the browser identity to a node of the pool (worker); nothing was "
+                "dispatched",
+            )
         title = browser_login.title_of(row.name, move=move and worker_id != row.worker_id, worker=pinned.name)
         problems = dispatch.unfit(pinned, project, browser_login.KIND, [], "any", browser=True)
         if problems:
@@ -125,6 +142,11 @@ async def login_browser_identity(
             "dispatched_by": user.user_id,
             "dispatched_via": dispatch_credential(user.kind),
             "pinned_worker_id": pinned.id,
+            **(
+                {"profile_id": row.profile_id, "profile_version": await _profile_version(conn, row.profile_id)}
+                if home is not None and row.owner_kind == "agent"
+                else {}
+            ),
             "requested_runtime": "any",
             "runtime": "any",
             "mode": "headless",

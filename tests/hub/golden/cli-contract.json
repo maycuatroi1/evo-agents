@@ -721,6 +721,260 @@
         "schema": "CredentialShare"
       }
     },
+    "hub account-pool add": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents"
+        ],
+        "schema": "AccountPool"
+      }
+    },
+    "hub account-pool create": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents"
+        ],
+        "schema": "AccountPool"
+      }
+    },
+    "hub account-pool delete": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "hub account-pool list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents"
+        ],
+        "schema": "AccountPool"
+      }
+    },
+    "hub account-pool remove": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents"
+        ],
+        "schema": "AccountPool"
+      }
+    },
+    "hub account-pool show": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents"
+        ],
+        "schema": "AccountPool"
+      }
+    },
     "hub admin grant": {
       "positionals": [
         {
@@ -1870,6 +2124,76 @@
         "schema": "AgentAccount"
       }
     },
+    "hub agent account-pool": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--none"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
     "hub agent create": {
       "positionals": [
         {
@@ -1995,6 +2319,9 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
           "version",
           "created_by",
           "created_at",
@@ -2047,6 +2374,9 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
           "version",
           "created_by",
           "created_at",
@@ -2223,6 +2553,9 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
           "version",
           "created_by",
           "created_at",
@@ -2275,6 +2608,75 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
+    "hub agent placement": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "placement",
+          "metavar": "PLACEMENT",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "pool",
+            "legacy"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
           "version",
           "created_by",
           "created_at",
@@ -2327,6 +2729,9 @@
           "permissions",
           "restricted",
           "packs",
+          "placement",
+          "home_pool",
+          "account_pool",
           "version",
           "created_by",
           "created_at",
@@ -18303,14 +18708,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--runtime"
           ],
           "value": "string",
@@ -18343,30 +18740,6 @@
             2,
             4
           ]
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
         },
         {
           "flags": [
@@ -18781,14 +19154,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--approval"
           ],
           "value": "string",
@@ -18820,30 +19185,6 @@
         {
           "flags": [
             "--identity"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
           ],
           "value": "string",
           "required": false,
@@ -19515,14 +19856,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--runtime"
           ],
           "value": "string",
@@ -19582,30 +19915,6 @@
         {
           "flags": [
             "--identity"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
           ],
           "value": "string",
           "required": false,
@@ -19774,30 +20083,6 @@
           "value": null,
           "required": false,
           "repeatable": false
-        },
-        {
-          "flags": [
-            "--pool"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--label"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
-        },
-        {
-          "flags": [
-            "--tolerate"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": true
         },
         {
           "flags": [
@@ -24578,14 +24863,6 @@
         },
         {
           "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
-          "repeatable": false
-        },
-        {
-          "flags": [
             "--runtime"
           ],
           "value": "string",
@@ -24620,14 +24897,6 @@
           ],
           "value": "string",
           "required": true,
-          "repeatable": false
-        },
-        {
-          "flags": [
-            "--worker"
-          ],
-          "value": "string",
-          "required": false,
           "repeatable": false
         },
         {
@@ -35239,7 +35508,7 @@
             "worker pools"
           ],
           "summary": "List Pools",
-          "description": "The caller's pools, by name, each with its nodes that are not revoked.",
+          "description": "The caller's pools, and the pools of the agents whose project the caller administers (every agent's for a hub\nadmin), by name, each with its nodes that are not revoked.",
           "operationId": "list_pools_v1_worker_pools_get",
           "responses": {
             "200": {
@@ -35364,7 +35633,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35428,7 +35697,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35524,7 +35793,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35618,7 +35887,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -35688,7 +35957,7 @@
               "required": true,
               "schema": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
                 "description": "the pool's name",
                 "title": "Name"
               },
@@ -71874,6 +72143,218 @@
           }
         }
       },
+      "/v1/projects/{project}/agents/{handle}/placement": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Set Placement",
+          "description": "Move the agent to ``pool`` or back to ``legacy`` (an admin of the project or of the hub). It changes no version\nof the profile: it is where its runs go, not who the agent is.",
+          "operationId": "set_placement_v1_projects__project__agents__handle__placement_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Placement"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}/account-pool": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Set Account Pool",
+          "description": "Attach an account pool of the project to the agent, or detach it (an admin of the project or of the hub): the\nagent has one, and a pool may serve many agents. In pool mode its runs lease the accounts of that pool alone.",
+          "operationId": "set_account_pool_v1_projects__project__agents__handle__account_pool_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPoolChoice"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents/{handle}/avatar": {
         "put": {
           "tags": [
@@ -72641,6 +73122,579 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/account-pools": {
+        "get": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "List Account Pools",
+          "description": "The account pools of the project, by name, each with its accounts and the agents that use it (an admin of the\nproject or of the hub).",
+          "operationId": "list_account_pools_v1_projects__project__account_pools_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AccountPool"
+                    },
+                    "title": "Response List Account Pools V1 Projects  Project  Account Pools Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Create Account Pool",
+          "description": "Make an empty account pool named ``name`` (an admin of the project or of the hub); 409 when the project has one\nof that name.",
+          "operationId": "create_account_pool_v1_projects__project__account_pools_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/account-pools/{pool}": {
+        "get": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Get Account Pool",
+          "operationId": "get_account_pool_v1_projects__project__account_pools__pool__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "pool",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name, 1 to 40 characters",
+                "title": "Pool"
+              },
+              "description": "the pool's name, 1 to 40 characters"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Delete Account Pool",
+          "description": "Delete a pool and its list of accounts (the accounts stay); 409 while an agent uses it.",
+          "operationId": "delete_account_pool_v1_projects__project__account_pools__pool__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "pool",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name, 1 to 40 characters",
+                "title": "Pool"
+              },
+              "description": "the pool's name, 1 to 40 characters"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/account-pools/{pool}/accounts": {
+        "put": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Add Account",
+          "description": "Add an account to the pool: an env account (a Claude account among them) or a provider account of yours, or of an\nagent of the project. 409 when the pool holds an account of that name already.",
+          "operationId": "add_account_v1_projects__project__account_pools__pool__accounts_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "pool",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name, 1 to 40 characters",
+                "title": "Pool"
+              },
+              "description": "the pool's name, 1 to 40 characters"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountAdd"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/account-pools/{pool}/accounts/{secret_id}": {
+        "delete": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Remove Account",
+          "description": "Take an account out of the pool; the account stays where it is. The runs that hold it keep it.",
+          "operationId": "remove_account_v1_projects__project__account_pools__pool__accounts__secret_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "pool",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name, 1 to 40 characters",
+                "title": "Pool"
+              },
+              "description": "the pool's name, 1 to 40 characters"
+            },
+            {
+              "name": "secret_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Secret Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -93736,6 +94790,35 @@
           "title": "Account",
           "description": "One of the caller's env secrets or provider accounts as an account: everything but its value or key."
         },
+        "AccountAdd": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Name",
+              "description": "the name of the account: one of yours, or an agent's"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent of the project that owns the account; null: your own account"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "AccountAdd"
+        },
         "AccountCandidate": {
           "properties": {
             "name": {
@@ -93916,6 +94999,79 @@
           "additionalProperties": false,
           "type": "object",
           "title": "AccountPolicyWrite"
+        },
+        "AccountPool": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "accounts": {
+              "items": {
+                "$ref": "#/components/schemas/PoolAccount"
+              },
+              "type": "array",
+              "title": "Accounts"
+            },
+            "agents": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Agents",
+              "description": "the handles of the agents that use it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "name",
+            "created_by",
+            "created_at",
+            "accounts",
+            "agents"
+          ],
+          "title": "AccountPool"
+        },
+        "AccountPoolChoice": {
+          "properties": {
+            "account_pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Pool",
+              "description": "the name of an account pool of the project to attach; null detaches the agent's"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "account_pool"
+          ],
+          "title": "AccountPoolChoice"
         },
         "AccountUsage": {
           "properties": {
@@ -94258,6 +95414,39 @@
               "title": "Packs",
               "description": "the agent packs it attaches, in order, each at the version it pins"
             },
+            "placement": {
+              "type": "string",
+              "enum": [
+                "legacy",
+                "pool"
+              ],
+              "title": "Placement",
+              "description": "where a run of the agent goes: legacy, as before, or pool, a node of its own pool"
+            },
+            "home_pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Pool",
+              "description": "the name of the agent's own pool, agent-<handle>; null for none"
+            },
+            "account_pool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Pool",
+              "description": "the name of the account pool its runs lease accounts from in pool mode; null until an admin attaches one"
+            },
             "version": {
               "type": "integer",
               "title": "Version"
@@ -94304,6 +95493,9 @@
             "permissions",
             "restricted",
             "packs",
+            "placement",
+            "home_pool",
+            "account_pool",
             "version",
             "created_by",
             "created_at",
@@ -109960,12 +111152,12 @@
                 }
               ],
               "title": "Check",
-              "description": "the Kiểm line: how the rule is checked"
+              "description": "the Ki\u1ec3m line: how the rule is checked"
             },
             "seen": {
               "type": "integer",
               "title": "Seen",
-              "description": "Lần gặp: how many times it was seen"
+              "description": "L\u1ea7n g\u1eb7p: how many times it was seen"
             },
             "probe_id": {
               "anyOf": [
@@ -114063,7 +115255,7 @@
             "text": {
               "type": "string",
               "title": "Text",
-              "description": "the words around the match, the matched ones between « and »"
+              "description": "the words around the match, the matched ones between \u00ab and \u00bb"
             },
             "rank": {
               "type": "number",
@@ -125295,7 +126487,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 32,
+              "maxItems": 33,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -129835,6 +131027,25 @@
           "title": "PinnedPack",
           "description": "A pack a profile attaches, at the version of its plugin it pins."
         },
+        "Placement": {
+          "properties": {
+            "placement": {
+              "type": "string",
+              "enum": [
+                "legacy",
+                "pool"
+              ],
+              "title": "Placement",
+              "description": "pool: a run of the agent goes to a node of its own pool; legacy: as before the pools of agents"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "placement"
+          ],
+          "title": "Placement"
+        },
         "Plan": {
           "properties": {
             "project": {
@@ -132166,7 +133377,7 @@
                 }
               ],
               "title": "Outcome",
-              "description": "its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description"
+              "description": "its outcome_md, else the section `## K\u1ebft qu\u1ea3` or `## Outcome` that ends its description"
             }
           },
           "type": "object",
@@ -132936,7 +134147,19 @@
             "owner": {
               "type": "string",
               "title": "Owner",
-              "description": "the login of the member who made it"
+              "description": "the login of the member who made it, or who created the agent of an agent's pool"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent whose pool it is; null for a member's pool"
             },
             "projects": {
               "items": {
@@ -133009,6 +134232,124 @@
             "nodes"
           ],
           "title": "Pool"
+        },
+        "PoolAccount": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the id of its secret, which audit lines name it by"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "env or provider"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "the variable an env account sets; null for a provider account"
+            },
+            "provider": {
+              "type": "string",
+              "title": "Provider",
+              "description": "who it signs in to: claude, anthropic, openai ... or a catalog id"
+            },
+            "category": {
+              "type": "string",
+              "title": "Category",
+              "description": "model: the runtime's own sign-in or a provider account; service: any other"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "the member who owns it; null for an agent's account"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the agent that owns it; null for a member's account"
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "added_by": {
+              "type": "string",
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "kind",
+            "env_var",
+            "provider",
+            "category",
+            "owner",
+            "agent",
+            "paused",
+            "cooldown_until",
+            "expires_at",
+            "added_by",
+            "added_at"
+          ],
+          "title": "PoolAccount"
         },
         "PoolNode": {
           "properties": {
@@ -133266,6 +134607,22 @@
           },
           "type": "object",
           "title": "PoolUpdate"
+        },
+        "PoolWrite": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+              "title": "Name",
+              "description": "1 to 40 characters, unique in the project in any case"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "PoolWrite"
         },
         "PrefSet": {
           "properties": {
@@ -147456,6 +148813,12 @@
               "description": "true for a run under a profile that is not its project's default: the agent of a claude-code run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
               "default": false
             },
+            "account_pool": {
+              "type": "boolean",
+              "title": "Account Pool",
+              "description": "true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none of the owner's",
+              "default": false
+            },
             "origin": {
               "anyOf": [
                 {
@@ -157725,7 +159088,8 @@
                 "market_install_request",
                 "market_license_expiring",
                 "today",
-                "kg_optimize"
+                "kg_optimize",
+                "agent_pool_empty"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -157791,7 +159155,8 @@
                 "market_install_request",
                 "market_license_expiring",
                 "today",
-                "kg_optimize"
+                "kg_optimize",
+                "agent_pool_empty"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

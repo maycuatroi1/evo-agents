@@ -56,6 +56,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import browser_login, curator, runs
+from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import autonomy_hook, environments, interactive, model_router, orphans, packs, venvs
@@ -247,6 +248,9 @@ class Agent:
         """The environment of the run's agent, and of the commands the daemon runs for the run."""
         run = self.run
         env = dict(run.daemon.env)
+        if claude_home.pooled(run.spec):  # an agent in pool mode: the model accounts leased to it, none of the daemon's
+            for key in MODEL_ENV_VARS:
+                env.pop(key, None)
         env.update(
             {
                 "EVO_RUN_ID": str(run.id),
@@ -340,6 +344,7 @@ class Agent:
                 owner_env=run.daemon.env,
                 leased=leased_oauth(context),
                 gateway=route,
+                pooled=claude_home.pooled(run.spec),
                 server=server,
                 lock=Path(run.daemon.home.root) / claude_home.REFRESH_LOCK,
             )
@@ -349,9 +354,16 @@ class Agent:
             raise RunFailed(why, cause="credentials") from None
         except OSError as exc:
             raise RunFailed(f"Claude Code's config dir {directory} was not written: {exc}", cause="runtime") from None
+        if (
+            login is None
+            and claude_home.pooled(run.spec)
+            and any(k in run.credentials.agent_vars for k in MODEL_ENV_VARS)
+        ):
+            login = "the account pool's lease"  # an API key leased from the pool: no OAuth token, and no login to copy
         if login is None:
-            run.note(f"{claude_home.REFUSAL}; the agent did not start.", cause="credentials")
-            raise RunFailed(claude_home.REFUSAL, cause="credentials")
+            refusal = claude_home.POOL_REFUSAL if claude_home.pooled(run.spec) else claude_home.REFUSAL
+            run.note(f"{refusal}; the agent did not start.", cause="credentials")
+            raise RunFailed(refusal, cause="credentials")
         self.note_once(claude_home.note(directory, login))
 
     def note_once(self, line: str) -> None:

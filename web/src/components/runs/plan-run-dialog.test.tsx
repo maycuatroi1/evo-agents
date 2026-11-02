@@ -151,7 +151,7 @@ function Harness({ onDispatched }: { onDispatched: (run: Run) => void }) {
 }
 
 describe("PlanRunDialog", () => {
-  it("says what the run does, fills the worker it finds, offers the workers' models, and queues the plan run with the CSRF header", async () => {
+  it("says what the run does, offers the workers' models, and queues the plan run with the CSRF header", async () => {
     const user = userEvent.setup();
     const dispatched = vi.fn();
     const queued = { id: 51, kind: "plan", project: "demo", plan_id: "rollout", state: "queued" } as Run;
@@ -171,13 +171,8 @@ describe("PlanRunDialog", () => {
     expect(within(summary).getByTestId("plan-run-checkpoints")).toHaveTextContent("3Checkpoint deploy");
     expect(within(summary).getByTestId("plan-run-push")).toHaveTextContent("Plan ghi nhánh mặc định của harness (main)");
 
-    // The dropdown holds the first worker that can take the run now; one without a checkout of a repo says so.
-    const workerSelect = within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement;
-    await waitFor(() => expect(workerSelect.value).toBe("7"));
-    const laptop = within(workerSelect).getByRole("option", { name: "laptop: không có checkout của harness" });
-    expect(laptop).toBeDisabled();
-    expect(within(workerSelect).getByRole("option", { name: "Worker bất kỳ phù hợp" })).toBeInTheDocument();
-    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
+    // No worker is picked: the agent's own pool takes the run.
+    expect(within(dialog).queryByTestId("dispatch-worker-select")).toBeNull();
 
     // Each runtime has its mark; a model of a runtime's list picks that runtime too.
     expect(within(dialog).getByTestId("dispatch-runtime-claude-code").querySelector("svg[data-runtime='claude-code']")).not.toBeNull();
@@ -207,7 +202,6 @@ describe("PlanRunDialog", () => {
     expect(post?.headers.get("X-Evo-CSRF")).toBe("csrf-1");
     expect(await post?.clone().json()).toEqual({
       plan_id: "rollout",
-      worker_id: 7,
       runtime: "claude-code",
       model: "sonnet",
       mode: "headless",
@@ -234,19 +228,14 @@ describe("PlanRunDialog", () => {
     expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.as_me).toBe(true);
   });
 
-  it("leaves the run to any worker that fits when none can take it now, and says why below the dropdown", async () => {
-    const user = userEvent.setup();
-    const busy = [worker(7, "lab-ws-01", "octo", { held_runs: 1 })];
-    api.answer = answer(() => json({ id: 54, kind: "plan", project: "demo", plan_id: "rollout", state: "queued" }, 201), READY, busy);
+  it("has no worker field, and sends no worker, whatever workers the visitor has", async () => {
+    api.answer = answer(() => json({ id: 54, kind: "plan", project: "demo", plan_id: "rollout", state: "queued" }, 201), READY, [worker(7, "lab-ws-01", "octo", { held_runs: 1 })]);
     renderVi(<Harness onDispatched={vi.fn()} />);
     const dialog = screen.getByRole("dialog", { name: "Chạy plan" });
     await within(dialog).findByTestId("plan-run-summary");
-    const workerSelect = within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement;
-    await waitFor(() => expect(within(workerSelect).getByRole("option", { name: "lab-ws-01: hết slot" })).toBeInTheDocument());
-    expect(workerSelect.value).toBe("any");
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("lab-ws-01 (hết slot) nhận được plan run này sau");
-    await user.selectOptions(workerSelect, "7");
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("Plan run nằm trong queue tới khi lab-ws-01 có slot trống.");
+    expect(within(dialog).queryByTestId("dispatch-worker")).toBeNull();
+    expect(within(dialog).queryByTestId("dispatch-worker-select")).toBeNull();
+    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
   });
 
   it("cannot queue a plan run while the plan has one, and says which", async () => {
@@ -267,14 +256,13 @@ describe("PlanRunDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Chạy plan" });
     await within(dialog).findByTestId("plan-run-summary");
     await waitFor(() => expect(within(dialog).getByTestId("plan-run-submit")).toBeEnabled());
-    await waitFor(() => expect((within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement).value).toBe("7"));
     await user.click(within(dialog).getByTestId("plan-run-submit"));
     const alert = await within(dialog).findByTestId("admin-dialog-error");
     expect(alert).toHaveTextContent("Hub không đưa plan run vào queue");
     expect(alert).toHaveTextContent("Hub báo: plan rollout has plan run #52");
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
     expect(dispatched).not.toHaveBeenCalled();
-    expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toMatchObject({ worker_id: 7, model: null, timeout_h: 24 });
+    expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toMatchObject({ model: null, timeout_h: 24 });
   });
 
   it("runs each step in a new session only when switched on, keeps the workers that run that, and sends it only then", async () => {
@@ -289,20 +277,14 @@ describe("PlanRunDialog", () => {
     const toggle = within(sessions).getByRole("switch", { name: "Mỗi bước một phiên mới" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     expect(within(sessions).getByTestId("plan-run-sessions-info")).toHaveAccessibleDescription(/Tắt: một phiên agent làm mọi bước/);
-    // Both workers take a plan run in one session.
-    const workerSelect = within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement;
-    await waitFor(() => expect(within(workerSelect).getByRole("option", { name: "old-box: còn 1 slot trống" })).toBeEnabled());
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "true");
     expect(within(sessions).queryByTestId("plan-run-sessions-reach")).toBeNull();
-    expect(within(workerSelect).getByRole("option", { name: "old-box: daemon của nó chỉ chạy một phiên cho mọi bước" })).toBeDisabled();
-    expect(workerSelect.value).toBe("7");
     await user.click(within(dialog).getByTestId("plan-run-submit"));
     await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
     expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toEqual({
       plan_id: "rollout",
-      worker_id: 7,
       runtime: "any",
       model: null,
       mode: "headless",
@@ -318,9 +300,7 @@ describe("PlanRunDialog", () => {
     renderVi(<Harness onDispatched={vi.fn()} />);
     const dialog = screen.getByRole("dialog", { name: "Chạy plan" });
     const sessions = await within(dialog).findByTestId("plan-run-sessions");
-    await waitFor(() => expect((within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement).value).toBe("9"));
     await user.click(within(sessions).getByRole("switch", { name: "Mỗi bước một phiên mới" }));
     expect(within(sessions).getByTestId("plan-run-sessions-reach")).toHaveTextContent("Chưa worker nào của bạn cho dự án này chạy được");
-    expect((within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement).value).toBe("any");
   });
 });

@@ -25,13 +25,14 @@ EVO_AGENTS_STUB = """#!/bin/bash
 echo "evo-agents $*" >> "$HOME/calls.log"
 if [ "$1 $2" = "worker join" ]; then
     printf '%s' "$EVO_JOIN_TOKEN" > "$HOME/seen-token"
-    mkdir -p "$HOME/.evo/worker"
-    echo '{}' > "$HOME/.evo/worker/config.json"
-    echo evw_x > "$HOME/.evo/worker/token"
+    state="${EVO_WORKER_HOME:-$HOME/.evo/worker}"
+    mkdir -p "$state"
+    echo '{}' > "$state/config.json"
+    echo evw_x > "$state/token"
 fi
 if [ "$1 $2 $3" = "worker service install" ]; then
     mkdir -p "$HOME/.config/systemd/user"
-    : > "$HOME/.config/systemd/user/evo-agents-worker.service"
+    : > "$HOME/.config/systemd/user/evo-agents-worker${EVO_WORKER_AGENT:+-$EVO_WORKER_AGENT}.service"
 fi
 """
 
@@ -163,3 +164,82 @@ def test_pool_user_data_makes_a_token_for_the_pool_and_prints_the_script(monkeyp
     assert "token revoke vps 7" in err and TOKEN not in err
     with pytest.raises(SystemExit):
         build_parser().parse_args(["worker", "pool", "user-data", "vps", "--max-nodes", "101"])
+
+
+def test_user_data_for_several_agents_holds_a_token_per_agent_and_no_single_token():
+    data = render_user_data(URL, None, agent_tokens={"sandbox": "evj_aaa", "lms": "evj_bbb"})
+    assert data.startswith("#!/bin/bash\n")
+    assert "\nEVO_JOIN_TOKEN='" not in data
+    printed = subprocess.run(
+        ["bash", "-c", data.split("\nEVO_HUB_URL=${EVO_HUB_URL", 1)[0] + '\nprintf "%s" "$EVO_AGENT_TOKENS"'],
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ["PATH"]},
+        check=True,
+    )
+    assert printed.stdout == "sandbox=evj_aaa lms=evj_bbb"
+
+
+def test_pool_user_data_with_agents_makes_a_token_for_each_agent_pool(monkeypatch, capsys):
+    from evo_agents.cli import build_parser
+    from evo_agents.worker import pool_cli
+
+    calls = []
+
+    class FakeHub:
+        url = URL
+
+        def call(self, method, path, body=None):
+            calls.append((method, path, body))
+            pool = path.split("/")[3]
+            return {"id": len(calls), "pool": pool, "token": f"evj_{pool}", "max_uses": 1, "expires_at": "2026-11-03"}
+
+    monkeypatch.setattr(pool_cli, "_hub", FakeHub)
+    args = build_parser().parse_args(["worker", "pool", "user-data", "--agent", "sandbox", "--agent", "@LMS"])
+    assert args.func(args) == 0
+    out, err = capsys.readouterr()
+    assert [(method, path) for method, path, _ in calls] == [
+        ("POST", "/v1/worker-pools/agent-sandbox/tokens"),
+        ("POST", "/v1/worker-pools/agent-lms/tokens"),
+    ]
+    assert out == render_user_data(URL, None, agent_tokens={"sandbox": "evj_agent-sandbox", "lms": "evj_agent-lms"})
+    assert "token revoke agent-lms 2" in err and "evj_" not in err
+    for argv in (["worker", "pool", "user-data"], ["worker", "pool", "user-data", "vps", "--agent", "lms"]):
+        args = build_parser().parse_args(argv)
+        assert args.func(args) == 1
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="as root the script installs with apt and creates a user")
+def test_agent_tokens_need_root_and_an_agent_node_needs_its_own_state_directory(machine):
+    home, env = machine
+    refused = _run(SCRIPT, {**env, "EVO_AGENT_TOKENS": "sandbox=evj_x", "EVO_HUB_URL": URL})
+    assert refused.returncode != 0 and "takes root" in refused.stderr
+    assert _calls(home) == []
+    no_state = _run(SCRIPT, {**env, "EVO_WORKER_AGENT": "sandbox", "EVO_HUB_URL": URL, JOIN_TOKEN_ENV: TOKEN})
+    assert no_state.returncode != 0 and "needs EVO_WORKER_HOME" in no_state.stderr
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="as root the script installs with apt and creates a user")
+def test_two_agents_nodes_install_under_one_user_each_with_a_service_of_its_own(machine):
+    home, env = machine
+    for handle in ("sandbox", "lms"):
+        state = home / ".evo" / f"worker-{handle}"
+        result = _run(
+            SCRIPT,
+            {
+                **env,
+                "EVO_WORKER_AGENT": handle,
+                "EVO_WORKER_HOME": str(state),
+                "EVO_HUB_URL": URL,
+                JOIN_TOKEN_ENV: TOKEN,
+            },
+        )
+        assert result.returncode == 0, result.stderr
+        assert (state / "config.json").exists()
+    assert sum(call.startswith("evo-agents worker join") for call in _calls(home)) == 2
+    assert sum(call == "evo-agents worker service install" for call in _calls(home)) == 2
+    units = home / ".config" / "systemd" / "user"
+    assert sorted(path.name for path in units.iterdir()) == [
+        "evo-agents-worker-lms.service",
+        "evo-agents-worker-sandbox.service",
+    ]

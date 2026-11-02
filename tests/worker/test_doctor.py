@@ -544,3 +544,20 @@ def test_the_doctor_reads_a_real_private_key_as_ssh_keygen_does(home, tools, tmp
     assert sorted(keys) == ["~/.ssh/id_none", "~/.ssh/id_pass"]
     assert "group or other can read" in keys["~/.ssh/id_pass"].detail
     assert stat.S_IMODE((ssh / "id_none").stat().st_mode) == 0o600
+
+
+def test_a_machine_with_the_nodes_of_several_agents_has_no_high_finding_for_them(home, tools):
+    """Each agent's node is a Unix user without sudo with a home of its own (mode 0700): the other node users are not
+    administrators and read nothing of this one, so they raise no finding."""
+    nodes = {"evo-lms", "evo-sandbox"}
+
+    def group(key) -> Group:
+        if key in ("sudo", "wheel"):
+            return Group(str(key), frozenset({"root"}))
+        return Group("evo-own", frozenset({ME}))
+
+    tools.dscl("root _mbsetupuser")
+    machine = machine_of(home, tools, platform="linux", group=group, env={"PATH": str(tools.bin), "HOME": str(home)})
+    report = doctor.examine(machine)
+    assert nodes.isdisjoint({finding.subject for finding in report.findings})
+    assert [finding for finding in report.findings if finding.severity == HIGH] == []

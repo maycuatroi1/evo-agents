@@ -191,7 +191,8 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     assert flags["--timeout-h"]["choices"] == [2, 4, 8, 24]
     # any, a runtime of the core, or a plugin's <plugin>/<name>: an open set, so no choices (hub-agent-plugins a6)
     assert flags["--runtime"]["value"] == "string" and "choices" not in flags["--runtime"]
-    assert {"--worker", "--model", "--mode", "--project", "--json"} <= set(flags)
+    assert {"--model", "--mode", "--project", "--json"} <= set(flags)
+    assert not {"--worker", "--pool", "--label", "--tolerate"} & set(flags)
     assert printed["hub run plan"]["json"]["schema"] == printed["hub run dispatch"]["json"]["schema"] == "Run"
     assert "--model" in {o["flags"][0] for o in printed["hub run dispatch"]["options"]}
     answer = {o["flags"][0] for o in printed["hub decision answer"]["options"]}
@@ -442,7 +443,7 @@ def test_only_the_worker_commands_of_the_contract_are_read():
         "evo-agents hub serve --help",
         "evo-agents hub token revoke $ID",
         "evo-agents hub contract check a.md b.md c.md",
-        "evo-agents hub run plan fleet --worker mac-mini --runtime codex --model o3 --timeout-h 8",
+        "evo-agents hub run plan fleet --runtime codex --model o3 --timeout-h 8",
         "evo-agents hub decision answer 7 --option postgres --text '...'",
         "evo-agents hub notifications --read all",
         "evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND",

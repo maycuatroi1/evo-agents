@@ -104,6 +104,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}`; worker pools: `GET` and `POST /v1/worker-pools`, `GET` and `PATCH /v1/worker-pools/{name}`, `GET` and `POST .../{name}/tokens`, `POST .../{name}/tokens/{id}/revoke`; for a pool node's token, `GET /v1/worker/skills` and `GET /v1/worker/skills/global/{name}/bundle` (`docs/workers.md`, Pools) |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
+| account pools | `GET` and `POST /v1/projects/{project}/account-pools`, `GET` and `DELETE .../account-pools/{pool}`, `PUT .../account-pools/{pool}/accounts`, `DELETE .../accounts/{secret_id}` and `PUT /v1/projects/{project}/agents/{handle}/account-pool`; admin of the project or hub (`docs/credentials.md`, section "Account pools") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
@@ -622,6 +623,7 @@ lease row records the profile and version it was handed out under.
 | `POST .../agents` | `hub agent create HANDLE --name NAME [...]` | an admin of the project |
 | `PATCH .../agents/{handle}` (`if_version`: 409 when it moved on) | `hub agent edit HANDLE [...]` | an admin of the project |
 | `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
+| `PUT .../agents/{handle}/placement` (`{"placement": "pool"}` or `"legacy"`) | `hub agent placement HANDLE pool\|legacy` | an admin of the project or of the hub |
 | `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
 | `GET .../agents/{handle}/avatar` | | a member |
 | `GET .../agent-packs`, the agent packs a profile of the project may attach | | a member |
@@ -643,6 +645,29 @@ its first bytes; the hub stores it in the blob store as a blob of kind `agent-av
 from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Without one, `icon_url` is null and the
 web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
 and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
+
+Each agent has a pool of its own, `agent-<handle>`, made in the transaction that makes the agent (and by schema 0189
+for the agents that exist); `home_pool` names it in the agent's JSON. It is a worker pool owned by the member who
+created the agent and serving the agent's project. An admin of the project or of the hub sees and manages it with the
+routes, the CLI and the page of worker pools: join tokens, labels, taints, slots and the doctor codes it accepts. A
+member who is not an admin is refused (403, or 404 without a grant on the project), and the pool's `projects` do not
+change (422). A member's pool cannot take a name that starts with `agent-`. Each agent also has a `placement`: `legacy`,
+where a run of the agent is placed as before, or `pool`, where it goes to a node of its own pool. Schema 0189 leaves
+the agents that exist in `legacy`, and the hub creates new ones in `pool`; `PUT .../placement` moves one, audited as
+`agent.placement`, without a new version of the profile. The column is a bridge, which the plan agent-dedicated-pools
+removes when every agent is in `pool`. Worker protocol version 1 and `local` runs do not change.
+
+In `pool` mode the hub places every run of the agent, of any kind and whoever dispatches it (`server/agent_placement.py`):
+the run gets the selector `pool=agent-<handle>` and tolerations for the pool's taints when it is inserted
+(`insert_run`), and only a node of that pool that is online, not draining and ready claims it; a member's worker or a
+shared worker outside the pool never does, and a node of an agent's pool takes no run of another agent. A chat run
+prefers the node that ran the previous turn of the same chat while it is ready, else another node of the pool. Runs that
+name no agent, those of the Curator, `loop`, `judge` and an agent type that names no agent, go to the project's default
+agent, in its pool when it is in `pool` mode. When the pool has no ready node the run stays queued and each admin of the
+project gets one notice `agent_pool_empty` for the outage (`worker_pools.empty_notified_at`, schema 0190, cleared when a
+node is ready again). The dispatch, plan-run, author-run, rerun and triage-rerun routes answer 422 with guidance when
+`worker_id`, `pool`, `labels` or `tolerations` is given for an agent in `pool` mode. An agent in `legacy` mode is placed
+as before.
 
 Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
 `agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
@@ -1263,10 +1288,10 @@ Runs are driven from any machine signed in to the hub:
 
 ```sh
 evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
-evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run dispatch rollout 5 --runtime codex --mode interactive --timeout 90
 evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
 evo-agents hub run dispatch rollout 7 --account claude-b     # this account of yours, kept, never failed over
-evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
+evo-agents hub run plan rollout --timeout-h 8                 # one plan run: every step not done yet
 evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
 evo-agents hub run plan rollout --as-me                       # its agent calls the hub as you, secrets, tokens and workers aside
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
@@ -1282,8 +1307,8 @@ evo-agents hub run rerun 41 --account-by-rule                # the same, the rul
 evo-agents hub run candidates 41                              # after it failed: which worker or agent could run it again, and why
 evo-agents hub run credentials 41                             # the leases the run got, never their values
 evo-agents hub run access 41 --revoke                         # it no longer runs as you: its token ends at once
-evo-agents hub run author "a plan to move the hub's blobs to R2" --worker mac-mini  # an agent writes a new plan
-evo-agents hub run author "split step 3 in two" --plan rollout --worker mac-mini   # or revises one
+evo-agents hub run author "a plan to move the hub's blobs to R2"                                   # an agent writes a new plan
+evo-agents hub run author "split step 3 in two" --plan rollout   # or revises one
 evo-agents hub run chat 42                                    # an author run's chat, and whose turn it is
 evo-agents hub run send 42 "keep the old route until 0.10"    # your reply in that chat
 evo-agents hub run finish 42                                  # end the chat: the run ends done
@@ -1299,9 +1324,8 @@ the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gi
 run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
 and for every run `model_used`, the model its runtime used, also with routing off.
 
-`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
-has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`
-let take it), whose agent writes an execution plan from REQUEST
+`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on a node of the pool of its
+agent that has the project's harness checked out, whose agent writes an execution plan from REQUEST
 (at most 16 KiB of UTF-8, `-` reads it from stdin) with the create-exec-plan skill the hub holds, and puts it on the
 hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (1, 2 or 4 hours of agent time, 2 by
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
@@ -1346,14 +1370,12 @@ KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (
 a queued attempt whose run before it was lost on a worker that is not steady yet has a `waits for` line naming that
 worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
-`dispatch`, `plan`, `author` and `rerun` take where the run may go besides `--worker`: `--pool NAME` (one of your
-worker pools: only its nodes take the run, as the label `pool=NAME`), `--label LABEL` (a label the claiming worker must
-have, a word or key=value: its own, its pool's, or one the hub gives it, `os=`, `arch=`, `runtime=NAME`,
-`feature=browser`; repeat it, and every one is needed) and `--tolerate TAINT` (a taint of a worker the run accepts;
-repeat it). They go to the body as `pool`, `labels` and `tolerations`, and the run keeps them as `selector` and
-`tolerations`; only what is given is sent, so an older hub takes the rest. A worker with a taint the run does not
-tolerate leaves it to others unless the run is pinned to it, and a node of a pool whose doctor report is not clean
-takes none (`docs/workers.md`, Pools). A `rerun` without any of the three keeps the run's own.
+`dispatch`, `plan`, `author` and `rerun` do not pick the machine: they have no `--worker`, `--pool`, `--label` or
+`--tolerate`, and `worker triage rerun` has no `--worker`. The agent of the run decides: an agent in `pool` mode runs on
+its own pool, `agent-<handle>` (the paragraphs on the pool of an agent, under the agent profiles), and the hub answers 422 with guidance when the body of the API
+names `worker_id`, `pool`, `labels` or `tolerations` for it. Until plan agent-dedicated-pools removes the `legacy`
+mode, the API still takes those fields for an agent in `legacy` mode, and `run list --worker` still filters the runs a
+worker claimed. A rerun keeps the run's own selector and tolerations.
 
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and

@@ -419,6 +419,7 @@ def create_app(config: HubConfig) -> FastAPI:
     _include_websockets(app)
 
     from evo_agents.hub.server import (
+        account_pools,
         account_views,
         accounts,
         agent_account_views,
@@ -498,6 +499,7 @@ def create_app(config: HubConfig) -> FastAPI:
         worker_autonomy.worker_router,
         agent_profiles.router,
         agent_accounts.router,
+        account_pools.router,
         agent_provider_accounts.router,
         agent_account_views.router,
         agent_packs.router,

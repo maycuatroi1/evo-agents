@@ -635,6 +635,13 @@ class RunSpec(BaseModel):
         description="true for a run under a profile that is not its project's default: the agent of a claude-code "
         "run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
     )
+    account_pool: bool = Field(
+        False,
+        description="true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's "
+        "account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none "
+        "of the owner's",
+        exclude_if=lambda value: not value,
+    )
     origin: RunOrigin | None = Field(
         None,
         description="the person who dispatched the run, whom the worker names as co-author of the commits of a chat "

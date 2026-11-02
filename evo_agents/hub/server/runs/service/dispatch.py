@@ -21,7 +21,15 @@ from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, autonomy_hold, run_access, run_access_rules, run_autonomy, worker_placement
+from evo_agents.hub.server import (
+    agent_placement,
+    audit,
+    autonomy_hold,
+    run_access,
+    run_access_rules,
+    run_autonomy,
+    worker_placement,
+)
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_configs import check_run_layer
@@ -282,7 +290,8 @@ async def _refuse_without_origin(
 
 async def insert_run(conn: AsyncConnection, values: dict, who: run_autonomy.For | None = None) -> int:
     """Insert a run with the column ``values`` in a savepoint and return its id; values that name no agent profile
-    take the project's default, and every run its principal and autonomy snapshot (``run_autonomy.stamp``, ``who``
+    take the project's default, a run of an agent in pool mode the selector and tolerations of the agent's pool
+    (``agent_placement.stamp``), and every run its principal and autonomy snapshot (``run_autonomy.stamp``, ``who``
     the principal when its kind does not say it). When the database refuses the row, the savepoint is rolled back and the IntegrityError,
     with the psycopg error that says why in ``orig``, goes on to the caller, whose transaction stays usable. A stop of
     autonomy that holds the run's principal refuses it, ``autonomy_hold.Stopped``, a 403, before anything is written,
@@ -292,6 +301,7 @@ async def insert_run(conn: AsyncConnection, values: dict, who: run_autonomy.For 
     if "profile_id" not in values:
         default = await ensure_default(conn, values["project_id"])
         values = {**values, "profile_id": default.id, "profile_version": default.version}
+    values = await agent_placement.stamp(conn, values)  # an agent in pool mode: its pool's nodes take the run
     values = await run_autonomy.stamp(conn, values, who)
     if values.get("as_owner"):
         values = {**values, "as_owner_since": func.now()}  # let at dispatch (run_access)
@@ -426,6 +436,12 @@ def placement(body) -> dict:
     return {"selector": tuple(body.selector()), "tolerations": tuple(body.tolerations or ())}
 
 
+def _by_hand(body) -> bool:
+    """Whether a dispatch ``body`` picks the machine of its runs: a worker, a pool, labels or tolerations, which the
+    hub refuses for an agent in pool mode (``profiles.choose``)."""
+    return body.worker_id is not None or body.placed()
+
+
 def _listed(placed: dict | None) -> dict:
     """The run columns of ``placed`` (``placement``)."""
     return {name: list(values) for name, values in (placed or {}).items()}
@@ -446,7 +462,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
         picked = await _picked(conn, user, access, body, pinned)
         placed = placement(body)
-        asked = Asked("step", body.runtime, body.model, pinned, _picks(picked), **placed)
+        asked = Asked("step", body.runtime, body.model, pinned, _picks(picked), by_hand=_by_hand(body), **placed)
         chosen = await choose(conn, user, access, body.profile, asked)
         identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
         layer = await check_run_layer(conn, access.project_id, project, body.plugin_config)
@@ -563,7 +579,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
         await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
         placed = placement(body)
-        asked = Asked("plan", body.runtime, body.model, pinned, _picks(picked), **placed)
+        asked = Asked("plan", body.runtime, body.model, pinned, _picks(picked), by_hand=_by_hand(body), **placed)
         chosen = await choose(conn, user, access, body.profile, asked)
         if not identities:
             identities, pinned = await with_profile_identity(conn, user, access, chosen, identities, pinned)
@@ -676,7 +692,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         repos = await _author_repos(conn, access, pinned)
         _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
         placed = placement(body)
-        asked = Asked("author", runtime, body.model, pinned, _picks(picked), **placed)
+        asked = Asked("author", runtime, body.model, pinned, _picks(picked), by_hand=_by_hand(body), **placed)
         chosen = await choose(conn, user, access, body.profile, asked)
         revision = None
         if body.plan_id is not None:

@@ -114,6 +114,7 @@ async def look(conn: AsyncConnection, user: Principal, run_id: int, request: dic
             and secret.owner_id == run.owner_id
             and secret.share_id is None
             and secret.agent is None
+            and secret.pool is None
         },
         key=order,
     )
