@@ -886,7 +886,10 @@ def build_prompt(plan: dict, step: dict, repo: dict | None) -> str:
 def _push_rule(autonomy) -> str:
     """The rule of a plan run on its pushes and merges. The merge of a pull request the run opened into a repo's
     default branch is K5: the agent's with no question when merging is its own (``autonomy_card.ships``), and as its
-    card says when it is not; run #820 asked its owner twice whether it might merge its own pull request, at A5."""
+    card says when it is not; run #820 asked its owner twice whether it might merge its own pull request, at A5. Runs
+    #1404, #1414 and #1415 asked their owner to merge release pull requests gh called blocked: the workers' App is an
+    "Always allow" bypass actor of evo-agents' main ruleset, which gh shows it as BLOCKED until it merges with
+    ``--admin``."""
     if ships((autonomy or {}).get("modes")):
         merge = (
             ", and merge a pull request you opened into that repo's default branch with no question to the owner: "
@@ -905,7 +908,11 @@ def _push_rule(autonomy) -> str:
         "REPO` has the hub judge your pull request at its head (end your turn while it waits), and only a passed "
         "verdict opens `gh pr merge N --match-head-commit HEAD` (or `gh api -X PUT repos/OWNER/NAME/pulls/N/merge -f "
         "sha=HEAD`) with that same head; the hook refuses a merge without it, and a push after the verdict needs a new "
-        "check. The hub reads the merge afterwards and tells the owner when it was at another head or off the base."
+        "check. The hub reads the merge afterwards and tells the owner when it was at another head or off the base. "
+        "When gh answers that the base branch policy prohibits the merge, run the same `gh pr merge` again with "
+        "`--admin`: a ruleset that lets the hub's GitHub App bypass it as Always allow still shows the pull "
+        "request as blocked to the App, and GitHub refuses `--admin` to an actor it does not let bypass. Ask the owner "
+        "to merge only when GitHub refuses that too."
     )
 
 
