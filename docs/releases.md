@@ -203,8 +203,8 @@ tag the cycle follows and its base tag.
 | `timeout` | no workflow run in 30 minutes, or one over 3 hours |
 | `ci` | the workflow ended in a way no fix answers: cancelled, or red with no failed job |
 
-A stopped cycle moves no further and no check opens another cycle while it is there, until its owner answers or a
-newer tag supersedes it (below). The hub posts a thread in the
+A stopped cycle moves no further and no check opens another cycle while it is there, until its owner answers, a
+newer tag supersedes it, or its decision is gone (below). The hub posts a thread in the
 project's triage chat with the cause, the tags with their workflow runs, the runs and the cost, and asks the owner a
 decision of category `release` on the cycle's last run, with three options:
 
@@ -216,15 +216,20 @@ decision of category `release` on the cycle's last run, with three options:
 
 The decision reaches the owner on their channels. The answer needs the admin role on the project, and comes from the
 Inbox on the web or from `evo-agents hub decision answer N --option continue --project evo-agents`; the hub says what it
-did in the cycle's thread. The run the decision names has ended by then: the hub, not an agent, takes the answer, so
-the Inbox offers the options whatever state that run is in, and an answer must pick one of them. A cycle no longer
-stopped takes no answer (409).
+did in the cycle's thread. The run the decision names may still be active, or end later: the decision is the cycle's,
+not the run's, so the run's end leaves it open (`runs.OUTLIVING_DECISION_CATEGORIES`), and the hub, not an agent, takes
+the answer, so the Inbox offers the options whatever state that run is in, and an answer must pick one of them. A cycle
+no longer stopped takes no answer (409).
 
 A release made outside the cycle supersedes it. While a cycle is stopped, the daily check still reads the newest tag;
 when that tag is newer than any the cycle knows (the tag it started from and the tags it made) and no run of the cycle
 is active, the check closes the cycle with the tag in its reason, cancels the decision and marks its notification read,
 says so in the cycle's thread, and goes on from that tag as if no cycle were there: a red tag opens a fix cycle, a
 change of a packaging path a cut. A tag no newer than the cycle's own keeps the check `busy` until the owner answers.
+
+A stopped cycle nobody can answer is closed too. When the cycle waits on no open decision (none could be asked, or it
+was cancelled or expired) and no run of it is active, the daily check closes it with that in its reason, says so in its
+thread, and goes on as if no cycle were there.
 
 ## No cost cap
 

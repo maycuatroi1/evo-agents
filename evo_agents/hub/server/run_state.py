@@ -38,7 +38,9 @@ of ``runs.CLOCK_STATES``, and ``counted_at`` moves on to where the count stopped
 those states; a heartbeat settles it the same way (``settle``). A move to ``waiting`` sets ``waiting_since`` (any other
 move clears it) and one to ``parked`` sets ``parked_at``. A run that ends cancels its decisions still open, unless the
 caller deals with them (``decisions=None``): the reaper lets those of a run parked too long expire, and an answer to a
-parked run hands them to the run that resumes it. A plan run that ends ``failed`` sends its owner the notice
+parked run hands them to the run that resumes it. The hub's decisions about what the run stands for
+(``runs.OUTLIVING_DECISION_CATEGORIES``: a stopped release cycle's, a Loop work item's) stay open, since what they
+decide outlives the run. A plan run that ends ``failed`` sends its owner the notice
 ``run_failed``, and one that ends ``done`` with every step of its plan done the notice ``plan_finished``
 (``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
 author run sends ``run_failed`` when its worker failed it with a cause of ``runs.PREFLIGHT_CAUSES`` (a repo the project
@@ -230,8 +232,9 @@ async def move_run(
     (of MOVE_COLUMNS) too; write the ``state`` event and the plugins' ``run.state`` event, then record the move in the
     plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held
     without a lease (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state
-    ``decisions``, or leaves them open when it is None. Returns the plan revision the move wrote, or None. Raises
-    ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
+    ``decisions`` (but those of ``runs.OUTLIVING_DECISION_CATEGORIES``), or leaves them open when it is None. Returns
+    the plan revision the move wrote, or None. Raises ``runs.TransitionRefused`` for a move the table refuses or a run
+    that is no longer in ``old``."""
     runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
@@ -253,7 +256,8 @@ async def move_run(
         await tool_stats.record(conn, run_id)
     if new in runs.TERMINAL_STATES and decisions is not None:
         d = tables.decisions
-        await conn.execute(update(d).values(state=decisions).where(d.c.run_id == run_id, d.c.state == "open"))
+        own = (d.c.run_id == run_id, d.c.state == "open", d.c.category.not_in(runs.OUTLIVING_DECISION_CATEGORIES))
+        await conn.execute(update(d).values(state=decisions).where(*own))
     if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 

@@ -37,6 +37,7 @@ from evo_agents.hub import judge, release_ci, release_runs, releases, runs, tabl
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.release_check import release_pass
 from evo_agents.hub.server.release_watch import watch_releases
+from evo_agents.hub.server.run_state import move_run
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, OWNER, app_key, install  # noqa: F401 (app_key is a fixture)
 from tests.hub.test_credentials_api import hub_config as credentials_config
@@ -56,7 +57,19 @@ from tests.hub.test_release_runs import (
     tag_of,
     version_line,
 )
-from tests.hub.test_release_schedule import BASE, DOCS, HEAD, NEXT, REPO, SIX, fire, repo_at, set_schedule, status_of
+from tests.hub.test_release_schedule import (
+    BASE,
+    DOCS,
+    HEAD,
+    HEAD_FILES,
+    NEXT,
+    REPO,
+    SIX,
+    fire,
+    repo_at,
+    set_schedule,
+    status_of,
+)
 from tests.hub.test_runs import claim, moved, report
 
 ACTIONS = {"contents": "write", "pull_requests": "write", "metadata": "read", "actions": "write"}
@@ -627,6 +640,68 @@ def test_a_stopped_cycle_with_a_run_active_or_no_newer_tag_stays_busy(world):
     assert cycle(world.db)["state"] == "stopped"
     d = tables.decisions
     assert sql(world.db, select(d.c.state).where(d.c.id == found["decision_id"])) == [("open",)]
+
+
+def checked(world, now: datetime) -> dict:
+    state = world.app.state
+    return world.client.portal.call(partial(release_pass, state.engine, state.github_app, now=now))
+
+
+def nightly_at_the_tag(world) -> None:
+    """nightly moved to v0.25.0, whose tree the fake holds: the next check reads no packaging change."""
+    merge = tag_of(world.github, "v0.25.0")[0]
+    world.github.snapshot(MINE, REPO, merge, HEAD_FILES)
+    world.github.tag(MINE, REPO, "nightly", merge)
+
+
+def test_a_run_that_ends_after_its_cycle_stopped_leaves_the_cycle_decision_open(world):
+    found = stopped_on_timeout(world)
+    d, r = tables.decisions, tables.runs
+    run_id, project_id = sql(world.db, select(d.c.run_id, d.c.project_id).where(d.c.id == found["decision_id"]))[0]
+    asked = {"run_id": run_id, "project_id": project_id, "category": "question", "question": "Which?"}
+    options = [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}]
+    own = sql(world.db, insert(d).values(**asked, options=options).returning(d.c.id))[0][0]
+    held = {"state": "verifying", "finished_at": None, "lease_expires_at": func.now() + timedelta(minutes=5)}
+    sql(world.db, update(r).values(**held).where(r.c.id == run_id))
+
+    async def end():
+        async with world.app.state.engine.begin() as conn:
+            await move_run(conn, run_id, "verifying", "done", "worker", reason="its worker reported done")
+
+    world.client.portal.call(end)
+    states = dict(sql(world.db, select(d.c.id, d.c.state).where(d.c.id.in_([found["decision_id"], own]))))
+    assert states == {found["decision_id"]: "open", own: "cancelled"}, "the run's own decision ends with it"
+    assert answer(world, found["decision_id"], "close").status_code == 200
+    assert cycle(world.db)["state"] == "closed"
+
+
+def test_a_stopped_cycle_whose_decision_is_cancelled_is_closed_once_no_run_of_it_is_active(world):
+    found = stopped_on_timeout(world)
+    d, r, rr = tables.decisions, tables.runs, tables.release_runs
+    sql(world.db, update(d).values(state="cancelled").where(d.c.id == found["decision_id"]))
+    ran = r.c.id.in_(select(rr.c.run_id))
+    sql(world.db, update(r).values(state="review", finished_at=None).where(ran))
+    assert checked(world, NEXT) == {"busy": 1}, "a run of it is still active"
+    assert cycle(world.db)["state"] == "stopped"
+    sql(world.db, update(r).values(state="done", finished_at=func.now()).where(ran))
+    nightly_at_the_tag(world)
+    assert checked(world, NEXT + timedelta(days=1)) == {"unchanged": 1}, "the check goes on as if no cycle were there"
+    closed = cycle(world.db)
+    gone = f"its decision #{found['decision_id']} is cancelled: nobody can answer it, so the check closed cycle"
+    assert (closed["id"], closed["state"]) == (found["id"], "closed") and closed["ended_at"] is not None
+    assert gone in closed["stop_reason"] and "no run of release.yml" in closed["stop_reason"]
+    assert thread_messages(world, found["triage_chat_id"])[-1].startswith(gone)
+    assert status_of(world)["cycle"] is None
+
+
+def test_a_stopped_cycle_that_asked_no_decision_is_closed_by_the_check(world):
+    stopped_on_timeout(world)
+    c = tables.release_cycles
+    sql(world.db, update(c).values(decision_id=None))
+    nightly_at_the_tag(world)
+    assert checked(world, NEXT) == {"unchanged": 1}
+    closed = cycle(world.db)
+    assert closed["state"] == "closed" and "no decision was asked: nobody can answer it" in closed["stop_reason"]
 
 
 def test_the_decision_continue_reopens_the_cycle_and_queues_the_next_fix(world):
