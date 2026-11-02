@@ -63,6 +63,16 @@ def test_a_run_no_worker_serves_the_project_of_says_so_with_the_command(client, 
     assert claim(client, laptop) is None
 
 
+def test_the_command_names_the_nearest_worker_with_the_most_free_slots(client, hub, hub_db):
+    small = add_worker(client, hub["owner"], "small", slots=1)
+    roomy = add_worker(client, hub["owner"], "roomy", slots=4)
+    for worker in (small, roomy):
+        serves_nothing(hub_db, worker)
+    (run,) = dispatched(client, hub["owner"], [2])
+    assert run["warning"].endswith(f"`evo-agents worker projects --worker roomy --add {PROJECT}`")
+    assert [worker["worker"] for worker in candidates(client, hub["owner"], run["id"])["workers"]] == ["roomy", "small"]
+
+
 def test_a_plan_run_no_worker_can_take_comes_with_a_warning(client, hub, hub_db):
     laptop = add_worker(client, hub["owner"], "laptop")
     serves_nothing(hub_db, laptop)
