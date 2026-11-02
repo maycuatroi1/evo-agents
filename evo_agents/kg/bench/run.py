@@ -70,6 +70,7 @@ class Options:
     room: graphs.Room = graphs.Room()  # the cap on the graphs and the free space a build leaves (graphs.make_room)
     jobs: int = 1  # repos asked at once, each in a process of its own
     exclude: tuple[str, ...] = ()  # repos (OWNER/NAME) left out before sampling, for ones too big for the disk
+    like: Path | None = None  # a summary whose tasks (by id) are the ones to ask, instead of a sample
     progress: object = None  # a callable(str) for progress lines
 
     @property
@@ -102,6 +103,26 @@ def select(cache: Path, bench: str, lay: graphs.Layout, options: Options) -> Sel
     skip = {r.lower() for r in options.exclude}
     mine = [t for t in tasks if t.split in options.parts and t.repo.lower() not in skip]
     chosen, why, size = mine, None, options.sample
+    if options.like is not None:
+        try:
+            asked = json.loads(options.like.read_text(encoding="utf-8")).get("tasks") or []
+        except (OSError, ValueError) as exc:
+            raise BenchError(f"--like {options.like}: {exc}") from None
+        ids = {r.get("id") for r in asked if isinstance(r, dict) and r.get("bench") == bench}
+        chosen = [t for t in mine if t.id in ids]
+        return Selection(
+            bench,
+            chosen,
+            len(mine),
+            deduped,
+            {
+                "size": len(chosen),
+                "of": len(mine),
+                "seed": options.seed,
+                "why": f"--like {options.like.name}",
+                "ids": [t.id for t in chosen],
+            },
+        )
     if size is not None:
         why = f"--sample {size}"
     elif options.max_hours is not None:
@@ -300,12 +321,28 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
     return asked
 
 
+def ranking_digest() -> str:
+    """Digest of the code that ranks and serves a search (not of the graph's extractor): a change of it asks again."""
+    from evo_agents.kg import asked, locate, search, semantic, serve, store, text
+
+    parts = [Path(m.__file__).read_bytes() for m in (asked, locate, search, semantic, serve, store, text)]
+    return hashlib.sha256(b"\0".join(parts)).hexdigest()[:12]
+
+
 def ask_repo_kept(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:
     """``ask_repo``, keeping each repo's answer in the cache so a run that dies (out of memory, a reboot) goes on from
     the repos it finished: the shard is named by the extractor, the searches, the question budget and the task ids."""
     lay = graphs.layout(cache)
     key = json.dumps(
-        [lay.extractor, bench, options.searches, options.methods, options.limit_of(bench), options.budget_tokens]
+        [
+            lay.extractor,
+            ranking_digest(),
+            bench,
+            options.searches,
+            options.methods,
+            options.limit_of(bench),
+            options.budget_tokens,
+        ]
         + [options.line_budget, [t.id for t in tasks]]
     )
     shard = lay.base / "shards" / f"{hashlib.sha256(key.encode()).hexdigest()[:20]}.pkl"

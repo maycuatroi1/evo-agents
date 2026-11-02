@@ -1136,7 +1136,24 @@ class Store:
         deprecated: bool = True,
         vector=None,
     ) -> list[str]:
-        """Ids of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
+        """The ids of ``search_scored``, best first."""
+        found = self.search_scored(
+            query, b, limit, kinds=kinds, any_word=any_word, deprecated=deprecated, vector=vector
+        )
+        return [node_id for node_id, _ in found]
+
+    def search_scored(
+        self,
+        query: str,
+        b: int,
+        limit: int = 50,
+        *,
+        kinds: list[str] | None = None,
+        any_word: bool = True,
+        deprecated: bool = True,
+        vector=None,
+    ) -> list[tuple[str, float | None]]:
+        """(id, text score) of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
         query, then the full-text matches of all its words, of all its words as prefixes, and (``any_word``) of any
         of its words, ranked together by BM25 times the prior and the weight of the way that scores them best, times
         ``search.weight``: up when a word of the query names the node, down when it is background the query does not
@@ -1194,7 +1211,10 @@ class Store:
         if not deprecated:
             gone = self._deprecated(found, b)
             found = [h for h in found if h not in gone]
-        return found[:want]
+        # The score: BM25 as a positive number (more is better) at the node's best way, the prior and the weights; None
+        # for an exact hit, which comes first whatever it scores, and for every node when a ranking by meaning fused in.
+        fused = bool(near)
+        return [(h, None if fused or h in hits or h not in scores else -scores[h]) for h in found[:want]]
 
     def plain_search(self, query: str, limit: int, kinds: list[str] | None = None) -> list[str]:
         """Ids of the nodes plain BM25 ranks for ``query``, best first, at most ``limit``: a node at its best row, of

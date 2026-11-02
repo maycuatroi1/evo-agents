@@ -51,6 +51,7 @@ def _options(args):
         ),
         jobs=getattr(args, "jobs", 1),
         exclude=tuple(getattr(args, "exclude_repo", None) or ()),
+        like=Path(args.like) if getattr(args, "like", None) else None,
         progress=None if getattr(args, "json", False) and not args.verbose else run.progress_to_stderr,
     )
 
@@ -308,6 +309,11 @@ def register(ksub) -> None:
     go.add_argument("--prune", action="store_true", help="delete each graph and clone once asked, to spare the disk")
     go.add_argument(
         "--exclude-repo", action="append", metavar="OWNER/NAME", help="leave a repo out before sampling (repeatable)"
+    )
+    go.add_argument(
+        "--like",
+        metavar="SUMMARY",
+        help="ask the tasks SUMMARY asked (its sample, whatever the part), so two runs pair on the same questions",
     )
     go.add_argument("--jobs", type=int, default=1, metavar="N", help="repos asked at once (default 1)")
     go.add_argument("--json", action="store_true", help="print the summary")

@@ -375,6 +375,7 @@ source_modules = [
     "evo_agents.kg.post_search",
     "evo_agents.kg.store",
     "evo_agents.kg.serve",
+    "evo_agents.kg.locate",
     "evo_agents.kg.tools",
     "evo_agents.kg.text",
     "evo_agents.kg.budget",

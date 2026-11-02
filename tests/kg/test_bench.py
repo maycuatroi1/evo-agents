@@ -650,7 +650,20 @@ def test_merge_adds_the_sets_and_names_where_hybrid_vectors_came_from(tmp_path):
 
 
 def test_whole_file_bm25_ranks_files_by_their_whole_text():
-    from evo_agents.kg.bench import filebm25
+    from evo_agents.kg import filebm25
 
     index = filebm25.Index({"a.py": "def parse_config(path): read config file", "b.py": "cats " * 50, "c.py": "config"})
     assert index.rank("how to parse the config file", 5) == ["a.py", "c.py"]
+
+
+def test_like_asks_the_tasks_another_summary_asked_and_the_ranking_digest_follows_the_ranking_code(bench, tmp_path):
+    cache, mirror, git_url, _ = bench
+    assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
+    first = tmp_path / "first.json"
+    argv = ["swe-explore", "--cache", str(cache), "--git-url", git_url, "--seed", "3"]
+    assert main(["kg", "bench", "run", *argv, "--out", str(first), "--sample", "1"]) == 0
+    ids = json.loads(first.read_text())["benches"]["swe-explore"]["sample"]["ids"]
+    selection = run.select(cache, "swe-explore", graphs.layout(cache), run.Options(like=first))
+    assert [t.id for t in selection.tasks] == ids and selection.sample["ids"] == ids
+    assert selection.sample["why"] == "--like first.json"
+    assert len(run.ranking_digest()) == 12 and run.ranking_digest() == run.ranking_digest()

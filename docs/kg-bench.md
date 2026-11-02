@@ -248,7 +248,7 @@ dimensions), not from a local model. The spend ledger lists provider Parasail fo
 | MuLocBench Acc@5 | 13.1 (183 holdout tasks); 10.7 on the 300-task holdout sample the file run used | 15.0 | 24.5 |
 | SWE-Explore line F1 | 0.069 | - | 0.024 |
 
-Whole-file BM25 (`kg bench run --search files`, `bench/filebm25.py`) ranks the files of the task's commit by Okapi BM25
+Whole-file BM25 (`kg bench run --search files`, `evo_agents/kg/filebm25.py`) ranks the files of the task's commit by Okapi BM25
 over their whole text, on the same 300 LocBench holdout tasks. It lifts LocBench from 28.3 to 44.0, so ranking
 nodes (symbols, sections, files) rather than files is the main cause of the gap, 16 of 21 points; scoring and sample are
 sound. The rest (about 5 points) is probably the 53 non-Python answers; I did not measure that split. Counting distinct files

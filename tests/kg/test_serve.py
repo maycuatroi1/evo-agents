@@ -640,9 +640,11 @@ def test_search_lines_say_once_what_every_result_shares_and_few_results_when_non
     shown = [line.removeprefix("  mentions ") for line in text[2:] if line.lstrip().startswith(("[", "mentions ["))]
     assert len(shown) == 10 and all(" " in line for line in shown[: serve.FULL_LINES])
     assert all(re.fullmatch(r"\[[^\]]+\]", line) for line in shown[serve.FULL_LINES :])  # past the 5th: the id alone
-    weak = session.call("kg_search", {"query": "server search zebra", "limit": 10})
-    lines = weak["content"][0]["text"].splitlines()
-    assert lines[2] == "no result holds all 3 words of the query"
+    named = session.call("kg_search", {"query": "server search zebra", "limit": 10})
+    assert named["content"][0]["text"].splitlines()[2] == "no result holds all 3 words of the query"
+    assert len(named["structuredContent"]["results"]) == 10  # a caller that named a limit gets that many
+    weak = session.call("kg_search", {"query": "server search zebra"})
+    assert weak["content"][0]["text"].splitlines()[2] == "no result holds all 3 words of the query"
     assert len(weak["structuredContent"]["results"]) == serve.WEAK_LIMIT  # none holds the query: the few best
 
     step = {

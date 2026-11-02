@@ -35,7 +35,7 @@ import uuid
 from collections import Counter, deque
 
 from evo_agents import __version__
-from evo_agents.kg import semantic
+from evo_agents.kg import locate, semantic
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
     CONTEXT_MIN_LINE,
@@ -107,7 +107,7 @@ class Session:
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None
         self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
-        self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (bench.filebm25)
+        self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (kg.filebm25)
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -278,14 +278,24 @@ class Session:
             "aliases": n["aliases"],
         }
 
-    def tool_kg_search(self, query: str, kinds: list | None = None, limit: int = 10) -> tuple[str, dict]:
+    def tool_kg_search(self, query: str, kinds: list | None = None, limit: int | None = None) -> tuple[str, dict]:
         store, b = self._store()
-        limit = max(1, min(int(limit), 25))
+        asked = limit is not None  # a caller that named a limit gets that many results, however weak
+        limit = max(1, min(int(limit if asked else 10), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
         if self.plain:
             return self._plain_search(store, b, query, kinds, limit)
         vector = semantic.query_vector(store, query, self.semantic)
-        ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated, vector=vector)
+        ids = None
+        if not kinds:
+            scored = store.search_scored(query, b, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
+            ids = locate.arrange(store, b, query, scored)
+            if ids is None:
+                ids = [i for i, _ in scored][: limit * 12]  # as many as store.search read before
+            else:
+                ids = ids[: max(limit * 4, 40)]
+        if ids is None:
+            ids = store.search(query, b, limit=limit * 4, kinds=kinds, deprecated=self.deprecated, vector=vector)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
@@ -300,7 +310,9 @@ class Session:
             [n["id"] for n in direct], query, {n["id"] for n in direct if n["kind"] in SNIPPET_KINDS}
         )
         partial = words > 1 and bool(matched) and all(m["words"] < words for m in matched.values())
-        if partial and len(results) > WEAK_LIMIT:  # no result holds the whole query: the few best say as much
+        if (
+            partial and not asked and len(results) > WEAK_LIMIT
+        ):  # no result holds the whole query: the few best say as much
             results = results[:WEAK_LIMIT]
             via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
         explored = self._explore(store, results, hits, via)
@@ -338,7 +350,7 @@ class Session:
     def _plain_search(self, store: Store, b: int, query: str, kinds: list | None, limit: int) -> tuple[str, dict]:
         """kg_search by plain BM25: the nodes in its order, no mention, cut or exploring; the passages matched."""
         if self.plain_files:
-            from evo_agents.kg.bench import filebm25
+            from evo_agents.kg import filebm25
 
             clone, commit = self.plain_files
             files = {
