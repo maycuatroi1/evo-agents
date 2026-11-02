@@ -260,7 +260,7 @@ test("Dispatch, Run plan and New plan queue their runs under the agent picked, a
   await expect(dispatch.getByTestId("dispatch-agent-problem")).toHaveText(`@${handle} does not allow Codex CLI: it allows Claude Code.`);
   await expect(dispatch.getByTestId("dispatch-submit")).toBeDisabled();
   await dispatch.getByRole("radio", { name: /^Claude Code/ }).check();
-  await expect(dispatch.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
+  await expect(dispatch.getByTestId("dispatch-worker-select")).toHaveCount(0); // the hub places the run, within the agent's limits
   await dispatch.getByTestId("dispatch-submit").click();
   await expect(dispatch).toBeHidden();
 
@@ -273,13 +273,12 @@ test("Dispatch, Run plan and New plan queue their runs under the agent picked, a
   await planRun.getByTestId("plan-run-submit").click();
   await expect(planRun).toBeHidden();
 
-  // New plan: an author run, always on Claude Code and pinned to a worker the agent allows.
+  // New plan: an author run, always on Claude Code, placed by the hub on a worker the agent allows.
   await open(page, `/p/${project}/plans`);
   await main(page).getByTestId("new-plan").click();
   const author = page.getByTestId("author-run-dialog");
   await author.getByTestId("author-run-request").fill("A plan for the agents of this project.");
   await author.getByTestId("dispatch-agent-select").selectOption(handle);
-  await expect(author.getByTestId("author-run-worker-select")).toHaveValue(String(live.worker.id));
   await author.getByTestId("author-run-submit").click();
   await expect(author).toBeHidden();
 

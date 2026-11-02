@@ -1084,9 +1084,8 @@ def test_as_me_and_access_from_the_command_line(client, hub, hub_db, tmp_path, m
     cancelled = client.post(f"/v1/projects/{PROJECT}/runs/{plan_run['id']}/cancel", headers=hub["owner"])
     assert cancelled.status_code == 200, cancelled.text
 
-    pinned = ("--worker", str(worker["id"]))
     dispatched = command(
-        monkeypatch, capsys, {}, "hub", "run", "dispatch", PLAN, str(STEPS["notes"]), *pinned, "--as-me", *where
+        monkeypatch, capsys, {}, "hub", "run", "dispatch", PLAN, str(STEPS["notes"]), "--as-me", *where
     )
     assert dispatched.code == 0, dispatched.err
     assert "; it runs as you, secrets, tokens and workers aside." in dispatched.out

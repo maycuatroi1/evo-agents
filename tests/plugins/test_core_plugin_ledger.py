@@ -41,7 +41,7 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
-from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
+from tests.hub.conftest import _new_agents_legacy, github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
 from tests.hub.test_curator import grant, night  # noqa: F401 (night: a fixture, on this module's web_client)
 from tests.hub.test_runs import ADMIN, OTHER, OWNER, PLAN, PROJECT, READER

@@ -397,7 +397,6 @@ def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_fr
         {
             "chat": [
                 {"cli": ["triage", "rerun", "--reason", "git is installed now", "--confirm-cause"]},
-                {"cli": ["triage", "rerun", "--reason", "try it", "--worker", "nowhere"]},
                 {
                     "cli": [
                         "triage",
@@ -421,11 +420,10 @@ def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_fr
     async def body(hub, daemon):
         run_id = hub.queue_chat_run(["alpha"])
         assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
-        rerun, refused, edited = [e for e in machine.commands() if e["run"] == run_id]
+        rerun, edited = [e for e in machine.commands() if e["run"] == run_id]
         assert rerun["exit"] == 0 and "Ran the failed run again as run #" in rerun["stdout"]
-        assert refused["exit"] == 1 and "the owner has no worker nowhere" in refused["stderr"]
         assert edited["exit"] == 0 and "Wrote revision 4 of the plan and ran the failed run again" in edited["stdout"]
-        first, second, third = hub.chat_calls
+        first, third = hub.chat_calls
         assert (first["route"], first["reason"], first["cause_confirmed"]) == (
             "triage/rerun",
             "git is installed now",
@@ -438,7 +436,7 @@ def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_fr
         assert await hub.wait_state(review, "done", "failed", timeout=WAIT) == "done", hub.texts(review)
         (bad,) = [e for e in machine.commands() if e["run"] == review]
         assert bad["exit"] == 1 and "is a review run, whose agent does not talk in chats" in bad["stderr"]
-        assert len(hub.chat_calls) == 3
+        assert len(hub.chat_calls) == 2
 
     with_daemon(machine, body)
 
