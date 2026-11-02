@@ -131,37 +131,77 @@ def commit_message(spec: dict, subject: str) -> str:
     return subject + ("\n\n" + "\n".join(trailers) if trailers else "")
 
 
-def hook_script(trailers: list[str], root: Path) -> str:
+def guard_lines(python: str) -> str:
+    """The part of a run's hook that the guard of private names adds (``evo_agents.guard_check``): ``commit-msg``
+    checks the message, ``pre-push`` what the push sends, while the policy EVO_GUARD_POLICY names holds anything; a
+    refusal ends the hook with its reason. ``-I``: the checkout's own files never stand in for evo_agents."""
+    run = f"{shlex.quote(python)} -I -m evo_agents.guard_check hook"
+    return f"""if [ -n "$EVO_GUARD_POLICY" ] && [ -s "$EVO_GUARD_POLICY" ]; then
+  case "$name" in
+    commit-msg) {run} commit-msg "$@" || exit 1 ;;
+    pre-push) printf '%s\\n' "$input" | {run} pre-push "$@" || exit 1 ;;
+  esac
+fi
+"""
+
+
+def hook_script(trailers: list[str], root: Path, guard: str | None = None) -> str:
     """The text of each hook of the run's directory: in ``commit-msg`` of a checkout under ``root``, add ``trailers``
-    (once each); then run the checkout's own hook of the same name, from its own configuration."""
+    (once each); with ``guard`` (the Python of evo_agents), check the message and the push for private names; then run
+    the checkout's own hook of the same name, from its own configuration, with the standard input a push gave."""
     added = " ".join(f"--trailer {shlex.quote(line)}" for line in trailers)
     under = shlex.quote(str(root)) + "/*"
-    return f"""#!/bin/sh
-# The git hooks of an evo-agents run: a commit of its own checkouts names its principal and agent.
-name=${{0##*/}}
-top=$(git rev-parse --show-toplevel 2>/dev/null) || top=
-if [ "$name" = commit-msg ] && [ -n "$top" ]; then
+    trailing = (
+        f"""if [ "$name" = commit-msg ] && [ -n "$top" ]; then
   case "$(cd "$top" && pwd -P)/" in
     {under}) git interpret-trailers --in-place --if-exists addIfDifferent {added} "$1" || : ;;
   esac
 fi
-own=$(GIT_CONFIG_COUNT=0 git rev-parse --git-path hooks 2>/dev/null) || exit 0
+"""
+        if trailers
+        else ""
+    )
+    if guard is None:
+        return f"""#!/bin/sh
+# The git hooks of an evo-agents run: a commit of its own checkouts names its principal and agent.
+name=${{0##*/}}
+top=$(git rev-parse --show-toplevel 2>/dev/null) || top=
+{trailing}own=$(GIT_CONFIG_COUNT=0 git rev-parse --git-path hooks 2>/dev/null) || exit 0
 here=$(cd "${{0%/*}}" && pwd -P)
 case "$own" in /*) ;; *) own="$(pwd -P)/$own" ;; esac
 [ "$(cd "$own" 2>/dev/null && pwd -P)" = "$here" ] && exit 0
 [ -x "$own/$name" ] && exec "$own/$name" "$@"
 exit 0
 """
+    return f"""#!/bin/sh
+# The git hooks of an evo-agents run: a commit of its own checkouts names its principal and agent, and no commit
+# message or push to a repo the hub's guard policy names carries a private name.
+name=${{0##*/}}
+top=$(git rev-parse --show-toplevel 2>/dev/null) || top=
+input=
+[ "$name" = pre-push ] && input=$(cat)
+{guard_lines(guard)}{trailing}own=$(GIT_CONFIG_COUNT=0 git rev-parse --git-path hooks 2>/dev/null) || exit 0
+here=$(cd "${{0%/*}}" && pwd -P)
+case "$own" in /*) ;; *) own="$(pwd -P)/$own" ;; esac
+[ "$(cd "$own" 2>/dev/null && pwd -P)" = "$here" ] && exit 0
+[ -x "$own/$name" ] || exit 0
+if [ "$name" = pre-push ]; then
+  printf '%s\\n' "$input" | "$own/$name" "$@"
+  exit $?
+fi
+exec "$own/$name" "$@"
+"""
 
 
-def trailer_hooks(spec: dict, directory: Path, root: Path) -> Path | None:
+def trailer_hooks(spec: dict, directory: Path, root: Path, *, guard: str | None = None) -> Path | None:
     """Write the directory of hooks of the run of claim ``spec`` at ``directory`` for the checkouts under ``root``,
-    its work tree; the directory, for ``core.hooksPath`` of the agent's git, or None for a run without trailers."""
+    its work tree, with the guard's checks when ``guard`` names the Python of evo_agents; the directory, for
+    ``core.hooksPath`` of the agent's git, or None for a run without trailers nor guard."""
     trailers = run_trailers(spec)
-    if not trailers:
+    if not trailers and guard is None:
         return None
     directory.mkdir(parents=True, exist_ok=True)
-    text = hook_script(trailers, Path(root).resolve())
+    text = hook_script(trailers, Path(root).resolve(), guard)
     for name in HOOK_NAMES:
         path = directory / name
         if not path.exists() or path.read_text() != text:

@@ -927,6 +927,11 @@ class WorkerSettings(BaseModel):
         description="the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends "
         "none, and a daemon that got none keeps those of its config",
     )
+    guard: str = Field(
+        "",
+        description="the digest of the hub's guard policy (GET /v1/guard/policy), empty when it guards nothing: the "
+        "daemon fetches the policy when the digest differs from the one it holds; a hub before 0192 sends none",
+    )
 
 
 class NightlyRead(BaseModel):

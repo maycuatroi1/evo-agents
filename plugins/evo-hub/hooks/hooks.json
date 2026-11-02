@@ -76,6 +76,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.54.0 evo-agents hub hook pre-tool-use || { command -v evo-agents >/dev/null 2>&1 && echo 'evo-hub: uvx could not run evo-ak==0.54.0, so evo-agents from PATH runs hub hook pre-tool-use' >&2 && evo-agents hub hook pre-tool-use; } || echo 'evo-hub: hub hook pre-tool-use did not run: uvx could not run evo-ak==0.54.0 and evo-agents from PATH is missing or failed' >&2; true",
+            "timeout": 15
+          }
+        ]
       }
     ]
   }

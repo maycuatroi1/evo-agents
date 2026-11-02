@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -59,7 +60,7 @@ from evo_agents.hub import browser_login, curator, runs
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import autonomy_hook, environments, interactive, model_router, orphans, packs, venvs
+from evo_agents.worker import autonomy_hook, environments, guard, interactive, model_router, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
@@ -275,7 +276,9 @@ class Agent:
         if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
             env.update(compact_window(env))
         env.update(authorship.author_env(run.spec, authorship.hub_url(run)))  # its own commits name the agent
-        env.update(self.trailer_config(env))  # and carry the run's trailers
+        env.update(self.trailer_config(env))  # and carry the run's trailers, and its git checks no private name
+        if run.worktree is not None and not run.spec.get("environment"):  # the gh shim of the guard, first on PATH
+            env.update(guard.agent_env(env, run.daemon.home.root))
         if claude_home.wanted(run.spec, run.runtime, route is not None) and run.worktree:  # a config dir of its own
             env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
             env["GH_CONFIG_DIR"] = str(claude_home.gh_dir(run.worktree))  # empty: none of the owner's gh logins
@@ -287,13 +290,15 @@ class Agent:
 
     def trailer_config(self, env: dict[str, str]) -> dict[str, str]:
         """The git configuration that names the run's hooks, which add its trailers Evo-Principal and Evo-Agent to the
-        agent's own commits (``authorship.trailer_hooks``), after what ``env`` sets; empty for a run without trailers,
-        without a work tree, or in an environment other than this machine's host."""
+        agent's own commits (``authorship.trailer_hooks``) and, while the hub's guard policy guards something, check
+        its commit messages and pushes for private names (``evo_agents.guard_check``), after what ``env`` sets; empty
+        for a run with neither, without a work tree, or in an environment other than this machine's host."""
         run = self.run
         if run.worktree is None or run.spec.get("environment"):
             return {}
         directory = run.daemon.home.run_dir(run.id) / "git-hooks"
-        hooks = authorship.trailer_hooks(run.spec, directory, Path(run.worktree))
+        checks = sys.executable if guard.on(env) else None
+        hooks = authorship.trailer_hooks(run.spec, directory, Path(run.worktree), guard=checks)
         return {} if hooks is None else config_env(env, [("core.hooksPath", str(hooks))])
 
     @property
