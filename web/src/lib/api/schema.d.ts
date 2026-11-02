@@ -2096,8 +2096,9 @@ export interface paths {
         /**
          * Run Candidates
          * @description The workers of the run's owner and the agent profiles of the project that could run a failed run again, each
-         *     with why it fits or why not, the best first; the owner's alone (403 for another member), 409 for a run that did
-         *     not fail.
+         *     with why it fits or why not, the best first; for a queued run, the workers that could take it now as the claim
+         *     counts it, the agent pools of the project and why no worker can (``diagnosis``). The owner's alone (403 for
+         *     another member), 409 for a run neither failed nor queued.
          */
         get: operations["run_candidates_v1_projects__project__runs__run_id__rerun_candidates_get"];
         put?: never;
@@ -29555,6 +29556,43 @@ export interface components {
              */
             added_at: string;
         };
+        /** PoolCandidate */
+        PoolCandidate: {
+            /** Pool */
+            pool: string;
+            /**
+             * Agent
+             * @description the handle of the agent whose pool it is
+             */
+            agent: string;
+            /**
+             * Pool Mode
+             * @description the agent is in pool mode, so its runs go to this pool's nodes alone
+             */
+            pool_mode: boolean;
+            /**
+             * Takes Run
+             * @description the pool the run goes to: its agent's, in pool mode
+             */
+            takes_run: boolean;
+            /**
+             * Nodes
+             * @description the nodes of the pool that are not revoked
+             */
+            nodes: number;
+            /**
+             * Ready Nodes
+             * @description those online, not draining and ready
+             */
+            ready_nodes: number;
+            /**
+             * Fit
+             * @description the run goes to this pool and one of its nodes can take it now
+             */
+            fit: boolean;
+            /** Reasons */
+            reasons: string[];
+        };
         /** PoolNode */
         PoolNode: {
             /** Id */
@@ -34101,6 +34139,16 @@ export interface components {
             cause_inferred: boolean;
             /** @description the thread the hub opened for the failure, if any */
             triage?: components["schemas"]["TriageThread"] | null;
+            /**
+             * Pools
+             * @description a queued run's: the pools of the project's agents, and whether the run goes there
+             */
+            pools?: components["schemas"]["PoolCandidate"][];
+            /**
+             * Diagnosis
+             * @description a queued run's: why no worker can take it now, with the command that fixes it; null when one can, and for a failed run
+             */
+            diagnosis?: string | null;
         };
         /** Results */
         Results: {
@@ -34712,6 +34760,11 @@ export interface components {
             steady_wait?: components["schemas"]["SteadyWait"] | null;
             /** @description a queued step run that waits for another run of the same plan and repo, which has edited files the step names; null otherwise */
             overlap_wait?: components["schemas"]["OverlapWait"] | null;
+            /**
+             * Warning
+             * @description set on the answer of a dispatch alone: no worker could take the run as it queued, why, and the command that fixes it (`evo-agents hub run candidates` says more); null otherwise
+             */
+            warning?: string | null;
             /**
              * Failure Cause
              * @description why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024
