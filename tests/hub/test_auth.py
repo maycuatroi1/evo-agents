@@ -138,6 +138,7 @@ HUB_TABLES |= {"kg_optimize_runs"}  # migration 0182
 HUB_TABLES |= {"merge_checks"}  # migration 0187
 HUB_TABLES |= {"proposal_threads"}  # migration 0188
 HUB_TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
+HUB_TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 
