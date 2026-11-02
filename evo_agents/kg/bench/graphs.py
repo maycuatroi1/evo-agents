@@ -282,6 +282,24 @@ def make_room(lay: Layout, task: Task, room: Room, keep: frozenset[str] = frozen
     return evicted
 
 
+WARM_CHUNK = 8 << 20
+
+
+def warm(project: Path) -> int:
+    """Read a graph's files once, so a search times the ranking of a graph a server holds open and not a cold disk.
+
+    A served graph is read from memory after its first questions; a bench task opens a graph it may have built hours
+    and 100 GB of other graphs before, so its first search would time the disk (docs/kg-bench.md, p95 latency).
+    Returns the bytes read."""
+    read = 0
+    for name in ("graph.sqlite", "graph.sqlite-wal"):
+        path = project / name
+        with contextlib.suppress(OSError), path.open("rb") as fh:
+            while chunk := fh.read(WARM_CHUNK):
+                read += len(chunk)
+    return read
+
+
 @contextlib.contextmanager
 def bench_home(home: Path):
     """EVO_KG_HOME set to the bench's kg home while a build or a run reads it, then put back."""

@@ -290,6 +290,7 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
             asked.built += not result.reused
             asked.seconds += result.seconds
             clone = lay.clone(task.repo)
+            graphs.warm(lay.project_dir(task))
             for search in options.searches:
                 with graphs.bench_home(lay.home):
                     project = graphs.project_of(lay, task)
@@ -337,6 +338,7 @@ def ask_repo_kept(cache: Path, bench: str, tasks: list[Task], options: Options) 
         [
             lay.extractor,
             ranking_digest(),
+            "warm",  # searches time a graph read once before (graphs.warm), not a cold one
             bench,
             options.searches,
             options.methods,

@@ -667,3 +667,9 @@ def test_like_asks_the_tasks_another_summary_asked_and_the_ranking_digest_follow
     assert [t.id for t in selection.tasks] == ids and selection.sample["ids"] == ids
     assert selection.sample["why"] == "--like first.json"
     assert len(run.ranking_digest()) == 12 and run.ranking_digest() == run.ranking_digest()
+
+
+def test_warm_reads_a_graph_once_and_skips_what_is_missing(tmp_path):
+    (tmp_path / "graph.sqlite").write_bytes(b"x" * 1000)
+    assert graphs.warm(tmp_path) == 1000
+    assert graphs.warm(tmp_path / "gone") == 0
