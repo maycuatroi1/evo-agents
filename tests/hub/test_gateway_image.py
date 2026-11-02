@@ -25,7 +25,10 @@ def _docker_works() -> bool:
     gateway's Linux image does not start and ``docker run`` fails."""
     if not shutil.which("docker"):
         return False
-    info = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, timeout=30)
+    try:
+        info = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return False
     return info.returncode == 0 and info.stdout.strip() == "linux"
 
 
