@@ -18,7 +18,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
-from evo_agents.hub import proofs, runs, tables
+from evo_agents.hub import guard, proofs, runs, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -154,7 +154,8 @@ async def record_heartbeat(
         )
         fields = dict(held.one()._mapping)
         fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's (worker_pools)
-        settings = WorkerSettings(**fields, projects=list((await conn.execute(served)).scalars()))
+        served_names = list((await conn.execute(served)).scalars())
+        settings = WorkerSettings(**fields, projects=served_names, guard=guard.digest_of(await guard.policy(conn)))
         nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
         asked = await update_now.settle(conn, worker_id, body, nightly)
         install = await browser_install.settle(conn, worker_id, body)

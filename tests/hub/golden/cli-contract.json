@@ -8992,6 +8992,294 @@
         "schema": "ProjectGoal"
       }
     },
+    "hub guard add-target": {
+      "positionals": [
+        {
+          "name": "pattern",
+          "metavar": "PATTERN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "pattern",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "GuardTarget"
+      }
+    },
+    "hub guard add-term": {
+      "positionals": [
+        {
+          "name": "term",
+          "metavar": "TERM",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "term",
+          "words",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "GuardTerm"
+      }
+    },
+    "hub guard check": {
+      "positionals": [
+        {
+          "name": "text",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "guarded",
+          "hits"
+        ],
+        "schema": "GuardCheckOut"
+      }
+    },
+    "hub guard remove-target": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "pattern",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "GuardTarget"
+      }
+    },
+    "hub guard remove-term": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "term",
+          "words",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "GuardTerm"
+      }
+    },
+    "hub guard targets": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "pattern",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "GuardTarget"
+      }
+    },
+    "hub guard terms": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "term",
+          "words",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "GuardTerm"
+      }
+    },
     "hub hook local-ask": {
       "positionals": [],
       "options": [],
@@ -9003,6 +9291,11 @@
       "json": null
     },
     "hub hook post-tool-use": {
+      "positionals": [],
+      "options": [],
+      "json": null
+    },
+    "hub hook pre-tool-use": {
       "positionals": [],
       "options": [],
       "json": null
@@ -61098,6 +61391,718 @@
           }
         }
       },
+      "/v1/x/guard/{project}/terms": {
+        "get": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "List Terms",
+          "description": "The private names of the project, by their words (a member of the project).",
+          "operationId": "list_terms_v1_x_guard__project__terms_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/GuardTerm"
+                    },
+                    "title": "Response List Terms V1 X Guard  Project  Terms Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Add Term",
+          "description": "Add a private name of the project (an admin of the project or of the hub); 409 when the project has one of the\nsame words already, 422 for one without a letter or digit.",
+          "operationId": "add_term_v1_x_guard__project__terms_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardTermWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardTerm"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/guard/{project}/terms/{term_id}": {
+        "delete": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Remove Term",
+          "description": "Remove a private name of the project (an admin of the project or of the hub); the name removed.",
+          "operationId": "remove_term_v1_x_guard__project__terms__term_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "term_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Term Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardTerm"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/guard/{project}/targets": {
+        "get": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "List Targets",
+          "description": "The patterns of the repos the project publishes (a member of the project).",
+          "operationId": "list_targets_v1_x_guard__project__targets_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/GuardTarget"
+                    },
+                    "title": "Response List Targets V1 X Guard  Project  Targets Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Add Target",
+          "description": "Add a pattern of the repos the project publishes (an admin of the project or of the hub); 409 when the project\nlists it already.",
+          "operationId": "add_target_v1_x_guard__project__targets_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardTargetWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardTarget"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/guard/{project}/targets/{target_id}": {
+        "delete": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Remove Target",
+          "description": "Remove a pattern of the repos the project publishes (an admin of the project or of the hub); the one removed.",
+          "operationId": "remove_target_v1_x_guard__project__targets__target_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "target_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Target Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardTarget"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/guard/{project}/check": {
+        "post": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Check",
+          "description": "Whether ``text`` holds a private name of any project of the hub, and whether ``repo`` is guarded (a member of\nthe project); nothing is kept.",
+          "operationId": "check_v1_x_guard__project__check_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardCheckIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardCheckOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/guard/policy": {
+        "get": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Policy",
+          "description": "The policy of the hub: the private names of every project that enables the plugin, hashed, and the repos they\npublish; 304 when ``If-None-Match`` names its digest.",
+          "operationId": "policy_v1_worker_guard_policy_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "304": {
+              "description": "unchanged"
+            }
+          }
+        }
+      },
+      "/v1/guard/policy": {
+        "get": {
+          "tags": [
+            "guard"
+          ],
+          "summary": "Policy",
+          "description": "The policy of the hub: the private names of every project that enables the plugin, hashed, and the repos they\npublish; 304 when ``If-None-Match`` names its digest.",
+          "operationId": "policy_v1_guard_policy_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuardPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "304": {
+              "description": "unchanged"
+            }
+          }
+        }
+      },
       "/v1/x/jev/{project}/status": {
         "get": {
           "tags": [
@@ -111152,12 +112157,12 @@
                 }
               ],
               "title": "Check",
-              "description": "the Ki\u1ec3m line: how the rule is checked"
+              "description": "the Kiểm line: how the rule is checked"
             },
             "seen": {
               "type": "integer",
               "title": "Seen",
-              "description": "L\u1ea7n g\u1eb7p: how many times it was seen"
+              "description": "Lần gặp: how many times it was seen"
             },
             "probe_id": {
               "anyOf": [
@@ -114591,6 +115596,261 @@
           ],
           "title": "GroupSample"
         },
+        "GuardCheckHit": {
+          "properties": {
+            "found": {
+              "type": "string",
+              "title": "Found",
+              "description": "the private name as the text writes it"
+            },
+            "context": {
+              "type": "string",
+              "title": "Context",
+              "description": "the text around it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "found",
+            "context"
+          ],
+          "title": "GuardCheckHit"
+        },
+        "GuardCheckIn": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 1000000,
+              "title": "Text"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "where the text goes; none checks it as if guarded"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "GuardCheckIn"
+        },
+        "GuardCheckOut": {
+          "properties": {
+            "guarded": {
+              "type": "boolean",
+              "title": "Guarded",
+              "description": "whether the hub's guard checks text bound for the repo"
+            },
+            "hits": {
+              "items": {
+                "$ref": "#/components/schemas/GuardCheckHit"
+              },
+              "type": "array",
+              "title": "Hits"
+            }
+          },
+          "type": "object",
+          "required": [
+            "guarded",
+            "hits"
+          ],
+          "title": "GuardCheckOut"
+        },
+        "GuardPolicy": {
+          "properties": {
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest",
+              "description": "empty when the policy guards nothing (no term or no target)"
+            },
+            "terms": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Terms",
+              "description": "each term hashed: h, its hash; n, its words; part, its length or 0"
+            },
+            "targets": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Targets"
+            }
+          },
+          "type": "object",
+          "required": [
+            "version",
+            "digest",
+            "terms",
+            "targets"
+          ],
+          "title": "GuardPolicy"
+        },
+        "GuardTarget": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "pattern": {
+              "type": "string",
+              "title": "Pattern",
+              "description": "host/owner/repo in lower case, * and ? as wildcards"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "pattern",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "GuardTarget"
+        },
+        "GuardTargetWrite": {
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Pattern",
+              "description": "a repo the project publishes: a URL, OWNER/REPO (GitHub) or host/owner/repo, * and ? as wildcards"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "pattern"
+          ],
+          "title": "GuardTargetWrite"
+        },
+        "GuardTerm": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "term": {
+              "type": "string",
+              "title": "Term"
+            },
+            "words": {
+              "type": "string",
+              "title": "Words",
+              "description": "the words the guard matches, lowercased"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "term",
+            "words",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "GuardTerm"
+        },
+        "GuardTermWrite": {
+          "properties": {
+            "term": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Term",
+              "description": "a private name: a project, a host or domain, a group or a repo; matched by its words in any case"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why it is private, for the project's admins"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "term"
+          ],
+          "title": "GuardTermWrite"
+        },
         "HTTPValidationError": {
           "properties": {
             "detail": {
@@ -115255,7 +116515,7 @@
             "text": {
               "type": "string",
               "title": "Text",
-              "description": "the words around the match, the matched ones between \u00ab and \u00bb"
+              "description": "the words around the match, the matched ones between « and »"
             },
             "rank": {
               "type": "number",
@@ -133377,7 +134637,7 @@
                 }
               ],
               "title": "Outcome",
-              "description": "its outcome_md, else the section `## K\u1ebft qu\u1ea3` or `## Outcome` that ends its description"
+              "description": "its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description"
             }
           },
           "type": "object",
@@ -162775,6 +164035,12 @@
               "type": "array",
               "title": "Projects",
               "description": "the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config"
+            },
+            "guard": {
+              "type": "string",
+              "title": "Guard",
+              "description": "the digest of the hub's guard policy (GET /v1/guard/policy), empty when it guards nothing: the daemon fetches the policy when the digest differs from the one it holds; a hub before 0192 sends none",
+              "default": ""
             }
           },
           "type": "object",

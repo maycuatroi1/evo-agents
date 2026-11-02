@@ -619,10 +619,12 @@ async def _send(
 ) -> None:
     """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced; PushDeclined when the
     remote declined it by a rule of its own, whose reason (``REMOTE_REJECTED``) ends the message; PushRefused when a
-    commit it would send holds the value of one of the run's leases (``lease_leaks``, floor S3)."""
-    from evo_agents.worker import lease_leaks
+    commit it would send holds the value of one of the run's leases (``lease_leaks``, floor S3), or holds a private
+    name of the hub's projects and goes to a repo they publish (``guard.check_push``)."""
+    from evo_agents.worker import guard, lease_leaks
 
     await lease_leaks.check(cwd, source, remote)
+    await asyncio.to_thread(guard.check_push, cwd, source, branch, remote, env)
     sent = [f"--push-option={option}" for option in options]
     code, out, err = await git(
         cwd,

@@ -359,7 +359,8 @@ def test_in_a_worker_run_session_start_exports_no_plan_and_stop_pushes_no_memory
     assert code == 0 and "evo-agents worker" not in context_of(out)["context"]
     assert exported == [(session, "demo")]
     code, out, err = run_hook("stop", {"cwd": str(session)}, monkeypatch, capsys)
-    assert (code, out) == (0, "") and "did not answer" in err and len(requests) == 1
+    assert (code, out) == (0, "") and "did not answer" in err and len(requests) == 2
+    assert requests[0][1].endswith("/v1/guard/policy")  # the guard's policy, asked at SessionStart outside a run
 
 
 # The plugin's hooks.json, run as Claude Code runs it
@@ -411,7 +412,8 @@ def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget
     found = plugin_hooks()
     # PostToolUse: tests/hub/test_spool.py; the others: tests/hub/test_local_sync.py and test_local_ask.py
     assert sorted(found) == ["PostToolUse", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]
-    (ask,) = found["PreToolUse"]
+    ask, bash = found["PreToolUse"]
+    assert bash["matcher"] == "Bash" and hook_runs(bash["hooks"][0]["command"]) == "hub hook pre-tool-use"
     assert ask["matcher"] == "AskUserQuestion"
     assert hook_runs(ask["hooks"][0]["command"]) == "hub hook local-ask"
     assert ask["hooks"][0]["timeout"] >= local_sync.BUDGET["ask"] + 5

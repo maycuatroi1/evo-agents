@@ -88,7 +88,7 @@ from sqlalchemy import exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, curator, findings, judge, runs, security_pass, tables, tiers
+from evo_agents.hub import approval_heads, curator, findings, guard, judge, runs, security_pass, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
@@ -1210,6 +1210,13 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         ).scalar_one_or_none() or {}
 
     async def opened(token: str) -> dict:
+        async with engine.connect() as conn:  # the names of the guard leave the title and body on a published repo
+            pr_title, pr_body = guard.scrub(
+                await guard.policy(conn),
+                f"github.com/{target.owner}/{target.name}",
+                f"Curator: {title}"[:240],
+                _pr_body(project, change, title),
+            )
         found = await pulls.repository(app, token, target.owner, target.name)
         base = found.get("default_branch")
         if not isinstance(base, str) or not base:
@@ -1221,8 +1228,8 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             target.name,
             branch=change.branch,
             base=base,
-            title=f"Curator: {title}"[:240],
-            body=_pr_body(project, change, title) + signed,
+            title=pr_title,
+            body=pr_body + signed,
         )
         return {"pull": made, "base": base}
 
