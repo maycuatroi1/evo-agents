@@ -10,7 +10,8 @@
 # evo_agents/hub/config.py reads, but those the image sets and those only tests change (tests/hub/test_compose.py); an
 # empty value is unset, so the hub takes its own default.
 #
-# The volumes are caches only: the state lives in Postgres and the blob store (R2), and a lost volume is rebuilt.
+# The volumes are caches only: the state lives in Postgres and the blob store (R2, another S3 service, or SeaweedFS on
+# this host with docker-compose.seaweedfs.yml), and a lost volume is rebuilt.
 #
 # No variable is required when the file is read, so `docker compose ps` and `down` work without the environment.
 # Unset EVO_HUB_VERSION tags the images unset-EVO_HUB_VERSION, which names the variable; unset EVO_HUB_DSN stops api
@@ -30,6 +31,9 @@ x-hub-environment: &hub-environment
   EVO_HUB_S3_ACCESS_KEY_ID: ${EVO_HUB_S3_ACCESS_KEY_ID:-}
   EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
   EVO_HUB_S3_INTERNAL_ENDPOINT: ${EVO_HUB_S3_INTERNAL_ENDPOINT:-}
+  EVO_HUB_S3_PROVIDER: ${EVO_HUB_S3_PROVIDER:-}
+  EVO_HUB_S3_REGION: ${EVO_HUB_S3_REGION:-}
+  EVO_HUB_S3_ADDRESSING_STYLE: ${EVO_HUB_S3_ADDRESSING_STYLE:-}
   EVO_HUB_SENTRY_DSN: ${EVO_HUB_SENTRY_DSN:-}
   EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
   EVO_HUB_BLOB_CONCURRENCY: ${EVO_HUB_BLOB_CONCURRENCY:-32}

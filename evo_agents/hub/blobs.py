@@ -1,4 +1,7 @@
-"""The blob store: content-addressed objects in a private bucket on Cloudflare R2, reached through its S3 API.
+"""The blob store: content-addressed objects in a private bucket on Cloudflare R2, or on any other service with an S3
+API (Amazon S3, Google Cloud Storage, Backblaze B2, MinIO, SeaweedFS), reached through that API. The provider presets of
+``evo_agents.hub.config.S3_PROVIDERS`` say what differs between them: the region the requests are signed for, the
+addressing style of their URLs, and whether the service deletes many keys in one call.
 
 Keys in the bucket:
 
@@ -31,7 +34,8 @@ signs its host), and ``internal_endpoint``, where the hub's own calls go when it
 A hub whose public store address sits behind a proxy that caps a request's body, as Cloudflare does at 100 MB, then
 writes a large built graph to the store directly.
 
-Every call blocks; the server runs them with ``asyncio.to_thread``.
+Every call blocks; the server runs them with ``asyncio.to_thread``. ``evo-agents hub storage`` checks a store and
+copies the blobs of one store to another (``evo_agents.hub.blob_migrate``).
 """
 
 from __future__ import annotations
@@ -43,7 +47,7 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -55,13 +59,19 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 
 from evo_agents.hub import attachments, outputs
-from evo_agents.hub.config import DEFAULT_BLOB_CONCURRENCY, MAX_BLOB_CONCURRENCY, HubConfig
+from evo_agents.hub.config import (
+    BLOB_STORE_FIELDS,
+    DEFAULT_BLOB_CONCURRENCY,
+    MAX_BLOB_CONCURRENCY,
+    S3_PROVIDERS,
+    HubConfig,
+)
 from evo_agents.plugins.bundle import KIND as PLUGIN_KIND
 from evo_agents.plugins.bundle import MAX_BUNDLE as MAX_PLUGIN_BUNDLE
 
 log = logging.getLogger(__name__)
 
-REGION = "auto"  # what Cloudflare documents for R2; the signature carries it, R2 ignores it
+REGION = "auto"  # what Cloudflare documents for R2, the default provider; the signature carries it, R2 ignores it
 BLOB_PREFIX = "blobs/sha256/"
 UPLOAD_PREFIX = "uploads/"
 SEALED_SUFFIX = ".sealed"
@@ -171,19 +181,25 @@ class BlobStore:
         read_timeout: float = READ_TIMEOUT,
         concurrency: int = DEFAULT_CONCURRENCY,
         internal_endpoint: str | None = None,
+        region: str = REGION,
+        addressing_style: str = "path",
+        batch_delete: bool = True,
     ):
         if not 1 <= concurrency <= MAX_CONCURRENCY:
             raise ValueError(f"the blob store's concurrency is between 1 and {MAX_CONCURRENCY}, not {concurrency}")
         self.endpoint = endpoint  # what presigned URLs name
         self.internal_endpoint = internal_endpoint or endpoint  # where the hub's own calls go
         self.bucket = bucket
+        self.region = region
         self.concurrency = concurrency
+        self.batch_delete = batch_delete
         self._slots = threading.BoundedSemaphore(concurrency)  # shared by every commit of this process
         session = boto3.session.Session()
         common = {
             "signature_version": "s3v4",
-            "s3": {"addressing_style": "path"},
-            # R2 does not take every checksum boto3 >= 1.36 sends by default; Cloudflare documents this setting.
+            "s3": {"addressing_style": addressing_style},
+            # R2 does not take every checksum boto3 >= 1.36 sends by default; Cloudflare documents this setting. Nor do
+            # GCS, B2 or older MinIO and SeaweedFS, and AWS takes the requests without them.
             "request_checksum_calculation": "when_required",
             "response_checksum_validation": "when_required",
         }
@@ -192,7 +208,7 @@ class BlobStore:
             return session.client(
                 "s3",
                 endpoint_url=url,
-                region_name=REGION,
+                region_name=region,
                 aws_access_key_id=access_key_id,
                 aws_secret_access_key=secret_access_key,
                 config=Config(**common, **config),
@@ -230,13 +246,25 @@ class BlobStore:
         """The store EVO_HUB_S3_* configure, or None when they are not set."""
         if config.blob_store_missing():
             return None
+        settings = {name: getattr(config, name) for name in BLOB_STORE_FIELDS}
+        return cls.from_settings(settings, concurrency=config.blob_concurrency)
+
+    @classmethod
+    def from_settings(cls, settings: Mapping, *, concurrency: int = DEFAULT_CONCURRENCY) -> BlobStore | None:
+        """The store of ``settings``, the BLOB_STORE_FIELDS as ``config.load_blob_store`` reads them; None when they
+        name no store."""
+        if not settings.get("s3_endpoint"):
+            return None
         return cls(
-            config.s3_endpoint,
-            config.s3_bucket,
-            config.s3_access_key_id,
-            config.s3_secret_access_key,
-            concurrency=config.blob_concurrency,
-            internal_endpoint=config.s3_internal_endpoint,
+            settings["s3_endpoint"],
+            settings["s3_bucket"],
+            settings["s3_access_key_id"],
+            settings["s3_secret_access_key"],
+            concurrency=concurrency,
+            internal_endpoint=settings.get("s3_internal_endpoint"),
+            region=settings.get("s3_region") or REGION,
+            addressing_style=settings.get("s3_addressing_style") or "path",
+            batch_delete=S3_PROVIDERS[settings.get("s3_provider") or "r2"].batch_delete,
         )
 
     def _call(self, operation: str, method: str, **params):
@@ -260,6 +288,26 @@ class BlobStore:
             self._probe.head_bucket(Bucket=self.bucket)
         except (ClientError, BotoCoreError) as exc:
             raise _unavailable("HeadBucket", exc) from None
+
+    def ensure_bucket(self) -> bool:
+        """Create the bucket when it does not exist; True when this call created it. For ``hub storage check``, which
+        an operator runs on a new store: the hub itself never creates a bucket."""
+        try:
+            self._s3.head_bucket(Bucket=self.bucket)
+            return False
+        except ClientError as exc:
+            if exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") != 404:
+                raise _unavailable("HeadBucket", exc) from None
+        except BotoCoreError as exc:
+            raise _unavailable("HeadBucket", exc) from None
+        params = {"Bucket": self.bucket}
+        if self.region not in ("auto", "us-east-1"):  # S3 takes us-east-1 only without a location
+            params["CreateBucketConfiguration"] = {"LocationConstraint": self.region}
+        try:
+            self._s3.create_bucket(**params)
+        except (ClientError, BotoCoreError) as exc:
+            raise _unavailable("CreateBucket", exc) from None
+        return True
 
     async def status(self) -> str:
         """``ok`` or ``unavailable``, for /v1/health."""
@@ -408,8 +456,12 @@ class BlobStore:
         return self._call("CopyObject", "copy_object", Key=target, CopySource=source_ref) is not None
 
     def delete(self, keys: Iterable[str]) -> None:
-        """Delete ``keys``; a key that does not exist is not an error."""
+        """Delete ``keys``; a key that does not exist is not an error. On a store without DeleteObjects, one call per
+        key, ``concurrency`` at a time."""
         keys = sorted(set(keys))
+        if not self.batch_delete:
+            self._each(lambda key: self._call("DeleteObject", "delete_object", Key=key), keys)
+            return
         for start in range(0, len(keys), DELETE_BATCH):
             batch = [{"Key": key} for key in keys[start : start + DELETE_BATCH]]
             result = self._call("DeleteObjects", "delete_objects", Delete={"Objects": batch, "Quiet": True})
@@ -417,6 +469,23 @@ class BlobStore:
             if errors:
                 codes = sorted({str(error.get("Code")) for error in errors})
                 raise _unavailable("DeleteObjects", RuntimeError(f"{len(errors)} keys not deleted: {', '.join(codes)}"))
+
+    def list_keys(self, prefix: str) -> Iterator[tuple[str, int]]:
+        """(key, size) of every object under ``prefix``, in the store's order, a page of 1000 per call."""
+        try:
+            for page in self._s3.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=prefix):
+                for item in page.get("Contents", []):
+                    yield item["Key"], int(item["Size"])
+        except (ClientError, BotoCoreError) as exc:
+            raise _unavailable("ListObjectsV2", exc) from None
+
+    def blobs(self) -> Iterator[tuple[str, int]]:
+        """(sha256, size) of every blob in the bucket; an object under ``blobs/sha256/`` whose name is no SHA-256 is
+        left out."""
+        for key, size in self.list_keys(BLOB_PREFIX):
+            sha256 = key.removeprefix(BLOB_PREFIX)
+            if SHA256.fullmatch(sha256):
+                yield sha256, size
 
     # Uploads
 

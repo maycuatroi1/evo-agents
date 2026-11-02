@@ -3253,10 +3253,16 @@ curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1
   -d '{"version": 1}'
 ```
 
-## Blobs on R2
+## Blob store
 
-Postgres holds metadata; the blob store holds bytes. The bucket stays private, and the access key the hub gets should
-be limited to that one bucket. Keys:
+Postgres holds metadata; the blob store holds bytes. The store is any service with an S3 API: Cloudflare R2 by
+default, and Amazon S3, Google Cloud Storage, Backblaze B2, MinIO or SeaweedFS through `EVO_HUB_S3_PROVIDER`, which
+sets the region the hub signs for and the addressing style of its URLs (`EVO_HUB_S3_REGION` and
+`EVO_HUB_S3_ADDRESSING_STYLE` override them). A hub with none of these runs SeaweedFS beside it on its own disk with
+`deploy/hub/docker-compose.seaweedfs.yml`. `evo-agents hub storage check` tries a store the way the hub uses it, and
+`evo-agents hub storage migrate` copies every blob to another store (`docs/hub-deployment.md`, section The blob
+store). The text below says R2 for whichever store the hub uses. The bucket stays private, and the access key the hub
+gets should be limited to that one bucket. Keys:
 
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
   blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
