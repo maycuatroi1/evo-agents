@@ -14,6 +14,15 @@ run has reached; a file of a repo of the project, ``graph`` or ``unmatched`` (ke
 has a knowledge graph (``graph_view``). Each piece is kept with how the hub found it. A finding like a closed one of
 earlier nights whose evidence that one cited already is refused (409, ``earlier.closed_like``).
 
+A member's own session records findings and proposals the same way, outside any night (the curator skill): POST
+/v1/projects/{p}/curator/findings and .../curator/proposals take the same bodies with ``run_id``, the session's own
+local run (``runs.LOCAL_KIND``, registered by the evo-hub hooks), which must be the caller's, of that project, and not
+ended (404 otherwise); a machine or web credential only, never a worker's or a run's (403), and the writer role. The
+session's local run takes the place of the review run: its log gets the event, the caps per run hold, and its proposals
+get their tier, their ledger line and, with ``answer_by`` agent, their thread, as a review run's do. ``fix_of`` is the
+night's alone (422): a fix proposal answers a probe the night's review run was assigned. A session's open tier 2
+proposals become no Inbox items, since no review run of theirs ends; the member who recorded them answers them.
+
 A proposal names a lens, a kind of change (``tiers.CHANGE_KINDS``), a title, a markdown summary, the paths it would
 edit (``{repo, path}``, each a repo of the project), the findings it rests on (of the project) and evidence of its own,
 at least one of the two, and a draft plan: a plan of plan.schema.json in outcome steps, each step with ``what``,
@@ -103,7 +112,7 @@ from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser, Principal
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -384,6 +393,49 @@ async def held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -
     return _ReviewRun(run_id, row.project_id, row.name, owner)
 
 
+SESSION_KINDS = (MACHINE, WEB)  # the credentials a member's session records findings and proposals with
+
+
+async def session_review_run(conn: AsyncConnection, user: Principal, project: str, run_id: int) -> _ReviewRun:
+    """The local run ``run_id`` of ``user``'s own session in ``project``, its row locked, standing for a review run;
+    403 for a worker's or a run's credential, 404 for any other run or one that ended."""
+    if user.kind not in SESSION_KINDS:
+        raise HTTPException(
+            403,
+            "a session records findings and proposals with a member's credential; a review run's agent uses "
+            "POST /v1/worker/runs/{id}/findings and .../proposals",
+        )
+    r, p = tables.runs, tables.projects
+    query = (
+        select(r.c.state, r.c.kind, r.c.dispatched_by, r.c.project_id, p.c.name)
+        .join_from(r, p, p.c.id == r.c.project_id)
+        .where(r.c.id == run_id)
+        .with_for_update(of=r)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    if (
+        row is None
+        or row.name != project
+        or row.kind != runs.LOCAL_KIND
+        or row.dispatched_by != user.user_id
+        or row.state == "ended"
+    ):
+        raise HTTPException(
+            404,
+            f"run {run_id} is no live local run of yours in project {project}: a session records findings and "
+            "proposals in its own local run (`evo-agents hub curator finding|propose` finds it)",
+        )
+    owner = Principal(user.user_id, user.login, False, user.token_id, user.kind, "")
+    return _ReviewRun(run_id, row.project_id, row.name, owner)
+
+
+def _night_only(body) -> None:
+    if body.fix_of is not None:
+        raise _refused(
+            "fix_of", "a fix proposal answers a probe assigned to the night's review run; a session gives none"
+        )
+
+
 async def writer_of(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
     access = await project_access(conn, run.owner, run.project)
     if not has_role(access.role, "writer"):
@@ -494,9 +546,27 @@ def _finding(project: str, row) -> Finding:
 @worker_router.post("/runs/{run_id}/findings", status_code=201, response_model=Finding, responses=REFUSALS)
 async def record_finding(request: Request, run_id: RunId, body: FindingIn, user: CurrentUser) -> Finding:
     """Record a finding of the review run this worker holds, with evidence the hub finds."""
+    return await _record_finding(request, body, lambda conn: held_review_run(conn, user, run_id))
+
+
+class SessionFindingIn(FindingIn):
+    run_id: int = Field(ge=1, le=MAX_ID, description="the local run of your session that records it")
+
+
+@router.post("/{project}/curator/findings", status_code=201, response_model=Finding, responses=REFUSALS)
+async def record_session_finding(
+    request: Request, project: ProjectName, body: SessionFindingIn, user: CurrentUser
+) -> Finding:
+    """Record a finding of your own session, in its local run, as a review run's agent records one."""
+    _night_only(body)
+    return await _record_finding(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
+
+
+async def _record_finding(request: Request, body: FindingIn, held) -> Finding:
     f = tables.findings
     async with request.app.state.engine.begin() as conn:
-        run = await held_review_run(conn, user, run_id)
+        run = await held(conn)
+        run_id = run.id
         access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(f.c.run_id == run_id))).scalar_one()
@@ -707,11 +777,30 @@ def _summary(project: str, row) -> ProposalSummary:
 async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, user: CurrentUser) -> Proposal:
     """Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
     computes its tier and drops it when it repeats a proposal rejected lately."""
+    return await _record_proposal(request, body, lambda conn: held_review_run(conn, user, run_id))
+
+
+class SessionProposalIn(ProposalIn):
+    run_id: int = Field(ge=1, le=MAX_ID, description="the local run of your session that records it")
+
+
+@router.post("/{project}/curator/proposals", status_code=201, response_model=Proposal, responses=REFUSALS)
+async def record_session_proposal(
+    request: Request, project: ProjectName, body: SessionProposalIn, user: CurrentUser
+) -> Proposal:
+    """Record a proposal of your own session, in its local run, as a review run's agent records one: the same
+    evidence, draft plan, tier and repeat checks."""
+    _night_only(body)
+    return await _record_proposal(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
+
+
+async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal:
     if body.plan is not None:
         _check_draft(body.plan)
     p = tables.proposals
     async with request.app.state.engine.begin() as conn:
-        run = await held_review_run(conn, user, run_id)
+        run = await held(conn)
+        run_id = run.id
         access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(p.c.run_id == run_id))).scalar_one()

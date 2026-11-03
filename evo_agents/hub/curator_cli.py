@@ -32,6 +32,8 @@ the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|sh
 (``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
 ``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember, and
 ``curator probe list|show|add|retire|report`` (``evo_agents.hub.probe_cli``) the probes of proposals and changes. ``curator
+finding|propose`` (``evo_agents.hub.curator_session_cli``) record what a member's own session finds and proposes,
+as a review run does. ``curator
 protection`` lists the project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check
 REPO`` checks one now with the Curator's App, which only an admin of the project may (POST
 .../curator/protection/{repo}/check): a Builder runs on a repo of GitHub only once its default branch keeps the
@@ -54,6 +56,7 @@ from evo_agents.hub.cli_client import _client_command, _print_json, _project_pat
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money
+from evo_agents.hub.curator_session_cli import register_session
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
 from evo_agents.hub.plan_cli import _project
@@ -793,5 +796,12 @@ def register_curator(hsub) -> None:
     json_option(close, returns_object(*CHANGE_KEYS, schema="Change"))
     close.set_defaults(func=cmd_change_close)
 
-    for register in (_register_protection, register_replay, register_history, register_playbook, register_probe):
+    for register in (
+        _register_protection,
+        register_replay,
+        register_history,
+        register_playbook,
+        register_probe,
+        register_session,
+    ):
         register(csub, with_project)

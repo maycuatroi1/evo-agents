@@ -5744,6 +5744,122 @@
         "schema": "NightFiguresView"
       }
     },
+    "hub curator finding": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "runtime",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "harness",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals",
+            "product",
+            "kg_health"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--severity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium"
+        },
+        {
+          "flags": [
+            "--body-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--session"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "lens",
+          "severity",
+          "title",
+          "body",
+          "evidence",
+          "created_at",
+          "fix_of"
+        ],
+        "schema": "Finding"
+      }
+    },
     "hub curator findings": {
       "positionals": [],
       "options": [
@@ -7063,6 +7179,198 @@
             "--project"
           ],
           "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "lens",
+          "kind",
+          "title",
+          "tier",
+          "state",
+          "evidence_count",
+          "duplicate_of",
+          "answered_by",
+          "answered_at",
+          "deferred_until",
+          "inbox_at",
+          "created_at",
+          "revert_of",
+          "fix_of",
+          "summary",
+          "paths",
+          "impacted",
+          "tier_reasons",
+          "finding_ids",
+          "evidence",
+          "plan",
+          "promotion",
+          "note",
+          "change",
+          "probe"
+        ],
+        "schema": "Proposal"
+      }
+    },
+    "hub curator propose": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "runtime",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "harness",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals",
+            "product",
+            "kg_health"
+          ]
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "docs",
+            "memory",
+            "test_add",
+            "kg_source",
+            "fix",
+            "refactor",
+            "lint",
+            "skill",
+            "cli",
+            "release_prep",
+            "revert",
+            "feature",
+            "api_change",
+            "schema_change",
+            "global_config",
+            "dependency_major",
+            "operation",
+            "test_loosen",
+            "verify_change",
+            "ci_change",
+            "credentials",
+            "curator_rules"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--promote-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--path"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--finding"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--summary-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--probe-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--session"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
           "required": false,
           "repeatable": false
         },
@@ -43558,6 +43866,98 @@
         }
       },
       "/v1/projects/{project}/curator/findings": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Record Session Finding",
+          "description": "Record a finding of your own session, in its local run, as a review run's agent records one.",
+          "operationId": "record_session_finding_v1_projects__project__curator_findings_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFindingIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Finding"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        },
         "get": {
           "tags": [
             "curator"
@@ -43724,13 +44124,14 @@
           }
         }
       },
-      "/v1/projects/{project}/curator/findings/{finding_id}": {
-        "get": {
+      "/v1/projects/{project}/curator/proposals": {
+        "post": {
           "tags": [
             "curator"
           ],
-          "summary": "Show Finding",
-          "operationId": "show_finding_v1_projects__project__curator_findings__finding_id__get",
+          "summary": "Record Session Proposal",
+          "description": "Record a proposal of your own session, in its local run, as a review run's agent records one: the same\nevidence, draft plan, tier and repeat checks.",
+          "operationId": "record_session_proposal_v1_projects__project__curator_proposals_post",
           "parameters": [
             {
               "name": "project",
@@ -43741,42 +44142,25 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
-            },
-            {
-              "name": "finding_id",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "integer",
-                "maximum": 9223372036854775807,
-                "minimum": 1,
-                "title": "Finding Id"
-              }
-            },
-            {
-              "name": "X-Evo-Sink",
-              "in": "header",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Evo-Sink"
-              }
             }
           ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionProposalIn"
+                }
+              }
+            }
+          },
           "responses": {
-            "200": {
+            "201": {
               "description": "Successful Response",
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/Finding"
+                    "$ref": "#/components/schemas/Proposal"
                   }
                 }
               }
@@ -43811,20 +44195,28 @@
               },
               "description": "Not Found"
             },
-            "422": {
-              "description": "Validation Error",
+            "409": {
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
+                    "$ref": "#/components/schemas/ErrorBody"
                   }
                 }
-              }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
             }
           }
-        }
-      },
-      "/v1/projects/{project}/curator/proposals": {
+        },
         "get": {
           "tags": [
             "curator"
@@ -43983,6 +44375,106 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ProposalList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/findings/{finding_id}": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Finding",
+          "operationId": "show_finding_v1_projects__project__curator_findings__finding_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "finding_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Finding Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Finding"
                   }
                 }
               }
@@ -71528,7 +72020,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -152374,6 +152866,267 @@
           ],
           "title": "SessionDigest",
           "description": "The digest of one session, as ``evo_agents.hub.digest.build`` makes it."
+        },
+        "SessionFindingIn": {
+          "properties": {
+            "lens": {
+              "type": "string",
+              "enum": [
+                "tool_errors",
+                "environment",
+                "corrections",
+                "failed_runs",
+                "runtime",
+                "tech_debt",
+                "code_health",
+                "docs_drift",
+                "harness",
+                "skills_memory",
+                "cost",
+                "security",
+                "product_goals",
+                "product",
+                "kg_health"
+              ],
+              "title": "Lens"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "title": "Severity",
+              "default": "medium"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body",
+              "description": "markdown, 16 KiB"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Evidence"
+            },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence"
+            },
+            "run_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Run Id",
+              "description": "the local run of your session that records it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lens",
+            "title",
+            "evidence",
+            "run_id"
+          ],
+          "title": "SessionFindingIn"
+        },
+        "SessionProposalIn": {
+          "properties": {
+            "lens": {
+              "type": "string",
+              "enum": [
+                "tool_errors",
+                "environment",
+                "corrections",
+                "failed_runs",
+                "runtime",
+                "tech_debt",
+                "code_health",
+                "docs_drift",
+                "harness",
+                "skills_memory",
+                "cost",
+                "security",
+                "product_goals",
+                "product",
+                "kg_health"
+              ],
+              "title": "Lens"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "docs",
+                "memory",
+                "test_add",
+                "kg_source",
+                "fix",
+                "refactor",
+                "lint",
+                "skill",
+                "cli",
+                "release_prep",
+                "revert",
+                "feature",
+                "api_change",
+                "schema_change",
+                "global_config",
+                "dependency_major",
+                "operation",
+                "test_loosen",
+                "verify_change",
+                "ci_change",
+                "credentials",
+                "curator_rules"
+              ],
+              "title": "Kind",
+              "description": "the kind of change, which gives its first tier"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Summary",
+              "description": "markdown, 16 KiB"
+            },
+            "paths": {
+              "items": {
+                "$ref": "#/components/schemas/PathIn"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Paths",
+              "description": "what it would edit"
+            },
+            "finding_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Finding Ids",
+              "description": "findings of the project it rests on"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Evidence"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan",
+              "description": "the draft plan: plan.schema.json, in outcome steps; none to promote"
+            },
+            "promotion": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PromotionIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind memory: in place of a plan"
+            },
+            "probe": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProbeIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place"
+            },
+            "fix_of": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fix Of",
+              "description": "the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix; at least tier 1, and the hub adds the probe results as evidence"
+            },
+            "run_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Run Id",
+              "description": "the local run of your session that records it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lens",
+            "kind",
+            "title",
+            "run_id"
+          ],
+          "title": "SessionProposalIn"
         },
         "SessionTranscripts": {
           "properties": {

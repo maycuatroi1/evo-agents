@@ -3451,24 +3451,11 @@ export interface paths {
          */
         get: operations["list_findings_v1_projects__project__curator_findings_get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/projects/{project}/curator/findings/{finding_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Show Finding */
-        get: operations["show_finding_v1_projects__project__curator_findings__finding_id__get"];
-        put?: never;
-        post?: never;
+        /**
+         * Record Session Finding
+         * @description Record a finding of your own session, in its local run, as a review run's agent records one.
+         */
+        post: operations["record_session_finding_v1_projects__project__curator_findings_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3487,6 +3474,28 @@ export interface paths {
          * @description The proposals of the project's review runs the caller may read, newest first.
          */
         get: operations["list_proposals_v1_projects__project__curator_proposals_get"];
+        put?: never;
+        /**
+         * Record Session Proposal
+         * @description Record a proposal of your own session, in its local run, as a review run's agent records one: the same
+         *     evidence, draft plan, tier and repeat checks.
+         */
+        post: operations["record_session_proposal_v1_projects__project__curator_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/findings/{finding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Finding */
+        get: operations["show_finding_v1_projects__project__curator_findings__finding_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -36910,6 +36919,93 @@ export interface components {
              */
             spool_reads?: number | null;
         };
+        /** SessionFindingIn */
+        SessionFindingIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            /**
+             * Severity
+             * @default medium
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @description markdown, 16 KiB
+             */
+            body?: string | null;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceIn"][];
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
+            /**
+             * Run Id
+             * @description the local run of your session that records it
+             */
+            run_id: number;
+        };
+        /** SessionProposalIn */
+        SessionProposalIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            /**
+             * Kind
+             * @description the kind of change, which gives its first tier
+             * @enum {string}
+             */
+            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            /** Title */
+            title: string;
+            /**
+             * Summary
+             * @description markdown, 16 KiB
+             */
+            summary?: string | null;
+            /**
+             * Paths
+             * @description what it would edit
+             */
+            paths?: components["schemas"]["PathIn"][];
+            /**
+             * Finding Ids
+             * @description findings of the project it rests on
+             */
+            finding_ids?: number[];
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceIn"][];
+            /**
+             * Plan
+             * @description the draft plan: plan.schema.json, in outcome steps; none to promote
+             */
+            plan?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description kind memory: in place of a plan */
+            promotion?: components["schemas"]["PromotionIn"] | null;
+            /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
+            probe?: components["schemas"]["ProbeIn"] | null;
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix; at least tier 1, and the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
+            /**
+             * Run Id
+             * @description the local run of your session that records it
+             */
+            run_id: number;
+        };
         /** SessionTranscripts */
         SessionTranscripts: {
             /** Project */
@@ -54434,15 +54530,95 @@ export interface operations {
             };
         };
     };
-    show_finding_v1_projects__project__curator_findings__finding_id__get: {
+    record_session_finding_v1_projects__project__curator_findings_post: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionFindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_projects__project__curator_proposals_get: {
+        parameters: {
+            query?: {
+                /** @description any of these; repeat it */
+                state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
+                /** @description any of these tiers; repeat it */
+                tier?: number[];
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+                /** @description of this review run */
+                run_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
             path: {
                 project: string;
-                finding_id: number;
             };
             cookie?: never;
         };
@@ -54454,7 +54630,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Finding"];
+                    "application/json": components["schemas"]["ProposalList"];
                 };
             };
             /** @description Unauthorized */
@@ -54495,24 +54671,86 @@ export interface operations {
             };
         };
     };
-    list_proposals_v1_projects__project__curator_proposals_get: {
+    record_session_proposal_v1_projects__project__curator_proposals_post: {
         parameters: {
-            query?: {
-                /** @description any of these; repeat it */
-                state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
-                /** @description any of these tiers; repeat it */
-                tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
-                /** @description of this review run */
-                run_id?: number | null;
-                limit?: number;
-                offset?: number;
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
             };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionProposalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_finding_v1_projects__project__curator_findings__finding_id__get: {
+        parameters: {
+            query?: never;
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
             path: {
                 project: string;
+                finding_id: number;
             };
             cookie?: never;
         };
@@ -54524,7 +54762,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalList"];
+                    "application/json": components["schemas"]["Finding"];
                 };
             };
             /** @description Unauthorized */
