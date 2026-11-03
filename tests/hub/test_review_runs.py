@@ -458,6 +458,68 @@ def test_only_the_worker_holding_a_review_run_records_findings_and_proposals(rev
     assert finding(client, worker, run_id, evidence=evidence).status_code == 404  # it ended
 
 
+LOCAL_SESSION = "0199a3c1-0000-7000-8000-0000000000c7"
+
+
+def session_run(review, who: str = "owner", session: str = LOCAL_SESSION) -> int:
+    """The local run of ``who``'s Claude Code session in the project, as the evo-hub hooks register it."""
+    body = {"machine": "mac-mini", "cwd": "/Users/me/evo-agents", "claude_email": "me@example.com"}
+    response = review.client.put(f"/v1/projects/{PROJECT}/local-runs/{session}", json=body, headers=review.headers[who])
+    assert response.status_code in (200, 201), response.text
+    return response.json()["id"]
+
+
+def session_post(review, what: str, run_id: int, who: str = "owner", **body):
+    sent = {"lens": "environment", "title": "sleep then tail is blocked", "evidence": [], "run_id": run_id, **body}
+    if what == "proposals":
+        sent = {
+            **sent,
+            "kind": "fix",
+            "title": "A wait helper instead of sleep and tail",
+            "paths": [{"repo": "evo-agents", "path": "evo_agents/worker/wait.py"}],
+            "plan": DRAFT,
+            **body,
+        }
+    return review.client.post(f"/v1/projects/{PROJECT}/curator/{what}", json=sent, headers=review.headers[who])
+
+
+def test_a_members_session_records_findings_and_proposals_in_its_own_local_run(review):
+    client, headers = review.client, review.headers
+    run_id = session_run(review)
+    evidence = [{"kind": "session", "session_id": SESSION, "field": "errors", "index": 0}]
+    found = session_post(review, "findings", run_id, evidence=evidence)
+    assert found.status_code == 201, found.text
+    assert found.json()["run_id"] == run_id and found.json()["evidence"][0]["resolved"] in ("facet", "digest")
+    made = session_post(review, "proposals", run_id, evidence=evidence, finding_ids=[found.json()["id"]])
+    assert made.status_code == 201, made.text
+    proposal_id = made.json()["id"]
+    assert (made.json()["run_id"], made.json()["state"]) == (run_id, "open")
+    listed = client.get(f"/v1/projects/{PROJECT}/curator/proposals?run_id={run_id}", headers=headers["reader"])
+    assert [item["id"] for item in listed.json()["proposals"]] == [proposal_id]
+    assert answered(client, headers["owner"], proposal_id, "reject", note="Not now.")["state"] == "rejected"
+
+
+def test_a_session_records_only_in_a_live_local_run_of_its_own_with_a_members_credential(review):
+    client, headers, worker = review.client, review.headers, review.worker
+    run_id = session_run(review)
+    evidence = [{"kind": "session", "session_id": SESSION, "field": "errors", "index": 0}]
+    others = session_run(review, "other", "0199a3c1-0000-7000-8000-0000000000c8")
+    assert session_post(review, "findings", others, evidence=evidence).status_code == 404  # another member's
+    assert session_post(review, "findings", run_id, "reader", evidence=evidence).status_code in (403, 404)
+    review_run = held_review(review)
+    assert session_post(review, "findings", review_run, evidence=evidence).status_code == 404  # not a local run
+    sent = {"lens": "environment", "title": "t", "evidence": evidence, "run_id": run_id}
+    as_worker = client.post(f"/v1/projects/{PROJECT}/curator/findings", json=sent, headers=worker["headers"])
+    assert as_worker.status_code == 403
+    fix = session_post(review, "proposals", run_id, evidence=evidence, fix_of=1)
+    assert fix.status_code == 422 and "night's review run" in fix.text
+    ended = client.post(
+        f"/v1/projects/{PROJECT}/local-runs/{run_id}/state", json={"state": "ended"}, headers=headers["owner"]
+    )
+    assert ended.status_code == 200, ended.text
+    assert session_post(review, "findings", run_id, evidence=evidence).status_code == 404  # it ended
+
+
 def test_a_review_run_asks_no_decision_though_an_author_run_does(review):
     run_id = held_review(review)
     refused = ask_decision(review.client, review.worker, run_id, step_key=None)
@@ -794,6 +856,61 @@ def served(hub_db, tmp_path, github):
             for who, login in (("owner", OWNER), ("reader", "reader"))
         }
         yield SimpleNamespace(url=url, client=client, headers=headers, homes=homes, worker=worker, config=config)
+
+
+def test_a_session_finds_and_proposes_from_the_command_line(served, monkeypatch, capsys, tmp_path):
+    body = {"machine": "mac-mini", "cwd": "/Users/me/evo-agents", "claude_email": "me@example.com"}
+    registered = served.client.put(
+        f"/v1/projects/{PROJECT}/local-runs/{LOCAL_SESSION}", json=body, headers=served.headers["owner"]
+    )
+    assert registered.status_code in (200, 201), registered.text
+    run_id = registered.json()["id"]
+
+    def curator(*args: str):
+        return cli(monkeypatch, capsys, served.homes["owner"], "hub", "curator", *args, "--project", PROJECT)
+
+    lost = curator("finding", "--lens", "environment", "--title", "t", "--evidence", f"session:{SESSION}:errors:0")
+    assert lost.code == 1 and "no live Claude Code session" in lost.err
+    found = as_json(
+        curator(
+            "finding",
+            "--lens",
+            "environment",
+            "--title",
+            "sleep then tail is blocked",
+            "--evidence",
+            f"session:{SESSION}:errors:0",
+            "--run",
+            str(run_id),
+            "--json",
+        )
+    )
+    assert_json_keys("hub curator finding", found)
+    assert found["run_id"] == run_id
+    draft = tmp_path / "draft.yaml"
+    draft.write_text(yaml.safe_dump(DRAFT), encoding="utf-8")
+    made = ok(
+        curator(
+            "propose",
+            "--lens",
+            "environment",
+            "--kind",
+            "fix",
+            "--title",
+            "A wait helper instead of sleep and tail",
+            "--path",
+            "evo-agents:evo_agents/worker/wait.py",
+            "--finding",
+            str(found["id"]),
+            "--plan-file",
+            str(draft),
+            "--run",
+            str(run_id),
+        )
+    ).out
+    assert f"recorded in run #{run_id}: tier" in made and ", open." in made
+    listed = as_json(curator("proposal", "list", "--run", str(run_id), "--json"))
+    assert [item["title"] for item in listed["proposals"]] == ["A wait helper instead of sleep and tail"]
 
 
 def test_proposals_from_the_command_line(served, monkeypatch, capsys):
