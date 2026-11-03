@@ -50,7 +50,10 @@ must have its credentials to work. What the design limits is **how much** they g
 A **secret** belongs to the member who wrote it. Its value goes into the hub once (`PUT /v1/secrets/{name}`, the web
 page Secrets, or `evo-agents hub secret set` reading stdin) and never comes back out through the owner's routes:
 listing shows names, kinds, targets, bindings and dates, never the value. A secret is bound to one or more projects
-the owner holds writer on, and optionally to some of the owner's workers or worker pools. A hub admin sees only their own secrets.
+the owner holds writer on, and optionally to some of the owner's workers or worker pools. A secret bound to no project
+is **personal**: the hub keeps it for its owner and leases it to no run until it is bound to a project, by a PUT that
+names its projects, or when a run of its owner asks for its variable and the owner (or K12 on auto) binds it, as
+"A run that asks for a credential" tells. A hub admin sees only their own secrets.
 
 The **GitHub App** is the hub's own (`EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY`). For each owner of a
 run's github.com repos the hub finds the installation (`GET /repos/{owner}/{repo}/installation`) and asks for a token
@@ -99,8 +102,9 @@ The body of a PUT:
   password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out), or
   `forge` with `url_prefix` alone (see [Forge secrets](#forge-secrets-the-hubs-own)). A field of another kind is
   refused.
-- `projects`: one or more projects the caller holds writer on; a project the caller holds less on is 403, one they
-  cannot see 404.
+- `projects`: the projects the caller holds writer on; a project the caller holds less on is 403, one they cannot
+  see 404. Left out or empty, the secret is personal (above): it takes no `workers` or `pools` then, and a `forge`
+  secret, which needs a project, is 422. `evo-agents hub secret set` without `--project` writes one.
 - `workers`: optional names of the caller's own workers that are not revoked; any other name, another member's worker
   included, is 403, also for a hub admin. Left out, the secret goes to any worker of its owner. The bindings are each
   project on each named worker.
@@ -116,7 +120,7 @@ The body of a PATCH is `{"workers": [...]}` or `{"pools": [...]}`, exactly one o
 both is 422). The list given replaces the secret's binding on each of its projects, checked as the PUT checks it; an
 empty list binds it to any worker of its owner again. The value, kind, target, projects, end, OAuth tokens and shares
 stay, and so does `updated_at`, the time the value was written; the leases already out stay too. A name the caller
-keeps no secret under is 404, a provider account's 409. Use it when the workers a secret was bound to are drained or
+keeps no secret under is 404, a provider account's 409, and a personal secret's 409: it has no project to bind on. Use it when the workers a secret was bound to are drained or
 revoked and its runs now go to other nodes, such as the agent's own pool `agent-<handle>`.
 
 A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit, unique among the

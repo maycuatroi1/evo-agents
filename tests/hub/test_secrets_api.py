@@ -319,7 +319,6 @@ def test_a_secret_needs_a_value_of_1_to_max_bytes_a_future_end_and_the_fields_of
     ):
         refused = put(client, hub["owner"], "mixed", body)
         assert refused.status_code == 422 and says in refused.json()["message"], refused.text
-    assert put(client, hub["owner"], "no-project", env_secret(sample(), projects=[])).status_code == 422
     assert put(client, hub["owner"], "Upper", env_secret(sample())).status_code == 422  # names are lower case
     assert put(client, hub["owner"], "kind", {**env_secret(sample()), "kind": "file"}).status_code == 422
     assert {row[0] for row in sql(hub_db, select(tables.secrets.c.name))} == {"exact"}
@@ -385,6 +384,39 @@ def test_workers_are_the_callers_own_that_are_not_revoked_and_anyone_elses_is_40
     assert client.get("/v1/secrets", headers=worker).status_code == 403
     assert put(client, worker, "token", env_secret(sample())).status_code == 403
     assert box["worker"]["owner"] == OWNER
+
+
+def test_a_secret_without_a_project_is_personal_bound_to_nothing_and_takes_no_workers_pools_or_forge(
+    client, hub, hub_db, config
+):
+    register_worker(client, hub["owner"], "box")
+    value = sample()
+    body = env_secret(value, env_var="OMELET_CRED_AI_OPENAI")
+    del body["projects"]
+    answer = written(client, hub["owner"], "cred-ai-openai", body)
+    assert (answer["created"], answer["projects"], answer["workers"], answer["pools"]) == (True, [], [], [])
+    assert bindings(hub_db, "cred-ai-openai") == []
+    assert opened(config, hub_db, "owner", "cred-ai-openai") == value
+    assert [s["projects"] for s in listed(client, hub["owner"])] == [[]]
+    assert (
+        written(client, hub["owner"], "cred-ai-openai", env_secret(value, env_var="X", projects=[]))["projects"] == []
+    )
+
+    for body, says in (
+        (env_secret(value, projects=[], workers=["box"]), "takes no workers or pools"),
+        (env_secret(value, projects=[], pools=["ci"]), "takes no workers or pools"),
+        (
+            {"kind": "forge", "url_prefix": "https://gitlab.example.org/ops", "value": value, "projects": [],
+             "expires_at": (datetime.now(UTC) + timedelta(days=30)).isoformat()},
+            "kind forge needs a project",
+        ),
+    ):  # fmt: skip
+        refused = put(client, hub["owner"], "personal", body)
+        assert refused.status_code == 422 and says in refused.json()["message"], refused.text
+    rebind = client.patch("/v1/secrets/cred-ai-openai", json={"workers": ["box"]}, headers=hub["owner"])
+    assert rebind.status_code == 409 and "bound to no project" in rebind.json()["message"]
+    assert written(client, hub["owner"], "cred-ai-openai", env_secret(value))["projects"] == ["demo"]
+    assert bindings(hub_db, "cred-ai-openai") == [("demo", None)]
 
 
 # Who sees what

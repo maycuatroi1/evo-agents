@@ -7,10 +7,12 @@ names the variable of the agent's environment it sets (``env_var``, never one of
 answers for (``url_prefix``, kept in the form of ``credentials.normalize_origin``) and the user git sends with it
 (``username``, DEFAULT_GIT_USERNAME when left out); kind ``forge`` names the https prefix of the GitLab projects whose
 merge requests the hub drives with it (``url_prefix``, as for git, and no username: GitLab takes the token in a
-header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to one or more projects
-the caller holds the writer role on, the admin role for kind forge; ``workers`` narrows it to some of the caller's own
-workers that are not revoked, by name, and left out means any worker of the caller; a forge secret names none, as no
-worker ever gets it. ``expires_at`` is the end its owner gives it, which kind forge needs. The value is 1 to
+header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to projects the caller
+holds the writer role on, the admin role for kind forge; left out or empty, the secret is personal: kept for its owner
+alone and leased to no run until it is bound to a project, by a PUT naming its projects or when a run of its owner asks
+for its variable (``evo_agents.hub.server.credential_resolver``). A forge secret needs a project, and a personal secret
+names no workers or pools. ``workers`` narrows it to some of the caller's own workers that are not revoked, by
+name, and left out means any worker of the caller; a forge secret names none, as no worker ever gets it. ``expires_at`` is the end its owner gives it, which kind forge needs. The value is 1 to
 MAX_SECRET_BYTES bytes of UTF-8, sealed with ``Sealer`` under the associated data of its owner, name and kind before
 it reaches the database; without EVO_HUB_SECRETS_KEY the route answers 503 and keeps nothing. A member keeps at most
 MAX_SECRETS_PER_OWNER secrets.
@@ -150,9 +152,10 @@ class SecretWrite(BaseModel):
         "leased the env secrets labelled test alone (docs/autonomy.md)",
     )
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
-        min_length=1,
+        default_factory=list,
         max_length=MAX_BINDINGS,
-        description="the projects whose runs get it; the writer role on each, the admin role for kind forge",
+        description="the projects whose runs get it; the writer role on each, the admin role for kind forge; left out "
+        "or empty for a personal secret, kept for its owner and leased to no run, which kind forge cannot be",
     )
     workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] = Field(
         default_factory=list,
@@ -212,7 +215,7 @@ class Secret(BaseModel):
     url_prefix: str | None = Field(description="kinds git and forge: the https prefix of the origins it answers for")
     username: str | None = Field(description="kind git: the user git sends with it")
     environment: str | None = Field(None, description="kind env: the environment it is labelled for (test)")
-    projects: list[str] = Field(description="the projects whose runs get it")
+    projects: list[str] = Field(description="the projects whose runs get it; empty for a personal secret")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
     pools: list[str] = Field([], description="the worker pools it is bound to, each node of each")
     expires_at: datetime | None
@@ -451,6 +454,18 @@ def both_refusal(workers: list[str], pools: list[str]) -> str | None:
     return None
 
 
+def personal_refusal(kind: str, projects: list[str], workers: list[str], pools: list[str]) -> str | None:
+    """Why a secret bound to no project cannot be of ``kind`` or name ``workers`` or ``pools``, or None: a personal
+    secret is leased to no run, and a forge secret is for the merge requests of its projects."""
+    if projects:
+        return None
+    if kind == FORGE_KIND:
+        return "a secret of kind forge needs a project: the hub drives the merge requests of its projects with it"
+    if workers or pools:
+        return "a secret bound to no project takes no workers or pools: no run gets it until it is bound to a project"
+    return None
+
+
 def binding_refusal(kind: str, workers: list[str], pools: list[str]) -> str | None:
     """Why a secret of ``kind`` cannot be bound to ``workers`` and ``pools``, or None: a forge secret binds to none, as
     no worker ever gets it, and no secret binds to workers and pools both."""
@@ -523,7 +538,11 @@ async def put_secret(
     expires_at = oauth.access_expires_at if oauth is not None else body.expires_at
     if expires_at is not None and expires_at <= datetime.now(UTC):
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
-    refusal = _forge_refusal(body) or binding_refusal(body.kind, body.workers, body.pools)
+    refusal = (
+        _forge_refusal(body)
+        or binding_refusal(body.kind, body.workers, body.pools)
+        or personal_refusal(body.kind, body.projects, body.workers, body.pools)
+    )
     if refusal is not None:
         raise HTTPException(422, refusal)
     projects, workers, pools = unique_names(body.projects), unique_names(body.workers), unique_names(body.pools)
@@ -637,8 +656,8 @@ async def rebind_secret(
         worker_ids = await own_workers(conn, user, workers)
         pool_ids = await own_pools(conn, user, pools)
         project_ids = await bound_projects(conn, row.id)
-        if not project_ids:  # its projects went: nothing to bind them on
-            raise HTTPException(409, f"secret {name} is bound to no project any more: write it whole with PUT")
+        if not project_ids:  # personal, or its projects went: nothing to bind them on
+            raise HTTPException(409, f"secret {name} is bound to no project: write it whole with PUT, naming them")
         await bind_secret(conn, row.id, project_ids, worker_ids, pool_ids)
         (secret,) = await _secrets(conn, user.user_id, name)
         target = f"{audit_target(row.id)} {binding_text(secret)}"

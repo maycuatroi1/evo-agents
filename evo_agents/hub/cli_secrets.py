@@ -9,7 +9,10 @@ and never printed, not even in an error. Every check of the arguments comes befo
 flag never costs a paste. ``--expires YYYY-MM-DD`` ends the secret at 00:00 UTC of that day, as GitLab ends an access
 token on its expiry date. Kind ``forge`` is a GitLab token the hub alone uses to drive the merge requests of the
 project's repos under ``--url-prefix``: it needs ``--expires`` and the admin role on each ``--project``, and takes no
-``--username`` and no ``--worker``, as no run ever gets it.
+``--username`` and no ``--worker``, as no run ever gets it. Without ``--project`` the secret is personal: the hub keeps
+it for its owner alone and leases it to no run until it is bound to a project, by a ``set`` naming its projects or when
+a run of its owner asks for its variable; it takes no ``--worker`` or ``--pool`` then, and kind forge always needs a
+project.
 
 ``list`` prints the caller's own secrets without their values (GET /v1/secrets), and ``delete`` deletes one (DELETE
 /v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``bind``, in
@@ -197,9 +200,15 @@ def _workers_text(secret: dict) -> str:
 def cmd_set(args) -> int:
     try:
         check_name(args.name)
-        body = {"kind": args.kind, **target(args), "projects": args.project}
+        body = {"kind": args.kind, **target(args), "projects": args.project or []}
         if args.worker and args.pool:
             raise Refused(BOTH)
+        if not args.project and args.kind == FORGE_KIND:
+            raise Refused("--kind forge needs --project: the hub drives the merge requests of its projects with it")
+        if not args.project and (args.worker or args.pool):
+            raise Refused(
+                "--worker and --pool need --project: a secret bound to no project is personal, and no run gets it"
+            )
         body.update({key: given for key, given in (("workers", args.worker), ("pools", args.pool)) if given})
         if args.expires is not None:
             body["expires_at"] = expires_at(args.expires)
@@ -213,11 +222,14 @@ def cmd_set(args) -> int:
         return _usage_error(str(exc))
     written = hub.call("PUT", secret_path(args.name), {**body, "value": value})
     verb = "Created" if written["created"] else "Replaced"
-    projects = ", ".join(written["projects"])
     ends = f"; it ends {_when(written['expires_at'])} UTC" if written["expires_at"] else ""
+    if written["projects"]:
+        where = f"for project(s) {', '.join(written['projects'])}, {_workers_text(written)}"
+    else:
+        where = "for you alone, bound to no project: no run gets it until it is bound to one"
     print(
-        f"{verb} secret {written['name']} ({written['kind']}, {target_text(written)}) for project(s) {projects}, "
-        f"{_workers_text(written)}{ends}. The hub keeps the value sealed and never shows it again."
+        f"{verb} secret {written['name']} ({written['kind']}, {target_text(written)}) {where}{ends}. The hub keeps "
+        "the value sealed and never shows it again."
     )
     return 0
 
@@ -285,10 +297,10 @@ def register_secrets(hsub) -> None:
     )
     put.add_argument(
         "--project",
-        required=True,
         action="append",
         metavar="PROJECT",
-        help="a project whose runs get it, on which you hold writer (admin for kind forge); repeat it for several",
+        help="a project whose runs get it, on which you hold writer (admin for kind forge); repeat it for several; "
+        "left out, the secret is yours alone and no run gets it",
     )
     put.add_argument(
         "--worker",

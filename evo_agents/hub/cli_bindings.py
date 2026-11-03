@@ -99,8 +99,8 @@ def secret_row(secret: dict) -> tuple:
         secret["name"],
         secret["kind"],
         target_text(secret),
-        ", ".join(secret["projects"]),
-        "-" if secret["kind"] == FORGE_KIND else where_cell(secret),
+        ", ".join(secret["projects"]) or "-",
+        "-" if secret["kind"] == FORGE_KIND or not secret["projects"] else where_cell(secret),
         when(secret["expires_at"]),
         when(secret["updated_at"]),
     )

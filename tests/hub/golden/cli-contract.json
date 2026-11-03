@@ -21280,7 +21280,7 @@
             "--project"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": true
         },
         {
@@ -151754,7 +151754,7 @@
               },
               "type": "array",
               "title": "Projects",
-              "description": "the projects whose runs get it"
+              "description": "the projects whose runs get it; empty for a personal secret"
             },
             "workers": {
               "items": {
@@ -151937,9 +151937,8 @@
               },
               "type": "array",
               "maxItems": 100,
-              "minItems": 1,
               "title": "Projects",
-              "description": "the projects whose runs get it; the writer role on each, the admin role for kind forge"
+              "description": "the projects whose runs get it; the writer role on each, the admin role for kind forge; left out or empty for a personal secret, kept for its owner and leased to no run, which kind forge cannot be"
             },
             "workers": {
               "items": {
@@ -151998,7 +151997,6 @@
           "type": "object",
           "required": [
             "kind",
-            "projects",
             "value"
           ],
           "title": "SecretWrite"
@@ -152072,7 +152070,7 @@
               },
               "type": "array",
               "title": "Projects",
-              "description": "the projects whose runs get it"
+              "description": "the projects whose runs get it; empty for a personal secret"
             },
             "workers": {
               "items": {
