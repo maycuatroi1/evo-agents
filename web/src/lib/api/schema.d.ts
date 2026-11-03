@@ -36451,7 +36451,7 @@ export interface components {
             environment?: string | null;
             /**
              * Projects
-             * @description the projects whose runs get it
+             * @description the projects whose runs get it; empty for a personal secret
              */
             projects: string[];
             /**
@@ -36530,9 +36530,9 @@ export interface components {
             environment?: "test" | null;
             /**
              * Projects
-             * @description the projects whose runs get it; the writer role on each, the admin role for kind forge
+             * @description the projects whose runs get it; the writer role on each, the admin role for kind forge; left out or empty for a personal secret, kept for its owner and leased to no run, which kind forge cannot be
              */
-            projects: string[];
+            projects?: string[];
             /**
              * Workers
              * @description names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge
@@ -36588,7 +36588,7 @@ export interface components {
             environment?: string | null;
             /**
              * Projects
-             * @description the projects whose runs get it
+             * @description the projects whose runs get it; empty for a personal secret
              */
             projects: string[];
             /**

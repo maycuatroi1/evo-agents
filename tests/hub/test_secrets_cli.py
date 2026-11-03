@@ -155,6 +155,21 @@ def test_arguments_are_checked_before_the_value_is_read(monkeypatch, capsys, tmp
     assert result.err.startswith("error: ") and problem in result.err
 
 
+@pytest.mark.parametrize(
+    "args, problem",
+    [
+        (("n", "--kind", "env", "--env-var", "API", "--worker", "mac-mini"), "--worker and --pool need --project"),
+        (("n", "--kind", "env", "--env-var", "API", "--pool", "ci"), "--worker and --pool need --project"),
+        (("n", "--kind", "forge", "--url-prefix", "https://h/g", "--expires", "2027-01-31"), "forge needs --project"),
+    ],
+)
+def test_a_personal_secret_takes_no_worker_pool_or_kind_forge(monkeypatch, capsys, tmp_path, args, problem):
+    home = write_credentials(tmp_path / "home", HUB_URL, "owner", "evh_unused")
+    result = run_cli(monkeypatch, capsys, home, "hub", "secret", "set", *args)
+    assert result.code == 2 and result.out == ""
+    assert result.err.startswith("error: ") and problem in result.err
+
+
 def test_without_a_sign_in_the_value_is_not_asked_for(monkeypatch, capsys, tmp_path, asked):
     args = ("hub", "secret", "set", "n", "--kind", "env", "--env-var", "API", "--project", "demo")
     for stdin in (Unread(), Terminal()):
@@ -224,7 +239,7 @@ def test_the_commands_of_secrets_and_leases_are_in_the_contract():
     )
     options = {o["flags"][0]: o for o in printed["hub secret set"]["options"]}
     assert options["--kind"]["required"] and options["--kind"]["choices"] == ["env", "git", "forge"]
-    assert options["--project"]["required"] and options["--project"]["repeatable"]
+    assert not options["--project"]["required"] and options["--project"]["repeatable"]
     assert options["--worker"]["repeatable"] and not options["--worker"]["required"]
     assert printed["hub secret set"]["json"] is None and printed["hub secret delete"]["json"] is None
     assert printed["hub secret list"]["json"]["schema"] == "Secret"
@@ -443,6 +458,21 @@ def test_bind_moves_a_secret_to_a_pool_another_worker_or_any_without_its_value(h
     nobodys = secret_cli(hub, monkeypatch, capsys, "owner", "bind", "api", "--pool", "nobodys")
     assert nobodys.code == 1 and "nobodys is not a worker pool of yours" in nobodys.err
     for result in (pooled, anywhere, theirs, nobodys):
+        nowhere(result, value)
+
+
+@needs_pg
+def test_set_without_a_project_keeps_a_personal_secret_that_lists_bound_to_nothing(hub, monkeypatch, capsys):
+    value = sample("sk-")
+    args = ("set", "cred-ai-openai", "--kind", "env", "--env-var", "OMELET_CRED_AI_OPENAI")
+    made = ok(secret_cli(hub, monkeypatch, capsys, "owner", *args, stdin=io.StringIO(value)))
+    assert made.out == (
+        "Created secret cred-ai-openai (env, OMELET_CRED_AI_OPENAI) for you alone, bound to no project: no run gets it "
+        "until it is bound to one. The hub keeps the value sealed and never shows it again.\n"
+    )
+    listed = ok(secret_cli(hub, monkeypatch, capsys, "owner", "list"))
+    assert listed.out.splitlines()[1].split()[:5] == ["cred-ai-openai", "env", "OMELET_CRED_AI_OPENAI", "-", "-"]
+    for result in (made, listed):
         nowhere(result, value)
 
 
