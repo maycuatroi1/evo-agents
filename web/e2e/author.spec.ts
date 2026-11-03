@@ -375,8 +375,8 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
 
   // A step run's page is as it was: no Chat tab, the Trace first, and the composer for its owner.
   await page.setViewportSize({ width: 1280, height: 900 });
-  const stepWorker = await liveWorker(me, project, uniqueName("step-box"));
-  const [step] = await dispatch(me, project, ["2"], { worker_id: stepWorker.worker.id });
+  await liveWorker(me, project, uniqueName("step-box"));
+  const [step] = await dispatch(me, project, ["2"]);
   await open(page, runPath(project, step.id));
   await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "step");
   await expect(main(page).getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true");

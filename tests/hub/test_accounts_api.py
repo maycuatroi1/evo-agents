@@ -1,13 +1,13 @@
 """A member's accounts: several env secrets for one variable, the routes under /v1/accounts and /v1/account-policies
 (``evo_agents.hub.server.accounts``), and which of them each run gets (``evo_agents.hub.server.account_choice``).
 
-The checks the claude-account-rotation plan names for its first step: round-robin spreads consecutive runs evenly,
-weighted round-robin follows the weights and leaves out weight 0, fill-first takes the lowest priority still usable,
-a paused or cooling account is skipped, every account cooling gives the one whose cooldown ends first and a run event
-that says so, a run keeps its account across every ask, an account bound to the worker comes before the pool, a run of
-the Curator rotates among its charter's accounts alone, and one secret per variable without a policy leases as before.
-Around them: a member sees and changes their own accounts and policies alone, a hub admin too, and no answer, audit
-row or run event holds a value or names an account but by its id."""
+The checks the claude-account-rotation plan names for its first step, on the accounts of the account pool of the run's
+agent (plan agent-dedicated-pools: a run of an agent takes its model account from that pool alone, by the default
+policy): round-robin spreads consecutive runs evenly, a paused or cooling account is skipped, every account cooling
+gives the one whose cooldown ends first and a run event that says so, a run keeps its account across every ask, and one
+secret per variable leases as before. A member's policy (weighted round-robin, fill-first) and a worker an account is
+bound to do not choose among a pool's accounts. Around them: a member sees and changes their own accounts and policies
+alone, a hub admin too, and no answer, audit row or run event holds a value or names an account but by its id."""
 
 import json
 from collections import Counter
@@ -28,13 +28,16 @@ from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (
     PLAN,
+    POOL,
     PROJECT,
     STEPS,
+    account_pool,
     audit_rows,
     by_name,
     env_secret,
     give_back,
     leased,
+    pooled,
     sample,
     secret_ids,
     worker_of,
@@ -71,16 +74,18 @@ def set_policy(client, headers, **body) -> dict:
 
 
 def three(client, headers, **extra) -> dict[str, str]:
-    """The owner's accounts claude-a, claude-b and claude-c for VAR, with their values."""
+    """The owner's accounts claude-a, claude-b and claude-c for VAR, with their values, in the account pool of the
+    project's default agent, whose runs take them."""
     values = {name: sample(f"{name}-") for name in ("claude-a", "claude-b", "claude-c")}
     for name, value in values.items():
         env_secret(client, headers, name, VAR, value, **extra.get(name, {}))
+    account_pool(client, *values)
     return values
 
 
 def run_on(client, headers, worker: dict, repo: str) -> int:
     """A run of the step on ``repo``, claimed by ``worker`` (a step for each repo, so runs can be out at once)."""
-    body = {"plan_id": PLAN, "steps": [STEPS[repo]], "worker_id": worker["id"]}
+    body = {"plan_id": PLAN, "steps": [STEPS[repo]]}
     response = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=headers)
     assert response.status_code == 201, response.text
     run_id = response.json()[0]["id"]
@@ -90,10 +95,10 @@ def run_on(client, headers, worker: dict, repo: str) -> int:
 
 
 def account_of(client, worker: dict, run_id: int) -> str | None:
-    """The account the run got for VAR, by name; None for none."""
+    """The account of the pool the run got for VAR, by name; None for none."""
     names = [lease["name"] for lease in leased(client, worker, run_id)["leases"] if lease.get("env_var") == VAR]
-    assert len(names) <= 1
-    return names[0] if names else None
+    assert len(names) <= 1 and all(name.startswith(pooled("")) for name in names), names
+    return names[0].removeprefix(pooled("")) if names else None
 
 
 def consecutive(client, headers, worker: dict, count: int) -> list[str | None]:
@@ -141,20 +146,22 @@ def test_one_secret_per_variable_without_a_policy_leases_as_before(client, hub, 
     oauth, api = sample("oauth-"), sample("api-")
     env_secret(client, hub["owner"], "claude-oauth", VAR, oauth)
     env_secret(client, hub["owner"], "api", "API_TOKEN", api)
+    account_pool(client, "claude-oauth")
     worker = worker_of(client, hub["owner"], "mac-mini")
     for _ in range(3):
         run_id = run_on(client, hub["owner"], worker, "evo-agents")
         leases = by_name(leased(client, worker, run_id))
         assert {name: (lease["env_var"], lease["value"]) for name, lease in leases.items()} == {
-            "claude-oauth": (VAR, oauth),
+            pooled("claude-oauth"): (VAR, oauth),
             "api": ("API_TOKEN", api),
         }
-        assert taken_how(hub_db, run_id) == [("API_TOKEN", "api", "pool"), (VAR, "claude-oauth", "pool")]
+        # the pool's account is on every node of the agent's pool: the tier of the worker
+        assert taken_how(hub_db, run_id) == [("API_TOKEN", "api", "pool"), (VAR, "claude-oauth", "worker")]
         assert events(hub_db, run_id) == []
-        ids = secret_ids(hub_db, "api", "claude-oauth")
-        assert audit_rows(hub_db, "credential.lease")[-1][0].startswith(
-            f"{PROJECT}/{PLAN}#1 run:{run_id} secrets={ids} "
-        )
+        ids, oauth_id = secret_ids(hub_db, "api"), secret_ids(hub_db, "claude-oauth")
+        target = audit_rows(hub_db, "credential.lease")[-1][0]
+        assert target.startswith(f"{PROJECT}/{PLAN}#1 run:{run_id} secrets={ids} ")
+        assert target.endswith(f" agent-accounts={oauth_id}@pool.{POOL}")
         assert report(client, worker, run_id, "failed", error="done").status_code == 200
 
 
@@ -178,22 +185,28 @@ def test_round_robin_spreads_consecutive_runs_and_a_run_keeps_its_account(client
     assert account_of(client, worker, fourth) == "claude-a"
 
 
-def test_weighted_round_robin_follows_the_weights_and_weight_zero_leaves_the_pool(client, hub):
+def test_a_members_weighted_round_robin_does_not_choose_among_the_accounts_of_an_agents_pool(client, hub):
+    """An account pool's accounts follow the default policy, never their owner's (``account_choice``): the runs
+    take them in turn whatever the weights (``test_account_pick`` covers the weighted strategy itself)."""
     three(client, hub["owner"])
     set_policy(client, hub["owner"], strategy="weighted-round-robin")
     for name, weight in (("claude-a", 3), ("claude-b", 1), ("claude-c", 0)):
         assert change(client, hub["owner"], name, weight=weight).status_code == 200
     worker = worker_of(client, hub["owner"], "mac-mini")
-    assert Counter(consecutive(client, hub["owner"], worker, 8)) == {"claude-a": 6, "claude-b": 2}
+    assert Counter(consecutive(client, hub["owner"], worker, 6)) == {"claude-a": 2, "claude-b": 2, "claude-c": 2}
 
 
-def test_fill_first_takes_the_lowest_priority_still_usable(client, hub, hub_db):
+def test_a_members_fill_first_does_not_choose_among_the_accounts_of_an_agents_pool_which_take_turns_by_priority(
+    client, hub, hub_db
+):
+    """The default policy's round-robin, whose ties go to the lower priority, then the name; a paused or cooling
+    account is skipped (``test_account_pick`` covers fill-first itself)."""
     three(client, hub["owner"])
     set_policy(client, hub["owner"], strategy="fill-first")
     for name, priority in (("claude-a", 5), ("claude-b", 1), ("claude-c", 2)):
         assert change(client, hub["owner"], name, priority=priority).status_code == 200
     worker = worker_of(client, hub["owner"], "mac-mini")
-    assert consecutive(client, hub["owner"], worker, 2) == ["claude-b", "claude-b"]
+    assert consecutive(client, hub["owner"], worker, 3) == ["claude-b", "claude-c", "claude-a"]
     assert change(client, hub["owner"], "claude-b", paused=True).status_code == 200
     assert consecutive(client, hub["owner"], worker, 1) == ["claude-c"]
     cool(hub_db, "claude-c", 30)
@@ -207,9 +220,9 @@ def test_paused_and_cooling_accounts_are_skipped_and_all_cooling_takes_the_first
     cool(hub_db, "claude-b", 30)
     assert consecutive(client, hub["owner"], worker, 2) == ["claude-c", "claude-c"]
 
+    run_id = run_on(client, hub["owner"], worker, "evo-agents")  # claimed while claude-c is ready
     cool(hub_db, "claude-c", 90)
     cool(hub_db, "claude-b", 60)
-    run_id = run_on(client, hub["owner"], worker, "evo-agents")
     assert account_of(client, worker, run_id) == "claude-b"  # its cooldown ends first; claude-a is paused
     assert taken_how(hub_db, run_id) == [(VAR, "claude-b", "cooling")]
     (event,) = events(hub_db, run_id)
@@ -219,21 +232,30 @@ def test_paused_and_cooling_accounts_are_skipped_and_all_cooling_takes_the_first
     assert account_of(client, worker, run_id) == "claude-b" and len(events(hub_db, run_id)) == 1  # kept, said once
     assert report(client, worker, run_id, "failed", error="done").status_code == 200
 
+    sql(hub_db, update(tables.accounts).values(cooldown_until=None))  # the cooldowns are over
+    run_id = run_on(client, hub["owner"], worker, "evo-agents")  # claimed while claude-b and claude-c are ready
     for name in ("claude-b", "claude-c"):
         assert change(client, hub["owner"], name, paused=True).status_code == 200
-    run_id = run_on(client, hub["owner"], worker, "evo-agents")
     assert account_of(client, worker, run_id) is None
     (event,) = events(hub_db, run_id)
     assert event["secret_id"] is None and "paused" in event["text"]
+    assert report(client, worker, run_id, "failed", error="done").status_code == 200
+
+    # with every account paused a new run waits in the queue: no node takes it
+    body = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]]}
+    assert client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"]).status_code == 201
+    assert client.post("/v1/worker/claim", json={"wait_s": 0}, headers=worker["headers"]).json()["run"] is None
 
 
-def test_an_account_bound_to_the_worker_comes_before_the_pool(client, hub):
+def test_an_account_of_the_pool_bound_to_the_worker_takes_its_turn_as_the_others_do(client, hub):
+    """An account pool's accounts go to every node of the agent's pool: the worker an account is bound to does not
+    put it first."""
     worker = worker_of(client, hub["owner"], "mac-mini")
     three(client, hub["owner"], **{"claude-c": {"workers": ["mac-mini"]}})
     worker_of(client, hub["owner"], "desk")
-    assert consecutive(client, hub["owner"], worker, 2) == ["claude-c", "claude-c"]
-    assert change(client, hub["owner"], "claude-c", paused=True).status_code == 200
-    assert consecutive(client, hub["owner"], worker, 3) == ["claude-a", "claude-b", "claude-a"]
+    assert consecutive(client, hub["owner"], worker, 3) == ["claude-a", "claude-b", "claude-c"]
+    assert change(client, hub["owner"], "claude-a", paused=True).status_code == 200
+    assert consecutive(client, hub["owner"], worker, 2) == ["claude-b", "claude-c"]
 
 
 def test_two_runs_asking_at_once_take_two_turns(client, hub):
@@ -253,7 +275,7 @@ def test_two_runs_asking_at_once_take_two_turns(client, hub):
 
     answers = client.portal.call(ask_all)
     names = [lease["name"] for answer in answers for lease in answer.json()["leases"]]
-    assert sorted(names) == ["claude-a", "claude-b", "claude-c"]
+    assert sorted(names) == [pooled("claude-a"), pooled("claude-b"), pooled("claude-c")]
 
 
 # The routes

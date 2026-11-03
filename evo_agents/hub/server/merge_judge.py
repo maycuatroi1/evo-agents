@@ -5,7 +5,7 @@ and its verdict. ``evo_agents.hub.merge_gate`` holds the rules, ``evo_agents.hub
 A judge run of the queue is a run of kind ``judge`` on no plan and no schedule (schema 0081), which the merge request
 it judges names (merge_queue.judge_run_id). The admin who wrote the policy's newest revision dispatches it, so it
 reads the repo with that admin's git secret and the project's graph as them; it goes to the nodes of the pool of the project's default agent, whose daemon must say it judges merge requests
-(``runs.MERGE_JUDGE``); it runs on Claude Code with the model ``judges.merge_judge_model`` picks, and never reads the
+(``runs.MERGE_JUDGE``, the claim's gate ``claims.merge_judge_gate``); it runs on Claude Code with the model ``judges.merge_judge_model`` picks, and never reads the
 Builder's transcript. A project has one judge run active at a time, the Curator's included: another waits for it.
 
 Its claim names the merge request as a Curator's judge run names a change (``merge_claim``: the branch, the target

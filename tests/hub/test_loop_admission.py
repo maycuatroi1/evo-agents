@@ -2,7 +2,8 @@
 plan loop-engine names it, on the hub with Postgres.
 
 Each tick checks the queued work items, oldest first, against the breaker, the work items of their cycle running, the
-repos a deliver's plan would hold, the runs handed out in the last hour and worker loop.worker; the first check that
+repos a deliver's plan would hold, the runs handed out in the last hour and the nodes of the pool of the project's
+default agent; the first check that
 fails is the work item's reason and it stays queued, written once while it holds. One that passes goes to the
 hand-out, which the plan's step 6 writes; the hand-out here is a stand-in that hands a task run to the agent type
 through ``hand_own_task`` and inserts an author or a plan run with the caps of ``loop.caps``. A run handed out moves
@@ -58,15 +59,17 @@ def ticked(client, db, dispatch=None) -> dict:
 
 
 async def _loop_run(conn, project_id: int, work, view, worker) -> int:
-    """The author run of a build or the plan run of a deliver, as step 6 will hand it out: on worker loop.worker in
-    its owner's name, with the caps of loop.caps."""
+    """The author run of a build or the plan run of a deliver, as step 6 hands it out: to any node of the pool of the
+    project's default agent (its selector, no pin) in the name of the owner of the node admission picked, with the
+    caps of loop.caps."""
     values = {
         "kind": "plan" if work.kind == "deliver" else "author",
         "project_id": project_id,
         "title": f"Loop {work.key}",
         "dispatched_by": worker.owner_id,
         "dispatched_via": "machine",
-        "pinned_worker_id": worker.id,
+        "pinned_worker_id": None,
+        "selector": list(worker.selector),
         "requested_runtime": "claude-code",
         "runtime": "claude-code",
         "mode": "headless",
@@ -114,6 +117,10 @@ def run_row(db, run_id: int) -> tuple:
     r = tables.runs
     query = select(r.c.kind, r.c.budget, r.c.timeout_s, r.c.pinned_worker_id, r.c.dispatched_by, r.c.repos, r.c.state)
     return sql(db, query.where(r.c.id == run_id))[0]
+
+
+def selector_of(db, run_id: int) -> list[str]:
+    return sql(db, select(tables.runs.c.selector).where(tables.runs.c.id == run_id))[0][0]
 
 
 def set_run(db, run_id: int, **values) -> None:
@@ -204,34 +211,26 @@ def test_loop_admission_holds_business_work_items_at_the_cycle_cap_the_rate_the_
     assert item(hub_db, CASE)["reason"] == "breaker" and item(hub_db, "brainstorm:G-1:r1")["state"] == "running"
 
 
-def test_loop_admission_holds_builds_and_delivers_for_the_worker_and_the_repos_their_plans_hold(client, hub, hub_db):
+def test_loop_admission_holds_builds_and_delivers_for_the_pool_and_the_repos_their_plans_hold(client, hub, hub_db):
     push_plan(client, hub, "pantry-reorder", (REPO,))
     push_plan(client, hub, "pantry-alerts", (REPO, NOTES))
-    policy(client, hub, {"enabled": True, "worker": "studio", "development": {"max_running": 2}})
+    policy(client, hub, {"enabled": True, "development": {"max_running": 2}})
     queued(hub_db, "deliver", "deliver:pantry-reorder", plan_id="pantry-reorder")
     queued(hub_db, "deliver", "deliver:pantry-alerts", plan_id="pantry-alerts")
     queued(hub_db, "build", "build:srs:demo-shop:1:UC ORD-2")
     build = "build:srs:demo-shop:1:UC ORD-2"
     dispatch = hand_out("build", "deliver")
+    pool = f"pool=agent-{PROJECT}"
+    no_node = {"worker": pool, "why": f"no live worker holding {pool} serves the project"}
 
-    # no worker studio serves the project: nothing of the development cycle runs
+    # no node of the default agent's pool serves the project: nothing of the development cycle runs
     assert ticked(client, hub_db, dispatch)["waiting"] == 3
     for key in ("deliver:pantry-reorder", "deliver:pantry-alerts", build):
-        assert waits(hub_db, key) == [
-            (
-                "waiting",
-                "worker",
-                {"worker": "studio", "why": "no live worker studio (the policy's loop.worker) serves the project"},
-                None,
-            )
-        ]
-    assert item(hub_db, "brainstorm:G-1:r1")["reason"] is None  # a task run needs no loop.worker
-    assert shown(client, hub, hub_db, build) == {
-        "worker": "studio",
-        "why": "no live worker studio (the policy's loop.worker) serves the project",
-    }
+        assert waits(hub_db, key) == [("waiting", "worker", no_node, None)]
+    assert item(hub_db, "brainstorm:G-1:r1")["reason"] is None  # a task run goes to its agent type's own pool
+    assert shown(client, hub, hub_db, build) == no_node
 
-    # studio, one slot: the first deliver's plan run takes it and holds repo evo-agents
+    # studio, a node of the pool with one slot: the first deliver's plan run takes it and holds repo evo-agents
     worker = add_worker(client, hub["owner"], "studio", slots=1)
     found = ticked(client, hub_db, dispatch)
     assert (found["dispatched"], found["waiting"]) == (1, 1)  # the build's reason stays worker: no ledger row
@@ -241,7 +240,7 @@ def test_loop_admission_holds_builds_and_delivers_for_the_worker_and_the_repos_t
     assert (first["state"], first["owner"], first["attempts"]) == ("running", OWNER, 1)
     kind, budget, timeout, pinned, _, repos, _ = run_row(hub_db, first["run_id"])
     assert (kind, budget, timeout) == ("plan", {"max_usd": None, "max_turns": 600, "max_seconds": 14400}, 14700)
-    assert (pinned, repos) == (worker["id"], [{"repo": REPO}])
+    assert (pinned, repos, selector_of(hub_db, first["run_id"])) == (None, [{"repo": REPO}], [pool])
     assert waits(hub_db, "deliver:pantry-alerts")[-1][:3] == (
         "waiting",
         "concurrency",
@@ -261,10 +260,10 @@ def test_loop_admission_holds_builds_and_delivers_for_the_worker_and_the_repos_t
     built = item(hub_db, build)
     kind, budget, timeout, pinned, dispatched_by, *_ = run_row(hub_db, built["run_id"])
     assert (kind, budget, timeout) == ("author", {"max_usd": None, "max_turns": 200, "max_seconds": 3600}, 3900)
-    assert (built["state"], pinned) == ("running", worker["id"])
+    assert (built["state"], pinned, selector_of(hub_db, built["run_id"])) == ("running", None, [pool])
     assert item(hub_db, "deliver:pantry-alerts")["reason"] == "concurrency"
 
-    # merged: the first deliver is done and frees the repo; the build's run waiting for studio holds its slot
+    # merged: the first deliver is done and frees the repo; the build's run queued on the pool holds its slot
     q = tables.merge_queue
     sql(hub_db, update(q).values(state="merged", merged_at=func.now()))
     found = ticked(client, hub_db, dispatch)

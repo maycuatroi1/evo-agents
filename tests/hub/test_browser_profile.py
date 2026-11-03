@@ -36,6 +36,7 @@ from tests.hub.test_browser_identity import (  # noqa: F401 (fixtures)
     user_id,
     versions,
 )
+from tests.hub.test_credentials_api import claimable
 from tests.hub.test_run_cli import as_json, runs_of
 from tests.hub.test_runs import (
     OTHER,
@@ -114,7 +115,6 @@ def test_browser_profile_dispatch_names_identities_which_give_a_browser_and_pin_
         ({"identities": ["nowhere"]}, "no browser identity nowhere"),
         ({"identities": ["lumen-ops"]}, "no browser identity lumen-ops"),  # another member's
         ({"identities": ["northwind-admin", "lumen-lab"]}, "on several"),
-        ({"identities": ["northwind-admin"], "worker_id": lab["id"]}, "pinned to worker lab"),
     )
     for extra, said in refusals:
         refused = dispatch(client, headers["owner"], [5], **extra)
@@ -302,6 +302,7 @@ def test_browser_profile_rerun_keeps_the_identities_while_they_are_usable(stored
 
 def test_browser_profile_cli_identity_dispatches_with_identities_and_a_browser(cli_hub, monkeypatch, capsys):
     client, headers = cli_hub.client, cli_hub.headers
+    claimable(client)  # the project's default agent, whose runs these are, needs an account pool
     add_browser_worker(client, headers["owner"], "mac-mini")
     made = client.post(
         PATH,

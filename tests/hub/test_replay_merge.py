@@ -41,14 +41,13 @@ from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
     accepted,
     builder,
     credential_members,
-    credential_worker,
     curator_charter,
+    duty_worker,
     install,
     judged,
     moved_on,
     one_change,
     proposal_of,
-    taking,
     world,
 )
 from tests.hub.test_curator_ledger import acts, blocked, ledger_of, measured, merged_at
@@ -228,7 +227,7 @@ def skill_world(request, hub_db, tmp_path, github, app_key, s3):  # noqa: F811
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
-        worker = taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+        worker = duty_worker(client, hub_db, headers)
         written(client, headers["owner"], curator_charter())
         install(github, "evo-agents", permissions=WORKERS_APP)
         install(github, "evo-agents", app="curator")

@@ -257,7 +257,9 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
 });
 
 test("the owner changes a worker's slots, labels, plugins and name, and the hub's refusals show at the form", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  // An admin of the project: the worker is a node of the pool of its default agent, which only an admin reads, and the
+  // form edits the worker's own labels once it knows the pool's.
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
   const live = await liveWorker(me, project, uniqueName("busy"));
@@ -322,7 +324,13 @@ test("the owner changes a worker's slots, labels, plugins and name, and the hub'
   await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, 1 slot free.");
   await expect(slots).toHaveValue("2");
   await expect(settings.getByTestId("worker-settings-save")).toBeDisabled();
-  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: renamed, slots: 2, labels: ["gpu", "linux"], plugins: ["sandbox"] });
+  // Its own labels, then its pool's name, as a node of the pool of the project's default agent lists them.
+  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({
+    name: renamed,
+    slots: 2,
+    labels: ["gpu", "linux", `pool=agent-${project}`],
+    plugins: ["sandbox"],
+  });
   expect(await claimRun(live)).not.toBeNull(); // the hub counts the held runs against the new slots
 
   // The list shows the new values.

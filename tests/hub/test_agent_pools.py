@@ -1,10 +1,9 @@
 """The pool of each agent, step 1 of the plan agent-dedicated-pools (criteria a1 and a7): every agent has one pool,
 ``agent-<handle>``, made with it and by migration 0189 for the agents that exist; a pool belongs to at most one agent;
 an admin of the project or of the hub manages it with the routes of worker pools (join tokens, labels, taints, the
-doctor codes it accepts) and a member who is not an admin is refused; every agent has a placement, ``legacy`` for those
-that existed and ``pool`` for those made since, which an admin moves with ``PUT .../placement`` and ``hub agent
-placement``; the pools of members behave as before and take no name the agents' pools use. Migration 0189 is tested in
-``tests.hub.test_migrate``."""
+doctor codes it accepts) and a member who is not an admin is refused; no agent has a placement to move any more
+(migration 0194 dropped it with ``PUT .../placement`` and ``hub agent placement``); the pools of members behave as
+before and take no name the agents' pools use. Migrations 0189 and 0194 are tested in ``tests.hub.test_migrate``."""
 
 import pytest
 
@@ -14,7 +13,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from psycopg import errors
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select
 
 from evo_agents.hub import tables
 from evo_agents.hub.contract import commands
@@ -28,8 +27,7 @@ from tests.hub.test_agent_profiles import (  # noqa: F401 - the fixtures of the 
     created,
     hub,
 )
-from tests.hub.test_run_cli import as_json
-from tests.hub.test_runs import OWNER, PROJECT, audit_rows
+from tests.hub.test_runs import PROJECT, audit_rows
 
 POOLS = "/v1/worker-pools"
 
@@ -43,11 +41,11 @@ def pool_rows(db) -> list[tuple]:
     return sql(db, select(p.c.name, p.c.agent_id).where(p.c.agent_id.is_not(None)).order_by(p.c.name))
 
 
-def test_every_agent_has_one_pool_made_with_it_and_placed_by_pool(client, hub, hub_db):
+def test_every_agent_has_one_pool_made_with_it(client, hub, hub_db):
     (default,) = client.get(agents_path(), headers=hub["owner"]).json()
-    assert (default["home_pool"], default["placement"]) == (f"agent-{PROJECT}", "pool")
+    assert default["home_pool"] == f"agent-{PROJECT}" and "placement" not in default
     helper = created(client, hub["owner"], "helper")
-    assert (helper["home_pool"], helper["placement"]) == ("agent-helper", "pool")
+    assert helper["home_pool"] == "agent-helper" and "placement" not in helper
     shown = client.get(agents_path("helper"), headers=hub["reader"]).json()
     assert shown["home_pool"] == "agent-helper"
     assert [name for name, _ in pool_rows(hub_db)] == sorted(["agent-helper", f"agent-{PROJECT}"])
@@ -126,37 +124,9 @@ def test_a_member_pool_behaves_as_before_and_never_takes_the_prefix_of_the_agent
     assert client.get(f"{POOLS}/ci", headers=hub["admin"]).status_code == 404  # still the owner's alone
 
 
-def test_an_admin_moves_an_agent_between_placements_and_a_writer_cannot(client, hub, hub_db):
+def test_no_agent_moves_between_placements_any_more(client, hub, hub_db):
     created(client, hub["owner"], "helper")
-    a = tables.agent_profiles
-    sql(hub_db, update(a).values(placement="legacy").where(a.c.handle == "helper"))
-    assert client.get(agents_path("helper"), headers=hub["owner"]).json()["placement"] == "legacy"
-    refused = client.put(agents_path("helper") + "/placement", json={"placement": "pool"}, headers=hub["other"])
-    assert refused.status_code == 403
-    moved = client.put(agents_path("helper") + "/placement", json={"placement": "pool"}, headers=hub["owner"])
-    assert (moved.status_code, moved.json()["placement"], moved.json()["version"]) == (200, "pool", 1)
-    again = client.put(agents_path("helper") + "/placement", json={"placement": "pool"}, headers=hub["owner"])
-    assert again.status_code == 200
-    back = client.put(agents_path("helper") + "/placement", json={"placement": "legacy"}, headers=hub["admin"])
-    assert (back.status_code, back.json()["placement"]) == (200, "legacy")
-    assert (
-        client.put(agents_path("helper") + "/placement", json={"placement": "x"}, headers=hub["owner"]).status_code
-        == 422
-    )
-    assert [row[1] for row in audit_rows(hub_db, "agent") if row[0] == "agent.placement"] == [
-        f"{PROJECT}/@helper v1 placement=legacy->pool",
-        f"{PROJECT}/@helper v1 placement=pool->legacy",
-    ]
-
-
-def test_hub_agent_placement_moves_an_agent_from_the_command_line(cli_hub, monkeypatch, capsys):
-    grant = cli_hub.client.put(
-        f"/v1/admin/projects/{PROJECT}/grants/{OWNER}",
-        json={"role": "admin", "max_level": "internal"},
-        headers=cli_hub.headers["admin"],
-    )
-    assert grant.status_code == 200, grant.text
-    assert "hub agent placement" in commands()
-    created(cli_hub.client, cli_hub.headers["owner"], "helper")
-    moved = agent_cli(monkeypatch, capsys, cli_hub.homes["owner"], "placement", "@helper", "legacy", "--json")
-    assert as_json(moved)["placement"] == "legacy"
+    moved = client.put(agents_path("helper") + "/placement", json={"placement": "legacy"}, headers=hub["owner"])
+    assert moved.status_code in (404, 405), moved.text
+    assert "hub agent placement" not in commands()
+    assert [row for row in audit_rows(hub_db, "agent") if row[0] == "agent.placement"] == []

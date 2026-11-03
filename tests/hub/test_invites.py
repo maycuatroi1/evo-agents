@@ -526,6 +526,19 @@ def test_a_revoked_register_invite_right_registers_nothing(client, github, hub_d
     assert client.put("/v1/projects/mine", json=registration(), headers=holder).json()["created"] is True
 
 
+def lend_to_default_agent(db, project: str, secret: str) -> None:
+    """The member's account ``secret`` put in an account pool of ``project`` that the project's default agent uses."""
+    from sqlalchemy import insert
+
+    ap, p, s, pools = tables.agent_profiles, tables.projects, tables.secrets, tables.account_pools
+    ((project_id,),) = sql(db, select(p.c.id).where(p.c.name == project))
+    ((secret_id, owner_id),) = sql(db, select(s.c.id, s.c.owner_id).where(s.c.name == secret))
+    values = {"project_id": project_id, "name": "main", "created_by": owner_id}
+    ((pool_id,),) = sql(db, insert(pools).values(**values).returning(pools.c.id))
+    sql(db, insert(tables.account_pool_members).values(pool_id=pool_id, secret_id=secret_id, added_by=owner_id))
+    sql(db, update(ap).values(account_pool_id=pool_id).where(ap.c.project_id == project_id, ap.c.handle == project))
+
+
 @needs_pg
 def test_project_isolation_an_invite_holder_sees_nothing_of_another_project(client, github, hub_db, admin):
     from tests.hub.test_plans import registration as plans_registration
@@ -538,6 +551,9 @@ def test_project_isolation_an_invite_holder_sees_nothing_of_another_project(clie
     assert client.put(f"/v1/admin/projects/{PROJECT}/grants/owner", json=grant, headers=admin).status_code == 200
     pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json={"body": plan_body()}, headers=owner)
     assert pushed.status_code == 200, pushed.text
+    secret = {"projects": [PROJECT], "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": "sk-" + "x" * 40}
+    assert client.put("/v1/secrets/claude-main", json=secret, headers=owner).status_code == 200
+    lend_to_default_agent(hub_db, PROJECT, "claude-main")  # the account a run of the project's default agent takes
     run = client.post(f"/v1/projects/{PROJECT}/runs", json={"plan_id": PLAN, "steps": [2]}, headers=owner)
     assert run.status_code == 201, run.text
     run_id = run.json()[0]["id"]
@@ -551,8 +567,6 @@ def test_project_isolation_an_invite_holder_sees_nothing_of_another_project(clie
     }
     memory = client.put("/v1/memories", params={"sink": "hub"}, json=note, headers=owner)
     assert memory.status_code == 200, memory.text
-    secret = {"projects": [PROJECT], "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": "sk-" + "x" * 40}
-    assert client.put("/v1/secrets/claude-main", json=secret, headers=owner).status_code == 200
 
     # The holder joins one project with a link and registers another with a right
     add_project(hub_db, "side")

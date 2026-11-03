@@ -32,6 +32,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.runs import AGENT_HOME
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_run_cli import write_credentials
 from tests.hub.test_runs import OTHER, OWNER, PROJECT, add_worker, audit_rows, claim, dispatch, dispatched, members
@@ -403,16 +404,17 @@ def test_plugin_config_of_a_run_is_its_own_layer_and_its_claim_records_version_a
         assert why in refused and "nothing was dispatched" in refused
     assert dispatch(client, hub["owner"], [2], plugin_config={"Bad Name": {}}).status_code == 422
 
-    worker = add_worker(client, hub["owner"], "mac-mini", slots=2)
-    home = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 2, "runs": []}
+    worker = add_worker(client, hub["owner"], "mac-mini")  # a node of the pool of the project's default agent
+    node = add_worker(client, hub["owner"], "helper-box", pool="helper")  # and one of @helper's
+    home = {"runtimes": node["runtimes"], "checkouts": node["checkouts"], "free_slots": 1, "runs": []}
     home["features"] = [AGENT_HOME]  # a run under the profile helper needs it (tests.hub.test_claim_agent_home)
-    assert client.post("/v1/worker/heartbeat", json=home, headers=worker["headers"]).status_code == 200
+    assert client.post("/v1/worker/heartbeat", json=home, headers=node["headers"]).status_code == 200
+    give_account_pool(hub_db, PROJECT, "helper", OWNER)  # a run of @helper takes its account from it
     own = dispatched(client, hub["owner"], [2], profile="helper", plugin_config={"sandbox": {"channel": "ops"}})[0]
     plain = dispatched(client, hub["owner"], [4])[0]
     reader = hub["reader"]
     assert client.get(f"/v1/projects/{PROJECT}/runs/{own['id']}/plugins", headers=reader).json() == []
-    claimed = {claim(client, worker)["id"], claim(client, worker)["id"]}
-    assert claimed == {own["id"], plain["id"]}
+    assert (claim(client, node)["id"], claim(client, worker)["id"]) == (own["id"], plain["id"])
 
     def recorded(run_id: int) -> list[dict]:
         response = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/plugins", headers=reader)

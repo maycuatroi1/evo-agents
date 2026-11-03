@@ -88,6 +88,7 @@ if pg.DSN:
         OWNER,
         PLAN,
         PROJECT,
+        account_pool,
         app_key,
         ask,
         audit_rows,
@@ -123,10 +124,13 @@ def expire(client) -> dict:
 
 
 def two_runs_with_leases(client, hub, github) -> tuple:
-    """A run of owner and one of someone-else, each holding its leases: (owner's worker, run, GitHub token; theirs)."""
+    """A run of owner and one of someone-else, each holding its leases: (owner's worker, run, GitHub token; theirs).
+    Their accounts are in the account pool of the project's default agent, whose next turn goes to someone-else's."""
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
     env_secret(client, hub["other"], "their-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
+    account_pool(client, "their-oauth", owner=OTHER)
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
     run_id = step_run(client, hub["owner"], "evo-agents", worker)
     token = by_name(leased(client, worker, run_id))[f"github-app:{MINE}"]["value"]

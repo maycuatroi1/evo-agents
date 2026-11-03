@@ -1,8 +1,8 @@
 """The hub's side of a run dispatched with browser (plan agent-browser, criterion a3): only a worker whose heartbeat
 lists the feature browser claims one, never more at once than the max its heartbeat reports; a run without browser
-claims as before on any worker, an old one included, and its claim leaves the field out (criterion a10); a dispatch
-pinned to a worker without the feature is refused; the heartbeat keeps the worker's report; a rerun keeps the browser
-of the run it reruns; and the CLI's --browser sends it."""
+claims as before on any worker, an old one included, and its claim leaves the field out (criterion a10); the heartbeat
+keeps the worker's report; a rerun keeps the browser of the run it reruns; and the CLI's --browser sends it. A dispatch
+names no worker any more (plan agent-dedicated-pools, ``test_runs``)."""
 
 import pytest
 
@@ -14,9 +14,9 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server.runs.service.browsers import NO_BROWSER
 from tests.hub import test_run_cli
 from tests.hub.live import sql
+from tests.hub.test_credentials_api import claimable
 from tests.hub.test_run_cli import as_json, runs_of
 from tests.hub.test_runs import (
     PLAN,
@@ -26,7 +26,6 @@ from tests.hub.test_runs import (
     claim,
     client,  # noqa: F401 (a fixture)
     control,
-    dispatch,
     dispatched,
     hub,  # noqa: F401 (a fixture)
     moved,
@@ -100,26 +99,6 @@ def test_browser_claim_of_a_run_without_browser_goes_to_any_worker_as_before(cli
     assert claim(client, lab)["id"] == browser_run["id"]
 
 
-def test_browser_claim_a_dispatch_pinned_to_a_worker_without_the_feature_is_refused(client, hub, hub_db):
-    plain = add_worker(client, hub["owner"], "plain")
-    refused = dispatch(client, hub["owner"], [4], worker_id=plain["id"], browser=True)
-    assert refused.status_code == 409 and NO_BROWSER in refused.json()["message"]
-    plan_run = client.post(
-        f"/v1/projects/{PROJECT}/plan-runs",
-        json={"plan_id": PLAN, "worker_id": plain["id"], "browser": True},
-        headers=hub["owner"],
-    )
-    assert plan_run.status_code == 409 and NO_BROWSER in plan_run.json()["message"]
-    assert sql(hub_db, select(tables.runs.c.id)) == []
-    (without,) = dispatched(client, hub["owner"], [4], worker_id=plain["id"])  # without browser, as before
-    assert without["browser"] is False
-
-    lab = add_browser_worker(client, hub["owner"], "lab")
-    (pinned,) = dispatched(client, hub["owner"], [5], worker_id=lab["id"], browser=True)
-    assert claim(client, lab)["id"] == pinned["id"]
-    assert claim(client, plain)["id"] == without["id"]
-
-
 def test_browser_claim_of_a_plan_run_with_browser(client, hub, hub_db):
     plain = add_worker(client, hub["owner"], "plain")
     lab = add_browser_worker(client, hub["owner"], "lab")
@@ -176,6 +155,7 @@ def test_browser_claim_a_rerun_keeps_the_browser_of_the_run_unless_it_asks(clien
 
 
 def test_browser_claim_cli_sends_browser_with_the_flag_alone(cli_hub, monkeypatch, capsys):
+    claimable(cli_hub.client)  # the project's default agent, whose runs these are, needs an account pool
     add_browser_worker(cli_hub.client, cli_hub.headers["owner"], "mac-mini")
     asked = as_json(runs_of(cli_hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "4", "--browser", "--json"))
     plain = as_json(runs_of(cli_hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "5", "--json"))

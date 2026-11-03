@@ -52,8 +52,9 @@ def pool_env_accounts(pool_id: int, *, lock: bool):
 
 def usable_member():
     """A member of the account pool of the run being claimed (``tables.runs``, correlated) a run can take now: its
-    secret live, not past its end, not paused and not cooling, an env account of a model variable or a provider
-    account."""
+    secret live, not past its end (an OAuth account whose access token ended is, as the lease refreshes it first:
+    ``account_refresh``; one whose refresh the endpoint refused is cooling), not paused and not cooling, an env account
+    of a model variable or a provider account."""
     m, s, a, ap, r = (
         tables.account_pool_members,
         tables.secrets,
@@ -66,7 +67,11 @@ def usable_member():
         m.c.pool_id == ap.c.account_pool_id,
         s.c.id == m.c.secret_id,
         s.c.deleted_at.is_(None),
-        or_(s.c.expires_at.is_(None), s.c.expires_at > func.now()),
+        or_(
+            s.c.expires_at.is_(None),
+            s.c.expires_at > func.now(),
+            exists().where(a.c.secret_id == s.c.id, a.c.oauth_sealed.is_not(None)),
+        ),
         or_(s.c.kind == PROVIDER_KIND, and_(s.c.kind == "env", s.c.env_var.in_(MODEL_ENV_VARS))),
         ~exists().where(
             a.c.secret_id == s.c.id,

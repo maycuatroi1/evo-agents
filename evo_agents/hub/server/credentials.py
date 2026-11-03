@@ -503,7 +503,7 @@ async def survey_run(
             pool=run.account_pool if run.pooled else None,
         )
         for row in accounts
-        if not row.ended
+        if refreshable or not row.ended  # one that ended may be refreshed before the leases (``refresh_due``)
     ]
     tokens = [
         _HeldToken(
@@ -780,9 +780,8 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     ended = {secret.id: secret for secret in survey.secrets}  # with the OAuth accounts whose token has ended
     rejected: set[int] = set()
     if sealer is not None:  # before the leases are recorded: an access token near its end is traded for a new one
-        members = [
-            secret for secret in survey.secrets if secret.agent is None and secret.pool is None
-        ]  # an agent's and a pool's never sign in
+        # a member's own accounts, in a pool or not, sign in and refresh; an agent's own never sign in
+        members = [secret for secret in survey.secrets if secret.agent is None and secret.owner_id is not None]
         rejected = await refresh_due(engine, sealer, members)
     curator = survey.run.curator is not None
     app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app

@@ -1,11 +1,13 @@
 """The agent profile of a run where the hub dispatches, claims and leases it (``runs.service.profiles``,
 ``credentials``), as criterion a3 of the plan agent-profiles-group-chat names it: a dispatch names a profile or goes
 under the project's default; one whose project, runtime, model or worker the profile's allowlists leave out is 422
-saying why, and nothing is dispatched; a worker claims a run only when the profile names it or one of its labels, and
-for a profile that limits tools, skills or models only when its daemon applies profiles; the leases of a run are the
-owner's secrets cut to the profile's credential allowlist, by name, the GitHub App's token counted as github-app; an
-author run's skill must be in the skill allowlist. The run records the profile and its version, and so do its leases
-and the audit. A dispatch that names no profile runs as before (``tests.hub.test_runs``, ``test_credentials_api``)."""
+saying why, and nothing is dispatched; a node of the agent's pool claims a run (plan agent-dedicated-pools: the
+worker axis names no worker any more), and for a profile that limits tools, skills or models only when its daemon
+applies profiles; the leases of a run are the owner's secrets cut to the profile's credential allowlist, by name, the
+GitHub App's token counted as github-app, its model account coming from the agent's account pool; an author run's skill
+must be in the skill allowlist. The run records the profile and its version, and so do its leases and the audit. A
+dispatch that names no profile goes under the project's default agent (``tests.hub.test_runs``,
+``test_credentials_api``)."""
 
 import pytest
 
@@ -17,7 +19,9 @@ if not pg.DSN:
 from sqlalchemy import select, update
 
 from evo_agents.hub import author, profiles, runs, tables
+from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (
     CHECKOUTS,
@@ -38,8 +42,7 @@ from tests.hub.test_credentials_api import (
     registration,
     sample,
 )
-from tests.hub.test_credentials_api import worker_of as plain_worker
-from tests.hub.test_runs import add_worker, claim, of_run, report
+from tests.hub.test_runs import add_worker, claim, join_pool, of_run, report
 
 app_key, config, hub, client = (
     credentials_api.app_key,
@@ -50,23 +53,36 @@ app_key, config, hub, client = (
 
 ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
 VAR = "CLAUDE_CODE_OAUTH_TOKEN"
-HARNESS = "evo-agents-harness"
+SERVICE_VAR = "LUMEN_API_KEY"  # an account of no model provider: the run's agent takes it from its owner's secrets
 BOTH = {"claude-code": {"available": True, "version": "2.1.289"}, "codex": {"available": True, "version": "0.153.4"}}
 
 
 @pytest.fixture
-def admin(client, hub) -> dict:
-    """The owner made an admin of the project, who manages its agent profiles; the headers of ``hub``."""
+def admin(client, hub, hub_db) -> dict:
+    """The owner made an admin of the project, who manages its agent profiles, and the project's default agent with an
+    account pool, which its runs need; the headers of ``hub``."""
     response = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=hub["admin"])
     assert response.status_code == 200, response.text
+    claimable(hub_db, PROJECT, PROJECT)
     return hub
 
 
+def claimable(db, project: str, handle: str) -> None:
+    """Agent ``handle`` of ``project`` with an account pool of the owner's, unless it has one already: a run of an agent
+    is dispatched and claimed only then. Its account does not open with this hub's key: no run is leased it."""
+    p, ap = tables.projects, tables.agent_profiles
+    held = select(ap.c.account_pool_id).join_from(ap, p, p.c.id == ap.c.project_id)
+    if sql(db, held.where(p.c.name == project, ap.c.handle == handle))[0][0] is None:
+        give_account_pool(db, project, handle, OWNER)
+
+
 def profile(client, headers, handle: str, project: str = PROJECT, **body) -> dict:
+    """Agent ``handle`` of ``project``, made by the member of ``headers``, with an account pool."""
     response = client.post(
         f"/v1/projects/{project}/agents", json={"handle": handle, "name": handle, **body}, headers=headers
     )
     assert response.status_code == 201, response.text
+    claimable(live.database_of(client), project, handle)
     return response.json()
 
 
@@ -75,15 +91,14 @@ def allow(**axes) -> dict:
     return {axis: {"mode": "allowlist", "allow": list(items)} for axis, items in axes.items()}
 
 
-def dispatch(client, headers, repo: str = "evo-agents", worker: dict | None = None, **extra):
+def dispatch(client, headers, repo: str = "evo-agents", **extra):
+    """A run of the step on ``repo``, on the pool of its agent: the hub places it, so the body names no worker."""
     body = {"plan_id": PLAN, "steps": [STEPS[repo]], **extra}
-    if worker is not None:
-        body["worker_id"] = worker["id"]
     return client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=headers)
 
 
-def dispatched(client, headers, repo: str = "evo-agents", worker: dict | None = None, **extra) -> dict:
-    response = dispatch(client, headers, repo, worker, **extra)
+def dispatched(client, headers, repo: str = "evo-agents", **extra) -> dict:
+    response = dispatch(client, headers, repo, **extra)
     assert response.status_code == 201, response.text
     return response.json()[0]
 
@@ -103,10 +118,11 @@ def beat(client, worker: dict, features: list[str] | None = None, kinds: list[st
     assert response.status_code == 200, response.text
 
 
-def worker_of(client, headers, name: str) -> dict:
+def worker_of(client, headers, name: str, pool: str | None = PROJECT) -> dict:
     """A worker whose daemon gives the claude-code agent of a run under a profile other than the project's default a
-    config dir of its own (``runs.AGENT_HOME``), which such a run needs (``tests.hub.test_claim_agent_home``)."""
-    worker = plain_worker(client, headers, name)
+    config dir of its own (``runs.AGENT_HOME``), which such a run needs (``tests.hub.test_claim_agent_home``): a ready
+    node of the pool of agent ``pool`` (the project's default agent's by default; None for a worker of no pool)."""
+    worker = add_worker(client, headers, name, checkouts=CHECKOUTS, pool=pool)
     beat(client, worker, features=[runs.AGENT_HOME])
     return worker
 
@@ -151,18 +167,6 @@ def test_a_profile_dispatch_outside_its_runtime_or_model_allowlist_is_422_and_no
     assert (run["model"], run["requested_runtime"]) == ("claude-sonnet-4-5", "claude-code")
 
 
-def test_a_profile_dispatch_to_a_worker_outside_its_worker_allowlist_is_422(client, admin, hub_db):
-    mac, linux = worker_of(client, admin["owner"], "mac-mini"), worker_of(client, admin["owner"], "linux-box")
-    label(client, admin["owner"], linux, "GPU")
-    profile(client, admin["owner"], "gpu-only", permissions=allow(worker=["label:gpu"]))
-    text = refused(dispatch(client, admin["owner"], worker=mac, profile="gpu-only"))
-    assert text == "agent @gpu-only does not allow worker mac-mini: it allows label:gpu; nothing was dispatched"
-    assert dispatched(client, admin["owner"], worker=linux, profile="gpu-only")["pinned_worker_id"] == linux["id"]
-    profile(client, admin["owner"], "elsewhere", permissions=allow(worker=["some-other-box"]))
-    text = refused(dispatch(client, admin["owner"], "lumen-kb-docs", profile="elsewhere"))
-    assert "allows none of your workers of project evo-agents, nor any shared there, to take the run" in text
-
-
 def test_a_profile_dispatch_picking_an_account_the_profile_leaves_out_is_422(client, admin, hub_db):
     for name in ("claude-a", "claude-b"):
         env_secret(client, admin["owner"], name, VAR, sample(f"{name}-"))
@@ -192,9 +196,9 @@ def test_a_profile_of_another_project_dispatches_only_where_its_project_axis_all
 
 
 def test_a_deleted_profile_takes_no_new_dispatch_and_a_rerun_goes_under_the_profile_as_it_is_now(client, admin, hub_db):
-    worker = worker_of(client, admin["owner"], "mac-mini")
     profile(client, admin["owner"], "rerunner")
-    first = dispatched(client, admin["owner"], worker=worker, profile="rerunner")
+    worker = worker_of(client, admin["owner"], "mac-mini", pool="rerunner")
+    first = dispatched(client, admin["owner"], profile="rerunner")
     assert claim(client, worker)["id"] == first["id"]
     assert report(client, worker, first["id"], "failed", error="it broke").status_code == 200
     renamed = client.patch(f"/v1/projects/{PROJECT}/agents/rerunner", json={"name": "R"}, headers=admin["owner"])
@@ -213,12 +217,9 @@ def test_a_deleted_profile_takes_no_new_dispatch_and_a_rerun_goes_under_the_prof
 
 
 def test_a_profile_skill_allowlist_without_create_exec_plan_refuses_an_author_run_dispatch(client, admin, hub_db):
-    checkouts = {**CHECKOUTS, f"{PROJECT}/{HARNESS}": {"path": f"/src/{HARNESS}", "branch": "main"}}
-    worker = add_worker(client, admin["owner"], "mac-mini", checkouts=checkouts)
-    beat(client, worker, kinds=list(runs.RUN_KINDS), features=[runs.AGENT_PROFILES])
     profile(client, admin["owner"], "no-plans", permissions=allow(skill=["stop-slop"]))
     profile(client, admin["owner"], "planner", permissions=allow(skill=[author.AUTHOR_SKILL]))
-    body = {"request": "Write a plan.", "worker_id": worker["id"]}
+    body = {"request": "Write a plan."}
     path = f"/v1/projects/{PROJECT}/author-runs"
     text = refused(client.post(path, json={**body, "profile": "no-plans"}, headers=admin["owner"]))
     assert f"does not allow skill {author.AUTHOR_SKILL}, which an author run writes its plan with" in text
@@ -230,68 +231,42 @@ def test_a_profile_skill_allowlist_without_create_exec_plan_refuses_an_author_ru
 # Claiming
 
 
-def test_a_worker_claims_a_profile_run_only_when_its_worker_axis_names_it_or_a_label(client, admin, hub_db):
-    mac, linux = worker_of(client, admin["owner"], "mac-mini"), worker_of(client, admin["owner"], "linux-box")
+def test_a_profile_run_goes_to_a_node_of_its_agents_pool_whatever_its_worker_axis(client, admin, hub_db):
+    """The worker axis named the workers, labels and pools a run of the profile went to; the agent's own pool does
+    that now (plan agent-dedicated-pools), so a node of the pool takes the run though the axis names neither it nor a
+    label or pool of it, and a worker the axis names outside the pool never does."""
+    profile(client, admin["owner"], "gpu-only", permissions=allow(worker=["label:gpu", "POOL:VPS", "linux-box"]))
+    shown = client.get(f"/v1/projects/{PROJECT}/agents/gpu-only", headers=admin["owner"]).json()
+    assert shown["permissions"]["worker"] == {"mode": "allowlist", "allow": ["label:gpu", "pool:vps", "linux-box"]}
+    linux = worker_of(client, admin["owner"], "linux-box")  # named, with the label, but a node of another pool
     label(client, admin["owner"], linux, "gpu")
-    profile(client, admin["owner"], "gpu-only", permissions=allow(worker=["label:gpu"]))
+    node = worker_of(client, admin["owner"], "mac-mini", pool="gpu-only")
     run = dispatched(client, admin["owner"], profile="gpu-only")
-    assert claim(client, mac) is None
-    spec = claim(client, linux)
+    assert claim(client, linux) is None
+    spec = claim(client, node)
     assert spec["id"] == run["id"] and spec["profile"]["handle"] == "gpu-only"
 
 
-def pool_node(client, headers, db, name: str, pool: str) -> dict:
-    """A worker of ``headers``' member made a node of ``pool``, of the project, with a fresh doctor report (ready)."""
-    made = client.post("/v1/worker-pools", json={"name": pool, "projects": [PROJECT]}, headers=headers)
-    assert made.status_code in (201, 409), made.text
-    pool_id = client.get(f"/v1/worker-pools/{pool}", headers=headers).json()["id"]
-    worker = worker_of(client, headers, name)
-    sql(db, update(tables.workers).where(tables.workers.c.id == worker["id"]).values(pool_id=pool_id))
-    doctor = client.post("/v1/worker/doctor", json={"findings": []}, headers=worker["headers"])
-    assert doctor.status_code == 200, doctor.text
-    return worker
-
-
-def test_a_profile_whose_worker_axis_names_a_pool_takes_only_the_nodes_of_that_pool(client, admin, hub_db):
-    mac, node = worker_of(client, admin["owner"], "mac-mini"), pool_node(client, admin["owner"], hub_db, "vps-1", "vps")
-    other = pool_node(client, admin["owner"], hub_db, "lab-1", "lab")
-    profile(client, admin["owner"], "vps-only", permissions=allow(worker=["POOL:VPS"]))
-    shown = client.get(f"/v1/projects/{PROJECT}/agents/vps-only", headers=admin["owner"]).json()
-    assert shown["permissions"]["worker"] == {"mode": "allowlist", "allow": ["pool:vps"]}
-    text = refused(dispatch(client, admin["owner"], worker=mac, profile="vps-only"))
-    assert text == "agent @vps-only does not allow worker mac-mini: it allows pool:vps; nothing was dispatched"
-    assert refused(dispatch(client, admin["owner"], worker=other, profile="vps-only")).startswith(
-        "agent @vps-only does not allow worker lab-1"
-    )
-    pinned = dispatched(client, admin["owner"], worker=node, profile="vps-only")
-    assert pinned["pinned_worker_id"] == node["id"] and claim(client, node)["id"] == pinned["id"]
-    assert report(client, node, pinned["id"], "failed", error="done with it").status_code == 200  # frees its slot
-    run = dispatched(client, admin["owner"], "lumen-kb-docs", profile="vps-only")  # unpinned: a node of the pool
-    assert claim(client, mac) is None and claim(client, other) is None
-    assert claim(client, node)["id"] == run["id"]
-
-
 def test_a_profile_claim_of_a_run_asking_any_runtime_takes_a_runtime_the_profile_allows(client, admin, hub_db):
-    claude_only = worker_of(client, admin["owner"], "claude-box")
-    both = add_worker(client, admin["owner"], "both-box", runtimes=BOTH, checkouts=CHECKOUTS)
     profile(client, admin["owner"], "codex-only", permissions=allow(runtime=["codex"]))
+    claude_only = worker_of(client, admin["owner"], "claude-box", pool="codex-only")
+    both = add_worker(client, admin["owner"], "both-box", runtimes=BOTH, checkouts=CHECKOUTS, pool="codex-only")
     run = dispatched(client, admin["owner"], profile="codex-only")
     assert run["requested_runtime"] == "any"
     assert claim(client, claude_only) is None
     spec = claim(client, both)
     assert (spec["id"], spec["runtime"]) == (run["id"], "codex")
     # with every runtime allowed, the claim takes the worker's first, as before profiles
+    join_pool(client, claude_only, PROJECT)  # a node of the default agent's pool now
     plain = dispatched(client, admin["owner"], "lumen-kb-docs")
     assert claim(client, claude_only)["id"] == plain["id"]
     assert of_run(hub_db, plain["id"], "runtime") == [("claude-code",)]
 
 
 def test_a_profile_that_limits_tools_is_claimed_only_by_a_daemon_that_applies_profiles(client, admin, hub_db):
-    worker = worker_of(client, admin["owner"], "mac-mini")
     tools = allow(tool=["read", "mcp:github"])
     profile(client, admin["owner"], "reader-bot", instructions="Read; change nothing.", permissions=tools)
-    text = refused(dispatch(client, admin["owner"], worker=worker, profile="reader-bot"), 409)
-    assert "does not say it applies agent profiles" in text
+    worker = worker_of(client, admin["owner"], "mac-mini", pool="reader-bot")
     run = dispatched(client, admin["owner"], profile="reader-bot")
     assert claim(client, worker) is None
     beat(client, worker, features=[runs.AGENT_PROFILES, runs.AGENT_HOME])
@@ -307,6 +282,7 @@ def test_a_profile_that_limits_tools_is_claimed_only_by_a_daemon_that_applies_pr
     # a run under the project's default profile carries it too, every axis all
     plain = dispatched(client, admin["owner"], "lumen-kb-docs")
     assert report(client, worker, run["id"], "failed", error="done").status_code == 200
+    join_pool(client, worker, PROJECT)  # a node of the default agent's pool now
     plain_spec = claim(client, worker)
     assert plain_spec["id"] == plain["id"] and plain_spec["profile"]["handle"] == PROJECT
     assert plain_spec["profile"]["instructions"] == ""
@@ -316,19 +292,21 @@ def test_a_profile_that_limits_tools_is_claimed_only_by_a_daemon_that_applies_pr
 
 
 def test_a_profile_lease_is_the_owners_secrets_cut_to_its_credential_allowlist(client, admin, hub_db):
-    worker = worker_of(client, admin["owner"], "mac-mini")
+    """The owner's secrets of a service: the model account of an agent's run comes from its account pool alone
+    (``test_credentials_api``), the allowlist cutting the owner's other secrets."""
     for name in ("claude-a", "claude-b"):
-        env_secret(client, admin["owner"], name, VAR, sample(f"{name}-"))
+        env_secret(client, admin["owner"], name, SERVICE_VAR, sample(f"{name}-"))
     git_secret(client, admin["owner"], "gitlab-kb", GITLAB_KB, sample("glpat-"))
     git_secret(client, admin["owner"], "gitlab-other", GITLAB_KB, sample("glpat-"))
     made = profile(client, admin["owner"], "narrow", permissions=allow(credential=["claude-b", "gitlab-kb"]))
-    run = dispatched(client, admin["owner"], "lumen-kb-docs", worker=worker, profile="narrow")
+    worker = worker_of(client, admin["owner"], "mac-mini", pool="narrow")
+    run = dispatched(client, admin["owner"], "lumen-kb-docs", profile="narrow")
     assert claim(client, worker)["id"] == run["id"]
 
     answer = leased(client, worker, run["id"])
     assert sorted(by_name(answer)) == ["claude-b", "gitlab-kb"]
     # an allowlist never grows by itself: a secret added later stays out
-    env_secret(client, admin["owner"], "claude-c", "ANTHROPIC_API_KEY", sample("claude-c-"))
+    env_secret(client, admin["owner"], "claude-c", "LUMEN_API_TOKEN", sample("claude-c-"))
     assert sorted(by_name(leased(client, worker, run["id"]))) == ["claude-b", "gitlab-kb"]
 
     cl = tables.credential_leases
@@ -346,11 +324,11 @@ def test_a_profile_lease_is_the_owners_secrets_cut_to_its_credential_allowlist(c
 
 def test_a_profile_lease_gets_the_github_app_token_only_when_it_allows_github_app(client, admin, hub_db, github):
     install(github, "evo-agents")
-    worker = worker_of(client, admin["owner"], "mac-mini")
     profile(client, admin["owner"], "no-app", permissions=allow(credential=[]))
     profile(client, admin["owner"], "app", permissions=allow(credential=["github-app"]))
+    worker = worker_of(client, admin["owner"], "mac-mini", pool="no-app")
 
-    first = dispatched(client, admin["owner"], "evo-agents", worker=worker, profile="no-app")
+    first = dispatched(client, admin["owner"], "evo-agents", profile="no-app")
     assert claim(client, worker)["id"] == first["id"]
     answer = leased(client, worker, first["id"])
     assert answer["leases"] == []
@@ -359,18 +337,21 @@ def test_a_profile_lease_gets_the_github_app_token_only_when_it_allows_github_ap
     assert reason.startswith("agent @no-app allows no token of the hub's GitHub App (github-app)")
     assert report(client, worker, first["id"], "failed", error="no token").status_code == 200
 
-    second = dispatched(client, admin["owner"], "evo-agents", worker=worker, profile="app")
+    join_pool(client, worker, "app")
+    second = dispatched(client, admin["owner"], "evo-agents", profile="app")
     assert claim(client, worker)["id"] == second["id"]
     tokens = by_name(leased(client, worker, second["id"]))
     assert list(tokens) == [f"github-app:{MINE}"] and tokens[f"github-app:{MINE}"]["provider"] == "github-app"
 
 
 def test_a_run_without_a_profile_from_before_0030_is_claimed_and_leased_as_before(client, admin, hub_db):
-    worker = worker_of(client, admin["owner"], "mac-mini")
+    """A run of no agent is no run of a pool: a worker of no pool takes it, and its model account is the owner's."""
+    worker = worker_of(client, admin["owner"], "mac-mini", pool=None)
     env_secret(client, admin["owner"], "claude-a", VAR, sample("claude-a-"))
-    run = dispatched(client, admin["owner"], "lumen-kb-docs", worker=worker)
+    run = dispatched(client, admin["owner"], "lumen-kb-docs")
     r = tables.runs
-    sql(hub_db, update(r).values(profile_id=None, profile_version=None).where(r.c.id == run["id"]))
+    before = {"profile_id": None, "profile_version": None, "selector": [], "tolerations": []}  # placed on no pool
+    sql(hub_db, update(r).values(**before).where(r.c.id == run["id"]))
     spec = claim(client, worker)
     assert spec["id"] == run["id"] and spec["profile"] is None
     assert sorted(by_name(leased(client, worker, run["id"]))) == ["claude-a"]

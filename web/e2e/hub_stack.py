@@ -24,7 +24,10 @@ leave after a few weeks of a goal (``loop_seed.py``), since the stack runs no wo
 runs no probe session. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
 self_update_hours, features, browser} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
 reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
-``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
+``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs. POST
+/workers/pool {worker_id, agent} makes a member's worker a node of the pool of agent ``agent``, where alone a run of
+that agent goes (``join_agent_pool``), and POST /pools/owner {agent, login} gives that pool to a member, as the pool of
+a project's default agent is the member's who registered it (``own_agent_pool``).
 
 The terminal specs need the worker's end of a run's terminal: POST /terminal/worker {run_id, token} connects it the way
 the daemon does (``FakeTerminal``: the worker's token and protocol header, retried until a browser waits on the run)
@@ -345,6 +348,46 @@ def stamp_heartbeat(dsn: str, body: dict) -> dict:
     if row is None:
         raise LookupError(f"no worker {body['worker_id']}")
     return {"worker_id": row[0], "last_heartbeat_at": row[1].isoformat()}
+
+
+def join_agent_pool(dsn: str, body: dict) -> dict:
+    """Worker ``worker_id`` made a node of the pool of agent ``agent`` (``agent-<handle>``), as the Python tests'
+    ``join_pool`` makes one (tests/hub/test_runs.py): the hub has no route that moves a registered worker into a pool,
+    and a machine that joins with a join token is a new worker of the pool's owner, while the specs' workers are their
+    members' own. A run of an agent goes to a node of its pool alone; the spec then sends the node's doctor report,
+    which makes it ready. 404 for a worker or an agent's pool the stack does not have."""
+    import psycopg
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "UPDATE workers SET pool_id = pool.id FROM (SELECT id, name FROM worker_pools "
+            "WHERE agent_id IS NOT NULL AND lower(name) = lower(%s)) AS pool WHERE workers.id = %s "
+            "RETURNING workers.id, pool.name",
+            (f"agent-{body['agent']}", int(body["worker_id"])),
+        ).fetchone()
+    if row is None:
+        raise LookupError(f"no worker {body['worker_id']}, or agent @{body['agent']} has no pool")
+    return {"worker_id": row[0], "pool": row[1]}
+
+
+def own_agent_pool(dsn: str, body: dict) -> dict:
+    """The pool of agent ``agent`` given to member ``login``, as the pool of a project's default agent is the member's who
+    registered the project: the night shift dispatches its runs as that pool's owner (``curator._duty_owner``). The
+    specs' projects are registered by the hub admin, who holds no grant on them, so a spec gives the pool to its member,
+    as the Python tests' ``home_node`` does (tests/hub/test_curator.py). 404 for an agent's pool or a member the stack
+    does not have."""
+    import psycopg
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "UPDATE worker_pools SET owner_id = member.id FROM (SELECT id FROM users WHERE login = %s) AS member "
+            "WHERE worker_pools.agent_id IS NOT NULL AND lower(worker_pools.name) = lower(%s) "
+            "RETURNING worker_pools.id, worker_pools.name",
+            (str(body["login"]), f"agent-{body['agent']}"),
+        ).fetchone()
+    if row is None:
+        raise LookupError(f"agent @{body['agent']} has no pool, or the stack has no member {body['login']}")
+    return {"pool_id": row[0], "pool": row[1]}
 
 
 def age_sessions(dsn: str, body: dict) -> dict:
@@ -813,6 +856,16 @@ def control_server(
             elif self.path == "/workers/heartbeat":
                 try:
                     self._reply(200, stamp_heartbeat(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
+            elif self.path == "/workers/pool":
+                try:
+                    self._reply(200, join_agent_pool(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
+            elif self.path == "/pools/owner":
+                try:
+                    self._reply(200, own_agent_pool(dsn, body))
                 except LookupError as exc:
                     self._reply(404, {"error": str(exc)})
             elif self.path == "/terminal/worker":

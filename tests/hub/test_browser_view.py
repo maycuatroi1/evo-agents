@@ -132,12 +132,13 @@ VIEWER_ACTIONS = ("browser.view", "browser.control")
 
 
 def browser_run(client, hub, *, dispatcher: str = "owner", step: int = 2, state: str = "running", shared=False):
-    """A worker of owner with the feature browser (shared, or not) and a run of ``step`` with a browser that
-    ``dispatcher`` dispatched to it and that it claimed and moved to ``state``: (worker, run id)."""
+    """A worker of owner with the feature browser (shared, or not), a node of the pool of the project's default agent,
+    and a run of ``step`` with a browser that ``dispatcher`` dispatched and that it claimed and moved to ``state``:
+    (worker, run id)."""
     worker = add_browser_worker(client, hub["owner"], f"lab-{step}")
     if shared:
         assert share(client, hub["owner"], worker).status_code == 200
-    (run,) = dispatched(client, hub[dispatcher], [step], worker_id=worker["id"], browser=True)
+    (run,) = dispatched(client, hub[dispatcher], [step], browser=True)
     assert claim(client, worker)["id"] == run["id"]
     if state != "leased":
         moved(client, worker, run["id"], state)
@@ -315,7 +316,7 @@ def test_browser_view_refuses_as_the_web_terminal_does(client, hub, hub_db):
 
 def test_browser_view_of_a_run_without_browser_or_no_longer_held_is_refused(client, hub, hub_db):
     plain = add_worker(client, hub["owner"], "plain")
-    (run,) = dispatched(client, hub["owner"], [4], worker_id=plain["id"])
+    (run,) = dispatched(client, hub["owner"], [4])
     assert claim(client, plain)["id"] == run["id"]
     moved(client, plain, run["id"], "running")
     worker, held = browser_run(client, hub, step=5)

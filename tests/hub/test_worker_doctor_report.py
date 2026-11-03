@@ -2,7 +2,9 @@
 names them: schema 0108 and going back; POST /v1/worker/doctor keeps the newest report of the worker whose token sent
 it, redacted, and the list of workers shows it; narrowing a worker to a unit answers 409 with the reason without a
 report, with one older than 48 hours or with a high finding; a report with a high finding stops a narrowed worker
-taking the runs of its units' members, never its owner's, and tells the owner once with the notice worker_doctor.
+taking the runs of its units' members, never its owner's, and tells the owner once with the notice worker_doctor. The
+workers here are of no pool and their runs of no agent (ones from before agents): a node of an agent's pool with a high
+finding its pool does not accept takes no run at all (``tests.hub.test_pool_scheduling``).
 
 Everything here needs the hub and skips without EVO_HUB_TEST_DSN."""
 
@@ -21,6 +23,7 @@ if pg.DSN:
     from evo_agents.hub.migrate import migrate
     from tests.hub.live import sql
     from tests.hub.test_migrate import ALL, columns, move_to
+    from tests.hub.test_pool_scheduling import agentless
     from tests.hub.test_runs import (  # noqa: F401  (fixtures)
         OTHER,
         OWNER,
@@ -89,7 +92,7 @@ def test_doctor_report_migration_adds_the_columns_and_the_notice_and_going_back_
 
 @needs_pg
 def test_doctor_report_is_kept_redacted_listed_and_replaced_by_the_next(client, hub, hub_db):
-    lab = add_worker(client, hub["owner"], "lab")
+    lab = add_worker(client, hub["owner"], "lab", pool=None)
     assert org_row(client, hub["owner"], lab)["doctor_at"] is None
     answer = doctor(client, lab, LEAKY, MEDIUM, {**MEDIUM, "code": "path-not-owned"})
     assert (answer["worker_id"], answer["doctor_high"], answer["doctor_medium"]) == (lab["id"], 1, 2)
@@ -121,7 +124,7 @@ def test_doctor_report_takes_only_a_live_workers_token_and_well_formed_findings(
 @needs_pg
 def test_doctor_report_missing_stale_or_high_refuses_sharing_with_a_unit(client, hub, hub_db):
     unit(client, hub, "lab")
-    lab = add_worker(client, hub["owner"], "lab")
+    lab = add_worker(client, hub["owner"], "lab", pool=None)
     refused = put_unit(client, hub["owner"], lab, "lab")
     assert refused.status_code == 409 and "sent no doctor report" in refused.text  # an older daemon sends none
     doctor(client, lab, HIGH, MEDIUM)
@@ -142,16 +145,19 @@ def test_doctor_report_missing_stale_or_high_refuses_sharing_with_a_unit(client,
 def test_doctor_report_with_high_stops_unit_runs_keeps_the_owners_and_notifies_the_owner_once(client, hub, hub_db):
     unit(client, hub, "lab")
     seat(client, hub, "lab")
-    lab = add_worker(client, hub["owner"], "lab")
+    lab = add_worker(client, hub["owner"], "lab", pool=None)
     doctor(client, lab)
     assert put_unit(client, hub["owner"], lab, "lab").status_code == 200
     (first,) = dispatched(client, hub["other"], [4])
+    agentless(hub_db, first["id"])
     assert claim(client, lab)["id"] == first["id"]
     moved(client, lab, first["id"], "running", "failed", error="it stopped")
     doctor(client, lab, HIGH)
     (theirs,) = dispatched(client, hub["other"], [5])
+    agentless(hub_db, theirs["id"])
     assert claim(client, lab) is None  # the member's run waits
     (mine,) = dispatched(client, hub["owner"], [2])
+    agentless(hub_db, mine["id"])
     assert claim(client, lab)["id"] == mine["id"]  # its owner's runs go on
     moved(client, lab, mine["id"], "running", "failed", error="it stopped")
     doctor(client, lab, HIGH, LEAKY)  # still high: no second notice
@@ -167,11 +173,12 @@ def test_doctor_report_with_high_stops_unit_runs_keeps_the_owners_and_notifies_t
 
 @needs_pg
 def test_doctor_report_with_high_on_a_worker_not_narrowed_changes_nothing_and_notifies_nobody(client, hub, hub_db):
-    lab = add_worker(client, hub["owner"], "lab")
+    lab = add_worker(client, hub["owner"], "lab", pool=None)
     patched = client.patch(f"/v1/workers/{lab['id']}", json={"shared": True}, headers=hub["owner"])
     assert patched.status_code == 200, patched.text
     doctor(client, lab, HIGH)
     (theirs,) = dispatched(client, hub["other"], [4])
+    agentless(hub_db, theirs["id"])
     assert claim(client, lab)["id"] == theirs["id"]  # shared with every writer: the doctor does not narrow it
     assert notices(hub_db) == []
     assert OTHER != OWNER

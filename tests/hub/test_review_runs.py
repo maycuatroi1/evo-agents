@@ -4,11 +4,11 @@ proposals, the owner's answers, and the Inbox items of tier 2 (``evo_agents.hub.
 ``evo_agents.hub.server.proposals``).
 
 The checks step 3 of the curator-agent plan names: each night a review run is queued once the figures are counted, as
-the schedule's owner on the worker on duty, read-only (no push, a GitHub token that reads only); its findings and
-proposals carry evidence the hub resolves, and the hub refuses what it cannot find; the tier comes from the hub's rules,
-and a protected path, loosening a test, changing a plan's verify or CI make it tier 3; a proposal like one rejected in
-the last 30 days is dropped unless its evidence doubled; the owner accepts, rejects and defers through the API and the
-command line; tier 2 proposals reach the Inbox within max_decisions_per_day. And schema 0014."""
+the schedule's owner on the pool on duty (the default agent's), read-only (no push, a GitHub token that reads only); its
+findings and proposals carry evidence the hub resolves, and the hub refuses what it cannot find; the tier comes from the
+hub's rules, and a protected path, loosening a test, changing a plan's verify or CI make it tier 3; a proposal like one
+rejected in the last 30 days is dropped unless its evidence doubled; the owner accepts, rejects and defers through the
+API and the command line; tier 2 proposals reach the Inbox within max_decisions_per_day. And schema 0014."""
 
 import json
 from datetime import UTC, date, datetime, timedelta
@@ -50,6 +50,7 @@ from tests.hub.test_curator import (
     count,
     fire,
     grant,
+    home_node,
     night,  # noqa: F401 (a fixture)
     put_charter,
     scheduled,
@@ -212,12 +213,15 @@ def test_collect_counts_the_night_figures_and_queues_one_review_run(review):
         "kind": "review",
         "plan_id": None,
         "dispatched_via": "schedule",
-        "pinned_worker_id": review.worker["id"],
+        "pinned_worker_id": None,
         "schedule_night": THE_NIGHT,
     }
     assert run["budget"] == {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}
     r = tables.runs
-    ((repos, revision),) = sql(db, select(r.c.repos, r.c.plan_revision).where(r.c.id == run["id"]))
+    ((repos, revision, selector),) = sql(
+        db, select(r.c.repos, r.c.plan_revision, r.c.selector).where(r.c.id == run["id"])
+    )
+    assert selector == [f"pool=agent-{PROJECT}"]  # any ready node of the pool on duty, the default agent's
     assert revision is None and repos == [
         {"repo": "agent-skills", "branch": None},
         {"repo": "evo-agents", "branch": None},
@@ -679,7 +683,10 @@ def test_the_owner_accepts_rejects_and_defers_and_a_deferred_one_opens_again(rev
     a, u = tables.audit, tables.users
     rows = sql(
         db,
-        select(a.c.target, u.c.login).join_from(a, u, u.c.id == a.c.actor_id).where(a.c.action == "curator.proposal"),
+        select(a.c.target, u.c.login)
+        .join_from(a, u, u.c.id == a.c.actor_id)
+        .where(a.c.action == "curator.proposal")
+        .order_by(a.c.id),
     )
     assert [row[0].split()[-1] for row in rows] == ["answer=accept", "answer=reject", "answer=defer"]
     listed = client.get(
@@ -848,7 +855,8 @@ def served(hub_db, tmp_path, github):
         headers = members(client, github)
         grant(client, headers, OWNER, "admin")
         push(client, headers["owner"], fleet_body())
-        worker = taking_reviews(client, fleet_worker(client, headers["owner"], WORKER))
+        node = home_node(client, hub_db, headers["owner"], fleet_worker(client, headers["owner"], WORKER))
+        worker = taking_reviews(client, node)
         assert put_charter(client, headers["owner"], charter_body(night_plans=[])).status_code == 200
         push_digest(client, headers["owner"])
         homes = {
@@ -997,9 +1005,13 @@ def test_the_review_columns_of_0014_hold_together(review):
         sql(db, insert(r).values(**dict(zip(REVIEW_COPY, row, strict=True))))
 
 
-REVIEW_COPY = (
+REVIEW_COPY = (  # what a copy of a review run keeps: its agent and the pool it goes to included
     "kind",
     "project_id",
+    "profile_id",
+    "profile_version",
+    "selector",
+    "tolerations",
     "dispatched_by",
     "dispatched_via",
     "requested_runtime",
@@ -1063,13 +1075,15 @@ def test_the_figures_route_reads_the_latest_night_or_the_one_asked(review):
 @pytest.fixture
 def app_review(hub_db, tmp_path, github, app_key):  # noqa: F811
     """test_credentials_api's project, with repos on GitHub and GitLab, its hub holding the secrets key, the GitHub
-    App and the Curator's App; owner an admin with a charter whose worker on duty, mac-mini, takes review runs."""
+    App and the Curator's App; owner an admin with a charter, who holds the pool of the project's default agent, where
+    the night shift runs, and its node mac-mini, which takes review runs."""
     config = credentials_config(hub_db, tmp_path, github, app_key, curator=True)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
-        worker = taking_reviews(client, credential_worker(client, headers["owner"], "mac-mini"))
-        body = charter_body(worker="mac-mini", night_plans=[])
+        node = home_node(client, hub_db, headers["owner"], credential_worker(client, headers["owner"], "mac-mini"))
+        worker = taking_reviews(client, node)
+        body = charter_body(night_plans=[])
         assert put_charter(client, headers["owner"], body).status_code == 200
         yield SimpleNamespace(client=client, headers=headers, worker=worker, github=github, db=hub_db)
 

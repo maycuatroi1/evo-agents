@@ -607,8 +607,8 @@ class Claimer:
 
     def gates(self) -> list[tuple[str, object]]:
         """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes),
-        its browser, the model gateway, the agent pools, the account pools and the worker's labels and taints ask of
-        the worker, each by its key."""
+        its browser, the model gateway, a judge of merge requests, the agent pools, the account pools and the worker's
+        labels and taints ask of the worker, each by its key."""
         row = self.row
         clause = claim_clause(
             row.name,
@@ -622,10 +622,22 @@ class Claimer:
             ("profile", clause),
             ("browser", browsers.claim_gate(row.id, row.features)),
             ("gateway", gateway_accounts.claim_gate(row.agent_version)),
+            ("merge_judge", merge_judge_gate(row.features)),
             ("agent_pool", agent_placement.claim_gate(row.id)),
             ("pool_accounts", pool_accounts.claim_gate()),
             ("placement", or_(agent_placement.home_run(row.id), self.node.gate(row.id))),
         ]
+
+
+def merge_judge_gate(features):
+    """The condition a queued run meets for a worker whose daemon says ``features``: a judge run of the merge queue or
+    of a GitHub merge check (``merge_judge``, ``merge_check``) goes only to a daemon that says it judges merge requests
+    (``runs.MERGE_JUDGE``); any other run, the Curator's judge runs too, asks nothing of it."""
+    if runs.MERGE_JUDGE in (features or ()):
+        return true()
+    r, q, c = tables.runs, tables.merge_queue, tables.merge_checks
+    judged = or_(exists().where(q.c.judge_run_id == r.c.id), exists().where(c.c.judge_run_id == r.c.id))
+    return or_(r.c.kind != "judge", ~judged)
 
 
 async def read_claimer(conn: AsyncConnection, row, node: worker_placement.Placement) -> Claimer:

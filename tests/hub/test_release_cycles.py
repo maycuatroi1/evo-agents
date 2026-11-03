@@ -39,7 +39,7 @@ from evo_agents.hub.server.release_check import release_pass
 from evo_agents.hub.server.release_watch import watch_releases
 from evo_agents.hub.server.run_state import move_run
 from tests.hub.live import sql
-from tests.hub.test_credentials_api import MINE, OWNER, app_key, install  # noqa: F401 (app_key is a fixture)
+from tests.hub.test_credentials_api import MINE, OWNER, app_key, claimable, install  # noqa: F401 (app_key: a fixture)
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
@@ -149,6 +149,7 @@ def _world(hub_db, tmp_path, github, app_key, permissions):  # noqa: F811
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, OWNER, "admin")
+        claimable(client)  # the release and fix runs are the default agent's: claimed while its account pool has one
         install(github, REPO, permissions=permissions)
         repo_at(github, HEAD)
         at_head(github)

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, isDeployed, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, type Account, bearerClient, type HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
+import { ACCOUNT_POOL, ADMIN_ACCOUNT, type Account, bearerClient, type HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
 import { claimRun, dispatch, leaseCredentials, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, runCredentialsOf, secretsOf, secretValue } from "./support/secrets";
@@ -121,7 +121,11 @@ test("a hub admin sees only their own secrets and not the credentials of another
   const [run] = await dispatch(owner, project, ["2"]);
   expect((await claimRun(live))?.id).toBe(run.id);
   await startRun(live, run.id);
-  expect((await leaseCredentials(live, run.id)).leases).toHaveLength(1);
+  // The owner's secret, and the Claude account of the account pool of the project's default agent.
+  const leased = (await leaseCredentials(live, run.id)).leases.map((lease) => lease.name);
+  expect(leased).toHaveLength(2);
+  expect(leased).toContain(name);
+  expect(leased.filter((leaseName) => leaseName.startsWith(`@pool.${ACCOUNT_POOL}:`))).toHaveLength(1);
   await admin.grant(project, ADMIN_ACCOUNT.login, "reader", "internal");
 
   // A worker token reaches no secret route, and no run's leases through the owner's route.

@@ -1,11 +1,13 @@
 """The account a member picks by hand for a run (``evo_agents.hub.server.runs.service.accounts``): ``account`` on a
 dispatch of steps, a plan run and an author run, and on a rerun.
 
-The checks the claude-account-rotation plan names for its second step: the run takes the account picked and keeps it,
-the pick moves no rotation, a rerun keeps the account picked for the run it reruns unless it names another one or
-asks the rules; a name that is no env secret of the dispatcher's is 404, one not bound to the project, bound only to
-other workers, paused or past its end is 422 saying why, and nothing is dispatched; audit rows name the account by its
-secret's id. A body without ``account`` dispatches as before (``test_accounts_api``, ``test_credentials_api``)."""
+The checks the claude-account-rotation plan names for its second step, on accounts of the dispatcher's in the account
+pool of the run's agent (plan agent-dedicated-pools): the run takes the account picked and keeps it, the pick moves no
+rotation, a rerun keeps the account picked for the run it reruns unless it names another one or asks the rules; a name
+that is no env secret of the dispatcher's is 404, one not bound to the project, bound only to some workers (a dispatch
+pins no worker any more), paused or past its end is 422 saying why, and nothing is dispatched; audit rows name the
+account by its secret's id. A body without ``account`` dispatches as before (``test_accounts_api``,
+``test_credentials_api``)."""
 
 from datetime import timedelta
 
@@ -28,6 +30,7 @@ from tests.hub.test_credentials_api import (
     PLAN,
     PROJECT,
     STEPS,
+    account_pool,
     audit_rows,
     env_secret,
     git_secret,
@@ -48,16 +51,14 @@ app_key, config, hub, client = (
 HARNESS = "evo-agents-harness"
 
 
-def dispatch(client, headers, repo: str, worker: dict | None, **extra):
+def dispatch(client, headers, repo: str, **extra):
     body = {"plan_id": PLAN, "steps": [STEPS[repo]], **extra}
-    if worker is not None:
-        body["worker_id"] = worker["id"]
     return client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=headers)
 
 
 def dispatched(client, headers, repo: str, worker: dict, **extra) -> int:
-    """A run of the step on ``repo``, pinned to ``worker`` and claimed by it."""
-    response = dispatch(client, headers, repo, worker, **extra)
+    """A run of the step on ``repo``, claimed by ``worker`` (a node of the pool of the project's default agent)."""
+    response = dispatch(client, headers, repo, **extra)
     assert response.status_code == 201, response.text
     run_id = response.json()[0]["id"]
     assert claim(client, worker)["id"] == run_id
@@ -116,7 +117,7 @@ def test_an_account_picked_by_hand_is_kept_even_when_paused_or_cooling_since(cli
 def test_a_plan_run_dispatch_with_an_account_takes_it(client, hub, hub_db):
     three(client, hub["owner"])
     worker = worker_of(client, hub["owner"], "mac-mini")
-    body = {"plan_id": PLAN, "worker_id": worker["id"], "account": "claude-c"}
+    body = {"plan_id": PLAN, "account": "claude-c"}
     response = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"])
     assert response.status_code == 201, response.text
     run_id = response.json()["id"]
@@ -135,7 +136,7 @@ def test_an_author_run_dispatch_with_an_account_takes_it(client, hub, hub_db):
         "/v1/worker/heartbeat", json={**beat, "run_kinds": list(runs.RUN_KINDS)}, headers=worker["headers"]
     )
     assert response.status_code == 200, response.text
-    body = {"request": "Write a plan.", "worker_id": worker["id"], "account": "claude-a"}
+    body = {"request": "Write a plan.", "account": "claude-a"}
     response = client.post(f"/v1/projects/{PROJECT}/author-runs", json=body, headers=hub["owner"])
     assert response.status_code == 201, response.text
     assert taken_how(hub_db, response.json()["id"]) == [(VAR, "claude-a", "manual")]
@@ -148,7 +149,7 @@ def test_an_account_dispatch_refuses_a_name_that_is_not_the_dispatchers_env_secr
     three(client, hub["owner"])
     env_secret(client, hub["other"], "theirs", VAR, sample())
     git_secret(client, hub["owner"], "gitlab", "https://gitlab.example.org/team", sample())
-    box, desk = worker_of(client, hub["owner"], "box"), worker_of(client, hub["owner"], "desk")
+    worker_of(client, hub["owner"], "box")
     env_secret(client, hub["owner"], "box-only", VAR, sample(), workers=["box"])
     env_secret(client, hub["owner"], "unbound", VAR, sample())
     s, b = tables.secrets, tables.secret_bindings
@@ -160,27 +161,22 @@ def test_an_account_dispatch_refuses_a_name_that_is_not_the_dispatchers_env_secr
     before = all_runs(hub_db)
 
     for name in ("nobody", "theirs", "gitlab"):
-        response = dispatch(client, hub["owner"], "evo-agents", desk, account=name)
+        response = dispatch(client, hub["owner"], "evo-agents", account=name)
         assert response.status_code == 404, response.text
         assert f"you have no env secret named {name}" in response.json()["message"]
     refusals = {
-        "unbound": (desk, f"account unbound is not bound to project {PROJECT}"),
-        "box-only": (desk, "on worker box only, not on worker desk"),
-        "stale": (desk, "account stale ended at"),
-        "claude-c": (desk, "account claude-c is paused"),
+        "unbound": f"account unbound is not bound to project {PROJECT}",
+        "box-only": "on worker box only, and the run is not pinned to a worker",  # the hub places it: never pinned
+        "stale": "account stale ended at",
+        "claude-c": "account claude-c is paused",
     }
-    for name, (worker, why) in refusals.items():
-        response = dispatch(client, hub["owner"], "evo-agents", worker, account=name)
+    for name, why in refusals.items():
+        response = dispatch(client, hub["owner"], "evo-agents", account=name)
         assert response.status_code == 422, response.text
         assert why in response.json()["message"] and "nothing was dispatched" in response.json()["message"]
-    response = dispatch(client, hub["owner"], "evo-agents", None, account="box-only")
-    assert response.status_code == 422 and "the run is not pinned to a worker" in response.json()["message"]
-    response = dispatch(client, hub["owner"], "evo-agents", None, account="Not A Name")
+    response = dispatch(client, hub["owner"], "evo-agents", account="Not A Name")
     assert response.status_code == 422, response.text
     assert all_runs(hub_db) == before
-    # pinned to the worker it is bound to, it goes
-    run_id = dispatched(client, hub["owner"], "evo-agents", box, account="box-only")
-    assert account_of(client, box, run_id) == "box-only"
 
 
 def test_an_oauth_account_with_a_lapsed_access_token_is_pickable_and_a_candidate_unlike_a_setup_token(
@@ -190,6 +186,7 @@ def test_an_oauth_account_with_a_lapsed_access_token_is_pickable_and_a_candidate
     desk = worker_of(client, hub["owner"], "desk")
     env_secret(client, hub["owner"], "oauth-old", VAR, sample())
     env_secret(client, hub["owner"], "token-old", VAR, sample())
+    account_pool(client, "oauth-old", "token-old")
     s, a = tables.secrets, tables.accounts
     lapsed = func.now() - timedelta(minutes=1)
     sql(hub_db, update(s).values(expires_at=lapsed).where(s.c.name.in_(("oauth-old", "token-old"))))
@@ -198,7 +195,7 @@ def test_an_oauth_account_with_a_lapsed_access_token_is_pickable_and_a_candidate
     upsert = insert(a).values(secret_id=oauth, **sealed)
     sql(hub_db, upsert.on_conflict_do_update(index_elements=[a.c.secret_id], set_=sealed))
 
-    response = dispatch(client, hub["owner"], "evo-agents", desk, account="token-old")
+    response = dispatch(client, hub["owner"], "evo-agents", account="token-old")
     assert response.status_code == 422 and "account token-old ended at" in response.json()["message"]
     # the pick is accepted; its tokens are fake here, so the lease itself is covered by test_account_oauth_refresh
     run_id = dispatched(client, hub["owner"], "evo-agents", desk, account="oauth-old")
@@ -233,14 +230,14 @@ def test_a_rerun_keeps_the_account_picked_for_the_run_unless_it_names_another_or
 
     by_rule = rerun_claimed(client, hub["owner"], worker, other, {"account_by_rule": True})
     assert account_of(client, worker, by_rule) == "claude-a"
-    assert taken_how(hub_db, by_rule) == [(VAR, "claude-a", "pool")]
+    assert taken_how(hub_db, by_rule) == [(VAR, "claude-a", "worker")]  # the pool's accounts are on every node
     ended(client, worker, by_rule)
 
     # a run whose account the rules picked is rerun with the rules again
     again = rerun_claimed(client, hub["owner"], worker, by_rule)
     assert taken_how(hub_db, again) == []
     assert account_of(client, worker, again) == "claude-b"
-    assert taken_how(hub_db, again) == [(VAR, "claude-b", "pool")]
+    assert taken_how(hub_db, again) == [(VAR, "claude-b", "worker")]
 
 
 def test_a_rerun_says_why_when_its_account_cannot_go_and_refuses_both_choices(client, hub, hub_db):

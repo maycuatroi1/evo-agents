@@ -1,9 +1,11 @@
 """Shared workers narrowed to units of the org chart (``evo_agents.hub.server.worker_shares``), as criterion a5 of plan
 credential-sharing names them: schema 0107 and going back; the owner and a hub admin narrow a worker to a unit and
 take it back, each change audited worker.share or worker.unshare; a narrowed worker takes the runs of its owner and of
-a member whose live primary seat is in one of its units or below one, and no other member's, at claim, at dispatch,
-in the worker lists and in the candidates of a rerun; a shared worker with no unit keeps taking every writer's runs,
-and PATCH {"shared": ...} still turns sharing on and off; ``hub org worker list|share|unshare``.
+a member whose live primary seat is in one of its units or below one, and no other member's, at claim, in the worker
+lists and in the candidates of a rerun; a shared worker with no unit keeps taking every writer's runs, and PATCH
+{"shared": ...} still turns sharing on and off; ``hub org worker list|share|unshare``. At claim, of the runs of no agent
+(ones from before agents) on a worker of no pool: a node of an agent's pool takes every run of its agent, whoever
+dispatched it, and a dispatch names no worker (``tests.hub.test_agent_pool_placement``).
 
 The parsing runs without Postgres; everything that needs the hub skips without EVO_HUB_TEST_DSN."""
 
@@ -22,6 +24,7 @@ if pg.DSN:
     from evo_agents.hub.migrate import migrate
     from tests.hub.live import sql
     from tests.hub.test_migrate import ALL, INFO_TABLES, move_to
+    from tests.hub.test_pool_scheduling import agentless
     from tests.hub.test_runs import (  # noqa: F401  (fixtures)
         ADMIN,
         OTHER,
@@ -31,7 +34,6 @@ if pg.DSN:
         audit_rows,
         claim,
         client,
-        dispatch,
         dispatched,
         hub,
         moved,
@@ -175,25 +177,23 @@ def test_worker_share_access_owner_and_admin_narrow_and_take_back_each_audited(c
 
 
 @needs_pg
-def test_worker_share_claim_takes_only_runs_of_members_seated_in_its_units(client, hub):
+def test_worker_share_claim_takes_only_runs_of_members_seated_in_its_units(client, hub, hub_db):
     unit(client, hub, "lab")
     unit(client, hub, "bench", parent="lab")
-    lab = add_worker(client, hub["owner"], "lab", slots=2)
+    lab = add_worker(client, hub["owner"], "lab", slots=2, pool=None)
     narrow(client, hub["owner"], lab, "lab")
     (theirs,) = dispatched(client, hub["other"], [4])  # someone-else is seated at the root only
+    agentless(hub_db, theirs["id"])
     assert claim(client, lab) is None
-    refused = dispatch(client, hub["other"], [5], worker_id=lab["id"])
-    assert refused.status_code == 403 and "shared in project" in refused.text
     assert listed(client, hub["other"], lab) == []
     assert client.get(f"/v1/workers/{lab['id']}", headers=hub["other"]).status_code == 404
     (mine,) = dispatched(client, hub["owner"], [2])
+    agentless(hub_db, mine["id"])
     assert claim(client, lab)["id"] == mine["id"]  # its owner's runs, always
     moved(client, lab, mine["id"], "running", "failed", error="it stopped")
     seat(client, hub, "bench")  # a primary seat below the unit the worker is narrowed to
     assert listed(client, hub["other"], lab) == [lab["id"]]
     assert claim(client, lab)["id"] == theirs["id"]
-    (pinned,) = dispatched(client, hub["other"], [5], worker_id=lab["id"])
-    assert pinned["pinned_worker_id"] == lab["id"]
 
 
 @needs_pg
@@ -201,9 +201,9 @@ def test_worker_share_rerun_candidates_follow_the_units(client, hub):
     unit(client, hub, "lab")
     unit(client, hub, "ops")
     seat(client, hub, "lab")
-    lab = add_worker(client, hub["owner"], "lab")
+    lab = add_worker(client, hub["owner"], "lab")  # a node of the pool of the project's default agent
     narrow(client, hub["owner"], lab, "lab")
-    (run,) = dispatched(client, hub["other"], [4], worker_id=lab["id"])
+    (run,) = dispatched(client, hub["other"], [4])
     assert claim(client, lab)["id"] == run["id"]
     moved(client, lab, run["id"], "running", "failed", error="it stopped")
     path = f"/v1/projects/{PROJECT}/runs/{run['id']}/rerun-candidates"
@@ -220,15 +220,17 @@ def test_worker_share_rerun_candidates_follow_the_units(client, hub):
 
 
 @needs_pg
-def test_shared_workers_without_a_unit_keep_every_writer_and_patch_shared_still_works(client, hub):
+def test_shared_workers_without_a_unit_keep_every_writer_and_patch_shared_still_works(client, hub, hub_db):
     unit(client, hub, "lab")
-    lab = add_worker(client, hub["owner"], "lab", slots=2)
+    lab = add_worker(client, hub["owner"], "lab", slots=2, pool=None)
     patch_shared(client, hub["owner"], lab, True)  # no unit: every writer of a project it serves
     (first,) = dispatched(client, hub["other"], [4])
+    agentless(hub_db, first["id"])
     assert claim(client, lab)["id"] == first["id"]
     moved(client, lab, first["id"], "running", "failed", error="it stopped")
     narrow(client, hub["owner"], lab, "lab")
     (second,) = dispatched(client, hub["other"], [5])
+    agentless(hub_db, second["id"])
     assert claim(client, lab) is None  # narrowed to lab, where someone-else holds no seat
     patch_shared(client, hub["owner"], lab, False)
     rows = client.get("/v1/org/workers", headers=hub["owner"]).json()

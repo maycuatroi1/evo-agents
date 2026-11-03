@@ -68,7 +68,7 @@ from tests.hub.test_plans import registration as plans_registration
 from tests.hub.test_runs import OWNER, PROJECT, WRITER
 from tests.worker import fake_adapter
 from tests.worker.git_http import GitHttp
-from tests.worker.test_daemon import GIT_IDENTITY, TOKEN_LEAK, git, wait_until
+from tests.worker.test_daemon import GIT_IDENTITY, TOKEN_LEAK, git, pool_secret, ready_node, wait_until
 from tests.worker.test_end_to_end import LEASE_SECONDS, Hub
 
 ROOT = Path(__file__).parents[2]
@@ -282,6 +282,8 @@ class Machine:
         assert joined.returncode == 0, joined.stderr
         self.token = (self.state / "token").read_text(encoding="utf-8").strip()
         assert self.token.startswith("evw_")
+        worker_id = json.loads((self.state / "config.json").read_text(encoding="utf-8"))["worker_id"]
+        ready_node(self.world.client, self.world.hub.db, worker_id, self.token)  # a node of the default agent's pool
 
     def start_daemon(self) -> subprocess.Popen:
         with open(self.daemon_log, "ab") as out:
@@ -398,7 +400,8 @@ class World:
     # As the owner
 
     def put_secrets(self, worker: str) -> None:
-        """The owner's two secrets, bound to project evo-agents on ``worker``."""
+        """The owner's two secrets, bound to project evo-agents on ``worker``; the env secret is the account of the
+        account pool of the project's default agent, whose runs these are."""
         bound = {"projects": [PROJECT], "workers": [worker]}
         env = {"kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": self.oauth, **bound}
         prefix = self.git_http.url  # https, the form of normalize_origin, which covers the http origin
@@ -409,6 +412,7 @@ class World:
             assert self.glpat not in response.text and self.oauth not in response.text
             (secret_id,) = live.sql(self.hub.db, select(tables.secrets.c.id).where(tables.secrets.c.name == name))[0]
             self.secret_ids[name] = secret_id
+        pool_secret(self.hub.db, "claude-oauth")
 
     def dispatch(self, repo: str) -> int:
         body = {"plan_id": PLAN, "steps": [STEPS[repo]], "runtime": "claude-code", "approval": "auto"}
@@ -696,8 +700,10 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     assert all(lease["revoked_at"] for lease in world.leases(run_id).values())
     (lease_row,) = world.audit("credential.lease", run_id)
     assert (lease_row["actor"], lease_row["project"]) == (OWNER, PROJECT)
-    secrets = ",".join(str(found) for found in sorted(world.secret_ids.values()))  # by id: names are the owner's
-    assert f"secrets={secrets} github-app=- " in lease_row["target"]
+    # by id: names are the owner's; the env secret went as an account of the default agent's account pool main
+    git_id, oauth_id = world.secret_ids["git-http"], world.secret_ids["claude-oauth"]
+    assert f"secrets={git_id} github-app=- " in lease_row["target"]
+    assert lease_row["target"].endswith(f" agent-accounts={oauth_id}@pool.main"), lease_row["target"]
     revoke_rows = world.audit("credential.revoke", run_id)
     assert revoke_rows and revoke_rows[0]["target"].endswith("by=run-done"), revoke_rows
     world.assert_nothing_leaked(mac)
@@ -724,8 +730,9 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     seen = json.loads(env_seen[APP_REPO].read_text(encoding="utf-8"))
     assert seen.get("CLAUDE_CODE_OAUTH_TOKEN") == world.oauth and token not in json.dumps(seen)
     (lease_row,) = world.audit("credential.lease", app_run)
-    oauth = world.secret_ids["claude-oauth"]
-    assert f"secrets={oauth} github-app={GITHUB_OWNER} repos={APP_REPO}" in lease_row["target"]
+    assert lease_row["target"].endswith(
+        f" secrets=- github-app={GITHUB_OWNER} repos={APP_REPO} agent-accounts={oauth_id}@pool.main"
+    ), lease_row["target"]
     assert world.audit("credential.revoke", app_run)
     assert not mac.helper_calls.exists(), "the machine's own credential helper was called"
 

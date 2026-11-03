@@ -73,7 +73,8 @@ test("the page lists an identity with its facts, says a status only when it need
   await expect(dialog.getByText("Use lower case letters, digits, dots, dashes and underscores, starting with a letter or digit.")).toBeVisible();
   await expect(dialog.getByText("Name at least one domain.")).toBeVisible();
   await expect(dialog.getByText("Pick a worker.")).toBeVisible();
-  // Only a worker with the feature browser is offered.
+  // Only a worker with the feature browser is offered, once the workers are read.
+  await expect(dialog.getByTestId("browser-worker").locator("option", { hasText: laptop })).toHaveCount(1);
   const options = await dialog.getByTestId("browser-worker").locator("option").allTextContents();
   expect(options.some((text) => text.includes(laptop))).toBe(true);
   expect(options.some((text) => text.includes(spare))).toBe(false);

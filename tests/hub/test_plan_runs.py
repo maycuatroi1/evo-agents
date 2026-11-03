@@ -1,8 +1,8 @@
 """Plan runs on the hub: dispatching a whole plan to one worker, the claim of a plan run, the worker reading the plan
 and reporting each step, how a plan run ends, and how it and the runs of single steps exclude each other.
 
-The checks step 3 of the plan-runs-and-decisions plan names: a reader gets 403, and so does a dispatch to another
-member's worker; of two plan runs dispatched at once only one gets in; a step is not dispatched while its plan has a
+The checks step 3 of the plan-runs-and-decisions plan names, in the pools of the agents (plan agent-dedicated-pools): a
+reader gets 403, and a dispatch that names a worker 422; of two plan runs dispatched at once only one gets in; a step is not dispatched while its plan has a
 plan run, nor a plan run while a step has a run (the tests named exclusive); a worker without a checkout of one of the
 run's repos does not claim it; a step reported done with a verify command that exited other than 0 gets 422; a step
 report from a worker that does not hold the run gets 404; a plan run that fails sets the steps it left in progress back
@@ -201,21 +201,16 @@ def race(client, db, *calls) -> list:
 # Dispatching a plan run
 
 
-def test_a_plan_run_needs_the_writer_role_and_a_worker_of_the_callers_own(client, hub, hub_db):
+def test_a_plan_run_needs_the_writer_role_and_a_dispatch_that_names_a_worker_is_422(client, hub, hub_db):
     for who, status in (("reader", 403), ("admin", 403), ("stranger", 404)):
         response = plan_run(client, hub[who])
         assert response.status_code == status, (who, response.text)
     assert "writer role" in plan_run(client, hub["reader"]).json()["message"]
     mine = fleet_worker(client, hub["owner"], "mac-mini")
-    refused = plan_run(client, hub["other"], worker_id=mine["id"])
-    assert refused.status_code == 403 and "worker of the member who dispatches" in refused.json()["message"]
-    nobodys = plan_run(client, hub["other"], worker_id=999999)
-    assert nobodys.status_code == 403
-    assert nobodys.json()["message"].replace("999999", str(mine["id"])) == refused.json()["message"]
+    for worker_id in (mine["id"], 999999):  # the owner's own worker or none at all: the hub places the run
+        refused = plan_run(client, hub["owner"], worker_id=worker_id)
+        assert refused.status_code == 422 and "agent-<handle>" in refused.text, refused.text
     assert count_runs(hub_db) == [(0,)]
-    assert client.post(f"/v1/workers/{mine['id']}/revoke", headers=hub["owner"]).status_code == 200
-    revoked = plan_run(client, hub["owner"], worker_id=mine["id"])
-    assert revoked.status_code == 409 and "revoked" in revoked.json()["message"]
     for extra in ({"timeout_h": 3}, {"timeout_h": 48}, {"model": "opus\nfast"}, {"model": ""}, {"runtime": "gemini"}):
         assert plan_run(client, hub["owner"], **extra).status_code == 422, extra
     assert plan_run(client, hub["owner"], plan_id="nothing").status_code == 404
@@ -224,9 +219,7 @@ def test_a_plan_run_needs_the_writer_role_and_a_worker_of_the_callers_own(client
 
 def test_a_plan_run_holds_the_repos_of_the_steps_not_done_with_their_branches(client, hub, hub_db):
     mine = fleet_worker(client, hub["owner"], "mac-mini")
-    run = dispatched_plan(
-        client, hub["owner"], worker_id=mine["id"], runtime="claude-code", model="claude-opus-4-1", timeout_h=8
-    )
+    run = dispatched_plan(client, hub["owner"], runtime="claude-code", model="claude-opus-4-1", timeout_h=8)
     assert {key: run[key] for key in ("kind", "step_key", "repo", "branch", "repos", "title", "state")} == {
         "kind": "plan",
         "step_key": None,
@@ -244,8 +237,9 @@ def test_a_plan_run_holds_the_repos_of_the_steps_not_done_with_their_branches(cl
         "run_seconds": 0,
         "approval": "auto",
         "mode": "headless",
-        "pinned_worker_id": mine["id"],
+        "pinned_worker_id": None,
     }
+    assert run["selector"] == [f"pool=agent-{PROJECT}"], "on the pool of the project's default agent"
     assert (run["requested_runtime"], run["dispatched_by"]) == ("claude-code", OWNER)
     assert run["plan_revision"] == held_plan(client, hub["owner"])["revision"]
     assert audit_rows(hub_db, "run") == [("run.dispatch_plan", f"{PROJECT}/{PLAN} run:{run['id']}", OWNER, PROJECT)]
@@ -257,6 +251,7 @@ def test_a_plan_run_holds_the_repos_of_the_steps_not_done_with_their_branches(cl
     ]
     default = of_run(hub_db, run["id"], "timeout_s")
     assert default == [(8 * 3600,)]
+    assert claim(client, mine)["id"] == run["id"], "a node of the pool takes it"
 
 
 def test_a_plan_without_a_pending_step_or_with_a_step_without_a_repo_gets_409(client, hub, hub_db):
@@ -424,64 +419,21 @@ def test_only_a_daemon_that_runs_plan_runs_takes_one(client, hub, hub_db):
     assert claim(client, new)["id"] == run["id"]
 
 
-def test_a_run_pinned_to_a_worker_that_cannot_claim_it_gets_409_and_nothing_is_queued(client, hub, hub_db):
-    half = fleet_worker(
-        client, hub["owner"], "half-box", checkouts={f"{PROJECT}/evo-agents": CHECKOUTS[f"{PROJECT}/evo-agents"]}
-    )
-    refused = plan_run(client, hub["owner"], worker_id=half["id"])
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["message"].startswith(
-        f"worker half-box cannot take this run: it has no checkout of {PROJECT}/agent-skills, and its daemon "
-        "(evo-agents 0.4.0) does not clone what it lacks: upgrade it"
-    )
-    assert refused.json()["message"].endswith("or dispatch it to another worker; nothing was dispatched")
-    old = on_version(client, fleet_worker(client, hub["owner"], "old-box"), "0.3.0")
-    too_old = plan_run(client, hub["owner"], worker_id=old["id"])
-    assert too_old.status_code == 409, too_old.text
-    assert "it runs evo-agents 0.3.0, and a plan run needs 0.4.0 or later" in too_old.json()["message"]
-    full = fleet_worker(client, hub["owner"], "full-box")
-    no_codex = plan_run(client, hub["owner"], worker_id=full["id"], runtime="codex")
-    assert no_codex.status_code == 409 and "it does not report codex available" in no_codex.json()["message"]
-    idle = fleet_worker(client, hub["owner"], "idle-box", runtimes={})
-    none_at_all = plan_run(client, hub["owner"], worker_id=idle["id"])
-    assert none_at_all.status_code == 409 and "it reports no runtime available" in none_at_all.json()["message"]
-    # a run of one step needs the checkout of its own repo alone, and an old daemon runs it
-    loose = plan_body("loose")
-    del loose["steps"][2]["depends_on"]  # step 3, of agent-skills, is ready next to step 2
-    push(client, hub["owner"], loose)
-
-    def pinned_steps(steps, worker):
-        body = {"plan_id": "loose", "steps": steps, "worker_id": worker["id"]}
-        return client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"])
-
-    step_refused = pinned_steps([2, 3], half)
-    assert step_refused.status_code == 409, step_refused.text
-    assert f"it has no checkout of {PROJECT}/agent-skills" in step_refused.json()["message"]
-    assert count_runs(hub_db) == [(0,)]  # step 2 was not queued without step 3
-    taken = pinned_steps([2], old)
-    assert taken.status_code == 201, taken.text
-    assert claim(client, old)["id"] == taken.json()[0]["id"]
-    run = dispatched_plan(client, hub["owner"], worker_id=full["id"])
-    assert claim(client, full)["id"] == run["id"]
-
-
 def test_a_worker_that_clones_what_it_lacks_takes_a_run_whatever_its_checkouts(client, hub, hub_db):
-    # an older daemon without a checkout of a repo of the run neither claims it nor is pinned it
+    # an older daemon without a checkout of a repo of the run does not claim it
     bare = fleet_worker(client, hub["owner"], "bare-box", checkouts={})
     run = dispatched_plan(client, hub["owner"])
     assert claim(client, bare) is None and state_of(hub_db, run["id"]) == "queued"
     # one that clones what it lacks claims it with no checkout at all
     with_features(client, bare, [runs.CLONES_CHECKOUTS])
     assert claim(client, bare)["id"] == run["id"]
-    # and a run pinned to it is queued, a step of a repo it lacks among them
+    # and a step of a repo it lacks
     loose = plan_body("loose")
     del loose["steps"][2]["depends_on"]
     push(client, hub["owner"], loose)
     other = with_features(client, fleet_worker(client, hub["owner"], "other-box", checkouts={}), ["clones_checkouts"])
-    body = {"plan_id": "loose", "steps": [3], "worker_id": other["id"]}
-    pinned = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"])
-    assert pinned.status_code == 201, pinned.text
-    assert claim(client, other)["id"] == pinned.json()[0]["id"]
+    (step,) = dispatch_steps(client, hub["owner"], [3], plan_id="loose").json()
+    assert claim(client, other)["id"] == step["id"]
 
 
 def test_a_repo_another_project_of_the_owner_lists_is_dispatched_with_its_origin(client, hub, hub_db):
@@ -546,22 +498,6 @@ def test_a_plan_run_with_a_session_per_step_goes_only_to_a_daemon_that_says_it_r
     assert shown["session_per_step"] is True
     with_features(client, new, [])
     assert worker_view(client, hub["owner"], new)["features"] == []
-
-
-def test_a_plan_run_with_a_session_per_step_pinned_to_a_daemon_without_it_gets_409(client, hub, hub_db):
-    old = fleet_worker(client, hub["owner"], "old-box")
-    refused = plan_run(client, hub["owner"], worker_id=old["id"], session_per_step=True)
-    assert refused.status_code == 409, refused.text
-    message = refused.json()["message"]
-    assert message.startswith("worker old-box cannot take this run: its daemon (evo-agents ")
-    assert "does not say it runs a plan run with a session for each step, and would run every step in one session" in (
-        message
-    )
-    assert message.endswith("or dispatch it to another worker; nothing was dispatched")
-    assert count_runs(hub_db) == [(0,)]
-    with_features(client, old, ["session_per_step"])
-    run = dispatched_plan(client, hub["owner"], worker_id=old["id"], session_per_step=True)
-    assert claim(client, old)["id"] == run["id"]
 
 
 def test_a_run_of_one_step_is_still_claimed_by_a_worker_with_its_repo_alone(client, hub):

@@ -28,7 +28,7 @@ from tests.hub.test_post_merge import UNDONE, ends, fail_twice, merged, notices,
 
 def rated(world, rate: float, **jobs) -> None:
     repo = {"mode": "auto", "target_branch": "dev", "jobs": jobs}
-    body = {"repos": {REPO: repo}, "judge": {"worker": "mac-mini"}, "audit": {"sample_rate": rate}}
+    body = {"repos": {REPO: repo}, "audit": {"sample_rate": rate}}
     put_policy(world.client, world.headers["owner"], body)
 
 

@@ -6,9 +6,10 @@ import { csrfHeader } from "./support/workers";
 
 /**
  * Who may dispatch is the API's decision, not the page's: a reader sees the runs but no Dispatch or Run this step
- * button, and the API answers 403 when the reader posts a dispatch anyway; another writer cannot pin runs to my worker;
- * a hub admin without a grant sees no runs and cannot dispatch; someone without a grant gets 404. The calls go straight
- * to the API with the browser's session, CSRF header included.
+ * button, and the API answers 403 when the reader posts a dispatch anyway; no one picks the machine of a run, which goes
+ * to a node of its agent's pool (plan agent-dedicated-pools); a hub admin without a grant sees no runs and cannot
+ * dispatch; someone without a grant gets 404. The calls go straight to the API with the browser's session, CSRF header
+ * included.
  */
 test.skip(isDeployed, "dispatches runs through the local stack");
 
@@ -54,7 +55,7 @@ test("a reader sees the runs but cannot dispatch, on the pages or through the AP
   expect((await runsOf(writer, project)).map((item) => item.id)).toEqual([run.id]);
 });
 
-test("another writer cannot pin runs to my worker, and the dialog offers only their own", async ({ page, admin, member }) => {
+test("another writer picks no machine for a run: the dialog offers none, and the API refuses a worker or a pool", async ({ page, admin, member }) => {
   const { writer, project, live } = await projectWithRuns(admin);
   const other = await member([]);
   await admin.grant(project, other.login, "writer", "internal");
@@ -66,12 +67,11 @@ test("another writer cannot pin runs to my worker, and the dialog offers only th
   await expect(dialog).not.toContainText(live.worker.name);
 
   const headers = await csrfHeader(page);
-  const refused = await page.request.post(`/v1/projects/${project}/runs`, {
-    data: { ...BODY, worker_id: live.worker.id },
-    headers,
-  });
-  expect(refused.status()).toBe(403);
-  expect((await refused.json()).message).toContain("only to a worker of the member who dispatches it");
+  for (const placement of [{ worker_id: live.worker.id }, { pool: `agent-${project}` }, { labels: ["gpu"] }, { tolerations: ["gpu"] }]) {
+    const refused = await page.request.post(`/v1/projects/${project}/runs`, { data: { ...BODY, ...placement }, headers });
+    expect(refused.status()).toBe(422);
+    expect((await refused.json()).message).toBe("the request does not match the API");
+  }
   expect(await runsOf(writer, project)).toHaveLength(1);
 });
 

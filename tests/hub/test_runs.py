@@ -1,9 +1,10 @@
 """The run queue on the hub: ready steps, dispatch, claim, heartbeat, the worker's state reports, the owner's cancel,
 approve and rerun, the reaper and the pruning of run events.
 
-The checks step 5 of the worker-fleet plan names: two workers claiming at once get the run once; another member's
-worker on the same project never gets one's run; another writer dispatching to one's worker gets 403, and so does a
-reader dispatching at all; a step that is not ready gets 409; once the owner's writer grant is gone, claims skip the
+The checks step 5 of the worker-fleet plan names, in the pools of the agents (plan agent-dedicated-pools): two workers
+claiming at once get the run once; a run of an agent goes to a node of the agent's pool whoever owns it, and a worker of
+no pool never gets it; a dispatch that names a worker gets 422, a reader dispatching at all 403; a step that is not
+ready gets 409; once the owner's writer grant is gone, claims skip the
 run; an expired lease makes the run lost and queues it again, the third attempt fails and the step goes back to
 pending; a revision conflict on the plan is tried again; approval auto writes a revision with the evidence; approval
 review waits for the owner's approve. Around them: the claim's other conditions, the long poll waking on NOTIFY, the
@@ -34,6 +35,7 @@ from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import claims as run_claims
 from evo_agents.hub.worker import queue
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_plans import registration
@@ -117,11 +119,16 @@ def members(client, github) -> dict:
         assert response.status_code == 200, response.text
     pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json={"body": plan_body()}, headers=headers["owner"])
     assert pushed.status_code == 200, pushed.text
+    give_account_pool(live.database_of(client), PROJECT, PROJECT, OWNER)  # the runs of the default agent need one
     return headers
 
 
-def add_worker(client, headers, name: str, *, slots: int = 1, runtimes=None, checkouts=None) -> dict:
-    """A worker of the member ``headers`` names, registered with its machine token, after its first heartbeat."""
+def add_worker(
+    client, headers, name: str, *, slots: int = 1, runtimes=None, checkouts=None, pool: str | None = PROJECT
+) -> dict:
+    """A worker of the member ``headers`` names, registered with its machine token, after its first heartbeat. It is a
+    ready node of the pool of agent ``pool`` (the project's default agent's by default; None for a worker of no pool,
+    which takes no run of an agent)."""
     body = {"name": name, "projects": [PROJECT], "slots": slots, **HOST}
     response = client.post("/v1/workers", json=body, headers=headers)
     assert response.status_code == 201, response.text
@@ -135,6 +142,19 @@ def add_worker(client, headers, name: str, *, slots: int = 1, runtimes=None, che
         "checkouts": CHECKOUTS if checkouts is None else checkouts,
     }
     beat(client, worker)
+    if pool is not None:
+        join_pool(client, worker, pool)
+    return worker
+
+
+def join_pool(client, worker: dict, handle: str, *findings: dict) -> dict:
+    """``worker`` made a node of the pool of agent ``handle``, with a doctor report of ``findings``: ready unless one
+    is a high finding."""
+    w, p = tables.workers, tables.worker_pools
+    pool_id = select(p.c.id).where(p.c.name == f"agent-{handle}").scalar_subquery()
+    sql(live.database_of(client), update(w).values(pool_id=pool_id).where(w.c.id == worker["id"]))
+    response = client.post("/v1/worker/doctor", json={"findings": list(findings)}, headers=worker["headers"])
+    assert response.status_code == 200, response.text
     return worker
 
 
@@ -340,24 +360,14 @@ def test_a_step_that_is_not_ready_or_has_an_active_run_is_409_and_nothing_is_que
     assert audit_rows(hub_db, "run") == [("run.dispatch", f"{PROJECT}/{PLAN}#2 run:{run['id']}", OWNER, PROJECT)]
 
 
-def test_another_writer_cannot_dispatch_to_my_worker(client, hub, hub_db):
+def test_a_dispatch_names_no_worker_and_keeps_its_runtime_and_timeout(client, hub, hub_db):
     mine = add_worker(client, hub["owner"], "mac-mini")
-    refused = dispatch(client, hub["other"], [4], worker_id=mine["id"])
-    assert refused.status_code == 403 and "worker of the member who dispatches" in refused.json()["message"]
-    # a worker id nobody holds reads the same, so the answer tells nothing about other members' workers
-    nobodys = dispatch(client, hub["other"], [4], worker_id=999999)
-    assert nobodys.status_code == 403
-    assert nobodys.json()["message"].replace("999999", str(mine["id"])) == refused.json()["message"]
+    for who in ("owner", "other"):  # the hub places the run on the pool of its agent, whoever holds the worker
+        refused = dispatch(client, hub[who], [4], worker_id=mine["id"])
+        assert refused.status_code == 422 and "agent-<handle>" in refused.text, refused.text
     assert count_runs(hub_db) == [(0,)]
-    pinned = dispatched(client, hub["owner"], [4], worker_id=mine["id"], runtime="claude-code", timeout_min=5)[0]
-    assert (pinned["pinned_worker_id"], pinned["requested_runtime"], pinned["timeout_min"]) == (
-        mine["id"],
-        "claude-code",
-        5,
-    )
-    assert client.post(f"/v1/workers/{mine['id']}/revoke", headers=hub["owner"]).status_code == 200
-    revoked = dispatch(client, hub["owner"], [5], worker_id=mine["id"])
-    assert revoked.status_code == 409 and "revoked" in revoked.json()["message"]
+    run = dispatched(client, hub["owner"], [4], runtime="claude-code", timeout_min=5)[0]
+    assert (run["pinned_worker_id"], run["requested_runtime"], run["timeout_min"]) == (None, "claude-code", 5)
     assert dispatch(client, hub["owner"], [5], timeout_min=4).status_code == 422
     assert dispatch(client, hub["owner"], [5], runtime="gemini").status_code == 422
 
@@ -478,15 +488,14 @@ def test_the_heartbeat_keeps_the_models_each_runtime_lists(client, hub):
     assert shown["runtimes"]["opencode"]["models"] == most and list(shown["runtimes"]) == ["opencode"]
 
 
-def test_a_worker_of_another_member_never_gets_my_run(client, hub):
+def test_a_node_of_the_agents_pool_takes_its_run_whoever_owns_it_and_a_worker_of_no_pool_never(client, hub):
+    outside = add_worker(client, hub["owner"], "mac-mini", pool=None)
     theirs = add_worker(client, hub["other"], "their-box")
-    mine = add_worker(client, hub["owner"], "mac-mini")
     run = dispatched(client, hub["owner"], [2])[0]
-    assert claim(client, theirs) is None  # same project, runtime and checkout, but not its owner's run
-    assert claim(client, mine)["id"] == run["id"]
-    their_run = dispatched(client, hub["other"], [4])[0]
-    assert claim(client, mine) is None  # one slot, held; and step 4 is the other member's anyway
-    assert claim(client, theirs)["id"] == their_run["id"]
+    assert claim(client, outside) is None  # the dispatcher's own worker, but no node of the agent's pool
+    assert claim(client, theirs)["id"] == run["id"]  # a node of the pool, whoever dispatched the run
+    dispatched(client, hub["other"], [4])
+    assert claim(client, outside) is None and claim(client, theirs) is None  # its one slot is held
 
 
 def test_a_claim_skips_runs_once_the_owner_lost_the_writer_role(client, hub, hub_db):
@@ -520,8 +529,9 @@ def test_a_claim_needs_the_runtime_a_checkout_a_free_slot_and_no_drain(client, h
     assert beat(client, two)["drain"] is True
     assert client.post(f"/v1/workers/{two['id']}/undrain", headers=hub["owner"]).status_code == 200
     assert claim(client, two)["id"] == later["id"]
-    # a run pinned to one worker is claimed by that one only
-    pinned = dispatched(client, hub["owner"], [5], worker_id=codex["id"])[0]
+    # a run pinned to one worker (as a chat run is, to the node of its last turn) is claimed by that one only
+    pinned = dispatched(client, hub["owner"], [5])[0]
+    set_run(hub_db, pinned["id"], pinned_worker_id=codex["id"])
     assert claim(client, two) is None
     moved(client, codex, anything["id"], "running", "failed", error="the agent stopped")
     assert claim(client, codex)["id"] == pinned["id"]
@@ -872,9 +882,11 @@ def run_of(client, headers, run_id: int) -> dict:
     return response.json()
 
 
-def lost_once(client, hub, hub_db, worker: dict, steps=(2,), **extra) -> tuple[int, int]:
-    """Step 2 claimed by ``worker`` and lost: the lost run's id and its next attempt's."""
+def lost_once(client, hub, hub_db, worker: dict, steps=(2,), *, pinned: bool = False, **extra) -> tuple[int, int]:
+    """Step 2 claimed by ``worker`` (pinned to it with ``pinned``) and lost: the lost run's id and its next attempt's."""
     first = dispatched(client, hub["owner"], list(steps), **extra)[0]["id"]
+    if pinned:
+        set_run(hub_db, first, pinned_worker_id=worker["id"])
     assert claim(client, worker)["id"] == first
     moved(client, worker, first, "running")
     expire(hub_db, first)
@@ -935,7 +947,7 @@ def test_a_lost_run_not_pinned_goes_to_another_worker_at_once_and_its_own_waits_
 def test_a_lost_run_pinned_to_its_worker_waits_until_it_is_stable_and_the_third_attempt_fails(client, hub, hub_db):
     mac = add_worker(client, hub["owner"], "mac-mini")
     lab = add_worker(client, hub["owner"], "lab-02")
-    first, second = lost_once(client, hub, hub_db, mac, worker_id=mac["id"])
+    first, second = lost_once(client, hub, hub_db, mac, pinned=True)
     shown = run_of(client, hub["owner"], second)
     assert (shown["pinned_worker_id"], shown["steady_wait"]["worker_id"]) == (mac["id"], mac["id"])
     assert claim(client, lab) is None, "pinned to mac-mini"
@@ -1107,10 +1119,12 @@ def test_a_run_past_its_timeout_fails_and_is_not_tried_again(client, hub, hub_db
 
 def test_revoking_a_worker_fails_its_pinned_runs_and_their_steps_go_back_to_pending(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "mac-mini")
-    held = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]["id"]
+    held = dispatched(client, hub["owner"], [2])[0]["id"]
+    set_run(hub_db, held, pinned_worker_id=worker["id"])
     claim(client, worker)
     moved(client, worker, held, "running")
-    queued = dispatched(client, hub["owner"], [4], worker_id=worker["id"])[0]["id"]
+    queued = dispatched(client, hub["owner"], [4])[0]["id"]
+    set_run(hub_db, queued, pinned_worker_id=worker["id"])
     assert client.post(f"/v1/workers/{worker['id']}/revoke", headers=hub["admin"]).status_code == 200
     assert (state_of(hub_db, held), state_of(hub_db, queued)) == ("failed", "failed")
     reason = "its worker mac-mini was revoked, and the run was pinned to it"
@@ -1124,7 +1138,7 @@ def test_revoking_a_worker_fails_its_pinned_runs_and_their_steps_go_back_to_pend
 
 def test_rerun_queues_the_step_again_after_a_run_that_ended(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "mac-mini")
-    old = dispatched(client, hub["owner"], [2], runtime="claude-code", approval="auto", worker_id=worker["id"])[0]
+    old = dispatched(client, hub["owner"], [2], runtime="claude-code", approval="auto")[0]
     still = control(client, hub["owner"], old["id"], "rerun")
     assert still.status_code == 409 and "still queued" in still.json()["message"]
     assert control(client, hub["owner"], old["id"], "cancel").status_code == 200
@@ -1137,7 +1151,7 @@ def test_rerun_queues_the_step_again_after_a_run_that_ended(client, hub, hub_db)
         "queued",
         1,
         old["id"],
-        worker["id"],
+        None,
     )
     assert (new["requested_runtime"], new["approval"], new["plan_revision"]) == (
         "claude-code",
@@ -1216,8 +1230,7 @@ def notices(db, run_id: int) -> list[tuple]:
 
 
 def test_dispatch_and_rerun_of_a_step_whose_repo_has_no_origin_are_409_naming_the_repo(client, hub, hub_db):
-    worker = add_worker(client, hub["owner"], "mac-mini")
-    old = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]
+    old = dispatched(client, hub["owner"], [2])[0]
     assert control(client, hub["owner"], old["id"], "cancel").status_code == 200
     without_origin(client, hub, "evo-agents")
     refused = dispatch(client, hub["owner"], [2])
@@ -1239,7 +1252,7 @@ def test_dispatch_and_rerun_of_a_step_whose_repo_has_no_origin_are_409_naming_th
 
 def test_the_claim_of_a_step_run_names_the_verify_its_preflight_checks(client, hub):
     worker = add_worker(client, hub["owner"], "mac-mini", slots=3)
-    run = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]
+    run = dispatched(client, hub["owner"], [2])[0]
     spec = claim(client, worker)
     assert spec["id"] == run["id"] and spec["verify"] == ["test -f feature.txt"]
     held = plan(client, hub["owner"])
@@ -1251,9 +1264,9 @@ def test_the_claim_of_a_step_run_names_the_verify_its_preflight_checks(client, h
         headers=hub["owner"],
     )
     assert pushed.status_code == 200, pushed.text
-    dispatched(client, hub["owner"], [4], worker_id=worker["id"])
+    dispatched(client, hub["owner"], [4])
     assert claim(client, worker)["verify"] == ["ruff check . && pytest -q"]
-    dispatched(client, hub["owner"], [5], worker_id=worker["id"])
+    dispatched(client, hub["owner"], [5])
     assert claim(client, worker)["verify"] == []  # a step without verify: nothing to check
 
 
@@ -1390,7 +1403,13 @@ def test_a_daemon_of_0_9_0_claims_beats_and_ends_its_runs_with_this_hub(client, 
     # the settings the hub holds (schema 0026, plugins 0039, version_locked 0048, projects in evo-ak 0.31.2, the
     # digest of the guard's policy 0192), the runtimes of plugins (0039) and the graphs to keep fresh (0053) come as
     # more keys, which its daemon leaves alone; a daemon that does not say plugin_runtimes or kg_sync gets none of those
-    settings = {"slots": 2, "name": "laptop", "labels": [], "plugins": [], "version_locked": False}
+    settings = {
+        "slots": 2,
+        "name": "laptop",
+        "labels": [f"pool=agent-{PROJECT}"],
+        "plugins": [],
+        "version_locked": False,
+    }
     settings |= {"projects": [PROJECT], "guard": ""}
     answer = {"drain": False, "runs": [], "settings": settings, "plugin_runtimes": [], "kg_sync": []}
     assert beat_as_0_9_0(client, worker) == answer
@@ -1485,14 +1504,6 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     guarded = add_worker(client, hub["owner"], "mac-mini")
     dispatch_from(client, hub, guarded, "web")
 
-    # a token pinning a run to it is refused, saying why, and nothing is queued; a plan run too
-    refused = dispatch(client, hub["owner"], [2], worker_id=guarded["id"])
-    assert refused.status_code == 403 and f"worker mac-mini {WEB_ONLY}" in refused.json()["message"]
-    body = {"plan_id": PLAN, "worker_id": guarded["id"]}
-    plan_run = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"])
-    assert plan_run.status_code == 403 and WEB_ONLY in plan_run.json()["message"]
-    assert count_runs(hub_db) == [(0,)]
-
     # its claims pass over a run dispatched with a token, and take the next one dispatched from the web
     by_token = dispatched(client, hub["owner"], [2])[0]
     assert claim(client, guarded) is None
@@ -1520,14 +1531,14 @@ def test_a_worker_set_to_dispatch_from_web_claims_only_runs_dispatched_from_the_
     retried = select(run.c.dispatched_via).where(run.c.parent_run_id.in_([by_web["id"], by_token["id"]]))
     assert sql(hub_db, retried.order_by(run.c.id)) == [("web",), ("machine",)]
 
-    # pinned from the web, it takes the run; a rerun of that run with a token is refused, one from the web is not
-    pinned = dispatched(client, hub["owner_web"], [5], worker_id=guarded["id"])[0]
+    # pinned to it and dispatched from the web, it takes the run; its rerun goes to the agent's pool again, pinned to
+    # no worker
+    pinned = dispatched(client, hub["owner_web"], [5])[0]
+    set_run(hub_db, pinned["id"], pinned_worker_id=guarded["id"])
     assert claim(client, guarded)["id"] == pinned["id"]
     moved(client, guarded, pinned["id"], "running", "failed", error="the agent stopped")
-    again = control(client, hub["owner"], pinned["id"], "rerun")
-    assert again.status_code == 403 and WEB_ONLY in again.json()["message"]
     rerun = control(client, hub["owner_web"], pinned["id"], "rerun")
-    assert rerun.status_code == 201, rerun.text
+    assert (rerun.status_code, rerun.json()["pinned_worker_id"]) == (201, None), rerun.text
 
     # a run dispatched before schema 0011 recorded no credential, and is passed over too, until the owner lets the
     # worker take runs from anywhere again

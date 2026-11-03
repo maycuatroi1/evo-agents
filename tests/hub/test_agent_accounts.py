@@ -297,7 +297,8 @@ def test_agent_account_is_unique_by_profile_and_name_and_a_member_secret_of_that
     assert member.status_code == 200, member.text
     assert [name for *_, name, _, _, _, _ in rows(hub_db)] == ["claude-a", "claude-a"]
     listed = client.get("/v1/secrets", headers=hub["owner"]).json()
-    assert [secret["name"] for secret in listed] == ["claude-a"]  # a member lists their own, never an agent's
+    # a member lists their own, never an agent's
+    assert [secret["name"] for secret in listed if secret["name"] == "claude-a"] == ["claude-a"]
     client.delete("/v1/secrets/claude-a", headers=hub["owner"])
     assert len([row for row in rows(hub_db) if row[7] is None]) == 2  # the member's delete left both agents' alone
 

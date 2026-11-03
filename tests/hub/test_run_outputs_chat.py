@@ -34,6 +34,7 @@ __all__ = ["hub"]  # a fixture of test_chat_runs, on this module's client
 def client(hub_db, tmp_path, github, app_key, s3):  # noqa: F811
     config = replace(credentials_api.hub_config(hub_db, tmp_path, github, app_key), **s3.config())
     with TestClient(create_app(config), base_url="https://hub.test") as client:
+        client.db = hub_db  # the hub of test_chat_runs gives its agents an account pool
         yield client
 
 

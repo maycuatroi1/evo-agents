@@ -5,8 +5,9 @@ version; a dispatch under a profile that allows no environment its project regis
 whose profile allows only plugins' environments when its owner accepted the plugin and its daemon says it runs
 environments, else the run waits, queued, never failed; the claim picks the first environment of the allowlist the
 worker takes, records it in runs.environment and hands its declaration; a run whose plugin was disabled before its
-claim fails there, saying why; a dispatch pinned to a worker that could never take the run is 409. Whether the worker
-has a container engine is its preflight's (``tests.worker.test_environments``)."""
+claim fails there, saying why. Each run goes to a node of its agent's pool (plan agent-dedicated-pools), which a
+dispatch no longer names. Whether the worker has a container engine is its preflight's
+(``tests.worker.test_environments``)."""
 
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ if not pg.DSN:
 from sqlalchemy import insert, select, update
 
 from evo_agents.hub import profiles, runs, tables
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.test_plans import registration
 from tests.hub.test_plugin_runtimes import (
     ADMIN_GRANT,
@@ -77,14 +79,17 @@ def agent(client, headers, handle: str, environments: list[str] | None, **permis
 
 
 def made(client, headers, handle: str, environments: list[str] | None) -> dict:
+    """Profile ``handle`` (``agent``), with an account pool of the owner's, which its runs need."""
     response = agent(client, headers, handle, environments)
     assert response.status_code == 201, response.text
+    give_account_pool(live.database_of(client), PROJECT, handle, OWNER)
     return response.json()
 
 
-def accepting(client, headers, name: str, *, features=FEATURES) -> dict:
-    """A worker whose owner accepted plugin sandbox and whose daemon says ``features``."""
-    worker = add_worker(client, headers, name)
+def accepting(client, headers, name: str, *, features=FEATURES, pool: str = PROJECT) -> dict:
+    """A worker whose owner accepted plugin sandbox and whose daemon says ``features``: a ready node of the pool of
+    agent ``pool``."""
+    worker = add_worker(client, headers, name, pool=pool)
     assert set_plugins(client, headers, worker, ["sandbox"]).status_code == 200
     beat(client, worker, features=features)
     return worker
@@ -149,30 +154,6 @@ def test_profile_environment_a_dispatch_under_a_profile_its_project_cannot_place
     assert (run["state"], run["environment"]) == ("queued", None), "the claim picks the environment"
 
 
-def test_profile_environment_a_dispatch_pinned_to_a_worker_that_cannot_take_it_is_409_saying_why(client, hub, hub_db):
-    enable(client, hub["owner"])
-    made(client, hub["owner"], "boxed", [ENVIRONMENT])
-    worker = add_worker(client, hub["owner"], "mac-mini")
-
-    def why() -> str:
-        return message(dispatch(client, hub["owner"], [2], profile="boxed", worker_id=worker["id"]), 409)
-
-    beat(client, worker, features=OLD_FEATURES)
-    assert f"does not say it runs environments, and the run's agent runs only in {ENVIRONMENT}" in why()
-    beat(client, worker)
-    assert "its owner has not let it take the environments of plugin sandbox: add one to the worker's plugins" in why()
-    assert set_plugins(client, hub["owner"], worker, ["sandbox"]).status_code == 200
-    (run,) = dispatched(client, hub["owner"], [2], profile="boxed", worker_id=worker["id"])
-    spec = claim(client, worker)
-    assert (spec["id"], spec["environment"]) == (run["id"], DECLARATION)
-    made(client, hub["owner"], "either", [ENVIRONMENT, "host"])
-    old = add_worker(client, hub["owner"], "old-daemon")
-    beat(client, old, features=OLD_FEATURES)
-    (other,) = dispatched(client, hub["owner"], [4], profile="either", worker_id=old["id"])
-    spec = claim(client, old)
-    assert (spec["id"], spec["environment"]) == (other["id"], None), "host is allowed: an old daemon takes it there"
-
-
 # Claiming
 
 
@@ -182,9 +163,9 @@ def test_profile_environment_only_a_worker_that_accepted_the_plugin_and_runs_env
     enable(client, hub["owner"])
     made(client, hub["owner"], "boxed", [ENVIRONMENT])
     (run,) = dispatched(client, hub["owner"], [2], profile="boxed")
-    old = accepting(client, hub["owner"], "old-daemon", features=OLD_FEATURES)
+    old = accepting(client, hub["owner"], "old-daemon", features=OLD_FEATURES, pool="boxed")
     assert claim(client, old) is None, "a daemon that does not say environments takes no such run"
-    new = add_worker(client, hub["owner"], "new-daemon")
+    new = add_worker(client, hub["owner"], "new-daemon", pool="boxed")
     beat(client, new)
     assert claim(client, new) is None, "its owner did not accept the plugin"
     assert state_of(hub_db, run["id"]) == "queued", "the run waits; it does not fail"
@@ -204,9 +185,9 @@ def test_profile_environment_all_and_the_default_profile_run_on_the_host_as_befo
     made(client, hub["owner"], "anywhere", None)
     (default_run,) = dispatched(client, hub["owner"], [2])
     (anywhere_run,) = dispatched(client, hub["owner"], [4], profile="anywhere")
-    old = add_worker(client, hub["owner"], "old-daemon")
+    old = add_worker(client, hub["owner"], "old-daemon")  # a node of the default agent's pool
     beat(client, old, features=OLD_FEATURES)
-    worker = accepting(client, hub["owner"], "mac-mini")
+    worker = accepting(client, hub["owner"], "mac-mini", pool="anywhere")
     claimed = [claim(client, old), claim(client, worker)]
     assert {spec["id"] for spec in claimed} == {default_run["id"], anywhere_run["id"]}
     assert [spec["environment"] for spec in claimed] == [None, None]
@@ -219,15 +200,15 @@ def test_profile_environment_the_claim_picks_the_first_of_the_allowlist_the_work
     made(client, hub["owner"], "box-first", [ENVIRONMENT, "host"])
     made(client, hub["owner"], "host-first", ["host", ENVIRONMENT])
     (box_first,) = dispatched(client, hub["owner"], [2], profile="box-first")
-    plain = add_worker(client, hub["owner"], "plain")
+    plain = add_worker(client, hub["owner"], "plain", pool="box-first")
     beat(client, plain)
     spec = claim(client, plain)
     assert (spec["id"], spec["environment"]) == (box_first["id"], None), "it takes no box: the host is next"
     (again,) = dispatched(client, hub["owner"], [4], profile="box-first")
-    worker = accepting(client, hub["owner"], "mac-mini")
+    worker = accepting(client, hub["owner"], "mac-mini", pool="box-first")
     assert claim(client, worker)["environment"] == DECLARATION
     (host_first,) = dispatched(client, hub["owner"], [5], profile="host-first")
-    studio = accepting(client, hub["owner"], "mac-studio")
+    studio = accepting(client, hub["owner"], "mac-studio", pool="host-first")
     spec = claim(client, studio)
     assert (spec["id"], spec["environment"]) == (host_first["id"], None)
     assert of_run(hub_db, again["id"], "environment") == [(ENVIRONMENT,)]
@@ -239,7 +220,7 @@ def test_profile_environment_a_version_from_before_the_axis_runs_on_the_host(cli
     with live.engine(hub_db).begin() as conn:  # as 0030 to 0039 wrote it: seven axes
         conn.execute(update(v).values(body=v.c.body.delete_path(["permissions", "environment"])))
     (run,) = dispatched(client, hub["owner"], [2], profile="older")
-    worker = accepting(client, hub["owner"], "mac-mini")
+    worker = accepting(client, hub["owner"], "mac-mini", pool="older")
     spec = claim(client, worker)
     assert (spec["id"], spec["environment"]) == (run["id"], None)
     assert "environment" not in spec["profile"]["permissions"]
@@ -249,7 +230,7 @@ def test_profile_environment_a_run_whose_plugin_was_disabled_before_its_claim_fa
     enable(client, hub["owner"])
     made(client, hub["owner"], "boxed", [ENVIRONMENT])
     (run,) = dispatched(client, hub["owner"], [2], profile="boxed")
-    worker = accepting(client, hub["owner"], "mac-mini")
+    worker = accepting(client, hub["owner"], "mac-mini", pool="boxed")
     off = client.post(f"/v1/projects/{PROJECT}/plugins/sandbox/disable", headers=hub["owner"])
     assert off.status_code == 200, off.text
     assert claim(client, worker) is None, "no project it serves enables sandbox now, so it takes no box"

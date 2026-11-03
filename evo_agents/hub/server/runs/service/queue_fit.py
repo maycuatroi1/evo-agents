@@ -242,6 +242,11 @@ def _condition_reason(key: str, row, run, profile, home) -> tuple[str, bool]:
         return "has no free browser, or another run holds the run's browser identity: it takes the run then", True
     if key == "gateway":
         return f"runs evo-agents {version}, which takes no run of the model gateway: update its daemon", False
+    if key == "merge_judge":
+        return (
+            f"its daemon (evo-agents {version}) does not say it judges merge requests: update it and restart it",
+            False,
+        )
     if key == "agent_pool":
         if home is not None:
             return f"is not a node of pool {home.pool}, where the runs of @{home.handle} go", False

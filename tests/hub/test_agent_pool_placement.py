@@ -168,7 +168,7 @@ def test_the_default_agent_runs_in_the_same_way_in_pool_mode(client, hub, hub_db
     default = client.get(f"/v1/projects/{PROJECT}/agents/{PROJECT}", headers=hub["owner"])
     assert default.status_code == 200, default.text
     assert "placement" not in default.json()
-    give_account_pool(hub_db, PROJECT, PROJECT, OWNER)  # the default agent needs an account pool too
+    assert default.json()["account_pool"] is not None  # the default agent needs an account pool too
     mine = worker(client, hub["owner"], "mine")
     (run,) = dispatched(client, hub["owner"], [2])
     assert run_row(hub_db, run["id"])[:2] == ([f"pool=agent-{PROJECT}"], [])

@@ -48,9 +48,12 @@ export async function chatHeartbeat(live: LiveWorker, runs: number[] = []): Prom
   });
 }
 
-/** A worker of `account` serving `project` whose daemon takes chat runs: where a mention of theirs goes. */
-export async function chatWorker(account: Account, project: string, name: string, slots = 1): Promise<LiveWorker> {
-  const live = await liveWorker(account, project, name, slots, { report: { repos: [HARNESS_CHECKOUT, REPO], models: MODELS } });
+/**
+ * A worker of `account` serving `project` whose daemon takes chat runs, a ready node of the pool of `agent` (the
+ * project's default agent unless named): where a mention of that agent goes.
+ */
+export async function chatWorker(account: Account, project: string, name: string, slots = 1, agent: string = project): Promise<LiveWorker> {
+  const live = await liveWorker(account, project, name, slots, { report: { repos: [HARNESS_CHECKOUT, REPO], models: MODELS }, agent });
   await chatHeartbeat(live);
   return live;
 }

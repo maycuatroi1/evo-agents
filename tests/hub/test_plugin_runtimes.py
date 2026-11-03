@@ -25,6 +25,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server.app import create_app
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.test_runs import (
     OWNER,
     PROJECT,
@@ -225,27 +226,6 @@ def test_a_run_asking_for_any_takes_a_runtime_of_the_core_never_a_plugins(client
     assert (spec["id"], spec["runtime"], spec["plugin_runtime"]) == (run["id"], "claude-code", None)
 
 
-def test_a_dispatch_pinned_to_a_worker_that_cannot_take_the_plugins_runtime_is_409_saying_why(client, hub, hub_db):
-    enable(client, hub["owner"])
-    worker = add_worker(client, hub["owner"], "mac-mini")
-
-    def why() -> str:
-        return message(dispatch(client, hub["owner"], [2], runtime=RUNTIME, worker_id=worker["id"]), 409)
-
-    beat(client, worker, features=OLD_FEATURES)
-    assert "does not say it runs the runtimes of plugins: upgrade it and restart its daemon" in why()
-    beat(client, worker)
-    assert "its owner has not let it take the runtimes of plugin sandbox: add sandbox to the worker's plugins" in why()
-    assert set_plugins(client, hub["owner"], worker, ["sandbox"]).status_code == 200
-    worker["runtimes"] = {**RUNTIMES, RUNTIME: {"available": False, "reason": "fake-acp is not on PATH"}}
-    beat(client, worker)
-    assert f"it does not report {RUNTIME} available (fake-acp is not on PATH)" in why()
-    worker["runtimes"] = {**RUNTIMES, RUNTIME: FOUND}
-    beat(client, worker)
-    (run,) = dispatched(client, hub["owner"], [2], runtime=RUNTIME, worker_id=worker["id"])
-    assert claim(client, worker)["id"] == run["id"]
-
-
 def test_a_run_whose_plugin_was_disabled_before_its_claim_fails_there_saying_why(client, hub, hub_db):
     enable(client, hub["owner"])
     (run,) = dispatched(client, hub["owner"], [2], runtime=RUNTIME)
@@ -265,8 +245,13 @@ def test_a_run_whose_plugin_was_disabled_before_its_claim_fails_there_saying_why
 
 
 def profile(client, headers, handle: str, runtimes: list[str]):
+    """POST of profile ``handle`` whose runtime axis allows ``runtimes``; one made gets an account pool of the owner's,
+    which its runs need."""
     body = {"handle": handle, "name": handle, "permissions": {"runtime": {"mode": "allowlist", "allow": runtimes}}}
-    return client.post(f"/v1/projects/{PROJECT}/agents", json=body, headers=headers)
+    response = client.post(f"/v1/projects/{PROJECT}/agents", json=body, headers=headers)
+    if response.status_code == 201:
+        give_account_pool(live.database_of(client), PROJECT, handle, OWNER)
+    return response
 
 
 def test_the_runtime_axis_of_an_agent_profile_names_and_limits_plugins_runtimes(client, hub, hub_db):
@@ -287,11 +272,12 @@ def test_the_runtime_axis_of_an_agent_profile_names_and_limits_plugins_runtimes(
     )
     (run,) = dispatched(client, hub["owner"], [2], runtime=RUNTIME, profile="fake-only")
     (core,) = dispatched(client, hub["owner"], [4], profile="core-only")
-    worker = add_worker(client, hub["owner"], "mac-mini", runtimes={**RUNTIMES, RUNTIME: FOUND})
+    # a node of each agent's pool
+    worker = add_worker(client, hub["owner"], "mac-mini", runtimes={**RUNTIMES, RUNTIME: FOUND}, pool="fake-only")
     assert set_plugins(client, hub["owner"], worker, ["sandbox"]).status_code == 200
     beat(client, worker)
     claimed = {claim(client, worker)["id"]}
-    worker2 = add_worker(client, hub["owner"], "mac-studio", runtimes={**RUNTIMES, RUNTIME: FOUND})
+    worker2 = add_worker(client, hub["owner"], "mac-studio", runtimes={**RUNTIMES, RUNTIME: FOUND}, pool="core-only")
     assert set_plugins(client, hub["owner"], worker2, ["sandbox"]).status_code == 200
     beat(client, worker2)
     claimed.add(claim(client, worker2)["id"])

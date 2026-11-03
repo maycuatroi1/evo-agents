@@ -39,10 +39,8 @@ OPTIONS = [{"key": "drop", "label": "Drop the table"}, {"key": "keep", "label": 
 
 
 def plan_run(client, headers, worker: dict) -> tuple[int, dict]:
-    """A plan run pinned to ``worker`` and claimed by it, and its claim."""
-    response = client.post(
-        f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN, "worker_id": worker["id"]}, headers=headers
-    )
+    """A plan run claimed by ``worker``, a node of the pool of the project's default agent, and its claim."""
+    response = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=headers)
     assert response.status_code == 201, response.text
     run = claim(client, worker)
     assert run["id"] == response.json()["id"]

@@ -41,6 +41,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture
     MINE,
     OTHER,
     app_key,
+    claimable,
     env_secret,
     git_secret,
     install,
@@ -50,7 +51,18 @@ from tests.hub.test_credentials_api import PLAN as MEMBERS_PLAN
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
-from tests.hub.test_curator import DAY, NIGHT, PROJECT, THE_NIGHT, charter_body, fire, grant, put_charter, written
+from tests.hub.test_curator import (
+    DAY,
+    NIGHT,
+    PROJECT,
+    THE_NIGHT,
+    charter_body,
+    fire,
+    grant,
+    home_node,
+    put_charter,
+    written,
+)
 from tests.hub.test_decisions import ask as ask_decision
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import reported
@@ -100,20 +112,30 @@ def taking(client, worker: dict) -> dict:
 
 
 def curator_charter(**changes) -> dict:
-    return charter_body(worker="mac-mini", night_plans=[], max_runs_per_night=20, night_budget_usd=5.0, **changes)
+    return charter_body(night_plans=[], max_runs_per_night=20, night_budget_usd=5.0, **changes)
+
+
+def duty_worker(client, db, headers) -> dict:
+    """Owner's worker mac-mini, which runs every kind of run, a node of the pool of the project's default agent, which
+    owner holds and whose runs (the night shift's, the Curator's) it takes; the agent with an account pool."""
+    worker = home_node(
+        client, db, headers["owner"], taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+    )
+    claimable(client)
+    return worker
 
 
 @pytest.fixture
 def world(hub_db, tmp_path, github, app_key):  # noqa: F811
     """test_credentials_api's project (evo-agents on GitHub, lumen-kb-docs on GitLab, two more repos), its hub holding the
     secrets key, the workers' App and the Curator's App, both installed on evo-agents, whose default branch has a
-    ruleset only the workers' App bypasses; owner an admin with a charter whose worker on duty, mac-mini, runs every
-    kind of run."""
+    ruleset only the workers' App bypasses; owner an admin with a charter, and the worker on duty mac-mini
+    (``duty_worker``)."""
     config = credentials_config(hub_db, tmp_path, github, app_key, curator=True)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
-        worker = taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+        worker = duty_worker(client, hub_db, headers)
         written(client, headers["owner"], curator_charter())
         install(github, "evo-agents", permissions=WORKERS_APP)
         install(github, "evo-agents", app="curator")
@@ -328,11 +350,8 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
 
 def test_curator_plan_no_member_dispatches_it(world):
     accepted(world)
-    owner, worker_id = world.headers["owner"], world.worker["id"]
-    for route, body in (
-        ("plan-runs", {"plan_id": PLAN_ID, "worker_id": worker_id}),
-        ("runs", {"plan_id": PLAN_ID, "steps": [1], "worker_id": worker_id}),
-    ):
+    owner = world.headers["owner"]
+    for route, body in (("plan-runs", {"plan_id": PLAN_ID}), ("runs", {"plan_id": PLAN_ID, "steps": [1]})):
         refused = world.client.post(f"/v1/projects/{PROJECT}/{route}", json=body, headers=owner)
         assert refused.status_code == 409 and "the night shift runs it itself, at any hour" in refused.text
     assert sql(world.db, select(func.count()).select_from(tables.runs).where(tables.runs.c.plan_id == PLAN_ID)) == [
@@ -521,7 +540,8 @@ def test_curator_plan_the_night_shift_keeps_why_it_passes_over_a_planned_change(
     taking(world.client, {**world.worker, "checkouts": {}})  # the worker on duty lost its checkouts
     assert queue_now(world, "builder") is None
     assert one_change(world)["reason"].startswith(
-        f"worker mac-mini on duty cannot build it: it has no checkout of {PROJECT}/evo-agents"
+        f"pool agent-{PROJECT} on duty cannot build it: no ready node of pool agent-{PROJECT} fits it: mac-mini: it "
+        f"has no checkout of {PROJECT}/evo-agents"
     )
 
 
@@ -562,9 +582,10 @@ def test_curator_plan_run_plan_queues_its_builder_now_beside_the_night_shifts_ot
     assert made.status_code == 201, made.text
     run = made.json()
     assert (run["kind"], run["plan_id"], run["state"], run["dispatched_by"]) == ("plan", PLAN_ID, "queued", "owner")
-    columns = (r.c.pinned_worker_id, r.c.dispatched_via, r.c.budget)
+    columns = (r.c.pinned_worker_id, r.c.selector, r.c.dispatched_via, r.c.budget)
     budget = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}  # the charter's caps
-    assert sql(world.db, select(*columns).where(r.c.id == run["id"])) == [(world.worker["id"], "schedule", budget)]
+    on_pool = [(None, [f"pool=agent-{PROJECT}"], "schedule", budget)]  # any ready node of the default agent's pool
+    assert sql(world.db, select(*columns).where(r.c.id == run["id"])) == on_pool
     texts = [row[0].get("text", "") for row in sql(world.db, select(e.c.body).where(e.c.run_id == run["id"]))]
     assert any("asked for it from Run plan" in text for text in texts)
     (target,) = sql(world.db, select(tables.audit.c.target).where(tables.audit.c.action == "curator.build_now"))
@@ -648,7 +669,7 @@ def workers_app_alone(hub_db, tmp_path, github, app_key):  # noqa: F811
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
-        worker = taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+        worker = duty_worker(client, hub_db, headers)
         written(client, headers["owner"], curator_charter())
         install(github, "evo-agents")
         yield SimpleNamespace(client=client, headers=headers, worker=worker, github=github, db=hub_db, app=client.app)
@@ -1235,7 +1256,7 @@ def test_merge_a_members_plan_run_still_works_on_the_default_branch_its_plan_nam
     """a12: the plan a member wrote names main for each repo; its plan run gets main, and its claim names no Curator."""
     from tests.hub.test_credentials_api import PLAN as MEMBER_PLAN
 
-    body = {"plan_id": MEMBER_PLAN, "worker_id": world.worker["id"]}
+    body = {"plan_id": MEMBER_PLAN}
     response = world.client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=world.headers["owner"])
     assert response.status_code == 201, response.text
     spec = claim(world.client, world.worker)

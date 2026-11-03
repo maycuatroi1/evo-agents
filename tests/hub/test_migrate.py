@@ -5389,3 +5389,30 @@ def test_migration_0194_drops_the_placement_and_the_legacy_worker_keys_and_carri
         (named, None)
     ]  # the first node of the pool
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0194") :]
+
+
+def test_migration_0195_gives_each_agent_with_no_pool_its_pool(hub_db):
+    move_to(hub_db, "0194")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        base = {"project_id": ids["project"], "color": "#336699", "created_by": ids["user"], "permissions": {}}
+        made = {}
+        for handle, deleted in (("pooled", False), ("typed", False), ("gone", True)):
+            values = {**base, "handle": handle, "name": handle.title()}
+            if deleted:
+                values["deleted_at"] = func.now()
+            made[handle] = one(conn, insert(t.agent_profiles).values(values).returning(t.agent_profiles.c.id))
+        pool = insert(t.worker_pools).values(owner_id=ids["user"], name="agent-pooled", agent_id=made["pooled"])
+        pooled = one(conn, pool.returning(t.worker_pools.c.id))
+    move_to(hub_db, "0195")
+    p, pp = t.worker_pools, t.worker_pool_projects
+    rows = select(p.c.id, p.c.name, p.c.agent_id, p.c.owner_id).where(p.c.agent_id.is_not(None)).order_by(p.c.name)
+    ((kept, *_), (typed, *rest)) = query(hub_db, rows)
+    assert kept == pooled  # an agent with a pool keeps it, a deleted one gets none
+    assert tuple(rest) == ("agent-typed", made["typed"], ids["user"])
+    served = select(pp.c.project_id).where(pp.c.pool_id == typed)
+    assert query(hub_db, served) == [(ids["project"],)]
+    move_to(hub_db, "0194", down=True)
+    assert query(hub_db, select(func.count()).select_from(p).where(p.c.agent_id.is_not(None))) == [(2,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0195") :]

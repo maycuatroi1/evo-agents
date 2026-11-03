@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { call } from "../src/lib/api/client";
 
-import { createAgentByApi } from "./support/agents";
+import { createAgentByApi, poolAccountsOf } from "./support/agents";
 import { signOut } from "./support/auth";
 import { agentAnswers, chatHeartbeat, chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
@@ -451,16 +451,18 @@ test("the owner sees the credentials the run got, never a value, and nobody else
   admin,
   signInAs,
 }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   const oauth = secretValue("oauth");
   const git = secretValue("git");
   await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: oauth });
   await putSecretByApi(me, "github-org", { kind: "git", url_prefix: "https://github.com/example-org", projects: [project], value: git });
+  // A run of an agent takes its Claude account from the agent's account pool alone: the owner's, in pool mine.
+  await poolAccountsOf(me, project, ["claude-oauth"]);
   const { live, run } = await runningRun(me);
   // The worker gets the values, as the daemon does right after its claim.
   const leased = await leaseCredentials(live, run.id);
-  expect(Object.fromEntries(leased.leases.map((lease) => [lease.name, lease.value]))).toEqual({ "claude-oauth": oauth, "github-org": git });
+  expect(Object.fromEntries(leased.leases.map((lease) => [lease.name, lease.value]))).toEqual({ "@pool.mine:claude-oauth": oauth, "github-org": git });
   const received = recordResponses(page);
 
   await open(page, runPath(project, run.id));
@@ -1006,7 +1008,7 @@ test("a turn of a chat session heads its page with the session's title, which tu
   const project = me.projects[0];
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer" });
-  const live = await chatWorker(me, project, uniqueName("mini"));
+  const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
   const asks = ["please fix the flaky wait test", "one more thing: the retries"];
   const {
     runs: [first, second],

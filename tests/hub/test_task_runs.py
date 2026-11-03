@@ -2,10 +2,10 @@
 ``evo_agents.hub.server.agent_types`` and ``task_dispatch``), as criterion a9 of the plan hub-agent-plugins names it.
 
 A plugin contributes agent types; an admin of a project that enabled the plugin enables one there, which creates its
-agent profile from the type's template, and names the member its runs go under, that member's workers they may run on
-and the cap of what they may cost a day. The plugin, granted runs:dispatch, hands the type a task with its token: a run
-of kind task under that member's name, on the branch task/<run>, with what is left of the cap as its cost cap, claimed
-only by a worker the type names; a task past the cap is refused (429). The run's push gets a draft pull request the hub
+agent profile from the type's template, with its pool agent-<handle>, and names the member its runs go under and the
+cap of what they may cost a day. The plugin, granted runs:dispatch, hands the type a task with its token: a run of kind
+task under that member's name, on the branch task/<run>, with what is left of the cap as its cost cap, claimed only by
+a node of the agent's pool; a task past the cap is refused (429). The run's push gets a draft pull request the hub
 opens and never merges, and the plugin gets the event task.result when the task ends. The worker's side is
 ``tests.worker.test_task_run``."""
 
@@ -26,6 +26,7 @@ from evo_agents.hub.server import plugin_tokens
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_chat_runs import chat_worker, in_chats
 from tests.hub.test_chats import OPEN_SINKS
@@ -166,11 +167,20 @@ def without_task() -> list[str]:
     return [kind for kind in runs.RUN_KINDS if kind != "task"]
 
 
+def node(client, hub_db, headers, name: str, **kwargs) -> dict:
+    """A worker of ``headers``' member, a ready node of the pool of @triager (the agent type enabled already), whose
+    agent gets an account pool of someone-else's unless it has one: where the type's runs go."""
+    ap = tables.agent_profiles
+    ((account_pool_id,),) = sql(hub_db, select(ap.c.account_pool_id).where(ap.c.handle == "triager"))
+    if account_pool_id is None:
+        give_account_pool(hub_db, PROJECT, "triager", OTHER)
+    return chat_worker(client, headers, name, checkouts=ONE_REPO, pool="triager", **kwargs)
+
+
 # Enabling an agent type
 
 
 def test_agent_type_enable_creates_its_profile_once_and_an_admin_changes_or_turns_it_off(client, hub, hub_db):
-    chat_worker(client, hub["other"], "Laptop", checkouts=ONE_REPO)
     before = listed(client, hub["reader"])[(PLUGIN, "triager")]
     assert (before["enabled"], before["handle"], before["run_as"], before["daily_usd"]) == (
         False,
@@ -178,14 +188,8 @@ def test_agent_type_enable_creates_its_profile_once_and_an_admin_changes_or_turn
         None,
         None,
     )
-    view = enabled(client, hub["owner"], workers=["laptop", "LAPTOP"], daily_usd=5)
-    assert (view["enabled"], view["run_as"], view["workers"], view["daily_usd"], view["spent_usd"]) == (
-        True,
-        OTHER,
-        ["laptop"],
-        5,
-        0,
-    )
+    view = enabled(client, hub["owner"], daily_usd=5)
+    assert (view["enabled"], view["run_as"], view["daily_usd"], view["spent_usd"]) == (True, OTHER, 5, 0)
     assert (view["enabled_by"], view["title"], view["environment"], view["packs"]) == (
         OWNER,
         "Issue triager",
@@ -199,9 +203,11 @@ def test_agent_type_enable_creates_its_profile_once_and_an_admin_changes_or_turn
         "Keep each change small.",
         1,
     )
+    ap, wp = tables.agent_profiles, tables.worker_pools
+    pools = select(wp.c.name).join_from(wp, ap, ap.c.id == wp.c.agent_id).where(ap.c.handle == "triager")
+    assert sql(hub_db, pools) == [("agent-triager",)]  # its runs go to its own pool
     again = enabled(client, hub["owner"], daily_usd=12.5)  # the same profile: its admins edit it as any other
-    assert (again["workers"], again["daily_usd"], again["handle"]) == ([], 12.5, "triager")
-    ap = tables.agent_profiles
+    assert (again["daily_usd"], again["handle"]) == (12.5, "triager")
     assert sql(hub_db, select(func.count()).select_from(ap).where(ap.c.handle == "triager")) == [(1,)]
     off = client.delete(f"/v1/projects/{PROJECT}/agent-types/{PLUGIN}/triager", headers=hub["owner"])
     assert off.status_code == 200 and off.json()["enabled"] is False and off.json()["disabled_at"] is not None
@@ -211,16 +217,15 @@ def test_agent_type_enable_creates_its_profile_once_and_an_admin_changes_or_turn
     assert enabled(client, hub["owner"])["enabled"] is True
     target = f"{PROJECT}/plugin:{PLUGIN} agent-type:triager"
     assert audit_rows(hub_db, "agent-type") == [
-        ("agent-type.enable", f"{target} @triager run-as={OTHER} workers=laptop daily-usd=5.0", OWNER, PROJECT),
-        ("agent-type.enable", f"{target} @triager run-as={OTHER} workers=- daily-usd=12.5", OWNER, PROJECT),
+        ("agent-type.enable", f"{target} @triager run-as={OTHER} daily-usd=5.0", OWNER, PROJECT),
+        ("agent-type.enable", f"{target} @triager run-as={OTHER} daily-usd=12.5", OWNER, PROJECT),
         ("agent-type.disable", target, OWNER, PROJECT),
-        ("agent-type.enable", f"{target} @triager run-as={OTHER} workers=- daily-usd=5.0", OWNER, PROJECT),
+        ("agent-type.enable", f"{target} @triager run-as={OTHER} daily-usd=5.0", OWNER, PROJECT),
     ]
     assert [row[1] for row in audit_rows(hub_db, "agent")] == [f"{PROJECT}/@triager v1"]
 
 
 def test_agent_type_enable_is_refused_saying_why_and_changes_nothing(client, hub, hub_db):
-    chat_worker(client, hub["owner"], "studio", checkouts=ONE_REPO)
     assert "needs the admin role" in message(put_type(client, hub["other"]), 403)
     unseen = client.get(f"/v1/projects/{PROJECT}/agent-types", headers=hub["stranger"])
     assert "no project evo-agents that you can see" in message(unseen, 404)
@@ -230,10 +235,10 @@ def test_agent_type_enable_is_refused_saying_why_and_changes_nothing(client, hub
     for body, said in (
         ({"run_as": READER}, f"and {READER} holds reader there"),
         ({"run_as": "nobody"}, "and nobody is no member of the hub"),
-        ({"workers": ["studio"]}, f"{OTHER} has no worker studio that is not revoked"),
     ):
         assert said in message(put_type(client, hub["owner"], **body), 422)
-    for body in ({"daily_usd": 0}, {"daily_usd": 1000.5}, {"workers": ["w"] * 17}, {"model": "large"}):
+    # a type names no worker: its runs go to the nodes of its agent's pool
+    for body in ({"daily_usd": 0}, {"daily_usd": 1000.5}, {"workers": ["studio"]}, {"model": "large"}):
         assert put_type(client, hub["owner"], **body).status_code == 422, body
     # a handle a project or another agent holds: the one the admin names, or both the template's and
     # <template's>-<project>
@@ -300,14 +305,14 @@ def test_task_dispatch_queues_a_task_run_under_run_as_with_what_is_left_of_the_c
     assert "budget" not in shown and "request" not in shown
 
 
-def test_task_dispatch_goes_only_to_a_worker_of_run_as_the_agent_type_names_with_its_prompt(client, hub):
-    studio = chat_worker(client, hub["owner"], "studio", checkouts=ONE_REPO)
-    desk = chat_worker(client, hub["other"], "desk", checkouts=ONE_REPO)
-    old = chat_worker(client, hub["other"], "old", checkouts=ONE_REPO, kinds=without_task())
-    laptop = chat_worker(client, hub["other"], "laptop", checkouts=ONE_REPO)
-    enabled(client, hub["owner"], workers=["laptop", "old"])
+def test_task_dispatch_goes_only_to_a_node_of_the_agents_pool_with_its_prompt(client, hub, hub_db):
+    enabled(client, hub["owner"])
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=ONE_REPO, pool=PROJECT)
+    desk = chat_worker(client, hub["other"], "desk", checkouts=ONE_REPO, pool=None)
+    old = node(client, hub_db, hub["other"], "old", kinds=without_task())
+    laptop = node(client, hub_db, hub["other"], "laptop")
     run_id = handed(client, plugin_key(client, hub["plugin_id"]))["run_id"]
-    for worker in (studio, desk, old):  # not run_as's, not named, or a daemon that runs no task run
+    for worker in (studio, desk, old):  # a node of another agent's pool, of no pool, or a daemon that runs no task run
         assert claim(client, worker) is None, worker["name"]
     spec = claim(client, laptop)
     assert (spec["id"], spec["kind"], spec["branch"], spec["mode"]) == (run_id, "task", f"task/{run_id}", "headless")
@@ -316,10 +321,10 @@ def test_task_dispatch_goes_only_to_a_worker_of_run_as_the_agent_type_names_with
     assert prompt.startswith(f"You are @triager (Triager), agent type triager of plugin {PLUGIN} in project {PROJECT}")
     assert f"Plugin {PLUGIN} hands you the task below for {OTHER}" in prompt
     assert f"each a worktree on the branch task/{run_id}" in prompt and prompt.endswith(f"# The task\n{TASK}\n")
-    # an agent type naming no worker: any worker of run_as takes the next one
-    enabled(client, hub["owner"])
+    # a node of the pool takes the next one whoever owns it, while laptop's one slot is taken
+    mine = node(client, hub_db, hub["owner"], "mine")
     second = handed(client, plugin_key(client, hub["plugin_id"]))["run_id"]
-    assert claim(client, studio) is None and claim(client, desk)["id"] == second
+    assert claim(client, studio) is None and claim(client, mine)["id"] == second
 
 
 def test_task_dispatch_needs_a_live_plugin_token_and_runs_dispatch_and_an_enabled_agent_type(client, hub, hub_db):
@@ -363,8 +368,8 @@ def test_task_dispatch_needs_a_live_plugin_token_and_runs_dispatch_and_an_enable
 
 
 def test_task_budget_refuses_a_dispatch_once_the_runs_of_a_day_cost_the_cap(client, hub, hub_db):
-    laptop = chat_worker(client, hub["other"], "laptop", checkouts=ONE_REPO)
     enabled(client, hub["owner"], daily_usd=5)
+    laptop = node(client, hub_db, hub["other"], "laptop")
     key = plugin_key(client, hub["plugin_id"])
     first = handed(client, key)["run_id"]
     assert claim(client, laptop)["id"] == first
@@ -391,8 +396,8 @@ def test_task_budget_refuses_a_dispatch_once_the_runs_of_a_day_cost_the_cap(clie
 def test_task_dispatch_push_gets_a_draft_pull_request_and_the_end_reaches_the_plugin(client, hub, hub_db, github):
     credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
     github.add_repo(MINE, "evo-agents")
-    laptop = chat_worker(client, hub["other"], "laptop", checkouts=ONE_REPO)
     enabled(client, hub["owner"])
+    laptop = node(client, hub_db, hub["other"], "laptop")
     key = plugin_key(client, hub["plugin_id"])
     run_id = handed(client, key, title="Fix the wait")["run_id"]
     branch = task_runs.branch_of(run_id)
@@ -413,7 +418,7 @@ def test_task_dispatch_push_gets_a_draft_pull_request_and_the_end_reaches_the_pl
     assert (elsewhere["url"], elsewhere["number"]) == (None, None)
     for wrong, status in (({"branch": "main"}, 422), ({"repo": "other"}, 422)):
         assert in_chats(client, laptop, run_id, "task/pulls", {**body, **wrong}).status_code == status
-    stranger = chat_worker(client, hub["owner"], "studio", checkouts=ONE_REPO)
+    stranger = chat_worker(client, hub["owner"], "studio", checkouts=ONE_REPO, pool=None)
     assert in_chats(client, stranger, run_id, "task/pulls", body).status_code == 404
     kept = [{"repo": "evo-agents", "url": url, "number": 1}]
     assert of_run(hub_db, run_id, "pulls") == [(kept,)]
@@ -439,8 +444,8 @@ def test_task_dispatch_push_gets_a_draft_pull_request_and_the_end_reaches_the_pl
 
 
 def test_task_dispatch_lost_run_goes_on_in_the_next_attempt_with_its_agent_type_and_branch(client, hub, hub_db):
-    laptop = chat_worker(client, hub["other"], "laptop", checkouts=ONE_REPO)
     enabled(client, hub["owner"])
+    laptop = node(client, hub_db, hub["other"], "laptop")
     key = plugin_key(client, hub["plugin_id"])
     first = handed(client, key)["run_id"]
     assert claim(client, laptop)["id"] == first
@@ -472,8 +477,8 @@ def test_task_dispatch_on_a_named_branch_of_one_repo_with_more_agent_time_pushes
 ):
     credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
     github.add_repo(MINE, "evo-agents")
-    laptop = chat_worker(client, hub["other"], "laptop", checkouts=ONE_REPO)
     enabled(client, hub["owner"], daily_usd=5)
+    laptop = node(client, hub_db, hub["other"], "laptop")
     key = plugin_key(client, hub["plugin_id"])
     named = {"repo": "evo-agents", "branch": "post/northwind-launch", "minutes": task_runs.MAX_MINUTES}
     task = handed(client, key, **named)
