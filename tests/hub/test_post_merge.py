@@ -55,7 +55,6 @@ UNDONE = [  # the diff of the revert of CLEAN
 def policy(world, *, jobs=None, release: str = "immediate", hold: str = "merged", **repo) -> None:
     body = {
         "repos": {REPO: {"mode": "auto", "target_branch": "dev", "prod_release": release, "jobs": jobs or {}, **repo}},
-        "judge": {"worker": "mac-mini"},
         "merge": {"hold_until": hold},
     }
     put_policy(world.client, world.headers["owner"], body)

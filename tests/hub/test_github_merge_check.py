@@ -34,6 +34,7 @@ from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture)
     MINE,
     app_key,
+    claimable,
     install,
     members,
     worker_of,
@@ -60,7 +61,7 @@ def plan_body() -> dict:
 
 
 def policy(check: str = "on") -> dict:
-    return {"repos": {REPO: {"merge_check": check}}, "judge": {"worker": "mac-mini"}}
+    return {"repos": {REPO: {"merge_check": check}}}
 
 
 def beat(world, free_slots: int = 2) -> None:
@@ -81,8 +82,9 @@ def beat(world, free_slots: int = 2) -> None:
 @pytest.fixture
 def world(hub_db, tmp_path, github, app_key):  # noqa: F811
     """test_credentials_api's project, its hub holding the workers' App, installed on evo-agents with pull_requests
-    read; owner an admin with the worker mac-mini, which judges merge requests; the policy has merge_check on for
-    evo-agents; a plan run of its step on mac-mini running, and its pull request #7 open at HEAD."""
+    read; owner an admin with the worker mac-mini, which judges merge requests, a node of the pool of the project's
+    default agent (which has an account pool); the policy has merge_check on for evo-agents; a plan run of its step on
+    mac-mini running, and its pull request #7 open at HEAD."""
     config = credentials_config(hub_db, tmp_path, github, app_key)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = members(client, github)
@@ -97,8 +99,8 @@ def world(hub_db, tmp_path, github, app_key):  # noqa: F811
         owner = headers["owner"]
         pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json={"body": plan_body()}, headers=owner)
         assert pushed.status_code == 200, pushed.text
-        body = {"plan_id": PLAN_ID, "worker_id": worker["id"]}
-        response = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=owner)
+        claimable(client)
+        response = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN_ID}, headers=owner)
         assert response.status_code == 201, response.text
         world.run_id = response.json()["id"]
         assert claim(client, worker)["id"] == world.run_id

@@ -1,6 +1,6 @@
 """The Curator's replays on the hub (``evo_agents.hub.replay_suite``, ``evo_agents.hub.server.replays``) and schema
 0056, in the world of ``tests.hub.test_curator_changes``: the project evo-agents on the fake GitHub with both Apps,
-its owner an admin with a charter whose worker on duty runs every kind of run.
+its owner an admin with a charter, and a node of the pool of the project's default agent that runs every kind of run.
 
 The checks step 10 of the history-driven-curator plan names on the hub: a9 (the suite made from the plans' steps done
 with a verify and commits, its split fixed and the suite only growing; the night shift's replay runs of a change of a

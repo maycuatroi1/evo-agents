@@ -330,7 +330,7 @@ def test_a_charter_the_hub_does_not_take_writes_nothing(night, hub_db, changes, 
 def test_the_schedule_queues_a_plan_run_inside_its_window_as_its_owner_on_the_default_agents_pool(night, hub_db):
     client, headers = night.client, night.headers
     written(client, headers["owner"], charter_body())
-    stranger = fleet_worker(client, headers["other"], "other-mac")  # the same checkouts, another member's
+    stranger = fleet_worker(client, headers["other"], "other-mac", pool=None)  # the same checkouts, in no pool
 
     assert fire(client, DAY) == {"outside": 1} and scheduled(hub_db) == []
     assert fire(client, NIGHT) == {"queued": 1}

@@ -317,9 +317,11 @@ def test_curator_push_rules_of_gitops(machine):  # noqa: F811
 
 
 def gitlab_origin(machine) -> object:  # noqa: F811
-    """alpha's origin taking push options, as GitLab does, with a pre-receive hook that writes them to a file."""
+    """alpha's origin taking push options, as GitLab does, with a pre-receive hook that writes them to a file (its own
+    hooks, whatever core.hooksPath the machine's global git config names)."""
     origin = machine.origins["alpha"]
     git("--git-dir", str(origin), "config", "receive.advertisePushOptions", "true")
+    git("--git-dir", str(origin), "config", "core.hooksPath", str(origin / "hooks"))
     seen = machine.tmp / "push-options.txt"
     hook = origin / "hooks" / "pre-receive"
     hook.write_text(

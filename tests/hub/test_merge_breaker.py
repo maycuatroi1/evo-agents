@@ -269,7 +269,7 @@ def test_merge_breaker_counts_from_its_reset_and_a_revert_gitlab_refuses_after_i
 
 
 def test_merge_breaker_the_third_pass_of_the_judge_found_wrong_in_seven_days_trips_it(world):
-    body = {"repos": {REPO: {"mode": "auto", "target_branch": "dev"}}, "judge": {"worker": "mac-mini"}}
+    body = {"repos": {REPO: {"mode": "auto", "target_branch": "dev"}}}
     put_policy(world.client, world.headers["owner"], {**body, "audit": {"sample_rate": 1.0}})
     for branch in ("fix/one", "fix/two", "fix/three"):
         merged(world, branch, branch)

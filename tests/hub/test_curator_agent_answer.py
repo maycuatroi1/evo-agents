@@ -75,9 +75,9 @@ def by_agent(world, **changes) -> None:  # noqa: F811
 
 
 def opened(world, *titles: str) -> tuple[SimpleNamespace, list[dict]]:  # noqa: F811
-    """A worker of owner that takes chat runs, then the night's review run with a tier 2 proposal for each of
-    ``titles`` recorded open; (the chat worker, the proposals)."""
-    chat = chat_worker(world.client, world.headers["owner"], "mac-book", slots=4)
+    """A worker of owner that takes chat runs, a node of the pool of the project's default agent, then the night's
+    review run with a tier 2 proposal for each of ``titles`` recorded open; (the chat worker, the proposals)."""
+    chat = chat_worker(world.client, world.headers["owner"], "mac-book", slots=4, pool=PROJECT)
     run_id = review_run(world)
     evidence = [{"kind": "run", "run_id": run_id, "seq": 1}]
     made = [
