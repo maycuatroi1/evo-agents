@@ -48,6 +48,18 @@ agents ran with grep in the sessions of a harness of 16 repos, the file the agen
 24.5% of the time, 32.5% with the searched repo given, against 19.9% before (grep 30.3%), at 1,053 tokens of result
 per file found against grep's 8,418; that harness's 511 plan-step questions stayed at 71.0% (75.2% with the repo),
 and the 600 tune questions of evo-agents went from 27.7% to 27.8%.
+
+A word of a query can also sit inside a word of a name or a path: "api" in ``northwind-api.md`` is a word of its
+own, but "ops" in ``lumenops-dashboard.md`` is not, and no way above reads it there. ``node_tri`` holds the name and
+the path of each node's own row of ``node_fts`` (no passage, no row with an audience) cut in trigrams, and the nodes
+whose name or path holds every word of at least TRIGRAM_MIN letters of the query as a substring (``trigram_query``)
+are ranked by BM25 times the prior and ``weight``, then fused with the ranking by words by reciprocal rank fusion at
+TRIGRAM_WEIGHT. Background the query does not ask for is left out of that ranking: an image whose path holds every
+word would come first in it, and a fused rank does not keep the weight that holds it back among words. On the
+evo-agents questions hit@5 went from 0.7317 to 0.7350 on tune (600) and from 0.6783 to 0.6826 on holdout (230), MRR
+from 0.4603 to 0.4612 and from 0.4403 to 0.4419; the bodies indexed too, or any word of the query (OR), lowered hit@5
+on tune. A graph built before ``node_tri`` came, or by an SQLite without the trigram tokenizer, searches by words
+alone.
 """
 
 from __future__ import annotations
@@ -109,6 +121,8 @@ _CODE_WORD = re.compile(r"[\w$.-]+")
 # Written like an identifier: a _, - or $ between characters, or a camelCase hump. A word in capitals alone (SCORM,
 # YAML) is more often an acronym every file of a kind names: on plan-step questions it pushed the answers out.
 _IDENTIFIER = re.compile(r".[_$-].|[a-z][A-Z]")
+TRIGRAM_MIN = 3  # letters a word needs to be looked up as a substring: the trigram tokenizer matches no shorter one
+TRIGRAM_WEIGHT = 0.5  # the weight of the ranking by substrings in the fusion with the one by words
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})
 _WORD = re.compile(r"[^\W_]+")
@@ -244,6 +258,18 @@ def fts_queries(words: list[str]) -> Iterator[str]:
     loose = dict.fromkeys(t for t in terms if bare(t) not in BARE_STOP_WORDS)
     if len(loose) > 1 or (loose and len(words) > 1):
         yield " OR ".join(_quote(t) for t in loose)
+
+
+def tri_text(text: str) -> str:
+    """``text`` as ``node_tri`` holds it and a query reads it: lower case, accents folded (``bare``)."""
+    return text.lower() if text.isascii() else bare(text)
+
+
+def trigram_query(words: list[str]) -> str | None:
+    """The FTS5 query of ``words`` against ``node_tri``: every word of TRIGRAM_MIN letters or more as a substring
+    (AND); None when no word is that long."""
+    terms = dict.fromkeys(t for t in (tri_text(w) for w in words) if len(t) >= TRIGRAM_MIN)
+    return " AND ".join(_quote(t) for t in terms) or None
 
 
 _PHRASE = re.compile(r'"(?:[^"]|"")*"\*?')

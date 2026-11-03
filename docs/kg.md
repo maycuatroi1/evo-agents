@@ -281,6 +281,18 @@ Projects and who sees what), and the core plugin chats labels each message with 
   tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709. A file known by its path
   alone (`.png`, `.svg`, `.drawio`, a video) counts 0.25 (`ASSET_WEIGHT`), since a slug in its path outranks the page
   that holds the words, unless the query asks for an image (`image`, `screenshot`, `png`, `sơ đồ`, `hình ảnh`, ...).
+- Words inside a word: `node_tri` (FTS5, `trigram` tokenizer) holds the name and path of each node's own row of
+  `node_fts` again, lower case and without accents, and no passage and no row with an audience. The nodes whose name
+  or path holds every word of three letters or more of the query as a substring (`ops` and `dashboard` in
+  `docs/lumenops-dashboard.md`, where `ops` is no word of its own) are ranked by BM25 times the prior and the weight
+  above, and fused with the ranking by words by reciprocal rank fusion at weight 0.5 (`TRIGRAM_WEIGHT`, k 60).
+  Background the query does not ask for (an image, a test, a closed plan) is left out of that ranking, since a fused
+  rank would not keep the weight that holds it back among words. On the evo-agents questions hit@5 went from 0.7317
+  to 0.7350 on tune (600) and from 0.6783 to 0.6826 on holdout (230), MRR from 0.4603 to 0.4612 and from 0.4403 to
+  0.4419. Indexing the bodies too, or matching any word (OR), lowered hit@5 on tune. The table adds about 5% to
+  `graph.sqlite` (28 MB on evo-agents' 526 MB). A graph built before it came, or by an SQLite without the trigram
+  tokenizer (before 3.34), has no such rows and searches by words alone; the next build that writes the index fills
+  it whole, in about a second for 60,000 to 85,000 nodes, and the builds after it write only the rows that changed.
 - A project whose semantic mode is `on` also ranks by meaning: the vectors of a local embedding model, fused with the
   ranking by words by reciprocal rank fusion. Off by default, and a graph without vectors searches as above
   ([docs/kg-semantic.md](kg-semantic.md)).
