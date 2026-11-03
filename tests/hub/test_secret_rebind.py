@@ -1,8 +1,9 @@
 """PATCH /v1/secrets/{name}: the binding of a member's secret replaced alone, without its value
 (``evo_agents.hub.server.secrets.rebind_secret``).
 
-A secret bound to a worker that was revoked reaches no run; bound again to the pool its runs now go to, a node of the
-pool is leased the same value, and its sealed column and ``updated_at`` stay as they were. The body names workers or
+A secret bound to a worker that was revoked reaches no run; bound again to the pool its runs now go to (the pool of an
+agent the owner made, whose runs go to its nodes alone), a node of the pool is leased the same value, and its sealed
+column and ``updated_at`` stay as they were. The body names workers or
 pools, exactly one of them, and an empty list binds the secret to any worker of its owner again, on each of its
 projects. Names are checked as PUT checks them: the caller's own workers that are not revoked, their own pools, and
 none for a forge secret. Another member's secret is 404. Each PATCH writes one audit row secret.rebind naming the
@@ -19,7 +20,7 @@ if not pg.DSN:
 
 from sqlalchemy import select
 
-from evo_agents.hub import tables
+from evo_agents.hub import runs, tables
 from tests.hub.live import add_project, sql, table_dump
 from tests.hub.test_credentials_api import (  # noqa: F401  (app_key, client, config and hub are fixtures)
     OWNER,
@@ -27,6 +28,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401  (app_key, client, co
     app_key,
     audit_rows,
     by_name,
+    claimable,
     client,
     config,
     env_secret,
@@ -36,12 +38,14 @@ from tests.hub.test_credentials_api import (  # noqa: F401  (app_key, client, co
     step_run,
     worker_of,
 )
-from tests.hub.test_pool_bindings import ci_node, secret_id_of
+from tests.hub.test_pool_bindings import secret_id_of
 from tests.hub.test_pool_scheduling import pool
-from tests.hub.test_runs import PROJECT
+from tests.hub.test_profile_runs import beat
+from tests.hub.test_runs import PROJECT, join_pool
 from tests.hub.test_secrets_api import SECRET_FIELDS
 
 OPS = "lumen-ops"  # a second project of the owner's
+ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
 
 
 def rebind(client, headers, name: str, **body) -> dict:
@@ -81,20 +85,28 @@ def test_a_secret_of_a_revoked_worker_moves_to_a_pool_and_back_its_value_untouch
     add_project(hub_db, OPS)
     granted = client.put(f"/v1/admin/projects/{OPS}/grants/{OWNER}", json=WRITER, headers=hub["admin"])
     assert granted.status_code == 200, granted.text
+    # the agent @ci, which owner makes: its pool agent-ci is owner's, and its runs go to the nodes of it alone
+    admin = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=hub["admin"])
+    assert admin.status_code == 200, admin.text
+    made = client.post(f"/v1/projects/{PROJECT}/agents", json={"handle": "ci", "name": "CI"}, headers=hub["owner"])
+    assert made.status_code == 201, made.text
+    claimable(client, "ci")
+    claimable(client)
     value = sample("api-")
     old = worker_of(client, hub["owner"], "old-box")
     env_secret(client, hub["owner"], "api", "API_TOKEN", value, projects=[PROJECT, OPS], workers=["old-box"])
     revoke(client, hub["owner"], old)
     before = sealed_of(hub_db, "api")
-    ci = pool(client, hub["owner"])
-    lab = ci_node(client, hub["owner"], hub_db, "lab", ci)
+    lab = worker_of(client, hub["owner"], "lab")
+    beat(client, lab, features=[runs.AGENT_HOME])  # a run of @ci needs a config dir of its own
+    join_pool(client, lab, "ci")
 
-    moved = rebind(client, hub["owner"], "api", pools=["CI"])  # a pool's name in any case, as PUT takes it
-    assert (moved["projects"], moved["workers"], moved["pools"]) == ([PROJECT, OPS], [], ["ci"])
+    moved = rebind(client, hub["owner"], "api", pools=["AGENT-CI"])  # a pool's name in any case, as PUT takes it
+    assert (moved["projects"], moved["workers"], moved["pools"]) == ([PROJECT, OPS], [], ["agent-ci"])
     assert (moved["kind"], moved["env_var"], moved["expires_at"]) == ("env", "API_TOKEN", None)
-    assert bindings_of(hub_db, "api") == [(PROJECT, None, "ci"), (OPS, None, "ci")]
+    assert bindings_of(hub_db, "api") == [(PROJECT, None, "agent-ci"), (OPS, None, "agent-ci")]
     assert sealed_of(hub_db, "api") == before  # the value is not written again, nor is updated_at moved
-    on_lab = step_run(client, hub["owner"], "notes", lab)
+    on_lab = step_run(client, hub["owner"], "notes", lab, profile="ci")
     assert by_name(leased(client, lab, on_lab))["api"]["value"] == value
 
     desk = worker_of(client, hub["owner"], "desk")
@@ -112,7 +124,7 @@ def test_a_secret_of_a_revoked_worker_moves_to_a_pool_and_back_its_value_untouch
 
     target = f"secret:{secret_id_of(hub_db, 'api')}"
     assert audit_rows(hub_db, "secret.rebind") == [
-        (f"{target} pools=ci", OWNER, None, True),
+        (f"{target} pools=agent-ci", OWNER, None, True),
         (f"{target} workers=desk", OWNER, None, True),
         (f"{target} anywhere", OWNER, None, True),
     ]

@@ -36,7 +36,7 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
-from sqlalchemy import Text, func, insert, literal, or_, select, update
+from sqlalchemy import Text, func, insert, literal, or_, select, true, update
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -169,7 +169,8 @@ def refusal(item: ItemView, repos: Sequence[str], capacity: Capacity, policy: Ma
 async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[str]) -> LoopWorker:
     """The workers a selector reaches (the default agent's pool, a plan's worker_labels): live, ready, not draining,
     serving the project, holding every label, and owned by a writer of the project (their runs go in the owner's
-    name). The best of them, the most free slots, stands for the pick; its free slots are those of all of them."""
+    name). The best of them, the most free slots, stands for the pick; its free slots are those of all of them, less
+    the runs queued for the pool that no worker holds yet (a run of an agent is placed on its pool, not pinned)."""
     from evo_agents.hub.server import worker_placement  # it reaches the runs package, which imports the Loop
 
     asked = ", ".join(selector)
@@ -206,8 +207,14 @@ async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[s
         found.append((max(row.slots - row.holding, 0), row))
     if not found:
         return LoopWorker(asked, down=why, selector=tuple(selector))
+    pools = [label for label in selector if label.startswith(f"{worker_placement.POOL_LABEL_KEY}=")]
+    for_pool = r.c.selector.contains(literal(pools, ARRAY(Text))) if pools else true()
+    unplaced = select(func.count()).where(
+        r.c.project_id == project_id, r.c.state == "queued", r.c.pinned_worker_id.is_(None), for_pool
+    )
+    free = max(sum(n for n, _ in found) - (await conn.execute(unplaced)).scalar_one(), 0)
     _, best = max(found, key=lambda pair: (pair[0], -pair[1].id))
-    return LoopWorker(best.name, best.id, best.owner_id, sum(n for n, _ in found), selector=tuple(selector))
+    return LoopWorker(best.name, best.id, best.owner_id, free, selector=tuple(selector))
 
 
 async def loop_worker(conn: AsyncConnection, project_id: int, labels: Sequence[str] = ()) -> LoopWorker:

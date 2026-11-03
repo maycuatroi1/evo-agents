@@ -1,6 +1,7 @@
 """Runs on a provider account's model through the model gateway (``evo_agents.hub.gateway_runs``,
 ``server.gateway_accounts``, ``gateway_leases`` and ``gateway_proxy``), plan model-providers, criteria a3, a4 and a5:
-a dispatch of ``<alias>/<model>`` needs an account the run may use and says why when there is none; only a daemon of
+a dispatch of ``<alias>/<model>`` needs an account the run may use (one of the account pool of the run's agent, whoever
+dispatches it: plan agent-dedicated-pools) and says why when there is none; only a daemon of
 GATEWAY_RUN_AGENT or later claims such a run; its lease carries the hub's route, a run token, the model and the format,
 never a key; the hub's route relays its calls with the run's key of the gateway, for the models of its provider alone,
 until the run leaves the held states; the gateway's usage reaches the run, and the account's figures and listings.
@@ -20,13 +21,13 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import Lease
 from evo_agents.hub.gateway_runs import GATEWAY_RUN_AGENT
 from evo_agents.hub.server.gateway_leases import TOKEN_PREFIX
-from tests.hub.live import sql, table_dump
+from tests.hub.live import database_of, sql, table_dump
 from tests.hub.test_credentials_api import audit_rows, leased, leases_of
 from tests.hub.test_gateway import FakeGateway, _app, poked, settled
 from tests.hub.test_provider_accounts import PROJECT, account, path, sample, stored, written
@@ -76,9 +77,15 @@ def client(hub_db, tmp_path, github, gateway):
 
 
 def provider_account(client, headers, name: str = "or", **extra) -> None:
-    """A provider account of openrouter serving ``auto``, bound to the project, with its connection at the gateway."""
+    """A provider account of openrouter serving ``auto``, bound to the project, with its connection at the gateway, in
+    the account pool of the project's default agent (``tests.hub.test_runs.members``), whose runs these are."""
     written(client, headers, name, account(sample(), models=["auto"], **extra))
     settled(client)
+    db = database_of(client)
+    s, m, ap = tables.secrets, tables.account_pool_members, tables.agent_profiles
+    (pool_id,) = sql(db, select(ap.c.account_pool_id).where(ap.c.handle == PROJECT))[0]
+    (secret_id, owner_id) = sql(db, select(s.c.id, s.c.owner_id).where(s.c.name == name, s.c.deleted_at.is_(None)))[0]
+    sql(db, insert(m).values(pool_id=pool_id, secret_id=secret_id, added_by=owner_id))
 
 
 def new_daemon(client, hub_db, headers, name: str = "mac-mini") -> dict:
@@ -110,7 +117,6 @@ def relay(client, token: str, model: str = MODEL, route: str = "/v1/messages"):
 
 
 def test_gateway_run_dispatch_needs_an_account_it_may_use_and_says_why(client, hub, hub_db):
-    worker = add_worker(client, hub["owner"], "old-mini")  # evo-agents 0.4.0
     refused = dispatch(client, hub["owner"], [2], runtime="claude-code", model=MODEL)
     assert refused.status_code == 422
     assert "no provider account of openrouter that this run may use" in refused.json()["message"]
@@ -123,10 +129,8 @@ def test_gateway_run_dispatch_needs_an_account_it_may_use_and_says_why(client, h
     assert paused.status_code == 422 and f"account {secret_id} is paused" in paused.json()["message"]
     assert client.patch(path("or"), json={"paused": False}, headers=hub["owner"]).status_code == 200
 
-    pinned = dispatch(client, hub["owner"], [2], runtime="claude-code", model=MODEL, worker_id=worker["id"])
-    assert pinned.status_code == 409 and NEW_DAEMON in pinned.json()["message"]
     other = dispatch(client, hub["other"], [2], runtime="claude-code", model=MODEL)
-    assert other.status_code == 422, "another member's account is not theirs to use"
+    assert other.status_code == 201, "the agent's account pool serves its runs, whoever dispatches them"
 
     # opencode reads <provider>/<model> as its own: without an account of that prefix, it is not a gateway model
     plain = dispatch(client, hub["owner"], [4], runtime="opencode", model="openai/gpt-5")
@@ -319,7 +323,8 @@ def test_provider_account_cli_lists_and_shows_provider_accounts(client, hub, tmp
     assert shown.code == 0, shown.err
     assert "Provider account: openrouter (openrouter.ai, openai, 1 models); the gateway: ok." in shown.out
     as_json = run_cli(monkeypatch, capsys, home, "hub", "account", "list", "--json", stdin=io.StringIO())
-    assert json.loads(as_json.out)[0]["gateway"]["models"] == 1
+    (listed,) = [item for item in json.loads(as_json.out) if item["name"] == "or"]
+    assert listed["gateway"]["models"] == 1
 
 
 # Secrecy

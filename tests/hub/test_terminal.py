@@ -35,6 +35,7 @@ from evo_agents.hub.server import terminal
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import SESSION_COOKIE, WEB, csrf_token, hash_token, new_token
 from tests.hub.live import bearer, sql
+from tests.hub.test_credentials_api import claimable
 from tests.hub.test_run_stream import members
 from tests.hub.test_runs import (
     CHECKOUTS,
@@ -49,6 +50,7 @@ from tests.hub.test_runs import (
     beat,
     claim,
     dispatched,
+    join_pool,
     moved,
 )
 
@@ -66,12 +68,16 @@ def client(hub_db, tmp_path, github):
 @pytest.fixture
 def hub(client, github) -> dict:
     """As ``tests.hub.test_run_stream.members``: owner and someone-else writers of evo-agents, reader a reader, the
-    plan rollout pushed; the members' machine-token headers."""
-    return members(client, github)
+    plan rollout pushed; the members' machine-token headers. The project's default agent has an account pool, which
+    its runs need."""
+    headers = members(client, github)
+    claimable(client)
+    return headers
 
 
 def terminal_worker(client, headers, name: str, *, allow: bool = True) -> dict:
-    """A worker of the member ``headers`` names that allows the web terminal (or not), after its first heartbeat."""
+    """A worker of the member ``headers`` names that allows the web terminal (or not), after its first heartbeat: a
+    ready node of the pool of the project's default agent."""
     body = {"name": name, "projects": [PROJECT], "allow_web_terminal": allow, **HOST}
     response = client.post("/v1/workers", json=body, headers=headers)
     assert response.status_code == 201, response.text
@@ -85,13 +91,13 @@ def terminal_worker(client, headers, name: str, *, allow: bool = True) -> dict:
         "checkouts": CHECKOUTS,
     }
     beat(client, worker)
-    return worker
+    return join_pool(client, worker, PROJECT)
 
 
 def held_run(client, hub, name: str = "mac-1", *, step: int = 2, state: str = "interactive", allow: bool = True):
     """A worker of owner and a run of ``step`` it claimed and moved to ``state``."""
     worker = terminal_worker(client, hub["owner"], name, allow=allow)
-    run_id = dispatched(client, hub["owner"], [step], worker_id=worker["id"])[0]["id"]
+    run_id = dispatched(client, hub["owner"], [step])[0]["id"]
     assert claim(client, worker)["id"] == run_id
     if state != "leased":
         moved(client, worker, run_id, state)
@@ -357,7 +363,7 @@ def test_the_browser_end_refuses_with_4403_or_4401(client, hub, hub_db):
 def test_a_run_its_worker_does_not_hold_opens_no_terminal(client, hub, hub_db):
     token = web_session(hub_db, OWNER)
     worker = terminal_worker(client, hub["owner"], "mac-1")
-    queued = dispatched(client, hub["owner"], [2], worker_id=worker["id"])[0]["id"]
+    queued = dispatched(client, hub["owner"], [2])[0]["id"]
     with browser(client, queued, token) as tab:
         say_hello(client, tab, token)
         assert closed(tab) == (

@@ -1,12 +1,13 @@
 """The refresh of an OAuth account's access token when a run is leased its credentials
 (``evo_agents.hub.server.account_refresh``).
 
-The checks the claude-oauth-login plan names for its second step, against a fake token endpoint: an access token with
-time left is leased as it is and the endpoint is not called; one near its end (or past it) is traded for a new one with
-the refresh token, the rotated set (access token, refresh token, end) is stored, sealed, together with the secret's
-value, and the run gets the new access token as CLAUDE_CODE_OAUTH_TOKEN; runs of one account that lease at the same
-time refresh once; a refresh the endpoint refuses leaves the set as it was and leases no token that has ended. Without
-EVO_HUB_TEST_DSN they skip."""
+The checks the claude-oauth-login plan names for its second step, against a fake token endpoint, for an OAuth account
+of the owner's in the account pool of the run's agent, where a run of an agent takes its model account (plan
+agent-dedicated-pools): an access token with time left is leased as it is and the endpoint is not called; one near its
+end (or past it) is traded for a new one with the refresh token, the rotated set (access token, refresh token, end) is
+stored, sealed, together with the secret's value, and the run gets the new access token as CLAUDE_CODE_OAUTH_TOKEN;
+runs of one account that lease at the same time refresh once; a refresh the endpoint refuses leaves the set as it was
+and leases no token that has ended. Without EVO_HUB_TEST_DSN they skip."""
 
 import json
 import secrets
@@ -34,14 +35,15 @@ from evo_agents.hub.server.sealing import Sealed, Sealer, secret_aad
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (fixtures of this module)
     PLAN,
+    account_pool,
     app_key,
     ask,
-    by_name,
     client,
     config,
     hub,
     leased,
     plan_run,
+    pooled,
     step_run,
     worker_of,
 )
@@ -112,7 +114,8 @@ def anthropic(monkeypatch):
 
 
 def add_account(client, hub, anthropic, left: timedelta, name: str = "claude-oauth") -> tuple[str, str]:
-    """An OAuth account whose access token ends in ``left``; (its access token, its refresh token)."""
+    """An OAuth account whose access token ends in ``left``, in the account pool of the project's default agent; (its
+    access token, its refresh token)."""
     access, refresh = sample("sk-ant-oat01-"), sample("sk-ant-ort01-")
     anthropic.valid[refresh] = True
     body = {
@@ -128,7 +131,13 @@ def add_account(client, hub, anthropic, left: timedelta, name: str = "claude-oau
     }
     put = client.put(f"/v1/secrets/{name}", json=body, headers=hub["owner"])
     assert put.status_code == 200, put.text
+    account_pool(client, name)
     return access, refresh
+
+
+def by_name(answer: dict) -> dict:
+    """The leases of an answer by the name of their account of the pool, or their own name."""
+    return {item["name"].removeprefix(pooled("")): item for item in answer["leases"]}
 
 
 def stored(hub_db, client, name: str = "claude-oauth") -> tuple[dict, str, datetime]:
@@ -166,7 +175,7 @@ def test_an_access_token_with_time_left_is_leased_as_it_is_and_the_endpoint_is_n
 ):
     access, _ = add_account(client, hub, anthropic, timedelta(hours=6))
     worker, run_id = run_of(client, hub)
-    lease = {item["name"]: item for item in leased(client, worker, run_id)["leases"]}["claude-oauth"]
+    lease = by_name(leased(client, worker, run_id))["claude-oauth"]
     assert (lease["env_var"], lease["value"]) == (VAR, access)
     assert anthropic.asked == []
 
@@ -178,7 +187,7 @@ def test_an_access_token_near_its_end_is_refreshed_and_the_rotated_set_is_stored
     access, refresh = add_account(client, hub, anthropic, left)
     worker, run_id = run_of(client, hub)
     answer = leased(client, worker, run_id)
-    lease = {item["name"]: item for item in answer["leases"]}["claude-oauth"]
+    lease = by_name(answer)["claude-oauth"]
 
     assert len(anthropic.asked) == 1
     assert anthropic.asked[0]["refresh_token"] == refresh and anthropic.asked[0]["grant_type"] == "refresh_token"
@@ -194,8 +203,21 @@ def test_an_access_token_near_its_end_is_refreshed_and_the_rotated_set_is_stored
     assert datetime.fromisoformat(lease["expires_at"]) == ends
 
     # asking again finds a good token: no second call
-    again = {item["name"]: item for item in leased(client, worker, run_id)["leases"]}["claude-oauth"]
+    again = by_name(leased(client, worker, run_id))["claude-oauth"]
     assert again["value"] == new_access and again["id"] == lease["id"] and len(anthropic.asked) == 1
+
+
+def test_an_account_whose_access_token_ended_still_takes_a_run_and_its_lease_refreshes_it(
+    client, hub, hub_db, anthropic
+):
+    """An account of the agent's pool left idle past its access token's end (about eight hours) is no reason for the
+    run to wait: the claim takes it (``pool_accounts.usable_member``) and the lease refreshes the token first."""
+    access, refresh = add_account(client, hub, anthropic, timedelta(minutes=1))
+    sql(hub_db, update(tables.secrets).values(expires_at=func.now() - timedelta(hours=1)))
+    worker, run_id = run_of(client, hub)
+    lease = by_name(leased(client, worker, run_id))["claude-oauth"]
+    assert [asked["refresh_token"] for asked in anthropic.asked] == [refresh]
+    assert lease["value"] == anthropic.last["access_token"] != access
 
 
 def test_runs_of_one_account_that_lease_together_refresh_once(client, hub, hub_db, anthropic):
@@ -205,7 +227,7 @@ def test_runs_of_one_account_that_lease_together_refresh_once(client, hub, hub_d
     runs = [step_run(client, hub["owner"], repo, worker) for repo in ("evo-agents", "lumen-kb-docs")]
     with ThreadPoolExecutor(2) as pool:
         answers = list(pool.map(lambda run_id: leased(client, worker, run_id), runs))
-    values = {{item["name"]: item for item in answer["leases"]}["claude-oauth"]["value"] for answer in answers}
+    values = {by_name(answer)["claude-oauth"]["value"] for answer in answers}
     assert len(anthropic.asked) == 1
     assert values == {anthropic.last["access_token"]}
 
@@ -217,14 +239,14 @@ def test_a_refresh_the_endpoint_refuses_leaves_the_set_and_leases_no_token_that_
     anthropic.valid.clear()  # the refresh token was revoked
     worker, run_id = run_of(client, hub)
     # still good for a minute: it is leased, as it is
-    first = {item["name"]: item for item in leased(client, worker, run_id)["leases"]}["claude-oauth"]
+    first = by_name(leased(client, worker, run_id))["claude-oauth"]
     assert first["value"] == access and len(anthropic.asked) == 1
     held_before = stored(hub_db, client)[0]
     assert held_before["refresh_token"] == refresh
 
     sql(hub_db, update(tables.secrets).values(expires_at=func.now() - timedelta(minutes=1)))
     answer = leased(client, worker, run_id)
-    assert "claude-oauth" not in {item["name"] for item in answer["leases"]}
+    assert "claude-oauth" not in by_name(answer)
     assert len(anthropic.asked) == 2
     assert stored(hub_db, client)[0] == held_before
     assert access not in caplog.text and refresh not in caplog.text
@@ -234,7 +256,7 @@ def test_an_endpoint_that_is_down_is_no_reason_to_lose_the_set(client, hub, hub_
     access, refresh = add_account(client, hub, anthropic, timedelta(minutes=1))
     anthropic.down = True
     worker, run_id = run_of(client, hub)
-    lease = {item["name"]: item for item in leased(client, worker, run_id)["leases"]}["claude-oauth"]
+    lease = by_name(leased(client, worker, run_id))["claude-oauth"]
     assert lease["value"] == access and stored(hub_db, client)[0]["refresh_token"] == refresh
 
 
@@ -323,7 +345,7 @@ def test_an_account_picked_by_hand_whose_refresh_token_is_refused_is_marked_and_
     add_account(client, hub, anthropic, timedelta(hours=2), "oauth-b")
     anthropic.valid.clear()
     worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
-    body = {"plan_id": PLAN, "worker_id": worker["id"], "account": "oauth-a"}
+    body = {"plan_id": PLAN, "account": "oauth-a"}
     assert client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"]).status_code == 201
     run_id = claim(client, worker)["id"]
     expire(monkeypatch)

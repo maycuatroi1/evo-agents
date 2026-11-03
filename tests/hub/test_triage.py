@@ -101,7 +101,7 @@ def root_of(client, hub, chat_id: int, root_id: int) -> dict:
 def test_a_failed_step_run_opens_a_thread_with_the_facts_that_mentions_the_agent_and_the_notice_links_to_it(
     client, hub, hub_db
 ):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker)
     ((chat_id, root_id, cause, inferred, agent_run),) = row_of(hub_db, run_id)
     assert (cause, inferred) == ("credentials", False) and agent_run is not None
@@ -132,7 +132,7 @@ def test_a_failed_step_run_opens_a_thread_with_the_facts_that_mentions_the_agent
 
 
 def test_a_cause_the_hub_guessed_is_said_so_and_a_cause_of_work_sends_no_notice(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker, cause=None, error="verify command `pytest` exited 1")
     ((chat_id, root_id, cause, inferred, _),) = row_of(hub_db, run_id)
     assert inferred is True and cause is not None
@@ -143,7 +143,7 @@ def test_a_cause_the_hub_guessed_is_said_so_and_a_cause_of_work_sends_no_notice(
 def test_the_chat_of_the_project_is_used_again_and_each_run_has_one_thread_however_often_it_is_handled(
     client, hub, hub_db
 ):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     first = failed_step(client, hub, worker, 2)
     second = failed_step(client, hub, worker, 4)
     (chat_a, root_a, *_), (chat_b, root_b, *_) = row_of(hub_db, first)[0], row_of(hub_db, second)[0]
@@ -160,7 +160,7 @@ def test_the_chat_of_the_project_is_used_again_and_each_run_has_one_thread_howev
 
 
 def test_a_failed_chat_run_of_triage_opens_no_thread(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker)
     ((_, _, _, _, agent_run),) = row_of(hub_db, run_id)
     spec = claim(client, worker)
@@ -170,7 +170,7 @@ def test_a_failed_chat_run_of_triage_opens_no_thread(client, hub, hub_db):
 
 
 def test_a_failed_plan_run_opens_a_thread_too(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     made = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"]).json()
     assert claim(client, worker)["id"] == made["id"]
     moved(client, worker, made["id"], "running", "failed", error="the agent stopped")
@@ -181,7 +181,7 @@ def test_a_failed_plan_run_opens_a_thread_too(client, hub, hub_db):
 
 
 def test_what_the_chat_runs_cost_holds_no_triage_run_back(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     failed_step(client, hub, worker, 2)
     r = tables.runs
     sql(hub_db, update(r).values(usage={"total_cost_usd": 100.0}).where(r.c.kind == "chat"))
@@ -194,7 +194,7 @@ def test_what_the_chat_runs_cost_holds_no_triage_run_back(client, hub, hub_db):
 
 
 def test_a_run_stopped_on_accounts_none_of_which_is_ready_asks_no_agent_and_says_when_one_is(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = stopped_on_accounts(client, hub, hub_db, worker, 90, 30)
     ((chat_id, root_id, cause, _, agent_run),) = row_of(hub_db, run_id)
     assert (cause, agent_run) == ("rate_limit", None)
@@ -211,7 +211,7 @@ def test_a_run_stopped_on_accounts_none_of_which_is_ready_asks_no_agent_and_says
 
 
 def test_a_run_stopped_on_accounts_one_of_which_is_ready_again_asks_the_agent(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = stopped_on_accounts(client, hub, hub_db, worker, 90, None)
     ((chat_id, root_id, _, _, agent_run),) = row_of(hub_db, run_id)
     assert agent_run is not None
@@ -221,7 +221,7 @@ def test_a_run_stopped_on_accounts_one_of_which_is_ready_again_asks_the_agent(cl
 
 def test_a_project_with_triage_off_gets_the_notice_it_always_had(client, hub, hub_db):
     sql(hub_db, update(tables.projects).values(triage_enabled=False))
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker)
     assert row_of(hub_db, run_id) == []
     assert (count(hub_db, tables.chats), count(hub_db, tables.triage_chats)) == (0, 0)
@@ -234,7 +234,7 @@ def test_a_thread_that_cannot_open_leaves_the_run_failed_with_the_old_notice(cli
         raise RuntimeError("no thread today")
 
     monkeypatch.setattr(triage, "open_thread", broken)
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker)
     r, n = tables.runs, tables.notifications
     assert sql(hub_db, select(r.c.state).where(r.c.id == run_id)) == [("failed",)]
@@ -244,7 +244,7 @@ def test_a_thread_that_cannot_open_leaves_the_run_failed_with_the_old_notice(cli
 
 @pytest.mark.parametrize("kind", ["review", "judge", "chat", "local"])
 def test_a_run_of_another_kind_opens_no_thread(client, hub, hub_db, kind):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker)
     sql(hub_db, tables.run_triage.delete())
 
@@ -257,7 +257,7 @@ def test_a_run_of_another_kind_opens_no_thread(client, hub, hub_db, kind):
 
 
 def test_the_candidates_of_a_failed_run_say_whether_the_cause_was_guessed_and_where_its_thread_is(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     said = failed_step(client, hub, worker)
     ((chat_id, root_id, *_),) = row_of(hub_db, said)
     url = f"/v1/projects/{PROJECT}/runs/{said}/rerun-candidates"
@@ -271,7 +271,7 @@ def test_the_candidates_of_a_failed_run_say_whether_the_cause_was_guessed_and_wh
 
 
 def test_the_candidates_of_a_run_whose_cause_the_hub_guessed_say_so(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     guessed = failed_step(client, hub, worker, cause=None, error="verify command `pytest` exited 1")
     answer = client.get(f"/v1/projects/{PROJECT}/runs/{guessed}/rerun-candidates", headers=hub["owner"]).json()
     assert answer["cause_inferred"] is True and answer["triage"] is not None
@@ -312,7 +312,7 @@ def reaper_pass(client) -> dict:
 
 
 def test_a_stale_run_whose_worker_heartbeats_opens_one_thread_with_the_diagnosis(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
     quiet_for(hub_db, run_id, triage.STALE_MINUTES - 5)
     assert stale_pass(client) == 0 and row_of(hub_db, run_id) == []  # not quiet long enough yet
@@ -343,7 +343,7 @@ def test_a_stale_run_whose_worker_heartbeats_opens_one_thread_with_the_diagnosis
 
 
 def test_a_stale_run_on_a_worker_that_sends_no_heartbeat_or_waiting_opens_no_thread(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
     quiet_for(hub_db, run_id, triage.STALE_MINUTES + 5)
     w, r = tables.workers, tables.runs
@@ -356,7 +356,7 @@ def test_a_stale_run_on_a_worker_that_sends_no_heartbeat_or_waiting_opens_no_thr
 
 
 def test_a_stale_run_of_a_project_with_triage_off_opens_no_thread(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
     quiet_for(hub_db, run_id, triage.STALE_MINUTES + 5)
     p = tables.projects
@@ -367,7 +367,7 @@ def test_a_stale_run_of_a_project_with_triage_off_opens_no_thread(client, hub, h
 def test_a_run_lost_on_its_last_attempt_opens_a_thread_with_the_diagnosis_and_one_with_attempts_left_none(
     client, hub, hub_db
 ):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     r = tables.runs
     lapsed = func.now() - timedelta(minutes=1)
     early = running_step(client, hub, worker, 2)

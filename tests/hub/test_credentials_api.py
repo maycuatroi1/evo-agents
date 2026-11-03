@@ -8,7 +8,8 @@ is covered by an https url_prefix; a run that ends and a run the reaper ends mak
 /installation/token; revoking a worker revokes every lease still out; and no audit row holds a value. Around them: the
 token covers the run's repos alone, asking again keeps the leases until the GitHub token nears its end, the worker
 gives its leases back, a GitHub outage leaves the revocation to the reaper, the hub without its key or its App says
-why, and the pruning drops the sealed tokens past their end."""
+why, and the pruning drops the sealed tokens past their end. A run's model account is one of the account pool of its
+agent (plan agent-dedicated-pools), which ``account_pool`` gives the project's default agent here."""
 
 import functools
 import json
@@ -26,7 +27,7 @@ if not pg.DSN:
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.credentials import GITHUB_TOKEN_REFRESH_SECONDS, Lease
@@ -34,6 +35,7 @@ from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.credentials import GITHUB_GIT_USERNAME
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_plans import registration as plans_registration
@@ -170,9 +172,50 @@ def git_secret(client, headers, name: str, url_prefix: str, value: str, **extra)
     put_secret(client, headers, name, {"kind": "git", "url_prefix": url_prefix, "value": value, **extra})
 
 
+POOL = "main"
+
+
+def account_pool(client, *names: str, owner: str = OWNER, handle: str = PROJECT, pool: str = POOL) -> None:
+    """Member ``owner``'s accounts ``names`` in account pool ``pool`` of the project (each made once), the pool
+    of agent ``handle`` (the project's default agent by default): a run of the agent is dispatched and claimed only
+    with a pool, and is leased its accounts alone for a model variable, named ``@pool.<pool>:<name>``
+    (``pool_accounts``)."""
+    db = live.database_of(client)
+    u, p, ap, m, s = tables.users, tables.projects, tables.account_pools, tables.account_pool_members, tables.secrets
+    user_id = sql(db, select(u.c.id).where(u.c.login == owner))[0][0]
+    project_id = sql(db, select(p.c.id).where(p.c.name == PROJECT))[0][0]
+    found = sql(db, select(ap.c.id).where(ap.c.project_id == project_id, ap.c.name == pool))
+    made = insert(ap).values(project_id=project_id, name=pool, created_by=user_id).returning(ap.c.id)
+    pool_id = found[0][0] if found else sql(db, made)[0][0]
+    for name in names:
+        live_secret = (s.c.owner_id == user_id, s.c.name == name, s.c.deleted_at.is_(None))
+        secret_id = sql(db, select(s.c.id).where(*live_secret))[0][0]
+        if not sql(db, select(m.c.secret_id).where(m.c.pool_id == pool_id, m.c.secret_id == secret_id)):
+            sql(db, insert(m).values(pool_id=pool_id, secret_id=secret_id, added_by=user_id))
+    profiles = tables.agent_profiles
+    of_agent = (profiles.c.project_id == project_id, profiles.c.handle == handle)
+    sql(db, update(profiles).where(*of_agent).values(account_pool_id=pool_id))
+
+
+def pooled(name: str, pool: str = POOL) -> str:
+    """The name of the lease of account ``name`` of account pool ``pool``."""
+    return f"@pool.{pool}:{name}"
+
+
+def claimable(client, handle: str = PROJECT) -> None:
+    """Agent ``handle`` (the project's default agent by default) with an account pool, unless it has one already
+    (``give_account_pool``): its runs are dispatched and claimed only then. Its account is the hub admin's, apart from
+    the members' accounts, and does not open with this hub's key: no run is leased it."""
+    db = live.database_of(client)
+    p, ap = tables.projects, tables.agent_profiles
+    held = select(ap.c.account_pool_id).join_from(ap, p, p.c.id == ap.c.project_id)
+    if sql(db, held.where(p.c.name == PROJECT, ap.c.handle == handle))[0][0] is None:
+        give_account_pool(db, PROJECT, handle, ADMIN)
+
+
 def step_run(client, headers, repo: str, worker: dict, **extra) -> int:
-    """A run of the step on ``repo``, pinned to ``worker`` and claimed by it."""
-    body = {"plan_id": PLAN, "steps": [STEPS[repo]], "worker_id": worker["id"], **extra}
+    """A run of the step on ``repo``, claimed by ``worker`` (a node of the pool of the run's agent)."""
+    body = {"plan_id": PLAN, "steps": [STEPS[repo]], **extra}
     response = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=headers)
     assert response.status_code == 201, response.text
     run_id = response.json()[0]["id"]
@@ -181,8 +224,8 @@ def step_run(client, headers, repo: str, worker: dict, **extra) -> int:
 
 
 def plan_run(client, headers, worker: dict) -> int:
-    """A plan run over the four repos, pinned to ``worker`` and claimed by it."""
-    body = {"plan_id": PLAN, "worker_id": worker["id"]}
+    """A plan run over the four repos, claimed by ``worker`` (a node of the pool of the project's default agent)."""
+    body = {"plan_id": PLAN}
     response = client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=headers)
     assert response.status_code == 201, response.text
     run = claim(client, worker)
@@ -282,6 +325,7 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     install(github, "evo-agents", "agent-skills")
     oauth, glpat, theirs = sample("oauth-"), sample("glpat-"), sample("other-")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
+    account_pool(client, "claude-oauth")  # the model account comes from the account pool of the run's agent
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, glpat)
     env_secret(client, hub["other"], "openai", "OPENAI_API_KEY", theirs)  # another member's, for the same project
     worker = worker_of(client, hub["owner"], "mac-mini")
@@ -291,8 +335,8 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
 
     answer = leased(client, worker, run_id)
     leases = by_name(answer)
-    assert set(leases) == {"claude-oauth", "gitlab-kb", f"github-app:{MINE}"}
-    env, git, app = leases["claude-oauth"], leases["gitlab-kb"], leases[f"github-app:{MINE}"]
+    assert set(leases) == {pooled("claude-oauth"), "gitlab-kb", f"github-app:{MINE}"}
+    env, git, app = leases[pooled("claude-oauth")], leases["gitlab-kb"], leases[f"github-app:{MINE}"]
     assert (env["kind"], env["provider"], env["env_var"], env["value"]) == (
         "env",
         "secret",
@@ -340,8 +384,9 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     assert Sealer(config.secrets_key).open(Sealed(sealed, nonce, key_id), lease_aad(lease_id)) == app["value"]
 
     repos = "evo-agents,lumen-identity,lumen-kb-docs,notes"
-    secrets = secret_ids(hub_db, "claude-oauth", "gitlab-kb")  # by id: their names are the owner's
-    target = f"{PROJECT}/{PLAN} run:{run_id} secrets={secrets} github-app={MINE} repos={repos}"
+    secrets = secret_ids(hub_db, "gitlab-kb")  # by id: their names are the owner's
+    account = f"{secret_ids(hub_db, 'claude-oauth')}@pool.{POOL}"  # the pool's account, by id and pool
+    target = f"{PROJECT}/{PLAN} run:{run_id} secrets={secrets} github-app={MINE} repos={repos} agent-accounts={account}"
     assert audit_rows(hub_db, "credential.lease") == [(target, OWNER, PROJECT, True)]
 
 
@@ -350,6 +395,7 @@ def test_a_repo_of_an_account_the_owner_cannot_push_to_gets_no_app_token(client,
     gets no token unless the run's owner may push to that repo on GitHub."""
     github.install(THEIRS, "lumen-identity")
     github.accounts[OWNER] = OWNER_ID
+    claimable(client)
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "lumen-identity", worker)
 
@@ -388,6 +434,7 @@ def test_an_ssh_origin_on_gitlab_is_covered_by_an_https_url_prefix_the_longest_f
         "https://gitlab.lumenops.example/fir-gb-lumen/lumen-cloud-agents",
         sample(),
     )
+    claimable(client)
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "lumen-kb-docs", worker)
 
@@ -414,6 +461,7 @@ def test_an_ssh_origin_on_gitlab_is_covered_by_an_https_url_prefix_the_longest_f
 
 
 def test_a_secret_bound_to_a_worker_goes_to_that_worker_alone(client, hub, hub_db):
+    claimable(client)
     box, desk = worker_of(client, hub["owner"], "box"), worker_of(client, hub["owner"], "desk")
     values = {name: sample(f"{name}-") for name in ("everywhere", "box-api", "box-only", "stale", "theirs")}
     env_secret(client, hub["owner"], "everywhere", "API_TOKEN", values["everywhere"])
@@ -442,6 +490,7 @@ def test_a_secret_bound_to_a_worker_goes_to_that_worker_alone(client, hub, hub_d
 
 def test_another_workers_run_and_a_run_that_ended_are_refused(client, hub, hub_db):
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
     box, desk = worker_of(client, hub["owner"], "box"), worker_of(client, hub["owner"], "desk")
     run_id = step_run(client, hub["owner"], "notes", box)
     for response in (ask(client, desk["headers"], run_id), give_back(client, desk["headers"], run_id)):
@@ -469,6 +518,8 @@ def test_a_member_whose_writer_grant_goes_gets_no_lease_and_loses_the_ones_out(c
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
     env_secret(client, hub["other"], "their-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
+    account_pool(client, "their-oauth", owner=OTHER)  # the pool's next turn goes to someone-else's run
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
     run_id = step_run(client, hub["owner"], "evo-agents", worker)
     token = by_name(leased(client, worker, run_id))[f"github-app:{MINE}"]["value"]
@@ -500,7 +551,7 @@ def test_a_member_whose_writer_grant_goes_gets_no_lease_and_loses_the_ones_out(c
     put = {"role": "writer", "max_level": "internal"}
     assert client.put(grant, json=put, headers=hub["admin"]).status_code == 200
     again = by_name(leased(client, worker, run_id))
-    assert set(again) == {"claude-oauth", f"github-app:{MINE}"}
+    assert set(again) == {pooled("claude-oauth"), f"github-app:{MINE}"}
     assert client.put(grant, json={**put, "role": "reader"}, headers=hub["admin"]).status_code == 200
     assert [row[4] for row in leases_of(hub_db, run_id)] == [True] * 4
     assert audit_rows(hub_db, "credential.revoke")[-1][0].endswith(" by=grant-reader")
@@ -512,6 +563,7 @@ def test_a_member_whose_writer_grant_goes_gets_no_lease_and_loses_the_ones_out(c
 
 
 def test_machine_tokens_and_web_sessions_get_403_and_a_daemon_without_the_protocol_426(client, hub, github, hub_db):
+    claimable(client)
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "notes", worker)
     session = web_sign_in(client, github, Account(OWNER, OWNER_ID))
@@ -532,6 +584,7 @@ def test_machine_tokens_and_web_sessions_get_403_and_a_daemon_without_the_protoc
 def test_asking_again_keeps_the_leases_until_the_github_token_nears_its_end(client, hub, github, hub_db):
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "evo-agents", worker)
     first = by_name(leased(client, worker, run_id))
@@ -548,7 +601,7 @@ def test_asking_again_keeps_the_leases_until_the_github_token_nears_its_end(clie
     renewed = by_name(leased(client, worker, run_id))
     old, new = first[f"github-app:{MINE}"], renewed[f"github-app:{MINE}"]
     assert new["id"] != old["id"] and new["value"] != old["value"]
-    assert renewed["claude-oauth"]["id"] == first["claude-oauth"]["id"]
+    assert renewed[pooled("claude-oauth")]["id"] == first[pooled("claude-oauth")]["id"]
     assert github.covers(old["value"], MINE, "evo-agents") and github.covers(new["value"], MINE, "evo-agents")
     assert len(github.calls("/app/installations/1001/access_tokens")) == 2
     assert [row[4] for row in leases_of(hub_db, run_id)] == [False, False, False]
@@ -558,6 +611,7 @@ def test_asking_again_keeps_the_leases_until_the_github_token_nears_its_end(clie
 def test_the_worker_gives_back_its_leases_and_github_revokes_the_token(client, hub, github, hub_db):
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, sample("glpat-"))
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = plan_run(client, hub["owner"], worker)
@@ -589,6 +643,7 @@ def test_a_run_that_ends_or_waits_in_review_gives_back_its_leases_and_github_rev
 ):
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
     worker = worker_of(client, hub["owner"], "mac-mini")
     tokens = []
     for end in ("failed", "review"):
@@ -613,6 +668,7 @@ def test_the_reaper_revokes_the_token_of_a_run_whose_lease_ran_out_and_what_gith
     client, hub, github, hub_db
 ):
     install(github, "evo-agents")
+    claimable(client)
     worker = worker_of(client, hub["owner"], "mac-mini")
     lost = step_run(client, hub["owner"], "evo-agents", worker)
     token = by_name(leased(client, worker, lost))[f"github-app:{MINE}"]["value"]
@@ -645,6 +701,7 @@ def test_the_reaper_revokes_the_token_of_a_run_whose_lease_ran_out_and_what_gith
 def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hub_db):
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+    account_pool(client, "claude-oauth")
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, sample("glpat-"))
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
     on_github = step_run(client, hub["owner"], "evo-agents", worker)
@@ -654,6 +711,8 @@ def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hu
     # a run that left the worker without a move, as an older hub could leave one, keeps its leases out
     runs = tables.runs
     sql(hub_db, update(runs).values(state="done", finished_at=func.now()).where(runs.c.id == on_github))
+    # pinned to the worker, as the hub pins a chat run to its node (a dispatch names none)
+    sql(hub_db, update(runs).values(pinned_worker_id=worker["id"]).where(runs.c.id == on_gitlab))
 
     revoked = client.post(f"/v1/workers/{worker['id']}/revoke", headers=hub["owner"])
     assert revoked.status_code == 200, revoked.text
@@ -679,6 +738,7 @@ def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hu
 
 def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github, hub_db):
     install(github, "evo-agents")
+    claimable(client)
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "evo-agents", worker)
     leased(client, worker, run_id)
@@ -710,6 +770,7 @@ def test_without_the_secrets_key_nothing_is_leased_and_every_repo_says_why(hub_d
     install(github, "evo-agents")
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         hub = members(client, github)
+        claimable(client)
         worker = worker_of(client, hub["owner"], "mac-mini")
         run_id = plan_run(client, hub["owner"], worker)
         answer = leased(client, worker, run_id)
@@ -726,10 +787,11 @@ def test_without_the_github_app_the_github_repos_are_missing_with_its_variables(
         assert client.app.state.github_app is None
         hub = members(client, github)
         env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", sample())
+        account_pool(client, "claude-oauth")
         worker = worker_of(client, hub["owner"], "mac-mini")
         run_id = step_run(client, hub["owner"], "evo-agents", worker)
         answer = leased(client, worker, run_id)
-    assert list(by_name(answer)) == ["claude-oauth"]
+    assert list(by_name(answer)) == [pooled("claude-oauth")]
     ((origin, reason),) = missing(answer).values()
     assert origin == ORIGINS["evo-agents"]
     assert "no GitHub App" in reason and "EVO_HUB_GITHUB_APP_ID, EVO_HUB_GITHUB_APP_PRIVATE_KEY" in reason
@@ -743,6 +805,7 @@ def test_neither_the_audit_nor_a_log_record_nor_a_table_holds_a_value(client, hu
     install(github, "evo-agents")
     values = [sample("oauth-"), sample("glpat-")]
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", values[0])
+    account_pool(client, "claude-oauth")
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, values[1])
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = plan_run(client, hub["owner"], worker)
@@ -757,7 +820,8 @@ def test_neither_the_audit_nor_a_log_record_nor_a_table_holds_a_value(client, hu
     # a hub admin reads the audit, and a secret's name is its owner's alone, as GET .../runs/{id}/credentials says
     for name in ("claude-oauth", "gitlab-kb"):
         assert name not in trail.text and name not in revokes.text, "the audit names a secret by its name"
-    assert f"secrets={secret_ids(hub_db, 'claude-oauth', 'gitlab-kb')} " in trail.text
+    assert f"secrets={secret_ids(hub_db, 'gitlab-kb')} " in trail.text
+    assert f"agent-accounts={secret_ids(hub_db, 'claude-oauth')}@pool.{POOL}" in trail.text
 
     assert {"credentials leased", "credentials given back"} <= {record.getMessage() for record in caplog.records}
     logged = caplog.text + "\n".join(f"{record.getMessage()} {vars(record)!r}" for record in caplog.records)
@@ -776,9 +840,8 @@ ELSEWHERE = "lumen-ops"  # another project of the owner's
 def resolver_run(client, hub, worker: dict, request: dict) -> tuple[int, dict]:
     """A plan run of the owner's, claimed and running on ``worker``, that asked for ``request``: (its id, the
     decision the ask answered with)."""
-    dispatched = client.post(
-        f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN, "worker_id": worker["id"]}, headers=hub["owner"]
-    )
+    claimable(client)
+    dispatched = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"])
     assert dispatched.status_code == 201, dispatched.text
     run_id = claim(client, worker)["id"]
     moved(client, worker, run_id, "running", session_id="0199a3c1-0000-7000-8000-00000000000e")

@@ -43,7 +43,6 @@ from tests.hub.test_strategist_agent import (  # noqa: F401
     enable_strategist,
     hub,
     listed,
-    owners_worker,
     strategist_core,
 )
 from tests.hub.test_value_check import NUMBER_KEY, add_key, checked, project_id, push
@@ -140,11 +139,10 @@ def test_canvas_baseline_schedule_takes_the_config_zone_else_the_charters_else_u
         return client.portal.call(work)
 
     assert zone_of() == (WEEKDAYS.index("friday"), "16:00", "UTC", "utc")  # the defaults
-    worker = owners_worker(client, hub)
     body = {"window": {"start": "22:00", "end": "06:00", "timezone": "Asia/Ho_Chi_Minh"}}
     owner = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == "owner"))[0][0]
     charter = {"project_id": project_id(hub_db), "revision": 1, "body": body, "created_by": owner}
-    sql(hub_db, insert(tables.charters).values(**charter, worker_id=worker["id"]))
+    sql(hub_db, insert(tables.charters).values(**charter))
     assert zone_of()[2:] == ("Asia/Ho_Chi_Minh", "charter")
     due_now(client, hub, timezone="Europe/Berlin", weekday="monday", time="09:30")
     assert zone_of() == (0, "09:30", "Europe/Berlin", "config")

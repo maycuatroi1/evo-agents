@@ -306,8 +306,9 @@ def account_row(db, name: str) -> tuple:
 
 
 def value_a_run_gets(hub, worker: dict, name: str) -> tuple[int, str]:
+    """(a run's id, the value of account ``name`` it was leased), from the account pool of the run's agent."""
     run_id = leases_api.step_run(hub.client, hub.headers["owner"], "evo-agents", worker)
-    value = leases_api.by_name(leases_api.leased(hub.client, worker, run_id))[name]["value"]
+    value = leases_api.by_name(leases_api.leased(hub.client, worker, run_id))[leases_api.pooled(name)]["value"]
     assert report(hub.client, worker, run_id, "failed", error="done").status_code == 200
     return run_id, value
 
@@ -333,6 +334,7 @@ def test_login_adds_an_account_and_renews_its_token_keeping_the_rest(hub, monkey
     bound = (secret["kind"], secret["env_var"], secret["projects"], secret["workers"])
     assert bound == ("env", VAR, [PROJECT], ["mac-mini"])
     assert secret["expires_at"].startswith(f"{setup_token.default_end(datetime.now(UTC).date())}T00:00:00")
+    leases_api.account_pool(hub.client, "claude-a")  # where a run of an agent takes its model account
     run_id, value = value_a_run_gets(hub, worker, "claude-a")
     assert value == first
 

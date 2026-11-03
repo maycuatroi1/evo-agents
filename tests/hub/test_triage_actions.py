@@ -1,8 +1,8 @@
 """What the agent of a triage thread does on its own (``evo_agents.hub.server.triage_actions``), as criteria a5 and a7 of
-the plan run-failure-triage name them: it reruns the failed step and edits the plan of the failed run inside the frame
-the hub enforces, each act leaves a ``Decision:`` line in the thread and an audit row, and what is outside the frame is
-refused: a step that is done, a clause of the verify dropped, a chain of more than two reruns. What the chat's runs
-cost refuses nothing."""
+the plan run-failure-triage name them: it reruns the failed step (on the pool of its agent: nobody picks the machine)
+and edits the plan of the failed run inside the frame the hub enforces, each act leaves a ``Decision:`` line in the
+thread and an audit row, and what is outside the frame is refused: a step that is done, a clause of the verify dropped,
+a chain of more than two reruns. What the chat's runs cost refuses nothing."""
 
 from __future__ import annotations
 
@@ -56,12 +56,12 @@ def audited(hub_db, action: str) -> list[str]:
 
 
 def setup(client, hub, hub_db, cause="missing_tool", key=2, machine="mac-mini", **kw):
-    worker = chat_worker(client, hub["owner"], machine, slots=4)
+    worker = chat_worker(client, hub["owner"], machine, slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker, key, cause=cause, **kw)
     return worker, run_id, agent_of(client, worker, run_id, hub_db)
 
 
-def test_triage_rerun_runs_the_failed_step_again_on_its_worker_with_a_decision_line_and_an_audit_row(
+def test_triage_rerun_runs_the_failed_step_again_on_its_agents_pool_with_a_decision_line_and_an_audit_row(
     client, hub, hub_db
 ):
     worker, run_id, agent = setup(client, hub, hub_db)
@@ -69,8 +69,9 @@ def test_triage_rerun_runs_the_failed_step_again_on_its_worker_with_a_decision_l
     assert done.status_code == 201, done.text
     new_id = done.json()["run_id"]
     r = tables.runs
-    assert sql(hub_db, select(r.c.parent_run_id, r.c.state, r.c.pinned_worker_id).where(r.c.id == new_id)) == [
-        (run_id, "queued", worker["id"])
+    columns = (r.c.parent_run_id, r.c.state, r.c.pinned_worker_id, r.c.selector)
+    assert sql(hub_db, select(*columns).where(r.c.id == new_id)) == [
+        (run_id, "queued", None, [f"pool=agent-{PROJECT}"])  # any ready node of the pool, nobody picks one
     ]
     lines = said(client, hub, hub_db, run_id)
     assert lines[-1].startswith("Decision: ran run #") and f"run #{new_id}" in lines[-1]
@@ -100,7 +101,7 @@ def test_triage_rerun_of_a_cause_with_no_policy_or_a_guess_the_agent_did_not_con
 
 
 def test_triage_rerun_is_for_the_agent_of_a_chat_run_only(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     step_run = dispatched(client, hub["owner"], [2])[0]["id"]
     assert claim(client, worker)["id"] == step_run
     assert rerun(client, worker, step_run).status_code == 404
@@ -259,10 +260,11 @@ def test_triage_rerun_after_costly_chat_runs_is_not_refused(client, hub, hub_db)
     assert len(audited(hub_db, "run.triage_rerun")) == 1
 
 
-def test_triage_rerun_on_a_worker_the_owner_does_not_have_is_refused(client, hub, hub_db):
+def test_triage_rerun_that_names_a_worker_is_refused_the_hub_places_it_on_the_agents_pool(client, hub, hub_db):
     worker, run_id, agent = setup(client, hub, hub_db, cause="runtime")
-    refused = rerun(client, worker, agent, **{"worker": "no-such-machine"})
-    assert refused.status_code == 422 and "no worker no-such-machine" in refused.json()["message"]
+    refused = rerun(client, worker, agent, **{"worker": worker["name"]})
+    assert refused.status_code == 422 and "worker cannot be set" in refused.text, refused.text
+    assert audited(hub_db, "run.triage_rerun") == []
 
 
 # The thread of a stale run (plan hub-attention-runtime, step 5): its agent asks the worker to stop the run, then runs
@@ -274,7 +276,7 @@ def cancel(client, holder, agent_run: int, reason="it said nothing for an hour")
 
 
 def test_triage_cancel_asks_the_worker_of_a_stale_run_to_stop_it_then_rerun_runs_it_again(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
     quiet_for(hub_db, run_id, 60)
     assert stale_pass(client) == 1

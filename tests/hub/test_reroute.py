@@ -1,6 +1,7 @@
 """A run whose worker lacks a program (``evo_agents.hub.server.runs.service.reroute``): it goes to the next worker with
 no failure and no thread, and when none is left its triage agent stands on a worker it was tried on, installs the
-program there and runs it again (``triage._install_worker``, ``triage_actions``)."""
+program there and runs it again (``triage._install_worker``, ``triage_actions``), on its agent's pool: nobody picks
+the machine of the rerun (plan agent-dedicated-pools)."""
 
 from __future__ import annotations
 
@@ -14,9 +15,10 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
+from tests.hub import live
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker
-from tests.hub.test_runs import PLAN, PROJECT, claim, client, dispatched, hub, moved, notices, report  # noqa: F401
+from tests.hub.test_runs import PLAN, PROJECT, claim, client, dispatched, hub, moved, notices, report, set_run  # noqa: F401
 from tests.hub.test_shared_workers import share
 from tests.hub.test_triage import count, root_of, row_of
 from tests.hub.test_triage_actions import agent_of, rerun
@@ -29,7 +31,9 @@ PROSE = (
 
 
 def workers(client, headers, *names: str) -> list[dict]:
-    return [chat_worker(client, headers, name, slots=4) for name in names]
+    """Workers of the member ``headers`` names, nodes of the pool of the project's default agent, whose runs these
+    are."""
+    return [chat_worker(client, headers, name, slots=4, pool=PROJECT) for name in names]
 
 
 def state_of(hub_db, run_id: int):
@@ -49,9 +53,12 @@ def lacks(client, worker: dict, run_id: int, error: str = LACKS) -> None:
     assert said.status_code == 200, said.text
 
 
-def started(client, worker: dict, headers, **extra) -> int:
-    """A run of step 2, as the member of ``headers``, that ``worker`` claimed; its id."""
-    run_id = dispatched(client, headers, [2], **extra)[0]["id"]
+def started(client, worker: dict, headers, *, pinned: bool = False) -> int:
+    """A run of step 2, as the member of ``headers``, that ``worker`` claimed (pinned to it, with ``pinned``); its
+    id."""
+    run_id = dispatched(client, headers, [2])[0]["id"]
+    if pinned:  # a dispatch names no worker: the pin a run may carry, such as a chat run's, is set on its row
+        set_run(live.database_of(client), run_id, pinned_worker_id=worker["id"])
     assert claim(client, worker)["id"] == run_id
     return run_id
 
@@ -95,10 +102,10 @@ def test_with_every_worker_tried_the_run_fails_and_its_agent_stands_on_a_worker_
     assert done.status_code == 201, done.text
     r = tables.runs
     query = select(r.c.parent_run_id, r.c.state, r.c.pinned_worker_id).where(r.c.id == done.json()["run_id"])
-    assert sql(hub_db, query) == [(next_id, "queued", first["id"])]
+    assert sql(hub_db, query) == [(next_id, "queued", None)]  # on the agent's pool, pinned to no worker
 
 
-def test_the_rerun_stays_on_the_worker_the_agent_installed_on(client, hub, hub_db):
+def test_the_agent_names_no_worker_for_the_rerun(client, hub, hub_db):
     first, second = workers(client, hub["owner"], "mac-mini", "mac-book")
     run_id = started(client, first, hub["owner"])
     lacks(client, first, run_id)
@@ -107,12 +114,12 @@ def test_the_rerun_stays_on_the_worker_the_agent_installed_on(client, hub, hub_d
     lacks(client, second, next_id)
     agent = agent_of(client, first, next_id, hub_db)
     refused = rerun(client, first, agent, worker="mac-book")
-    assert refused.status_code == 422 and "not on mac-book" in refused.json()["message"]
+    assert refused.status_code == 422 and "worker" in str(refused.json()["detail"]), refused.text
 
 
 def test_a_run_a_person_pinned_fails_there_and_its_agent_installs_on_that_worker(client, hub, hub_db):
     first, _ = workers(client, hub["owner"], "mac-mini", "mac-book")
-    run_id = started(client, first, hub["owner"], worker_id=first["id"])
+    run_id = started(client, first, hub["owner"], pinned=True)
     lacks(client, first, run_id)
     assert state_of(hub_db, run_id)[0] == "failed" and next_of(hub_db, run_id) == []
     assert install_worker(hub_db, run_id) == first["id"]
@@ -156,8 +163,8 @@ def test_the_last_attempt_fails_with_workers_left(client, hub, hub_db):
 
 
 def test_the_owners_own_worker_goes_before_a_shared_one_and_takes_the_install(client, hub, hub_db):
-    own = chat_worker(client, hub["other"], "own", slots=4)
-    lab = chat_worker(client, hub["owner"], "lab", slots=4)
+    own = chat_worker(client, hub["other"], "own", slots=4, pool=PROJECT)
+    lab = chat_worker(client, hub["owner"], "lab", slots=4, pool=PROJECT)
     assert share(client, hub["owner"], lab).status_code == 200
     run_id = started(client, own, hub["other"])
     lacks(client, own, run_id)
@@ -169,8 +176,8 @@ def test_the_owners_own_worker_goes_before_a_shared_one_and_takes_the_install(cl
     assert install_worker(hub_db, next_id) == own["id"]
 
 
-def test_the_agent_runs_a_plan_run_that_lacked_a_program_again_on_its_worker(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+def test_the_agent_runs_a_plan_run_that_lacked_a_program_again_on_its_agents_pool(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     made = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"]).json()
     assert claim(client, worker)["id"] == made["id"]
     lacks(client, worker, made["id"])
@@ -180,14 +187,14 @@ def test_the_agent_runs_a_plan_run_that_lacked_a_program_again_on_its_worker(cli
     r = tables.runs
     query = select(r.c.kind, r.c.state, r.c.pinned_worker_id, r.c.attempt, r.c.parent_run_id, r.c.plan_id)
     assert sql(hub_db, query.where(r.c.id == done.json()["run_id"])) == [
-        ("plan", "queued", worker["id"], 1, made["id"], PLAN)
+        ("plan", "queued", None, 1, made["id"], PLAN)  # on the agent's pool, pinned to no worker
     ]
     again = rerun(client, worker, agent)
     assert again.status_code in (409, 422), again.text
 
 
 def test_a_plan_run_that_failed_of_another_cause_is_still_the_owners_to_dispatch(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     made = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"]).json()
     assert claim(client, worker)["id"] == made["id"]
     assert report(client, worker, made["id"], "failed", error="reset", failure_cause="network").status_code == 200

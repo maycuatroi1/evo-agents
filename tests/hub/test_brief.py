@@ -2,10 +2,10 @@
 
 The checks step 5 of the curator-agent plan names for a6: at the charter's brief_at, in the charter's time zone, the
 owner of the night shift's schedule gets a notice curator_brief, once a day, on the web and on a channel of theirs (the
-sample core plugin northwind-chat, ``tests.hub.northwind_channel``); it holds the
-night's runs, the merges into a default branch and the runs waiting for approval, the cost against the budget, the
-decisions and proposals waiting, and the last heartbeat of the worker on duty, so a worker that stopped shows; and
-`evo-agents hub curator status --json` names the last brief under ``last_brief``, which steps 13 and 15 and a16 read.
+sample core plugin northwind-chat, ``tests.hub.northwind_channel``); it holds the night's runs, the merges into a
+default branch and the runs waiting for approval, the cost against the budget, the decisions and proposals waiting, and
+the nodes of the pool on duty (the default agent's), so a node that stopped shows; and `evo-agents hub curator status
+--json` names the last brief under ``last_brief``, which steps 13 and 15 and a16 read.
 Then the constraints of schema 0015, and its way down to 0014 and up again; and schema 0016, by which a brief
 outlives its notification, and its way down to 0015 and up again."""
 
@@ -66,6 +66,7 @@ BRIEF = datetime(2026, 10, 8, 23, 30, tzinfo=UTC)  # 06:30 local on 2026-10-09, 
 THE_DAY = date(2026, 10, 9)
 MINUTE = timedelta(minutes=1)
 BRIEFS = tables.curator_briefs
+POOL = f"agent-{PROJECT}"  # the pool of the project's default agent, where the night shift runs
 
 
 @pytest.fixture
@@ -113,7 +114,7 @@ def test_the_brief_goes_out_at_brief_at_in_the_charters_time_zone_once_a_day(nig
     (note,) = briefs_of(client, headers["owner"])
     assert note["title"].startswith(f"Morning brief of {PROJECT}: 0 runs, $0.00 of $2.00")
     assert (note["project"], note["link"], note["run_id"]) == (PROJECT, f"/p/{PROJECT}/curator", None)
-    assert note["details"]["night"] == "2026-10-08" and note["details"]["worker"] == WORKER
+    assert note["details"]["night"] == "2026-10-08" and note["details"]["pool"] == POOL
     assert note["body"].startswith("**Night of 2026-10-08** (window 22:00 to 06:00, Asia/Ho_Chi_Minh): 0 runs")
     assert briefs_of(client, headers["reader"]) == [] and briefs_of(client, headers["other"]) == []
     ((day, night_of, to, notification_id),) = sql(
@@ -135,7 +136,7 @@ def test_the_brief_goes_out_at_brief_at_in_the_charters_time_zone_once_a_day(nig
     assert briefed(client, later) == {"brief": 1}
 
 
-def test_the_brief_holds_the_nights_runs_merges_cost_decisions_and_the_workers_last_heartbeat(night, hub_db):  # noqa: F811
+def test_the_brief_holds_the_nights_runs_merges_cost_decisions_and_the_pools_nodes(night, hub_db):  # noqa: F811
     client, headers, worker = night.client, night.headers, night.worker
     written(client, headers["owner"], charter_body())
     assert fire(client, NIGHT) == {"queued": 1}
@@ -173,11 +174,18 @@ def test_the_brief_holds_the_nights_runs_merges_cost_decisions_and_the_workers_l
         "listed": [{"id": decision["id"], "category": "architecture", "question": QUESTION, "run_id": run["id"]}],
     }
     assert facts["awaiting_merge"] == {"total": 0, "listed": []} and facts["review_run"] is None
-    assert facts["worker"]["name"] == WORKER and facts["worker"]["online"] is False
-    assert facts["worker"]["last_heartbeat_local"] is not None
+    why = f"pool {POOL} has no node ready for a run now ({WORKER} is offline)"
+    assert {key: facts["pool"][key] for key in ("name", "nodes", "ready", "why")} == {
+        "name": POOL,
+        "nodes": 1,
+        "ready": 0,
+        "why": why,
+    }
 
     (note,) = briefs_of(client, headers["owner"])
-    assert note["title"].endswith(f"1 run, $0.42 of $2.00, 1 decision and 0 proposals waiting, worker {WORKER} offline")
+    assert note["title"].endswith(
+        f"1 run, $0.42 of $2.00, 1 decision and 0 proposals waiting, pool {POOL} has no node ready"
+    )
     assert "$0.42 of $2.00" in note["title"]
     body = note["body"]
     assert f"- run #{run['id']} (fleet): running, $0.42" in body
@@ -185,10 +193,9 @@ def test_the_brief_holds_the_nights_runs_merges_cost_decisions_and_the_workers_l
     assert f"- decision #{decision['id']} (architecture, run #{run['id']}): {QUESTION}" in body
     # Markdown: a paragraph a subject, each list after a blank line, so the web renders them apart.
     assert f"\n\nDecisions waiting for your answer: 1.\n\n- decision #{decision['id']}" in body
-    assert (
-        f"Worker {WORKER}: offline, last heartbeat {facts['worker']['last_heartbeat_local']} Asia/Ho_Chi_Minh." in body
-    )
-    assert note["details"]["worker_online"] is False and note["details"]["open_decisions"] == 1
+    assert f"Pool {POOL}: no node ready for a run now: {why}." in body
+    assert (note["details"]["pool_nodes"], note["details"]["pool_ready_nodes"]) == (1, 0)
+    assert note["details"]["open_decisions"] == 1
 
 
 def test_the_brief_names_the_review_run_and_the_proposals_waiting(review):  # noqa: F811
@@ -245,7 +252,7 @@ def test_the_brief_has_the_loops_part_once_the_projects_loop_is_on_and_none_whil
         "(1 a merge request held)."
     )
     assert f"\n\n{loop}\n\n- work item #{held} (deliver): a merge request held\n\n" in note["body"]
-    assert f"Decide on the decision board: /p/{PROJECT}/decide.\n\nWorker {WORKER}" in note["body"]
+    assert f"Decide on the decision board: /p/{PROJECT}/decide.\n\nPool {POOL}: 1 of 1 node ready." in note["body"]
 
     # the Curator sends this project's brief, which carries the Loop's part: the owner of its goal gets no brief of the
     # Loop of its own at 07:00

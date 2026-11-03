@@ -41,7 +41,7 @@ from tests.hub.test_credentials_api import MINE, OWNER, app_key, install  # noqa
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
-from tests.hub.test_curator import NIGHT, PROJECT, charter_body, grant, written
+from tests.hub.test_curator import NIGHT, PROJECT, charter_body, grant, home_node, written
 from tests.hub.test_curator import fire as fire_curator
 from tests.hub.test_migrate import move_to
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
@@ -475,10 +475,13 @@ def test_run_now_checks_through_the_same_gates_as_the_daily_check(world):
 def test_the_night_shifts_pause_and_the_releases_leave_each_other_alone(world):
     """Pausing either leaves the other's schedule as it was and its queued run queued (invariant a8 on its side)."""
     worker = credential_worker(world.client, world.headers["owner"], "mac-mini")
+    home_node(
+        world.client, world.db, world.headers["owner"], worker
+    )  # the night shift runs on the default agent's pool
     beat = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "runs": []}
     beat |= {"agent_version": "0.24.0", "run_kinds": list(runs.RUN_KINDS)}
     assert world.client.post("/v1/worker/heartbeat", json=beat, headers=worker["headers"]).status_code == 200
-    written(world.client, world.headers["owner"], charter_body(worker="mac-mini", night_plans=["credentials-smoke"]))
+    written(world.client, world.headers["owner"], charter_body(night_plans=["credentials-smoke"]))
     set_schedule(world, repo=REPO)
     assert fire(world, SIX) == {"opened": 1}
     assert sum(fire_curator(world.client, NIGHT).values()) == 1

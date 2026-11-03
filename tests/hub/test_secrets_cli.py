@@ -1,12 +1,13 @@
 """``evo-agents hub secret set|list|bind|delete`` and ``evo-agents hub run credentials``, as a signed-in member runs
-them, and the refusal ``hub run dispatch`` prints for a worker that takes runs dispatched from the web only.
+them, and the refusal ``hub run send`` prints for a worker that takes runs dispatched from the web only.
 
 The checks step 12 of the worker-credentials plan names: ``secret set`` has no flag that takes the value and reads it
 from stdin when stdin is not a terminal, else asks for it with getpass; every argument is checked before the value is
 read; no command prints a value, not even in an error; ``secret list --json`` and ``run credentials --json`` print the
 keys the contract declares (seam hub-cli-v1); ``run credentials`` lists each lease of a run with its name, provider,
-target, worker and times, revoked ones included, for the run's owner alone; and ``run dispatch``, ``run plan`` and
-``run rerun`` print why a worker set to take runs dispatched from the web only refuses one dispatched with a token.
+target, worker and times, revoked ones included, for the run's owner alone; and ``run send`` prints why a worker set to
+take runs dispatched from the web only refuses a token's message to the run it holds (a dispatch names no worker any
+more: the hub places each run of an agent on its pool, plan agent-dedicated-pools).
 
 The parsing of arguments and values runs without Postgres; everything that needs the hub skips without
 EVO_HUB_TEST_DSN."""
@@ -270,7 +271,7 @@ if pg.DSN:
 
     from evo_agents.hub.server.app import create_app
     from tests.hub import test_credentials_api as leases_api
-    from tests.hub.test_credentials_api import GITLAB_KB, MINE, OTHER, OWNER, PLAN, STEPS
+    from tests.hub.test_credentials_api import GITLAB_KB, MINE, OTHER, OWNER
     from tests.hub.test_run_stream import serving
     from tests.hub.test_runs import PROJECT
 
@@ -400,10 +401,13 @@ def test_set_list_and_delete_a_secret_without_ever_printing_its_value(hub, monke
     for result in (piped, typed, again, table):
         nowhere(result, oauth, replaced, glpat)
 
-    # the value stored is what was piped or typed, the final line break dropped: what a run's worker gets
+    # the value stored is what was piped or typed, the final line break dropped: what a run's worker gets, from the
+    # account pool of the run's agent
+    leases_api.account_pool(hub.client, "claude-oauth")
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "desk")
     run_id = leases_api.step_run(hub.client, hub.headers["owner"], "evo-agents", worker)
-    assert leases_api.by_name(leases_api.leased(hub.client, worker, run_id))["claude-oauth"]["value"] == replaced
+    leases = leases_api.by_name(leases_api.leased(hub.client, worker, run_id))
+    assert leases[leases_api.pooled("claude-oauth")]["value"] == replaced
     dump = live.table_dump(hub.db)
     assert oauth not in dump and replaced not in dump and glpat not in dump
 
@@ -512,6 +516,7 @@ def test_run_credentials_lists_each_lease_of_a_run_for_its_owner_alone(hub, monk
     oauth, glpat = sample("oauth-"), sample("glpat-")
     leases_api.env_secret(hub.client, hub.headers["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
     leases_api.git_secret(hub.client, hub.headers["owner"], "gitlab-kb", GITLAB_KB, glpat)
+    leases_api.account_pool(hub.client, "claude-oauth")  # the model account of the run's agent
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "mac-mini")
     run_id = leases_api.plan_run(hub.client, hub.headers["owner"], worker)
 
@@ -562,14 +567,10 @@ def test_run_credentials_lists_each_lease_of_a_run_for_its_owner_alone(hub, monk
 
 
 @needs_pg
-def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(hub, monkeypatch, capsys):
+def test_send_prints_why_a_worker_of_the_web_refuses_a_token(hub, monkeypatch, capsys):
+    leases_api.claimable(hub.client)
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "mac-mini")
-    # the CLI no longer pins a worker (the agent's pool places the run); the API keeps worker_id for legacy agents
-    pinned = {"plan_id": PLAN, "steps": [STEPS["notes"]], "worker_id": worker["id"]}
-    made = hub.client.post(f"/v1/projects/{PROJECT}/runs", json=pinned, headers=hub.headers["owner"])
-    assert made.status_code == 201, made.text
-    queued = made.json() if isinstance(made.json(), list) else [made.json()]
-    ok(run_of(hub, monkeypatch, capsys, "owner", "cancel", str(queued[0]["id"])))
+    run_id = leases_api.step_run(hub.client, hub.headers["owner"], "notes", worker)
     from sqlalchemy import update
 
     from evo_agents.hub import tables
@@ -578,10 +579,8 @@ def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(h
     live.sql(hub.db, update(workers).values(dispatch_from="web").where(workers.c.id == worker["id"]))
 
     why = (
-        "error: worker mac-mini takes only runs dispatched from a web session, as its owner set it, so a token cannot "
-        "hand it work: dispatch on the web, or to another worker; nothing was dispatched\n"
+        f"error: run {run_id} is held by worker mac-mini, which takes only runs dispatched from a web session, as its "
+        "owner set it, so a token cannot send its agent a message: send it from the web; nothing was sent\n"
     )
-    refused = run_of(hub, monkeypatch, capsys, "owner", "rerun", str(queued[0]["id"]))
+    refused = run_of(hub, monkeypatch, capsys, "owner", "send", str(run_id), "Keep the old API.")
     assert (refused.code, refused.out, refused.err) == (1, "", why)
-    listed = as_json(run_of(hub, monkeypatch, capsys, "owner", "list", "--json"))
-    assert [run["id"] for run in listed["runs"]] == [queued[0]["id"]]  # nothing was queued

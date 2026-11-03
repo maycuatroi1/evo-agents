@@ -61,9 +61,9 @@ def triage_chats(hub_db) -> list[tuple]:
 
 
 def failed_author_run(client, hub, hub_db, worker) -> int:
-    """An author run with no plan on ``worker``, which fails at its claim (the hub holds no create-exec-plan skill);
-    its id."""
-    body = {"request": "Write the plan of the billing export.", "worker_id": worker["id"]}
+    """An author run with no plan, claimed by ``worker`` (a node of the pool of the project's default agent), which
+    fails at its claim (the hub holds no create-exec-plan skill); its id."""
+    body = {"request": "Write the plan of the billing export."}
     response = client.post(f"/v1/projects/{PROJECT}/author-runs", json=body, headers=hub["owner"])
     assert response.status_code == 201, response.text
     run_id = response.json()["id"]
@@ -80,7 +80,7 @@ def test_the_failed_runs_of_two_plans_and_a_run_with_no_plan_open_three_threads_
     client, hub, hub_db
 ):
     pushed(client, hub, SECOND)
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=6, checkouts=WITH_HARNESS)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=6, checkouts=WITH_HARNESS, pool=PROJECT)
     first = failed_step(client, hub, worker, 2)
     second = failed_step(client, hub, worker, 4, plan=SECOND, claims=3)
     third = failed_author_run(client, hub, hub_db, worker)
@@ -104,8 +104,8 @@ def test_a_plan_labelled_above_the_projects_default_keeps_a_chat_of_its_own_that
     granted(client, hub, PROJECT, "owner", "writer", "customer")
     pushed(client, hub, GUARDED, label={"level": "customer"})
     pushed(client, hub, SECOND, label={"level": "public"})  # below the default: the project's chat
-    mine = chat_worker(client, hub["owner"], "mac-mini", slots=6)
-    theirs = chat_worker(client, hub["other"], "studio", slots=4)
+    mine = chat_worker(client, hub["owner"], "mac-mini", slots=6, pool=PROJECT)
+    theirs = chat_worker(client, hub["other"], "studio", slots=4, pool=PROJECT)
     guarded = failed_step(client, hub, mine, 2, plan=GUARDED)
     lower = failed_step(client, hub, mine, 2, plan=SECOND, claims=3)
     plain = failed_step(client, hub, theirs, 2, who="other")
@@ -126,12 +126,12 @@ def test_an_owner_the_projects_chat_cannot_take_gets_the_thread_in_the_chat_of_t
     assert client.put(f"/v1/projects/{LUMEN}", json=registration(), headers=hub["admin"]).status_code == 200
     granted(client, hub, LUMEN, OTHER, "admin", "internal")
     agent(client, hub["other"], "lumen-bot", project=LUMEN)
-    theirs = chat_worker(client, hub["other"], "studio", slots=4)
+    theirs = chat_worker(client, hub["other"], "studio", slots=4, pool=PROJECT)
     first = failed_step(client, hub, theirs, 2, who="other")
     project_chat = chat_of(hub_db, first)
     added = client.put(f"/v1/chats/{project_chat}/agents/lumen-bot", headers=hub["other"])
     assert added.status_code == 200, added.text  # the chat's label now names lumen, which the owner holds no grant on
-    mine = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    mine = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     second = failed_step(client, hub, mine, 4)
     ((chat_id, root_id, *_),) = row_of(hub_db, second)
     assert chat_id != project_chat
@@ -146,7 +146,7 @@ def test_the_triage_chat_a_plan_had_before_stays_as_it_was_and_takes_no_new_thre
     ((old,),) = sql(hub_db, insert(c).values(title=f"Triage: {PLAN}", created_by=owner_id).returning(c.c.id))
     sql(hub_db, insert(tables.chat_members).values(chat_id=old, user_id=owner_id, added_by=owner_id))
     sql(hub_db, insert(tc).values(project_id=project_id, plan_id=PLAN, chat_id=old))
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = failed_step(client, hub, worker, 2)
     assert chat_of(hub_db, run_id) != old
     assert triage_chats(hub_db) == [(None, f"Triage: {PROJECT}"), (PLAN, f"Triage: {PLAN}")]
@@ -155,8 +155,8 @@ def test_the_triage_chat_a_plan_had_before_stays_as_it_was_and_takes_no_new_thre
 
 
 def test_the_projects_chat_still_takes_threads_after_its_creator_left_it(client, hub, hub_db):
-    theirs = chat_worker(client, hub["other"], "studio", slots=4)
-    mine = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    theirs = chat_worker(client, hub["other"], "studio", slots=4, pool=PROJECT)
+    mine = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     first = failed_step(client, hub, theirs, 2, who="other")  # someone-else makes the chat
     chat_id = chat_of(hub_db, first)
     failed_step(client, hub, mine, 4)  # the owner joins it

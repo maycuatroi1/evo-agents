@@ -288,14 +288,7 @@ def _brief_facts() -> dict:
         "planned_changes": {"total": 0, "listed": []},
         "decisions": {"open": 0, "listed": []},
         "proposals": {"open": 0, "in_inbox": 0, "listed": []},
-        "worker": {
-            "name": "night-mac",
-            "online": True,
-            "last_heartbeat_at": None,
-            "last_heartbeat_local": None,
-            "revoked": False,
-            "draining": False,
-        },
+        "pool": {"id": 1, "name": f"agent-{PROJECT}", "nodes": 1, "ready": 1, "why": None},
     }
 
 

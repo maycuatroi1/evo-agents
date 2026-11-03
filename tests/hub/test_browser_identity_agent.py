@@ -19,7 +19,8 @@ from tests.hub.live import sql
 from tests.hub.test_browser_identity import PATH, audit_rows, created, stored  # noqa: F401 (fixtures)
 from tests.hub.test_browser_profile import HIDDEN, held_by, profile_archive, send, set_identity
 from tests.hub.test_chats import agent
-from tests.hub.test_runs import PROJECT, claim, dispatch, dispatched, of_run
+from tests.hub.test_credentials_api import claimable
+from tests.hub.test_runs import PROJECT, claim, dispatch, dispatched, join_pool, of_run
 
 LOGIN = "/v1/worker/browser-identities/login"
 
@@ -69,9 +70,16 @@ def test_browser_identity_of_an_agent_is_an_admins_and_the_first_is_the_default(
     assert "browser_identity.default" in [row[0] for row in audit_rows(stored.db)]
 
 
+def scout(stored) -> None:
+    """The agent @scout, with an account pool, whose pool box is a node of: the worker of its identities."""
+    agent(stored.client, stored.headers["owner"], "scout")
+    claimable(stored.client, "scout")
+    join_pool(stored.client, stored.box, "scout")
+
+
 def test_browser_dispatch_under_a_profile_gets_its_default_identity_and_its_worker(stored):
     client, headers, db = stored.client, stored.headers, stored.db
-    agent(client, headers["owner"], "scout")
+    scout(stored)
     identity = agent_identity(client, headers["owner"], "northwind").json()
     (run,) = dispatched(client, headers["owner"], [4], profile="scout")
     assert (run["browser"], run["browser_identities"]) == (True, [identity["id"]])
@@ -84,7 +92,7 @@ def test_browser_dispatch_under_a_profile_gets_its_default_identity_and_its_work
 
 def test_browser_identity_of_an_agent_goes_with_the_profile_and_waits_for_the_run_holding_it(stored):
     client, headers, db = stored.client, stored.headers, stored.db
-    agent(client, headers["owner"], "scout")
+    scout(stored)
     identity = agent_identity(client, headers["owner"], "northwind").json()
     (run,) = dispatched(client, headers["owner"], [4], profile="scout")
     assert claim(client, stored.box)["id"] == run["id"]

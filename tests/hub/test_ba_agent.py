@@ -2,17 +2,17 @@
 ``auto_review``, ``evo_agents.hub.server.chat_route``), as criterion a7 of the plan srs-tasks-plugins names it.
 
 An admin of a project that enabled srs enables the type under a member (``run_as``): the profile @ba with the pack
-srs/ba. The plugin's tools are on the hub's /mcp only where the project enables it. Every chat run of @ba goes to a
-worker of run_as, also when the writer who mentioned it has none, and acts for that writer: a proposal is the
-document's next version, in review at once, written as the writer, who therefore never approves it; the agent of a
-run approves nothing. Each time a version enters review, in every round, it is handed to @ba as a task run on
-run_as's worker, whose comments are advice that blocks no approval (``tests.hub.test_srs_auto_review`` has the rest of
-that review). A task of a use case is made for the writer who asked,
-only while they hold writer. A type that does not route its chat runs to run_as, or @ba while its type is off, routes
-as before: to the worker of the person who mentioned it. An archived document is out of @ba's list and search, still
-read by its slug, and takes no proposal or comment (criterion a1 of plan srs-document-lifecycle). The agent on the
-worker is a stand-in: the test calls the tools with the worker's token and the run, as its MCP client would. The pack's
-files are ``tests.worker.test_ba_agent``'s.
+srs/ba, with its own pool agent-ba and an account pool. The plugin's tools are on the hub's /mcp only where the project
+enables it. Every chat run of @ba goes under run_as's name to a node of @ba's pool, also when the writer who mentioned
+it has no worker, and acts for that writer: a proposal is the document's next version, in review at once, written as the
+writer, who therefore never approves it; the agent of a run approves nothing. Each time a version enters review, in
+every round, it is handed to @ba as a task run on its pool, whose comments are advice that blocks no approval
+(``tests.hub.test_srs_auto_review`` has the rest of that review). A task of a use case is made for the writer who asked,
+only while they hold writer. A type that does not route its chat runs to run_as, or @ba while its type is off, runs for
+the person who mentioned it, on the agent's own pool. An archived document is out of @ba's list and search, still read
+by its slug, and takes no proposal or comment (criterion a1 of plan srs-document-lifecycle). The agent on the worker is
+a stand-in: the test calls the tools with the worker's token and the run, as its MCP client would. The pack's files are
+``tests.worker.test_ba_agent``'s.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_chat_runs import chat_worker, created, run_of, sent
 from tests.hub.test_chats import OPEN_SINKS
@@ -124,15 +125,28 @@ def enable(client, headers, plugin: str, permissions=()) -> None:
 
 
 def enable_ba(client, hub, run_as: str = OWNER) -> dict:
-    """The admin enables the agent type ba under ``run_as``, with a cap of 5 USD a day."""
+    """The admin enables the agent type ba under ``run_as``, with a cap of 5 USD a day; @ba has an account pool, an
+    account of run_as in it (``with_accounts``)."""
     typed = client.put(TYPE, json={"run_as": run_as, "daily_usd": 5}, headers=hub["owner"])
     assert typed.status_code == 200, typed.text
+    with_accounts(client, "ba", run_as)
     return typed.json()
 
 
+def with_accounts(client, handle: str, login: str) -> None:
+    """Agent ``handle`` with an account pool holding an env account of member ``login``, unless it has one already: a
+    run of an agent is dispatched and claimed only then (``pool_accounts``)."""
+    db = live.database_of(client)
+    ap, p = tables.agent_profiles, tables.projects
+    held = select(ap.c.account_pool_id).join_from(ap, p, p.c.id == ap.c.project_id)
+    if sql(db, held.where(p.c.name == PROJECT, ap.c.handle == handle)) == [(None,)]:
+        give_account_pool(db, PROJECT, handle, login)
+
+
 def owners_worker(client, hub, name: str = "studio", slots: int = 3) -> dict:
-    """A worker of owner that runs chat and task runs and builds the packs of plugin srs."""
-    worker = chat_worker(client, hub["owner"], name, slots=slots)
+    """A worker of owner that runs chat and task runs and builds the packs of plugin srs: a ready node of @ba's pool,
+    agent-ba, which the type made (enable it first)."""
+    worker = chat_worker(client, hub["owner"], name, slots=slots, pool="ba")
     assert set_plugins(client, hub["owner"], worker, ["srs"]).status_code == 200
     return worker
 
@@ -262,7 +276,9 @@ def test_ba_agent_type_makes_ba_with_the_pack_srs_ba_and_its_tools_show_only_whe
 # Where its chat runs go
 
 
-def test_ba_agent_chat_runs_go_to_a_worker_of_run_as_even_when_the_writer_who_mentions_it_has_none(client, hub, hub_db):
+def test_ba_agent_chat_runs_go_to_its_pool_as_run_as_even_when_the_writer_who_mentions_it_has_no_worker(
+    client, hub, hub_db
+):
     enable_ba(client, hub)
     studio = owners_worker(client, hub)
     chat = created(client, hub["other"], "SRS", people=[OWNER, CHI, READER], agents=("ba", "reviewer"))
@@ -290,31 +306,29 @@ def test_ba_agent_chat_runs_go_to_a_worker_of_run_as_even_when_the_writer_who_me
     # a reader's mention is refused, as for any agent
     _, read_only = mention(client, hub["reader"], chat["id"], "@ba what is UC ORD-1?")
     assert read_only["run_id"] is None and f"{READER} holds reader there" in read_only["refusal"]
-    # an agent of no such type routes as before: to the mentioner's own worker, which someone-else lacks
+    # an agent of no such type runs as the person who mentions it, on its own pool, where no node is ready: it waits
+    with_accounts(client, "reviewer", OWNER)
     _, plain = mention(client, hub["other"], chat["id"], "@reviewer read the change")
-    assert plain["run_id"] is None
-    assert f"{OTHER} has no worker that takes runs of project {PROJECT}" in plain["refusal"]
-    assert [row[0] for row in runs_of(hub_db, "chat")] == [run_id, theirs["run_id"]]
+    assert plain["refusal"] is None, plain
+    assert run_of(client, hub["chi"], plain["run_id"])["dispatched_by"] == OTHER
+    assert [row[0] for row in runs_of(hub_db, "chat")] == [run_id, theirs["run_id"], plain["run_id"]]
 
 
 def test_ba_agent_routes_as_before_once_its_type_is_off_and_refuses_a_run_as_who_lost_writer(client, hub, hub_db):
     enable_ba(client, hub, run_as=CHI)
     chat = created(client, hub["other"], "SRS", people=[OWNER, CHI], agents=("ba",))
     _, found = mention(client, hub["other"], chat["id"], "@ba draft UC ORD-3")
-    assert found["run_id"] is None
-    assert f"@ba runs on the workers of {CHI}, who has no worker" in found["refusal"], found
+    assert found["refusal"] is None, found  # no node of agent-ba is ready: the run waits for one, as chi's
+    assert run_of(client, hub["other"], found["run_id"])["dispatched_by"] == CHI
     granted(client, hub, CHI, READ_ONLY)
     _, found = mention(client, hub["other"], chat["id"], "@ba draft UC ORD-3")
+    assert found["run_id"] is None
     assert f"@ba runs on the workers of {CHI}, who holds reader on project {PROJECT} now" in found["refusal"]
-    # turned off: @ba is an agent like any other, on the worker of the person who mentions it
+    # turned off: @ba is an agent like any other, run for the person who mentions it, on its own pool still
     off = client.delete(TYPE, headers=hub["owner"])
     assert off.status_code == 200, off.text
     _, found = mention(client, hub["other"], chat["id"], "@ba draft UC ORD-3")
-    assert f"{OTHER} has no worker that takes runs of project {PROJECT}" in found["refusal"], found
-    mine = chat_worker(client, hub["other"], "desk")
-    assert set_plugins(client, hub["other"], mine, ["srs"]).status_code == 200
-    _, found = mention(client, hub["other"], chat["id"], "@ba draft UC ORD-3")
-    assert found["refusal"] is None
+    assert found["refusal"] is None, found
     assert run_of(client, hub["other"], found["run_id"])["dispatched_by"] == OTHER
     assert runs_of(hub_db, "chat")[-1][1:3] == ("ba", OTHER)
 
@@ -429,12 +443,13 @@ def test_ba_agent_proposal_with_self_approval_on_is_approved_by_the_writer_who_a
 def test_ba_agent_proposes_only_in_a_chat_run_of_ba(client, hub):
     imported(client, hub["chi"])
     enable_ba(client, hub)
-    studio = owners_worker(client, hub)
+    with_accounts(client, "reviewer", OWNER)
+    desk = chat_worker(client, hub["owner"], "desk", slots=3, pool="reviewer")  # @reviewer's runs go to its own pool
     chat = created(client, hub["owner"], "SRS", people=[OTHER], agents=("ba", "reviewer"))
     mention(client, hub["owner"], chat["id"], "@reviewer tidy UC ORD-1")
-    spec = running(client, studio, "chat")
+    spec = running(client, desk, "chat")
     assert spec["profile"]["handle"] == "reviewer"
-    agent = agent_of(studio, spec["id"])
+    agent = agent_of(desk, spec["id"])
     order = item(client, hub["chi"], "UC ORD-1")
     change = {"key": order["key"], "title": "Place an order now"}
     text, error = tool(

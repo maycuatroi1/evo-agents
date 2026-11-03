@@ -48,13 +48,16 @@ from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture)
     MINE,
     OWNER,
+    account_pool,
     app_key,
     by_name,
+    claimable,
     env_secret,
     git_secret,
     install,
     leased,
     missing,
+    pooled,
     sample,
 )
 from tests.hub.test_credentials_api import hub_config as credentials_config
@@ -99,12 +102,14 @@ def at_head(github, main_version: str = "0.24.0") -> None:
 @pytest.fixture
 def world(hub_db, tmp_path, github, app_key):  # noqa: F811
     """test_credentials_api's project on a hub holding the workers' App, installed on evo-agents with contents and
-    pull_requests write; owner an admin of the project with a worker that says it runs release runs; evo-agents at
-    v0.24.0 with nightly one packaging change and two commits ahead."""
+    pull_requests write; owner an admin of the project with a worker that says it runs release runs, a node of the pool
+    of the project's default agent, which has an account pool; evo-agents at v0.24.0 with nightly one packaging change
+    and two commits ahead."""
     config = credentials_config(hub_db, tmp_path, github, app_key)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, OWNER, "admin")
+        claimable(client)  # a release run is the default agent's: claimed only while its account pool has an account
         install(github, REPO, permissions=WRITE)
         repo_at(github, HEAD)
         at_head(github)
@@ -316,13 +321,16 @@ def test_a_release_run_is_leased_its_runtimes_login_and_a_token_of_the_workers_a
     owner = world.headers["owner"]
     oauth = sample("oauth-")
     env_secret(world.client, owner, "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
+    account_pool(world.client, "claude-oauth")  # the runtime's login comes from the account pool of the run's agent
     env_secret(world.client, owner, "gh-cli", "GH_TOKEN", sample("cli-"))
     git_secret(world.client, owner, "github-pat", f"https://github.com/{MINE}", sample("pat-"))
     spec = opened(world)
     answer = leased(world.client, world.worker, spec["id"])
     leases = by_name(answer)
-    assert set(leases) == {"claude-oauth", f"github-app:{MINE}"}, "no git secret, no other env secret of the owner"
-    assert leases["claude-oauth"]["value"] == oauth and missing(answer) == {}
+    assert set(leases) == {pooled("claude-oauth"), f"github-app:{MINE}"}, (
+        "no git secret, no other env secret of the owner"
+    )
+    assert leases[pooled("claude-oauth")]["value"] == oauth and missing(answer) == {}
     app = leases[f"github-app:{MINE}"]
     assert world.github.covers(app["value"], MINE, REPO)
     made = world.github.app_tokens[app["value"]]
