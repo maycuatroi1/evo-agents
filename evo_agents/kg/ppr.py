@@ -33,6 +33,7 @@ class Walk:
     damping: float = 0.5  # HippoRAG 2's: the walk restarts half the time
     steps: int = 30
     keep: int = 60  # the nodes the walk reached outside the pool that join it as candidates
+    context: bool = False  # kg_context fills its budget past the seeds by the walk, not by hops from them
     file_seed: float = 1.0  # a File seed's share of its base score (HippoRAG 2 seeds passages at 0.05 of entities)
     specific: bool = True  # a seed weighs 1 / log2(2 + its degree) more, as HippoRAG divides by the passages of a node
     rels: tuple = (
@@ -48,9 +49,12 @@ class Walk:
         ("implements", 0.8),
         ("has_step", 0.5),
         ("verifies", 0.6),
-        ("in_thread", 0.5),
-        ("in_chat", 0.3),
-        ("replies_to", 0.5),
+        ("merged_as", 1.0),
+        ("defined_in", 0.8),
+        ("depends_on", 0.5),
+        ("child_of", 0.4),
+        ("part_of", 0.4),
+        ("in_source", 0.3),
     )
 
 
@@ -67,6 +71,7 @@ FIELDS = {
     "steps": int,
     "keep": int,
     "file_seed": float,
+    "context": lambda v: v not in ("0", "", "off", "false"),
     "specific": lambda v: v not in ("0", "", "off", "false"),
 }
 

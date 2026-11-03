@@ -35,7 +35,7 @@ import uuid
 from collections import Counter, deque
 
 from evo_agents import __version__
-from evo_agents.kg import locate, semantic
+from evo_agents.kg import locate, ppr, semantic
 from evo_agents.kg import rank as learned
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
@@ -539,7 +539,11 @@ class Session:
                 room.left_nodes.add(sid)
         if not room.nodes:
             raise ToolError("budget_tokens holds none of the seeds: raise it, or pass fewer ids")
+        walk = ppr.from_env()
         frontier = deque((s, 0) for s in room.nodes)
+        if walk is not None and walk.context and query:
+            self._context_walk(store, b, str(query), room, walk)
+            frontier.clear()
         while frontier:
             if room.size - room.used < CONTEXT_MIN_LINE:
                 room.beyond = any(depth < hops for _, depth in frontier)  # full: what lies past them is not read
@@ -583,6 +587,37 @@ class Session:
         if not seeds:
             raise ToolError("nothing visible matches; try kg_search")
         return seeds
+
+    def _context_walk(self, store: Store, b: int, query: str, room: Room, walk) -> None:
+        """Fill ``room`` past its seeds with the nodes a walk from the query's text matches settles on most
+        (``evo_agents.kg.ppr``), best first, each with up to two edges to the nodes already in."""
+        scored = store.search_scored(query, b, limit=walk.seeds, deprecated=self.deprecated)
+        base = {i: r**3 for i, r in locate._rels(scored).items()}
+        for sid in room.nodes:
+            base[sid] = max(base.get(sid, 0.0), 1.0)
+        found = ppr.run(store, b, base, walk)
+        order = [i for i in sorted(found, key=lambda i: (-found[i], i)) if i not in room.nodes][: walk.keep * 4]
+        nodes = store.nodes(order, b)
+        for nid in order:
+            if room.size - room.used < CONTEXT_MIN_LINE:
+                room.beyond = True
+                break
+            node = nodes.get(nid)
+            if node is None or not self.seen(node):
+                continue
+            links = []
+            for e in store.edges_of(nid, b, limit=300):
+                other = e["dst"] if e["src"] == nid else e["src"]
+                if other in room.nodes and self.seen(e) and e["id"] not in room.edges:
+                    links.append(e)
+            links.sort(key=lambda e: (-STATUS_RANK.get(e["status"], 0), e["rel"], e["src"], e["dst"]))
+            links = links[:2]
+            cost = line_size(self._line(node)) + sum(line_size(self._edge_line(e)) for e in links)
+            if room.take_node(nid, node, cost):
+                for e in links:
+                    room.edges[e["id"]] = e
+            else:
+                room.left_nodes.add(nid)
 
     def _edge_line(self, e: dict) -> str:
         return f"  [{readable(e['src'])}] -{e['rel']}-> [{readable(e['dst'])}] ({e['status']})"
