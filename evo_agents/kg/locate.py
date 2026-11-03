@@ -100,6 +100,8 @@ class Pool:
     text: bool = True  # the matches were scored by BM25 (False: by rank alone)
     exact: set[str] = field(default_factory=set)  # the matches the search gave no score: an id or a name is the query
     scores: dict[str, float] = field(default_factory=dict)  # the text score of each match, as the search gave it
+    walk: dict[str, float] = field(default_factory=dict)  # the score of the walk of evo_agents.kg.ppr, when one ran
+    walk_with: object = None  # the ppr.Walk that ran
 
 
 # -- what a question names -----------------------------------------------------------------------------------------
@@ -310,8 +312,11 @@ def _lookup(store, b: int, found: list[Anchor], params: Params) -> dict[str, flo
     return out
 
 
-def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: list[Anchor] | None = None) -> Pool:
-    """The candidates of a question: the text matches, the nodes it names, and the neighbours of the best."""
+def gather(
+    store, b: int, query: str, scored, params: Params = DEFAULT, found: list[Anchor] | None = None, walk=None
+) -> Pool:
+    """The candidates of a question: the text matches, the nodes it names, and the neighbours of the best; with
+    ``walk`` (an ``evo_agents.kg.ppr.Walk``), also the nodes its walk settles on most."""
     scored = list(scored)[: params.pool]
     rels = _rels(scored)
     pool = Pool(text=any(s is not None for _, s in scored))
@@ -356,6 +361,16 @@ def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: l
     fresh = [i for i in near if i not in pool.cands]
     for node_id, node in store.nodes(fresh, b).items():
         pool.cands[node_id] = _cand(node, 0.0, False)
+    if walk is not None:
+        from evo_agents.kg import ppr
+
+        base = _base(pool, params)
+        if walk.file_seed != 1.0:
+            base = {i: s * (walk.file_seed if pool.cands[i].kind == "File" else 1.0) for i, s in base.items()}
+        pool.walk, pool.walk_with = ppr.run(store, b, base, walk), walk
+        outside = sorted((i for i in pool.walk if i not in pool.cands), key=lambda i: (-pool.walk[i], i))
+        for node_id, node in store.nodes(outside[: walk.keep], b).items():
+            pool.cands[node_id] = _cand(node, 0.0, False)
     return pool
 
 
@@ -447,15 +462,26 @@ def kind_factor(c: Cand, params: Params) -> float:
     return factor
 
 
+def _base(pool: Pool, params: Params) -> dict[str, float]:
+    return {i: c.rel**params.sharp * kind_factor(c, params) + params.anchor * c.anchor for i, c in pool.cands.items()}
+
+
 def scores(pool: Pool, params: Params = DEFAULT) -> dict[str, float]:
-    """The score of each candidate: its text match and its anchor, plus a share of its lenders' scores."""
+    """The score of each candidate: its text match and its anchor, plus a share of its lenders' scores, plus the
+    walk's score when one ran (scaled so its best is the best base score)."""
     weights = dict(params.expand_rels)
-    base = {i: c.rel**params.sharp * kind_factor(c, params) + params.anchor * c.anchor for i, c in pool.cands.items()}
+    base = _base(pool, params)
     total = dict(base)
     for src, links in pool.links.items():
         for other, rel, conf in links:
             if other in total and (w := weights.get(rel)):
                 total[other] += params.expand * w * conf * base.get(src, 0.0)
+    walk = pool.walk_with
+    if walk is not None and pool.walk:
+        scale = max(base.values(), default=0.0) / (max(pool.walk.values()) or 1.0)
+        for i, c in pool.cands.items():
+            got = pool.walk.get(i, 0.0) * scale * kind_factor(c, params)
+            total[i] = got + params.anchor * c.anchor if walk.alone else total[i] + walk.mix * got
     return total
 
 
@@ -516,9 +542,18 @@ def arrange(
     scored = list(scored)
     if not scored:
         return None
-    pool = gather(store, b, query, scored, params)
+    from evo_agents.kg import ppr
+
+    walk = ppr.from_env()
+    pool = gather(store, b, query, scored, params, walk=walk)
     if ranker is None and not code_like(pool):
-        return None
+        if walk is None or not walk.docs:
+            return None
+        if walk.docs == 2:  # the nodes by their score, no file grouping: the text order with the walk's score added
+            total = scores(pool, params)
+            listed = sorted((i for i in pool.cands if total[i] > 0), key=lambda i: (-total[i], i))
+            seen = set(listed)
+            return listed + [i for i, _ in scored if i not in seen]
     ranked = files(pool, params)
     listed = ranker.order(store, b, query, pool, ranked, params, limit) if ranker is not None else place(ranked, params)
     seen = set(listed)
