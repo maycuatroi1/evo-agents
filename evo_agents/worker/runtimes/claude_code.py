@@ -6,7 +6,9 @@ here.
 - The agent works in the worktree (``cwd``) with ``permission_mode="bypassPermissions"``, the SDK's form of
   ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
   and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
-  hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+  hooks, plugins and CLAUDE.md load as for ``claude`` itself, but for ``attribution``: the run's flag settings
+  (``--settings``) set ATTRIBUTION over them, so a commit or pull request of a run names no co-author on any machine
+  (47 of 301 commits on main from 2026-10-27 to 2026-11-03 had the trailer, from workers whose own settings left it on).
 - The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
   (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
   their own names, and their instructions after the profile's in the appended system prompt. A run of the Curator
@@ -134,6 +136,7 @@ import base64
 import collections
 import contextlib
 import dataclasses
+import json
 import logging
 import os
 import re
@@ -187,6 +190,8 @@ MIN_VERSION = "2.1.289"  # Claude Code
 SDK = ("claude-agent-sdk", "0.2.163")
 # Variables of a parent Claude Code session that must not reach the agent, which is no child of it.
 DROPPED_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
+# What Claude Code adds to a commit message and a pull request body: nothing (module docstring).
+ATTRIBUTION = {"commit": "", "pr": ""}
 # Claude Code's credentials in the agent's environment: a token of `claude setup-token`, and the API key that comes
 # before it in Claude Code's order of authentication.
 OAUTH_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
@@ -787,6 +792,8 @@ class ClaudeCodeAdapter(QueueAdapter):
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))
+        flags = json.loads(settings.get("settings") or "{}")
+        settings["settings"] = json.dumps({**flags, "attribution": ATTRIBUTION})
         if claude_home.isolated(self.context.run, self.runtime, self.context.env, self.context.worktree):
             hub = hub_tools.home_server(self.context, profile)  # strict: its .claude.json is not read for servers
             servers = {**({hub_tools.SERVER: hub} if hub else {}), **settings.get("mcp_servers", {})}

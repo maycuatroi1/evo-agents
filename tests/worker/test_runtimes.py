@@ -714,6 +714,17 @@ def test_claude_code_runs_on_the_model_of_the_run_else_the_environments(tmp_path
     assert model_flag(_claude(tmp_path, _samples, env=none)) == (None, None), "Claude Code chooses, as it would"
 
 
+def test_claude_code_runs_commit_without_a_co_author_trailer_whatever_the_machines_settings(tmp_path):
+    """47 of 301 commits on main in a week ended with the trailer: the workers' own settings left it on."""
+    needs("claude_agent_sdk")
+    from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+
+    options = _claude(tmp_path, _samples).build_options("/opt/bin/claude")
+    command = SubprocessCLITransport(prompt="", options=options)._build_command()
+    settings = json.loads(command[command.index("--settings") + 1])
+    assert settings == {"attribution": {"commit": "", "pr": ""}}, "flag settings win over the owner's"
+
+
 def test_claude_code_reads_a_line_of_stdout_longer_than_the_sdks_default(tmp_path, monkeypatch):
     """A Read of an image comes on one line with its base64 twice; run #924 failed on its first, over 1 MiB."""
     needs("claude_agent_sdk")
