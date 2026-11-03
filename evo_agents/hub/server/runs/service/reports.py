@@ -32,7 +32,7 @@ from evo_agents.hub.server.runs.models import (
     WorkerSettings,
 )
 from evo_agents.hub.server.runs.service import plugin_runtimes, reroute
-from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service.claims import resume_waits, worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
@@ -166,6 +166,8 @@ async def record_heartbeat(
                 for runtime in await plugin_runtimes.offered(conn, worker_id, settings.plugins)
             ]
         duties = await kg_duties(conn, worker_id) if runs.KG_SYNC in (body.features or ()) else []
+        # a drained worker claims the run that resumes one it parked, which no other worker can take
+        resuming = drained_at is not None and await resume_waits(conn, worker_id)
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -214,7 +216,7 @@ async def record_heartbeat(
         else:
             controls.append(RunControl(id=run_id, held=False, state=None, lease_expires_at=None, cancel=True))
     return HeartbeatAnswer(
-        drain=drained_at is not None,
+        drain=drained_at is not None and not resuming,
         runs=controls,
         settings=settings,
         plugin_runtimes=declared,

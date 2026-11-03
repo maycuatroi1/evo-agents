@@ -135,8 +135,6 @@ def _owners_command(row, run, command: str) -> str:
 def _stop_reasons(key: str, row, run, claimer: claims.Claimer) -> tuple[str, bool]:
     """(why, whether it waits) for the stop ``key`` of ``Claimer.stops``."""
     version = row.agent_version or "of an unknown version"
-    if key == "draining":
-        return "is draining: on its machine, `evo-agents worker drain --resume`", False
     if key == "unready":
         return f"is not ready: {claimer.node.unready}", False
     if key == "full":
@@ -181,6 +179,12 @@ def _condition_reason(key: str, row, run, profile, home) -> tuple[str, bool]:
     """(why, whether it waits) for the condition ``key`` of ``Claimer.conditions`` the run fails on worker ``row``."""
     version = row.agent_version or "of an unknown version"
     project, handle = run.project, getattr(profile, "handle", None)
+    if key == "draining":
+        return (
+            "is draining, and takes only the runs that resume one it parked: on its machine, "
+            "`evo-agents worker drain --resume`",
+            False,
+        )
     if key == "project":
         if not row.serves:
             command = f"evo-agents worker projects --worker {row.name} --add {project}"
