@@ -329,6 +329,24 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
     return or_(parts["home"], and_(or_(parts["own"], member), parts["alone"]))
 
 
+def resumes_here(worker_id: int):
+    """Whether the run being claimed (``tables.runs``, correlated) resumes a run worker ``worker_id`` held, whose
+    session and worktrees stay on its machine: pinned to it, with ``resume_of_run_id`` naming a run of it. The only
+    runs a drained worker takes (``Claimer.conditions``): no other worker can, so a drain would hold them forever."""
+    r = tables.runs
+    parked = r.alias("parked")
+    of_it = exists().where(parked.c.id == r.c.resume_of_run_id, parked.c.worker_id == worker_id)
+    return and_(r.c.pinned_worker_id == worker_id, of_it)
+
+
+async def resume_waits(conn: AsyncConnection, worker_id: int) -> bool:
+    """Whether a queued run waits that resumes a run worker ``worker_id`` held (``resumes_here``): the heartbeat of a
+    drained worker then tells its daemon to claim, and the claim hands it that run alone."""
+    r = tables.runs
+    query = select(exists().where(r.c.state == "queued", resumes_here(worker_id)))
+    return (await conn.execute(query)).scalar_one()
+
+
 class ClaimAbandoned(Exception):
     """The worker hung up before its claim was answered; the lease the claim took is rolled back."""
 
@@ -444,12 +462,10 @@ async def _claim_once(
     async with engine.begin() as conn:
         found = await worker_of(conn, user)
         worker_id, name, features = found.id, found.name, found.features
-        if found.drained_at is not None:
-            return None
         node = await worker_placement.placement(conn, worker_id)
         if not node.ready:  # a node of a pool whose doctor report is stale or has a high finding it does not accept
             return None
-        if agent_placement.is_agent_pool(node.pool):  # a ready node: the pool is not out of nodes
+        if agent_placement.is_agent_pool(node.pool) and found.drained_at is None:  # the pool is not out of nodes
             await agent_placement.recovered_by(conn, worker_id)
         claimer = await read_claimer(conn, found, node)
         if claimer.stops():
@@ -553,10 +569,10 @@ class Claimer:
 
     def stops(self) -> list[str]:
         """What keeps the worker from taking any run now, before the queue is read, each by its key, in the order the
-        claim checks them: draining, unready (a node of a pool that is not ready), full (no free slot), runtime (none
-        it takes), checkout (none of a project it serves, and a daemon that clones nothing)."""
+        claim checks them: unready (a node of a pool that is not ready), full (no free slot), runtime (none it takes),
+        checkout (none of a project it serves, and a daemon that clones nothing). Draining is a condition on the run
+        (``conditions``), since a drained worker still takes the runs that resume one it parked."""
         checks = (
-            (self.row.drained_at is not None, "draining"),
             (not self.node.ready, "unready"),
             (self.holding >= self.row.slots, "full"),
             (not self.runtimes and not self.offered, "runtime"),
@@ -565,9 +581,10 @@ class Claimer:
         return [key for failed, key in checks if failed]
 
     def conditions(self) -> list[tuple[str, object]]:
-        """Every condition on a queued run for the worker to take it now, each with its key: ``_claim_conditions``,
-        then ``gates``."""
+        """Every condition on a queued run for the worker to take it now, each with its key: on a drained worker, that
+        the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``gates``."""
         row = self.row
+        drained = [("draining", resumes_here(row.id))] if row.drained_at is not None else []
         kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
         said = {kind: kind in kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
         said |= {kind: kind in kinds for kind in ("task", "question", "release", "browser")}
@@ -586,7 +603,7 @@ class Claimer:
             steady=self.steady,
             shared=row.shared,
         )
-        return conditions + self.gates()
+        return drained + conditions + self.gates()
 
     def gates(self) -> list[tuple[str, object]]:
         """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes),

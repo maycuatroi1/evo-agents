@@ -365,7 +365,7 @@ A worker's status follows from three columns and the clock (`worker_status` in `
 | --- | --- | --- |
 | `revoked` | `revoked_at` is set; its token no longer works | no |
 | `offline` | no heartbeat in the last 300 seconds, or none yet | no |
-| `draining` | `drained_at` is set; it finishes the runs it holds | no |
+| `draining` | `drained_at` is set; it finishes the runs it holds | only a run that resumes one it held |
 | `online` | otherwise | yes |
 
 The daemon sends a heartbeat every 15 seconds, so a worker is offline after about 20 missed heartbeats. Offline
@@ -1102,6 +1102,10 @@ dispatched it, the project is one of the worker's and the owner still holds writ
 runtime as available (a run asking for `any` takes the first of `claude-code`, `opencode`, `codex` it has) and a
 checkout of the repo, the run is pinned to no other worker, the run was dispatched from a web session when the
 worker's `dispatch_from` is `web`, the worker holds fewer runs than its slots, and it is neither draining nor revoked.
+A drained worker still claims a run pinned to it whose `resume_of_run_id` names a run it held (a parked run resumed
+after a decision, a reply or a wait), since that run's session and worktrees are on its machine and no other worker can
+take it; it claims nothing else, and its heartbeat answers `drain: false` while such a run is queued, so its daemon
+claims it.
 A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
 an older daemon would read it as a run of one step without a repo and fail it. A plan run with `session_per_step`
 needs a daemon whose last heartbeat listed `session_per_step` in `features`: an older daemon would run every step in
