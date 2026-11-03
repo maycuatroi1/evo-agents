@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 # A label a run asks, or a taint it tolerates: a word, or key=value; a value may name a plugin's runtime, a/b.
 PLACEMENT_LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?$"
@@ -17,16 +17,6 @@ MAX_SELECTOR = 16
 
 Label = Annotated[str, Field(pattern=PLACEMENT_LABEL)]
 PoolName = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")]
-
-POOL_HELP = "only a node of the pool of this name takes the run: the same as asking the label pool=<name>"
-LABELS_HELP = (
-    "labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the "
-    "hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)"
-)
-TOLERATIONS_HELP = (
-    "taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, "
-    "unless the run is pinned to it"
-)
 
 
 def normalized(values) -> list[str]:
@@ -40,24 +30,24 @@ def selector_of(pool: str | None, labels) -> list[str]:
     return normalized([*asked, *(labels or ())])
 
 
-class PlacementFields(BaseModel):
-    """The fields of a dispatch that place its run; each optional."""
+PLACED_BY_HUB = ("worker_id", "worker", "pool", "labels", "tolerations")
+PLACED_BY_HUB_HINT = (
+    "the hub places each run of an agent on the nodes of the agent's own pool, so a dispatch names no worker, pool, "
+    "labels or tolerations: leave them out (an older evo-agents CLI sends them: update it), and ask an admin of the "
+    "project to add a node to the pool of the agent (`evo-agents worker pool token create agent-<handle>`)"
+)
 
-    pool: PoolName | None = Field(None, description=POOL_HELP)
-    labels: list[Label] | None = Field(None, max_length=MAX_SELECTOR, description=LABELS_HELP)
-    tolerations: list[Label] | None = Field(None, max_length=MAX_SELECTOR, description=TOLERATIONS_HELP)
 
-    @field_validator("labels", "tolerations")
+class HubPlaced(BaseModel):
+    """A dispatch body that places nothing: the hub does, on the pool of the run's agent. A body that names a worker,
+    a pool, labels or tolerations is refused with a 422 that says so, not read as if it had none."""
+
+    @model_validator(mode="before")
     @classmethod
-    def _lowered(cls, value: list[str] | None) -> list[str] | None:
-        return None if value is None else normalized(value)
-
-    def selector(self) -> list[str]:
-        return selector_of(self.pool, self.labels)
-
-    def placed(self) -> bool:
-        """Whether it names any of them: a rerun that names none keeps the run's own."""
-        return self.pool is not None or self.labels is not None or self.tolerations is not None
+    def _no_placement(cls, data):
+        if isinstance(data, dict) and (named := [key for key in PLACED_BY_HUB if data.get(key) is not None]):
+            raise ValueError(f"{', '.join(named)} cannot be set: {PLACED_BY_HUB_HINT}")
+        return data
 
 
 class RunPlacement(BaseModel):

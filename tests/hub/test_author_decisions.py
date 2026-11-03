@@ -106,7 +106,7 @@ def asks(client, worker: dict, run_id: int, **extra) -> dict:
 
 def another(client, hub, worker: dict) -> int:
     """Another author run of the owner's on ``worker``, claimed and running: its id."""
-    run_id = dispatched_author(client, hub["owner"], worker["id"])["id"]
+    run_id = dispatched_author(client, hub["owner"])["id"]
     assert claim(client, worker)["id"] == run_id
     moved(client, worker, run_id, "running")
     return run_id

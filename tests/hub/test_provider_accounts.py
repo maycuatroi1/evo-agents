@@ -234,13 +234,11 @@ def test_provider_account_takes_its_key_from_an_env_secret_that_stays_and_still_
     assert opened(copy, secret_aad(copy[1], "glm-main", "provider")) == key
     assert opened(original, secret_aad(original[1], "zhipu-glm", "env")) == key and original[7] is None
     names = [s["name"] for s in client.get("/v1/secrets", headers=hub["owner"]).json()]
-    assert names == ["zhipu-glm"]  # the provider account is not a secret of these routes
+    assert "zhipu-glm" in names and "glm-main" not in names  # the provider account is not a secret of these routes
     accounts = client.get("/v1/accounts", headers=hub["owner"])
     listed = {a["name"]: (a["env_var"], a["gateway"] is not None) for a in accounts.json()}
-    assert accounts.status_code == 200 and listed == {  # the env secret stays an account; the copy is a provider's
-        "zhipu-glm": ("ZHIPU_API_KEY", False),
-        "glm-main": ("gateway:glm", True),
-    }
+    assert accounts.status_code == 200  # the env secret stays an account; the copy is a provider's
+    assert (listed["zhipu-glm"], listed["glm-main"]) == (("ZHIPU_API_KEY", False), ("gateway:glm", True))
     # another member's secret, or a missing one, is not found; both or neither key is 422
     assert client.put(path("x"), json=account(from_secret="zhipu-glm"), headers=hub["other"]).status_code == 404
     both = client.put(path("x"), json=account(sample(), from_secret="zhipu-glm"), headers=hub["owner"])
@@ -256,6 +254,7 @@ def test_provider_account_shares_the_name_space_of_secrets_and_is_never_written_
     assert client.put(path("taken"), json=account(sample()), headers=hub["owner"]).status_code == 409
     written(client, hub["owner"], "mine", account(sample()))
     assert client.put("/v1/secrets/mine", json=env, headers=hub["owner"]).status_code == 409
+    assert client.patch("/v1/secrets/mine", json={"workers": []}, headers=hub["owner"]).status_code == 409
     assert client.delete("/v1/secrets/mine", headers=hub["owner"]).status_code == 404
     assert stored(hub_db, "mine")[7] is None
 

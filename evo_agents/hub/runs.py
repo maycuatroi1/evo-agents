@@ -81,6 +81,7 @@ from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, ships,
 from evo_agents.hub.decision_asks import ASK_RULE
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
+from evo_agents.hub.proofs import criteria, prompt_lines, result_how, worker_how
 from evo_agents.hub.record_rule import record_rule
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
@@ -325,6 +326,9 @@ LOOP_DECISION_CATEGORY = "loop"
 AUTONOMY_DECISION_CATEGORY = "autonomy"
 # the hub does what the answer chooses
 HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY, AUTONOMY_DECISION_CATEGORY)
+# those of them about what the run they hang on stands for (a release cycle, a work item of the Loop) rather than the run
+# itself: the run's end leaves them open (``server.run_state.move_run``)
+OUTLIVING_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY)
 # what the agent of a plan run opens with `evo-agents worker wait` to wait for a time or an event of the hub rather than
 # for its owner (``server.run_waits``): the hub answers it when either comes, the owner may answer it sooner
 WAIT_DECISION_CATEGORY = "wait"
@@ -394,6 +398,8 @@ NOTICE_KINDS = (
     "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market_licenses``)
     "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
     "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
+    "agent_pool_empty",  # a run of an agent in pool mode queued with no node of its pool ready (``agent_placement``)
+    "srs_adopt",  # a plan holds use cases of an SRS goal's backlog out of the Loop's builds (``server.loop.notices``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and
@@ -487,6 +493,7 @@ CONTEXT_BYTES = 4 * 1024
 WHAT_BYTES = 10 * 1024
 VERIFY_BYTES = 3 * 1024
 NOTE_BYTES = 2 * 1024
+ACCEPTANCE_BYTES = 4 * 1024  # the criteria a step names, with the plan's words, and how to prove each
 EVIDENCE_BYTES = 1536  # the evidence of one step this one depends on
 DEPENDENCIES_BYTES = 5 * 1024  # all of it
 LIST_TITLE_BYTES = 120  # the title of a step in a plan run's list of steps
@@ -826,16 +833,22 @@ def _dependencies(plan: dict, step: dict) -> list[str]:
     return ["# Evidence from the steps this one depends on", clip("\n\n".join(parts), DEPENDENCIES_BYTES)]
 
 
-def _step_lines(step: dict, key: str) -> list[str]:
-    """The step's title, what, verify and note, each cut to its own budget, as the prompt of a run of one step has them."""
+def _step_lines(step: dict, key: str, plan: dict | None = None, how: str = "") -> list[str]:
+    """The step's title, what, verify, the criteria of ``plan``'s acceptance it names with ``how`` the agent proves
+    each (none when it names none), and its note, each cut to its own budget, as the prompt of a run of one step has
+    them."""
     lines = ["", f"# Step {key}: {_short(step.get('title'), 'untitled')}"]
     for heading, value, budget in (
         ("## What to do", step.get("what"), WHAT_BYTES),
         ("## How the step is verified", step.get("verify"), VERIFY_BYTES),
-        ("## Note", step.get("note"), NOTE_BYTES),
     ):
         if _text(value):
             lines += ["", heading, clip(_text(value), budget)]
+    wanted = prompt_lines(criteria(plan, step), how)
+    if wanted:
+        lines += ["", clip("\n".join(wanted), ACCEPTANCE_BYTES)]
+    if _text(step.get("note")):
+        lines += ["", "## Note", clip(_text(step.get("note")), NOTE_BYTES)]
     return lines
 
 
@@ -861,7 +874,7 @@ def build_prompt(plan: dict, step: dict, repo: dict | None) -> str:
     ):
         if _text(value):
             lines += ["", heading, clip(_text(value), budget)]
-    lines += _step_lines(step, key)
+    lines += _step_lines(step, key, plan, result_how())
     dependencies = _dependencies(plan, step)
     if dependencies:
         lines += ["", *dependencies]
@@ -874,7 +887,10 @@ def build_prompt(plan: dict, step: dict, repo: dict | None) -> str:
 def _push_rule(autonomy) -> str:
     """The rule of a plan run on its pushes and merges. The merge of a pull request the run opened into a repo's
     default branch is K5: the agent's with no question when merging is its own (``autonomy_card.ships``), and as its
-    card says when it is not; run #820 asked its owner twice whether it might merge its own pull request, at A5."""
+    card says when it is not; run #820 asked its owner twice whether it might merge its own pull request, at A5. Runs
+    #1404, #1414 and #1415 asked their owner to merge release pull requests gh called blocked: the workers' App is an
+    "Always allow" bypass actor of evo-agents' main ruleset, which gh shows it as BLOCKED until it merges with
+    ``--admin``."""
     if ships((autonomy or {}).get("modes")):
         merge = (
             ", and merge a pull request you opened into that repo's default branch with no question to the owner: "
@@ -888,7 +904,16 @@ def _push_rule(autonomy) -> str:
         "name for that repo, never merge into any other branch, never force-push, and never rewrite history you "
         "pushed. After each push or merge into a repo's default branch that you make yourself (the pushes of "
         "`evo-agents worker step` send their own notice), run `evo-agents worker notify --kind push_default_branch "
-        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits."
+        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits. "
+        "In a repo whose policy has the merge check on, check first and merge after: `evo-agents worker merge-check "
+        "REPO` has the hub judge your pull request at its head (end your turn while it waits), and only a passed "
+        "verdict opens `gh pr merge N --match-head-commit HEAD` (or `gh api -X PUT repos/OWNER/NAME/pulls/N/merge -f "
+        "sha=HEAD`) with that same head; the hook refuses a merge without it, and a push after the verdict needs a new "
+        "check. The hub reads the merge afterwards and tells the owner when it was at another head or off the base. "
+        "When gh answers that the base branch policy prohibits the merge, run the same `gh pr merge` again with "
+        "`--admin`: a ruleset that lets the hub's GitHub App bypass it as Always allow still shows the pull "
+        "request as blocked to the App, and GitHub refuses `--admin` to an actor it does not let bypass. Ask the owner "
+        "to merge only when GitHub refuses that too."
     )
 
 
@@ -1121,7 +1146,7 @@ def build_step_session_prompt(
     ]
     if _text(plan.get("context")):
         lines += ["", "# Context of the plan, shortened", clip(_text(plan.get("context")), CONTEXT_BYTES)]
-    lines += _step_lines(step, key)
+    lines += _step_lines(step, key, plan, worker_how())
     if handoff and handoff.strip():
         lines += ["", handoff.strip()]
     return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)

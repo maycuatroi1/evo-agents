@@ -20,6 +20,11 @@ default branch never, whatever its plan names; a chat run its branch ``chat/<run
 an author run push nothing. ``push``
 sends the push options it is given (``--push-option``), with which a push to GitLab opens a merge request.
 
+A run of one step does the same for the branch its plan's runs share (``push`` with a ``Replay`` and kind ``step``): other
+step runs push to it too, so a branch that went on while the run worked gets the run's commits on top of its tip, the
+step's verify runs again, and only a real conflict (or a failed verify) ends in ``PushConflict``, with the work kept on
+the side branch as above.
+
 A branch the remote moved past HEAD (it has HEAD in its history) is left alone: there is nothing to push. A default
 branch the plan names that the remote moved on while HEAD has commits of its own (``push`` with a ``Replay``, as
 ``evo-agents worker step`` and the push at the end of a plan run call it) gets those commits on top of the remote's tip:
@@ -57,6 +62,7 @@ import os
 import re
 import secrets
 import shutil
+import tempfile
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +97,8 @@ RUN_COMMIT_EXCLUDES = (
     f"{RESULT_DIR}/",
 )
 PATHS_PER_CALL = 200  # paths in one `git reset`, well within any argv limit
+RECOVERY_REFS = "refs/evo-recovery/"  # the WIP commits of a worktree removed with changes not committed (``save_wip``)
+WIP_IDENTITY = {"name": "evo-agents worker", "email": "worker@evo-agents.invalid"}  # when the machine sets none
 # What git prints when the remote did not take its credential, or it had none to send (GitHub, GitLab, any http).
 AUTH_FAILURE = re.compile(
     r"Authentication failed|could not read (?:Username|Password)|Invalid username or password"
@@ -442,11 +450,18 @@ async def staged_paths(cwd: Path) -> list[str]:
     return [path for path in out.split("\0") if path]
 
 
+async def _result_pathspec(cwd: Path) -> tuple[str, ...]:
+    """The pathspec that keeps the result directory out of ``git add --all``: none when the work tree already ignores
+    it, since git exits 1 on a pathspec naming an ignored path, an excluding one too ("paths are ignored")."""
+    code, _, _ = await git(cwd, "check-ignore", "--quiet", "--", RESULT_DIR, check=False)
+    return () if code == 0 else (EXCLUDE_RESULT,)
+
+
 async def commit_run(cwd: Path, message: str, *, author: str | None = None) -> Committed:
     """Stage every change of the work tree but the result directory, put the paths a run never commits back as HEAD
     has them (see the module's docstring), and commit what is left as ``message``, with ``author`` (``Name <email>``)
     as its author when given; the committer is this machine's git identity either way."""
-    await git(cwd, "add", "--all", "--", ".", EXCLUDE_RESULT)
+    await git(cwd, "add", "--all", "--", ".", *await _result_pathspec(cwd))
     staged = await staged_paths(cwd)
     left = sorted(await asyncio.to_thread(_left_out, cwd, staged))
     for start in range(0, len(left), PATHS_PER_CALL):
@@ -604,10 +619,12 @@ async def _send(
 ) -> None:
     """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced; PushDeclined when the
     remote declined it by a rule of its own, whose reason (``REMOTE_REJECTED``) ends the message; PushRefused when a
-    commit it would send holds the value of one of the run's leases (``lease_leaks``, floor S3)."""
-    from evo_agents.worker import lease_leaks
+    commit it would send holds the value of one of the run's leases (``lease_leaks``, floor S3), or holds a private
+    name of the hub's projects and goes to a repo they publish (``guard.check_push``)."""
+    from evo_agents.worker import guard, lease_leaks
 
     await lease_leaks.check(cwd, source, remote)
+    await asyncio.to_thread(guard.check_push, cwd, source, branch, remote, env)
     sent = [f"--push-option={option}" for option in options]
     code, out, err = await git(
         cwd,
@@ -653,8 +670,8 @@ async def push(
     head = await rev(cwd, "HEAD")
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")
-    if default and replay is not None:
-        return await _push_replaying(cwd, branch, remote, head, replay, env=env, options=options)
+    if replay is not None and (default or kind == "step"):
+        return await _push_replaying(cwd, branch, remote, head, replay, default, env=env, options=options)
     before = await remote_tip(cwd, branch, remote, env=env)
     if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
         return Pushed(branch, head, default, False)
@@ -669,6 +686,7 @@ async def _push_replaying(
     remote: str,
     head: str,
     replay: Replay,
+    default: bool,
     *,
     env: Mapping[str, str] | None,
     options: Collection[str],
@@ -679,14 +697,14 @@ async def _push_replaying(
     for attempt in range(1, REPLAY_TRIES + 1):
         before = await remote_tip(cwd, branch, remote, env=env)
         if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
-            return Pushed(branch, head, True, False, (), onto, original if head != original else None)
+            return Pushed(branch, head, default, False, (), onto, original if head != original else None)
         if before is not None and not await is_ancestor(cwd, before, head):
             if await rev(cwd, before) is None:  # has_commit fetched it; nothing replays onto a commit not here
                 raise GitError(f"the tip {before[:12]} of {branch} on {remote} could not be fetched to replay onto")
             head = await _replay(cwd, branch, remote, before, head, original, replay, env=env)
             onto = before
             if head == before:  # every commit of the run was on the remote's branch already, as another commit
-                return Pushed(branch, head, True, False, (), onto, original)
+                return Pushed(branch, head, default, False, (), onto, original)
         commits = tuple(await new_commits(cwd, before, remote))
         try:
             await _send(cwd, "HEAD", branch, remote, env=env, options=options)
@@ -697,7 +715,7 @@ async def _push_replaying(
                 why = f"went on top of it {REPLAY_TRIES} times, and each time it moved on again before the push"
                 raise await _conflict(cwd, branch, remote, original, before or head, why, replay, env=env) from None
             continue  # the remote moved the branch on between the look and the push
-        return Pushed(branch, head, True, True, commits, onto, original if head != original else None)
+        return Pushed(branch, head, default, True, commits, onto, original if head != original else None)
     raise AssertionError("unreachable")  # pragma: no cover
 
 
@@ -932,6 +950,38 @@ async def attach(cwd: Path, branch: str) -> None:
 
 async def remove_worktree(cwd: Path, path: Path) -> None:
     await git(cwd, "worktree", "remove", "--force", str(path))
+
+
+@dataclass(frozen=True)
+class Wip:
+    """What ``save_wip`` kept of a worktree: its HEAD, the WIP commit on top of it and the ref that names it."""
+
+    head: str | None
+    wip: str
+    ref: str
+
+
+async def save_wip(worktree: Path, ref: str, message: str) -> Wip | None:
+    """Commit what the work tree ``worktree`` has that HEAD lacks (tracked or not, ignored files aside) on top of HEAD,
+    through an index of its own so the worktree's stays as it was, and point ``ref`` (under RECOVERY_REFS, shared by
+    every worktree of the checkout) at that commit; None when nothing is uncommitted. HEAD and its branch do not move."""
+    _, status, _ = await git(worktree, "status", "--porcelain", "--untracked-files=all")
+    if not status.strip():
+        return None
+    head = await rev(worktree, "HEAD")
+    with tempfile.TemporaryDirectory(prefix="evo-wip-") as scratch:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch) / "index")}
+        for role in ("AUTHOR", "COMMITTER"):
+            env.setdefault(f"GIT_{role}_NAME", WIP_IDENTITY["name"])
+            env.setdefault(f"GIT_{role}_EMAIL", WIP_IDENTITY["email"])
+        if head is not None:
+            await git(worktree, "read-tree", head, env=env)
+        await git(worktree, "add", "--all", "--", ".", env=env)
+        _, tree, _ = await git(worktree, "write-tree", env=env)
+        parents = ("-p", head) if head is not None else ()
+        _, wip, _ = await git(worktree, "commit-tree", tree.strip(), *parents, "-m", message, env=env)
+    await git(worktree, "update-ref", ref, wip.strip())
+    return Wip(head, wip.strip(), ref)
 
 
 async def prune_worktrees(cwd: Path) -> None:

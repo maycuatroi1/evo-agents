@@ -9,7 +9,8 @@ breaker and answer audit samples; they do not review each merge request.
 
 A project with no policy, or a repo the policy leaves `off`, works as before: merge requests on GitLab stay open for a
 person, and the Curator merges on GitHub by its tiers alone (`docs/curator.md`). No merge train or merged results
-pipeline of GitLab Premium is used.
+pipeline of GitLab Premium is used. On GitHub, a repo whose policy turns `merge_check` on has the hub's Judges check a
+pull request a run opened before the run merges it ([The merge check on GitHub](#the-merge-check-on-github)).
 
 | Part | Where |
 | --- | --- |
@@ -21,9 +22,10 @@ pipeline of GitLab Premium is used.
 | after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/post_merge.py` |
 | the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
 | an admin's pass of a hold for a person | `evo_agents/hub/server/merge_pass.py` |
+| the merge check of a pull request on GitHub | `evo_agents/hub/server/merge_check.py`, `evo_agents/worker/merge_check_cli.py` |
 | the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli_merge.py` |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
-| the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`) |
+| the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`); `merge_checks` (schema 0187, `tables_merge.py`) |
 
 Everything runs in the job `hub.merge_queue` of the hub's worker, every minute, one pass at a time on all the hub's job
 workers (`docs/hub.md`, Worker and queue).
@@ -40,7 +42,7 @@ workers (`docs/hub.md`, Worker and queue).
    policy names them; writing them is the repo's own work. A job the policy names that is missing from a pipeline counts
    as a failed check. The UAT deploy and check of one commit must not interleave with the next commit's; a repo that
    cannot promise it sets `merge.hold_until: uat_check`.
-4. **A worker that judges.** The Judge runs on `judge.worker`, else on the worker on duty of the project's charter. Its
+4. **A worker that judges.** The Judge runs on a node of the pool of the project's default agent. Its
    daemon must say it judges merge requests (the feature `merge_judge` of its heartbeat).
 5. **The policy**, with the repo in mode `auto`: `evo-agents hub policy set --file policy.yaml`.
 
@@ -75,11 +77,11 @@ revision 0: every repo `off`.
 | `repos.<repo>.prod_release` | `immediate` | when the hub runs the PROD deploy: `immediate`, `after_uat`, or `manual` |
 | `repos.<repo>.after_uat_hours` | 4 | hours of a green UAT check before the PROD deploy, with `after_uat` |
 | `repos.<repo>.jobs.uat_check`, `.prod_deploy`, `.prod_check`, `.rollback` | null | the CI job of each; null: the repo has none |
+| `repos.<repo>.merge_check` | `off` | `on`: a run's pull request is judged at its head before the run merges it; `off`: it is not. `on` is refused for a repo not on github.com |
 | `merge.opt_in_label` | `evo-merge` | the label a person puts on a merge request to ask for the queue |
 | `merge.risk_paths` | `[]` | globs added to the risk paths the code knows |
 | `merge.hold_until` | `merged` | how far the merge request before must get before the next one of the same branch starts: `merged`, `uat_check`, `prod_check` |
 | `merge.pipeline_minutes` | 60 | the longest the hub waits for a pipeline, a rebase or a job |
-| `judge.worker` | null | the worker that runs the Judge; null: the charter's worker on duty |
 | `judge.model` | null | the first Judge's model; null: a Claude model other than the Builder's |
 | `breaker.target_red_minutes` | 30 | the target branch red this long trips the breaker |
 | `breaker.reverts_in_a_row` | 2 | this many automatic reverts in a row trip it |
@@ -95,7 +97,7 @@ lines or files, and the breaker never counts merges per day.
 Every member with a grant on the project reads the policy; only an admin of the project writes it. A write is the whole
 policy, never a patch, and becomes the next revision with the writer's note; a write equal to the newest revision
 writes nothing. `--if-revision` (`if_revision` of `PUT`) refuses a write when someone wrote another revision meanwhile
-(409). Writing is strict: an unknown key, a bad value, a repo the project does not list, or `auto` on github.com is 422.
+(409). Writing is strict: an unknown key, a bad value, a repo the project does not list, `auto` on github.com, or `merge_check: on` off github.com is 422.
 Reading is lenient: a value a newer release refused reads as its default. Every revision is kept and adds an audit row
 `policy.set` naming the revision and the keys it changed, never a value.
 
@@ -147,9 +149,9 @@ a new push moves. The hub comments on the merge request once for each reason tha
 | 2, the plan's repo | the merge request is of the repo's GitLab project and from the branch the plan, task run or Curator's change names; a person's passes |
 | 3, score hacking | the diff shows no sign of score hacking (`judge.hack_signs`); one sign holds the merge request for a person |
 | 4, the checks | the judge run runs the verify of the plan's steps for the repo and the project's hidden checks before its agent reads the diff; each exits 0 |
-| 5, the Judge | Claude, in a context of its own that never holds the Builder's transcript, passes each of `work`, `description` (the title and description match the diff), `tests`, `scope` and `safety` |
+| 5, the Judge | Claude, in a context of its own that never holds the Builder's transcript, passes each of `work`, `description` (the title and description match the diff), `tests`, `scope` and `safety`, and no finding of an earlier round is left open on them (Findings across rounds, below); and a security pass of its own passes `security` (The security pass, below) |
 | 6, the risk | computed, not judged: high when a changed path matches the risk paths (migrations, SQL, auth, security, permissions, deploy files, Docker, Kubernetes, Helm, Terraform, `.env`, secrets, dependency manifests and lockfiles) or `merge.risk_paths`, when the path rules of the Curator's tiers give it level 2 or more, or when the knowledge graph says the diff reaches such a path; a graph that cannot tell is named in the reasons, and the risk then comes from the paths alone |
-| 7, the second Judge | for a high risk alone: Opus, on `migration`, `auth`, `deploy`, `dependencies` and `rollback` |
+| 7, the second Judge | for a high risk alone: Opus, on `migration`, `auth`, `deploy`, `dependencies` and `rollback`, and the same security pass on its model |
 
 **A hold for a person.** Gate 3 is the one gate that holds a merge request for a person: the signs of score hacking
 may be the work the plan asked for, such as a plan run that adds its tests to `.gitlab-ci.yml`. An admin of the project
@@ -168,6 +170,34 @@ policy's newest revision. A project has one judge run active at a time, the Cura
 without a verdict is queued again, three times in all, then the merge request is blocked. A verdict holds for a patch,
 not a commit: the lines each file adds and removes, without line numbers or context. A rebase that keeps the patch keeps
 the verdict, and the Judge does not run again.
+
+**Findings across rounds.** A Judge names each thing it finds wrong as a finding: an id that stays the same for the
+merge request (`F1`, `F2`, and on), the dimension it fails, the file and line, and what is wrong. A dimension the Judge
+fails without a finding gets one with the dimension's reason. The findings live in the merge request's verdict
+(`merge_queue.verdict`, key `findings`), and the `judged` line of the ledger has those the round raised and its marks.
+A new patch drops the Judges' verdicts and keeps the findings. The prompt of the next Judge lists those still open on
+its own dimensions, and asks it to mark each one `fixed`, `not_fixed` or `no_longer_applies` with the file:line that
+shows it before it reviews the change again. The hub checks the marks itself (`evo_agents/hub/findings.py`): an open
+finding the Judge marked `not_fixed`, left unmarked, or closed without a file:line fails its dimension, and so does a
+new finding on a dimension the Judge passed. The hub's comment on a merge request a Judge blocks gives each open
+finding in full the first time, and after that names it by its id alone. A verdict kept before findings existed reads
+as one with none. The Judge still never reads the Builder's transcript.
+
+**The security pass.** Both Judges also run a security review that is a separate turn of an agent, in the same judge run
+and after the Judge's own turn, so `security` is judged by an agent that has not read the Judge's reasoning, the
+description of the merge request or anything the Builder wrote (`evo_agents/hub/security_pass.py`). The text is the
+`security-review` command of anthropics/claude-code-security-review (MIT), copied at a pinned commit into
+`evo_agents/hub/security_review/` with its license beside it; the one change is that its diff starts at the merge base
+of the merge request, not at `origin/HEAD`. A first turn finds the vulnerabilities the change adds, at most 10. Then one
+turn for each finding, in a session of its own, filters false positives and scores it from 1 to 10; a finding under 8
+goes. A finding left fails `security` and enters the merge request's findings (Findings across rounds) with its path and
+line; none left passes it. A pass that gives no readable findings, a score that cannot be read (the finding stays) or a
+verdict posted without the pass also fails `security`, so a pass that did not run never passes. The pass reads the
+whole change again at every head, so it marks nothing: the hub closes the `security` findings still open as
+`no_longer_applies` and raises again what the pass still sees. The verdict and the `judged` line of the ledger keep
+`security`: the turns it took, the candidates before the filter and its cost in USD where the runtime reports it. The
+pass adds one turn that finds and one for each finding, on top of the Judge's own turn; a change with no finding costs
+one more turn. Changing the model of the Judge's route changes the cost of the pass with it.
 
 ### The principal's K5 and K6
 
@@ -304,6 +334,42 @@ pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https
   --project demo --expires 2027-09-15
 ```
 
+## The merge check on GitHub
+
+A plan run that opened a pull request on github.com, in a repo whose policy has `merge_check: on`, asks the hub to judge
+it before it merges it:
+
+```sh
+evo-agents worker merge-check evo-agents            # the open pull request of the run's branch
+evo-agents worker merge-check evo-agents --pr 7     # or one by its number
+```
+
+The hub reads the pull request with the workers' GitHub App (pull_requests read). It must be open, of the run's branch
+and not from a fork. The hub then opens a wait of the run, as `evo-agents worker wait` does: the agent ends its turn,
+the run parks and holds no worker slot, and the verdict comes back as the message that answers the wait. A wait whose
+verdict never came wakes after 24 hours; asking again reads where the check stands. A repo that leaves `merge_check`
+off keeps its behaviour, and the command answers 409 there.
+
+The job `hub.merge_queue` queues the judge run, the same run the queue's gates 4 to 7 use: on a node of the default agent's pool, on Claude Code with a model other than the Builder's, one judge run active a project, and
+tried again up to three times when a run ends without a verdict. Its worker:
+
+1. merges origin's current base branch into the head in a scratch commit, with no branch, work tree or hook touched. A
+   conflict fails the check with `needs a rebase` and the paths that conflict, and nothing else runs;
+2. runs the plan's verify for the repo and the project's hidden checks on that merge result;
+3. runs the Judge, then the security pass, on the pull request's own diff at its head. The findings of each round stay
+   with the pull request (`hub/findings.py`), so a later round marks the ones still open.
+
+A first Judge that passes has the hub weigh the risk of the paths it read, as gate 6 does; a high risk has the second
+Judge judge it too. The Judge never reads the Builder's transcript.
+
+The verdict holds for the head it judged alone. Asking at a new head starts the check again, keeping the open findings,
+and a judge run of the old head no longer counts (its verdict answers 409). A check that passed wakes the run with
+`gh pr merge N --match-head-commit SHA`, so GitHub refuses the merge if the branch moved since. A check that failed
+says why: fix it, push, and ask again. Turning `merge_check` off while a check judges fails it and wakes the run.
+
+The checks live in the table `merge_checks` (schema 0187), one row a pull request, with the head, the state
+(`judging`, `passed` or `failed`), the verdict and the wait it answers. The GitLab merge queue is not changed by it.
+
 ## Commands, routes and pages
 
 ```sh
@@ -320,6 +386,7 @@ evo-agents hub merge pass lumen-api 11 --reason "its goal is this CI job" --proj
 | `GET /v1/projects/{project}/merge-queue` (`?repo=`, `?limit=`), `GET .../merge-queue/figures` (`?repo=`, `?days=`) | a member with a grant |
 | `POST .../merge-queue/samples/{id}`, `POST .../merge-queue/{id}/release`, `POST .../merge-queue/{id}/revert`, `POST .../merge-queue/{id}/pass` (`{"reason": ...}`), `POST .../merge-queue/repos/{repo}/resume` | an admin of the project |
 | `GET /v1/worker/runs/{id}/merge-judge`, `POST /v1/worker/runs/{id}/merge-verdict` | the worker holding the judge run, with the run's key |
+| `POST /v1/worker/runs/{id}/merge-check` (`{"repo", "number"?, "branch"?}`) | the worker holding the plan run, for its agent's `evo-agents worker merge-check` |
 
 The web's Merge queue entry of a project, after Runs, has three tabs: Queue (`/p/{project}/merge-queue`: the merge
 requests waiting, in their turn and after their merge, why each waits or is blocked, the events after a merge, each

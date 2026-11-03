@@ -238,6 +238,7 @@ class RunContext:
     environment: Environment = HOST_ENVIRONMENT  # where the agent runs: the host, or a container of a plugin's
     packs: tuple = ()  # the agent packs of the run's profile, built for it (``evo_agents.worker.packs.Pack``)
     autonomy: object = None  # the hook of autonomy of a run with a snapshot (``evo_agents.worker.autonomy_hook.Gate``)
+    floor: object = None  # the file floor of every run of the daemon (``evo_agents.worker.autonomy_hook.Floor``)
 
     @property
     def run_id(self) -> int:
@@ -277,6 +278,8 @@ class Adapter(abc.ABC):
     # their MCP servers it connects to; an adapter that names none loads no pack (``pack_refusal``).
     pack_kinds: ClassVar[tuple[str, ...]] = ()
     pack_transports: ClassVar[tuple[str, ...]] = ()
+    # The model the runtime says the agent runs on, once it said so; None: the worker records the model it asked for.
+    model_used: str | None = None
 
     @classmethod
     def detect(cls) -> Detection:

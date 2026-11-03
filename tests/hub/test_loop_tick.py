@@ -2,16 +2,16 @@
 loop_jobs``), as criteria a4 and a11 of plan loop-engine name them, on the hub with Postgres.
 
 The Loop is off by default and comes on with a revision of the autonomy policy, its cursor at the project's newest
-event: nothing from before is read again. Each event of a project whose Loop is on queues a tick, one waiting at a
-time per project, and every 5 minutes each such project gets one. A tick reads the events past its cursor, the clock
-and the work items not finished, and writes work items with their ancestors, a key that makes each once, and a ledger;
-with no hand-out it hands out no run, it calls no model, and with nothing new it writes no work item. The chain here:
-goal G-1 with a metric drives the canvas of Northwind Pantry, whose claim CL-1 links use case UC ORD-1 of the made-up
-SRS document demo-shop; a baseline moves CL-1 to testing, someone-else approves version 1 of demo-shop, the plugin srs
-makes its frame tasks, and the Loop's build waits on the frame task of UC ORD-1 until it is ready, then in the queue
-for want of loop.worker (``tests.hub.test_loop_admission`` has the rest of admission). Reading the same events again,
-and an event told twice, make nothing more. A claim invalidated, a goal closed and the Loop turned off cancel what is
-left. A project with the Loop off is as before the plan: no state, no tick, no work item.
+event: nothing from before is read again. Each event of a project whose Loop is on queues a tick, one waiting at a time
+per project, and every 5 minutes each such project gets one. A tick reads the events past its cursor, the clock and the
+work items not finished, and writes work items with their ancestors, a key that makes each once, and a ledger; with no
+hand-out it hands out no run, it calls no model, and with nothing new it writes no work item. The chain here: goal G-1
+with a metric drives the canvas of Northwind Pantry, whose claim CL-1 links use case UC ORD-1 of the made-up SRS
+document demo-shop; a baseline moves CL-1 to testing, someone-else approves version 1 of demo-shop, the plugin srs makes
+its frame tasks, and the Loop's build waits on the frame task of UC ORD-1 until it is ready, then in the queue for want
+of a node of the default agent's pool (``tests.hub.test_loop_admission`` has the rest of admission). Reading the same
+events again, and an event told twice, make nothing more. A claim invalidated, a goal closed and the Loop turned off
+cancel what is left. A project with the Loop off is as before the plan: no state, no tick, no work item.
 
 The engine is rules/2 (plan problem-oriented-hub, criterion a6): once G-1 answers problem P-1, each work item carries
 P-1; in a project whose solutions skip use cases (``loop.use_cases`` never) CL-1 makes a build straight from the
@@ -213,7 +213,7 @@ def test_loop_tick_a_project_with_the_loop_off_has_no_state_no_tick_and_no_work_
     edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
     push_baseline(client, hub, "CL-1")
     policy(client, hub, {})  # a policy with no loop section: the Loop stays off
-    policy(client, hub, {"enabled": False, "worker": "studio"})
+    policy(client, hub, {"enabled": False, "timezone": "Asia/Ho_Chi_Minh"})
     assert state(hub_db) is None and waiting_ticks(hub_db) == []
     assert ticked(client, hub_db) == {"off": 1}
     assert counts(hub_db)[:2] == (0, 0)
@@ -293,8 +293,8 @@ def test_loop_tick_runs_a_goal_to_the_builds_of_its_claim_once_however_often_it_
         None,
     )
     assert (built["claim_id"], built["cycle"]) == (case["claim_id"], "development")
-    # row 7: the plugin srs makes the frame tasks (no split run: @ba is off), and the build queues on its own; the
-    # policy names no loop.worker, so admission holds it (criterion a5)
+    # row 7: the plugin srs makes the frame tasks (no split run: @ba is off), and the build queues on its own; no
+    # node of the default agent's pool serves the project, so admission holds it (criterion a5)
     delivered(client)
     ticked(client, hub_db)
     built = item(hub_db, f"build:{FRAME}")
@@ -427,7 +427,7 @@ def test_loop_tick_rules2_goes_from_a_problem_to_a_build_of_a_claim_and_a_discov
     ticked(client, hub_db)
     build_key, discover_key = f"build:claim:{SLUG}:CL-1:b1", f"discover:{SLUG}:CL-2:b2"
     assert items(hub_db)[1:] == [
-        (build_key, "build", "queued", "worker"),  # no loop.worker: admission holds it
+        (build_key, "build", "queued", "worker"),  # no node of the default agent's pool: admission holds it
         (discover_key, "discover", "queued", None),
     ]
     built, found = item(hub_db, build_key), item(hub_db, discover_key)
@@ -442,8 +442,8 @@ def test_loop_tick_rules2_goes_from_a_problem_to_a_build_of_a_claim_and_a_discov
         "from": "assumption",
         "claim": "CL-1",
         "canvas": SLUG,
-        "worker": None,
-        "why": "the policy names no loop.worker",
+        "worker": f"pool=agent-{PROJECT}",
+        "why": f"no live worker holding pool=agent-{PROJECT} serves the project",
     }
     assert (found["cycle"], found["owner"], found["claim_id"]) == ("business", "@strategist", built["claim_id"] + 1)
     assert set(problems_of(hub_db).values()) == {problem_id}, "each work item carries the problem of its goal"

@@ -1962,7 +1962,8 @@ export interface paths {
         };
         /**
          * List Pools
-         * @description The caller's pools, by name, each with its nodes that are not revoked.
+         * @description The caller's pools, and the pools of the agents whose project the caller administers (every agent's for a hub
+         *     admin), by name, each with its nodes that are not revoked.
          */
         get: operations["list_pools_v1_worker_pools_get"];
         put?: never;
@@ -2095,8 +2096,9 @@ export interface paths {
         /**
          * Run Candidates
          * @description The workers of the run's owner and the agent profiles of the project that could run a failed run again, each
-         *     with why it fits or why not, the best first; the owner's alone (403 for another member), 409 for a run that did
-         *     not fail.
+         *     with why it fits or why not, the best first; for a queued run, the workers that could take it now as the claim
+         *     counts it, the agent pools of the project and why no worker can (``diagnosis``). The owner's alone (403 for
+         *     another member), 409 for a run neither failed nor queued.
          */
         get: operations["run_candidates_v1_projects__project__runs__run_id__rerun_candidates_get"];
         put?: never;
@@ -3449,24 +3451,11 @@ export interface paths {
          */
         get: operations["list_findings_v1_projects__project__curator_findings_get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/projects/{project}/curator/findings/{finding_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Show Finding */
-        get: operations["show_finding_v1_projects__project__curator_findings__finding_id__get"];
-        put?: never;
-        post?: never;
+        /**
+         * Record Session Finding
+         * @description Record a finding of your own session, in its local run, as a review run's agent records one.
+         */
+        post: operations["record_session_finding_v1_projects__project__curator_findings_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3485,6 +3474,28 @@ export interface paths {
          * @description The proposals of the project's review runs the caller may read, newest first.
          */
         get: operations["list_proposals_v1_projects__project__curator_proposals_get"];
+        put?: never;
+        /**
+         * Record Session Proposal
+         * @description Record a proposal of your own session, in its local run, as a review run's agent records one: the same
+         *     evidence, draft plan, tier and repeat checks.
+         */
+        post: operations["record_session_proposal_v1_projects__project__curator_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/findings/{finding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Finding */
+        get: operations["show_finding_v1_projects__project__curator_findings__finding_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4131,6 +4142,48 @@ export interface paths {
          *     message the agent may read.
          */
         get: operations["worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/doc-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Doc Versions
+         * @description Every version of the document ``name`` in the chat, threads included, oldest first: the files people attached
+         *     and the outputs agents sent under that name, of the messages the caller reads.
+         */
+        get: operations["chat_doc_versions_v1_chats__chat_id__doc_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/doc-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Doc Versions
+         * @description Every version of the document ``name`` in the run, oldest first: the files of the messages sent to its agent
+         *     and the outputs of the run under that name, for the run's readers.
+         */
+        get: operations["run_doc_versions_v1_projects__project__runs__run_id__doc_versions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5105,6 +5158,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/autonomy/run-reach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Run Reach
+         * @description The groups the caller's runs that run as them reach besides what every run's token reaches.
+         */
+        get: operations["show_run_reach_v1_autonomy_run_reach_get"];
+        /**
+         * Set Run Reach
+         * @description Replace the caller's own run reach; an empty list clears it. The next request of each of their runs reads it.
+         */
+        put: operations["set_run_reach_v1_autonomy_run_reach_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/autonomy/stops": {
         parameters: {
             query?: never;
@@ -5264,6 +5341,26 @@ export interface paths {
          *     high finding stops it taking the runs of the units it is shared with.
          */
         post: operations["report_doctor_v1_worker_doctor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/merged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merged
+         * @description Of the ended runs the worker whose token asks still keeps, those whose work the hub knows merged.
+         */
+        post: operations["merged_v1_worker_merged_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6014,6 +6111,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/editorial/{project}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Workspace
+         * @description The configured stage order and notebook labels for the reader's filters.
+         */
+        get: operations["workspace_v1_x_editorial__project__workspace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/editorial/{project}/posts": {
         parameters: {
             query?: never;
@@ -6214,6 +6331,159 @@ export interface paths {
          * @description The notebook as its markdown files, or with format json everything import takes.
          */
         get: operations["export_v1_x_editorial__project__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/guard/{project}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Terms
+         * @description The private names of the project, by their words (a member of the project).
+         */
+        get: operations["list_terms_v1_x_guard__project__terms_get"];
+        put?: never;
+        /**
+         * Add Term
+         * @description Add a private name of the project (an admin of the project or of the hub); 409 when the project has one of the
+         *     same words already, 422 for one without a letter or digit.
+         */
+        post: operations["add_term_v1_x_guard__project__terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/guard/{project}/terms/{term_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Term
+         * @description Remove a private name of the project (an admin of the project or of the hub); the name removed.
+         */
+        delete: operations["remove_term_v1_x_guard__project__terms__term_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/guard/{project}/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Targets
+         * @description The patterns of the repos the project publishes (a member of the project).
+         */
+        get: operations["list_targets_v1_x_guard__project__targets_get"];
+        put?: never;
+        /**
+         * Add Target
+         * @description Add a pattern of the repos the project publishes (an admin of the project or of the hub); 409 when the project
+         *     lists it already.
+         */
+        post: operations["add_target_v1_x_guard__project__targets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/guard/{project}/targets/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Target
+         * @description Remove a pattern of the repos the project publishes (an admin of the project or of the hub); the one removed.
+         */
+        delete: operations["remove_target_v1_x_guard__project__targets__target_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/guard/{project}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description Whether ``text`` holds a private name of any project of the hub, and whether ``repo`` is guarded (a member of
+         *     the project); nothing is kept.
+         */
+        post: operations["check_v1_x_guard__project__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/guard/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Policy
+         * @description The policy of the hub: the private names of every project that enables the plugin, hashed, and the repos they
+         *     publish; 304 when ``If-None-Match`` names its digest.
+         */
+        get: operations["policy_v1_worker_guard_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/guard/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Policy
+         * @description The policy of the hub: the private names of every project that enables the plugin, hashed, and the repos they
+         *     publish; 304 when ``If-None-Match`` names its digest.
+         */
+        get: operations["policy_v1_guard_policy_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7676,7 +7946,11 @@ export interface paths {
         delete: operations["delete_secret_v1_secrets__name__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rebind Secret
+         * @description Bind the caller's secret ``name`` to other workers or pools, or to any worker; its value and the rest stay.
+         */
+        patch: operations["rebind_secret_v1_secrets__name__patch"];
         trace?: never;
     };
     "/v1/secrets/{name}/shares": {
@@ -8017,6 +8291,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/account-pool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Account Pool
+         * @description Attach an account pool of the project to the agent, or detach it (an admin of the project or of the hub): the
+         *     agent has one, and a pool may serve many agents. In pool mode its runs lease the accounts of that pool alone.
+         */
+        put: operations["set_account_pool_v1_projects__project__agents__handle__account_pool_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/avatar": {
         parameters: {
             query?: never;
@@ -8075,6 +8370,94 @@ export interface paths {
          * @description Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it.
          */
         patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Pools
+         * @description The account pools of the project, by name, each with its accounts and the agents that use it (an admin of the
+         *     project or of the hub).
+         */
+        get: operations["list_account_pools_v1_projects__project__account_pools_get"];
+        put?: never;
+        /**
+         * Create Account Pool
+         * @description Make an empty account pool named ``name`` (an admin of the project or of the hub); 409 when the project has one
+         *     of that name.
+         */
+        post: operations["create_account_pool_v1_projects__project__account_pools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools/{pool}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Account Pool */
+        get: operations["get_account_pool_v1_projects__project__account_pools__pool__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account Pool
+         * @description Delete a pool and its list of accounts (the accounts stay); 409 while an agent uses it.
+         */
+        delete: operations["delete_account_pool_v1_projects__project__account_pools__pool__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools/{pool}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Account
+         * @description Add an account to the pool: an env account (a Claude account among them) or a provider account of yours, or of an
+         *     agent of the project. 409 when the pool holds an account of that name already.
+         */
+        put: operations["add_account_v1_projects__project__account_pools__pool__accounts_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/account-pools/{pool}/accounts/{secret_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Account
+         * @description Take an account out of the pool; the account stays where it is. The runs that hold it keep it.
+         */
+        delete: operations["remove_account_v1_projects__project__account_pools__pool__accounts__secret_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/projects/{project}/agents/{handle}/provider-accounts": {
@@ -9220,6 +9603,50 @@ export interface paths {
          *     no writer of its project or the chat's label or size forbids it.
          */
         post: operations["invite_v1_worker_runs__run_id__triage_invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/curator/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer
+         * @description Accept, reject or defer the proposal of this thread for the chat run's dispatcher, an admin of the project, as
+         *     their answer on the web does; 403 for another proposal or a dispatcher who is no admin, 409 for a proposal neither
+         *     open nor deferred or a charter that has its admins answer.
+         */
+        post: operations["answer_v1_worker_runs__run_id__curator_answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/curator/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge
+         * @description Merge the pull request of a change of this thread's proposal that the hub left open, for the chat run's
+         *     dispatcher, an admin of the project, at the head the Judge passed, with the workers' App: 403 for a change of
+         *     another proposal, 409 with the reason for anything the merge does not allow, 503 while GitHub does not answer.
+         */
+        post: operations["merge_v1_worker_runs__run_id__curator_merge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11782,6 +12209,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/merge-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Check
+         * @description Have the hub judge the run's pull request on github.com at its head before the run merges it: where the check
+         *     stands, and the wait of the run its verdict answers while it judges.
+         */
+        post: operations["ask_check_v1_worker_runs__run_id__merge_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/merge-gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Gate Act
+         * @description The word of the hub on a merge command of the run's agent (K5): whether the pull request's repo has the merge
+         *     check on, and when it has, whether a passed verdict holds for the head the command merges.
+         */
+        post: operations["merge_gate_act_v1_worker_runs__run_id__merge_gate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -11926,6 +12395,19 @@ export interface components {
             /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
             gateway?: components["schemas"]["GatewayAccount"] | null;
         };
+        /** AccountAdd */
+        AccountAdd: {
+            /**
+             * Name
+             * @description the name of the account: one of yours, or an agent's
+             */
+            name: string;
+            /**
+             * Agent
+             * @description the handle of the agent of the project that owns the account; null: your own account
+             */
+            agent?: string | null;
+        };
         /** AccountCandidate */
         AccountCandidate: {
             /** Name */
@@ -12023,6 +12505,37 @@ export interface components {
              * @default 3
              */
             max_failovers: number;
+        };
+        /** AccountPool */
+        AccountPool: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Accounts */
+            accounts: components["schemas"]["PoolAccount"][];
+            /**
+             * Agents
+             * @description the handles of the agents that use it
+             */
+            agents: string[];
+        };
+        /** AccountPoolChoice */
+        AccountPoolChoice: {
+            /**
+             * Account Pool
+             * @description the name of an account pool of the project to attach; null detaches the agent's
+             */
+            account_pool: string | null;
         };
         /**
          * AccountUsage
@@ -12163,6 +12676,16 @@ export interface components {
              * @description the agent packs it attaches, in order, each at the version it pins
              */
             packs: components["schemas"]["PinnedPack"][];
+            /**
+             * Home Pool
+             * @description the name of the agent's own pool, agent-<handle>; null for none
+             */
+            home_pool: string | null;
+            /**
+             * Account Pool
+             * @description the name of the account pool its runs lease accounts from; null until an admin attaches one
+             */
+            account_pool: string | null;
             /** Version */
             version: number;
             /** Created By */
@@ -12831,8 +13354,6 @@ export interface components {
             enabled: boolean;
             /** Run As */
             run_as: string | null;
-            /** Workers */
-            workers: string[];
             /** Daily Usd */
             daily_usd: number | null;
             /**
@@ -12849,7 +13370,7 @@ export interface components {
         };
         /**
          * AgentTypeIn
-         * @description How a project runs an agent type: under whose name, on which of that member's workers, at what cost a day.
+         * @description How a project runs an agent type: under whose name, at what cost a day.
          */
         AgentTypeIn: {
             /**
@@ -12857,11 +13378,6 @@ export interface components {
              * @description the member whose name its runs go under: a writer or an admin of the project
              */
             run_as: string;
-            /**
-             * Workers
-             * @description the workers of run_as its runs may take, by name; none: any the profile allows
-             */
-            workers?: string[];
             /**
              * Daily Usd
              * @description what its task runs may cost in 24 hours; a task past it is refused
@@ -13046,6 +13562,27 @@ export interface components {
             };
         };
         /**
+         * Approval
+         * @description What a merge approval holds for: one head of one request, with one scope.
+         */
+        Approval: {
+            /**
+             * Pull
+             * @description the request: owner/name#number on GitHub, the repo and !iid of a merge request on GitLab
+             */
+            pull?: string | null;
+            /**
+             * Head
+             * @description the commit at its head, lower-case hex
+             */
+            head: string;
+            /**
+             * Scope
+             * @description sha256: and the hash of its files, migrations and needs-you lines (approval_heads.scope_of)
+             */
+            scope?: string | null;
+        };
+        /**
          * ArmResult
          * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
          */
@@ -13206,30 +13743,10 @@ export interface components {
         /** AuthorRunDispatch */
         AuthorRunDispatch: {
             /**
-             * Pool
-             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
-             */
-            pool?: string | null;
-            /**
-             * Labels
-             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
-             */
-            labels?: string[] | null;
-            /**
-             * Tolerations
-             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
-             */
-            tolerations?: string[] | null;
-            /**
              * Request
              * @description what the plan should achieve, in the member's words: at most 16384 bytes of UTF-8
              */
             request: string;
-            /**
-             * Worker Id
-             * @description pin the run to this worker of yours, or one shared with you in the project; null: a worker its labels and tolerations fit takes it
-             */
-            worker_id?: number | null;
             /**
              * Plan Id
              * @description the plan the run revises, one you can read; null: the run writes a new plan
@@ -13305,6 +13822,16 @@ export interface components {
              * @description for a class in ask: the decision of the run, of the class's category, that the agent asked first
              */
             decision_id?: number | null;
+            /**
+             * Head
+             * @description for a merge: the head of the request now, as the hook read it; null when it could not
+             */
+            head?: string | null;
+            /**
+             * Scope
+             * @description for a merge: the hash of the request's scope now (approval_heads.scope_of)
+             */
+            scope?: string | null;
         };
         /** AutonomyActOut */
         AutonomyActOut: {
@@ -13320,9 +13847,14 @@ export interface components {
             told: boolean;
             /**
              * Answered
-             * @description whether decision_id is a decision of the run, of the class, answered
+             * @description whether decision_id is a decision of the run, of the class, answered, and its approval holds for head and scope
              */
             answered: boolean;
+            /**
+             * Stale
+             * @description why the answer of decision_id no longer opens the gate: it was given for another head or scope of the request; ask again
+             */
+            stale?: string | null;
         };
         /** AutonomyClass */
         AutonomyClass: {
@@ -13650,7 +14182,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "srs_baseline" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
+            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "srs_baseline" | "srs_adopt" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
             /**
              * Title
              * @description what waits, in one line
@@ -16095,16 +16627,6 @@ export interface components {
             goals?: components["schemas"]["Goal"][];
             window: components["schemas"]["Window"];
             /**
-             * Worker
-             * @description the worker on duty, by name: one of the writer's own; or name a pool
-             */
-            worker?: string | null;
-            /**
-             * Pool
-             * @description the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker
-             */
-            pool?: string | null;
-            /**
              * Night Budget Usd
              * @description the most a night may cost
              */
@@ -16148,10 +16670,28 @@ export interface components {
              */
             brief_at: string;
             /**
+             * Planned Tiers
+             * @description the tiers whose accepted proposals become the Curator's plans, which the night shift builds; tier 3 only when named
+             */
+            planned_tiers?: (0 | 1 | 2 | 3)[];
+            /**
              * Auto Merge
              * @description the tiers the hub may merge by itself
              */
-            auto_merge?: 0[];
+            auto_merge?: (0 | 1 | 2 | 3)[];
+            /**
+             * Merge Without Ci
+             * @description the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass
+             * @default false
+             */
+            merge_without_ci: boolean;
+            /**
+             * Answer By
+             * @description who answers the proposals: owner, the project's admins; agent, the project's default agent in a thread of the triage chat, for the schedule's owner
+             * @default owner
+             * @enum {string}
+             */
+            answer_by: "owner" | "agent";
             /**
              * Protected Paths
              * @description globs no change of the Curator may touch below tier 3
@@ -16196,18 +16736,8 @@ export interface components {
              */
             updated_at: string;
             /**
-             * Worker Id
-             * @description the worker on duty; null for a pool
-             */
-            worker_id: number | null;
-            /**
-             * Pool Id
-             * @description the pool on duty; null for a worker
-             */
-            pool_id?: number | null;
-            /**
              * Schedule Owner
-             * @description the member the night shift dispatches its runs as: the worker's, or the pool's, owner
+             * @description the member the night shift dispatches its runs as: the pool's owner
              */
             schedule_owner: string;
         };
@@ -16222,20 +16752,6 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-            /**
-             * Worker
-             * @description the worker on duty; null for a pool
-             */
-            worker: string | null;
-            /** Worker Id */
-            worker_id: number | null;
-            /**
-             * Pool
-             * @description the pool on duty; null for a worker
-             */
-            pool?: string | null;
-            /** Pool Id */
-            pool_id?: number | null;
         };
         /** CharterWrite */
         CharterWrite: {
@@ -16245,16 +16761,6 @@ export interface components {
              */
             goals?: components["schemas"]["Goal"][];
             window: components["schemas"]["Window"];
-            /**
-             * Worker
-             * @description the worker on duty, by name: one of the writer's own; or name a pool
-             */
-            worker?: string | null;
-            /**
-             * Pool
-             * @description the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any of them, by the selector pool=<name>; or name a worker
-             */
-            pool?: string | null;
             /**
              * Night Budget Usd
              * @description the most a night may cost
@@ -16299,10 +16805,28 @@ export interface components {
              */
             brief_at: string;
             /**
+             * Planned Tiers
+             * @description the tiers whose accepted proposals become the Curator's plans, which the night shift builds; tier 3 only when named
+             */
+            planned_tiers?: (0 | 1 | 2 | 3)[];
+            /**
              * Auto Merge
              * @description the tiers the hub may merge by itself
              */
-            auto_merge?: 0[];
+            auto_merge?: (0 | 1 | 2 | 3)[];
+            /**
+             * Merge Without Ci
+             * @description the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no check; a check that ran must still pass
+             * @default false
+             */
+            merge_without_ci: boolean;
+            /**
+             * Answer By
+             * @description who answers the proposals: owner, the project's admins; agent, the project's default agent in a thread of the triage chat, for the schedule's owner
+             * @default owner
+             * @enum {string}
+             */
+            answer_by: "owner" | "agent";
             /**
              * Protected Paths
              * @description globs no change of the Curator may touch below tier 3
@@ -17752,6 +18276,57 @@ export interface components {
              */
             header: string;
         };
+        /** CuratorAnswerIn */
+        CuratorAnswerIn: {
+            /**
+             * Proposal Id
+             * @description the proposal of this thread
+             */
+            proposal_id: number;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "reject" | "defer";
+            /**
+             * Note
+             * @description why, in one line: the ledger and the Decision: line keep it
+             */
+            note: string;
+            /**
+             * Defer Days
+             * @description with defer; 7 by default
+             */
+            defer_days?: number | null;
+        };
+        /** CuratorAnswered */
+        CuratorAnswered: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /** @description the proposal as answered, with the change accepting it made */
+            proposal: components["schemas"]["Proposal"];
+        };
+        /** CuratorMergeIn */
+        CuratorMergeIn: {
+            /**
+             * Change Id
+             * @description the change of this thread's proposal the hub left open
+             */
+            change_id: number;
+        };
+        /** CuratorMerged */
+        CuratorMerged: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /** @description the change as merged, with its merge commit */
+            change: components["schemas"]["Change"];
+        };
         /**
          * CuratorOverview
          * @description Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter.
@@ -17823,6 +18398,12 @@ export interface components {
             head_sha?: string | null;
             /** Pr Url */
             pr_url?: string | null;
+            /**
+             * Merge Result
+             * @description a Judge of a merge check: merge the current base into the head in a scratch worktree and run the checks there; a conflict fails it with needs a rebase
+             * @default false
+             */
+            merge_result: boolean;
             /**
              * Judge Key
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
@@ -18016,6 +18597,8 @@ export interface components {
             outputs?: components["schemas"]["RunOutput"][];
             /** @description what a decision of category credential asks the run's owner for: a variable's value, kept as their secret secret_name, their hub account, or both; null for any other decision */
             credential_request?: components["schemas"]["CredentialRequest"] | null;
+            /** @description a merge approval: the request, head and scope its answer holds for; null for any other decision, and for one asked before schema 0184 */
+            approval?: components["schemas"]["Approval"] | null;
         };
         /** DecisionAsk */
         DecisionAsk: {
@@ -18074,6 +18657,8 @@ export interface components {
             output_ids?: number[];
             /** @description category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options */
             credential_request?: components["schemas"]["CredentialRequest"] | null;
+            /** @description category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind */
+            approval?: components["schemas"]["Approval"] | null;
         };
         /**
          * DecisionBoard
@@ -18287,21 +18872,6 @@ export interface components {
         };
         /** Dispatch */
         Dispatch: {
-            /**
-             * Pool
-             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
-             */
-            pool?: string | null;
-            /**
-             * Labels
-             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
-             */
-            labels?: string[] | null;
-            /**
-             * Tolerations
-             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
-             */
-            tolerations?: string[] | null;
             /** Plan Id */
             plan_id: string;
             /**
@@ -18321,11 +18891,6 @@ export interface components {
              * @enum {string}
              */
             mode: "headless" | "interactive";
-            /**
-             * Worker Id
-             * @description pin the runs to this worker of yours, or one shared with you in the project
-             */
-            worker_id?: number | null;
             /**
              * Approval
              * @description auto: verified runs mark the step done
@@ -18389,6 +18954,91 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DocVersion */
+        DocVersion: {
+            /**
+             * Source
+             * @description attached: a file a person attached to a message; sent, tool or outputs: an output of a run
+             * @enum {string}
+             */
+            source: "attached" | "sent" | "tool" | "outputs";
+            /**
+             * Id
+             * @description the attachment's id, or the output's: the two are counted apart
+             */
+            id: number;
+            /**
+             * Name
+             * @description the file's name; an output's may carry its path below .evo-run/outputs/
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Viewer
+             * @description what the web opens it with; none offers a download only
+             * @enum {string}
+             */
+            viewer: "image" | "video" | "audio" | "pdf" | "text" | "html" | "none";
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Caption
+             * @description an output's caption; null for an attachment
+             */
+            caption: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description when its message was sent, or when the run sent the output
+             */
+            created_at: string;
+            /**
+             * Url
+             * @description where this hub answers its bytes to the reader of this list
+             */
+            url: string;
+            /**
+             * Message Id
+             * @description the chat message that carries it; null for none
+             */
+            message_id: number | null;
+            /**
+             * Seq
+             * @description the chat event of that message; null outside a chat
+             */
+            seq: number | null;
+            /**
+             * Thread Root Id
+             * @description the first message of that message's thread; null for none
+             */
+            thread_root_id: number | null;
+            /**
+             * Run Id
+             * @description the run that wrote it, for an output; null for an attachment
+             */
+            run_id: number | null;
+            /** @description who sent it: the person who attached it, or the agent of the chat message that carries an output; null for an output in a run's list, which the run's agent wrote */
+            author: components["schemas"]["ChatAuthor"] | null;
+        };
+        /** DocVersions */
+        DocVersions: {
+            /**
+             * Key
+             * @description the name the versions share: the last part after a slash, lower case
+             */
+            key: string;
+            /**
+             * Versions
+             * @description oldest first; those the reader may not read left out
+             */
+            versions: components["schemas"]["DocVersion"][];
         };
         /** DocsDocument */
         DocsDocument: {
@@ -18732,6 +19382,13 @@ export interface components {
              * @description rejected in the last 30 days, newest first
              */
             rejected: components["schemas"]["RejectedProposal"][];
+        };
+        /** EditorialChoice */
+        EditorialChoice: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
         };
         /** EditorialComment */
         EditorialComment: {
@@ -19242,6 +19899,16 @@ export interface components {
             evidence?: string | null;
         };
         /**
+         * EditorialWorkspace
+         * @description Display labels only, not the plugin's operational configuration.
+         */
+        EditorialWorkspace: {
+            /** Stages */
+            stages: components["schemas"]["EditorialChoice"][];
+            /** Notebooks */
+            notebooks: components["schemas"]["EditorialChoice"][];
+        };
+        /**
          * EffectiveConfig
          * @description The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer.
          */
@@ -19726,6 +20393,27 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * FindingMark
+         * @description What the Judge says of a finding of an earlier round.
+         */
+        FindingMark: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fixed" | "not_fixed" | "no_longer_applies";
+            /**
+             * Where
+             * @description the file:line that shows it
+             */
+            where?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** Found */
         Found: {
@@ -20223,6 +20911,121 @@ export interface components {
             summary: string;
             /** Friction */
             friction: string[];
+        };
+        /** GuardCheckHit */
+        GuardCheckHit: {
+            /**
+             * Found
+             * @description the private name as the text writes it
+             */
+            found: string;
+            /**
+             * Context
+             * @description the text around it
+             */
+            context: string;
+        };
+        /** GuardCheckIn */
+        GuardCheckIn: {
+            /** Text */
+            text: string;
+            /**
+             * Repo
+             * @description where the text goes; none checks it as if guarded
+             */
+            repo?: string | null;
+        };
+        /** GuardCheckOut */
+        GuardCheckOut: {
+            /**
+             * Guarded
+             * @description whether the hub's guard checks text bound for the repo
+             */
+            guarded: boolean;
+            /** Hits */
+            hits: components["schemas"]["GuardCheckHit"][];
+        };
+        /** GuardPolicy */
+        GuardPolicy: {
+            /** Version */
+            version: number;
+            /**
+             * Digest
+             * @description empty when the policy guards nothing (no term or no target)
+             */
+            digest: string;
+            /**
+             * Terms
+             * @description each term hashed: h, its hash; n, its words; part, its length or 0
+             */
+            terms: {
+                [key: string]: unknown;
+            }[];
+            /** Targets */
+            targets: string[];
+        };
+        /** GuardTarget */
+        GuardTarget: {
+            /** Id */
+            id: number;
+            /**
+             * Pattern
+             * @description host/owner/repo in lower case, * and ? as wildcards
+             */
+            pattern: string;
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** GuardTargetWrite */
+        GuardTargetWrite: {
+            /**
+             * Pattern
+             * @description a repo the project publishes: a URL, OWNER/REPO (GitHub) or host/owner/repo, * and ? as wildcards
+             */
+            pattern: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** GuardTerm */
+        GuardTerm: {
+            /** Id */
+            id: number;
+            /** Term */
+            term: string;
+            /**
+             * Words
+             * @description the words the guard matches, lowercased
+             */
+            words: string;
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** GuardTermWrite */
+        GuardTermWrite: {
+            /**
+             * Term
+             * @description a private name: a project, a host or domain, a group or a repo; matched by its words in any case
+             */
+            term: string;
+            /**
+             * Note
+             * @description why it is private, for the project's admins
+             */
+            note?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -21751,6 +22554,20 @@ export interface components {
             hidden_checks?: string[] | null;
         };
         /**
+         * JudgeFinding
+         * @description A thing the Judge found wrong, on one of the dimensions it judges.
+         */
+        JudgeFinding: {
+            /** Dimension */
+            dimension: string;
+            /** Path */
+            path?: string | null;
+            /** Line */
+            line?: number | null;
+            /** Text */
+            text: string;
+        };
+        /**
          * JudgeInputs
          * @description What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,
          *     and the project's hidden checks, which no other run reads.
@@ -22591,6 +23408,8 @@ export interface components {
             output_ids?: number[];
             /** @description category credential only: what the run needs of its owner, a variable's value, their hub account or both; the hub gives the decision its options */
             credential_request?: components["schemas"]["CredentialRequest"] | null;
+            /** @description category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind */
+            approval?: components["schemas"]["Approval"] | null;
         };
         /** LocalLogin */
         LocalLogin: {
@@ -24244,6 +25063,60 @@ export interface components {
              */
             red_since: string | null;
         };
+        /**
+         * MergeCheck
+         * @description Where the merge check of a pull request stands, and the wait its verdict answers.
+         */
+        MergeCheck: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /** Number */
+            number: number;
+            /**
+             * Head Sha
+             * @description the head the verdict holds for; a new push needs a new check
+             */
+            head_sha: string;
+            /**
+             * State
+             * @description judging, passed or failed
+             */
+            state: string;
+            /** Reason */
+            reason: string | null;
+            /** Web Url */
+            web_url: string | null;
+            /**
+             * Decision Id
+             * @description the run's wait the verdict answers; null when the verdict is there
+             */
+            decision_id: number | null;
+            /**
+             * Wake At
+             * @description when the wait wakes at the latest
+             */
+            wake_at: string | null;
+        };
+        /** MergeCheckIn */
+        MergeCheckIn: {
+            /**
+             * Repo
+             * @description the repo of the run's pull request
+             */
+            repo: string;
+            /**
+             * Number
+             * @description the pull request; null: the open one of the run's branch
+             */
+            number?: number | null;
+            /**
+             * Branch
+             * @description the branch the run pushes, as its worker has it
+             */
+            branch?: string | null;
+        };
         /** MergeEvent */
         MergeEvent: {
             /** Id */
@@ -24332,6 +25205,52 @@ export interface components {
             days: number;
             /** Figures */
             figures: components["schemas"]["MergeFigure"][];
+        };
+        /** MergeGate */
+        MergeGate: {
+            /**
+             * Gated
+             * @description false: the repo does not have merge_check on, so the command is not the hub's
+             */
+            gated: boolean;
+            /**
+             * Passed
+             * @description the hub holds a passed verdict for the head named, and the command may go on
+             */
+            passed: boolean;
+            /**
+             * Head Sha
+             * @description the head the hub's verdict holds for; the merge pins it
+             */
+            head_sha: string | null;
+            /**
+             * Reason
+             * @description why the command does not pass
+             */
+            reason: string | null;
+            /**
+             * Command
+             * @description the command that asks for the check
+             */
+            command: string;
+        };
+        /** MergeGateIn */
+        MergeGateIn: {
+            /**
+             * Repo
+             * @description owner/name of the pull request's repo
+             */
+            repo: string;
+            /**
+             * Number
+             * @description the pull request the merge command merges
+             */
+            number: number;
+            /**
+             * Head
+             * @description the head of the pull request as the hook read it now; null when it could not
+             */
+            head?: string | null;
         };
         /**
          * MergeJudgeInputs
@@ -24470,6 +25389,41 @@ export interface components {
             dimensions?: {
                 [key: string]: components["schemas"]["Dimension"];
             } | null;
+            /**
+             * Findings
+             * @description what the Judge found wrong in this round
+             */
+            findings?: components["schemas"]["JudgeFinding"][];
+            /**
+             * Prior
+             * @description the Judge's mark of each finding of an earlier round its prompt listed, by id
+             */
+            prior?: {
+                [key: string]: components["schemas"]["FindingMark"];
+            } | null;
+            /** @description the security pass of the run, which judges the dimension security apart from the agent */
+            security?: components["schemas"]["SecurityPass"] | null;
+            /**
+             * Conflicts
+             * @description a merge check's: the paths where merging the base into the head conflicts; null when it merged
+             */
+            conflicts?: string[] | null;
+        };
+        /** MergedAnswer */
+        MergedAnswer: {
+            /**
+             * Merged
+             * @description those of runs whose work the hub knows merged: the daemon may remove their worktrees now
+             */
+            merged: number[];
+        };
+        /** MergedQuestion */
+        MergedQuestion: {
+            /**
+             * Runs
+             * @description ended runs of this worker whose directory and worktrees it still keeps
+             */
+            runs: number[];
         };
         /** Message */
         Message: {
@@ -26377,6 +27331,23 @@ export interface components {
             /** Items */
             items: components["schemas"]["OutputUploadItem"][];
         };
+        /**
+         * OverlapWait
+         * @description The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
+         *     in its what or note, so the hub leaves the run in the queue until they end.
+         */
+        OverlapWait: {
+            /**
+             * Run Ids
+             * @description the running step runs it waits for, the oldest first
+             */
+            run_ids: number[];
+            /**
+             * Paths
+             * @description the files they edited that the step names, at most 10
+             */
+            paths: string[];
+        };
         /** Overview */
         Overview: {
             counts: components["schemas"]["OverviewCounts"];
@@ -27240,28 +28211,8 @@ export interface components {
         };
         /** PlanRunDispatch */
         PlanRunDispatch: {
-            /**
-             * Pool
-             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
-             */
-            pool?: string | null;
-            /**
-             * Labels
-             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
-             */
-            labels?: string[] | null;
-            /**
-             * Tolerations
-             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
-             */
-            tolerations?: string[] | null;
             /** Plan Id */
             plan_id: string;
-            /**
-             * Worker Id
-             * @description pin the run to this worker of yours, or one shared with you in the project
-             */
-            worker_id?: number | null;
             /**
              * Runtime
              * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
@@ -28344,7 +29295,7 @@ export interface components {
         PolicyWrite: {
             /**
              * Policy
-             * @description sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default
+             * @description sections repos, merge, judge, breaker, audit, loop, context, routing; a key left out reads as its default
              */
             policy: {
                 [key: string]: unknown;
@@ -28406,9 +29357,14 @@ export interface components {
             name: string;
             /**
              * Owner
-             * @description the login of the member who made it
+             * @description the login of the member who made it, or who created the agent of an agent's pool
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent whose pool it is; null for a member's pool
+             */
+            agent?: string | null;
             /** Projects */
             projects: string[];
             /** Slots */
@@ -28436,6 +29392,91 @@ export interface components {
              * @description its nodes that are not revoked, newest first
              */
             nodes: components["schemas"]["PoolNode"][];
+        };
+        /** PoolAccount */
+        PoolAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @description env or provider
+             */
+            kind: string;
+            /**
+             * Env Var
+             * @description the variable an env account sets; null for a provider account
+             */
+            env_var: string | null;
+            /**
+             * Provider
+             * @description who it signs in to: claude, anthropic, openai ... or a catalog id
+             */
+            provider: string;
+            /**
+             * Category
+             * @description model: the runtime's own sign-in or a provider account; service: any other
+             */
+            category: string;
+            /**
+             * Owner
+             * @description the member who owns it; null for an agent's account
+             */
+            owner: string | null;
+            /**
+             * Agent
+             * @description the agent that owns it; null for a member's account
+             */
+            agent: string | null;
+            /** Paused */
+            paused: boolean;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Added By */
+            added_by: string;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+        };
+        /** PoolCandidate */
+        PoolCandidate: {
+            /** Pool */
+            pool: string;
+            /**
+             * Agent
+             * @description the handle of the agent whose pool it is
+             */
+            agent: string;
+            /**
+             * Takes Run
+             * @description the pool the run goes to: its agent's
+             */
+            takes_run: boolean;
+            /**
+             * Nodes
+             * @description the nodes of the pool that are not revoked
+             */
+            nodes: number;
+            /**
+             * Ready Nodes
+             * @description those online, not draining and ready
+             */
+            ready_nodes: number;
+            /**
+             * Fit
+             * @description the run goes to this pool and one of its nodes can take it now
+             */
+            fit: boolean;
+            /** Reasons */
+            reasons: string[];
         };
         /** PoolNode */
         PoolNode: {
@@ -28538,6 +29579,14 @@ export interface components {
              * @description days a node stays offline before the hub revokes it
              */
             reap_after_days?: number | null;
+        };
+        /** PoolWrite */
+        PoolWrite: {
+            /**
+             * Name
+             * @description 1 to 40 characters, unique in the project in any case
+             */
+            name: string;
         };
         /**
          * PrefSet
@@ -32903,25 +33952,9 @@ export interface components {
         };
         /**
          * Rerun
-         * @description What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
-         *     keep the run's own selector and tolerations.
+         * @description What a rerun may change of the run it reruns; no body keeps everything.
          */
         Rerun: {
-            /**
-             * Pool
-             * @description only a node of the pool of this name takes the run: the same as asking the label pool=<name>
-             */
-            pool?: string | null;
-            /**
-             * Labels
-             * @description labels the worker that takes the run must have, every one: its own, its pool's, pool=<name>, and the ones the hub gives it from its heartbeat (os=, arch=, runtime=<name>, feature=browser)
-             */
-            labels?: string[] | null;
-            /**
-             * Tolerations
-             * @description taints of a worker the run tolerates: a worker with a taint the run does not tolerate leaves it to others, unless the run is pinned to it
-             */
-            tolerations?: string[] | null;
             /**
              * Account
              * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
@@ -32975,6 +34008,16 @@ export interface components {
             cause_inferred: boolean;
             /** @description the thread the hub opened for the failure, if any */
             triage?: components["schemas"]["TriageThread"] | null;
+            /**
+             * Pools
+             * @description a queued run's: the pools of the project's agents, and whether the run goes there
+             */
+            pools?: components["schemas"]["PoolCandidate"][];
+            /**
+             * Diagnosis
+             * @description a queued run's: why no worker can take it now, with the command that fixes it; null when one can, and for a failed run
+             */
+            diagnosis?: string | null;
         };
         /** Results */
         Results: {
@@ -33305,6 +34348,52 @@ export interface components {
              */
             model?: string | null;
         };
+        /** RoutingLadder */
+        RoutingLadder: {
+            /** Easy */
+            easy: string;
+            /**
+             * Medium
+             * @description also the model of a run the scorer did not rate
+             */
+            medium: string;
+            /** Hard */
+            hard: string;
+        };
+        /**
+         * RoutingRecord
+         * @description What the worker's rating of a run did (``model_router.record``).
+         */
+        RoutingRecord: {
+            /** Scorer */
+            scorer: string;
+            /**
+             * Difficulty
+             * @description the difficulty the scorer named; medium when it named none
+             * @enum {string}
+             */
+            difficulty: "easy" | "medium" | "hard";
+            /**
+             * Scored
+             * @description false: the scorer failed or named no difficulty
+             */
+            scored: boolean;
+            /**
+             * Model
+             * @description the ladder's model the run took; null when its agent profile does not allow it
+             */
+            model?: string | null;
+            /**
+             * Cost Usd
+             * @description what the scorer's turn cost; null when not reported
+             */
+            cost_usd?: number | null;
+            /**
+             * Error
+             * @description why it did not rate or choose
+             */
+            error?: string | null;
+        };
         /** RuleCount */
         RuleCount: {
             /**
@@ -33398,6 +34487,13 @@ export interface components {
              * @description the model the dispatch asked for; null: the runtime's own choice
              */
             model: string | null;
+            /**
+             * Model Used
+             * @description the model its runtime ran it on, as its worker reported it; null until then, or not said
+             */
+            model_used?: string | null;
+            /** @description what the routing by difficulty did; null for a run it did not rate */
+            routing?: components["schemas"]["RoutingRecord"] | null;
             /**
              * Mode
              * @enum {string}
@@ -33531,6 +34627,13 @@ export interface components {
             finish_requested_at?: string | null;
             /** @description a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only once it is; another worker may take it now unless it is pinned to that one. Null otherwise */
             steady_wait?: components["schemas"]["SteadyWait"] | null;
+            /** @description a queued step run that waits for another run of the same plan and repo, which has edited files the step names; null otherwise */
+            overlap_wait?: components["schemas"]["OverlapWait"] | null;
+            /**
+             * Warning
+             * @description set on the answer of a dispatch alone: no worker could take the run as it queued, why, and the command that fixes it (`evo-agents hub run candidates` says more); null otherwise
+             */
+            warning?: string | null;
             /**
              * Failure Cause
              * @description why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024
@@ -34593,6 +35696,48 @@ export interface components {
              */
             log_sha256?: string | null;
         };
+        /** RunReach */
+        RunReach: {
+            /**
+             * Login
+             * @description the person whose runs it is
+             */
+            login: string;
+            /**
+             * Groups
+             * @description the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose
+             */
+            groups: ("agents" | "workers" | "curator")[];
+        };
+        /**
+         * RunReachSet
+         * @description The whole run reach of the caller: it replaces the one before, and an empty list clears it.
+         */
+        RunReachSet: {
+            /**
+             * Groups
+             * @description the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose
+             */
+            groups: ("agents" | "workers" | "curator")[];
+        };
+        /** RunReachWritten */
+        RunReachWritten: {
+            /**
+             * Login
+             * @description the person whose runs it is
+             */
+            login: string;
+            /**
+             * Groups
+             * @description the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose
+             */
+            groups: ("agents" | "workers" | "curator")[];
+            /**
+             * Previous
+             * @description the groups before this write
+             */
+            previous: ("agents" | "workers" | "curator")[];
+        };
         /**
          * RunRepo
          * @description A repo of a plan run, with the branch the plan names for it.
@@ -34628,6 +35773,19 @@ export interface components {
              * @description the project that registered it: the run's, or another of its owner's
              */
             project: string | null;
+        };
+        /**
+         * RunRouting
+         * @description The routing a claim carries while the project's policy has it on, for a run that names no model.
+         */
+        RunRouting: {
+            /**
+             * Scorer
+             * @description the model of the short turn that rates the run's difficulty
+             */
+            scorer: string;
+            /** @description the model of each difficulty */
+            ladder: components["schemas"]["RoutingLadder"];
         };
         /**
          * RunSkill
@@ -34719,6 +35877,8 @@ export interface components {
              * @description the model the dispatch asked for; null: the runtime's own choice
              */
             model: string | null;
+            /** @description while the project's policy has routing on, for a run that names no model: the scorer that rates its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise */
+            routing?: components["schemas"]["RunRouting"] | null;
             /**
              * Mode
              * @enum {string}
@@ -34767,6 +35927,11 @@ export interface components {
              */
             verify?: string[] | null;
             /**
+             * Criteria
+             * @description the ids of the criteria of the plan's acceptance that the step of a run of one step names: its result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step that names none
+             */
+            criteria?: string[] | null;
+            /**
              * Session Per Step
              * @description a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above
              * @default false
@@ -34792,6 +35957,12 @@ export interface components {
              * @default false
              */
             own_home: boolean;
+            /**
+             * Account Pool
+             * @description true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none of the owner's
+             * @default false
+             */
+            account_pool: boolean;
             /** @description the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it */
             origin?: components["schemas"]["RunOrigin"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
@@ -35032,20 +36203,6 @@ export interface components {
              * @description the member its runs are dispatched as
              */
             owner: string;
-            /** Worker Id */
-            worker_id: number | null;
-            /**
-             * Worker
-             * @description the worker its runs go to; null for a pool
-             */
-            worker: string | null;
-            /** Pool Id */
-            pool_id?: number | null;
-            /**
-             * Pool
-             * @description the pool whose ready nodes take its runs; null for a worker
-             */
-            pool?: string | null;
             /** Paused At */
             paused_at: string | null;
             /**
@@ -35294,7 +36451,7 @@ export interface components {
             environment?: string | null;
             /**
              * Projects
-             * @description the projects whose runs get it
+             * @description the projects whose runs get it; empty for a personal secret
              */
             projects: string[];
             /**
@@ -35327,6 +36484,22 @@ export interface components {
              */
             shares: components["schemas"]["CredentialShare"][];
         };
+        /**
+         * SecretRebind
+         * @description The binding a PATCH puts in place of the secret's: workers or pools, exactly one of them.
+         */
+        SecretRebind: {
+            /**
+             * Workers
+             * @description names of the caller's own workers that are not revoked, in place of its binding; empty for any worker of the caller; never with pools
+             */
+            workers?: string[] | null;
+            /**
+             * Pools
+             * @description names of the caller's own worker pools, in place of its binding: each node of each gets it, the nodes that join later too; empty for any worker of the caller; never with workers
+             */
+            pools?: string[] | null;
+        };
         /** SecretWrite */
         SecretWrite: {
             /**
@@ -35357,9 +36530,9 @@ export interface components {
             environment?: "test" | null;
             /**
              * Projects
-             * @description the projects whose runs get it; the writer role on each, the admin role for kind forge
+             * @description the projects whose runs get it; the writer role on each, the admin role for kind forge; left out or empty for a personal secret, kept for its owner and leased to no run, which kind forge cannot be
              */
-            projects: string[];
+            projects?: string[];
             /**
              * Workers
              * @description names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge
@@ -35415,7 +36588,7 @@ export interface components {
             environment?: string | null;
             /**
              * Projects
-             * @description the projects whose runs get it
+             * @description the projects whose runs get it; empty for a personal secret
              */
             projects: string[];
             /**
@@ -35452,6 +36625,54 @@ export interface components {
              * @description false when a secret of this name was replaced
              */
             created: boolean;
+        };
+        /**
+         * SecurityFinding
+         * @description A vulnerability the security pass kept after its filter.
+         */
+        SecurityFinding: {
+            /** Path */
+            path?: string | null;
+            /** Line */
+            line?: number | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * SecurityPass
+         * @description What the security pass of a Judge run (``evo_agents.hub.security_pass``) said of the change, and what it cost:
+         *     the dimension ``security``, its findings with path and line, and the turns the pass took.
+         */
+        SecurityPass: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "pass" | "fail";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Findings */
+            findings?: components["schemas"]["SecurityFinding"][];
+            /**
+             * Candidates
+             * @description the findings the first turn raised, before the filter
+             * @default 0
+             */
+            candidates: number;
+            /**
+             * Turns
+             * @description agent turns the pass took: one that finds, one for each candidate
+             * @default 0
+             */
+            turns: number;
+            /**
+             * Cost Usd
+             * @description what those turns cost, when the runtime reports it
+             */
+            cost_usd?: number | null;
         };
         /** SelfManagedIn */
         SelfManagedIn: {
@@ -35697,6 +36918,93 @@ export interface components {
              * @description calls that named the spool directory, the agent reading a spool file again; null when a client that did not count them pushed the digest
              */
             spool_reads?: number | null;
+        };
+        /** SessionFindingIn */
+        SessionFindingIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            /**
+             * Severity
+             * @default medium
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @description markdown, 16 KiB
+             */
+            body?: string | null;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceIn"][];
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
+            /**
+             * Run Id
+             * @description the local run of your session that records it
+             */
+            run_id: number;
+        };
+        /** SessionProposalIn */
+        SessionProposalIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            /**
+             * Kind
+             * @description the kind of change, which gives its first tier
+             * @enum {string}
+             */
+            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            /** Title */
+            title: string;
+            /**
+             * Summary
+             * @description markdown, 16 KiB
+             */
+            summary?: string | null;
+            /**
+             * Paths
+             * @description what it would edit
+             */
+            paths?: components["schemas"]["PathIn"][];
+            /**
+             * Finding Ids
+             * @description findings of the project it rests on
+             */
+            finding_ids?: number[];
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceIn"][];
+            /**
+             * Plan
+             * @description the draft plan: plan.schema.json, in outcome steps; none to promote
+             */
+            plan?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description kind memory: in place of a plan */
+            promotion?: components["schemas"]["PromotionIn"] | null;
+            /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
+            probe?: components["schemas"]["ProbeIn"] | null;
+            /**
+             * Fix Of
+             * @description the merged change whose probe recurred two weekly reports in a row that the prompt asked this run to fix; at least tier 1, and the hub adds the probe results as evidence
+             */
+            fix_of?: number | null;
+            /**
+             * Run Id
+             * @description the local run of your session that records it
+             */
+            run_id: number;
         };
         /** SessionTranscripts */
         SessionTranscripts: {
@@ -37489,6 +38797,18 @@ export interface components {
              */
             summary?: string | null;
             /**
+             * Model Used
+             * @description the model the run's runtime runs it on
+             */
+            model_used?: string | null;
+            /** @description what the routing by difficulty did, for a run it rated */
+            routing?: components["schemas"]["RoutingRecord"] | null;
+            /**
+             * Proofs
+             * @description with done or review of a run of one step: the proof of each criterion it names, which the step keeps once done
+             */
+            proofs?: components["schemas"]["StepProof"][] | null;
+            /**
              * Answer
              * @description with done of a question run, and only then (422 otherwise): the agent's answer, which goes to the core plugin that asked
              */
@@ -37536,6 +38856,33 @@ export interface components {
              * @description why this step, when the call's reason is not all
              */
             why?: string | null;
+        };
+        /**
+         * StepProof
+         * @description The proof of one criterion a step names (``evo_agents.hub.proofs``).
+         */
+        StepProof: {
+            /**
+             * Id
+             * @description the criterion's id in the plan's acceptance
+             */
+            id: string;
+            /**
+             * Kind
+             * @description test (path::name), command, or n/a
+             * @enum {string}
+             */
+            kind: "test" | "command" | "n/a";
+            /**
+             * Locator
+             * @description the test or the command
+             */
+            locator?: string | null;
+            /**
+             * Reason
+             * @description with n/a: why
+             */
+            reason?: string | null;
         };
         /** StepReadiness */
         StepReadiness: {
@@ -37599,6 +38946,11 @@ export interface components {
              * @description the repo's commit the step ends on
              */
             commit_sha?: string | null;
+            /**
+             * Proofs
+             * @description with done: one proof for each criterion of the plan's acceptance the step names, which the step keeps; 422 when one is missing or names another criterion. Absent from an older worker's report
+             */
+            proofs?: components["schemas"]["StepProof"][] | null;
         };
         /** StepWritten */
         StepWritten: {
@@ -38897,7 +40249,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -38911,7 +40263,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -39624,18 +40976,13 @@ export interface components {
         /** TriagePlanIn */
         TriagePlanIn: {
             /**
-             * Worker
-             * @description a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name one of theirs has too); a fit candidate
-             */
-            worker?: string | null;
-            /**
              * Runtime
-             * @description a runtime that worker has, for the rerun
+             * @description a runtime for the rerun
              */
             runtime?: string | null;
             /**
              * Account
-             * @description one of the owner's accounts ready on that worker
+             * @description one of the owner's accounts
              */
             account?: string | null;
             /**
@@ -39684,18 +41031,13 @@ export interface components {
         /** TriageRerunIn */
         TriageRerunIn: {
             /**
-             * Worker
-             * @description a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name one of theirs has too); a fit candidate
-             */
-            worker?: string | null;
-            /**
              * Runtime
-             * @description a runtime that worker has, for the rerun
+             * @description a runtime for the rerun
              */
             runtime?: string | null;
             /**
              * Account
-             * @description one of the owner's accounts ready on that worker
+             * @description one of the owner's accounts
              */
             account?: string | null;
             /**
@@ -39973,6 +41315,8 @@ export interface components {
              * @description the Judge agent's; null when it gave none
              */
             verdict: ("pass" | "fail") | null;
+            /** @description the security pass of the run: a verdict without it fails the dimension security */
+            security?: components["schemas"]["SecurityPass"] | null;
             /** Reasons */
             reasons?: string | null;
             /**
@@ -40566,6 +41910,12 @@ export interface components {
              * @description the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config
              */
             projects?: string[];
+            /**
+             * Guard
+             * @description the digest of the hub's guard policy (GET /v1/guard/policy), empty when it guards nothing: the daemon fetches the policy when the digest differs from the one it holds; a hub before 0192 sends none
+             * @default
+             */
+            guard: string;
         };
         /**
          * WorkerShares
@@ -53180,15 +54530,95 @@ export interface operations {
             };
         };
     };
-    show_finding_v1_projects__project__curator_findings__finding_id__get: {
+    record_session_finding_v1_projects__project__curator_findings_post: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionFindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Finding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_projects__project__curator_proposals_get: {
+        parameters: {
+            query?: {
+                /** @description any of these; repeat it */
+                state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
+                /** @description any of these tiers; repeat it */
+                tier?: number[];
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+                /** @description of this review run */
+                run_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
             path: {
                 project: string;
-                finding_id: number;
             };
             cookie?: never;
         };
@@ -53200,7 +54630,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Finding"];
+                    "application/json": components["schemas"]["ProposalList"];
                 };
             };
             /** @description Unauthorized */
@@ -53241,24 +54671,86 @@ export interface operations {
             };
         };
     };
-    list_proposals_v1_projects__project__curator_proposals_get: {
+    record_session_proposal_v1_projects__project__curator_proposals_post: {
         parameters: {
-            query?: {
-                /** @description any of these; repeat it */
-                state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
-                /** @description any of these tiers; repeat it */
-                tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
-                /** @description of this review run */
-                run_id?: number | null;
-                limit?: number;
-                offset?: number;
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
             };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionProposalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_finding_v1_projects__project__curator_findings__finding_id__get: {
+        parameters: {
+            query?: never;
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
             path: {
                 project: string;
+                finding_id: number;
             };
             cookie?: never;
         };
@@ -53270,7 +54762,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalList"];
+                    "application/json": components["schemas"]["Finding"];
                 };
             };
             /** @description Unauthorized */
@@ -55877,6 +57369,131 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    chat_doc_versions_v1_chats__chat_id__doc_versions_get: {
+        parameters: {
+            query: {
+                /** @description the document's name; only its last part after a slash counts, without case */
+                name: string;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocVersions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_doc_versions_v1_projects__project__runs__run_id__doc_versions_get: {
+        parameters: {
+            query: {
+                /** @description the document's name; only its last part after a slash counts, without case */
+                name: string;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocVersions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -59383,6 +61000,122 @@ export interface operations {
             };
         };
     };
+    show_run_reach_v1_autonomy_run_reach_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunReach"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_run_reach_v1_autonomy_run_reach_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunReachSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunReachWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     stop_autonomy_v1_autonomy_stops_post: {
         parameters: {
             query?: never;
@@ -59851,6 +61584,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merged_v1_worker_merged_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergedQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergedAnswer"];
                 };
             };
             /** @description Unauthorized */
@@ -62939,6 +64723,84 @@ export interface operations {
             };
         };
     };
+    workspace_v1_x_editorial__project__workspace_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorialWorkspace"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_posts_v1_x_editorial__project__posts_get: {
         parameters: {
             query?: {
@@ -63956,6 +65818,561 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_terms_v1_x_guard__project__terms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardTerm"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_term_v1_x_guard__project__terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardTermWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardTerm"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_term_v1_x_guard__project__terms__term_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                term_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardTerm"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_targets_v1_x_guard__project__targets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardTarget"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_target_v1_x_guard__project__targets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardTargetWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardTarget"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_target_v1_x_guard__project__targets__target_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                target_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardTarget"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_v1_x_guard__project__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuardCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardCheckOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    policy_v1_worker_guard_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardPolicy"];
+                };
+            };
+            /** @description unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    policy_v1_guard_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuardPolicy"];
+                };
+            };
+            /** @description unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -69880,6 +72297,78 @@ export interface operations {
             };
         };
     };
+    rebind_secret_v1_secrets__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretRebind"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_shares_v1_secrets__name__shares_get: {
         parameters: {
             query?: never;
@@ -71256,6 +73745,79 @@ export interface operations {
             };
         };
     };
+    set_account_pool_v1_projects__project__agents__handle__account_pool_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountPoolChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_avatar_v1_projects__project__agents__handle__avatar_get: {
         parameters: {
             query?: never;
@@ -71786,6 +74348,423 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_account_pools_v1_projects__project__account_pools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_account_pool_v1_projects__project__account_pools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_account_pool_v1_projects__project__account_pools__pool__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_account_pool_v1_projects__project__account_pools__pool__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_account_v1_projects__project__account_pools__pool__accounts_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_account_v1_projects__project__account_pools__pool__accounts__secret_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+                secret_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -76687,6 +79666,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_v1_worker_runs__run_id__curator_answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuratorAnswerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorAnswered"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_v1_worker_runs__run_id__curator_merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuratorMergeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuratorMerged"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -86259,6 +89389,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_check_v1_worker_runs__run_id__merge_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    merge_gate_act_v1_worker_runs__run_id__merge_gate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeGateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeGate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

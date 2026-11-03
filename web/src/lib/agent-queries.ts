@@ -81,3 +81,10 @@ export async function deleteAvatar(api: ApiClient, project: string, handle: stri
   const headers = await csrfHeaders(api);
   return call(api.DELETE("/v1/projects/{project}/agents/{handle}/avatar", { params: { path: { project, handle } }, headers }));
 }
+
+/** The nodes of an agent's own pool, for the admin's placement view; the pool is the agent's `home_pool`. */
+export const agentPoolQuery = (api: ApiSource, pool: string) =>
+  queryOptions({
+    queryKey: ["projects", "agent-pool", pool.toLowerCase()] as const,
+    queryFn: ({ signal }) => call(api().GET("/v1/worker-pools/{name}", { params: { path: { name: pool } }, signal })),
+  });

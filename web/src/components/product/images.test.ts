@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 
 import { IMAGE_SIZES, type ImageSize, imagePath, OG_IMAGE, type ProductImage, type Scheme } from "./images";
 import manifest from "./images.json";
-import { NEEDS } from "./needs";
 
 // The page's images are cut from the demo's screenshots in docs/images by scripts/product-images.mjs: a new set of
 // shots without a new cut, or a crop edited by hand, fails here.
@@ -37,7 +36,7 @@ describe("the product page's images", () => {
   });
 
   it("have each page's crops at the size the markup gives them", () => {
-    const images = new Set<ProductImage>(NEEDS.map((need) => need.image));
+    const images: ProductImage[] = ["monitor", "plan-run", "run-spool", "kg-search"];
     for (const image of images) {
       for (const size of SIZES) {
         for (const scheme of SCHEMES) {

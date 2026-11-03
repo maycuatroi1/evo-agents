@@ -172,7 +172,7 @@ test("the author run's Chat tab takes a file dropped anywhere on the chat with t
   await ensureAuthorSkill();
   await seedRunPlan(me, project);
   const live = await authorWorker(me, project, uniqueName("desk"));
-  const run = await dispatchAuthor(me, project, live.worker.id, "Write a plan for chat attachments.");
+  const run = await dispatchAuthor(me, project, "Write a plan for chat attachments.");
   await startAuthor(live, run.id);
   await agentAsks(live, run.id, "Which screenshot shows the broken composer?");
   await open(page, `${runPath(project, run.id)}?tab=chat`);

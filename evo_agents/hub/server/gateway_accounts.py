@@ -83,10 +83,20 @@ def _of_prefix(prefix: str):
     return clause if custom is None else and_(clause, p.c.secret_id == custom)
 
 
-def _rows(owner, project_id: int, on_worker, prefix: str):
+async def _account_pool(conn: AsyncConnection, asker: Asker) -> tuple[bool, int | None]:
+    """(whether the asker has an agent, its account pool's id)."""
+    if asker.profile_id is None:
+        return False, None
+    ap = tables.agent_profiles
+    row = (await conn.execute(select(ap.c.account_pool_id).where(ap.c.id == asker.profile_id))).first()
+    return row is not None, (None if row is None else row.account_pool_id)
+
+
+def _rows(owner, project_id: int, on_worker, prefix: str, *, bound: bool = True):
     """The live provider accounts ``owner`` says, of ``prefix``, bound to the project where ``on_worker`` says."""
     s, p, a, b = tables.secrets, tables.provider_accounts, tables.accounts, tables.secret_bindings
-    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, on_worker)
+    where_bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, on_worker)
+    where_bound = where_bound if bound else true()  # an account pool's accounts are not bound to the project
     return (
         select(
             s.c.id,
@@ -96,7 +106,7 @@ def _rows(owner, project_id: int, on_worker, prefix: str):
         )
         .join_from(s, p, p.c.secret_id == s.c.id)
         .outerjoin(a, a.c.secret_id == s.c.id)
-        .where(owner, s.c.kind == PROVIDER_KIND, s.c.deleted_at.is_(None), bound, _of_prefix(prefix))
+        .where(owner, s.c.kind == PROVIDER_KIND, s.c.deleted_at.is_(None), where_bound, _of_prefix(prefix))
         .order_by(s.c.name, s.c.id)
     )
 
@@ -122,6 +132,14 @@ async def usable_accounts(
     as the module says; only ``picked`` when one is."""
     b, s = tables.secret_bindings, tables.secrets
     usable = Usable()
+    pooled, pool_id = await _account_pool(conn, asker)
+    if pooled:  # an agent: its account pool alone, no account of the dispatcher's or a share's
+        if pool_id is not None:
+            m = tables.account_pool_members
+            of_pool = s.c.id.in_(select(m.c.secret_id).where(m.c.pool_id == pool_id))
+            rows = (await conn.execute(_rows(of_pool, asker.project_id, true(), prefix, bound=False))).all()
+            _sort(asker, rows, usable, picked, agent=True)
+        return usable
     if asker.agent_owned:
         on_worker = true() if worker_id is None else b.c.worker_id == worker_id
         owner = s.c.profile_id == asker.profile_id

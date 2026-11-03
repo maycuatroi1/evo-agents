@@ -15,7 +15,7 @@ puts them in order for a new instance.
 | Part | Where it is set | Notes |
 | --- | --- | --- |
 | Postgres database | `EVO_HUB_DSN` | never shared between hubs: the schema, the plugin store, the settings and the audit trail belong to one hub |
-| Blob bucket | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET` and its key | a bucket of its own, and a key limited to it |
+| Blob bucket | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, its key and `EVO_HUB_S3_PROVIDER` | a bucket of its own on R2, another S3 service or SeaweedFS on the host, and a key limited to it (section The blob store) |
 | Domain | `EVO_HUB_PUBLIC_URL` and the reverse proxy | `/v1` and `/mcp` to the api, everything else to the web |
 | GitHub OAuth App | `EVO_HUB_GITHUB_CLIENT_ID`, `EVO_HUB_GITHUB_CLIENT_SECRET` | device flow on, callback `EVO_HUB_PUBLIC_URL` + `/v1/auth/web/callback` |
 | Secrets | `EVO_HUB_SESSION_SECRET`, `EVO_HUB_SECRETS_KEY`, `EVO_HUB_PLUGIN_HOST_TOKEN` | generated for this hub, never copied from another |
@@ -317,6 +317,75 @@ with its reason in parentheses: `unsigned`, `altered`, `untrusted` (a publisher,
 list), `invalid`, `incompatible` or `malformed`. A new version is published and then upgraded to with
 `evo-agents hub plugin upgrade`. When the new version asks for more permissions, the plugin keeps what each project
 granted before, and the new ones wait under `pending` until an admin of the project enables the plugin again.
+
+## The blob store
+
+The hub keeps every file (skill and plugin bundles, built graphs, run logs and outputs, attachments, transcripts) in
+one bucket behind an S3 API. Four variables name it, `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`,
+`EVO_HUB_S3_ACCESS_KEY_ID` and `EVO_HUB_S3_SECRET_ACCESS_KEY`, and `EVO_HUB_S3_PROVIDER` says which service it is:
+
+| Provider | Endpoint | Region signed for | Addressing |
+| --- | --- | --- | --- |
+| `r2` (default) | `https://<account id>.r2.cloudflarestorage.com` | `auto` | path |
+| `aws` | `https://s3.<region>.amazonaws.com` | read from the endpoint | virtual (`<bucket>.s3...`) |
+| `gcs` | `https://storage.googleapis.com`, with HMAC keys | `auto` | path, deletes one key a call |
+| `b2` | `https://s3.<region>.backblazeb2.com` | read from the endpoint | path |
+| `minio`, `seaweedfs` | the server's own address | `us-east-1` | path |
+| `other` | any other S3 API | `us-east-1` | path |
+
+`EVO_HUB_S3_REGION` and `EVO_HUB_S3_ADDRESSING_STYLE` (`path` or `virtual`) override the provider's. Clients (workers,
+the CLI) download and upload through presigned URLs that name `EVO_HUB_S3_ENDPOINT`, so it must be an address they
+reach; `EVO_HUB_S3_INTERNAL_ENDPOINT` is where the api and the worker call the same store when they have a shorter
+way to it. The web goes through the api and needs no CORS rule.
+
+Before pointing a hub at a store, check it from a machine that reaches it as the hub does:
+
+```sh
+evo-agents hub storage check --env new-store.env            # add --create-bucket on a store with no bucket yet
+```
+
+`new-store.env` holds the `EVO_HUB_S3_*` lines, so no key goes on the command line. The check puts one object of
+random bytes through a presigned PUT, copies it, hashes it, reads it through a presigned GET and a range, lists it and
+deletes it, and prints each step with its time. A step that fails names the S3 error. R2 and SeaweedFS 4.48 pass
+it; the `aws`, `gcs`, `b2` and `minio` presets follow those services' documentation and have not been tried here.
+
+### A blob store on the host
+
+A hub with no S3 service runs SeaweedFS beside it, its bytes on the volume `seaweedfs-data`:
+
+```sh
+docker compose -f deploy/hub/docker-compose.yml -f deploy/hub/docker-compose.seaweedfs.yml up -d
+```
+
+The overlay adds three services. `seaweedfs` holds the data and is on an internal network that only `s3` joins, since
+its own ports check no credential. `s3` is SeaweedFS's S3 gateway, with the hub's key pair as its one identity, on a
+network it shares with `api` and `worker` and never with `plugins` or `web`. `storage-init` runs
+`hub storage check --create-bucket` at every `up`, so the api starts only on a store that works; it needs an image
+whose CLI has `hub storage` (`docker run --rm <image> evo-agents hub storage -h`), the first release after 0.54.4. Set the four `EVO_HUB_S3_*` variables as for any store, with a key pair you generate
+(`python -c 'import secrets; print(secrets.token_hex(20))'` for each), and `EVO_HUB_S3_ENDPOINT` the public address
+of the gateway: a domain of the reverse proxy forwarding to it, Host header unchanged, since SigV4 signs the host.
+The gateway's port is published on `EVO_HUB_SEAWEEDFS_BIND:EVO_HUB_SEAWEEDFS_PORT` (`127.0.0.1:8333`) for a proxy on
+the same machine. The overlay sets `EVO_HUB_S3_PROVIDER=seaweedfs` and
+`EVO_HUB_S3_INTERNAL_ENDPOINT=http://evo-agents-hub-s3:8333`. Back up `seaweedfs-data` with the database: nothing
+rebuilds it.
+
+### Moving the blob store
+
+Blobs are named by their SHA-256 and never change, so a copy can run while the hub serves, and run again:
+
+1. Create the new bucket and a key limited to it, write its variables to `new-store.env`, and run
+   `evo-agents hub storage check --env new-store.env`.
+2. With the hub's current variables in the environment (or in `old-store.env`, passed as `--from`), copy:
+   `evo-agents hub storage migrate --to new-store.env`. It lists `blobs/sha256/` in the source, skips each blob the
+   target holds with the same size, and streams the rest through SHA-256 before writing them: a source object whose
+   bytes do not match its name is printed as `FAILED` and not copied. `--dry-run` counts first; `--parallel` (default
+   8) sets how many blobs move at once; `--verify` hashes the target's copies too. The last line is a JSON summary,
+   and the exit status is 1 when a blob failed.
+3. Point the hub's `EVO_HUB_S3_*` variables at the new store and redeploy api and worker.
+4. Run the same `migrate` again, from the old store: it copies only the blobs written between step 2 and the
+   redeploy. An upload a client started on the old store before the switch fails at its commit, and the client
+   uploads again.
+5. Keep the old bucket until `/v1/health` reports `r2: ok` and a few downloads work, then delete it.
 
 ## Two hubs on one machine
 

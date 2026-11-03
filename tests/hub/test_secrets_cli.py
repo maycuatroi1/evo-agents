@@ -1,12 +1,13 @@
-"""``evo-agents hub secret set|list|delete`` and ``evo-agents hub run credentials``, as a signed-in member runs them,
-and the refusal ``hub run dispatch`` prints for a worker that takes runs dispatched from the web only.
+"""``evo-agents hub secret set|list|bind|delete`` and ``evo-agents hub run credentials``, as a signed-in member runs
+them, and the refusal ``hub run send`` prints for a worker that takes runs dispatched from the web only.
 
 The checks step 12 of the worker-credentials plan names: ``secret set`` has no flag that takes the value and reads it
 from stdin when stdin is not a terminal, else asks for it with getpass; every argument is checked before the value is
 read; no command prints a value, not even in an error; ``secret list --json`` and ``run credentials --json`` print the
 keys the contract declares (seam hub-cli-v1); ``run credentials`` lists each lease of a run with its name, provider,
-target, worker and times, revoked ones included, for the run's owner alone; and ``run dispatch``, ``run plan`` and
-``run rerun`` print why a worker set to take runs dispatched from the web only refuses one dispatched with a token.
+target, worker and times, revoked ones included, for the run's owner alone; and ``run send`` prints why a worker set to
+take runs dispatched from the web only refuses a token's message to the run it holds (a dispatch names no worker any
+more: the hub places each run of an agent on its pool, plan agent-dedicated-pools).
 
 The parsing of arguments and values runs without Postgres; everything that needs the hub skips without
 EVO_HUB_TEST_DSN."""
@@ -21,8 +22,9 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import cli_secrets
+from evo_agents.hub.cli_bindings import rebinding
 from evo_agents.hub.cli_secrets import Refused, expires_at, read_value
-from evo_agents.hub.contract import commands
+from evo_agents.hub.contract import commands, own_parser
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_run_cli import HUB_URL, as_json, ok, write_credentials
@@ -154,6 +156,21 @@ def test_arguments_are_checked_before_the_value_is_read(monkeypatch, capsys, tmp
     assert result.err.startswith("error: ") and problem in result.err
 
 
+@pytest.mark.parametrize(
+    "args, problem",
+    [
+        (("n", "--kind", "env", "--env-var", "API", "--worker", "mac-mini"), "--worker and --pool need --project"),
+        (("n", "--kind", "env", "--env-var", "API", "--pool", "ci"), "--worker and --pool need --project"),
+        (("n", "--kind", "forge", "--url-prefix", "https://h/g", "--expires", "2027-01-31"), "forge needs --project"),
+    ],
+)
+def test_a_personal_secret_takes_no_worker_pool_or_kind_forge(monkeypatch, capsys, tmp_path, args, problem):
+    home = write_credentials(tmp_path / "home", HUB_URL, "owner", "evh_unused")
+    result = run_cli(monkeypatch, capsys, home, "hub", "secret", "set", *args)
+    assert result.code == 2 and result.out == ""
+    assert result.err.startswith("error: ") and problem in result.err
+
+
 def test_without_a_sign_in_the_value_is_not_asked_for(monkeypatch, capsys, tmp_path, asked):
     args = ("hub", "secret", "set", "n", "--kind", "env", "--env-var", "API", "--project", "demo")
     for stdin in (Unread(), Terminal()):
@@ -193,15 +210,47 @@ def test_delete_checks_the_name_before_asking_the_hub(monkeypatch, capsys, tmp_p
     assert result.code == 2 and "'../tokens' is not a secret's name" in result.err
 
 
+def test_bind_takes_one_of_worker_pool_and_anywhere_and_sends_that_binding_alone(monkeypatch, capsys, tmp_path):
+    for argv in (
+        [],
+        ["--worker", "desk", "--pool", "ci"],
+        ["--pool", "ci", "--anywhere"],
+        ["--anywhere", "--value", "x"],
+    ):
+        with pytest.raises(SystemExit) as exited:
+            main(["hub", "secret", "bind", "api", *argv])
+        assert exited.value.code == 2, argv
+    capsys.readouterr()
+
+    def body(*argv: str) -> dict:
+        return rebinding(own_parser().parse_args(["hub", "secret", "bind", "api", *argv]))
+
+    assert body("--worker", "desk", "--worker", "lab") == {"workers": ["desk", "lab"]}
+    assert body("--pool", "agent-reviewer") == {"pools": ["agent-reviewer"]}
+    assert body("--anywhere") == {"workers": []}
+    home = write_credentials(tmp_path / "home", HUB_URL, "owner", "evh_unused")
+    result = run_cli(monkeypatch, capsys, home, "hub", "secret", "bind", "../tokens", "--anywhere")
+    assert result.code == 2 and "'../tokens' is not a secret's name" in result.err
+
+
 def test_the_commands_of_secrets_and_leases_are_in_the_contract():
     printed = commands()
-    assert {"hub secret set", "hub secret list", "hub secret delete", "hub run credentials"} <= set(printed)
+    assert {"hub secret set", "hub secret list", "hub secret bind", "hub secret delete", "hub run credentials"} <= set(
+        printed
+    )
     options = {o["flags"][0]: o for o in printed["hub secret set"]["options"]}
     assert options["--kind"]["required"] and options["--kind"]["choices"] == ["env", "git", "forge"]
-    assert options["--project"]["required"] and options["--project"]["repeatable"]
+    assert not options["--project"]["required"] and options["--project"]["repeatable"]
     assert options["--worker"]["repeatable"] and not options["--worker"]["required"]
     assert printed["hub secret set"]["json"] is None and printed["hub secret delete"]["json"] is None
     assert printed["hub secret list"]["json"]["schema"] == "Secret"
+    assert printed["hub secret bind"]["json"] == {**printed["hub secret list"]["json"], "kind": "object"}
+    assert {o["flags"][0] for o in printed["hub secret bind"]["options"]} == {
+        "--worker",
+        "--pool",
+        "--anywhere",
+        "--json",
+    }
     assert "value" not in printed["hub secret list"]["json"]["keys"]
     assert printed["hub run credentials"]["json"] == {
         "kind": "array",
@@ -222,7 +271,7 @@ if pg.DSN:
 
     from evo_agents.hub.server.app import create_app
     from tests.hub import test_credentials_api as leases_api
-    from tests.hub.test_credentials_api import GITLAB_KB, MINE, OTHER, OWNER, PLAN, STEPS
+    from tests.hub.test_credentials_api import GITLAB_KB, MINE, OTHER, OWNER
     from tests.hub.test_run_stream import serving
     from tests.hub.test_runs import PROJECT
 
@@ -352,10 +401,13 @@ def test_set_list_and_delete_a_secret_without_ever_printing_its_value(hub, monke
     for result in (piped, typed, again, table):
         nowhere(result, oauth, replaced, glpat)
 
-    # the value stored is what was piped or typed, the final line break dropped: what a run's worker gets
+    # the value stored is what was piped or typed, the final line break dropped: what a run's worker gets, from the
+    # account pool of the run's agent
+    leases_api.account_pool(hub.client, "claude-oauth")
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "desk")
     run_id = leases_api.step_run(hub.client, hub.headers["owner"], "evo-agents", worker)
-    assert leases_api.by_name(leases_api.leased(hub.client, worker, run_id))["claude-oauth"]["value"] == replaced
+    leases = leases_api.by_name(leases_api.leased(hub.client, worker, run_id))
+    assert leases[leases_api.pooled("claude-oauth")]["value"] == replaced
     dump = live.table_dump(hub.db)
     assert oauth not in dump and replaced not in dump and glpat not in dump
 
@@ -385,6 +437,47 @@ def test_set_list_and_delete_a_secret_without_ever_printing_its_value(hub, monke
     assert gone.code == 1 and gone.err.startswith("error: you have no secret named gitlab-kb on this hub")
     theirs = secret_cli(hub, monkeypatch, capsys, "other", "delete", "claude-oauth")
     assert theirs.code == 1 and "you have no secret named claude-oauth" in theirs.err
+
+
+@needs_pg
+def test_bind_moves_a_secret_to_a_pool_another_worker_or_any_without_its_value(hub, monkeypatch, capsys):
+    value = sample("api-")
+    leases_api.worker_of(hub.client, hub.headers["owner"], "desk")
+    made = hub.client.post("/v1/worker-pools", json={"name": "ci", "projects": [PROJECT]}, headers=hub.headers["owner"])
+    assert made.status_code == 201, made.text
+    args = ("set", "api", "--kind", "env", "--env-var", "API_TOKEN", "--project", PROJECT, "--worker", "desk")
+    ok(secret_cli(hub, monkeypatch, capsys, "owner", *args, stdin=io.StringIO(value)))
+
+    pooled = ok(secret_cli(hub, monkeypatch, capsys, "owner", "bind", "api", "--pool", "ci"))
+    lines = pooled.out.splitlines()
+    assert lines[0].split() == ["NAME", "KIND", "TARGET", "PROJECTS", "WORKERS", "EXPIRES", "(UTC)", "UPDATED", "(UTC)"]
+    assert lines[1].split()[:6] == ["api", "env", "API_TOKEN", PROJECT, "pool", "ci"] and len(lines) == 2
+    moved = as_json(secret_cli(hub, monkeypatch, capsys, "owner", "bind", "api", "--worker", "desk", "--json"))
+    assert_json_keys("hub secret bind", moved)
+    assert (moved["name"], moved["workers"], moved["pools"]) == ("api", ["desk"], [])
+    anywhere = ok(secret_cli(hub, monkeypatch, capsys, "owner", "bind", "api", "--anywhere"))
+    assert anywhere.out.splitlines()[1].split()[:5] == ["api", "env", "API_TOKEN", PROJECT, "any"]
+    theirs = secret_cli(hub, monkeypatch, capsys, "other", "bind", "api", "--anywhere")
+    assert theirs.code == 1 and theirs.out == "" and "you have no secret named api" in theirs.err
+    nobodys = secret_cli(hub, monkeypatch, capsys, "owner", "bind", "api", "--pool", "nobodys")
+    assert nobodys.code == 1 and "nobodys is not a worker pool of yours" in nobodys.err
+    for result in (pooled, anywhere, theirs, nobodys):
+        nowhere(result, value)
+
+
+@needs_pg
+def test_set_without_a_project_keeps_a_personal_secret_that_lists_bound_to_nothing(hub, monkeypatch, capsys):
+    value = sample("sk-")
+    args = ("set", "cred-ai-openai", "--kind", "env", "--env-var", "OMELET_CRED_AI_OPENAI")
+    made = ok(secret_cli(hub, monkeypatch, capsys, "owner", *args, stdin=io.StringIO(value)))
+    assert made.out == (
+        "Created secret cred-ai-openai (env, OMELET_CRED_AI_OPENAI) for you alone, bound to no project: no run gets it "
+        "until it is bound to one. The hub keeps the value sealed and never shows it again.\n"
+    )
+    listed = ok(secret_cli(hub, monkeypatch, capsys, "owner", "list"))
+    assert listed.out.splitlines()[1].split()[:5] == ["cred-ai-openai", "env", "OMELET_CRED_AI_OPENAI", "-", "-"]
+    for result in (made, listed):
+        nowhere(result, value)
 
 
 @needs_pg
@@ -423,6 +516,7 @@ def test_run_credentials_lists_each_lease_of_a_run_for_its_owner_alone(hub, monk
     oauth, glpat = sample("oauth-"), sample("glpat-")
     leases_api.env_secret(hub.client, hub.headers["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
     leases_api.git_secret(hub.client, hub.headers["owner"], "gitlab-kb", GITLAB_KB, glpat)
+    leases_api.account_pool(hub.client, "claude-oauth")  # the model account of the run's agent
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "mac-mini")
     run_id = leases_api.plan_run(hub.client, hub.headers["owner"], worker)
 
@@ -473,11 +567,10 @@ def test_run_credentials_lists_each_lease_of_a_run_for_its_owner_alone(hub, monk
 
 
 @needs_pg
-def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(hub, monkeypatch, capsys):
+def test_send_prints_why_a_worker_of_the_web_refuses_a_token(hub, monkeypatch, capsys):
+    leases_api.claimable(hub.client)
     worker = leases_api.worker_of(hub.client, hub.headers["owner"], "mac-mini")
-    pinned = ("dispatch", PLAN, str(STEPS["notes"]), "--worker", "mac-mini", "--json")
-    queued = as_json(run_of(hub, monkeypatch, capsys, "owner", *pinned))
-    ok(run_of(hub, monkeypatch, capsys, "owner", "cancel", str(queued[0]["id"])))
+    run_id = leases_api.step_run(hub.client, hub.headers["owner"], "notes", worker)
     from sqlalchemy import update
 
     from evo_agents.hub import tables
@@ -486,16 +579,8 @@ def test_dispatch_plan_and_rerun_print_why_a_worker_of_the_web_refuses_a_token(h
     live.sql(hub.db, update(workers).values(dispatch_from="web").where(workers.c.id == worker["id"]))
 
     why = (
-        "error: worker mac-mini takes only runs dispatched from a web session, as its owner set it, so a token cannot "
-        "hand it work: dispatch on the web, or to another worker; nothing was dispatched\n"
+        f"error: run {run_id} is held by worker mac-mini, which takes only runs dispatched from a web session, as its "
+        "owner set it, so a token cannot send its agent a message: send it from the web; nothing was sent\n"
     )
-    for args in (
-        ("dispatch", PLAN, str(STEPS["evo-agents"]), "--worker", "mac-mini"),
-        ("dispatch", PLAN, str(STEPS["evo-agents"]), "--worker", str(worker["id"])),
-        ("plan", PLAN, "--worker", "mac-mini"),
-        ("rerun", str(queued[0]["id"])),
-    ):
-        refused = run_of(hub, monkeypatch, capsys, "owner", *args)
-        assert (refused.code, refused.out, refused.err) == (1, "", why), args
-    listed = as_json(run_of(hub, monkeypatch, capsys, "owner", "list", "--json"))
-    assert [run["id"] for run in listed["runs"]] == [queued[0]["id"]]  # nothing was queued
+    refused = run_of(hub, monkeypatch, capsys, "owner", "send", str(run_id), "Keep the old API.")
+    assert (refused.code, refused.out, refused.err) == (1, "", why)

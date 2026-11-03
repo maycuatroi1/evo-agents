@@ -25,8 +25,8 @@ function main(page: Page) {
   return page.locator("#main");
 }
 
-/** A run `grantee` dispatched on `project` that a worker of theirs leased: it takes `me`'s account shared with them. */
-async function sharedRun(admin: HubAdmin, me: Member, grantee: Account, project: string) {
+/** A run `grantee` dispatched on `project` that a worker of theirs leased: its lease of `envVar`, `me`'s secret shared with them. */
+async function sharedRun(admin: HubAdmin, me: Member, grantee: Account, project: string, envVar: string) {
   await admin.grant(project, grantee.login, "writer", "internal");
   await seedRunPlan(me, project);
   const live = await liveWorker(grantee, project, uniqueName("desk"));
@@ -34,7 +34,7 @@ async function sharedRun(admin: HubAdmin, me: Member, grantee: Account, project:
   expect((await claimRun(live))?.id).toBe(run.id);
   await startRun(live, run.id);
   const credentials = await leaseCredentials(live, run.id);
-  return credentials.leases.find((item) => item.env_var === TOKEN_VAR);
+  return credentials.leases.find((item) => item.env_var === envVar);
 }
 
 test("a subscription token is shared only once its owner ticks the warning, which shows word for word", async ({ page, member }) => {
@@ -163,16 +163,17 @@ test("the owner of a shared account reads what each member's runs took of it", a
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   const lan = await otherMember("lan-tran");
-  await putSecretByApi(me, "claude-main", { kind: "env", env_var: TOKEN_VAR, projects: [project], value: secretValue("oauth") });
-  await shareByApi(me, "claude-main", { grantee_kind: "user", login: lan.login, projects: [project], terms_ack: true });
-  const lease = await sharedRun(admin, me, lan, project);
-  expect(lease?.name).toBe("claude-main");
+  // An API key: a run of an agent takes its model account from the agent's account pool alone, never a share's.
+  await putSecretByApi(me, "search-main", { kind: "env", env_var: "SEARCH_API_KEY", projects: [project], value: secretValue("search") });
+  await shareByApi(me, "search-main", { grantee_kind: "user", login: lan.login, projects: [project] });
+  const lease = await sharedRun(admin, me, lan, project, "SEARCH_API_KEY");
+  expect(lease?.name).toBe("search-main");
 
   await page.goto("/accounts?tab=sharing");
   const table = main(page).getByTestId("cost-by-principal-table");
   await expect(table.getByTestId("cost-principal")).toHaveText([lan.login]);
   await expect(table.getByTestId("cost-month")).toHaveText(["$0.00"]);
-  await expect(table).toContainText("claude-main");
+  await expect(table).toContainText("search-main");
 });
 
 test("a worker narrows to a unit once its doctor is fresh and clean, and a high finding locks it with the reason", async ({
@@ -180,7 +181,8 @@ test("a worker narrows to a unit once its doctor is fresh and clean, and a high 
   member,
 }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
-  const live = await liveWorker(me, me.projects[0], uniqueName("studio"));
+  // A worker of no pool: a node of an agent's pool sends a doctor report as it joins.
+  const live = await liveWorker(me, me.projects[0], uniqueName("studio"), 1, { agent: null });
   const unit = await unitByApi("team-b");
 
   await page.goto(`/workers/${live.worker.id}`);

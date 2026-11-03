@@ -94,9 +94,8 @@ test("a writer runs a plan from its page, and the page follows the run until it 
   await expect(summary.getByTestId(`plan-run-repo-${HARNESS_REPO}`).getByTestId("plan-run-default-branch")).toHaveText("Default branch");
   await expect(summary.getByTestId("plan-run-checkpoints")).toContainText(PLAN_RUN_TITLES["3"]);
   await expect(summary.getByTestId("plan-run-push")).toContainText(`The plan names the default branch of ${HARNESS_REPO} (main)`);
-  // The worker that can take the run now fills the dropdown, and nothing is said below it.
-  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveCount(0);
+  // The dialog has no machine picker: the hub places the run on the nodes of the agent's pool.
+  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
 
   // A typed model goes with a runtime; the models the worker lists are offered in the dropdown.
   await dialog.getByTestId("plan-run-model-select").selectOption({ label: "Another model…" });
@@ -123,7 +122,7 @@ test("a writer runs a plan from its page, and the page follows the run until it 
     mode: "headless",
     approval: "auto",
     timeout_min: 480,
-    pinned_worker_id: live.worker.id,
+    pinned_worker_id: null,
     dispatched_by: me.login,
     repos: [
       { repo: REPO, branch: PLAN_RUN_BRANCH },

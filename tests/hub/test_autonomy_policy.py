@@ -41,7 +41,7 @@ POLICY = {
         DOCS: {"mode": "auto", "prod_release": "after_uat", "after_uat_hours": 2},
     },
     "merge": {"risk_paths": ["services/billing/**"]},
-    "judge": {"worker": "ai-lab-2"},
+    "judge": {"model": "claude-sonnet-4-6"},
 }
 POLICY_YAML = """\
 repos:
@@ -70,7 +70,6 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "merge.risk_paths": [],
         "merge.hold_until": "merged",
         "merge.pipeline_minutes": 60,
-        "judge.worker": None,
         "judge.model": None,
         "breaker.target_red_minutes": 30,
         "breaker.reverts_in_a_row": 2,
@@ -81,9 +80,6 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "audit.sample_rate": 0.10,
         # plan loop-engine: the Loop off, and no estimate and no budget (answer 1 of its checkpoint)
         "loop.enabled": False,
-        "loop.worker": None,
-        "loop.pool": None,
-        "loop.labels": [],
         "loop.timezone": None,
         "loop.business.max_running": 2,
         "loop.development.max_running": 1,
@@ -102,6 +98,12 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "loop.use_cases": "auto",
         # plan active-context-answers: the prompt of a run carries the confirmed answers that match it
         "context.answers": False,
+        # plan super-board-parity-2: no model routing; when on, the ladder of Claude Code's models by difficulty
+        "routing.enabled": False,
+        "routing.scorer": "haiku",
+        "routing.ladder.easy": "haiku",
+        "routing.ladder.medium": "sonnet",
+        "routing.ladder.hard": "opus",
     }
     assert not [name for name in defaults if "budget" in name or "estimate" in name or "usd" in name]
     assert {key.name: key.default for key in autonomy.REPO_KEYS} == {
@@ -113,6 +115,7 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "jobs.prod_deploy": None,
         "jobs.prod_check": None,
         "jobs.rollback": None,
+        "merge_check": "off",  # plan super-board-parity-2: a repo on github.com keeps its behaviour until it is on
     }
     # no cap of a diff, and none of the merges of a day (answers 4 and 8)
     names = [key.name for key in (*autonomy.KEYS, *autonomy.REPO_KEYS)]
@@ -138,7 +141,7 @@ def test_autonomy_policy_reads_a_key_a_revision_leaves_out_or_no_longer_takes_as
     assert (made["merge"]["hold_until"], made["merge"]["risk_paths"], made["judge"]) == (
         "merged",
         ["services/billing/**"],
-        {"worker": "ai-lab-2", "model": None},
+        {"model": "claude-sonnet-4-6"},
     )
     # an old revision: a value this release refuses, and a key it does not know, read as the defaults
     old = {"merge": {"hold_until": "soon", "max_diff_lines": 500}, "repos": {"retired-repo": {"mode": "auto"}}}
@@ -164,7 +167,7 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         },
         "merge": {"hold_until": "soon", "max_diff_lines": 500, "pipeline_minutes": True, "risk_paths": "a/**"},
         "audit": {"sample_rate": 2},
-        "judge": {"worker": " "},
+        "judge": {"model": " "},
         "loop": {"enabled": "yes", "brainstorm": {"time": "9am"}, "timezone": "Asia/Ho Chi Minh", "budget": 5},
         "later": {},
     }
@@ -180,17 +183,17 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         "merge.pipeline_minutes: a whole number from 1 to 1440, not true",
         'merge.risk_paths: a list of at most 100 globs, each of 1 to 500 characters, not "a/**"',
         "audit.sample_rate: a number from 0 to 1, not 2",
-        'judge.worker: null or text of 1 to 100 characters on one line, no space at either end, not " "',
+        'judge.model: null or text of 1 to 200 characters on one line, no space at either end, not " "',
         'loop.enabled: true or false, not "yes"',
         'loop.brainstorm.time: a time of day as HH:MM, 00:00 to 23:59, not "9am"',
         'loop.timezone: null or a time zone name such as Asia/Ho_Chi_Minh, at most 64 characters, not "Asia/Ho Chi '
         'Minh"',
-        "loop.budget: no such key; loop takes enabled, worker, pool, labels, timezone, business, development, repo_max_running, "
+        "loop.budget: no such key; loop takes enabled, timezone, business, development, repo_max_running, "
         "dispatches_per_hour, max_items_per_hour, stable_hours, brainstorm, require_sprint, caps, use_cases",
-        "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop, context",
+        "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop, context, routing",
     ]
     assert autonomy.problems(["merge"], FACTS) == [
-        'the policy is an object of sections (repos, merge, judge, breaker, audit, loop, context), not ["merge"]'
+        'the policy is an object of sections (repos, merge, judge, breaker, audit, loop, context, routing), not ["merge"]'
     ]
     assert autonomy.problems({"merge": {"risk_paths": ["x" * 70_000]}}, FACTS)[0].startswith("the policy is 70")
 
@@ -202,16 +205,16 @@ def test_autonomy_policy_dotted_keys_name_a_repo_with_a_dot_and_a_change_drops_w
     for unknown in ("merge.max_diff_lines", "repos.mode", f"repos.{SHOP}", "loop.max_tasks", "repos"):
         assert autonomy.key_path(unknown) is None, unknown
     sets = {f"repos.{DOCS}.jobs.rollback": "rollback-docs", "merge.hold_until": "uat_check"}
-    changed, problems = autonomy.with_changes(POLICY, sets, ["judge.worker", f"repos.{SHOP}.target_branch"])
+    changed, problems = autonomy.with_changes(POLICY, sets, ["judge.model", f"repos.{SHOP}.target_branch"])
     assert problems == []
     assert changed["repos"][DOCS]["jobs"] == {"rollback": "rollback-docs"}
     assert "judge" not in changed and "target_branch" not in changed["repos"][SHOP]
-    assert POLICY["judge"] == {"worker": "ai-lab-2"}, "the body changed is a copy"
+    assert POLICY["judge"] == {"model": "claude-sonnet-4-6"}, "the body changed is a copy"
     assert autonomy.changes(autonomy.effective(POLICY, FACTS), autonomy.effective(changed, FACTS)) == [
         (f"repos.{DOCS}.jobs.rollback", None, "rollback-docs"),
         (f"repos.{SHOP}.target_branch", "dev", "main"),
         ("merge.hold_until", "merged", "uat_check"),
-        ("judge.worker", "ai-lab-2", None),
+        ("judge.model", "claude-sonnet-4-6", None),
     ]
     same, refused = autonomy.with_changes(POLICY, {"merge.max_diff_lines": 500}, ["repos.mode"])
     assert (same, refused) == (
@@ -361,7 +364,7 @@ def test_autonomy_policy_is_written_by_an_admin_as_revisions_kept_audited_and_co
         f"repos.{SHOP}.jobs.rollback",
         "merge.risk_paths",
         "merge.hold_until",
-        "judge.worker",
+        "judge.model",
     ]
     assert listed[1]["note"] == "Shop and docs merge on their own" and f"repos.{SHOP}.mode" in listed[1]["changed"]
     assert _get(hub, "reader", "/revisions/1")["policy"] == POLICY
@@ -445,3 +448,16 @@ def test_autonomy_policy_from_the_command_line(hub_db, tmp_path, github, monkeyp
         ]
         assert "read the same" in ok(policy("reader", "diff", "2")).out
         assert_json_keys("hub policy diff", as_json(policy("reader", "diff", "0", "--json")))
+
+
+def test_autonomy_policy_github_merge_check_is_off_by_default_and_on_only_for_a_repo_on_github():
+    """Plan super-board-parity-2, step 1: repos.<repo>.merge_check is off unless a revision turns it on, and on only
+    for a repo on github.com, where the hub judges a run's pull request before the run merges it."""
+    assert autonomy.effective(None, FACTS)["repos"][SITE]["merge_check"] == "off"
+    on = {"repos": {SITE: {"merge_check": "on"}}}
+    assert autonomy.problems(on, FACTS) == []
+    assert autonomy.effective(on, FACTS)["repos"][SITE]["merge_check"] == "on"
+    (refused,) = autonomy.problems({"repos": {SHOP: {"merge_check": "on"}}}, FACTS)
+    assert refused.startswith(f"repos.{SHOP}.merge_check: {SHOP} is not on github.com")
+    (wrong,) = autonomy.problems({"repos": {SITE: {"merge_check": "yes"}}}, FACTS)
+    assert wrong.startswith(f"repos.{SITE}.merge_check")

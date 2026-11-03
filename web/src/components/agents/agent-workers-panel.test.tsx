@@ -27,6 +27,7 @@ vi.mock("@/lib/api/browser", () => ({
         if (url.pathname === "/v1/auth/web/csrf") return Response.json({ csrf: "csrf-1", header: "X-Evo-CSRF" });
         if (url.pathname === "/v1/projects/demo/agents/reviewer" && request.method === "PATCH" && api.patch) return api.patch(request);
         if (url.pathname === "/v1/projects/demo/agents/reviewer") return Response.json(api.agent);
+        if (url.pathname === "/v1/worker-pools/agent-reviewer") return Response.json({ name: "agent-reviewer", nodes: [{ id: 1, name: "node-a" }, { id: 2, name: "node-b" }] });
         if (url.pathname === "/v1/workers") return Response.json([worker("vps-1", "vps"), worker("desk", null)]);
         if (url.pathname === "/v1/worker-pools") return Response.json([{ name: "vps" }, { name: "spare" }]);
         if (["/v1/secrets", "/v1/skills", "/v1/projects"].includes(url.pathname)) return Response.json([]);
@@ -49,6 +50,8 @@ const AGENT: Agent = {
   icon_url: null,
   avatar_sha256: null,
   is_default: false,
+  home_pool: null,
+  account_pool: null,
   permissions: {},
   restricted: [],
   packs: [],
@@ -76,6 +79,21 @@ beforeEach(() => {
 });
 
 describe("where an agent's runs may go, from a chat", () => {
+  it("shows an admin the pool, nodes and account pool", async () => {
+    api.agent = { ...AGENT, home_pool: "agent-reviewer", account_pool: "team-claude" };
+    setup("admin");
+    const placement = await screen.findByTestId("agent-placement");
+    expect(within(placement).getByTestId("agent-placement-pool")).toHaveTextContent("agent-reviewer");
+    expect(within(placement).getByTestId("agent-placement-account-pool")).toHaveTextContent("team-claude");
+    await waitFor(() => expect(within(placement).getByTestId("agent-placement-nodes")).toHaveTextContent("node-a, node-b"));
+  });
+
+  it("does not show a writer the placement", async () => {
+    setup("writer");
+    await screen.findByTestId("agent-workers");
+    expect(screen.queryByTestId("agent-placement")).toBeNull();
+  });
+
   it("lets an admin limit it to a pool, saved as a new version against the one shown", async () => {
     const user = userEvent.setup();
     let body: unknown = null;

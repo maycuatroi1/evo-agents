@@ -125,7 +125,8 @@ def test_mode_index_ranks_by_words_unless_asked_and_on_fuses_both(tmp_path, kg_e
     sync_build(project)
     assert kg_search(Session(project, "cli"), "automobile")[0] == CAR
     hybrid = kg_search(Session(project, "cli"), "graph builder")
-    assert hybrid[0] in ("app:file:app/hub_build.py", "symbol:app:app/hub_build.py::GraphBuilder")  # words still lead
+    module = ("app:file:app/hub_build.py", "symbol:app:app/hub_build.py::GraphBuilder")
+    assert hybrid[0] in (*module, "symbol:app:app/hub_build.py::GraphBuilder.buildGraph")  # words still lead
 
 
 def test_exact_hits_stay_first_and_deprecated_kinds_filters_apply(tmp_path, kg_env, words):

@@ -31,6 +31,7 @@ from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.fake_github import Account
 from tests.hub.live import sql
+from tests.hub.test_agent_pool_placement import join
 from tests.hub.test_decisions import answered, asked, park
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import PLAN as FLEET
@@ -71,7 +72,6 @@ def charter_body(**changes) -> dict:
     body = {
         "goals": [{"id": "night-shift", "what": "Run the plans the owner approved while the owner sleeps."}],
         "window": {"start": "22:00", "end": "06:00", "timezone": "Asia/Ho_Chi_Minh"},
-        "worker": WORKER,
         "night_budget_usd": 2.0,
         "run_budget_usd": 0.5,
         "run_max_turns": 40,
@@ -94,14 +94,23 @@ def grant(client, headers, login: str, role: str) -> None:
 
 
 @pytest.fixture
-def night(web_client, github):  # noqa: F811
+def night(web_client, github, hub_db):  # noqa: F811
     """test_runs' members, with owner an admin of the project, the plan fleet, and owner's worker night-mac with a
-    checkout of both its repos."""
+    checkout of both its repos, a node of the pool of the project's default agent, where the night shift runs."""
     headers = members(web_client, github)
     grant(web_client, headers, OWNER, "admin")
     push(web_client, headers["owner"], fleet_body())
-    worker = fleet_worker(web_client, headers["owner"], WORKER)
+    worker = home_node(web_client, hub_db, headers["owner"], fleet_worker(web_client, headers["owner"], WORKER))
     return SimpleNamespace(client=web_client, headers=headers, worker=worker, github=github)
+
+
+def home_node(client, db, headers, worker: dict) -> dict:
+    """``worker`` made a node of the pool of the project's default agent, which the owner holds, with the account pool
+    ``test_runs.members`` gave it."""
+    assert client.get(f"/v1/projects/{PROJECT}/agents/{PROJECT}", headers=headers).status_code == 200
+    pools = tables.worker_pools
+    sql(db, update(pools).values(owner_id=user_id(db, OWNER)).where(pools.c.name == f"agent-{PROJECT}"))
+    return join(client, db, worker, PROJECT)
 
 
 def charter_path(*parts: str) -> str:
@@ -197,36 +206,32 @@ def test_an_admin_writes_the_charter_and_every_revision_is_kept(night, hub_db):
     client, owner = night.client, night.headers["owner"]
     assert client.get(charter_path("charter"), headers=owner).status_code == 404
     first = written(client, owner, charter_body())  # a machine token
-    assert {key: first[key] for key in ("project", "revision", "updated_by", "worker", "worker_id")} == {
+    assert {key: first[key] for key in ("project", "revision", "updated_by")} == {
         "project": PROJECT,
         "revision": 1,
         "updated_by": OWNER,
-        "worker": WORKER,
-        "worker_id": night.worker["id"],
     }
+    assert "worker" not in first and "worker_id" not in first
     assert first["schedule_owner"] == OWNER and first["auto_merge"] == [0] and first["judge"]["runtime"] == "codex"
     assert first["judge"]["hidden_checks"] == HIDDEN and first["circuit_breaker"] == {"max_failed_in_a_row": 2}
     assert first["reviewer"] == first["builder"] == {"runtime": "claude-code", "model": None}
 
     assert written(client, owner, charter_body())["revision"] == 1  # the same body writes nothing
-    second = written(client, owner, charter_body(night_budget_usd=3.0, worker=WORKER.upper()))
-    assert (second["revision"], second["night_budget_usd"], second["worker"]) == (2, 3.0, WORKER)
+    second = written(client, owner, charter_body(night_budget_usd=3.0))
+    assert (second["revision"], second["night_budget_usd"]) == (2, 3.0)
 
     assert shown(client, night.headers["reader"])["revision"] == 2
     assert shown(client, owner, revision=1)["night_budget_usd"] == 2.0
     assert client.get(charter_path("charter"), params={"revision": 3}, headers=owner).status_code == 404
     revisions = client.get(charter_path("charter", "revisions"), headers=owner).json()
-    assert [(item["revision"], item["updated_by"], item["worker"]) for item in revisions] == [
-        (2, OWNER, WORKER),
-        (1, OWNER, WORKER),
-    ]
+    assert [(item["revision"], item["updated_by"]) for item in revisions] == [(2, OWNER), (1, OWNER)]
     assert count(hub_db, tables.charters) == 2
     s = tables.schedules
-    rows = sql(hub_db, select(s.c.kind, s.c.owner_id, s.c.worker_id, s.c.paused_at))
-    assert rows == [("night_shift", user_id(hub_db, OWNER), night.worker["id"], None)]
+    rows = sql(hub_db, select(s.c.kind, s.c.owner_id, s.c.paused_at))
+    assert rows == [("night_shift", user_id(hub_db, OWNER), None)]
     assert [row[:3] for row in audit_of(hub_db, "curator")] == [
-        ("curator.charter", f"{PROJECT} revision=1 worker={WORKER}", OWNER),
-        ("curator.charter", f"{PROJECT} revision=2 worker={WORKER}", OWNER),
+        ("curator.charter", f"{PROJECT} revision=1", OWNER),
+        ("curator.charter", f"{PROJECT} revision=2", OWNER),
     ]
 
 
@@ -269,6 +274,30 @@ def test_a_charter_shown_can_be_written_back_as_it_is(night, hub_db):
     assert again["revision"] == 1
 
 
+def test_a_charter_plans_and_merges_tiers_0_to_2_by_default_and_names_3_when_its_owner_adds_it(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    first = written(client, owner, charter_body())  # names none of the keys: tiers 0 to 2 built, CI asked for
+    assert (first["planned_tiers"], first["auto_merge"], first["merge_without_ci"]) == ([0, 1, 2], [0], False)
+    wide = charter_body(planned_tiers=[3, 0, 1, 2, 3], auto_merge=[3, 0, 2, 1], merge_without_ci=True)
+    second = written(client, owner, wide)
+    assert (second["revision"], second["planned_tiers"], second["auto_merge"]) == (2, [0, 1, 2, 3], [0, 1, 2, 3])
+    assert second["merge_without_ci"] is True
+    assert shown(client, night.headers["reader"])["merge_without_ci"] is True
+    assert written(client, owner, wide)["revision"] == 2  # the same body writes nothing
+
+
+def test_a_charter_written_before_the_keys_reads_with_their_defaults(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    written(client, owner, charter_body())
+    c = tables.charters
+    ((body,),) = sql(hub_db, select(c.c.body))  # a revision stored before planned_tiers and merge_without_ci existed
+    old = {key: value for key, value in body.items() if key not in ("planned_tiers", "merge_without_ci")}
+    sql(hub_db, update(c).values(body=old))
+    assert "planned_tiers" not in sql(hub_db, select(c.c.body))[0][0]
+    read = shown(client, owner)
+    assert (read["planned_tiers"], read["auto_merge"], read["merge_without_ci"]) == ([0, 1, 2], [0], False)
+
+
 @pytest.mark.parametrize(
     "changes, status, words",
     [
@@ -277,11 +306,14 @@ def test_a_charter_shown_can_be_written_back_as_it_is(night, hub_db):
         ({"window": {"start": "24:00", "end": "06:00", "timezone": "UTC"}}, 422, None),
         ({"run_budget_usd": 5.0}, 422, "run_budget_usd is over night_budget_usd"),
         ({"night_budget_usd": 0}, 422, None),
-        ({"auto_merge": [1]}, 422, None),
+        ({"auto_merge": [4]}, 422, None),
+        ({"planned_tiers": [4]}, 422, None),
+        ({"merge_without_ci": "sometimes"}, 422, None),
         ({"run_minutes": 5}, 422, None),
         ({"goals": [{"id": "a", "what": "one"}, {"id": "a", "what": "two"}]}, 422, "named once each"),
         ({"surprise": True}, 422, None),
-        ({"worker": "no-such-worker"}, 403, "you have no live worker no-such-worker"),
+        ({"worker": "night-mac"}, 422, None),  # a charter names no worker: the night shift runs on the default pool
+        ({"pool": "ci"}, 422, None),
     ],
 )
 def test_a_charter_the_hub_does_not_take_writes_nothing(night, hub_db, changes, status, words):
@@ -292,25 +324,13 @@ def test_a_charter_the_hub_does_not_take_writes_nothing(night, hub_db, changes, 
     assert count(hub_db, tables.charters) == 0 and count(hub_db, tables.schedules) == 0
 
 
-def test_a_charter_names_a_worker_of_its_writer_that_takes_runs_from_the_hub(night, hub_db):
-    client, headers = night.client, night.headers
-    fleet_worker(client, headers["other"], "other-mac")
-    response = put_charter(client, headers["owner"], charter_body(worker="other-mac"))
-    assert response.status_code == 403 and "you have no live worker other-mac" in response.text
-    w = tables.workers
-    sql(hub_db, update(w).values(dispatch_from="web").where(w.c.id == night.worker["id"]))
-    response = put_charter(client, headers["owner"], charter_body())
-    assert response.status_code == 409 and "could never hand it a run" in response.text
-    assert count(hub_db, tables.charters) == 0
-
-
 # The schedule
 
 
-def test_the_schedule_queues_a_plan_run_inside_its_window_as_its_owner_on_its_worker(night, hub_db):
+def test_the_schedule_queues_a_plan_run_inside_its_window_as_its_owner_on_the_default_agents_pool(night, hub_db):
     client, headers = night.client, night.headers
     written(client, headers["owner"], charter_body())
-    stranger = fleet_worker(client, headers["other"], "other-mac")  # the same checkouts, another member's
+    stranger = fleet_worker(client, headers["other"], "other-mac", pool=None)  # the same checkouts, in no pool
 
     assert fire(client, DAY) == {"outside": 1} and scheduled(hub_db) == []
     assert fire(client, NIGHT) == {"queued": 1}
@@ -321,7 +341,7 @@ def test_the_schedule_queues_a_plan_run_inside_its_window_as_its_owner_on_its_wo
         "plan_id": FLEET,
         "dispatched_by": user_id(hub_db, OWNER),
         "dispatched_via": "schedule",
-        "pinned_worker_id": night.worker["id"],
+        "pinned_worker_id": None,
         "runtime": "claude-code",
         "approval": "auto",
         "mode": "headless",
@@ -341,7 +361,7 @@ def test_the_schedule_queues_a_plan_run_inside_its_window_as_its_owner_on_its_wo
     assert target.startswith(f"{PROJECT}/{FLEET} run:{run['id']} schedule:")
     assert target.endswith(f"night={THE_NIGHT.isoformat()}")
 
-    # the rule holds: only a worker of the member it was dispatched by takes it, and only the one it is pinned to
+    # the rule holds: only a node of the pool of the project's default agent takes it
     assert claim(client, stranger) is None
     spec = claim(client, night.worker)
     assert spec["id"] == run["id"] and spec["kind"] == "plan"
@@ -390,7 +410,7 @@ def test_the_schedule_passes_over_a_busy_plan_and_waits_for_an_offline_worker(ni
 
     w = tables.workers
     sql(hub_db, update(w).values(last_heartbeat_at=func.now() - timedelta(hours=1)).where(w.c.id == night.worker["id"]))
-    assert fire(client, NIGHT) == {"worker": 1}
+    assert fire(client, NIGHT) == {"pool": 1}
     assert len(scheduled(hub_db)) == 1
 
 
@@ -586,7 +606,7 @@ def served(hub_db, tmp_path, github):
         headers = members(client, github)
         grant(client, headers, OWNER, "admin")
         push(client, headers["owner"], fleet_body())
-        fleet_worker(client, headers["owner"], WORKER)
+        home_node(client, hub_db, headers["owner"], fleet_worker(client, headers["owner"], WORKER))
         homes = {
             who: write_credentials(tmp_path / who, url, login, headers[who]["Authorization"].removeprefix("Bearer "))
             for who, login in (("owner", OWNER), ("reader", READER), ("other", OTHER))

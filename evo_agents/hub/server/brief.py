@@ -17,11 +17,14 @@ included, through the outbox (``notifications.notify``). The brief holds:
   keeps it as the change's reason);
 - the decisions of the project that wait for the owner's answer, and the proposals that wait for an admin's, with how
   many of them are in the owner's Inbox;
-- the worker on duty: its last heartbeat, and whether it is online, so a machine that stopped shows up in the morning;
+- the pool on duty, the default agent's: its live nodes and those ready for a run now, so a pool that stopped shows up in the morning;
 - for a project whose Loop is on (plan loop-engine), the Loop's part: the runs it handed out and the work items it
   finished in the 24 hours before the brief, and those waiting for a person by reason (``loop.notices.facts``); a
   project whose Loop is off has none;
 - the KG optimize run of the project that ended in the 24 hours before the brief, in a line (``kg_optimize``).
+- the proposals the project's agent answered for the owner in the 24 hours before the brief, with its note and its chat
+  run (``curator_threads``), when it answered any; and the pull requests of the Curator's changes it merged for the
+  owner, with its chat run, when it merged any.
 
 curator_briefs keeps one row a project and local day, with what the brief said and its notification; a second pass of
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
@@ -49,8 +52,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
+from evo_agents.hub.server import agent_placement, probe_report, today_digest
 from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server import probe_report, today_digest
 from evo_agents.hub.server.curator import _due, _owner_access, curator_state, night_figures
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
@@ -136,6 +139,58 @@ async def _merged(conn: AsyncConnection, run_ids: list[int]) -> list[dict]:
             }
         )
     return merged
+
+
+async def _agent_answers(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
+    """The answers the project's agent gave to proposals in the 24 hours before the brief, as their ledger lines say
+    (``curator_threads``): how many, and the first few, oldest first."""
+    cl = tables.curator_ledger
+    where = (
+        cl.c.project_id == project_id,
+        cl.c.action.in_(("accepted", "rejected", "deferred")),
+        cl.c.details.has_key("chat_run"),
+        cl.c.created_at > func.now() - timedelta(hours=24),
+    )
+    total = (await conn.execute(select(func.count()).where(*where))).scalar_one()
+    query = select(cl.c.proposal_id, cl.c.action, cl.c.details).where(*where).order_by(cl.c.id).limit(MAX_LISTED)
+    listed = [
+        {
+            "proposal_id": row.proposal_id,
+            "state": row.action,
+            "agent": row.details.get("agent"),
+            "chat_run": row.details.get("chat_run"),
+            "note": one_line(row.details.get("note") or "", QUESTION_CHARS),
+        }
+        for row in (await conn.execute(query)).all()
+    ]
+    return total, listed
+
+
+async def _agent_merges(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
+    """The pull requests of the Curator's changes the project's agent merged in the 24 hours before the brief, as their
+    ledger lines say (``curator_threads``): how many, and the first few, oldest first."""
+    cl = tables.curator_ledger
+    where = (
+        cl.c.project_id == project_id,
+        cl.c.action == "merged",
+        cl.c.details.has_key("chat_run"),
+        cl.c.created_at > func.now() - timedelta(hours=24),
+    )
+    total = (await conn.execute(select(func.count()).where(*where))).scalar_one()
+    columns = (cl.c.proposal_id, cl.c.change_id, cl.c.pr_url, cl.c.after_sha, cl.c.details)
+    query = select(*columns).where(*where).order_by(cl.c.id).limit(MAX_LISTED)
+    listed = [
+        {
+            "proposal_id": row.proposal_id,
+            "change_id": row.change_id,
+            "pull_request": row.pr_url,
+            "sha": row.after_sha,
+            "agent": row.details.get("agent"),
+            "chat_run": row.details.get("chat_run"),
+        }
+        for row in (await conn.execute(query)).all()
+    ]
+    return total, listed
 
 
 WAITING_CHANGES = ("judge_pending", "judging", "judged", "open")  # a Curator change whose pull request is still open
@@ -264,39 +319,18 @@ async def _proposals(conn: AsyncConnection, access: ProjectAccess) -> tuple[int,
     return len(readable), sum(1 for row in readable if row.inbox_at is not None), listed
 
 
-async def _worker(conn: AsyncConnection, worker_id: int, zone: str) -> dict:
-    """The worker on duty: its last heartbeat, also in the charter's time zone ``zone``, and how it stands."""
-    w = tables.workers
-    fresh = w.c.last_heartbeat_at > func.now() - timedelta(seconds=runs.OFFLINE_AFTER_SECONDS)
-    query = select(
-        w.c.id,
-        w.c.name,
-        w.c.last_heartbeat_at,
-        func.timezone(zone, w.c.last_heartbeat_at).label("heard_local"),
-        func.coalesce(fresh, False).label("fresh"),
-        w.c.drained_at.is_not(None).label("draining"),
-        w.c.revoked_at.is_not(None).label("revoked"),
-    ).where(w.c.id == worker_id)
-    row = (await conn.execute(query)).one()
-    return {
-        "id": row.id,
-        "name": row.name,
-        "last_heartbeat_at": row.last_heartbeat_at.isoformat() if row.last_heartbeat_at else None,
-        "last_heartbeat_local": row.heard_local.strftime("%Y-%m-%d %H:%M") if row.heard_local else None,
-        "online": bool(row.fresh) and not row.revoked,
-        "draining": bool(row.draining),
-        "revoked": bool(row.revoked),
-    }
-
-
 async def _pool(conn: AsyncConnection, due) -> dict:
-    """The pool on duty: its live nodes, those ready for a run now, and why none is (``night_duty.on_duty``)."""
+    """The pool on duty, the default agent's: its live nodes, those ready for a run now, and why none is
+    (``night_duty.on_duty``)."""
     w, p = tables.workers, tables.worker_pools
-    name = (await conn.execute(select(p.c.name).where(p.c.id == due.pool_id))).scalar_one()
-    live = select(func.count()).where(w.c.pool_id == due.pool_id, w.c.revoked_at.is_(None))
+    home = await agent_placement.default_home(conn, due.project_id)
     duty, why = await on_duty(conn, due)
+    if home is None:
+        return {"id": None, "name": "of the default agent", "nodes": 0, "ready": 0, "why": why}
+    name = (await conn.execute(select(p.c.name).where(p.c.id == home.pool_id))).scalar_one()
+    live = select(func.count()).where(w.c.pool_id == home.pool_id, w.c.revoked_at.is_(None))
     return {
-        "id": due.pool_id,
+        "id": home.pool_id,
         "name": name,
         "nodes": (await conn.execute(live)).scalar_one(),
         "ready": 0 if duty is None else len(duty.nodes),
@@ -310,35 +344,44 @@ def _pool_words(pool: dict) -> str:
     return f"Pool {pool['name']}: {pool['ready']} of {_count(pool['nodes'], 'node')} ready."
 
 
-def _worker_words(worker: dict, zone: str) -> str:
-    """How the worker on duty stands, its last heartbeat in the charter's time zone."""
-    seen = worker["last_heartbeat_local"]
-    heard = "no heartbeat yet" if seen is None else f"last heartbeat {seen} {zone}"
-    if worker["revoked"]:
-        state = "revoked"
-    elif not worker["online"]:
-        state = "offline"
-    else:
-        state = "draining" if worker["draining"] else "online"
-    return f"Worker {worker['name']}: {state}, {heard}."
-
-
 def _count(number: int, word: str) -> str:
     return f"{number} {word}" + ("" if number == 1 else "s")
+
+
+def _answer_blocks(answers: dict | None) -> list[str]:
+    """The paragraphs of the answers the project's agent gave to proposals for the owner; none when it gave none."""
+    if not answers:
+        return []
+    listed = [
+        f"- proposal #{item['proposal_id']} {item['state']} by {item['agent']} (chat run #{item['chat_run']}): "
+        f"{item['note']}"
+        for item in answers["listed"]
+    ]
+    return [f"Proposals the project's agent answered for you: {answers['total']}.", "\n".join(listed)]
+
+
+def _merge_blocks(merges: dict | None) -> list[str]:
+    """The paragraphs of the pull requests the project's agent merged for the owner; none when it merged none."""
+    if not merges:
+        return []
+    listed = [
+        f"- change #{item['change_id']} of proposal #{item['proposal_id']}: {item['pull_request']} merged by "
+        f"{item['agent']} (chat run #{item['chat_run']}) as {item['sha']}"
+        for item in merges["listed"]
+    ]
+    return [f"Pull requests the project's agent merged for you: {merges['total']}.", "\n".join(listed)]
 
 
 def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     """(title, body in markdown) of a brief with ``facts``, its times in the charter's time zone ``zone``: a paragraph a
     subject, each with its list."""
     counted = facts["runs"]
-    worker, pool = facts.get("worker"), facts.get("pool")
+    pool = facts["pool"]
     cost = f"{curator.money(facts['cost_usd'])} of {curator.money(facts['budget_usd'])}"
     decisions, proposals = facts["decisions"], facts["proposals"]
     waiting = f"{_count(decisions['open'], 'decision')} and {_count(proposals['open'], 'proposal')} waiting"
     title = f"Morning brief of {project}: {_count(counted['total'], 'run')}, {cost}, {waiting}"
-    if worker is not None and not worker["online"]:
-        title += f", worker {worker['name']} {'revoked' if worker['revoked'] else 'offline'}"
-    if pool is not None and not pool["ready"]:
+    if not pool["ready"]:
         title += f", pool {pool['name']} has no node ready"
     window = facts["window"]
     ended = ", ".join(
@@ -401,10 +444,12 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
             )
         )
     blocks.extend(loop_notices.blocks(project, facts.get("loop")))
+    blocks.extend(_answer_blocks(facts.get("agent_answers")))
+    blocks.extend(_merge_blocks(facts.get("agent_merges")))
     optimized = facts.get("kg_optimize")
     if optimized:
         blocks.append(f"KG optimize run #{optimized['id']} ({optimized['state']}): {optimized['summary']}")
-    blocks.append(_worker_words(worker, zone) if worker is not None else _pool_words(pool))
+    blocks.append(_pool_words(pool))
     return title, "\n\n".join(blocks)
 
 
@@ -446,21 +491,24 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
         "decisions": {"open": decisions_total, "listed": decisions},
         "proposals": {"open": proposals_total, "in_inbox": in_inbox, "listed": proposals},
     }
-    if due.pool_id is not None:
-        found["pool"] = await _pool(conn, due)
-    else:
-        found["worker"] = await _worker(conn, due.worker_id, body["window"]["timezone"])
+    found["pool"] = await _pool(conn, due)
     from evo_agents.hub.server.kg_optimize import brief_facts  # it reads the graphs through modules that import this
 
     optimized = await brief_facts(conn, due.project_id)
     if optimized is not None:
         found["kg_optimize"] = optimized
+    answered, answers = await _agent_answers(conn, due.project_id)
+    if answered:
+        found["agent_answers"] = {"total": answered, "listed": answers}
+    merged, merges = await _agent_merges(conn, due.project_id)
+    if merged:
+        found["agent_merges"] = {"total": merged, "listed": merges}
     return found if loop is None else {**found, "loop": loop}
 
 
 def _details(facts: dict) -> dict:
     """The facts a brief's notification carries for the web, the counts without the lists."""
-    worker, pool, loop = facts.get("worker"), facts.get("pool"), facts.get("loop")
+    pool, loop = facts["pool"], facts.get("loop")
     found = {
         "night": facts["night"],
         "runs": facts["runs"]["total"],
@@ -472,12 +520,7 @@ def _details(facts: dict) -> dict:
         "open_decisions": facts["decisions"]["open"],
         "open_proposals": facts["proposals"]["open"],
     }
-    if worker is not None:
-        found.update(
-            worker=worker["name"], worker_online=worker["online"], worker_last_heartbeat_at=worker["last_heartbeat_at"]
-        )
-    else:
-        found.update(pool=pool["name"], pool_nodes=pool["nodes"], pool_ready_nodes=pool["ready"])
+    found.update(pool=pool["name"], pool_nodes=pool["nodes"], pool_ready_nodes=pool["ready"])
     if loop is not None:
         handed, done, waiting = loop_notices.totals(loop)
         found["loop"] = {"handed_out": handed, "done": done, "waiting": waiting}

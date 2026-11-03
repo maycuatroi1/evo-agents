@@ -1,8 +1,8 @@
 """``evo-agents hub`` subcommands.
 
-``hub serve``, ``hub worker`` and ``hub migrate`` need the hub-server extra. This module imports none of it when
-loaded, so ``evo-agents`` keeps starting on a core install; each command imports the extra when it runs and names
-the pip command when it is missing. These commands log JSON lines to stderr from their first line on: a
+``hub serve``, ``hub worker``, ``hub migrate`` and ``hub storage`` need the hub-server extra. This module imports none
+of it when loaded, so ``evo-agents`` keeps starting on a core install; each command imports the extra when it runs and
+names the pip command when it is missing. These commands log JSON lines to stderr from their first line on: a
 configuration error is a log line naming the variable, and an unexpected exception is a log line with its
 traceback, secrets removed, rather than a bare traceback from the interpreter.
 
@@ -132,6 +132,96 @@ def cmd_plugin_host(args) -> int:
         log.error(str(exc))
         return EXIT_USAGE
     return run_service(config)
+
+
+def _storage_env(path: str | None) -> dict[str, str]:
+    """The variables a store is read from: those of the environment file at ``path``, else the process's."""
+    import os
+    from pathlib import Path
+
+    from evo_agents.hub.blob_migrate import read_env_file
+
+    return dict(os.environ) if path is None else read_env_file(Path(path).expanduser())
+
+
+def _storage_stores(args, *paths: str | None):
+    """The stores the environment files at ``paths`` describe (None: the process environment), or an exit code."""
+    from evo_agents.hub.config import ConfigError
+
+    try:
+        from evo_agents.hub.blob_migrate import store_from_env
+    except ImportError as exc:
+        return _missing_extra(exc, args)
+    stores = []
+    try:
+        for path in paths:
+            stores.append(store_from_env(_storage_env(path), concurrency=getattr(args, "parallel", 8)))
+    except ConfigError as exc:
+        return _config_error(exc)
+    except (OSError, ValueError) as exc:  # the file is missing or malformed; the error names no value
+        log.error(f"hub {args.hub_command}: {exc}")
+        return EXIT_USAGE
+    finally:
+        if len(stores) < len(paths):
+            for store in stores:
+                store.close()
+    return stores
+
+
+@_server_command
+def cmd_storage_check(args) -> int:
+    stores = _storage_stores(args, args.env)
+    if isinstance(stores, int):
+        return stores
+    from evo_agents.hub.blob_migrate import check, describe
+
+    (store,) = stores
+    try:
+        print(f"store\t{describe(store)}", flush=True)
+        steps = check(store, create_bucket=args.create_bucket)
+    finally:
+        store.close()
+    for step in steps:
+        detail = f"\t{step.detail}" if step.detail else ""
+        print(f"{'ok' if step.ok else 'FAILED'}\t{step.name}\t{step.millis} ms{detail}")
+    return 0 if steps and all(step.ok for step in steps) else EXIT_FAILED
+
+
+@_server_command
+def cmd_storage_migrate(args) -> int:
+    import json
+
+    stores = _storage_stores(args, args.source, args.target)
+    if isinstance(stores, int):
+        return stores
+    from evo_agents.hub.blob_migrate import describe, migrate
+    from evo_agents.hub.blobs import BlobStoreUnavailable
+
+    source, target = stores
+    try:
+        print(f"from\t{describe(source)}\nto\t{describe(target)}", flush=True)
+        report = migrate(
+            source,
+            target,
+            scratch=args.scratch,
+            parallel=args.parallel,
+            dry_run=args.dry_run,
+            verify=args.verify,
+            progress=lambda so_far: log.info("blobs migrated so far", extra=so_far.as_dict()),
+        )
+    except ValueError as exc:
+        log.error(f"hub storage migrate: {exc}")
+        return EXIT_USAGE
+    except BlobStoreUnavailable as exc:  # the source's listing failed: nothing after it was tried
+        log.error(f"hub storage migrate stopped: {exc}")
+        return EXIT_FAILED
+    finally:
+        source.close()
+        target.close()
+    for sha256, problem in report.failed:
+        print(f"FAILED\t{sha256}\t{problem}")
+    print(json.dumps({**report.as_dict(), "dry_run": args.dry_run}))
+    return EXIT_FAILED if report.failed else 0
 
 
 def _positive(value: str) -> int:
@@ -358,6 +448,35 @@ def register(sub) -> None:
         help="not as root, run backends under this user anyway; a developer's machine only (docs/plugins.md)",
     )
     plugin_host.set_defaults(func=cmd_plugin_host)
+
+    storage = hsub.add_parser(
+        "storage", help="check the blob store, or copy its blobs to another S3 store (hub-server extra)"
+    )
+    ssub = storage.add_subparsers(dest="storage_command", required=True)
+    env_help = "an environment file of EVO_HUB_S3_* variables describing the store (default: this process's)"
+    check = ssub.add_parser(
+        "check", help="put, copy, read, list and delete one object of random bytes, as the hub does, and time each"
+    )
+    check.add_argument("--env", metavar="FILE", help=env_help)
+    check.add_argument("--create-bucket", action="store_true", help="create the bucket first when it is missing")
+    check.set_defaults(func=cmd_storage_check)
+    move = ssub.add_parser(
+        "migrate",
+        help="copy every blob the target lacks from the source, each checked against its SHA-256; run again to resume",
+    )
+    move.add_argument("--from", dest="source", metavar="FILE", help=env_help.replace("the store", "the source"))
+    move.add_argument(
+        "--to",
+        dest="target",
+        metavar="FILE",
+        required=True,
+        help="an environment file of EVO_HUB_S3_* variables describing the target store",
+    )
+    move.add_argument("--parallel", type=_positive, default=8, help="blobs copied at the same time (default: 8)")
+    move.add_argument("--dry-run", action="store_true", help="count what would be copied, and copy nothing")
+    move.add_argument("--verify", action="store_true", help="hash the target's copies too, and copy a wrong one again")
+    move.add_argument("--scratch", metavar="DIR", help="where each blob waits on its way (default: the temp directory)")
+    move.set_defaults(func=cmd_storage_migrate)
 
     _register_client_commands(hsub)
 

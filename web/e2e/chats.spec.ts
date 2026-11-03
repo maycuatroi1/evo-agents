@@ -80,7 +80,7 @@ test("under a mention the thread says at once that the agent got it, then each s
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
   const workerName = uniqueName("mini");
-  const live = await chatWorker(me, project, workerName);
+  const live = await chatWorker(me, project, workerName, 1, handle);
   const chat = await createChatByApi(me, { title: "Setup talk", agents: [handle] });
   await open(page, chatPath(chat.id));
 
@@ -143,7 +143,7 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
   const mai = await signedInPerson("mai", [project]);
-  const live = await chatWorker(me, project, uniqueName("mini"));
+  const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
 
   // The sidebar leads to Chats, which says what a chat is for while there is none.
   await open(page, "/");
@@ -374,7 +374,7 @@ test("a chat run's decision shows under the agent's message in its thread and is
   const project = me.projects[0];
   const handle = uniqueName("triager");
   await createAgentByApi(me, project, { handle, name: "Triage agent", color: "#16a34a" });
-  const live = await chatWorker(me, project, uniqueName("mini"));
+  const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
   const chat = await createChatByApi(me, { title: "Triage", agents: [handle] });
   const root = await sendByApi(me, chat.id, `@${handle} the wait test failed twice`);
   const runId = (await runsOf(me, project)).find((item) => item.chat_id === chat.id)?.id;
@@ -558,7 +558,7 @@ test("a direct chat reads as a chat app: the member's messages on the right, the
   const project = me.projects[0];
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
-  const live = await chatWorker(me, project, uniqueName("mini"), 2);
+  const live = await chatWorker(me, project, uniqueName("mini"), 2, handle);
   const chat = await openDirectByApi(me, handle);
   await open(page, chatPath(chat.id));
   await expect(main(page).getByTestId("chat-empty")).toContainText("every message goes to Code reviewer, and its answer shows right under yours");

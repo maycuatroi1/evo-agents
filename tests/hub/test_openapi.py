@@ -67,11 +67,18 @@ def test_errors_are_json_bodies_in_the_contract():
 def test_a_secrets_value_is_written_and_never_read_in_the_contract():
     spec = document()
     paths, schemas = spec["paths"], spec["components"]["schemas"]
-    assert set(paths["/v1/secrets"]) == {"get"} and set(paths["/v1/secrets/{name}"]) == {"put", "delete"}
+    assert set(paths["/v1/secrets"]) == {"get"} and set(paths["/v1/secrets/{name}"]) == {"put", "patch", "delete"}
     value = schemas["SecretWrite"]["properties"]["value"]
     assert (value["type"], value["format"], value["writeOnly"]) == ("string", "password", True)
     for name in ("Secret", "SecretWritten"):
         assert "value" not in schemas[name]["properties"]
+    # PATCH moves its binding alone: no value goes in or out
+    assert set(schemas["SecretRebind"]["properties"]) == {"workers", "pools"}
+    assert schemas["SecretRebind"]["additionalProperties"] is False
+    patch = paths["/v1/secrets/{name}"]["patch"]
+    assert patch["requestBody"]["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/SecretRebind"
+    rebound = patch["responses"]["200"]["content"]["application/json"]["schema"]
+    assert rebound["$ref"] == "#/components/schemas/Secret"
     listed = paths["/v1/secrets"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert listed["items"]["$ref"] == "#/components/schemas/Secret"
     put = paths["/v1/secrets/{name}"]["put"]

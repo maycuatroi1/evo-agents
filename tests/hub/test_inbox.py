@@ -136,6 +136,57 @@ def test_a_rerun_or_resume_hides_the_failed_run():
     assert inbox.ran_again(step, [step, run(12, "done", plan_id="p", step_key="2")])
 
 
+def test_a_failed_run_whose_step_is_closed_is_hidden():
+    steps = {
+        "northwind-sync": {"1": "done", "2": "pending", "3": "descoped"},
+        "northwind-open": {"1": "done", "2": "blocked"},
+        "lumen-done": {"1": "done"},
+    }
+    done_step = run(4, "failed", kind="step", plan_id="northwind-sync", step_key="1", finished_at=ago(60))
+    descoped_step = run(5, "lost", kind="step", plan_id="northwind-sync", step_key="3", finished_at=ago(60))
+    open_step = run(6, "failed", kind="step", plan_id="northwind-sync", step_key="2", finished_at=ago(60))
+    open_plan = run(7, "failed", plan_id="northwind-open", finished_at=ago(60))
+    closed_plan = run(8, "failed", plan_id="lumen-done", finished_at=ago(60))
+    unknown_plan = run(9, "failed", kind="step", plan_id="other", step_key="1", finished_at=ago(60))
+    chat = run(10, "failed", kind="chat", plan_id="lumen-done", finished_at=ago(60))
+    runs = [done_step, descoped_step, open_step, open_plan, closed_plan, unknown_plan, chat]
+    items = inbox.run_items(runs, set(), ANA, NOW, stale=30, since=72, steps=steps)
+    assert sorted(item["id"] for item in items) == [6, 7, 9, 10]
+    assert not inbox.step_closed(open_plan, {"northwind-open": {}})  # a plan with no step is not closed
+
+
+def test_gather_one_reads_a_worker_runs_last_event_and_closed_steps(monkeypatch):
+    def events(query):
+        assert query == {"after": ["40"], "limit": ["1"]}
+        return {"events": [{"seq": 41, "kind": "tool_call", "at": ago(5)}]}
+
+    answers = {
+        "/v1/projects": [{"name": "lumen", "role": "writer"}],
+        "/v1/me/notifications": {"notifications": []},
+        "/v1/projects/lumen/decisions": {"decisions": []},
+        "/v1/projects/lumen/runs": {
+            "runs": [
+                run(2, "running", started_at=ago(400), last_seq=41),  # a worker's run, busy 5 min ago
+                run(3, "running", started_at=ago(400), last_seq=0),  # no event at all: stale since it started
+                run(12, "running", started_at=ago(10), last_seq=8),  # too young to read
+                run(4, "failed", kind="step", plan_id="northwind-sync", step_key="1", finished_at=ago(60)),
+                run(5, "failed", kind="step", plan_id="northwind-sync", step_key="2", finished_at=ago(60)),
+            ]
+        },
+        "/v1/projects/lumen/runs/2/events": events,
+        "/v1/projects/lumen/plans/northwind-sync/ready-steps": {
+            "steps": [{"key": "1", "status": "done"}, {"key": "2", "status": None}]
+        },
+    }
+    hub = FakeHub(answers)
+    monkeypatch.setattr(inbox.Login, "hub", lambda self: hub)
+    got = inbox.gather_one(ANA, now=NOW)
+    assert {item["id"]: item["kind"] for item in got.items} == {3: "stale", 5: "failed"}
+    assert got.items[[item["id"] for item in got.items].index(3)]["title"] == "running, no event for 400 min"
+    assert not any("/runs/12/" in call or "/runs/3/" in call for call in hub.calls)
+    assert sum("ready-steps" in call for call in hub.calls) == 1
+
+
 def test_notices_that_only_report_are_counted():
     notes = [
         {"id": 1, "kind": "notice", "notice_kind": "merge_default_branch", "title": "PR merged", "project": "lumen"},
@@ -262,3 +313,25 @@ def test_inbox_lines_print_each_item_with_its_command():
     assert lines[1].split() == ["DECISION", "#5", "30m", "lumen,", "run", "#7,", "northwind-sync", "step", "3"]
     assert lines[3].strip().startswith("-> EVO_HUB_HOME=~/.evo/hub-north evo-agents hub decision answer 5")
     assert lines[5] == "https://down.example: cannot read it: cannot reach"
+
+
+def test_detail_of_a_queued_run_says_why_no_worker_takes_it(monkeypatch):
+    nobody = "no worker serves project lumen: `evo-agents worker projects --worker w1 --add lumen`"
+    answers = {
+        "/v1/projects": [{"name": "lumen", "role": "writer"}],
+        "/v1/projects/lumen/runs/80": run(80, "queued", queued_at=ago(12)),
+        "/v1/projects/lumen/runs/80/rerun-candidates": {"state": "queued", "workers": [], "diagnosis": nobody},
+        "/v1/projects/lumen/runs/81": run(81, "queued", queued_at=ago(2)),
+        "/v1/projects/lumen/runs/81/rerun-candidates": {"state": "queued", "workers": [], "diagnosis": None},
+        "/v1/projects/lumen/runs/82": run(82, "queued", queued_at=ago(3)),  # a hub that lists no candidates of it
+    }
+    hub = FakeHub(answers)
+    monkeypatch.setattr(inbox.Login, "hub", lambda self: hub)
+    stuck = inbox.detail(inbox.Ref("run", 80), [ANA])
+    assert stuck["diagnosis"].startswith("queued ") and stuck["diagnosis"].endswith(f" min ago, and {nobody}")
+    assert "evo-agents hub run candidates 80 --project lumen" in stuck["next"]
+    for run_id in (81, 82):
+        waiting = inbox.detail(inbox.Ref("run", run_id), [ANA])
+        assert waiting["diagnosis"].endswith(
+            f" min ago: `evo-agents hub run candidates {run_id}` says which workers can take it"
+        )

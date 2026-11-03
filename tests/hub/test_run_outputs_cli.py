@@ -38,6 +38,7 @@ if pg.DSN:
     import httpx
 
     from evo_agents.hub.server.app import create_app
+    from tests.hub.account_pool_setup import give_account_pool
     from tests.hub.test_run_outputs import PNG, REPORT, item, sent
     from tests.hub.test_run_stream import members, serving
     from tests.hub.test_runs import OWNER, PROJECT, READER, add_worker, claim, dispatched, moved
@@ -45,10 +46,12 @@ if pg.DSN:
 
 @pytest.fixture
 def hub(hub_db, tmp_path, github, s3):
-    """The hub under uvicorn with a fake S3, test_run_stream's members, and homes of owner and reader signed in."""
+    """The hub under uvicorn with a fake S3, test_run_stream's members, the project's default agent with an account
+    pool, which its runs need, and homes of owner and reader signed in."""
     app = create_app(live.hub_config(hub_db, tmp_path, github, **s3.config()))
     with serving(app) as url, httpx.Client(base_url=url, timeout=10) as client:
         headers = members(client, github)
+        give_account_pool(hub_db, PROJECT, PROJECT, OWNER)
         homes = {
             who: write_credentials(tmp_path / who, url, login, headers[who]["Authorization"].removeprefix("Bearer "))
             for who, login in (("owner", OWNER), ("reader", READER))

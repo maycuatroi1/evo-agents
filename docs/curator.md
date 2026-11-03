@@ -52,8 +52,10 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
    its kind. Tier 2 proposals with the most evidence reach the owner's Inbox, up to the charter's
    `max_decisions_per_day`.
 4. **The owner answers.** A project admin accepts, rejects or defers a proposal on the web, on the command line or on
-   Telegram. Accepting one of tier 0 to 2 makes its draft plan a plan of the Curator on the hub in the same answer, with
-   a change of state `planned`; accepting one of tier 3 records the answer and builds nothing.
+   Telegram. Accepting one of a tier the charter's `planned_tiers` names (0 to 2 by default, 3 when added) makes its
+   draft plan a plan of the Curator on the hub in the same answer, with a change of state `planned`; accepting one of
+   another tier records the answer and builds nothing. With `answer_by: agent` the project's agent answers instead,
+   in a thread of the project's triage chat (The agent answers, below).
 5. **The Builder.** On a later pass of the night shift, a plan run of that plan works on the branch
    `curator/<proposal>-<slug>`, never on a default branch. Until it can, the change keeps why it waits, which the
    proposal's page and the morning brief show.
@@ -63,9 +65,9 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 7. **The replays.** A change of a skill, an AGENTS.md or a CLAUDE.md is replayed on tasks of the project's own history:
    an agent does a past step again from the code before it, once with the default branch's harness and once with the
    change's, and the step's verify says which did it (Replays, below). The Judge reads none of it.
-8. **The merge.** The hub merges a tier 0 change itself, at the commit the Judge passed, only when the charter allows
-   tier 0, CI is green and the repo's ruleset keeps the Curator off its default branch. Everything else stays open
-   for the owner.
+8. **The merge.** The hub merges a change itself, at the commit the Judge passed, only when the charter's
+   `auto_merge` names its tier (tier 0 by default), CI is green (or none ran and the charter has `merge_without_ci`),
+   and the repo's ruleset keeps the Curator off its default branch. Everything else stays open for the owner.
 9. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued.
 10. **The brief.** At `brief_at` the owner gets the notice `curator_brief`, on the web and on Telegram.
 11. **Later.** `outcome_days` after a merge the hub counts the same figures again; a change that made them worse gets
@@ -106,7 +108,10 @@ max_runs_per_night: 6
 night_plans: [docs-sweep]
 max_decisions_per_day: 5
 brief_at: "07:00"
+planned_tiers: [0, 1, 2]
 auto_merge: [0]
+merge_without_ci: false
+answer_by: owner
 protected_paths: ["evo_agents/hub/migrations/**", "evo-agents:deploy/**"]
 circuit_breaker: {max_failed_in_a_row: 2}
 outcome_days: 7
@@ -124,8 +129,6 @@ env_secrets: [claude-oauth]
 | --- | --- | --- |
 | `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. Since plan loop-engine the project's goals live on the hub (`docs/hub.md`, Goals): a goal of the charter becomes a goal without a metric the first time the goals are read, its `id` kept as its alias, and the lens `product_goals` reads the project's active goals by rank. Change one with `evo-agents hub goal set` |
 | `window` | required | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal |
-| `worker` | required, unless `pool` | the worker on duty, by name (below) |
-| `pool` | null | instead of `worker`: one of the writer's worker pools whose nodes are on duty, by name (below); a charter names exactly one of the two |
 | `night_budget_usd` | required | the most a night may cost, every run of the night together |
 | `run_budget_usd` | null | the most one run may cost; null gives a run what the night has left. Never above `night_budget_usd` |
 | `run_max_turns` | 300 | the agent's turns in one run |
@@ -134,7 +137,10 @@ env_secrets: [claude-oauth]
 | `night_plans` | none | the plans the night shift may run as plan runs, in the order it takes them |
 | `max_decisions_per_day` | 5 | tier 2 proposals that reach the owner's Inbox a day, in the charter's time zone |
 | `brief_at` | `07:00` | when the morning brief goes out, in the charter's time zone |
-| `auto_merge` | none | the tiers the hub may merge by itself: only `0` is accepted |
+| `planned_tiers` | `[0, 1, 2]` | the tiers whose accepted proposals become the Curator's plans, which the night shift builds; any of `0` to `3`, so tier 3 is built only when named (Tiers, below) |
+| `auto_merge` | none | the tiers the hub may merge by itself, any of `0` to `3` (Merging, below) |
+| `merge_without_ci` | false | true lets the hub merge a change the Judge passed when no CI ran on it, or when the ruleset requires no check and what ran passed; a check that ran and failed still blocks, one still running still makes it wait (Merging, below) |
+| `answer_by` | `owner` | who answers the proposals: `owner`, the project's admins; `agent`, the project's default agent, in a thread of the triage chat for each proposal, for the schedule's owner (The agent answers, below) |
 | `protected_paths` | none | globs no change of the Curator may touch below tier 3 (Tiers, below) |
 | `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed or were reverted before the hub pauses the night shift, 1 to 10 |
 | `outcome_days` | 7 | days after a merge over which the hub counts a change's figures again, 1 to 90 |
@@ -147,25 +153,15 @@ env_secrets: [claude-oauth]
 | `git_secret` | null | the owner's `git` secret the Curator's runs use for origins not on GitHub (GitLab); without it no Builder runs there |
 | `env_secrets` | none | the owner's `env` secrets the Curator's runs get, by name; they get no other |
 
-**The worker on duty.** `worker` names one of the writer's own live workers that serves the project and takes runs
-dispatched by the hub: a worker set to take runs from the web only (`dispatch_from` `web`, `docs/credentials.md`)
-passes over every run the night shift queues, so the charter refuses it. A revision that keeps the worker of the
-newest revision may be written by another admin. The member who owns that worker owns the project's schedule: the
-night shift dispatches every run as that member (`dispatched_by`), so the rule that a worker takes only its owner's
-runs holds as it is. Give that worker `--slots 1` and no credential of its owner but its leases
-(`docs/credentials.md`, "What is still a risk").
-
-**A pool on duty.** `pool` names one of the writer's own worker pools that lists the project (`docs/workers.md`,
-Pools), in place of `worker`; a charter names exactly one of the two, and the schedules follow it (`charters.pool_id`
-and `schedules.pool_id`, schema 0150, with a CHECK that exactly one of `worker_id` and `pool_id` is set). The pool's
-owner owns the schedules and the night shift dispatches as that member. A run of a pool's schedule is not pinned: it
-goes out with the selector `pool=<name>`, tolerating the pool's taints, and any ready node of the pool that serves the
-project claims it. A node is ready for the night when it is live and online, serves the project, is not draining,
-takes runs dispatched by the hub, has a clean doctor report and has no taint beyond the pool's. The keeper of the
-project's graph is the ready node with the lowest id, and the Judge's merge goes to a ready node that has the merge
-judge feature. A pool with no ready node waits, as an offline worker does. `charter show` prints `on duty: pool
-<name>` and `charter history` an ON DUTY column naming the worker or the pool; the web's charter form offers the pools
-in its duty select.
+**The node on duty.** The charter names no worker and no pool. The night shift runs on the pool of the project's
+default agent (`agent-<handle>`, `docs/agents.md`, Where an agent's runs go), and the member who owns that pool owns
+the project's schedule: the night shift dispatches every run as that member (`dispatched_by`), who must hold writer on
+the project. A run is not pinned: it goes out with the selector `pool=<name>`, tolerating the pool's taints, and any
+ready node of the pool that serves the project claims it. A node is ready for the night when it is live and online,
+serves the project, is not draining, takes runs dispatched by the hub, has a clean doctor report and has no taint
+beyond the pool's. The keeper of the project's graph is the ready node with the lowest id, and the Judge's merge goes to
+a ready node that has the merge judge feature. A pool with no ready node waits, as an offline worker does. Schema 0194
+moved the workers that an older charter, schedule, loop or judge named into that pool and dropped the keys.
 
 **Hidden checks.** `judge.hidden_checks` are shown to the project's admins alone, and as null to anyone else. A write
 with `hidden_checks: null` keeps those of the newest revision, so a charter shown without them and written back keeps
@@ -180,7 +176,7 @@ A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). E
 - outside the window, or paused, it queues nothing and cancels the runs of the schedule still queued;
 - inside the window it queues at most one run, and only when no run of the schedule is queued or held, the night has
   queued fewer than `max_runs_per_night` runs, at least 0.01 USD of `night_budget_usd` is left, the schedule's owner
-  still holds writer on the project, and the worker on duty is live and fit for the run;
+  still holds writer on the project, and a node of the default agent's pool is ready for the run;
 - the run it queues is the first of these that has work: the night's review run, while the night has none; the
   night's history run, once the night's review run was queued, while the night has none, an item waits for a facet of
   the model or a group of facets has no name; the judge run of a change of the Curator that waits for one; the Builder
@@ -228,12 +224,18 @@ evo-agents hub curator resume --project demo
 The tier of a proposal says how far it may go without its owner. The hub computes it (`tiers.tier_of`), never an
 agent:
 
-| Tier | What happens to an accepted change |
+| Tier | What happens to an accepted change, with the charter's defaults |
 | --- | --- |
 | 0 | the night shift builds it, and the hub merges it once CI and the Judge pass, when `auto_merge` holds `0` |
 | 1 | the night shift builds it and the Judge judges it; the pull request stays open for the owner |
 | 2 | it reaches the owner's Inbox; once accepted, the night shift builds it and the Judge judges it, and the pull request stays open for the owner |
 | 3 | it stays in the list; accepting it builds nothing, and the owner alone makes the change |
+
+The charter moves these lines. `planned_tiers` names the tiers whose accepted proposals the night shift builds: `[0, 1,
+2]` by default, and a charter that adds `3` has an accepted tier 3 proposal become the Curator's plan and a change
+`planned` as tiers 0 to 2 do; without `3` accepting it still builds nothing. `auto_merge` names the tiers the hub merges
+by itself once the Judge passed the change, any of `0` to `3`; a tier it does not name stays open for the owner. A
+sign of score hacking or a protected path leaves the pull request open whatever the charter names (Merging, below).
 
 The tier is the highest of these rules, and the proposal lists in words which rule raised it:
 
@@ -352,16 +354,16 @@ it: the night shift alone does, at any hour, not only inside its window. Run pla
 /v1/projects/{p}/curator/plans/{plan_id}/build`, a writer of the project) asks for its Builder now: the night shift's
 Builder in every other way, queued beside the night shift's other runs instead of after them, and refused (409 with
 why) while the night shift is paused, past its caps, or the change is not ready; audited as `curator.build_now`. Its
-agent holds no push credential: the daemon alone pushes, only the branch
-`curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
-accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
-the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
-may. A proposal's page on the web has a Change card once accepting it made one: the change's state, the Curator's plan
-as a link to its page, the branch (a link to it on GitHub or GitLab), the pull request once the hub opened it, and the
-reason the change keeps while it waits or stays open, and the tier it merges at; under it a Replays card says whether
-its replays won and why, sets arm b beside arm a and lists each replay. `evo-agents hub curator proposal show ID`
-prints the same, and `evo-agents hub curator replay show CHANGE` its replays. The proposal's ledger adds the verdict of
-the replays a merge rests on, and each skill release.
+agent holds no push credential: the daemon alone pushes, only the branch `curator/...`, and never a default branch
+whatever the plan says. On GitLab the push opens the merge request. An accepted proposal of a tier the charter plans
+that has no change yet, such as one of tier 2 accepted while that tier still recorded the answer alone, becomes its plan
+with `evo-agents hub curator proposal plan ID`, which only an admin of the project may. A proposal's page on the web has
+a Change card once accepting it made one: the change's state, the Curator's plan as a link to its page, the branch (a
+link to it on GitHub or GitLab), the pull request once the hub opened it, and the reason the change keeps while it waits
+or stays open, and the tier it merges at; under it a Replays card says whether its replays won and why, sets arm b
+beside arm a and lists each replay. `evo-agents hub curator proposal show ID` prints the same, and `evo-agents hub
+curator replay show CHANGE` its replays. The proposal's ledger adds the verdict of the replays a merge rests on, and
+each skill release.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -373,7 +375,11 @@ two more checks, whose results join the verify results and must exit 0 too: `evo
 worktree, as code it does not trust, and a trial sync of each edited source by the daemon's own code, from the
 knowledge.yaml of the commit judged into a corpus of the run's own (a git source fetched under the lock of its
 checkout, and failed when the worker's nightly sync would skip it; a harness source over the worktree; nothing
-pushed). On GitHub the hub
+pushed). The Judge also runs a security pass, its own agent turns after its verdict: one that finds the vulnerabilities
+the change adds and one for each finding that filters false positives, both from anthropics/claude-code-security-review
+(MIT, copied at a pinned commit with its license; `docs/merge-queue.md`, "The security pass"). A finding scored 8 or more
+fails the dimension `security` of the verdict and so the change, with its path and line, in the findings of the
+change's verdict (`evo_agents/hub/findings.py`); a verdict posted without the pass fails it too. On GitHub the hub
 writes the verdict on the pull request as the check run `evo-agents Judge`. The Judge's inputs and verdict travel with
 the run's own key, which the hub hands the daemon in the claim alone and keeps as a SHA-256 (schema 0019): code on the
 worker's machine that reads the worker token neither reads a hidden check nor writes a verdict.
@@ -761,15 +767,24 @@ a ruleset: a change whose repo's check did not pass keeps, as its reason, which 
 it up as above. A Builder runs on a GitHub repo only after a check within 2 days that passed; a repo whose ruleset no
 longer keeps the Curator off gets no token.
 
-**Merging tier 0.** The hub merges a pull request with the workers' App, as a merge commit, at the head the Judge
-passed, only when all of these hold: the change is tier 0 and `auto_merge` holds `0`; the Judge passed it; the repo's
-ruleset still keeps the Curator off, checked again then; the pull request is open into the default branch; its files
-show no sign and no protected path; and CI is green. Green means each check the default branch's active rulesets
+**Merging.** The hub merges a pull request with the workers' App, as a merge commit, at the head the Judge passed,
+only when all of these hold: the change's tier is one `auto_merge` names (tier 0 alone, unless the charter names more);
+the Judge passed it; the repo's ruleset still keeps the Curator off, checked again then; the pull request is open into
+the default branch and GitHub can merge it; its files show no sign and no protected path; the gate K5 of the Builder's
+principal lets it go (`docs/autonomy.md`); and CI is green. Green means each check the default branch's active rulesets
 require concluded success (as a check run of the App the rule names, when it names one), every other check run ended
-success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit
-whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while CI runs, and merges
-nothing while the night shift is paused. A tier 1 or 2 change and a refusal stay open for the owner with the reason, as
-does a GitLab merge request, unless the project's autonomy policy puts its repo in the merge queue (GitLab, below).
+success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, a commit no CI ran
+on, or a head commit whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while
+CI runs, and merges nothing while the night shift is paused. A change of a tier `auto_merge` does not name and a
+refusal stay open for the owner with the reason, as does a GitLab merge request, unless the project's autonomy policy
+puts its repo in the merge queue (GitLab, below).
+
+**Merging without CI.** A repo that runs no CI on pull requests never turns green. With `merge_without_ci: true` in
+the charter, the Judge's pass stands in for CI: a commit no CI ran on merges, and so does one whose ruleset requires no
+check, once every check that did run passed. What ran still counts: a check that ended in failure leaves the pull
+request open, one still running makes the hub wait, and a head commit that asks CI to skip it stays open. A check the
+ruleset requires must still pass, so with one required and nothing run the hub waits for it. A sign of score hacking,
+a protected path and every other condition above hold as they do with CI.
 
 **GitLab.** The charter's `git_secret` names the owner's git secret for the repo's origin, which should hold the
 Developer role: GitLab then keeps it off a protected default branch. A Builder pushes with push options that open the
@@ -798,12 +813,66 @@ its name, the kind of thing that waits and the link, with no answer button; a pr
 that way is treated the same. No message holds a decision's context, a proposal's summary, a diff or a token.
 `docs/notifications.md`, "Telegram", has the rest.
 
+## The agent answers
+
+With `answer_by: agent` in the charter, the project's default agent answers the Curator's proposals for the schedule's
+owner, so a proposal does not wait for a person. When a review run records a proposal open, or a deferred one opens
+again, the hub opens a thread for it in the project's triage chat ("Triage: <project>", the chat of failed runs,
+`docs/workers.md`, Failure triage), one thread a proposal (`proposal_threads`, schema 0188). Its first message holds
+the proposal's tier and why, its summary, paths and evidence, its draft plan, what accepting it makes, its links, and
+the command and skill to answer with, and it mentions the agent, which starts a chat run for the owner. A proposal
+that opens again after a defer gets a new message in the same thread, and the agent is asked again. The thread needs
+the project's triage on and the hub's chats; an owner who is no admin of the project gets the thread without the
+mention, since only an admin's answer counts.
+
+The agent reads the evidence, checks the cause, and answers with the skill `answering-curator-proposals` of the
+evo-hub plugin:
+
+```sh
+evo-agents worker curator answer 12 accept --note "the run log shows the blocked wait at the commit cited"
+evo-agents worker curator answer 13 reject --note "the cause is the stale graph, not the skill"
+evo-agents worker curator answer 14 defer --days 7 --note "measure kg eval on tune and holdout first"
+```
+
+The command calls POST `/v1/worker/runs/{id}/curator/answer`, which answers as the owner's answer on the web does
+(accepting a tier the charter's `planned_tiers` names makes the Curator's plan) once the hub has checked the frame on
+that call: the chat run is in the thread of that proposal (403 for another proposal, 404 for a chat run in no
+proposal's thread), the person who dispatched it holds the admin role on the project (403), the charter still has
+`answer_by: agent` (409), and the proposal is open or deferred (409). The note is required. Each answer writes the audit
+row `curator.proposal` and the ledger line with the agent and the chat run (`via=@<agent> in chat run <id>`,
+`details.agent`, `details.chat_run`), and the hub posts a `Decision:` line in the thread in the agent's name. The admins'
+answer on the web, the command line and Telegram stays as it was; with `answer_by: owner`, the default, no thread opens.
+
+When the hub leaves a change of such a proposal open for its owner with a pull request (a tier the charter's
+`auto_merge` does not name, a sign, CI that failed, K5 refusing the merge), it writes in the proposal's thread why,
+with the pull request, its head and whether the Judge passed it, and mentions the agent when the Judge passed it and
+the owner is an admin. The agent reads the diff at that head and merges it for the owner:
+
+```sh
+evo-agents worker curator merge 7
+```
+
+The command calls POST `/v1/worker/runs/{id}/curator/merge`, in the same frame as an answer (the change is of the
+thread's proposal, 403 for another; an owner who is no admin, 403; `answer_by: agent`, 409). The hub reads the pull
+request, its files and checks, and the repo's ruleset from GitHub again, and merges it with the workers' App at the
+head the Judge passed, as it merges a tier 0 change, only when: the change is `open`, its Judge passed it, the head did
+not move, every sign of its files is one of a protected path (a sign of score hacking still refuses it), the pull
+request is open into the default branch and mergeable, the repo's ruleset was checked, CI is as the charter asks, the
+night shift is not paused, and K5 of the chat run's principal lets it (`docs/autonomy.md`). Anything else answers 409
+with the reason, and 503 while GitHub does not answer. A change whose diff touched a protected path when it was judged
+was failed by the Judge's detector, so the agent cannot merge it: its owner decides on GitHub. Each merge writes the
+audit row `curator.merge` with `via=@<agent> in chat run <id>`, the ledger line `merged` with `details.agent` and
+`details.chat_run`, the owner's notice `merge_default_branch`, and a `Decision:` line in the thread; the morning brief
+lists it. The hub's own merge of a change no agent touched stays as it was.
+
 ## The brief, the ledger and the circuit breaker
 
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
 its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
-planned with why each waits, decisions and proposals waiting, and the last heartbeat of the worker on duty
-(`curator_briefs`, schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
+planned with why each waits, decisions and proposals waiting, the proposals the project's agent answered in the 24
+hours before the brief, with its note and chat run, the pull requests it merged, and the last heartbeat of the worker
+on duty (`curator_briefs`,
+schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
 runs the Loop handed out and the work items it finished in the 24 hours before the brief, and those waiting for a
 person by reason, with a link to the decision board (`docs/hub.md`, "The decision board"); a project whose Loop is off
 has none, and a project whose Loop is on with no brief of the Curator gets that part alone as the notice `loop_brief`
@@ -870,7 +939,8 @@ queues their runs and `curator.brief` sends their weekly report.
 
 ## What the Curator does not do
 
-- It never pushes to, or merges into, a default branch with its own credentials, and it merges nothing above tier 0.
+- It never pushes to, or merges into, a default branch with its own credentials, and it merges no tier the charter's
+  `auto_merge` does not name, nor a change with a sign of score hacking or a protected path, whatever it names.
 - It merges nothing on GitHub for a project whose charter leaves `auto_merge` empty. On GitLab it merges nothing
   itself: the hub's merge queue merges its merge request when the project's autonomy policy has the repo in mode `auto`
   (`docs/merge-queue.md`), and it stays open otherwise.

@@ -6,11 +6,9 @@ GET /v1/projects/{p}/curator/charter (reader) shows the project's charter at its
 null to anyone else. GET .../curator/charter/revisions lists every revision, newest first: none is ever deleted.
 
 PUT .../curator/charter (admin of the project) writes a new revision: the window's time zone must be one Postgres
-knows; the worker on duty, named by ``worker``, or the pool, named by ``pool`` (exactly one of the two), stays when it
-is the one of the newest revision, and is otherwise one of the caller's own live workers that serves the project and
-takes runs dispatched by the hub (its dispatch_from is not web), or one of the caller's own pools that lists the
-project, else 403 or 409 (``evo_agents.hub.server.night_duty``). The project's schedule (one per kind, here
-``night_shift``) follows it: its owner, the member it dispatches as, is that worker's or pool's owner. A body equal to
+knows; the charter names no worker and no pool: the night shift runs on the pool of the project's default agent
+(``evo_agents.hub.server.night_duty``). The project's schedule (one per kind, here ``night_shift``) follows it: its
+owner, the member it dispatches as, is that pool's owner. A body equal to
 the newest revision's writes nothing and answers that revision. ``judge.hidden_checks`` null keeps the checks of the
 newest revision. The keys ``charter show --json`` prints besides the body (``curator.CHARTER_META``) are ignored, so
 what was shown can be written back. Each revision is audited (curator.charter). A member without the admin role gets
@@ -66,7 +64,6 @@ from sqlalchemy import (
     func,
     insert,
     literal,
-    or_,
     select,
     table,
     union,
@@ -81,7 +78,8 @@ from evo_agents.hub import curator, ledger, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import audit, hub_settings
+from evo_agents.hub.judge import PLANNABLE_TIERS, PLANNED_TIERS
+from evo_agents.hub.server import agent_placement, audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.charter_settings import (
@@ -93,22 +91,20 @@ from evo_agents.hub.server.charter_settings import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, next_run_budget, night_figures, usage_cost
-from evo_agents.hub.server.night_duty import Duty, DutyTarget, duty_target, on_duty
+from evo_agents.hub.server.night_duty import Duty, on_duty
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import ModelName
-from evo_agents.hub.server.runs.models.placement import PoolName
 from evo_agents.hub.server.runs.service.dispatch import insert_run, plan_run_repos
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.server.shift_hours import cancel_queued, changes_waiting
-from evo_agents.hub.server.worker_models import WORKER_NAME
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
 
-CHARTER = "curator.charter"  # an admin wrote a revision: "<project> revision=<n> worker=<name>" (or pool=<name>)
+CHARTER = "curator.charter"  # an admin wrote a revision: "<project> revision=<n>"
 PAUSE = "curator.pause"  # every schedule of the project paused: "<project>"
 RESUME = "curator.resume"  # and let run again: "<project>"
 DISPATCH = "curator.dispatch"  # a schedule queued a plan run: "<project>/<plan> run:<id> schedule:<id> night=<date>"
@@ -192,14 +188,6 @@ class CharterBody(BaseModel):
         default_factory=list, max_length=curator.MAX_GOALS, description="the product's goals, highest first"
     )
     window: Window
-    worker: str | None = Field(
-        None, pattern=WORKER_NAME, description="the worker on duty, by name: one of the writer's own; or name a pool"
-    )
-    pool: PoolName | None = Field(
-        None,
-        description="the pool on duty, by name: one of the writer's own; its ready nodes take the night's runs, any "
-        "of them, by the selector pool=<name>; or name a worker",
-    )
     night_budget_usd: float = Field(gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most a night may cost")
     run_budget_usd: float | None = Field(
         None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most one run may cost; null: what the night has"
@@ -216,8 +204,23 @@ class CharterBody(BaseModel):
     )
     max_decisions_per_day: int = Field(5, ge=0, le=curator.MAX_DECISIONS_PER_DAY)
     brief_at: TimeOfDay = "07:00"
+    planned_tiers: list[Literal[PLANNABLE_TIERS]] = Field(
+        default_factory=lambda: list(PLANNED_TIERS),
+        description="the tiers whose accepted proposals become the Curator's plans, which the night shift builds; "
+        "tier 3 only when named",
+    )
     auto_merge: list[Literal[curator.AUTO_MERGE_TIERS]] = Field(
         default_factory=list, description="the tiers the hub may merge by itself"
+    )
+    merge_without_ci: bool = Field(
+        False,
+        description="the hub may merge a change the Judge passed when no CI ran on it or the ruleset requires no "
+        "check; a check that ran must still pass",
+    )
+    answer_by: Literal[curator.ANSWERERS] = Field(
+        "owner",
+        description="who answers the proposals: owner, the project's admins; agent, the project's default agent in a "
+        "thread of the triage chat, for the schedule's owner",
     )
     protected_paths: list[PathGlob] = Field(
         default_factory=list,
@@ -264,15 +267,13 @@ class CharterBody(BaseModel):
     def _once(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))
 
-    @field_validator("auto_merge")
+    @field_validator("auto_merge", "planned_tiers")
     @classmethod
     def _tiers(cls, tiers: list[int]) -> list[int]:
         return sorted(set(tiers))
 
     @model_validator(mode="after")
     def _run_within_night(self):
-        if (self.worker is None) == (self.pool is None):
-            raise ValueError("a charter names the worker on duty (worker) or the pool (pool), exactly one of the two")
         if self.run_budget_usd is not None and self.run_budget_usd > self.night_budget_usd:
             raise ValueError("run_budget_usd is over night_budget_usd: a run never gets more than the night has")
         caps = (("review", self.review.budget_usd), ("replay", self.replay.budget_usd))
@@ -300,31 +301,19 @@ class Charter(CharterBody):
     revision: int
     updated_by: str = Field(description="who wrote this revision")
     updated_at: datetime
-    worker_id: int | None = Field(description="the worker on duty; null for a pool")
-    pool_id: int | None = Field(None, description="the pool on duty; null for a worker")
-    schedule_owner: str = Field(
-        description="the member the night shift dispatches its runs as: the worker's, or the pool's, owner"
-    )
+    schedule_owner: str = Field(description="the member the night shift dispatches its runs as: the pool's owner")
 
 
 class CharterRevision(BaseModel):
     revision: int
     updated_by: str
     updated_at: datetime
-    worker: str | None = Field(description="the worker on duty; null for a pool")
-    worker_id: int | None
-    pool: str | None = Field(None, description="the pool on duty; null for a worker")
-    pool_id: int | None = None
 
 
 class Schedule(BaseModel):
     id: int
     kind: Literal[curator.SCHEDULE_KINDS]
     owner: str = Field(description="the member its runs are dispatched as")
-    worker_id: int | None
-    worker: str | None = Field(description="the worker its runs go to; null for a pool")
-    pool_id: int | None = None
-    pool: str | None = Field(None, description="the pool whose ready nodes take its runs; null for a worker")
     paused_at: datetime | None
     paused_by: str | None = Field(description="the member who paused it; null when the hub did, or while it runs")
     pause_reason: str | None = Field(
@@ -441,26 +430,20 @@ def _reader(access: ProjectAccess) -> None:
 
 
 def _charters():
-    """A charter revision with its writer's login, its worker's or pool's name and that one's owner's login."""
-    c, w, writer, owner = tables.charters, tables.workers, tables.users.alias("writer"), tables.users.alias("owner")
-    p = tables.worker_pools
+    """A charter revision with its writer's login and the login of the owner of the project's night shift schedule."""
+    c, s, writer, owner = tables.charters, tables.schedules, tables.users.alias("writer"), tables.users.alias("owner")
     return (
         select(
             c.c.project_id,
             c.c.revision,
             c.c.body,
-            c.c.worker_id,
-            c.c.pool_id,
             c.c.created_at.label("updated_at"),
             writer.c.login.label("updated_by"),
-            w.c.name.label("worker_name"),
-            p.c.name.label("pool_name"),
-            owner.c.login.label("schedule_owner"),
+            func.coalesce(owner.c.login, writer.c.login).label("schedule_owner"),
         )
         .join_from(c, writer, writer.c.id == c.c.created_by)
-        .outerjoin(w, w.c.id == c.c.worker_id)
-        .outerjoin(p, p.c.id == c.c.pool_id)
-        .join(owner, owner.c.id == func.coalesce(w.c.owner_id, p.c.owner_id))
+        .outerjoin(s, and_(s.c.project_id == c.c.project_id, s.c.kind == NIGHT_SHIFT))
+        .outerjoin(owner, owner.c.id == s.c.owner_id)
     )
 
 
@@ -482,8 +465,6 @@ def _charter_view(project: str, row, *, admin: bool) -> Charter:
         revision=row.revision,
         updated_by=row.updated_by,
         updated_at=row.updated_at,
-        worker_id=row.worker_id,
-        pool_id=row.pool_id,
         schedule_owner=row.schedule_owner,
     )
 
@@ -535,10 +516,6 @@ async def charter_revisions(request: Request, project: ProjectName, user: Curren
             revision=row.revision,
             updated_by=row.updated_by,
             updated_at=row.updated_at,
-            worker=row.worker_name,
-            worker_id=row.worker_id,
-            pool=row.pool_name,
-            pool_id=row.pool_id,
         )
         for row in rows
     ]
@@ -553,26 +530,32 @@ async def _time_zone_known(conn: AsyncConnection, name: str) -> None:
         raise HTTPException(422, f"{name!r} is not a time zone the hub knows: give an IANA name such as Asia/Tokyo")
 
 
-def _stored(body: CharterWrite, target: DutyTarget, current) -> dict:
-    """The body to keep: the worker or pool under its own name, the other key left out, and the Judge's checks of
-    ``current`` when the write gives none."""
+def _stored(body: CharterWrite, current) -> dict:
+    """The body to keep: the Judge's checks of ``current`` when the write gives none."""
     stored = body.model_dump(mode="json")
-    stored.pop("pool" if target.key == "worker" else "worker")
-    stored[target.key] = target.name
     if stored["judge"]["hidden_checks"] is None:
         kept = (current.body.get("judge") or {}).get("hidden_checks") if current is not None else None
         stored["judge"]["hidden_checks"] = kept or []
     return stored
 
 
-async def _keep_schedule(conn: AsyncConnection, project_id: int, target: DutyTarget) -> None:
+async def _duty_owner(conn: AsyncConnection, user: Principal, project_id: int) -> int:
+    """The owner of the pool of the project's default agent, whose runs the night shift dispatches as; the writer when
+    the agent has no pool."""
+    home = await agent_placement.default_home(conn, project_id)
+    if home is None:
+        return user.user_id
+    p = tables.worker_pools
+    return (await conn.execute(select(p.c.owner_id).where(p.c.id == home.pool_id))).scalar_one()
+
+
+async def _keep_schedule(conn: AsyncConnection, project_id: int, owner_id: int) -> None:
     s = tables.schedules
-    kept = {"owner_id": target.owner_id, "worker_id": target.worker_id, "pool_id": target.pool_id}
-    statement = pg_insert(s).values(project_id=project_id, kind=NIGHT_SHIFT, **kept)
+    statement = pg_insert(s).values(project_id=project_id, kind=NIGHT_SHIFT, owner_id=owner_id)
     statement = statement.on_conflict_do_update(
         constraint="schedules_project_id_kind_key",
-        set_={**kept, "updated_at": func.now()},
-        where=or_(*(s.c[key].is_distinct_from(value) for key, value in kept.items())),
+        set_={"owner_id": owner_id, "updated_at": func.now()},
+        where=s.c.owner_id.is_distinct_from(owner_id),
     )
     await conn.execute(statement)
 
@@ -589,20 +572,18 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
         _admin(access, "changing the charter")
         current = await _charter_row(conn, access.project_id)
         await _time_zone_known(conn, body.window.timezone)
-        target = await duty_target(conn, user, access, body.worker, body.pool, current)
-        stored = _stored(body, target, current)
+        stored = _stored(body, current)
         if len(json.dumps(stored, ensure_ascii=False).encode()) > curator.MAX_CHARTER_BYTES:
             raise HTTPException(413, f"the charter is over {curator.MAX_CHARTER_BYTES // 1024} KiB as JSON")
-        same = current is not None and (current.worker_id, current.pool_id) == (target.worker_id, target.pool_id)
-        if same and current.body == stored:
+        owner_id = await _duty_owner(conn, user, access.project_id)
+        if current is not None and current.body == stored:
+            await _keep_schedule(conn, access.project_id, owner_id)
             return _charter_view(access.name, current, admin=True)
         revision = 1 if current is None else current.revision + 1
         values = {
             "project_id": access.project_id,
             "revision": revision,
             "body": stored,
-            "worker_id": target.worker_id,
-            "pool_id": target.pool_id,
             "created_by": user.user_id,
         }
         try:
@@ -612,13 +593,13 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
             raise HTTPException(
                 409, f"the charter of project {project} changed while this write was made: read it again"
             ) from None
-        await _keep_schedule(conn, access.project_id, target)
+        await _keep_schedule(conn, access.project_id, owner_id)
         await audit.record(
             conn,
             actor_id=user.user_id,
             token_id=user.token_id,
             action=CHARTER,
-            target=f"{access.name} revision={revision} {target.where}",
+            target=f"{access.name} revision={revision}",
             project_id=access.project_id,
         )
         row = await _charter_row(conn, access.project_id, revision)
@@ -630,25 +611,18 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
 
 
 def _schedules(project_id: int):
-    s, w, owner, pauser = tables.schedules, tables.workers, tables.users.alias("owner"), tables.users.alias("pauser")
-    p = tables.worker_pools
+    s, owner, pauser = tables.schedules, tables.users.alias("owner"), tables.users.alias("pauser")
     return (
         select(
             s.c.id,
             s.c.kind,
             s.c.owner_id,
             owner.c.login.label("owner"),
-            s.c.worker_id,
-            w.c.name.label("worker"),
-            s.c.pool_id,
-            p.c.name.label("pool"),
             s.c.paused_at,
             pauser.c.login.label("paused_by"),
             s.c.pause_reason,
         )
         .join_from(s, owner, owner.c.id == s.c.owner_id)
-        .outerjoin(w, w.c.id == s.c.worker_id)
-        .outerjoin(p, p.c.id == s.c.pool_id)
         .outerjoin(pauser, pauser.c.id == s.c.paused_by)
         .where(s.c.project_id == project_id)
         .order_by(s.c.kind)
@@ -1060,8 +1034,6 @@ def _due(now: datetime | None):
             p.c.name.label("project"),
             s.c.owner_id,
             u.c.login.label("owner"),
-            s.c.worker_id,
-            s.c.pool_id,
             c.c.revision,
             c.c.body,
             func.timezone(c.c.body["window"]["timezone"].astext, moment).label("local_now"),
@@ -1224,9 +1196,8 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
         return "owner", None
     duty, why = await on_duty(conn, due)
     if duty is None:
-        word = "pool" if due.pool_id is not None else "worker"
-        log.info(f"night shift waits for its {word}", extra={"project": due.project, "why": why})
-        return word, None
+        log.info("night shift waits for its pool", extra={"project": due.project, "why": why})
+        return "pool", None
     return "", Gate(night=night, figures=figures, budget=budget, access=access, duty=duty, inside=inside)
 
 

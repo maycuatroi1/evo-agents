@@ -24,6 +24,7 @@ from sqlalchemy import column, func, select, table
 from evo_agents.hub.contract import commands
 from evo_agents.hub.server import chat_events, listen
 from evo_agents.hub.server.app import create_app
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker
@@ -190,6 +191,7 @@ def test_a_stream_asked_for_progress_sends_each_step_of_a_chat_run_within_two_se
     each step its worker notes, working; the agent's reply empties it. A stream not asked sends the chat's events as
     before, and the steps number no event of the chat."""
     monkeypatch.setattr(chat_events, "STREAM_POLL_SECONDS", 60.0)  # only the notifications can wake it in time
+    give_account_pool(hub.db, PROJECT, "reviewer", OWNER)  # a run of @reviewer takes its account from it
     worker = chat_worker(hub.client, hub.headers["owner"], "studio")
     chat = created(hub)  # events 1 to 3
     stream = ChatStream(hub, chat["id"], after=3, progress="true")
@@ -311,7 +313,7 @@ def test_hub_chat_creates_lists_shows_sends_and_reacts(hub, monkeypatch, capsys)
 
     shown = as_json(chat_cli(monkeypatch, capsys, other, "show", chat_id, "--json"))
     assert_json_keys("hub chat show", shown)
-    # the hub's answer to @reviewer, whose work owner has no worker to run, sits between them
+    # the hub's answer to @reviewer, which has no account pool to run the work with, sits between them
     assert [(m["author"]["kind"], m["body"][:10]) for m in shown["messages"]] == [
         ("person", "@reviewer "),
         ("hub", "@reviewer:"),

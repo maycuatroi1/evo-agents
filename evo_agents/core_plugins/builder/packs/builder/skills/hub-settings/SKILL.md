@@ -51,7 +51,7 @@ the thread with its number and tells the members who may approve it. It applies 
   `repos.<repo>.prod_release` (`immediate`, `after_uat` or `manual`), `repos.<repo>.after_uat_hours`,
   `repos.<repo>.jobs.uat_check`, `.prod_deploy`, `.prod_check` and `.rollback` (CI job names), `merge.opt_in_label`,
   `merge.risk_paths` (a list of globs), `merge.hold_until` (`merged`, `uat_check` or `prod_check`),
-  `merge.pipeline_minutes`, `judge.worker`, `judge.model`, the `breaker.*` thresholds and `audit.sample_rate`. A key
+  `merge.pipeline_minutes`, `judge.model`, the `breaker.*` thresholds and `audit.sample_rate`. A key
   you unset goes back to its default. `evo-agents hub policy show --project <project>` prints every key with its
   value now. The repo must be one of the project's.
 - **problem.** A problem of the project, before any solution: `statement` says what hurts, `who` who is hurt, `when`

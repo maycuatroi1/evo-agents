@@ -12,7 +12,11 @@ run first for a missing program, checkout or branch, last for a worker that stop
 worker with an account other than the run's first for a usage limit or an account that does not log in; then the one
 with the most checkouts of the run's repos, the most free slots, the smallest id. An agent profile is fit when its
 owner is a writer in the project, it was not deleted, a worker is fit for it, and for a missing program it lets the
-agent run shell commands; the fit ones come first, the project's default among them, then by handle."""
+agent run shell commands; the fit ones come first, the project's default among them, then by handle.
+
+For a queued run the same endpoint says who can take it now, and why not, as the claim counts it (``queue_fit``): each
+worker that could, the agent pools of the project, and the one line on why no worker can, with the command that fixes
+it."""
 
 from __future__ import annotations
 
@@ -82,6 +86,16 @@ class AccountCandidate(BaseModel):
     used_by_run: bool
 
 
+class PoolCandidate(BaseModel):
+    pool: str
+    agent: str = Field(description="the handle of the agent whose pool it is")
+    takes_run: bool = Field(description="the pool the run goes to: its agent's")
+    nodes: int = Field(description="the nodes of the pool that are not revoked")
+    ready_nodes: int = Field(description="those online, not draining and ready")
+    fit: bool = Field(description="the run goes to this pool and one of its nodes can take it now")
+    reasons: list[str]
+
+
 class TriageThread(BaseModel):
     chat_id: int
     root_message_id: int
@@ -102,6 +116,15 @@ class RerunCandidates(BaseModel):
     )
     cause_inferred: bool = Field(default=False, description="true when the hub guessed failure_cause from the error")
     triage: TriageThread | None = Field(default=None, description="the thread the hub opened for the failure, if any")
+    pools: list[PoolCandidate] = Field(
+        default_factory=list,
+        description="a queued run's: the pools of the project's agents, and whether the run goes there",
+    )
+    diagnosis: str | None = Field(
+        default=None,
+        description="a queued run's: why no worker can take it now, with the command that fixes it; null when one can, "
+        "and for a failed run",
+    )
 
 
 async def _run(conn: AsyncConnection, run_id: int):
@@ -397,12 +420,20 @@ async def candidates_of(
 
 
 async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId) -> RerunCandidates:
-    """The candidates to run the failed run ``run_id`` of ``project`` again, for its owner alone (``owned_run``);
-    409 for a run that did not fail."""
+    """The candidates to run the failed run ``run_id`` of ``project`` again, or to take the queued run ``run_id`` now
+    (``queue_fit``), for its owner alone (``owned_run``); 409 for a run in another state."""
+    from evo_agents.hub.server.runs.service.queue_fit import queued_candidates  # it reads this module's models
+
     async with engine.begin() as conn:
         access, owned = await owned_run(conn, user, project, run_id, "list candidates for")
+        if owned.state == "queued":
+            return await queued_candidates(conn, run_id, access.name, owned.kind)
         if owned.state != "failed":
-            raise HTTPException(409, f"run {run_id} is {owned.state}: only a failed run has candidates to run it again")
+            raise HTTPException(
+                409,
+                f"run {run_id} is {owned.state}: only a failed run has candidates to run it again, and a queued one "
+                "candidates to take it",
+            )
         found = await candidates_of(
             conn,
             project=access.name,

@@ -1,17 +1,27 @@
-"""What the token of a run that runs as its owner never reaches, what starts no run while it is answered, and the
-audit row of each write made with it (``evo_agents.hub.server.run_access``).
+"""What the token of a run that runs as its owner never reaches, what its owner may let it reach, what starts no run
+while it is answered, and the audit row of each write made with it (``evo_agents.hub.server.run_access``).
 
 A run's token (``security.RUN``, ``evr_...``) is its owner with the owner's grants on every project, and hub admin when
 the owner is one; ``Authenticate`` refuses it, with 403 and the reason, every path of the groups of REFUSED, whatever
 the method, and every write (POST, PUT, PATCH, DELETE) of the groups of WRITES_REFUSED. A group is a closed list of
 path patterns, each matching its prefix and everything under it (a pattern that ends in ``$`` matches that path
 alone), so a route added later under a group's prefix is refused with the group until someone takes it out of the
-group: secrets and everything that holds a credential's value, tokens and signing in (whoami aside), workers with the
-terminal and the live view of a run, and the run access of any run, its own included, so no run grants running as its
-owner onward; and no write of grants and users, of the owner's autonomy (preferences, stops, policies, the org chart,
-agent profiles and types), no run started or messaged, no decision answered and no approval given, and nothing of the
-Curator's. What the agent of a run never does on a route open to it is the route's to refuse, as for the agent of a run
-on /mcp: each of those rules tests ``Principal.acts_for_run``, which both have.
+group: secrets and everything that holds a credential's value (an agent's accounts and provider accounts among them),
+tokens and signing in (whoami aside), the worker protocol with the terminal, the live view, takeover and handback of a
+run, and the run access of any run, its own included, with the owner's run reach below, so no run grants running as
+its owner onward or widens what it reaches; workers and their pools; and no write of grants and users, of the owner's
+autonomy (preferences, stops, policies, the org chart but its workers), of agent profiles and types, no run started or
+messaged, no decision answered and no approval given, and nothing of the Curator's. What the agent of a run never does
+on a route open to it is the route's to refuse, as for the agent of a run on /mcp: each of those rules tests
+``Principal.acts_for_run``, which both have.
+
+Three of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
+agent types), ``workers`` (workers, worker pools, their join tokens and labels, and the org chart's workers) and
+``curator`` (the Curator's writes). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach
+(``evo-agents hub autonomy run-reach --allow ...``), is the set of them the tokens of their runs skip; ``security``
+reads it with the token, so a change holds from the next request of every run. It is empty unless the member chose,
+which refuses as before, and a refusal of one of them says how the owner opens it. Every other group stays refused
+whatever the owner chose.
 
 While the middleware answers a request of a run's token, ACTING_RUN holds the run's id, and no run is queued whatever
 route the request took: ``refuse_new_run`` is the last word of every place that inserts a run
@@ -34,6 +44,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import tables
+from evo_agents.hub.credentials import RUN_REACH_GROUPS
 from evo_agents.hub.server import audit
 
 log = logging.getLogger(__name__)
@@ -41,6 +52,10 @@ log = logging.getLogger(__name__)
 _UNDER = r"(?:/.*)?"  # the prefix itself and every path under it
 _PROJECT = r"/v1/projects/[^/]+"
 _RUN = rf"{_PROJECT}/runs/[^/]+"
+# The groups a member may let the tokens of their runs reach (``users.run_reach``), in the order the hub keeps them.
+REACH_GROUPS = RUN_REACH_GROUPS
+AGENTS, WORKERS, CURATOR = REACH_GROUPS
+RUN_REACH_PATH = "/v1/autonomy/run-reach"
 # (group, why, path patterns): every method of a path in one of them is refused
 REFUSED = (
     (
@@ -71,17 +86,16 @@ REFUSED = (
         ),
     ),
     (
-        "workers",
-        "workers, their pools, the terminal and the live view of a run",
-        (
-            "/v1/workers",
-            "/v1/worker-pools",
-            "/v1/org/workers",
-            "/v1/worker",
-            rf"{_RUN}/(?:terminal|browser|takeover|handback)",
-        ),
+        "terminal",
+        "the worker protocol and the terminal, live view, takeover and handback of a run",
+        ("/v1/worker", rf"{_RUN}/(?:terminal|browser|takeover|handback)"),
     ),
-    ("run access", "granting a run its owner's account, its own included", (rf"{_RUN}/access",)),
+    (
+        "run access",
+        "granting a run its owner's account, its own included, or widening what the owner's runs reach",
+        (rf"{_RUN}/access", RUN_REACH_PATH),
+    ),
+    (WORKERS, "workers, their pools and join tokens", ("/v1/workers", "/v1/worker-pools", "/v1/org/workers")),
 )
 # (group, why, path patterns): a write of a path in one of them is refused; reading it is not
 WRITES_REFUSED = (
@@ -92,9 +106,11 @@ WRITES_REFUSED = (
     ),
     (
         "autonomy",
-        "the owner's autonomy: preferences, stops, policies, the org chart and agent profiles",
-        ("/v1/autonomy", "/v1/org", rf"{_PROJECT}/policy", rf"{_PROJECT}/agents", rf"{_PROJECT}/agent-types"),
+        "the owner's autonomy: preferences, stops, policies and the org chart",
+        # the org chart's workers are the group workers'
+        ("/v1/autonomy", r"/v1/org(?!/workers(?:/|$))", rf"{_PROJECT}/policy"),
     ),
+    (AGENTS, "a project's agent profiles and agent types", (rf"{_PROJECT}/agents", rf"{_PROJECT}/agent-types")),
     (
         "runs",
         "starting a run or sending one a message, which would carry the owner's account into work of its own",
@@ -122,7 +138,7 @@ WRITES_REFUSED = (
         ),
     ),
     (
-        "curator",
+        CURATOR,
         "the Curator's charter, proposals, changes, probes and builds, which judge and change the agents' own work",
         (rf"{_PROJECT}/curator",),
     ),
@@ -151,17 +167,32 @@ def _compiled(groups) -> tuple[tuple[str, str, re.Pattern], ...]:
 
 _REFUSED = _compiled(REFUSED)
 _WRITES_REFUSED = _compiled(WRITES_REFUSED)
+_REACH = frozenset(REACH_GROUPS)
 
 
-def refusal(method: str, path: str) -> str | None:
-    """Why the token of a run may not make the request ``method`` ``path``, or None when it may."""
+def reach_order(groups) -> tuple[str, ...]:
+    """``groups``, each of REACH_GROUPS, once each and in the order of REACH_GROUPS."""
+    given = set(groups)
+    return tuple(group for group in REACH_GROUPS if group in given)
+
+
+def refusal(method: str, path: str, reach: frozenset[str] = frozenset()) -> str | None:
+    """Why the token of a run may not make the request ``method`` ``path``, or None when it may. ``reach`` holds the
+    groups of REACH_GROUPS its owner lets their runs reach (``users.run_reach``); empty refuses them all, and a name
+    outside REACH_GROUPS opens nothing."""
+    opened = reach & _REACH
     groups = _REFUSED + (_WRITES_REFUSED if method.upper() in WRITE_METHODS else ())
     for group, why, pattern in groups:
-        if pattern.fullmatch(path):
-            return (
-                f"a run's token (evr_...) acts as its owner but never reaches {why} (group {group}): the owner does "
-                "that with their own sign-in"
-            )
+        if group in opened or not pattern.fullmatch(path):
+            continue
+        refused = f"a run's token (evr_...) acts as its owner but never reaches {why} (group {group}): the owner does "
+        if group not in REACH_GROUPS:
+            return refused + "that with their own sign-in"
+        allowed = ",".join(reach_order(reach | {group}))
+        return (
+            f"{refused}that with their own sign-in, or lets their runs reach it with `evo-agents hub autonomy "
+            f"run-reach --allow {allowed}`"
+        )
     return None
 
 

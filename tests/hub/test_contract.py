@@ -90,6 +90,19 @@ def test_commands_match_the_golden_copy():
     assert commands() == golden_commands(), f"the hub command line changed; if on purpose: {REGENERATE}"
 
 
+def test_the_contract_leaves_out_the_plugin_commands_a_machine_kept_from_its_hub(monkeypatch, tmp_path):
+    from evo_agents.hub import cli_plugin_commands as cpc
+
+    monkeypatch.setenv("EVO_HUB_HOME", str(tmp_path))
+    held = [
+        {"id": "lumen", "version": "0.1.1", "commands": [{"name": "ask", "http": {"method": "GET", "path": "ask"}}]}
+    ]
+    (tmp_path / cpc.CACHE_FILE).write_text(json.dumps({"plugins": held}), encoding="utf-8")
+    assert "lumen" in {plugin["id"] for plugin in cpc.known_plugins()}
+    assert not [path for path in commands() if path.startswith("hub lumen")]
+    assert commands() == golden_commands(), f"the hub command line changed; if on purpose: {REGENERATE}"
+
+
 def test_print_writes_version_commands_and_the_openapi_document():
     pytest.importorskip("fastapi")
     from evo_agents.hub.openapi import document
@@ -178,7 +191,8 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     assert flags["--timeout-h"]["choices"] == [2, 4, 8, 24]
     # any, a runtime of the core, or a plugin's <plugin>/<name>: an open set, so no choices (hub-agent-plugins a6)
     assert flags["--runtime"]["value"] == "string" and "choices" not in flags["--runtime"]
-    assert {"--worker", "--model", "--mode", "--project", "--json"} <= set(flags)
+    assert {"--model", "--mode", "--project", "--json"} <= set(flags)
+    assert not {"--worker", "--pool", "--label", "--tolerate"} & set(flags)
     assert printed["hub run plan"]["json"]["schema"] == printed["hub run dispatch"]["json"]["schema"] == "Run"
     assert "--model" in {o["flags"][0] for o in printed["hub run dispatch"]["options"]}
     answer = {o["flags"][0] for o in printed["hub decision answer"]["options"]}
@@ -251,6 +265,8 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker chat post",
         "worker chat react",
         "worker chat read",
+        "worker curator answer",
+        "worker curator merge",
         "worker finding",
         "worker notify",
         "worker output",
@@ -427,7 +443,7 @@ def test_only_the_worker_commands_of_the_contract_are_read():
         "evo-agents hub serve --help",
         "evo-agents hub token revoke $ID",
         "evo-agents hub contract check a.md b.md c.md",
-        "evo-agents hub run plan fleet --worker mac-mini --runtime codex --model o3 --timeout-h 8",
+        "evo-agents hub run plan fleet --runtime codex --model o3 --timeout-h 8",
         "evo-agents hub decision answer 7 --option postgres --text '...'",
         "evo-agents hub notifications --read all",
         "evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND",
@@ -515,6 +531,11 @@ def test_the_docs_of_this_repository_pass():
     docs = ROOT / "docs"
     files = [
         ROOT / "README.md",
+        ROOT / "CONTRIBUTING.md",
+        docs / "getting-started.md",
+        docs / "agents.md",
+        docs / "kg-setup.md",
+        docs / "operations.md",
         docs / "hub.md",
         ROOT / "web" / "README.md",
         docs / "workers.md",

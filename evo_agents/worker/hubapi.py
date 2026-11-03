@@ -215,6 +215,12 @@ class WorkerHub:
     async def heartbeat(self, body: dict) -> dict:
         return await self.call("POST", "/v1/worker/heartbeat", body)
 
+    async def merged(self, run_ids: list[int]) -> list[int]:
+        """Of ``run_ids``, ended runs whose worktrees this worker keeps, those whose work the hub knows merged."""
+        answer = await self.call("POST", "/v1/worker/merged", {"runs": run_ids})
+        found = answer.get("merged") if isinstance(answer, dict) else None
+        return [item for item in found or [] if isinstance(item, int) and not isinstance(item, bool)]
+
     async def doctor(self, body: dict) -> dict:
         """Send the findings of the machine's doctor (``evo_agents.worker.doctor_report``)."""
         return await self.call("POST", "/v1/worker/doctor", body)
@@ -342,6 +348,10 @@ class WorkerHub:
         """Wait, in plan run ``run_id``, for a time or an event of the hub (``evo_agents.hub.server.run_waits``)."""
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/waits", body)
 
+    async def merge_check(self, run_id: int, body: dict) -> dict:
+        """Have the hub judge plan run ``run_id``'s pull request at its head (``evo_agents.hub.server.merge_check``)."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-check", body)
+
     async def notice(self, run_id: int, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
 
@@ -350,6 +360,9 @@ class WorkerHub:
 
     async def autonomy_act(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/autonomy-acts", body, timeout=timeout)
+
+    async def merge_gate(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-gate", body, timeout=timeout)
 
     # A review run: its findings and proposals
 

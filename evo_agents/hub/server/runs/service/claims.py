@@ -24,15 +24,23 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, Text, and_, any_, case, column, exists, func, literal, or_, select, true
+from sqlalchemy import BigInteger, Text, and_, case, column, exists, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import author, autonomy_card, curator, runs, tables
+from evo_agents.hub import author, autonomy_card, curator, model_router, proofs, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import attachment_store, gateway_accounts, principals, run_autonomy, worker_placement
+from evo_agents.hub.server import (
+    agent_placement,
+    attachment_store,
+    gateway_accounts,
+    pool_accounts,
+    principals,
+    run_autonomy,
+    worker_placement,
+)
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -52,7 +60,7 @@ from evo_agents.hub.server.runs.models import (
     RunSpec,
     available,
 )
-from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service import browsers, overlap, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
     own_home,
@@ -119,32 +127,33 @@ class RunWakeups:
             del self._tickets[worker_id]
 
 
+def worker_columns(w=None) -> list:
+    """What the claim reads of a worker row of ``w`` (tables.workers by default): id, owner_id, name, slots, runtimes,
+    checkouts, drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels, plugins and shared."""
+    w = tables.workers if w is None else w
+    return [
+        w.c.id,
+        w.c.owner_id,
+        w.c.name,
+        w.c.slots,
+        w.c.runtimes,
+        w.c.checkouts,
+        w.c.drained_at,
+        w.c.revoked_at,
+        w.c.agent_version,
+        w.c.dispatch_from,
+        w.c.run_kinds,
+        w.c.features,
+        w.c.labels,
+        w.c.plugins,
+        w.c.shared,
+    ]
+
+
 async def worker_of(conn: AsyncConnection, user: Principal):
-    """The row of the worker whose token made the request, locked: id, owner_id, name, slots, runtimes, checkouts,
-    drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels, plugins and shared. 403 when
-    there is none."""
+    """The row of the worker whose token made the request, locked (``worker_columns``). 403 when there is none."""
     w = tables.workers
-    query = (
-        select(
-            w.c.id,
-            w.c.owner_id,
-            w.c.name,
-            w.c.slots,
-            w.c.runtimes,
-            w.c.checkouts,
-            w.c.drained_at,
-            w.c.revoked_at,
-            w.c.agent_version,
-            w.c.dispatch_from,
-            w.c.run_kinds,
-            w.c.features,
-            w.c.labels,
-            w.c.plugins,
-            w.c.shared,
-        )
-        .where(w.c.token_id == user.token_id)
-        .with_for_update()
-    )
+    query = select(*worker_columns(w)).where(w.c.token_id == user.token_id).with_for_update()
     row = (await conn.execute(query)).one_or_none()
     if row is None or row.revoked_at is not None:
         raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
@@ -162,7 +171,18 @@ def _served(worker_id: int, owner_id: int):
     )
 
 
-def _claimable(
+def _claimable(conditions: list[tuple[str, object]]):
+    """The oldest queued run that meets every one of ``conditions`` (``_claim_conditions``, ``Claimer.conditions``),
+    locked, passing over one another claim holds locked. Each row is the run's id, the runtime it asked for, its kind,
+    its profile's runtime axis, its project's id, its profile's environment axis and the agent packs its profile
+    attaches."""
+    r = tables.runs
+    rules = (runtime_rule(), r.c.project_id, runtime_rule("environment"), run_packs())
+    query = select(r.c.id, r.c.runtime, r.c.kind, *rules).where(*(clause for _, clause in conditions))
+    return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+
+
+def _claim_conditions(
     worker_id: int,
     owner_id: int,
     projects: list[int],
@@ -170,7 +190,6 @@ def _claimable(
     pairs: list[tuple[int, str]],
     *,
     offered: tuple[str, ...] = (),
-    environments: tuple[str, ...] = (),
     plan_runs: bool,
     web_only: bool,
     review_runs: bool = False,
@@ -188,9 +207,9 @@ def _claimable(
     clones: bool = False,
     steady: bool = True,
     shared: bool = False,
-    profile_gate=None,
-):
-    """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its owner,
+) -> list[tuple[str, object]]:
+    """The conditions on a queued run (``tables.runs``) for the worker to take it now, each with a key that says which
+    rule it is (``queue_fit`` names why a run fails one): of its owner,
     or, on a ``shared`` worker, of any member who holds writer on its project now (``_dispatcher_clause``), in
     ``projects``, pinned to no other worker, asking for any runtime (when it has one of the core) or one of
     ``runtimes`` or ``offered`` (runtimes of plugins), of a repo it has a checkout of (``pairs`` of project id and
@@ -208,10 +227,9 @@ def _claimable(
     (``browser_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
     A worker whose daemon clones the repos it lacks (``clones``, runs.CLONES_CHECKOUTS) needs no checkout of any of
     them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
-    only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
-    whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``, with the plugins' ``environments`` it
-    takes). Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis, its project's id,
-    its profile's environment axis and the agent packs its profile attaches."""
+    only (``web_only``) passes over the others, those dispatched before schema 0011 included. What the run's agent
+    profile, its browser, the gateway, the agent pools and the worker's labels and taints ask of the worker is
+    ``Claimer.gates``."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -230,49 +248,73 @@ def _claimable(
     asked = [r.c.runtime.in_([*runtimes, *offered])]
     if runtimes:  # any takes a runtime of the core, never a plugin's
         asked.append(r.c.runtime == "any")
-    rules = (runtime_rule(), r.c.project_id, runtime_rule("environment"), run_packs())
-    query = select(r.c.id, r.c.runtime, r.c.kind, *rules).where(
-        r.c.state == "queued",
-        r.c.project_id.in_(projects),
-        _dispatcher_clause(worker_id, owner_id, shared),
-        or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
-        or_(*asked),
-    )
+    conditions = [
+        ("queued", r.c.state == "queued"),
+        ("project", r.c.project_id.in_(projects)),
+        ("dispatcher", _dispatcher_clause(worker_id, owner_id, shared)),
+        ("pinned", or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id)),
+        ("runtime", or_(*asked)),
+    ]
     if not clones:  # an older daemon fails a run of a repo it has no checkout of
-        query = query.where(
-            case(
-                (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "probe", "release")), every_repo),
-                (r.c.kind == "author", harness),
-                (
-                    r.c.kind.in_(("chat", "browser")),
-                    true(),
-                ),  # pinned to the worker the hub picked, which works without a repo it lacks
-                (
-                    r.c.kind.in_(("task", "question")),
-                    or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed)),
-                ),
-                else_=own_repo,
-            )
+        checkout = case(
+            (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "probe", "release")), every_repo),
+            (r.c.kind == "author", harness),
+            (
+                r.c.kind.in_(("chat", "browser")),
+                true(),
+            ),  # pinned to the worker the hub picked, which works without a repo it lacks
+            (
+                r.c.kind.in_(("task", "question")),
+                or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed)),
+            ),
+            else_=own_repo,
         )
+        conditions.append(("checkout", checkout))
     if web_only:
-        query = query.where(r.c.dispatched_via == "web")
+        conditions.append(("web_only", r.c.dispatched_via == "web"))
     if not plan_runs:
-        query = query.where(r.c.kind != "plan")
+        conditions.append(("plan_runs", r.c.kind != "plan"))
     if not step_sessions:
-        query = query.where(r.c.session_per_step.is_(False))
+        conditions.append(("step_sessions", r.c.session_per_step.is_(False)))
     said = {"review": review_runs, "judge": judge_runs, "replay": replay_runs, "history": history_runs}
     said |= {"probe": probe_runs}
     said |= {"author": author_runs, "chat": chat_runs, "release": release_runs, "browser": browser_runs}
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
-        query = query.where(r.c.kind.not_in(left_out))
+        conditions.append(("kinds", r.c.kind.not_in(left_out)))
     typed = [kind for kind, runs_it in (("task", task_runs), ("question", question_runs)) if runs_it]
-    query = query.where(or_(r.c.kind.not_in(("task", "question")), and_(r.c.kind.in_(typed), _task_worker(worker_id))))
+    typed_clause = or_(r.c.kind.not_in(("task", "question")), r.c.kind.in_(typed))
+    conditions.append(("task_worker", typed_clause))
     if not steady:
-        query = query.where(~lost_here(worker_id))
-    if profile_gate is not None:
-        query = query.where(profile_gate)
-    return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+        conditions.append(("lost_here", ~lost_here(worker_id)))
+    return conditions
+
+
+def dispatcher_parts(worker_id: int, owner_id: int, shared: bool) -> dict[str, object]:
+    """The parts of ``_dispatcher_clause``, by key: ``home`` (a run of the agent whose pool the worker is a node of),
+    ``own`` (its owner's run) and, on a shared worker, the parts of another member's run, ``writer``, ``unit`` and
+    ``not_night`` (``member``), and ``alone`` (no run of another member held)."""
+    r = tables.runs
+    parts = {
+        "home": agent_placement.home_run(
+            worker_id
+        ),  # a node of an agent's pool takes the agent's runs of any dispatcher
+        "own": r.c.dispatched_by == owner_id,
+    }
+    if not shared:
+        return parts
+    held = tables.runs.alias("held")
+    other = exists().where(
+        held.c.worker_id == worker_id,
+        held.c.state.in_(runs.HELD_STATES),
+        held.c.dispatched_by != r.c.dispatched_by,
+    )
+    return parts | {
+        "writer": writes(r.c.dispatched_by, r.c.project_id),
+        "unit": unit_admits(worker_id, r.c.dispatched_by),
+        "not_night": r.c.kind.not_in(runs.CURATOR_KINDS),
+        "alone": ~other,
+    }
 
 
 def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
@@ -280,33 +322,29 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
     those of another member who holds writer on the run's project now and whom the units the worker is narrowed to
     admit (``worker_fit.unit_admits``), none of the night shift's kinds (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
     agents of two members never run side by side as the daemon's user (``docs/workers.md``, Shared workers)."""
-    r = tables.runs
+    parts = dispatcher_parts(worker_id, owner_id, shared)
     if not shared:
-        return r.c.dispatched_by == owner_id
-    held = tables.runs.alias("held")
-    member = and_(
-        r.c.dispatched_by != owner_id,
-        writes(r.c.dispatched_by, r.c.project_id),
-        unit_admits(worker_id, r.c.dispatched_by),
-        r.c.kind.not_in(runs.CURATOR_KINDS),
-    )
-    other = exists().where(
-        held.c.worker_id == worker_id,
-        held.c.state.in_(runs.HELD_STATES),
-        held.c.dispatched_by != r.c.dispatched_by,
-    )
-    return and_(or_(r.c.dispatched_by == owner_id, member), ~other)
+        return or_(parts["home"], parts["own"])
+    member = and_(~parts["own"], parts["writer"], parts["unit"], parts["not_night"])
+    return or_(parts["home"], and_(or_(parts["own"], member), parts["alone"]))
 
 
-def _task_worker(worker_id: int):
-    """Whether worker ``worker_id`` may take the task or question run: its agent type names no worker, or names it among the
-    workers of the run's dispatcher (the type's run_as), never a shared worker of another member by the same name."""
-    w, t, r = tables.workers, tables.project_agent_types, tables.runs
-    own = (w.c.id == worker_id) & (w.c.owner_id == r.c.dispatched_by)
-    name = select(func.lower(w.c.name)).where(own).correlate(r).scalar_subquery()
-    return exists().where(
-        t.c.id == r.c.agent_type_id, or_(func.cardinality(t.c.workers) == 0, name == any_(t.c.workers))
-    )
+def resumes_here(worker_id: int):
+    """Whether the run being claimed (``tables.runs``, correlated) resumes a run worker ``worker_id`` held, whose
+    session and worktrees stay on its machine: pinned to it, with ``resume_of_run_id`` naming a run of it. The only
+    runs a drained worker takes (``Claimer.conditions``): no other worker can, so a drain would hold them forever."""
+    r = tables.runs
+    parked = r.alias("parked")
+    of_it = exists().where(parked.c.id == r.c.resume_of_run_id, parked.c.worker_id == worker_id)
+    return and_(r.c.pinned_worker_id == worker_id, of_it)
+
+
+async def resume_waits(conn: AsyncConnection, worker_id: int) -> bool:
+    """Whether a queued run waits that resumes a run worker ``worker_id`` held (``resumes_here``): the heartbeat of a
+    drained worker then tells its daemon to claim, and the claim hands it that run alone."""
+    r = tables.runs
+    query = select(exists().where(r.c.state == "queued", resumes_here(worker_id)))
+    return (await conn.execute(query)).scalar_one()
 
 
 class ClaimAbandoned(Exception):
@@ -423,62 +461,25 @@ async def _claim_once(
     why, and the claim takes nothing this time."""
     async with engine.begin() as conn:
         found = await worker_of(conn, user)
-        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, *said = found
-        kinds, features, labels, plugins, shared = said  # what its daemon says it runs: kinds of run, features
-        if drained_at is not None:
-            return None
+        worker_id, name, features = found.id, found.name, found.features
         node = await worker_placement.placement(conn, worker_id)
         if not node.ready:  # a node of a pool whose doctor report is stale or has a high finding it does not accept
             return None
-        r = tables.runs
-        holding = select(func.count()).select_from(r).where(r.c.worker_id == worker_id, r.c.state.in_(runs.HELD_STATES))
-        if (await conn.execute(holding)).scalar_one() >= slots:
+        if agent_placement.is_agent_pool(node.pool) and found.drained_at is None:  # the pool is not out of nodes
+            await agent_placement.recovered_by(conn, worker_id)
+        claimer = await read_claimer(conn, found, node)
+        if claimer.stops():
             return None
-        runtimes = [runtime for runtime in runs.RUNTIMES if available((reported or {}).get(runtime))]
-        offered = plugin_runtimes.claimable(reported, plugins, features)
-        if not runtimes and not offered:
-            return None
-        served = {row.project_id: row.name for row in await conn.execute(_served(worker_id, owner_id))}
-        pairs = _checkout_pairs(served, checkouts)
-        clones = runs.CLONES_CHECKOUTS in (features or ())
-        if not pairs and not clones:
-            return None
-        w = tables.workers
-        steadiness = select(func.coalesce(steady(w), False)).where(w.c.id == worker_id)
-        is_steady = (await conn.execute(steadiness)).scalar_one()
-        environments = await plugin_environments.offered(conn, worker_id, plugins, features)
-        query = _claimable(
-            worker_id,
-            owner_id,
-            list(served),
-            runtimes,
-            pairs,
-            offered=tuple(offered),
-            environments=tuple(environments),
-            plan_runs=runs.takes_plan_runs(version),
-            web_only=dispatch_from == "web",
-            review_runs="review" in (kinds or ()),
-            judge_runs="judge" in (kinds or ()),
-            replay_runs="replay" in (kinds or ()),
-            history_runs="history" in (kinds or ()),
-            probe_runs="probe" in (kinds or ()),
-            author_runs="author" in (kinds or ()),
-            chat_runs="chat" in (kinds or ()),
-            task_runs="task" in (kinds or ()),
-            question_runs="question" in (kinds or ()),
-            release_runs="release" in (kinds or ()),
-            browser_runs="browser" in (kinds or ()),
-            step_sessions=runs.SESSION_PER_STEP in (features or ()),
-            clones=clones,
-            steady=is_steady,
-            shared=shared,
-            profile_gate=and_(
-                claim_clause(name, labels, runtimes, features, offered, environments, plugins, node.pool),
-                browsers.claim_gate(worker_id, features),
-                gateway_accounts.claim_gate(version),
-                node.gate(worker_id),
-            ),
+        runtimes, offered, environments, served = (
+            claimer.runtimes,
+            claimer.offered,
+            claimer.environments,
+            claimer.served,
         )
+        query = _claimable(claimer.conditions())
+        waiting = await overlap.blocked(conn, list(served))
+        if waiting:  # a step run whose files another run of its plan is editing waits in the queue
+            query = query.where(tables.runs.c.id.not_in(waiting))
         row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
@@ -545,6 +546,119 @@ def _checkout_pairs(served: dict[int, str], checkouts) -> list[tuple[int, str]]:
         if project in by_name and repo:
             pairs.append((by_name[project], repo))
     return pairs
+
+
+@dataclass(frozen=True)
+class Claimer:
+    """What the claim of one worker goes by, read now (``read_claimer``): its row (``worker_columns``), its placement,
+    how many runs it holds, its runtimes of the core and of plugins it takes (``offered``), the projects it serves on
+    which its owner holds writer and its checkouts there (``pairs``), whether its daemon clones what it lacks, whether
+    it is steady, and the plugins' environments it takes. The claim (``_claim_once``) and the reasons a queued run waits
+    (``queue_fit``) both read a worker through it, so they never count it two ways."""
+
+    row: object
+    node: worker_placement.Placement
+    holding: int
+    runtimes: list[str]
+    offered: list[str]
+    served: dict[int, str]
+    pairs: list[tuple[int, str]]
+    clones: bool
+    steady: bool
+    environments: list[str]
+
+    def stops(self) -> list[str]:
+        """What keeps the worker from taking any run now, before the queue is read, each by its key, in the order the
+        claim checks them: unready (a node of a pool that is not ready), full (no free slot), runtime (none it takes),
+        checkout (none of a project it serves, and a daemon that clones nothing). Draining is a condition on the run
+        (``conditions``), since a drained worker still takes the runs that resume one it parked."""
+        checks = (
+            (not self.node.ready, "unready"),
+            (self.holding >= self.row.slots, "full"),
+            (not self.runtimes and not self.offered, "runtime"),
+            (not self.pairs and not self.clones, "checkout"),
+        )
+        return [key for failed, key in checks if failed]
+
+    def conditions(self) -> list[tuple[str, object]]:
+        """Every condition on a queued run for the worker to take it now, each with its key: on a drained worker, that
+        the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``gates``."""
+        row = self.row
+        drained = [("draining", resumes_here(row.id))] if row.drained_at is not None else []
+        kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
+        said = {kind: kind in kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
+        said |= {kind: kind in kinds for kind in ("task", "question", "release", "browser")}
+        conditions = _claim_conditions(
+            row.id,
+            row.owner_id,
+            list(self.served),
+            self.runtimes,
+            self.pairs,
+            offered=tuple(self.offered),
+            plan_runs=runs.takes_plan_runs(row.agent_version),
+            web_only=row.dispatch_from == "web",
+            **{f"{kind}_runs": runs_it for kind, runs_it in said.items()},
+            step_sessions=runs.SESSION_PER_STEP in features,
+            clones=self.clones,
+            steady=self.steady,
+            shared=row.shared,
+        )
+        return drained + conditions + self.gates()
+
+    def gates(self) -> list[tuple[str, object]]:
+        """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes),
+        its browser, the model gateway, a judge of merge requests, the agent pools, the account pools and the worker's
+        labels and taints ask of the worker, each by its key."""
+        row = self.row
+        clause = claim_clause(
+            row.name,
+            self.runtimes,
+            row.features,
+            self.offered,
+            self.environments,
+            row.plugins,
+        )
+        return [
+            ("profile", clause),
+            ("browser", browsers.claim_gate(row.id, row.features)),
+            ("gateway", gateway_accounts.claim_gate(row.agent_version)),
+            ("merge_judge", merge_judge_gate(row.features)),
+            ("agent_pool", agent_placement.claim_gate(row.id)),
+            ("pool_accounts", pool_accounts.claim_gate()),
+            ("placement", or_(agent_placement.home_run(row.id), self.node.gate(row.id))),
+        ]
+
+
+def merge_judge_gate(features):
+    """The condition a queued run meets for a worker whose daemon says ``features``: a judge run of the merge queue or
+    of a GitHub merge check (``merge_judge``, ``merge_check``) goes only to a daemon that says it judges merge requests
+    (``runs.MERGE_JUDGE``); any other run, the Curator's judge runs too, asks nothing of it."""
+    if runs.MERGE_JUDGE in (features or ()):
+        return true()
+    r, q, c = tables.runs, tables.merge_queue, tables.merge_checks
+    judged = or_(exists().where(q.c.judge_run_id == r.c.id), exists().where(c.c.judge_run_id == r.c.id))
+    return or_(r.c.kind != "judge", ~judged)
+
+
+async def read_claimer(conn: AsyncConnection, row, node: worker_placement.Placement) -> Claimer:
+    """The ``Claimer`` of the worker ``row`` (``worker_columns``) whose placement is ``node``, read on ``conn``."""
+    r, w = tables.runs, tables.workers
+    holding = select(func.count()).select_from(r).where(r.c.worker_id == row.id, r.c.state.in_(runs.HELD_STATES))
+    reported, features = row.runtimes, row.features
+    served = {found.project_id: found.name for found in await conn.execute(_served(row.id, row.owner_id))}
+    steadiness = select(func.coalesce(steady(w), False)).where(w.c.id == row.id)
+    return Claimer(
+        row=row,
+        node=node,
+        holding=(await conn.execute(holding)).scalar_one(),
+        runtimes=[runtime for runtime in runs.RUNTIMES if available((reported or {}).get(runtime))],
+        offered=list(plugin_runtimes.claimable(reported, row.plugins, features)),
+        served=served,
+        pairs=_checkout_pairs(served, row.checkouts),
+        clones=runs.CLONES_CHECKOUTS in (features or ()),
+        steady=(await conn.execute(steadiness)).scalar_one(),
+        environments=list(await plugin_environments.offered(conn, row.id, row.plugins, features)),
+    )
 
 
 @dataclass(frozen=True)
@@ -708,7 +822,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     )
     body = (await conn.execute(dispatched)).scalar_one_or_none()
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
-    copy, verify = None, None
+    copy, verify, criteria = None, None, None
     if view.kind in OWN_PROMPTS:
         prompt = await _own_prompt(conn, view, features, card is not None and card.ships)
         title = view.title
@@ -746,6 +860,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = text_or_none(step.get("title"))
         verify = runs.verify_of(step)
+        criteria = [key for key, _ in proofs.criteria(plan, step)] or None
     from evo_agents.hub.server.context_answers import with_answers
     from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
 
@@ -769,6 +884,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         lost_attempt=await _lost_attempt(conn, view),
         runtime=view.runtime,
         model=view.model,
+        routing=await _routing(conn, project_id, view),
         mode=view.mode,
         approval=view.approval,
         timeout_min=view.timeout_min,
@@ -781,17 +897,29 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         budget=await _claimed_budget(conn, view),
         curator=await _curator_spec(conn, project_id, view),
         verify=verify,
+        criteria=criteria,
         session_per_step=view.session_per_step,
         browser=view.browser,
         browser_identities=view.browser_identities,
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
+        account_pool=await pool_accounts.is_pooled(conn, run_id),
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
         autonomy=autonomy,
         attachments=await _opening_files(conn, view),
         chat_message_id=view.chat_message_id if view.kind == "chat" else None,
     )
+
+
+async def _routing(conn: AsyncConnection, project_id: int, view: Run) -> dict | None:
+    """The routing by difficulty the claim of run ``view`` carries (``model_router.claim_routing``); the project's
+    policy is read only for a run of a routed kind and runtime that names no model."""
+    if view.model or view.kind not in model_router.ROUTED_KINDS or view.runtime not in model_router.ROUTED_RUNTIMES:
+        return None
+    from evo_agents.hub.server.autonomy_policies import effective_policy  # it imports the Loop, which reads runs
+
+    return model_router.claim_routing(await effective_policy(conn, project_id), view.kind, view.runtime, view.model)
 
 
 async def _opening_files(conn: AsyncConnection, view: Run) -> list:

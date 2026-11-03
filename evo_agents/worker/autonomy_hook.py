@@ -8,12 +8,22 @@ the agent, as the card gives it (an ask a project policy sets reads auto: the me
 - ask: it refuses the command and tells the agent to ask first, ``evo-agents worker ask --category <the class's
   category>``, and once the answer lets it, to run the command again after ``EVO_DECISION=<the decision's id>``. The
   hub then checks that the decision is the run's, of a category of the class, and answered (``POST
-  /v1/worker/runs/{id}/autonomy-acts``); without the hub's word the command stays refused.
+  /v1/worker/runs/{id}/autonomy-acts``); without the hub's word the command stays refused. For a ``gh pr merge`` the
+  hook reads the pull request's head and scope (``pull_heads``) and sends them too: a decision of category merge
+  asked with ``--pull`` holds for the head and scope it was asked at alone, so a push since then refuses the command,
+  saying why, and the agent asks again at the new head.
 - notify: it lets the command through, records a ``system`` event of the run, and has the hub tell the principal (the
   same route), which also answers the mode now, the stricter of the snapshot and the value now: a class the hub reads
   deny or ask now is refused as above. A hub that does not answer in ACT_TIMEOUT seconds leaves the command through,
   the event saying the principal was not told.
 - auto: it lets the command through and records the event.
+
+A merge command (``gh pr merge``, or ``gh api`` of ``repos/OWNER/NAME/pulls/N/merge``) the modes let through meets one
+more gate when the repo has ``merge_check`` on (plan super-board-parity-2, K5 in docs/autonomy.md): the hook reads the
+pull request's head, the hub (``POST /v1/worker/runs/{id}/merge-gate``) says whether it holds a passed merge check for
+that head, and the command must pin it (``--match-head-commit HEAD``, or ``-f sha=HEAD`` for the API). Without the
+verdict the refusal names ``evo-agents worker merge-check``. A repo with the check off, or a hub that does not answer,
+leaves the command as the modes said.
 
 Each event of the hook is a decision of the ledger S1 (plan autonomy-levels, criterion a10): its ``autonomy`` body names
 the class, the mode, the command, the verdict, and the run, its principal and its agent.
@@ -22,7 +32,15 @@ The floor S2 (``FLOORS`` of ``autonomy_levels``): a command of K9 whose mode let
 a backup made within the last 24 hours (``evo-agents worker backup``, kept in the run's ``backups.jsonl``); otherwise
 the hook refuses it and says to make a backup first. This holds for every principal, A5 included.
 
-A run without a snapshot (a local run, one queued before schema 0113) gets no hook of autonomy. The hook is a second
+The file floor (``Floor``, plan super-board-parity-1, step 2) holds in every claude-code run of the worker, with a
+snapshot or without one, like S2 and S3: Edit, Write, MultiEdit and NotebookEdit only into the run's directory, the
+system's temporary directories and the run's own Claude configuration (CLAUDE_CONFIG_DIR, else the memory directories
+under ``~/.claude/projects``); Read, Grep, Glob and the Bash commands that read or copy a file (READERS) never on a
+secret file (``secret_file``). A path is resolved to the real one, symlinks and ``..`` followed, before it is compared.
+Each refusal is a ``system`` event of the run (its ``floor`` body), and a check that fails refuses the call. A program
+the agent runs that reads ``.env`` itself is not the floor's business.
+
+A run without a snapshot (a local run, one queued before schema 0113) gets no hook of autonomy, only the floor. The hook is a second
 layer, never the boundary: a command written to a script first, piped through base64, or run in a subshell the
 classifier does not read gets past it (``command_classes``). What the hub leases the run, and its gates on merges,
 deploys and releases, are the boundary.
@@ -32,11 +50,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fnmatch
+import glob
 import json
 import logging
 import os
 import re
 import subprocess
+import tempfile
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -44,7 +65,8 @@ from pathlib import Path
 
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ASK, AUTO, CLASS_NAMES, DENY, NOTIFY
-from evo_agents.worker.command_classes import Hit, classify, repo_slug
+from evo_agents.worker import pull_heads
+from evo_agents.worker.command_classes import SHELLS, Hit, _shell_script, classify, repo_slug, simple_commands
 
 BACKUPS_FILE = "backups.jsonl"
 BACKUP_FRESH = timedelta(hours=24)
@@ -118,8 +140,9 @@ def refusal(hit: Hit, mode: str, source: str) -> str:
 def ask_refusal(hit: Hit, mode: str, source: str) -> str:
     categories = CLASS_CATEGORIES.get(hit.klass, ("scope",))
     other = f" (or --category {categories[1]} for a change of real data)" if len(categories) > 1 else ""
+    pull = " --pull <the pull request's number>" if hit.klass == "K5" else ""
     return (
-        f"{refusal(hit, mode, source)}. Ask first: `evo-agents worker ask --category {categories[0]}`{other}, with "
+        f"{refusal(hit, mode, source)}. Ask first: `evo-agents worker ask --category {categories[0]}{pull}`{other}, with "
         "the option you recommend and why (`--recommended KEY --recommended-reason TEXT`) and whether the command can "
         "be undone (`--reversible yes --undo TEXT`, or `--reversible no`), and wait for the answer; when it lets you, "
         f"run the command again as `{DECISION_VARIABLE}=<the decision's id> <command>`."
@@ -152,6 +175,12 @@ class Gate:
     run_id: int | None = None
     principal: str | None = None  # the login of the run's principal, from its card
     agent: str | None = None  # the handle of the run's agent profile
+    # the approval of the pull request a merge command merges, its head and scope now (``pull_heads.of_command``)
+    pull: Callable[[str], dict | None] | None = None
+    # the repo, number, head and pinned head of the pull request a merge command merges (``pull_heads.facts_of_command``)
+    merge_facts: Callable[[str], dict | None] | None = None
+    # the hub's word on a merge command in a repo with the merge check on (``POST .../merge-gate``)
+    merge_gate: Callable[[dict], Awaitable[dict | None]] | None = None
 
     @classmethod
     def of(cls, autonomy: Mapping | None, worktree: Path, backups: Path, **given) -> Gate | None:
@@ -190,7 +219,9 @@ class Gate:
         acted, decision = self.read(given["command"])
         if not acted:
             return None
-        why = self.refused(acted, decision) or await self._hub(acted, decision)
+        why = self.refused(acted, decision) or await self._hub(acted, decision, given["command"])
+        if why is None and any(hit.klass == "K5" for hit, _ in acted):
+            why = await self._merge_gate(given["command"])
         for hit, mode in acted:
             body = {"class": hit.klass, "mode": mode, "what": hit.what, "verdict": "refused" if why else "allowed"}
             body |= {"run": self.run_id, "principal": self.principal, "agent": self.agent}  # the ledger S1
@@ -201,15 +232,47 @@ class Gate:
             self.record(text, body)
         return why
 
-    async def _hub(self, acted: list[tuple[Hit, str]], decision: int | None) -> str | None:
+    async def _merge_gate(self, command: str) -> str | None:
+        """The merge gate of the hub (plan super-board-parity-2): a merge of a pull request in a repo with the merge check
+        on goes only at the head the hub judged and passed, and the command pins that head. A repo with it off, a
+        command that merges no pull request and a hub that does not answer leave the command through."""
+        if self.merge_facts is None or self.merge_gate is None:
+            return None
+        facts = await asyncio.to_thread(self.merge_facts, command)
+        if facts is None:
+            return None
+        answer = await self.merge_gate({"repo": facts["repo"], "number": facts["number"], "head": facts["head"]})
+        if answer is None or not answer.get("gated"):
+            return None
+        ask = answer.get("command") or "evo-agents worker merge-check"
+        if not answer.get("passed"):
+            return (
+                f"the hub's merge check holds this merge: {answer.get('reason') or 'no passed verdict for the head'}. "
+                f"Ask the hub with `{ask}`, end your turn while it judges, and merge when it passes."
+            )
+        head = answer["head_sha"]
+        pin = "--match-head-commit" if facts["how"] == "pr" else "-f sha="
+        if facts["pin"] != head:
+            seen = f"pins {facts['pin'][:12]}" if facts["pin"] else "pins no head"
+            return (
+                f"the hub's merge check passed pull request #{facts['number']} at {head[:12]} alone, and the command "
+                f"{seen}: run it again with {pin}{'=' if pin.startswith('--') else ''}{head}"
+            )
+        return None
+
+    async def _hub(self, acted: list[tuple[Hit, str]], decision: int | None, command: str = "") -> str | None:
         """The hub's word on the classes in notify and ask: refused when it reads one stricter now, or when the
-        decision of a class in ask is not answered."""
+        decision of a class in ask is not answered, or was answered for another head or scope of the pull request."""
         for hit, mode in acted:
             if mode not in (ASK, NOTIFY):
                 continue
             body = {"klass": hit.klass, "what": hit.what}
             if mode == ASK:
                 body["decision_id"] = decision
+                if hit.klass == "K5" and decision is not None and self.pull is not None:
+                    bound = await asyncio.to_thread(self.pull, command)
+                    if bound is not None:
+                        body |= {"head": bound["head"], "scope": bound["scope"]}
             answer = await self.act(body) if self.act is not None else None
             if answer is None:
                 if mode == ASK:
@@ -222,6 +285,13 @@ class Gate:
             if now == DENY:
                 return refusal(hit, now, "the principal's autonomy now (stricter than the run's snapshot)")
             if (mode == ASK or now == ASK) and not answer.get("answered"):
+                if decision is not None and answer.get("stale"):
+                    return (
+                        f"{refusal(hit, ASK, self.source(hit.klass))}: the answer to decision #{decision} no longer "
+                        f"opens the gate, {answer['stale']}. Ask again at the head now (`evo-agents worker ask "
+                        "--category merge --pull <the pull request's number>`), and once the answer lets you, run "
+                        f"the command again as `{DECISION_VARIABLE}=<the new decision's id> <command>`."
+                    )
                 if decision is None:
                     return ask_refusal(hit, now, "the principal's autonomy now (stricter than the run's snapshot)")
                 return (
@@ -229,6 +299,191 @@ class Gate:
                     f"of this run in category {' or '.join(CLASS_CATEGORIES.get(hit.klass, ()))}"
                 )
         return None
+
+
+WRITE_TOOLS = {"Edit": "file_path", "Write": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
+TEMP_DIRS = ("/tmp", "/var/tmp")
+ENV_NAMES = re.compile(r"^\.env(\..+)?$")
+ENV_EXAMPLES = frozenset({".env.example", ".env.sample", ".env.template"})
+SSH_KEYS = re.compile(r"^id_(rsa|dsa|ecdsa|ed25519)(_sk)?$")
+SECRET_NAMES = frozenset({".npmrc", ".pypirc", ".netrc"})
+SECRET_SUFFIXES = (".pem", ".key")
+EVO_TOKENS = re.compile(r"^(token|.+\.token)$")  # the hub's and the worker's token files under ~/.evo
+# A sample of secret names and one plain name: a Glob pattern that matches a secret and not the plain one asks for
+# secret files.
+SECRET_SAMPLES = (".env", ".env.local", "id_rsa", "id_ed25519", "x.pem", "x.key", ".npmrc", ".pypirc", ".netrc")
+PLAIN_SAMPLE = "x.py"
+# The programs whose file arguments the floor reads as files they read or copy: a word of theirs that names an existing
+# secret file refuses the command. ``source`` and the programs that read .env themselves are left alone.
+READERS = frozenset(
+    {
+        *("cat", "tac", "nl", "less", "more", "head", "tail", "bat", "batcat", "view", "vi", "vim", "nvim", "nano"),
+        *("emacs", "cp", "mv", "scp", "rsync", "install", "dd", "base64", "base32", "xxd", "hexdump", "od"),
+        *("strings", "grep", "egrep", "fgrep", "rg", "ag", "ack", "sed", "awk", "gawk", "cut", "sort", "uniq"),
+        *("diff", "cmp", "comm", "paste", "tar", "zip", "gzip", "bzip2", "xz", "7z", "curl", "wget", "jq", "yq"),
+        *("openssl", "gpg", "sha256sum", "md5sum", "column", "fold", "tr", "iconv", "envsubst", "gh"),
+    }
+)
+WRITE_OUTSIDE, SECRET_FILE = "write_outside", "secret_file"
+
+
+def real(path: str | os.PathLike, base: Path) -> Path:
+    """``path`` as the real path it names: ``~`` expanded, relative to ``base``, symlinks and ``..`` resolved."""
+    given = Path(os.path.expanduser(str(path)))
+    return Path(os.path.realpath(given if given.is_absolute() else base / given))
+
+
+def _within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def secret_file(path: Path, home: Path, worktree: Path | None = None) -> bool:
+    """Whether the real ``path`` is a secret file: ``.env`` and ``.env.*`` (not the examples), an SSH key, ``*.pem``,
+    ``*.key``, ``.npmrc``, ``.pypirc``, ``.netrc``, ``~/.aws/credentials``, ``~/.omelet.json`` and the credentials of
+    ``~/.omelet.d``, and a token file under ``~/.evo`` outside the run's worktree."""
+    name = path.name
+    if ENV_NAMES.match(name) and name not in ENV_EXAMPLES:
+        return True
+    if SSH_KEYS.match(name) or name.endswith(SECRET_SUFFIXES) or name in SECRET_NAMES:
+        return True
+    if (name.startswith("id_") and not name.endswith(".pub")) and path.parent == home / ".ssh":
+        return True
+    if path in (home / ".aws" / "credentials", home / ".omelet.json") or _within(path, home / ".omelet.d/credentials"):
+        return True
+    evo = home / ".evo"
+    inside = worktree is not None and _within(path, worktree)
+    return not inside and _within(path, evo) and (EVO_TOKENS.match(name) is not None or _within(path, evo / "secrets"))
+
+
+def secret_pattern(pattern: str) -> bool:
+    """Whether a Glob or Grep pattern asks for secret files: its last part matches a secret name and not a plain
+    one."""
+    last = pattern.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    if not last or fnmatch.fnmatch(PLAIN_SAMPLE, last):
+        return False
+    return any(fnmatch.fnmatch(sample, last) for sample in SECRET_SAMPLES) or secret_file(
+        Path(last), Path("/nonexistent")
+    )
+
+
+def _arguments(word: str) -> list[str]:
+    """The paths a word of a reader may name: itself, after ``@`` (curl), after ``=`` (``if=``, ``--file=``), after
+    ``<``."""
+    found = [] if word.startswith("-") else [word.lstrip("<")]
+    for mark in ("@", "="):
+        if mark in word:
+            found.append(word.split(mark, 1)[1])
+    return [path for path in found if path]
+
+
+@dataclass
+class Floor:
+    """The file floor of one run (module docstring): where its agent may write (``writable``, real paths), its
+    worktree, the home whose secrets it keeps, and how it records a refusal (``record``, a text and a body)."""
+
+    worktree: Path
+    writable: tuple[Path, ...]
+    home: Path
+    record: Callable[[str, dict], None] = field(default=lambda text, body: None)
+    run_id: int | None = None
+    agent: str | None = None
+
+    @classmethod
+    def of(
+        cls,
+        worktree: Path,
+        env: Mapping[str, str] | None = None,
+        home: Path | None = None,
+        temp: tuple | None = None,
+        **given,
+    ) -> Floor:
+        """The floor of a run that works in ``worktree`` with the agent's environment ``env``; ``temp`` the system's
+        temporary directories, TEMP_DIRS and the one ``tempfile`` names by default."""
+        env = env or {}
+        home = Path(os.path.realpath(home or Path.home()))
+        temp = (tempfile.gettempdir(), *TEMP_DIRS) if temp is None else temp
+        roots = [worktree, *temp, env.get("TMPDIR") or ""]
+        config = env.get("CLAUDE_CONFIG_DIR")
+        roots.append(config or home / ".claude" / "projects")
+        writable = tuple(dict.fromkeys(Path(os.path.realpath(os.path.expanduser(str(r)))) for r in roots if str(r)))
+        return cls(Path(os.path.realpath(worktree)), writable, home, **given)
+
+    def refused(self, tool_name: str, tool_input) -> tuple[str, str, str] | None:
+        """(the rule, the path, why) when the floor refuses the call of ``tool_name``; None when it lets it through."""
+        given = tool_input if isinstance(tool_input, Mapping) else {}
+        if tool_name in WRITE_TOOLS:
+            target = given.get(WRITE_TOOLS[tool_name])
+            if not isinstance(target, str) or not target:
+                return None
+            path = real(target, self.worktree)
+            if any(_within(path, root) for root in self.writable):
+                return None
+            where = ", ".join(str(root) for root in self.writable)
+            return WRITE_OUTSIDE, str(path), f"{tool_name} of {path} is outside the run's directories; write in {where}"
+        if tool_name in ("Read", "Grep", "Glob"):
+            return self._reads(tool_name, given)
+        if tool_name == "Bash" and isinstance(given.get("command"), str):
+            return self._command(given["command"])
+        return None
+
+    def _secret(self, tool: str, path: Path) -> tuple[str, str, str] | None:
+        if not secret_file(path, self.home, self.worktree):
+            return None
+        return SECRET_FILE, str(path), f"{tool} of {path}: the run's agent never reads a secret file (the file floor)"
+
+    def _reads(self, tool_name: str, given: Mapping) -> tuple[str, str, str] | None:
+        key = "file_path" if tool_name == "Read" else "path"
+        target = given.get(key)
+        if isinstance(target, str) and target:
+            found = self._secret(tool_name, real(target, self.worktree))
+            if found:
+                return found
+        pattern = given.get("pattern") if tool_name == "Glob" else given.get("glob")
+        if isinstance(pattern, str) and secret_pattern(pattern):
+            why = f"{tool_name} for {pattern} asks for secret files: the run's agent never reads one (the file floor)"
+            return SECRET_FILE, pattern, why
+        return None
+
+    def _command(self, command: str, depth: int = 0) -> tuple[str, str, str] | None:
+        for words in simple_commands(command):
+            script = _shell_script(words) if Path(words[0]).name in SHELLS and depth < 3 else None
+            found = self._command(script, depth + 1) if script else None
+            if found:
+                return found
+            reader = Path(words[0]).name in READERS
+            for index, word in enumerate(words[1:], 1):
+                redirected = words[index - 1] == "<" or word.startswith("<")
+                if not (reader or redirected):
+                    continue
+                for argument in _arguments(word):
+                    for path in self._expand(argument):
+                        found = self._secret(f"the command {Path(words[0]).name}", path)
+                        if found:
+                            return found
+        return None
+
+    def _expand(self, argument: str) -> list[Path]:
+        if not glob.has_magic(argument):  # a word that names no file is a pattern or a value: nothing it reads
+            path = real(argument, self.worktree)
+            return [path] if path.is_file() else []
+        pattern = os.path.expanduser(argument)
+        pattern = pattern if os.path.isabs(pattern) else str(self.worktree / pattern)
+        return [real(found, self.worktree) for found in sorted(glob.glob(pattern, include_hidden=True))[:200]]
+
+    def check(self, tool_name: str, tool_input) -> str | None:
+        """Why the floor refuses the call, recorded as an event of the run; None when it lets it through. A check that
+        fails refuses."""
+        try:
+            found = self.refused(tool_name, tool_input)
+        except Exception as exc:  # the floor holds: a call it cannot read is refused
+            found = ("check_failed", "", f"the file floor could not check the call of {tool_name} ({exc}); refused")
+        if found is None:
+            return None
+        rule, path, why = found
+        body = {"rule": rule, "tool": tool_name, "path": path, "verdict": "refused", "run": self.run_id}
+        body["agent"] = self.agent
+        self.record(f"File floor refused {tool_name} ({rule}): {path}", body)
+        return why
 
 
 def claude_hook(gate: Gate | None):
@@ -246,9 +501,39 @@ def claude_hook(gate: Gate | None):
     return autonomy_gate
 
 
-def for_run(run) -> Gate | None:
+def claude_floor_hook(floor: Floor | None):
+    """The PreToolUse callback of the Claude Agent SDK for the file floor, or None without one."""
+    if floor is None:
+        return None
+
+    async def file_floor(data, tool_use_id, context) -> dict:
+        why = floor.check(str(data.get("tool_name") or ""), data.get("tool_input"))
+        if why is None:
+            return {}
+        decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why}
+        return {"hookSpecificOutput": decision}
+
+    return file_floor
+
+
+def floor_for_run(run, env: Mapping[str, str]) -> Floor | None:
+    """The file floor of a run of the daemon whose agent gets ``env``; None for a run without a worktree."""
+    if run.worktree is None:
+        return None
+    profile = run.spec.get("profile")
+    return Floor.of(
+        Path(run.worktree),
+        env,
+        record=lambda text, body: run.note(text, floor=body),
+        run_id=run.id,
+        agent=profile.get("handle") if isinstance(profile, Mapping) else None,
+    )
+
+
+def for_run(run, env: Callable[[], Mapping[str, str]] | None = None) -> Gate | None:
     """The gate of a run of the daemon (``runner.context.Run``) with a snapshot of autonomy: its events go to the run's
-    log, its questions to the hub with the worker's token; None for a run without a snapshot or a worktree."""
+    log, its questions to the hub with the worker's token, and gh reads a pull request it merges with the agent's
+    environment ``env()``; None for a run without a snapshot or a worktree."""
     autonomy = run.spec.get("autonomy")
     if not autonomy or run.worktree is None:
         return None
@@ -261,6 +546,13 @@ def for_run(run) -> Gate | None:
             log.info("autonomy act unanswered", extra={"run_id": run.id, "error": str(exc)[:200]})
             return None
 
+    async def merge_gate(body: dict) -> dict | None:
+        try:
+            return await asyncio.wait_for(run.daemon.hub.merge_gate(run.id, body, timeout=ACT_TIMEOUT), ACT_TIMEOUT)
+        except Exception as exc:  # the hub's silence leaves the command through, as for a class in notify
+            log.info("merge gate unanswered", extra={"run_id": run.id, "error": str(exc)[:200]})
+            return None
+
     return Gate.of(
         autonomy,
         Path(run.worktree),
@@ -270,6 +562,11 @@ def for_run(run) -> Gate | None:
         record=lambda text, body: run.note(text, autonomy=body),
         act=act,
         run_id=run.id,
+        pull=lambda command: pull_heads.of_command(command, Path(run.worktree), env() if env is not None else None),
+        merge_facts=lambda command: pull_heads.facts_of_command(
+            command, Path(run.worktree), env() if env is not None else None
+        ),
+        merge_gate=merge_gate,
         principal=autonomy.get("principal") if isinstance(autonomy, Mapping) else None,
         agent=(run.spec.get("profile") or {}).get("handle") if isinstance(run.spec.get("profile"), Mapping) else None,
     )

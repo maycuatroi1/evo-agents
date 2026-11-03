@@ -112,9 +112,9 @@
   },
   "product": {
     "meta": {
-      "title": "evo-agents chạy plan của bạn bằng coding agent trên máy của chính bạn",
-      "description": "Bộ công cụ mã nguồn mở cho Claude Code, Codex CLI và opencode. Một worker trên laptop hay máy bàn của bạn chạy plan của nhóm và chỉ dừng lại hỏi người ở các quyết định. Giấy phép Apache-2.0.",
-      "imageAlt": "Một plan run đang chờ quyết định: reindex 48.210 sản phẩm trên staging ngay, hay chờ khung giờ tối nay."
+      "title": "evo-agents | Coding agent trên máy của bạn",
+      "description": "Chạy Claude Code, Codex CLI hoặc opencode trên nhiều repo. Giao kế hoạch, theo dõi công việc trên trình duyệt và chọn những việc agent cần bạn duyệt.",
+      "imageAlt": "Một lượt chạy demo với các bước đã xong và một câu hỏi đang chờ trả lời."
     },
     "header": {
       "nav": "evo-agents trên GitHub",
@@ -122,92 +122,77 @@
       "source": "Mã nguồn"
     },
     "hero": {
-      "title": "Giao một plan cho coding agent trên máy của bạn. Agent chỉ hỏi bạn khi cần quyết định.",
+      "title": "Chạy coding agent trên nhiều repo, bằng máy của bạn.",
+      "start": "Bắt đầu",
       "signIn": "Đăng nhập bằng GitHub",
       "openHub": "Mở hub",
-      "invite": "Xin lời mời",
-      "inviteHint": "Form xin lời mời là một issue công khai trên GitHub, hỏi login GitHub của bạn và việc bạn muốn làm. Không cần email."
+      "imageAlt": "Trang Monitor hiển thị các agent đang làm việc và một câu hỏi chờ trả lời.",
+      "demo": "Hub demo với dự án, người và máy hư cấu."
     },
     "claims": {
-      "lede": "<readme>evo-agents</readme> là bộ công cụ mã nguồn mở cho các nhóm làm việc với Claude Code, Codex CLI hoặc opencode. Một <workers>worker</workers> trên laptop hay máy bàn của chính bạn nhận các bước của plan từ hub của nhóm, chạy chúng bằng một trong các agent đó rồi gửi lại log và bằng chứng.",
-      "planRuns": "Một <planRuns>plan run</planRuns> giao cả plan cho một worker, và agent làm các bước theo thứ tự plan cho phép. Mỗi khi agent báo một bước, <verify>worker chạy lại các lệnh kiểm của bước đó</verify>, rồi commit và push. <timeout>Timeout của run</timeout>, 2, 4, 8 hoặc 24 giờ, chỉ tính thời gian agent làm việc.",
-      "sleep": "Trên macOS, worker <sleep>giữ máy thức</sleep> trong lúc nó giữ một run. Laptop chạy pin mà gập nắp thì vẫn ngủ: các run trên máy đó dừng, và <retry>hub chạy lại chúng</retry> khi lease hết hạn.",
-      "decisions": "Agent của plan run chỉ dừng lại hỏi bạn ở <decisions>vài loại quyết định</decisions>, như xóa dữ liệu, migration trên dữ liệu thật, gửi gì đó ra dịch vụ bên ngoài, tiêu tiền, hay một lựa chọn kiến trúc hoặc phạm vi mà plan chưa chốt. Mọi lựa chọn khác agent tự quyết và <why>ghi lại lý do</why> vào bằng chứng của bước.",
-      "waiting": "Trong lúc bạn quyết, run <waits>chờ, và thời gian chờ không tính vào timeout</waits>. Bạn trả lời trong <inbox>Inbox</inbox> trên web, hoặc bấm <telegram>một nút trên Telegram</telegram> nếu hub có bot. Sau 24 giờ không ai trả lời, run <parks>tạm gác và nhả slot trên worker</parks>, và câu trả lời đến sau sẽ cho nó chạy tiếp trong cùng phiên.",
-      "spool": "Với <spool>plugin evo-hub</spool> trong Claude Code, kết quả thành công của Bash, Grep, WebFetch hay một tool MCP mà dài quá 10.000 ký tự được ghi nguyên vào một file trên máy bạn. Model nhận <head>1.500 ký tự đầu và 1.500 ký tự cuối</head>, kèm một dòng ghi tên file.",
-      "sessionPerStep": "Plan run cũng có thể cho <sessionPerStep>mỗi bước một phiên riêng</sessionPerStep>, chỉ chứa bước đó và bản bàn giao của plan thay vì mọi thứ run đã đọc trước đó.",
-      "graph": "<harnessInit>evo-agents harness init</harnessInit> cho mỗi repo của dự án một nguồn, harness cũng có nguồn riêng, để dựng một knowledge graph chung của dự án. Agent truy vấn graph qua MCP: <kgSearch>kg_search</kgSearch> tìm id theo tên, mã, đường dẫn hay từ khóa, còn <kgImpact>kg_impact</kgImpact> liệt kê những gì phụ thuộc vào một file hay một diff trước khi bạn sửa.",
-      "worktrees": "Trong một <planRuns>plan run</planRuns>, agent làm việc trong worktree của từng repo mà plan nêu, trên branch plan chỉ định cho repo đó, nên một plan sửa được nhiều repo.",
-      "install": "<graphify>Extra graphify</graphify> giúp knowledge graph lấy được symbol trong code của khoảng 40 ngôn ngữ, còn <worker>extra worker</worker> thêm daemon của worker.",
-      "login": "Bạn <hubLogin>đăng nhập mỗi máy một lần</hubLogin>, và token nằm trong ~/.evo/hub.",
-      "plugins": "<hubPlugin>evo-hub</hubPlugin> nối agent với các plan trên hub, còn <kgPlugin>evo-kg</kgPlugin> nối agent với knowledge graph của dự án. Codex dùng plugin evo-hub qua <codex>hai lệnh riêng</codex>.",
-      "next": "Sau đó <quickStart>tạo harness</quickStart> cho các repo của bạn và <workers>ghép một worker</workers>.",
-      "roadmap": "<roadmap>Roadmap</roadmap> ghi những gì đã dùng được và những gì còn đang làm, không hẹn ngày.",
-      "loop": "<loop>Loop</loop> biến các thay đổi trong dự án, như một goal vừa sửa hay một plan agent vừa viết, thành việc cho các loại run hub đã có, và hỏi người ở ba cổng. Loop đã có trong code, mặc định tắt, và <roadmap>còn đang thay đổi</roadmap>.",
-      "canvas": "<canvas>Canvas</canvas> giữ một Lean Canvas cho mỗi sản phẩm của dự án, và một claim trên đó chỉ thành Đã xác thực khi có bằng chứng thật. Canvas đã có trong code, không làm gì cho tới khi admin của dự án bật nó, và <roadmap>còn đang thay đổi</roadmap>.",
-      "growth": "<growth>Các plugin tăng trưởng</growth> chưa được làm: một plugin sẽ theo dõi những người tự tìm đến dự án, plugin kia sẽ đăng tin của dự án bằng chính tài khoản của dự án, có bước kiểm trước mỗi bài và trần chi tiêu.",
-      "status": "evo-agents còn sớm, chưa tới 1.0: <pypi>các bản phát hành lên PyPI với tên evo-ak</pypi>, và lệnh, route, định dạng file vẫn đổi giữa các bản. <license>Mã nguồn theo giấy phép Apache-2.0</license>, và bạn vào được một hub <invites>qua link mời hoặc nhờ hub admin</invites>."
+      "lede": "Giao một kế hoạch cho Claude Code, Codex CLI hoặc opencode. Với <readme>evo-agents</readme>, bạn theo dõi công việc trên các repo, trả lời câu hỏi hoặc tiếp quản phiên làm việc ngay trên trình duyệt.",
+      "planRuns": "Giao cả kế hoạch, kèm thứ tự các bước và cách kiểm tra. <verify>Worker chạy lại các lệnh kiểm tra</verify> trước khi ghi nhận bước đã xong, kèm commit và kết quả.",
+      "graph": "Agent dùng chung <context>kế hoạch và memory giữa các phiên</context>. <graph>Knowledge graph</graph> giúp tìm code, tài liệu và mối liên hệ giữa các repo.",
+      "decisions": "Xem việc nào đang chạy, việc nào cần bạn. Bạn <policy>chọn những việc agent cần hỏi trước</policy>, rồi trả lời trong <inbox>Inbox</inbox> hoặc qua Telegram nếu đã cấu hình.",
+      "machines": "Một <worker>worker</worker> chạy agent trên laptop, máy bàn hoặc server bạn kết nối, dùng tài khoản coding agent của bạn. Bạn cũng có thể <host>tự vận hành hub</host>.",
+      "access": "Dùng hub của nhóm, xin lời mời vào hub này, hoặc <host>tự cài hub riêng</host>.",
+      "status": "evo-agents chưa tới phiên bản 1.0; lệnh và định dạng có thể đổi giữa các bản. Xem <roadmap>roadmap</roadmap> để biết phần nào đã dùng được, phần nào còn đang làm."
     },
     "needs": {
-      "title": "evo-agents làm gì",
-      "demo": "Ảnh chụp lấy từ một hub demo. Dự án, người và máy trong đó đều là hư cấu.",
-      "need": "Nhu cầu",
-      "answer": "Trong evo-agents",
+      "title": "Bớt việc điều phối agent",
       "rows": {
-        "unattended": {
-          "title": "Việc dài không cần ai ngồi canh",
-          "need": "Người dùng muốn agent làm tiếp khi họ đi vắng. Người dùng Claude Code xin cho phiên chạy tiếp khi hạn mức phiên hồi lại, và giờ Claude Code đã làm được việc đó. Một công cụ trên Show HN giữ máy Mac gập nắp thức trong lúc agent làm việc.",
-          "imageAlt": "Trang Monitor của một hub demo: bốn run đang chạy trên ba worker, một run trong đó đang chờ quyết định."
-        },
-        "away": {
-          "title": "Câu hỏi chờ người trả lời",
-          "need": "Người dùng Claude Code báo lỗi một câu hỏi tự bỏ cuộc sau 60 giây rồi chạy tiếp mà không có câu trả lời. Người khác xin được báo về điện thoại khi có yêu cầu cấp quyền đang chờ.",
-          "imageAlt": "Một plan run đang chờ quyết định: reindex 48.210 sản phẩm trên staging ngay, hay chờ khung giờ tối nay."
+        "plans": {
+          "title": "Giao cả kế hoạch"
         },
         "context": {
-          "title": "Context đầy dần",
-          "need": "Người dùng xin được điều khiển việc compaction, và có cách xem lại những gì compaction đã bỏ. Một bài viết của Anthropic viết rằng “getting agents to make consistent progress across multiple context windows remains an open problem.”",
-          "imageAlt": "Log của một run, trong đó output dài của test được thay bằng một ghi chú nêu file chứa toàn bộ output."
+          "title": "Giữ context của dự án"
         },
-        "repos": {
-          "title": "Thay đổi trải trên nhiều repo",
-          "need": "Người dùng xin Claude Code và Codex mở một phiên hay một workspace chứa nhiều repo Git.",
-          "imageAlt": "Tìm checkout trên knowledge graph, ra file và symbol trong các nguồn web, API và harness."
+        "control": {
+          "title": "Biết việc nào cần bạn"
+        },
+        "machines": {
+          "title": "Dùng máy của bạn"
         }
       }
     },
-    "sources": {
-      "title": "Nguồn",
-      "asOf": "Số liệu tính đến {date}.",
-      "issue": "Issue trong {repo}",
-      "hn": "Hacker News",
-      "article": "Bài viết của {publisher}",
-      "reactions": "{count, plural, other {# reaction}}",
-      "discussion": "{points, plural, other {# điểm}}, {comments, plural, other {# bình luận}}",
-      "open": "đang mở",
-      "closed": "đã đóng, hoàn thành ngày {date}"
+    "workflow": {
+      "title": "Giao một việc cụ thể",
+      "exampleLabel": "Ví dụ yêu cầu",
+      "example": "Thêm tính năng lưu giỏ hàng ở trang thanh toán. Sửa cả API và frontend, thêm test cho việc khôi phục giỏ hàng sau khi đăng nhập.",
+      "description": "Hub lưu kế hoạch và hiển thị tiến độ. Worker chạy agent trên máy bạn kết nối.",
+      "steps": {
+        "describe": {
+          "title": "Mô tả thay đổi",
+          "body": "Chọn Plan mới ở trang Plans của dự án. Agent trên worker sẽ viết các bước thực hiện."
+        },
+        "review": {
+          "title": "Đọc kế hoạch rồi chạy",
+          "body": "Kiểm tra phạm vi và các test, chỉnh lại nếu cần, rồi chọn Chạy plan."
+        },
+        "follow": {
+          "title": "Theo dõi công việc",
+          "body": "Đọc output và kết quả test trên trình duyệt. Bạn có thể nhắn agent hoặc dừng lượt chạy tại đó."
+        }
+      }
     },
     "start": {
       "title": "Bắt đầu",
-      "description": "Chạy các lệnh này trong terminal trên máy bạn làm việc.",
-      "install": {
-        "title": "Cài CLI evo-agents",
-        "label": "lệnh cài đặt"
+      "team": {
+        "title": "Chạy agent cùng nhóm",
+        "invite": "Xin lời mời",
+        "inviteHint": "Form xin lời mời là issue công khai trên GitHub. Đừng đưa thông tin riêng của dự án hay credential vào đó.",
+        "prerequisites": "Cần Python 3.11+, uv và một coding agent đã cài, đăng nhập. Worker chạy trên macOS, Linux hoặc WSL nếu dùng Windows.",
+        "installLabel": "lệnh cài đặt",
+        "loginLabel": "lệnh đăng nhập",
+        "guide": "Kết nối dự án và worker",
+        "next": "Kết nối dự án và worker, rồi tạo kế hoạch đầu tiên."
       },
-      "login": {
-        "title": "Đăng nhập CLI vào hub này",
-        "label": "lệnh đăng nhập"
-      },
-      "plugins": {
-        "title": "Thêm plugin evo-hub và evo-kg vào Claude Code",
-        "label": "lệnh plugin số {number}"
+      "local": {
+        "title": "Thử riêng knowledge graph",
+        "prerequisites": "Cần Python 3.11+, uv và Git.",
+        "guide": "Thử chạy cục bộ",
+        "body": "Lập chỉ mục một repo Git rồi tìm code trong đó. Không cần đăng nhập hub hay có tài khoản model."
       }
-    },
-    "direction": {
-      "title": "Hướng đi",
-      "loop": "Loop",
-      "canvas": "Canvas",
-      "growth": "Plugin tăng trưởng"
     },
     "footer": {
       "nav": "Thêm về evo-agents",
@@ -1682,7 +1667,9 @@
       "taskDone": "Đã xong:",
       "taskOpen": "Chưa xong:",
       "codeBlock": "Khối mã",
-      "table": "Bảng"
+      "table": "Bảng",
+      "trackedAdded": "Đã thêm:",
+      "trackedRemoved": "Đã xoá:"
     },
     "detail": {
       "title": "Memory",
@@ -3765,6 +3752,15 @@
       "allowed": "Worker, label và pool được phép",
       "defaultNote": "Agent mặc định của dự án giữ mọi quyền: mọi worker của người giao việc đều nhận run của nó.",
       "deletedNote": "Agent này đã bị xoá: nó không nhận run mới, nên nơi chạy không đổi được nữa."
+    },
+    "placement": {
+      "title": "Vị trí chạy",
+      "pool": "Pool",
+      "nodes": "Node",
+      "noNodes": "Chưa có node nào tham gia",
+      "nodesFailed": "Không đọc được các node",
+      "accountPool": "Pool tài khoản",
+      "none": "Không có"
     }
   },
   "chats": {
@@ -4065,13 +4061,15 @@
       "sheetBody": "{name}, một tài liệu của {title}",
       "modeLabel": "Cách hiển thị tài liệu",
       "read": "Đọc",
-      "changes": "Thay đổi",
+      "tracked": "Đánh dấu",
+      "lines": "Theo dòng",
       "shownLabel": "Phiên bản đang xem",
       "against": "so với",
       "version": "Bản {number}, {author}, {at, date, short} {at, time, short}",
       "reloaded": "{author} vừa gửi bản mới: đã tự tải lại, thay đổi hiện bên dưới.",
       "bodyLabel": "{name}",
-      "gone": "Tài liệu này không còn trong các tin nhắn đã tải.",
+      "gone": "Không còn phiên bản nào của tài liệu này mà bạn đọc được.",
+      "byAgent": "agent",
       "tooBig": "Bản này lớn hơn 2 MiB, quá lớn để đọc ở đây: hãy mở nó từ các file của tin nhắn.",
       "readFailed": "Không đọc được tài liệu.",
       "retry": "Thử lại",
@@ -4080,9 +4078,9 @@
       "hiddenLines": "{count, plural, other {# dòng không đổi}}",
       "addedLine": "Thêm:",
       "removedLine": "Xoá:",
-      "legendAdded": "dòng thêm",
-      "legendRemoved": "dòng xoá hoặc thay thế",
-      "legendSame": "giữ nguyên"
+      "legendAdded": "Đã thêm",
+      "legendRemoved": "Đã xoá",
+      "legendSame": "Giữ nguyên"
     },
     "agentMenu": {
       "open": "Mở menu của {name}",
@@ -4387,6 +4385,28 @@
         "projectTitle": "Dự án {project}",
         "open": "Mở @{handle} của {project}",
         "loadFailed": "Không tải được tài khoản của các agent."
+      },
+      "pools": {
+        "title": "Nhóm tài khoản",
+        "description": "Tập tài khoản có tên mà admin gắn cho agent. Agent ở chế độ nhóm chỉ chạy bằng nhóm của nó.",
+        "none": "Chưa có nhóm tài khoản.",
+        "hint": "Mỗi agent có một nhóm tài khoản. Khi nhóm không có tài khoản dùng được, lần chạy chờ trong hàng đợi.",
+        "failed": "Không đổi được nhóm tài khoản.",
+        "added": "Đã thêm tài khoản vào {pool}.",
+        "accountCount": "{count, plural, other {# tài khoản}}",
+        "agentCount": "{count, plural, other {# agent}}",
+        "delete": "Xóa",
+        "inUse": "Một agent đang dùng nhóm này: gỡ ra trước.",
+        "noAccounts": "Nhóm chưa có tài khoản.",
+        "remove": "Gỡ {name}",
+        "accountName": "Tên tài khoản",
+        "agentHandle": "Handle của agent (tùy chọn)",
+        "addAccount": "Thêm tài khoản",
+        "attachFor": "Nhóm tài khoản của @{handle}",
+        "noPool": "Không có nhóm",
+        "poolName": "Tên nhóm mới",
+        "create": "Tạo nhóm",
+        "agents": "Agent"
       }
     },
     "variables": "{provider}, {count, plural, other {# biến}}",
@@ -5868,7 +5888,8 @@
       "dispatched": "{count, plural, =1 {Đã dispatch run {ids}} other {Đã dispatch # run: {ids}}}",
       "dispatchedText": "{count, plural, =1 {Run chờ trong queue tới khi có worker nhận.} other {Các run chờ trong queue tới khi có worker nhận.}}",
       "openRun": "Mở run",
-      "openRuns": "Mở các run đang hoạt động"
+      "openRuns": "Mở các run đang hoạt động",
+      "noWorker": "Chưa worker nào nhận được run #{id}"
     },
     "author": {
       "kind": "Author run",
@@ -7083,7 +7104,7 @@
       "syncFailed": "worker không giữ graph tươi được"
     },
     "sub": {
-      "duty": "Ca đêm trên <worker></worker> với tư cách {owner}, từ {start} đến {end} {timezone}",
+      "duty": "Ca đêm với tư cách {owner}, từ {start} đến {end} {timezone}",
       "paused": "{login} đã tạm dừng <ago></ago>",
       "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>"
     },
@@ -7122,7 +7143,7 @@
     },
     "empty": {
       "title": "Chưa có charter",
-      "description": "Charter cho Curator biết khi nào làm việc, trên worker nào, trong ngân sách bao nhiêu và được đổi những gì. Mỗi đêm Curator xem xét dự án và đề xuất thay đổi, mỗi đề xuất kèm bằng chứng.",
+      "description": "Charter cho Curator biết khi nào làm việc, trong ngân sách bao nhiêu và được đổi những gì. Ca đêm chạy trên node thuộc pool của agent mặc định. Mỗi đêm Curator xem xét dự án và đề xuất thay đổi, mỗi đề xuất kèm bằng chứng.",
       "admin": "Viết charter",
       "reader": "Admin của dự án viết charter, tại đây hoặc bằng <command></command>."
     },
@@ -7153,7 +7174,6 @@
       "now": "Giờ địa phương",
       "inWindow": "trong cửa sổ",
       "outWindow": "ngoài cửa sổ",
-      "worker": "Worker trực",
       "owner": "Chạy với tư cách",
       "caps": "Mỗi đêm",
       "capsValue": "tối đa {budget} và {runs} run",
@@ -7169,7 +7189,7 @@
     },
     "lastReview": {
       "title": "Review run gần nhất",
-      "none": "Review run đầu tiên được xếp khi cửa sổ kế tiếp mở, trên worker trực.",
+      "none": "Review run đầu tiên được xếp khi cửa sổ kế tiếp mở, trên node thuộc pool của agent mặc định.",
       "run": "Run",
       "openRun": "Mở review run #{id}",
       "night": "Đêm",
@@ -7552,7 +7572,6 @@
       "noGoals": "Chưa có mục tiêu. Curator cân đề xuất theo các mục tiêu, mục tiêu đầu tiên quan trọng nhất.",
       "addGoal": "Thêm mục tiêu",
       "removeGoal": "Bỏ mục tiêu {n}",
-      "noWorkerOption": "Không worker nào của bạn nhận được",
       "windowValue": "Từ {start} đến {end}, {timezone}",
       "runBudgetNone": "Phần còn lại của đêm",
       "reviewBudgetNone": "Như mọi run trong đêm",
@@ -7569,7 +7588,7 @@
       "roleValue": "{runtime}, {model}",
       "groups": {
         "goals": "Mục tiêu",
-        "window": "Cửa sổ và worker",
+        "window": "Cửa sổ",
         "budget": "Ngân sách và giới hạn",
         "scope": "Được làm gì",
         "review": "Review",
@@ -7578,7 +7597,7 @@
       },
       "groupHints": {
         "goals": "Mục tiêu của sản phẩm, quan trọng nhất trước.",
-        "window": "Ca đêm làm khi nào, trên worker của ai, và bản tin sáng đến lúc nào.",
+        "window": "Ca đêm làm khi nào, và bản tin sáng đến lúc nào. Ca đêm chạy trên node thuộc pool của agent mặc định.",
         "budget": "Một đêm và mỗi run được tốn bao nhiêu. Hub ngừng xếp run ở giới hạn đầu tiên chạm tới.",
         "scope": "Plan được chạy, số quyết định mỗi ngày, thứ được merge và thứ không bao giờ đụng.",
         "review": "Review run hằng đêm: nhìn qua bao nhiêu lăng kính và đếm lùi bao xa.",
@@ -7598,7 +7617,6 @@
         "windowEnd": "Cửa sổ đóng",
         "timezone": "Múi giờ",
         "briefAt": "Bản tin sáng lúc",
-        "worker": "Worker trực",
         "owner": "Chạy với tư cách",
         "nightBudget": "Ngân sách đêm, USD",
         "runBudget": "Ngân sách mỗi run, USD",
@@ -7630,8 +7648,6 @@
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
         "timezone": "Tên IANA, ví dụ Asia/Ho_Chi_Minh.",
         "briefAt": "Bản tóm tắt buổi sáng cho chủ dự án, theo múi giờ của cửa sổ.",
-        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub, hoặc một pool của bạn phục vụ dự án; ca đêm chạy với tư cách chủ của nó.",
-        "noWorker": "Không worker nào của bạn nhận được run của ca đêm. <link>Đăng ký một worker</link> cho dự án này.",
         "usd": "Lớn hơn 0, tối đa {max}.",
         "runBudget": "Để trống: run được dùng phần còn lại của đêm.",
         "range": "Từ {min} đến {max}.",
@@ -7648,7 +7664,7 @@
         "replayTasks": "Số tác vụ giữ lại mà mỗi thay đổi được replay, từ {min} đến {max}. Cần 6 tác vụ thì replay mới có thể thắng.",
         "replayBudget": "Để trống: không chạy replay.",
         "historyBudget": "Để trống: số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm. 0: không chạy run lịch sử.",
-        "historyModel": "Để trống: model rẻ nhất mà worker trực báo cho runtime của Reviewer.",
+        "historyModel": "Để trống: model rẻ nhất mà node báo cho runtime của Reviewer.",
         "probeK": "Số phiên của mỗi nhánh probe, trên mỗi model, từ {min} đến {max}.",
         "probeBudget": "Để trống: không chạy probe. Tối đa {max} cho một tuần ISO, tách khỏi ngân sách đêm."
       },
@@ -7661,7 +7677,6 @@
         "time": "Nhập giờ dạng HH:MM, 24 giờ.",
         "timezone": "Nhập múi giờ IANA, ví dụ Asia/Tokyo.",
         "sameTime": "Cửa sổ mở và đóng cùng giờ: hãy cho nó độ dài.",
-        "worker": "Tên worker: chữ, số, dấu chấm, gạch ngang và gạch dưới.",
         "money": "Lớn hơn 0 và tối đa {max} USD.",
         "overNight": "Vượt ngân sách đêm: một run không bao giờ được nhiều hơn cả đêm.",
         "whole": "Số nguyên từ {min} đến {max}.",
@@ -7679,18 +7694,15 @@
         "title": "Các bản",
         "count": "{count} bản",
         "loading": "Đang đọc các bản",
-        "number": "Bản {revision}",
-        "worker": "trên {worker}"
+        "number": "Bản {revision}"
       },
       "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}",
       "replayBudgetNone": "Không có: không chạy replay",
       "historyBudgetDefault": "Số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm",
       "historyBudgetOff": "Không có: không chạy run lịch sử",
-      "historyModelDefault": "model rẻ nhất worker báo",
+      "historyModelDefault": "model rẻ nhất node báo",
       "probeBudgetNone": "Không có: không chạy probe",
-      "probeModelsBuilder": "Runtime và model của Builder",
-      "poolsGroup": "Pool của bạn",
-      "poolOption": "Pool {pool}, node sẵn sàng bất kỳ"
+      "probeModelsBuilder": "Runtime và model của Builder"
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",
@@ -10166,6 +10178,9 @@
     "proposals": {
       "heading": "Đề xuất chờ nhận ({count})",
       "newClaim": "Claim mới",
+      "inRun": "trong run",
+      "openRun": "Mở run #{id}",
+      "group": "{count, plural, other {# đề xuất}} chung một lý do",
       "change": "thay đổi ở rev {rev}",
       "accept": "Nhận",
       "reject": "Từ chối",
@@ -10742,7 +10757,8 @@
       "merge_sample": "Mẫu kiểm",
       "srs_review": "Duyệt SRS",
       "srs_finding": "Finding SRS",
-      "srs_baseline": "Bản nền SRS"
+      "srs_baseline": "Bản nền SRS",
+      "srs_adopt": "Plan chờ adopt"
     },
     "decidedBy": {
       "admin": "Admin",

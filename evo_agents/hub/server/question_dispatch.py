@@ -28,14 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import plugin_calls, plugin_events, profiles, question_runs, tables, task_runs
 from evo_agents.hub.question_runs import MAX_ASKER_CHARS, MAX_REF_CHARS
-from evo_agents.hub.server import audit, member_channels
+from evo_agents.hub.server import agent_placement, audit, member_channels
 from evo_agents.hub.server.agent_types import enabled_type, type_spend
 from evo_agents.hub.server.chat_runs import project_repos
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_state import move_run, notify_queued
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.runs.service.worker_fit import worker_problems, workers_of
 from evo_agents.hub.server.task_dispatch import type_refusal
 
 log = logging.getLogger(__name__)
@@ -69,22 +68,11 @@ async def _asked(conn: AsyncConnection, plugin_id: int, project_id: int, ref: st
 
 
 async def _fit_problem(conn: AsyncConnection, enabled, row) -> str | None:
-    """Why no worker of the type's run_as that the type may run on can take a question run now, or None: one that is
-    only busy can, since the run waits in the queue."""
-    profile = await by_id(conn, row.profile_id)
-    named = {name.lower() for name in row.workers or ()}
-    found = (await conn.execute(workers_of(row.run_as_id, enabled.project_id))).all()
-    mine = [w for w in found if w.owner_id == row.run_as_id and (not named or w.name.lower() in named)]
-    said = []
-    for worker in mine:
-        problems = [why for why in worker_problems(worker, profile, "machine", "question") if why != BUSY]
-        if not problems:
-            return None
-        said.append(f"{worker.name} {', '.join(problems)}")
-    which = f"of {', '.join(sorted(named))} " if named else ""
-    return f"no worker {which}of {row.run_as}, whom agent type {row.name} runs as, can take a question run now: " + (
-        "; ".join(said) if said else f"{row.run_as} has none that serves project {enabled.project}"
-    )
+    """Why no node takes a question run now, or None: a node of the agent's pool takes the run, or it waits for one
+    (``agent_placement``); only an agent with no pool is refused."""
+    if await agent_placement.home_of(conn, row.profile_id) is not None:
+        return None
+    return f"agent type {row.name} has no pool of its own in project {enabled.project}: an admin adds one"
 
 
 async def _kept(conn: AsyncConnection, project: str, level: str, location: str | None, below: bool) -> bool:

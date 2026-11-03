@@ -1,19 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, FilePen, FilePlus, Server, X } from "lucide-react";
-import Link from "next/link";
+import { CircleAlert, FilePen, FilePlus, X } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/feedback/notice";
-import { useStatusText } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
-import { type Worker, WORKERS_HREF, workersQuery } from "@/components/workers/queries";
+import { type Worker, workersQuery } from "@/components/workers/queries";
 import { agentModels, agentProblems, agentWorkers, AUTHOR_SKILL, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
@@ -25,9 +22,8 @@ import { cn } from "@/lib/utils";
 import { AccountField } from "./account-field";
 import { accountField, BY_RULES } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
-import { Outlook } from "./dispatch-fields";
 import { useDispatchAuthorRun } from "./hooks";
-import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, pinRefused, readModel, readRequest, workerFitsNow } from "./model";
+import { dispatchWorkers, harnessRepo, modelSuggestions, readModel, readRequest } from "./model";
 import { ModelField } from "./model-field";
 import {
   AUTHOR_RUNTIME,
@@ -55,11 +51,11 @@ type Props = {
 const COUNT_FROM = 0.75;
 
 /**
- * New plan and Revise with agent: an author run (docs/workers.md, Author runs), an agent on one of the visitor's own
- * workers that writes a plan of the project from their request, or a new revision of `planId`, asking them in the
- * run's chat when it needs to. The dialog takes the request (at most 16 KiB of UTF-8), the worker (an author run is
- * always pinned), the model and the timeout, as Run plan's does; the runtime is Claude Code, the one an author run
- * takes. Its footer says whether the worker picked can take the run now. The content mounts each time it opens.
+ * New plan and Revise with agent: an author run (docs/workers.md, Author runs), an agent that writes a plan of the
+ * project from the visitor's request, or a new revision of `planId`, asking them in the run's chat when it needs to.
+ * The dialog takes the request (at most 16 KiB of UTF-8), the model and the timeout, as Run plan's does; the runtime
+ * is Claude Code, the one an author run takes. It names no worker: the agent's own pool takes the run. The content
+ * mounts each time it opens.
  */
 export function AuthorRunDialog({ project, planId, open, onOpenChange, onDispatched, onCloseAutoFocus }: Props) {
   const write = useDispatchAuthorRun(project);
@@ -102,7 +98,6 @@ function AuthorRunForm({
   const t = useTranslations("runs.author.dialog");
   const tDispatch = useTranslations("runs.dispatch");
   const tPlanRun = useTranslations("runs.planRun");
-  const tStatus = useStatusText("worker");
   const format = useFormatter();
   const ids = useId();
   const failure = useWriteFailure();
@@ -115,7 +110,6 @@ function AuthorRunForm({
   const [request, setRequest] = useState("");
   const [problem, setProblem] = useState<"blank" | "long" | null>(null);
   const [modelText, setModelText] = useState("");
-  const [workerChoice, setWorkerChoice] = useState<number | null>(null);
   const [timeout, setTimeoutHours] = useState<AuthorTimeout>(DEFAULT_AUTHOR_TIMEOUT);
   const [account, setAccount] = useState(BY_RULES);
   const agents = useAgentChoice(project);
@@ -123,33 +117,27 @@ function AuthorRunForm({
   const harness = projectState.data ? harnessRepo(projectState.data.harness) : undefined;
   const own: Worker[] = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
-  const fit = { project, runtime: AUTHOR_RUNTIME, repos: harness ? [harness] : [] };
-  const workerId = authorWorker(mine, fit, workerChoice);
   const model = readModel(modelText, AUTHOR_RUNTIME);
   const suggestions = agentModels(agents.agent, modelSuggestions(mine, AUTHOR_RUNTIME));
   const problems = agentProblems(agents.agent, { runtime: AUTHOR_RUNTIME, model: model.model, workers: own, skill: AUTHOR_SKILL });
-  const outlook = dispatchOutlook(1, mine, fit, workerId);
-  const workersLoading = workersState.isPending || me.isPending;
-  const noWorkers = !workersLoading && own.length === 0;
   const noHarness = projectState.isSuccess && harness === null;
   const bytes = utf8Bytes(request);
   const pending = write.isPending;
   const revise = planId !== null;
   const planTitle = (plan.data?.body as { title?: unknown } | undefined)?.title;
   const planName = typeof planTitle === "string" && planTitle.trim() ? planTitle : (planId ?? "");
-  const runnable = workerId !== null && !noHarness && model.problem === null && problems.length === 0 && !pinRefused(outlook);
+  const runnable = !noHarness && model.problem === null && problems.length === 0;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (pending) return;
     const read = readRequest(request);
     setProblem(read.problem);
-    if (read.problem !== null || !runnable || workerId === null) return;
+    if (read.problem !== null || !runnable) return;
     let run: Run;
     try {
       run = await write.mutateAsync({
         request: read.request,
-        worker_id: workerId,
         plan_id: planId,
         runtime: AUTHOR_RUNTIME,
         model: model.model,
@@ -265,47 +253,6 @@ function AuthorRunForm({
           disabled={pending}
         />
 
-        <div className="flex min-w-0 flex-col gap-1.5" data-testid="author-run-worker">
-          <label htmlFor={`${ids}-worker`} className="text-sm font-medium">
-            {tDispatch("worker")}
-          </label>
-          {workersLoading ? (
-            <Skeleton className="h-9 w-full sm:w-80" role="status" aria-label={t("workersLoading")} />
-          ) : noWorkers ? (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-workers">
-              <Server className="size-4 shrink-0" aria-hidden="true" />
-              <span>{tDispatch("noWorkers", { project })}</span>
-              <Link href={WORKERS_HREF} className="font-medium text-brand underline-offset-4 hover:underline">
-                {tDispatch("registerWorker")}
-              </Link>
-            </p>
-          ) : (
-            <NativeSelect
-              id={`${ids}-worker`}
-              value={workerId === null ? "" : String(workerId)}
-              onChange={(event) => setWorkerChoice(Number(event.target.value))}
-              disabled={pending}
-              className="w-full sm:w-80 md:[&_select]:h-9 [&_select]:font-mono"
-              aria-describedby={`${ids}-worker-hint`}
-              data-testid="author-run-worker-select"
-            >
-              {mine.map((worker) => (
-                <NativeSelectOption key={worker.id} value={String(worker.id)}>
-                  {tDispatch(worker.shared ? "workerOptionShared" : "workerOption", {
-                    name: worker.name,
-                    owner: worker.owner,
-                    status: tStatus(worker.status === "online" ? (worker.held_runs > 0 ? "busy" : "idle") : worker.status),
-                  })}
-                  {workerFitsNow(worker, fit) ? "" : ` ${t("workerCannot")}`}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          )}
-          <p id={`${ids}-worker-hint`} className="text-xs text-pretty text-muted-foreground">
-            {harness ? t("workerHint", { harness }) : t("workerHintNoHarness")}
-          </p>
-        </div>
-
         <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
 
         <div className="flex flex-col gap-1.5">
@@ -335,8 +282,8 @@ function AuthorRunForm({
         {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>
 
-      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : <Outlook outlook={outlook} project={project} subject="author" />}
+      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : null}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button

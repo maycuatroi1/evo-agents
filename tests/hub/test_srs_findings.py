@@ -56,8 +56,9 @@ from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, membe
     srs_core,
     submitted,
     tool,
+    with_accounts,
 )
-from tests.hub.test_chat_runs import created
+from tests.hub.test_chat_runs import chat_worker, created
 from tests.hub.test_runs import PROJECT, control, moved
 
 NODES = {"usecase:UC BIL-1", "plan:rollout/step:1"}
@@ -194,10 +195,12 @@ def test_srs_finding_is_recorded_by_ba_only_with_sources_the_hub_finds(client, h
     # the whole document, on the version given
     whole = recorded(client, agent, item=None, level="info", kind="overlap", version=1)
     assert findings(client, hub["reader"])[-1]["item"] is None and whole == found["id"] + 1
-    # another agent's run, and a member's own session, record nothing
+    # another agent's run, on a node of its own pool, and a member's own session, record nothing
+    with_accounts(client, "reviewer", OWNER)
+    desk = chat_worker(client, hub["owner"], "desk", pool="reviewer")
     chat = created(client, hub["owner"], "SRS", people=[OTHER], agents=("ba", "reviewer"))
     mention(client, hub["owner"], chat["id"], "@reviewer check UC ORD-2")
-    reviewer = agent_of(studio, running(client, studio, "chat")["id"])
+    reviewer = agent_of(desk, running(client, desk, "chat")["id"])
     text, error = tool(client, reviewer, "srs__finding", **record, sources=sources)
     assert error and "only the agent of a chat run or a task run of @ba" in text, text
     text, error = tool(client, hub["other"], "srs__finding", PROJECT, **record, sources=sources)

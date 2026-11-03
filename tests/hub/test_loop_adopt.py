@@ -7,6 +7,7 @@ delivered at once. The command line runs without Postgres; the rest needs EVO_HU
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from functools import partial
 from types import SimpleNamespace
 
@@ -31,7 +32,7 @@ if pg.DSN:
 
     from evo_agents.hub import tables
     from evo_agents.hub.server.loop import backlog as hub_backlog
-    from evo_agents.hub.server.loop import delivery
+    from evo_agents.hub.server.loop import delivery, notices
     from evo_agents.hub.server.loop.tick import tick
     from tests.hub.live import sql
     from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, members and srs_core are fixtures)
@@ -47,13 +48,15 @@ if pg.DSN:
     from tests.hub.test_ba_agent import review as whole
     from tests.hub.test_credentials_api import app_key  # noqa: F401
     from tests.hub.test_loop_srs_backlog import goal, ids, run
-    from tests.hub.test_loop_tick import policy
+    from tests.hub.test_loop_tick import confirm, policy
 
     ADOPT = f"/v1/projects/{PROJECT}/loop/adopt"
+    BOARD = f"/v1/projects/{PROJECT}/decision-board"
+    MID_MONTH = datetime(2026, 11, 16, 12, tzinfo=UTC)  # no goal_review then
 
-    def pushed(client, hub, plan_id: str = PLAN, status: str = "pending") -> None:
-        step = {"id": 1, "title": "Coding", "repo": "evo-agents", "what": "the change", "status": status}
-        body = {"id": plan_id, "goal": "Coding activity.", "repos": [{"repo": "evo-agents"}], "steps": [step]}
+    def pushed(client, hub, plan_id: str = PLAN, status: str = "pending", what: str = "the change", **extra) -> None:
+        step = {"id": 1, "title": "Coding", "repo": "evo-agents", "what": what, "status": status}
+        body = {"id": plan_id, "goal": "Coding activity.", "repos": [{"repo": "evo-agents"}], "steps": [step], **extra}
         answer = client.put(f"/v1/projects/{PROJECT}/plans/{plan_id}", json={"body": body}, headers=hub["owner"])
         assert answer.status_code == 200, answer.text
 
@@ -73,6 +76,25 @@ if pg.DSN:
 
     def states(client, document: int) -> dict[str, str]:
         return {key: row.state for key, row in run(client, delivery.read, document).items()}
+
+    def ticked(client, project: int) -> None:
+        assert client.portal.call(partial(tick, client.app.state.engine, project, dispatch=None)) is not None
+
+    def built(db) -> list[str]:
+        """The codes of the use cases of the builds the Loop made."""
+        i = tables.loop_items
+        details = sql(db, select(i.c.detail).where(i.c.kind == "build"))
+        return sorted(case["code"] for (detail,) in details for case in detail["backlog"]["use_cases"])
+
+    def held_on_board(client, headers) -> list[dict]:
+        return [i for i in client.get(BOARD, headers=headers).json()["items"] if i["kind"] == "srs_adopt"]
+
+    def told(db) -> list[tuple]:
+        n, u = tables.notifications, tables.users
+        query = (
+            select(u.c.login, n.c.details).join_from(n, u, u.c.id == n.c.user_id).where(n.c.notice_kind == "srs_adopt")
+        )
+        return sql(db, query)
 
 
 @needs_pg
@@ -153,3 +175,59 @@ def test_the_writer_who_owns_the_goal_may_adopt(client, hub, hub_db):
     assert adopt(client, hub["other"], "UC ORD-1").status_code == 403
     assert adopt(client, hub["chi"], "UC ORD-1").status_code == 200
     assert states(client, document) == {"uc ord-1": "delivering"}
+
+
+@needs_pg
+def test_a_plan_not_adopted_that_names_a_use_case_holds_its_group_out_of_any_build_and_asks_for_adopt(
+    client, hub, hub_db
+):
+    """Use cases approved after the baseline that a plan written by hand already delivers make no build (and so no
+    author run) of their own: the plan's group waits on the board and its owner hears of it once, until it is adopted."""
+    project, document, goal_id = approved(client, hub, hub_db, owner=CHI)
+    confirm(hub_db, document, goal_id)
+    pushed(client, hub, what="Place an order (UC ORD-1, BR ORD1-2) through the cart.")
+    policy(client, hub, {"enabled": True})
+    ticked(client, project)
+    assert built(hub_db) == ["UC RET-1"], "the group of UC ORD-1 waits for the plan that names it"
+    assert states(client, document) == {"uc ret-1": "delivering"}
+    (waiting,) = held_on_board(client, hub["owner"])
+    assert (waiting["group"], waiting["decided_by"]) == ("policy", "admin")
+    assert waiting["refs"] == {"goal": "G-1", "plan": PLAN, "use_cases": "UC ORD-1, UC ORD-2"}
+    assert f"Plan {PLAN}" in waiting["title"] and "G-1" in waiting["title"]
+    assert CHI in waiting["deciders"], "the writer who owns the goal may adopt it"
+    assert client.portal.call(partial(notices.send, client.app.state.engine, now=MID_MONTH))
+    client.portal.call(partial(notices.send, client.app.state.engine, now=MID_MONTH))
+    ((login, details),) = told(hub_db)
+    assert (login, details["goal"], details["plan"]) == (CHI, "G-1", PLAN), "the goal's owner, once"
+    assert details["use_cases"] == ["UC ORD-1", "UC ORD-2"]
+    ticked(client, project)
+    assert built(hub_db) == ["UC RET-1"], "another tick makes no build of it either"
+    assert adopt(client, hub["chi"], "UC ORD-1", "UC ORD-2").status_code == 200
+    ticked(client, project)
+    assert built(hub_db) == ["UC RET-1"] and held_on_board(client, hub["owner"]) == []
+    assert states(client, document) == dict.fromkeys(("uc ord-1", "uc ord-2", "uc ret-1"), "delivering")
+
+
+@needs_pg
+def test_what_a_plan_does_not_deliver_does_not_hold_a_use_case(client, hub, hub_db):
+    """A plan that names a use case only among its non-goals, or a code that only starts the same, holds nothing; nor
+    does the plan of a deliver of the Loop; a completed plan holds as an active one; an admin who sets a use case
+    undelivered lets a build take it whatever plan names it."""
+    project, document, goal_id = approved(client, hub, hub_db)
+    confirm(hub_db, document, goal_id)
+    pushed(client, hub, "aside", what="Like UC ORD-10, not this document.", non_goals=["UC RET-1 is later."])
+    pushed(client, hub, "done-before", status="done", what="Return a book: UC RET-1.")
+    done = client.post(f"/v1/projects/{PROJECT}/plans/done-before/complete", json={}, headers=hub["owner"])
+    assert done.status_code == 200, done.text
+    pushed(client, hub, what="Pay for an order: UC ORD-2.")
+    fixed = client.post(
+        f"/v1/projects/{PROJECT}/goals/G-1/baseline/fix",
+        json={"codes": {"UC ORD-2": "undelivered"}},
+        headers=hub["owner"],
+    )
+    assert fixed.status_code == 200, fixed.text
+    policy(client, hub, {"enabled": True})
+    ticked(client, project)
+    assert built(hub_db) == ["UC ORD-1", "UC ORD-2"], "an admin's undelivered wins over the plan that names it"
+    (waiting,) = held_on_board(client, hub["owner"])
+    assert waiting["refs"] == {"goal": "G-1", "plan": "done-before", "use_cases": "UC RET-1"}

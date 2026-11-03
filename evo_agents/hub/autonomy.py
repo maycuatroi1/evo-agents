@@ -2,18 +2,21 @@
 project's repos, first of all whether it merges their merge requests on GitLab, as keys an admin of the project
 writes and the hub keeps as revisions (``evo_agents.hub.server.autonomy_policies``, table autonomy_policies).
 
-A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit``, ``loop`` and ``context`` hold the keys of KEYS;
-``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its writer set. A key it leaves out
-reads as its default (``effective``), so a key a later release adds reads its default in every revision written
-before it, and a value an older release took that this one refuses reads as the default too. A project with no
-revision has every repo off: the hub merges nothing on its own, as before the policy (criterion a9).
+A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit``, ``loop``, ``context`` and ``routing``
+hold the keys of KEYS; ``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its
+writer set. A key it leaves out reads as its default (``effective``), so a key a later release adds reads its default
+in every revision written before it, and a value an older release took that this one refuses reads as the default too.
+A project with no revision has every repo off: the hub merges nothing on its own, as before the policy (criterion a9).
 
 Outside a body a key is named by its dotted path: ``merge.hold_until``, ``repos.<repo>.mode``,
 ``repos.<repo>.jobs.uat_check``. A repo's name may hold a dot, so ``key_path`` reads a repo key from its known end.
 The policy has no key that caps a diff or the merges of a day (the member's answers 4 and 8 of 2026-10-21).
 
+``repos.<repo>.merge_check`` (plan super-board-parity-2) is off by default: on, for a repo on github.com alone, the hub
+judges a pull request a run opened at its head before the run merges it (``evo_agents.hub.server.merge_check``).
+
 ``loop`` (plan loop-engine, criterion a4) holds the keys of a project's Loop (``evo_agents.hub.server.loop``): whether
-it runs, the worker of its author and plan runs, the time zone of its schedule, how many work items of each cycle run
+it runs, the time zone of its schedule, how many work items of each cycle run
 at once and how many runs of a repo, how many runs it hands out an hour and how many work items it may make an hour
 before its breaker trips, how long a baseline stays approved before a work item comes of it, the weekday and time of
 its weekly look at each goal, whether a frame task must be in an active sprint, the turns and minutes of the author
@@ -25,6 +28,10 @@ document not archived). It has no estimate and no budget (the member's answer 1 
 ``context.answers`` (plan active-context-answers) is false by default: true adds to the prompt of every run of the project
 the confirmed answers that match its work (``evo_agents.hub.server.context_answers``). The revision that sets it true is
 the first week of the trial that compares the 28 days after with the 28 before.
+
+``routing`` (plan super-board-parity-2, criterion a6) is off by default: ``routing.enabled`` true has the worker rate a
+Claude Code run that names no model easy, medium or hard, with one short turn of ``routing.scorer`` on the run's
+prompt, and start its agent on the model ``routing.ladder`` gives that difficulty (``evo_agents.worker.model_router``).
 
 Standard library only: the server checks bodies with it, and the client may import it.
 """
@@ -43,6 +50,7 @@ from urllib.parse import urlsplit
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
 
 OFF, AUTO = MODES = ("off", "auto")  # repos.<repo>.mode
+ON = "on"  # repos.<repo>.merge_check, with OFF
 RELEASES = ("immediate", "after_uat", "manual")  # repos.<repo>.prod_release
 HOLDS = ("merged", "uat_check", "prod_check")  # merge.hold_until
 JOBS = ("uat_check", "prod_deploy", "prod_check", "rollback")  # repos.<repo>.jobs.*
@@ -57,9 +65,6 @@ TIME_OF_DAY = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # loop.brainstorm.ti
 TIME_ZONE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")  # loop.timezone, as an IANA name
 USE_CASE_MODES = ("always", "never", "auto")  # loop.use_cases (loop.model.USE_CASE_MODES)
 MAX_TIME_ZONE_CHARS = 64
-LABEL = re.compile(
-    r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?"
-)  # loop.labels, as a placement label
 
 # Why a value is wrong, or None when it is right.
 Check = Callable[[Any], str | None]
@@ -137,14 +142,6 @@ def _optional(check: Check) -> Check:
     return optional
 
 
-def _labels(value) -> str | None:
-    """A list of placement labels (``worker_placement``), at most ten."""
-    right = (
-        isinstance(value, list) and len(value) <= 10 and all(isinstance(v, str) and LABEL.fullmatch(v) for v in value)
-    )
-    return None if right else "a list of at most 10 labels such as os=linux or gpu"
-
-
 def _flag(value) -> str | None:
     return None if isinstance(value, bool) else "true or false"
 
@@ -169,14 +166,6 @@ def _globs(value) -> str | None:
 
 LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no estimate and no budget
     Key("loop.enabled", False, _flag, "true: the project's Loop makes work items and hands out their runs"),
-    Key("loop.worker", None, _optional(_line(100)), "the worker of the Loop's author and plan runs; null: none run"),
-    Key(
-        "loop.pool",
-        None,
-        _optional(_line(100)),
-        "the pool of workers the Loop's author and plan runs go to, in place of loop.worker; null: loop.worker",
-    ),
-    Key("loop.labels", [], _labels, "the labels a worker of the Loop's author and plan runs holds, with loop.pool"),
     Key(
         "loop.timezone",
         None,
@@ -213,6 +202,18 @@ CONTEXT_KEYS = (  # plan active-context-answers: off by default; the revision th
         "work",
     ),
 )
+ROUTING_KEYS = (  # plan super-board-parity-2, criterion a6: off by default; a run's model chosen by its difficulty
+    Key(
+        "routing.enabled",
+        False,
+        _flag,
+        "true: the worker rates a run that names no model easy, medium or hard and runs it on the ladder's model",
+    ),
+    Key("routing.scorer", "haiku", _line(200), "the model of the short turn that rates a run's difficulty"),
+    Key("routing.ladder.easy", "haiku", _line(200), "the model of a run rated easy"),
+    Key("routing.ladder.medium", "sonnet", _line(200), "the model of a run rated medium, and of one the scorer failed"),
+    Key("routing.ladder.hard", "opus", _line(200), "the model of a run rated hard"),
+)
 KEYS = (
     Key(
         "merge.opt_in_label", "evo-merge", _line(255), "the label a person puts on a merge request to ask for the queue"
@@ -225,7 +226,6 @@ KEYS = (
         "how far the merge request before must get before the next one of the same target branch starts",
     ),
     Key("merge.pipeline_minutes", 60, _whole(1, 1440), "the longest the hub waits for a pipeline or a job"),
-    Key("judge.worker", None, _optional(_line(100)), "the worker that runs the Judge; null: the charter's worker"),
     Key("judge.model", None, _optional(_line(200)), "the first Judge's model; null: a Claude model not the Builder's"),
     Key("breaker.target_red_minutes", 30, _whole(1, 10080), "the target branch red this long trips the breaker"),
     Key("breaker.reverts_in_a_row", 2, _whole(1, 100), "this many automatic reverts in a row trip the breaker"),
@@ -241,6 +241,7 @@ KEYS = (
     Key("audit.sample_rate", 0.10, _number(0, 1), "the share of merged merge requests an admin is asked to check"),
     *LOOP_KEYS,
     *CONTEXT_KEYS,
+    *ROUTING_KEYS,
 )
 REPO_KEYS = (
     Key("mode", OFF, _one_of(*MODES), "auto: the hub merges the repo's merge requests in scope; off: a person does"),
@@ -253,8 +254,15 @@ REPO_KEYS = (
     Key("prod_release", "immediate", _one_of(*RELEASES), "when the hub runs the PROD deploy after the UAT check"),
     Key("after_uat_hours", 4, _number(0, 720), "hours of a green UAT before the PROD deploy, with after_uat"),
     *(Key(f"jobs.{job}", None, _optional(_line(255)), f"the CI job of {job}; null: the repo has none") for job in JOBS),
+    Key(
+        "merge_check",
+        OFF,
+        _one_of(OFF, ON),
+        "on: a run's pull request on github.com is judged at its head before the run merges it; off: it is not",
+    ),
 )
 TARGET_BRANCH = "target_branch"
+MERGE_CHECK = "merge_check"
 
 
 def _tree(keys) -> dict:
@@ -322,6 +330,11 @@ def _repo_problems(value, repos: Mapping[str, RepoFacts]) -> list[str]:
             found.append(
                 f"{where}.mode: {name} is on github.com, where the Curator's tiers decide what the hub merges; auto "
                 "is for a repo on GitLab"
+            )
+        if not found and keys.get(MERGE_CHECK) == ON and not facts.on_github:
+            found.append(
+                f"{where}.{MERGE_CHECK}: {name} is not on github.com; the merge check judges a pull request there, "
+                "the merge queue a merge request on GitLab"
             )
         problems.extend(found)
     return problems

@@ -1,7 +1,7 @@
 import { PLAN_ID } from "@/lib/plans";
 
 import type { Charter, CharterWrite, Runtime } from "./queries";
-import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, POOL_DUTY, POOL_NAME, TIME_OF_DAY, TIME_ZONE, WORKER_NAME } from "./vocab";
+import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, type Tier, TIME_OF_DAY, TIME_ZONE } from "./vocab";
 
 /**
  * The charter as a form and back (curator.CharterBody): every number as typed, every list one entry a line, checked
@@ -18,7 +18,6 @@ export type CharterForm = {
   windowStart: string;
   windowEnd: string;
   timezone: string;
-  worker: string;
   nightBudget: string;
   runBudget: string;
   runMaxTurns: string;
@@ -28,6 +27,11 @@ export type CharterForm = {
   maxDecisionsPerDay: string;
   briefAt: string;
   autoMerge: boolean;
+  /** Kept as the charter wrote them: `auto_merge` beyond tier 0 (the form switches tier 0 alone), `planned_tiers`, `merge_without_ci`, `answer_by`. */
+  moreAutoMerge: Tier[];
+  plannedTiers: Tier[];
+  mergeWithoutCi: boolean;
+  answerBy: "owner" | "agent";
   protectedPaths: string;
   maxFailedInARow: string;
   outcomeDays: string;
@@ -40,7 +44,7 @@ export type CharterForm = {
   replayBudget: string;
   /** `history.budget_usd`: what the night's history run may cost; empty, the hub's default; 0, none. */
   historyBudget: string;
-  /** `history.model`: empty, the cheapest the worker on duty reports. */
+  /** `history.model`: empty, the cheapest the node on duty reports. */
   historyModel: string;
   /** `probes.k`: the sessions of each arm of a probe, on each model. */
   probeK: string;
@@ -56,7 +60,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "probeModels">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -65,7 +69,6 @@ export type CharterProblem =
   | { code: "time" }
   | { code: "timezone" }
   | { code: "sameTime" }
-  | { code: "worker" }
   | { code: "money"; max: number }
   | { code: "moneyOrZero"; max: number }
   | { code: "overNight" }
@@ -85,12 +88,7 @@ export type CharterErrors = Partial<Record<CharterField, CharterProblem>>;
 const REPLAY_TASKS = 3;
 const PROBE_K = 3;
 
-function lines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-}
+const lines = (text: string): string[] => text.split("\n").map((line) => line.trim()).filter((line) => line !== "");
 
 const money = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
 
@@ -110,17 +108,15 @@ function roleForm(role: { runtime: Runtime; model?: string | null } | undefined)
 }
 
 /**
- * The form for `charter`, or for a first charter: the hub's defaults, the visitor's first worker that may take the
- * night shift's runs and their own time zone.
+ * The form for `charter`, or for a first charter: the hub's defaults, the visitor's own time zone.
  */
-export function charterForm(charter: Charter | null, first: { worker: string; timezone: string }): CharterForm {
+export function charterForm(charter: Charter | null, first: { timezone: string }): CharterForm {
   if (charter === null) {
     return {
       goals: [],
       windowStart: "22:00",
       windowEnd: "06:00",
       timezone: first.timezone,
-      worker: first.worker,
       nightBudget: "5",
       runBudget: "",
       runMaxTurns: "300",
@@ -130,6 +126,10 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
       maxDecisionsPerDay: "5",
       briefAt: "07:00",
       autoMerge: false,
+      moreAutoMerge: [],
+      plannedTiers: [...PLANNED_TIERS],
+      mergeWithoutCi: false,
+      answerBy: "owner",
       protectedPaths: "",
       maxFailedInARow: "2",
       outcomeDays: "7",
@@ -154,7 +154,6 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     windowStart: charter.window.start,
     windowEnd: charter.window.end,
     timezone: charter.window.timezone,
-    worker: charter.pool ? `${POOL_DUTY}${charter.pool}` : (charter.worker ?? ""),
     nightBudget: money(charter.night_budget_usd),
     runBudget: money(charter.run_budget_usd),
     runMaxTurns: String(charter.run_max_turns ?? 300),
@@ -164,6 +163,10 @@ export function charterForm(charter: Charter | null, first: { worker: string; ti
     maxDecisionsPerDay: String(charter.max_decisions_per_day ?? 5),
     briefAt: charter.brief_at ?? "07:00",
     autoMerge: (charter.auto_merge ?? []).includes(0),
+    moreAutoMerge: (charter.auto_merge ?? []).filter((tier) => tier !== 0),
+    plannedTiers: [...(charter.planned_tiers ?? PLANNED_TIERS)],
+    mergeWithoutCi: charter.merge_without_ci ?? false,
+    answerBy: charter.answer_by ?? "owner",
     protectedPaths: (charter.protected_paths ?? []).join("\n"),
     maxFailedInARow: String(charter.circuit_breaker?.max_failed_in_a_row ?? 2),
     outcomeDays: String(charter.outcome_days ?? 7),
@@ -231,8 +234,7 @@ function roleBody(role: RoleForm, field: CharterField, errors: CharterErrors) {
 
 /**
  * The charter a form writes, or the first problem of each field. The checks are the hub's (curator.CharterBody), so a
- * form the web takes the hub takes too, but for what only the hub knows: whether the time zone is one Postgres knows
- * and whether the worker is one of the writer's own that serves the project.
+ * form the web takes the hub takes too, but for what only the hub knows: whether the time zone is one Postgres knows.
  */
 export function charterBody(form: CharterForm): { body: CharterWrite; errors: null } | { body: null; errors: CharterErrors } {
   const errors: CharterErrors = {};
@@ -262,11 +264,6 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
   if (!errors.windowStart && !errors.windowEnd && form.windowStart.trim() === form.windowEnd.trim()) errors.windowEnd = { code: "sameTime" };
   const timezone = form.timezone.trim();
   if (!TIME_ZONE.test(timezone) || timezone.length > LIMITS.timeZoneChars) errors.timezone = { code: "timezone" };
-  // The duty is a worker by its name, or a pool as pool:<name>; the body names the one it is.
-  const duty = form.worker.trim();
-  const pool = duty.startsWith(POOL_DUTY) ? duty.slice(POOL_DUTY.length) : null;
-  if (duty === "") errors.worker = { code: "required" };
-  else if (pool !== null ? !POOL_NAME.test(pool) : !WORKER_NAME.test(duty)) errors.worker = { code: "worker" };
 
   const nightBudget = note<number | null>("nightBudget", dollars(form.nightBudget, false));
   const caps = {
@@ -309,7 +306,6 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
     body: {
       goals: form.goals.map((goal) => ({ id: goal.id.trim(), what: goal.what.trim() })),
       window: { start: form.windowStart.trim(), end: form.windowEnd.trim(), timezone },
-      ...(pool !== null ? { pool } : { worker: duty }),
       night_budget_usd: nightBudget as number,
       run_budget_usd: caps.runBudget,
       run_max_turns: runMaxTurns as number,
@@ -318,7 +314,10 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       night_plans: nightPlans ?? [],
       max_decisions_per_day: maxDecisionsPerDay as number,
       brief_at: form.briefAt.trim(),
-      auto_merge: form.autoMerge ? [...AUTO_MERGE_TIERS] : [],
+      planned_tiers: [...form.plannedTiers],
+      auto_merge: [...(form.autoMerge ? AUTO_MERGE_TIERS : []), ...form.moreAutoMerge].sort((a, b) => a - b),
+      merge_without_ci: form.mergeWithoutCi,
+      answer_by: form.answerBy,
       protected_paths: protectedPaths ?? [],
       circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number },
       outcome_days: outcomeDays as number,
@@ -340,7 +339,6 @@ export const CHARTER_FIELDS: readonly CharterField[] = [
   "windowStart",
   "windowEnd",
   "timezone",
-  "worker",
   "nightBudget",
   "runBudget",
   "maxRunsPerNight",

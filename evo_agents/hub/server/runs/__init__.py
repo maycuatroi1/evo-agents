@@ -74,7 +74,9 @@ and it looks again every CLAIM_POLL_SECONDS besides, so a lost notification dela
 takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatched, of a project the worker serves and
 on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the first of
 runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, dispatched from a web session when the
-worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots. The
+worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots;
+a drained worker still takes a run pinned to it that resumes one it held (``claims.resumes_here``), whose session and
+worktrees no other worker has, and nothing else. The
 next attempt of a run lost on the worker is passed over until the worker is steady (``steady``: heartbeats for
 runs.STEADY_SECONDS, none runs.STEADY_GAP_SECONDS late), so a machine that slept does not take the run again at once;
 any other worker that may take it takes it meanwhile, and Run's ``steady_wait`` names the worker it waits for. A worker
@@ -93,7 +95,7 @@ heartbeat that comes runs.STEADY_GAP_SECONDS late), extends the lease of every r
 the same time, settles their agent time (``run_state.settle``), and answers with control: per run, whether to cancel
 (asked by the owner, or a run the worker no longer holds), takeover, handback, terminal_open (a browser waits for the
 worker's end of the run's terminal, ``terminal.Terminals.waiting``), how many inbox messages wait and how many decisions
-of the run are open; for the worker, whether to drain. A run the reaper parked, or one done because a new run resumes
+of the run are open; for the worker, whether to drain (not while a run that resumes one it held waits for it). A run the reaper parked, or one done because a new run resumes
 it, comes back with held false, cancel false and park true: the worker stops its agent at the end of the turn, keeps the
 session and the worktrees, and frees the slot.
 

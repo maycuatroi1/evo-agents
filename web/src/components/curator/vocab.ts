@@ -32,8 +32,14 @@ export const PROPOSAL_STATES = ["open", "deferred", "accepted", "rejected", "dro
 export const TIERS = [0, 1, 2, 3] as const;
 export type Tier = (typeof TIERS)[number];
 
-/** `curator.AUTO_MERGE_TIERS`: the tiers a charter may let the hub merge; tier 1 waits for a plan of its own. */
+/**
+ * The tier the form's auto merge switch names: tier 0. A charter may name any of `curator.AUTO_MERGE_TIERS` (0 to 3);
+ * the form keeps the others as the charter names them.
+ */
 export const AUTO_MERGE_TIERS = [0] as const;
+
+/** `judge.PLANNED_TIERS`: the tiers whose accepted proposals the night shift builds when a charter names none. */
+export const PLANNED_TIERS = [0, 1, 2] as const satisfies readonly Tier[];
 
 /** `runs.RUNTIMES`: the runtimes a role of the Curator runs on. */
 export const RUNTIMES = ["claude-code", "opencode", "codex"] as const satisfies readonly Runtime[];
@@ -78,11 +84,6 @@ export const MIN_SAVING = 0.1;
 export const TIME_OF_DAY = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 export const TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/;
 export const GOAL_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
-/** `worker_pool_models.POOL_NAME`. */
-export const POOL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
-/** The form's `worker` names a pool with this prefix: a worker's name never holds a colon. */
-export const POOL_DUTY = "pool:";
 /** One line without control characters: `runs.LINE`. */
 export const LINE = /^[^\u0000-\u001f\u007f]+$/;
 

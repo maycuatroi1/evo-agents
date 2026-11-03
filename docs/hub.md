@@ -93,7 +93,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | invite links | `POST` and `GET /v1/admin/invites`, `POST /v1/admin/invites/{id}/revoke`, for hub admins; `POST /v1/invites/accept`, for any member signed in; `POST /v1/invites/preview`, public, for the link's page (section Signing in, Invite links) |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
-| autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy.md`) |
+| autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy.md`); `GET`/`PUT /v1/autonomy/run-reach`: what a person's runs that run as them reach (`docs/credentials.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`; `?agent=` for an agent's), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience`, `POST .../restore` |
@@ -102,8 +102,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`, `.../clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `.../decisions` (`GET`, `POST`), `POST .../decisions/{number}/{accept,reject,undo}`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}`; worker pools: `GET` and `POST /v1/worker-pools`, `GET` and `PATCH /v1/worker-pools/{name}`, `GET` and `POST .../{name}/tokens`, `POST .../{name}/tokens/{id}/revoke`; for a pool node's token, `GET /v1/worker/skills` and `GET /v1/worker/skills/global/{name}/bundle` (`docs/workers.md`, Pools) |
-| secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
+| secrets | `GET /v1/secrets`, `PUT`, `PATCH` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
+| account pools | `GET` and `POST /v1/projects/{project}/account-pools`, `GET` and `DELETE .../account-pools/{pool}`, `PUT .../account-pools/{pool}/accounts`, `DELETE .../accounts/{secret_id}` and `PUT /v1/projects/{project}/agents/{handle}/account-pool`; admin of the project or hub (`docs/credentials.md`, section "Account pools") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
@@ -543,9 +544,12 @@ feedback memories of the project's scope that the run's owner owns. The hub pick
 
 - an item matches by the `code:REPO:PATH` references in it (a decision's evidence, question, context and answer; a
   memory's text) against the run: its repos and the prompt, which holds the plan step. A path the prompt names weighs
-  3, a directory of it 2, the repo alone 1; a decision of category `architecture` or `scope` adds 1 to a run on a plan.
-  An item that matches by none is left out, and a run with no match, or a project with the key off, gets its prompt
-  byte for byte as before;
+  3, a directory of it 2, the repo alone 1. A decision asked on the run's plan matches whatever it cites: on the run's
+  step it weighs 3, on another step of the plan 2. A feedback memory that cites no code is a rule of the whole project
+  and matches every run of it, weighing 0, so the scoped items come first. A decision of category `architecture` or
+  `scope` adds 1 to a run on a plan. An item that matches by none is left out (a decision of no plan of the run that
+  cites no code, a memory that cites only code of repos the run does not work in), and a run with no match, or a
+  project with the key off, gets its prompt byte for byte as before;
 - the block is ordered by match, then newest, and stops at 4 KiB and at the room the prompt leaves under
   `MAX_PROMPT_BYTES`; each line names its source (`memory_get ID`, `evo-agents hub decision show ID`);
 - never in it: an item of another project; a decision of category `credential`, `wait`, `release` or `loop`; a decision
@@ -554,7 +558,8 @@ feedback memories of the project's scope that the run's owner owns. The hub pick
   same checks as `memory_get` and the index of memories). The audiences it shows are noted to the run.
 
 Each answer loaded is a row of `context_answer_loads` (schema 0175): the run, the project, the source (`decision` or
-`memory`), its id, the scope key that matched (`repo:REPO`, `dir:REPO:DIR` or `path:REPO:PATH`) and when. A run loads an
+`memory`), its id, the scope key that matched (`repo:REPO`, `dir:REPO:DIR`, `path:REPO:PATH`, `plan:PLAN`,
+`step:PLAN:STEP` or `project:PROJECT`) and when. A run loads an
 answer once, so a run claimed again adds no row. `context_answers.load_counts` counts the runs that loaded and the
 answers loaded by day or by week. The policy revision that sets the key true is the first week of the trial that
 compares the 28 days after with the 28 before (`evo-agents hub policy history`).
@@ -639,6 +644,24 @@ its first bytes; the hub stores it in the blob store as a blob of kind `agent-av
 from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Without one, `icon_url` is null and the
 web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
 and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
+
+Each agent has a pool of its own, `agent-<handle>`, made in the transaction that makes the agent (and by schema 0189
+for the agents that exist); `home_pool` names it in the agent's JSON. It is a worker pool owned by the member who
+created the agent and serving the agent's project. An admin of the project or of the hub sees and manages it with the
+routes, the CLI and the page of worker pools: join tokens, labels, taints, slots and the doctor codes it accepts. A
+member who is not an admin is refused (403, or 404 without a grant on the project), and the pool's `projects` do not
+change (422). A member's pool cannot take a name that starts with `agent-`. Every agent runs on its own pool: schema 0194 dropped the `placement` bridge that 0189 added, and there is no legacy mode. Worker protocol version 1 and `local` runs do not change.
+
+The hub places every run of the agent, of any kind and whoever dispatches it (`server/agent_placement.py`):
+the run gets the selector `pool=agent-<handle>` and tolerations for the pool's taints when it is inserted
+(`insert_run`), and only a node of that pool that is online, not draining and ready claims it; a member's worker or a
+shared worker outside the pool never does, and a node of an agent's pool takes no run of another agent. A chat run
+prefers the node that ran the previous turn of the same chat while it is ready, else another node of the pool. Runs that
+name no agent, those of the Curator, `loop`, `judge` and an agent type that names no agent, go to the project's default
+agent, in its pool. When the pool has no ready node the run stays queued and each admin of the
+project gets one notice `agent_pool_empty` for the outage (`worker_pools.empty_notified_at`, schema 0190, cleared when a
+node is ready again). The dispatch, plan-run, author-run, rerun and triage-rerun routes answer 422 with guidance when
+`worker_id`, `pool`, `labels` or `tolerations` is given.
 
 Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
 `agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
@@ -948,6 +971,15 @@ no longer held or a stop asked already), and `.../triage/rerun` runs it again on
 on a fit worker (409 while it is still held). Every success posts a `Decision:` line and an audit row
 (`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`, `run.triage_cancel`) in the same transaction.
 
+A Curator charter with `answer_by: agent` has the hub open a thread in the same chat for each proposal recorded open,
+or open again after a defer (`proposal_threads`, schema 0188), and its agent answers the proposal for the schedule's
+owner through `POST /v1/worker/runs/{id}/curator/answer` (`evo_agents/hub/server/curator_threads.py`,
+`docs/curator.md`, "The agent answers"): only the proposal of its thread, only for a dispatcher who is an admin of the
+project, only while the charter still says `agent` and the proposal is open or deferred. A change of that proposal the
+hub leaves open for its owner is told in the thread, and the agent merges it through `POST
+/v1/worker/runs/{id}/curator/merge` at the head the Judge passed, only when every sign of its files is one of a
+protected path and the rest of the hub's merge allows it, K5 of the chat run's principal included.
+
 ## Plans and their copies in git
 
 A harness hands its plans to the hub by naming the project in `harness.yaml`:
@@ -1001,6 +1033,23 @@ characters (counted as characters, not bytes; a step without a title passes, sin
 that no step's `acceptance` names, unless it is `invariant: true`. A step's `acceptance` may be a list or a string
 such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
 plans hold there pass. Each is a warning: the hub stores the plan anyway.
+
+### Proof of a step's criteria
+
+A step done whose `acceptance` names criteria of the plan's `acceptance` keeps one proof for each in `proofs`
+(`plan.schema.json`), beside its free-text `evidence`: `{"id": "a4", "kind": "test", "locator": "path::test_name"}`,
+kind `command` with the command as its locator, or `{"id": "a9", "kind": "n/a", "reason": "..."}`
+(`evo_agents/hub/proofs.py`). The agent gives them as one line per criterion, with `evo-agents worker step KEY done
+--proof ID=VALUE` in a plan run or under `"proofs"` of a step run's `.evo-run/result.json` (`docs/workers.md`); the
+prompts of step runs, of a step's session and of plan runs say how. A step report (`POST
+/v1/worker/runs/{id}/steps/{key}`) whose `proofs` lack a criterion of the step, or name one it does not, is 422 naming
+the criteria, and nothing is written; a report without `proofs`, from a worker older than this, is taken as before. A
+step run's proofs come with its `review` or `done` state, wait on the run (`runs.proofs`, schema 0186) while it is in
+review, and reach the step when it is done. Only the hub's own writes of a run's step set `proofs`
+(`plans.HUB_UPDATABLE`); a member's PATCH of one item cannot. The Judge of the merge queue and the Judge of a
+Curator's change read each criterion in the plan's words with the locator of its proof (the test or the command, or
+that the Builder says it does not apply), never the reason or the evidence, which the Builder wrote. A step that names
+no criterion keeps the behaviour it had.
 
 A plan names the problems of its project it solves in `problems`, a list of codes such as `[P-1, P-3]`
 (`plan.schema.json`, section Problems). A write that names a code the plan did not hold before and the project lacks
@@ -1233,10 +1282,10 @@ Runs are driven from any machine signed in to the hub:
 
 ```sh
 evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step, all of them queued or none
-evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
+evo-agents hub run dispatch rollout 5 --runtime codex --mode interactive --timeout 90
 evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
 evo-agents hub run dispatch rollout 7 --account claude-b     # this account of yours, kept, never failed over
-evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
+evo-agents hub run plan rollout --timeout-h 8                 # one plan run: every step not done yet
 evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
 evo-agents hub run plan rollout --as-me                       # its agent calls the hub as you, secrets, tokens and workers aside
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
@@ -1252,16 +1301,25 @@ evo-agents hub run rerun 41 --account-by-rule                # the same, the rul
 evo-agents hub run candidates 41                              # after it failed: which worker or agent could run it again, and why
 evo-agents hub run credentials 41                             # the leases the run got, never their values
 evo-agents hub run access 41 --revoke                         # it no longer runs as you: its token ends at once
-evo-agents hub run author "a plan to move the hub's blobs to R2" --worker mac-mini  # an agent writes a new plan
-evo-agents hub run author "split step 3 in two" --plan rollout --worker mac-mini   # or revises one
+evo-agents hub run author "a plan to move the hub's blobs to R2"                                   # an agent writes a new plan
+evo-agents hub run author "split step 3 in two" --plan rollout   # or revises one
 evo-agents hub run chat 42                                    # an author run's chat, and whose turn it is
 evo-agents hub run send 42 "keep the old route until 0.10"    # your reply in that chat
 evo-agents hub run finish 42                                  # end the chat: the run ends done
 ```
 
-`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on one of your workers that
-has the project's harness checked out (pinned with `--worker`, or any that `--pool`, `--label` and `--tolerate`
-let take it), whose agent writes an execution plan from REQUEST
+A run dispatched without `--model` (and without a profile that allows exactly one model) runs on the model its runtime
+picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the
+claim of a step, plan, author or task run on claude-code carries the policy's scorer and ladder, and the worker rates
+the run easy, medium or hard before its agent starts, with one short turn of the scorer model on the run's prompt, and
+runs it on the ladder's model for that difficulty (`docs/workers.md`, Model routing). The hub calls no model at the
+dispatch. A model `--model` names that the profile's allowlist leaves out is refused (422) as before, and the Judge of
+the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the
+run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
+and for every run `model_used`, the model its runtime used, also with routing off.
+
+`run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on a node of the pool of its
+agent that has the project's harness checked out, whose agent writes an execution plan from REQUEST
 (at most 16 KiB of UTF-8, `-` reads it from stdin) with the create-exec-plan skill the hub holds, and puts it on the
 hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (1, 2 or 4 hours of agent time, 2 by
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
@@ -1306,14 +1364,10 @@ KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (
 a queued attempt whose run before it was lost on a worker that is not steady yet has a `waits for` line naming that
 worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
-`dispatch`, `plan`, `author` and `rerun` take where the run may go besides `--worker`: `--pool NAME` (one of your
-worker pools: only its nodes take the run, as the label `pool=NAME`), `--label LABEL` (a label the claiming worker must
-have, a word or key=value: its own, its pool's, or one the hub gives it, `os=`, `arch=`, `runtime=NAME`,
-`feature=browser`; repeat it, and every one is needed) and `--tolerate TAINT` (a taint of a worker the run accepts;
-repeat it). They go to the body as `pool`, `labels` and `tolerations`, and the run keeps them as `selector` and
-`tolerations`; only what is given is sent, so an older hub takes the rest. A worker with a taint the run does not
-tolerate leaves it to others unless the run is pinned to it, and a node of a pool whose doctor report is not clean
-takes none (`docs/workers.md`, Pools). A `rerun` without any of the three keeps the run's own.
+`dispatch`, `plan`, `author` and `rerun` do not pick the machine: they have no `--worker`, `--pool`, `--label` or
+`--tolerate`, and `worker triage rerun` has no `--worker`. The agent of the run decides: it runs on
+its own pool, `agent-<handle>` (the paragraphs on the pool of an agent, under the agent profiles), and the hub answers 422 with guidance when the body of the API
+names `worker_id`, `pool`, `labels` or `tolerations`. `run list --worker` still filters the runs a worker claimed. A rerun keeps the run's own selector and tolerations.
 
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
@@ -1361,7 +1415,9 @@ command prints the value, an error included. `--kind env` needs `--env-var`; `--
 binds it to one of your worker pools instead, so each node of the pool gets it, those that join later too; `hub
 account login` and `hub account oauth-login` take `--pool` as well. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
 day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
-and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
+`secret bind NAME --worker W | --pool P | --anywhere` moves a secret to other workers or pools without its value
+(`PATCH /v1/secrets/{name}`), and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes
+which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
 list|show|set|pause|resume|policy` shows their usage, runs and cost, and weighs, pauses and sets the strategy for them,
 as the web's Accounts page does, `hub account login` adds or renews a Claude account with the token
@@ -1525,6 +1581,27 @@ of a chat run names the chat message that opened it in `RunSpec.chat_message_id`
 files go to `.evo-run/inbox/chat-<id>/`, and the hub's prompt of that run names them after the message to answer in a
 `[files attached: ...]` line. A message without files reaches the agent as before.
 
+## Versions of a document
+
+A document is every file of one name in a chat or a run: a file a person attached and the outputs an agent sent back
+under the same name are its versions (`evo_agents.hub.server.doc_versions`). The name is the last part after a slash,
+without case, as the web's document panel keys it, so `drafts/Spec.md` and `spec.md` are one document. The web reads
+the whole list from the hub, so a document opened again after a reload shows every version even when the messages of
+the older ones are not on the page it loaded.
+
+- `GET /v1/chats/{id}/doc-versions?name=NAME`, to a member of the chat: the files attached to its messages and the
+  outputs its messages carry, threads included, of the messages whose label the caller clears, in the order of the
+  messages (a message's attachments before its outputs, an output carried twice counted once).
+- `GET /v1/projects/{p}/runs/{id}/doc-versions?name=NAME`, to the run's readers (by sink): the files of the messages
+  its inbox took and the outputs of the run, in the order they came. The files of the chat message that opened a
+  chat run are in the chat's list, whose route serves them.
+
+The answer is `DocVersions`: the `key` and the `versions`, oldest first, each with its `source` (`attached`, or the
+output's `sent`, `tool` or `outputs`), id, name, media type, viewer, size, SHA-256, caption, `created_at`, the `url`
+of its bytes on the route that serves them to the same reader, the chat message that carries it (`message_id`, `seq`,
+`thread_root_id`), the `run_id` of an output and its `author`. Anyone else gets 404. Nothing is stored for it: the
+list is read from the tables of attachments and outputs.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
@@ -1615,8 +1692,9 @@ how many of the project's proposals wait for an answer; `GET /v1/me/overview` sa
 charter (`projects[].curator`). `GET .../curator/nights` lists the latest nights (14 by default, up to 90): the runs
 the night shift queued for each by how they stand, their cost, the night's review run with what it wrote, and whether
 the night's figures were counted. `proposal list` (`GET .../curator/proposals`) answers `counts` with its proposals:
-what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 to 2 also
-makes it a plan of the night shift (The Curator's changes, below); accepting one of tier 3 records the answer alone.
+what each state, tier and lens would list with the other filters applied. Accepting a proposal of a tier the
+charter's `planned_tiers` names (0 to 2 unless it names others, 3 included) also makes it a plan of the night shift
+(The Curator's changes, below); accepting one of another tier records the answer alone.
 `proposal show` (`GET .../curator/proposals/{id}`) answers, as `change`, the change accepting it made, when the caller
 may read that change's plan: its state, plan, branch, pull request and reason; null otherwise.
 
@@ -1667,8 +1745,9 @@ curator status` names the last one (`last_brief`).
 
 ## The Curator's changes
 
-Accepting a proposal of tier 0 to 2 makes its draft plan the Curator's plan on the hub, in the same transaction, as
-the admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
+Accepting a proposal of a tier the charter's `planned_tiers` names (`judge.planned_tiers`: tiers 0 to 2 unless it
+names others, tier 3 included) makes its draft plan the Curator's plan on the hub, in the same transaction, as the
+admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
 or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
@@ -1677,8 +1756,9 @@ names another repo or branch, or changes anything but the progress of its steps 
 id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
 Curator's plan or a plan run of it (409): the night shift alone runs it, at any hour. `evo-agents hub curator proposal plan ID`
 (`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
-accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
-the answer alone; one not accepted, of tier 3 or with a change already is 409 with the reason.
+accepted proposal of a tier the charter plans that has no change yet, such as one of tier 2 accepted while that tier
+still recorded the answer alone; one not accepted, of a tier the charter does not plan or with a change already is 409
+with the reason.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
@@ -1722,20 +1802,22 @@ every verify command and hidden check ran and exited 0, the worker found no sign
 pull request's head; the paths the worker read in the diff give the proposal its tier again. For a change whose
 `curator_changes.knowledge` is set, the judge inputs' `knowledge` names two more checks the worker runs, `evo-agents
 harness validate` and a trial sync of each source the change edits, and the verdict's verify results must hold each
-of them, exited 0. The hub writes the
-verdict on the pull request as a check run of the workers' App, `evo-agents Judge`, and merges the pull request with
-the workers' App, at the head the Judge passed, only when the change is tier 0, tier 0 is in the charter's
-`auto_merge`, the repo's ruleset still keeps the Curator off (checked again then), the pull request is open into the
-default branch, its files show no sign and no protected path, and CI is green: each check the default branch's active
-rulesets require (`required_status_checks`) concluded success, as a check run of the App the rule names when it names
-one, every other check run ended success, neutral or skipped, and the commit statuses are success. A ruleset that
-requires no check, or a head commit whose message asks CI to skip it (`[skip ci]`, `[ci skip]`, `[no ci]`,
-`[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the pull request open. It waits while CI runs, up to 6
-hours, and while the project's night shift is paused (by a member or its circuit breaker) it merges nothing: a judged
-change waits for it. Any other change, tier 1, a GitLab merge request, or a refusal, stays open for its owner with the
-reason, which for a change of a harness says what its replays came to; the morning brief lists it with the runs that
-wait in review. Each pass also releases the global skill of a merge whose replays won (`skill_release.release`, The
-Curator's replays, below).
+of them, exited 0. The hub writes the verdict on the pull request as a check run of the workers' App, `evo-agents
+Judge`, and merges the pull request with the workers' App, at the head the Judge passed, only when the change's tier is
+in the charter's `auto_merge` (0 to 3; tier 0 alone unless it names more), the repo's ruleset still keeps the Curator
+off (checked again then), the pull request is open into the default branch, its files show no sign and no protected
+path, and CI is green: each check the default branch's active rulesets require (`required_status_checks`) concluded
+success, as a check run of the App the rule names when it names one, every other check run ended success, neutral or
+skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit whose message asks CI
+to skip it (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the
+pull request open. A charter with `merge_without_ci: true` lets the Judge's pass stand in for CI: a commit no CI ran on
+merges, and so does one whose ruleset requires no check once every check that ran passed; a check that ended in failure
+still leaves it open, one still running still makes it wait, and a check the ruleset requires still has to pass. It
+waits while CI runs, up to 6 hours, and while the project's night shift is paused (by a member or its circuit breaker)
+it merges nothing: a judged change waits for it. Any other change, of a tier `auto_merge` does not name, a GitLab merge
+request, or a refusal, stays open for its owner with the reason, which for a change of a harness says what its replays
+came to; the morning brief lists it with the runs that wait in review. Each pass also releases the global skill of a
+merge whose replays won (`skill_release.release`, The Curator's replays, below).
 
 ```sh
 evo-agents hub curator changes                        # what each accepted proposal became: plan, branch, PR, verdict
@@ -2242,7 +2324,7 @@ evo-agents hub goal close G-1 --reason achieved --project demo
 **The Loop** of a project (plan loop-engine), on with the policy's `loop.enabled`, hands its work items out through run
 kinds the hub has: a brainstorm to a task run of @strategist, a use case to a task run of @ba (whose version
 `srs__propose` writes as the goal's owner), the frame task of an approved use case to one author run in Loop mode, and
-the plan that run wrote to a plan run; author and plan runs go to worker `loop.worker`, in its owner's name, with the
+the plan that run wrote to a plan run; author and plan runs go to a node of the default agent's pool, in the pool owner's name, with the
 caps of `loop.caps`. Its engine `rules/2` goes from the problem a goal answers: each work item carries that problem, a
 claim of the cell Problem in testing makes a `discover` of @strategist, and a solution goes through use cases only
 when the project keeps them (`loop.use_cases`), else straight to an author run (`docs/loop.md`). A work item that
@@ -2289,7 +2371,8 @@ waits for a person, the three gates first: the goals (the month's review once th
 `goal_review`, until a goal gets a revision or the month ends, and each active goal past its deadline), the canvases
 (each baseline still proposed with an item to decide, its overdue test cards among them, and each open proposal of a
 claim) and the policy (each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose
-breaker tripped, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
+breaker tripped, each SRS goal whose baseline waits, each plan outside the Loop that holds use cases of an SRS goal's
+backlog, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
 decisions of a run it handed out and an author run of its asking in its chat, its merge requests held for a person
 (one blocked at a gate says how it goes on: an admin passes a hold at gate 3, a new push moves any other) and its repos
 to merge by hand, the merge queue's audit samples not answered, and the SRS versions its use cases drafted
@@ -2306,7 +2389,9 @@ project's hub sink); each page's buttons call the object's own route, so who may
 of a project whose Loop is on, and `loop_brief`, the Loop's part of the morning brief, at 07:00 in the Loop's zone to
 the goal owners of a project whose Curator sends no brief; the Curator's brief carries that part itself
 (`docs/notifications.md`, Notices). Schema 0096 lets `notifications.notice_kind` take both; going back to 0095 deletes
-them.
+them. It also sends `srs_adopt` once to the owner of an SRS goal (its admins when it has none) for each plan outside
+the Loop that holds use cases of the goal's backlog out of any build, with the `evo-agents hub loop adopt` line
+(`docs/loop.md`, SRS là nguồn); the kind has the shape of a plugin's, so the check of the column takes it.
 
 ## Docs
 
@@ -3165,10 +3250,16 @@ curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1
   -d '{"version": 1}'
 ```
 
-## Blobs on R2
+## Blob store
 
-Postgres holds metadata; the blob store holds bytes. The bucket stays private, and the access key the hub gets should
-be limited to that one bucket. Keys:
+Postgres holds metadata; the blob store holds bytes. The store is any service with an S3 API: Cloudflare R2 by
+default, and Amazon S3, Google Cloud Storage, Backblaze B2, MinIO or SeaweedFS through `EVO_HUB_S3_PROVIDER`, which
+sets the region the hub signs for and the addressing style of its URLs (`EVO_HUB_S3_REGION` and
+`EVO_HUB_S3_ADDRESSING_STYLE` override them). A hub with none of these runs SeaweedFS beside it on its own disk with
+`deploy/hub/docker-compose.seaweedfs.yml`. `evo-agents hub storage check` tries a store the way the hub uses it, and
+`evo-agents hub storage migrate` copies every blob to another store (`docs/hub-deployment.md`, section The blob
+store). The text below says R2 for whichever store the hub uses. The bucket stays private, and the access key the hub
+gets should be limited to that one bucket. Keys:
 
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
   blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
@@ -3287,8 +3378,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   (`docs/loop.md`); it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
   (`HubContext.loop_tick`).
 - `hub.loop_notices`, every 5 minutes: for each project whose Loop is on, in the Loop's zone, the notice `goal_review`
-  on the first day of a month and the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, each
-  once (The decision board, above; `evo_agents.hub.server.loop.notices`).
+  on the first day of a month, the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, and the
+  notice `srs_adopt` for a plan outside the Loop that holds use cases of an SRS goal, each once (The decision board,
+  above; `evo_agents.hub.server.loop.notices`).
 - `hub.merge_queue`, every minute, one pass at a time: for each project with an autonomy policy, the merge requests of
   its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
   merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched

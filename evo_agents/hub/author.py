@@ -62,7 +62,7 @@ SKILLS_DIR = ".claude/skills"  # under the run's directory, the agent's working 
 PUT_COMMAND = "evo-agents worker put"  # the agent's command that puts the plan it wrote on the hub
 READ_COMMAND = "evo-agents worker plan --json"  # the agent's command that reads the run's plan as the hub holds it
 # What the progress of a plan is, which only plan and step runs, and members, write: of each step, and of each repo.
-STEP_PROGRESS = ("status", "done_at", "evidence")
+STEP_PROGRESS = ("status", "done_at", "evidence", "proofs")
 REPO_PROGRESS = ("status", "merged_at")
 TITLE_PREFIX = "Plan from: "
 REPOS_BYTES = 3 * 1024

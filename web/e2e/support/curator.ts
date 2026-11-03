@@ -40,11 +40,10 @@ export function windowAroundNow(): { start: string; end: string; timezone: strin
   return { start: `${two((hour + 22) % 24)}:00`, end: `${two((hour + 3) % 24)}:00`, timezone: "UTC" };
 }
 
-export function charterBody(worker: string, extra: Record<string, unknown> = {}) {
+export function charterBody(extra: Record<string, unknown> = {}) {
   return {
     goals: [{ id: "night-shift", what: "Run the plans the owner approved while the owner sleeps." }],
     window: windowAroundNow(),
-    worker,
     night_budget_usd: 2,
     run_budget_usd: 0.5,
     run_max_turns: 40,
@@ -99,10 +98,20 @@ export async function dutyWorker(owner: Account, project: string, name: string):
   return live;
 }
 
-/** The charter `owner` (an admin of `project`) writes through the API, naming `worker`. */
-export async function writeCharter(owner: Account, project: string, worker: string, extra: Record<string, unknown> = {}): Promise<Charter> {
+/**
+ * The pool of `project`'s default agent given to `owner` (hub_stack POST /pools/owner), as it is the pool of the member
+ * who registered the project: the night shift dispatches its runs as that pool's owner, and sends the morning brief to
+ * them (plan agent-dedicated-pools). The hub admin registers the specs' projects and holds no grant on them.
+ */
+export async function ownDefaultPool(owner: Account, project: string): Promise<void> {
+  await stack("/pools/owner", { agent: project, login: owner.login });
+}
+
+/** The charter `owner` (an admin of `project`, who holds the pool of its default agent) writes through the API. */
+export async function writeCharter(owner: Account, project: string, extra: Record<string, unknown> = {}): Promise<Charter> {
+  await ownDefaultPool(owner, project);
   const api = bearerClient(await machineToken(owner));
-  return call(api.PUT("/v1/projects/{project}/curator/charter", { params: { path: { project } }, body: charterBody(worker, extra) as never }));
+  return call(api.PUT("/v1/projects/{project}/curator/charter", { params: { path: { project } }, body: charterBody(extra) as never }));
 }
 
 /** The digest of a session of `owner` in `project`, with a blocked command, a 503 and a correction. */
@@ -247,7 +256,7 @@ export async function reviewNight(live: LiveWorker, { finish = true }: { finish?
 /** Everything a Curator spec starts from: the charter of `owner`'s project on their duty worker, a digest, a night. */
 export async function seedCurator(owner: Account, project: string, name: string): Promise<Night> {
   const live = await dutyWorker(owner, project, name);
-  await writeCharter(owner, project, live.worker.name);
+  await writeCharter(owner, project);
   await pushDigest(owner, project);
   return reviewNight(live);
 }
@@ -268,7 +277,7 @@ export async function promotionNight(owner: Account, project: string, name: stri
   const sinks = [...(registration().sinks ?? []), { id: "claude-code@anthropic", kind: "agent-session" as const, clearance: { level: "internal" } }];
   await new HubAdmin().registerProject(project, { sinks });
   const live = await dutyWorker(owner, project, name);
-  await writeCharter(owner, project, live.worker.name);
+  await writeCharter(owner, project);
   await pushDigest(owner, project);
   await createAgentByApi(owner, project, { handle, name: "Scout" });
   const api = await apiOf(owner);

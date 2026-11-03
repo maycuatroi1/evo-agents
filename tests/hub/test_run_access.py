@@ -25,14 +25,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.hub import pg
+from tests.hub import live, pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi import HTTPException
 from psycopg import errors
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
 from evo_agents.cli import main
 from evo_agents.core_plugins.builder import errors as builder_errors
@@ -79,6 +79,7 @@ from evo_agents.hub.server.srs import doc as srs_doc
 from evo_agents.hub.server.srs import reviews as srs_reviews
 from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql, table_dump
 from tests.hub.test_chat_runs import ADMIN_GRANT, chat_worker
 from tests.hub.test_chats import OPEN_SINKS
@@ -105,12 +106,7 @@ from tests.hub.test_opportunities import DEPOT as OPPORTUNITY
 from tests.hub.test_problems import NIGHT as PROBLEM
 from tests.hub.test_runs import claim, expire, moved, report, state_of, steady
 
-app_key, config, client, hub = (
-    credentials_api.app_key,
-    credentials_api.config,
-    credentials_api.client,
-    credentials_api.hub,
-)
+app_key, config, client = (credentials_api.app_key, credentials_api.config, credentials_api.client)
 
 SECOND = "lumen-ops"  # another project, where the owner holds a grant too
 HUB_URL = "https://hub.test"
@@ -203,6 +199,45 @@ def second_project(client, hub) -> None:
     assert granted.status_code == 200, granted.text
 
 
+def claimable(client) -> None:
+    """The project's default agent with an account pool, unless it has one already: its runs are dispatched and
+    claimed only then (``pool_accounts``). Its account does not open with this hub's key: no run is leased it."""
+    db = live.database_of(client)
+    p, ap = tables.projects, tables.agent_profiles
+    held = select(ap.c.account_pool_id).join_from(ap, p, p.c.id == ap.c.project_id)
+    if sql(db, held.where(p.c.name == PROJECT, ap.c.handle == PROJECT))[0][0] is None:
+        give_account_pool(db, PROJECT, PROJECT, OWNER)
+
+
+def account_pool(client, *names: str, pool: str = "main") -> str:
+    """Owner's accounts ``names`` in account pool ``pool`` of the project, made here and attached to the project's
+    default agent in place of the one ``claimable`` gave it: a run of the agent is leased the pool's accounts alone for a
+    model variable. The lease name of the first, ``@pool.<pool>:<name>``."""
+    db = live.database_of(client)
+    u, p, ap, m, s = tables.users, tables.projects, tables.account_pools, tables.account_pool_members, tables.secrets
+    user_id = sql(db, select(u.c.id).where(u.c.login == OWNER))[0][0]
+    project_id = sql(db, select(p.c.id).where(p.c.name == PROJECT))[0][0]
+    made = insert(ap).values(project_id=project_id, name=pool, created_by=user_id).returning(ap.c.id)
+    pool_id = sql(db, made)[0][0]
+    for name in names:
+        live_secret = (s.c.owner_id == user_id, s.c.name == name, s.c.deleted_at.is_(None))
+        secret_id = sql(db, select(s.c.id).where(*live_secret))[0][0]
+        sql(db, insert(m).values(pool_id=pool_id, secret_id=secret_id, added_by=user_id))
+    profiles = tables.agent_profiles
+    of_agent = (profiles.c.project_id == project_id, profiles.c.handle == PROJECT)
+    sql(db, update(profiles).where(*of_agent).values(account_pool_id=pool_id))
+    return f"@pool.{pool}:{names[0]}"
+
+
+@pytest.fixture
+def hub(client, github) -> dict:
+    """The members of ``test_credentials_api.hub``, and the project's default agent with an account pool, which its
+    runs need; the workers of ``worker_of`` are ready nodes of its pool."""
+    headers = credentials_api.members(client, github)
+    claimable(client)
+    return headers
+
+
 def as_me_run(client, hub, worker: dict, repo: str = "notes") -> tuple[int, str]:
     """A run of the step on ``repo`` that runs as its owner, claimed by ``worker``, and its token."""
     run_id = step_run(client, hub["owner"], repo, worker, as_me=True)
@@ -270,10 +305,11 @@ def test_a_run_of_a_hub_admin_acts_as_owner_with_the_admins_rights(client, hub, 
 def test_a_run_not_let_acts_as_owner_gets_the_leases_it_always_did(client, hub, hub_db):
     oauth = sample("oauth-")
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
+    account = account_pool(client, "claude-oauth")  # the model account comes from the account pool of the run's agent
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
     plain = step_run(client, hub["owner"], "notes", worker)
     answer = leased(client, worker, plain)
-    assert set(by_name(answer)) == {"claude-oauth"} and hub_lease(answer) is None
+    assert set(by_name(answer)) == {account} and hub_lease(answer) is None
     assert view(client, hub["owner"], plain)["as_owner"] is False
     assert run_leases(hub_db, plain) == []
     cl = tables.credential_leases
@@ -281,8 +317,8 @@ def test_a_run_not_let_acts_as_owner_gets_the_leases_it_always_did(client, hub, 
     # the same run let afterwards: its next ask adds the lease of its token, and nothing else changes
     assert change(client, hub["owner"], plain, True).status_code == 200
     again = leased(client, worker, plain)
-    assert set(by_name(again)) == {"claude-oauth", f"{RUN_ACCESS}:{OWNER}"}
-    assert by_name(again)["claude-oauth"] == by_name(answer)["claude-oauth"]
+    assert set(by_name(again)) == {account, f"{RUN_ACCESS}:{OWNER}"}
+    assert by_name(again)[account] == by_name(answer)[account]
     target = f"{PROJECT}/{PLAN}#4 run:{plain} secrets="
     (first, second) = audit_of(hub_db, "credential.lease")
     assert first[0].startswith(target) and "run-access" not in first[0]
@@ -295,6 +331,7 @@ def test_a_run_not_let_acts_as_owner_gets_the_leases_it_always_did(client, hub, 
 REFUSED = [
     ("GET", "/v1/secrets"),
     ("PUT", "/v1/secrets/claude-oauth"),
+    ("PATCH", "/v1/secrets/claude-oauth"),  # its binding: a run never moves a secret to its own worker
     ("GET", "/v1/secrets/claude-oauth/shares"),
     ("DELETE", "/v1/shares/1"),
     ("GET", "/v1/accounts"),
@@ -438,7 +475,7 @@ def asked_decision(client, hub, worker: dict) -> tuple[int, str, int]:
     the decision's id)."""
     response = client.post(
         f"/v1/projects/{PROJECT}/plan-runs",
-        json={"plan_id": PLAN, "worker_id": worker["id"], "as_me": True},
+        json={"plan_id": PLAN, "as_me": True},
         headers=hub["owner"],
     )
     assert response.status_code == 201, response.text
@@ -456,7 +493,7 @@ def test_a_runs_token_is_refused_answering_any_decision_its_own_or_another_runs(
     later = {**credentials_api.plan_body(), "id": "credentials-later"}
     pushed = client.put(f"/v1/projects/{PROJECT}/plans/credentials-later", json={"body": later}, headers=hub["owner"])
     assert pushed.status_code == 200, pushed.text
-    body = {"plan_id": "credentials-later", "steps": [STEPS["notes"]], "worker_id": worker["id"], "as_me": True}
+    body = {"plan_id": "credentials-later", "steps": [STEPS["notes"]], "as_me": True}
     made = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"])
     assert made.status_code == 201, made.text
     other_id = claim(client, worker)["id"]
@@ -488,9 +525,9 @@ def test_a_runs_token_is_refused_starting_any_run_with_or_without_the_owners_acc
     assert report(client, worker, ended, "failed", error="the agent gave up").status_code == 200
     r = tables.runs
     before = sql(hub_db, select(func.count()).select_from(r))
-    step = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]], "worker_id": worker["id"]}
-    plan = {"plan_id": PLAN, "worker_id": worker["id"]}
-    author = {"request": "Plan the dashboard's move to Postgres", "worker_id": worker["id"]}
+    step = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]]}
+    plan = {"plan_id": PLAN}
+    author = {"request": "Plan the dashboard's move to Postgres"}
     for as_me in ({}, {"as_me": False}, {"as_me": True}):
         for path, body in (("runs", step), ("plan-runs", plan), (f"runs/{ended}/rerun", {}), ("author-runs", author)):
             sent = {**body, **as_me} if path != "author-runs" else body
@@ -690,7 +727,7 @@ def test_a_runs_token_is_refused_any_new_run_whatever_route_would_queue_it():
 
 
 def test_lifecycle_the_triage_rerun_of_a_run_that_ran_as_its_owner_does_not(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)  # a node of the default agent's
     run_id = step_run(client, hub["owner"], "lumen-kb-docs", worker, as_me=True)
     failed = report(client, worker, run_id, "failed", error="exec: ruff: not found", failure_cause="missing_tool")
     assert failed.status_code == 200, failed.text
@@ -834,7 +871,7 @@ def test_lifecycle_the_reaper_ends_the_token_and_the_next_attempt_keeps_the_choi
 
 def test_lifecycle_a_parked_run_loses_its_token_and_the_run_that_resumes_it_gets_a_new_one(client, hub, hub_db):
     worker = worker_of(client, hub["owner"], "mac-mini")
-    body = {"plan_id": PLAN, "worker_id": worker["id"], "as_me": True}
+    body = {"plan_id": PLAN, "as_me": True}
     assert client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"]).status_code == 201
     run_id = claim(client, worker)["id"]
     token = run_token(client, worker, run_id)
@@ -1084,9 +1121,8 @@ def test_as_me_and_access_from_the_command_line(client, hub, hub_db, tmp_path, m
     cancelled = client.post(f"/v1/projects/{PROJECT}/runs/{plan_run['id']}/cancel", headers=hub["owner"])
     assert cancelled.status_code == 200, cancelled.text
 
-    pinned = ("--worker", str(worker["id"]))
     dispatched = command(
-        monkeypatch, capsys, {}, "hub", "run", "dispatch", PLAN, str(STEPS["notes"]), *pinned, "--as-me", *where
+        monkeypatch, capsys, {}, "hub", "run", "dispatch", PLAN, str(STEPS["notes"]), "--as-me", *where
     )
     assert dispatched.code == 0, dispatched.err
     assert "; it runs as you, secrets, tokens and workers aside." in dispatched.out
@@ -1148,9 +1184,7 @@ ANSWER_URL = "/v1/projects/{project}/decisions/{decision_id}/answer"
 def credential_run(client, hub, worker: dict, request: dict, **body) -> tuple[int, dict]:
     """A plan run of the owner's, claimed and running on ``worker``, that asked for ``request`` and waits: (its id, the
     decision)."""
-    dispatched = client.post(
-        f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN, "worker_id": worker["id"]}, headers=hub["owner"]
-    )
+    dispatched = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"])
     assert dispatched.status_code == 201, dispatched.text
     run_id = claim(client, worker)["id"]
     moved(client, worker, run_id, "running", session_id="0199a3c1-0000-7000-8000-00000000000d")

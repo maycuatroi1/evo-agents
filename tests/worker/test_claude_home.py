@@ -247,6 +247,44 @@ def test_own_home_agent_without_a_login_fails_before_it_starts_with_cause_creden
     assert own.run.note[-1][1] == {"cause": "credentials"}
 
 
+def test_pooled_agent_takes_the_leased_token_alone_and_copies_no_login_of_the_owner(tmp_path):
+    own = agent(
+        tmp_path,
+        {**owner(tmp_path), "CLAUDE_CODE_OAUTH_TOKEN": "daemon-token", "ANTHROPIC_API_KEY": "daemon-key"},
+        own_home=True,
+        account_pool=True,
+        profile=profile(),
+        leased=("CLAUDE_CODE_OAUTH_TOKEN",),
+    )
+    env = own.env()
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "leased-token"  # the pool's lease, not the daemon's own
+    assert "ANTHROPIC_API_KEY" not in env
+    asyncio.run(own.prepare_home(own.context("go", None)))
+    assert not (claude_home.config_dir(tmp_path / "worktree") / claude_home.CREDENTIALS_FILE).exists()
+
+
+def test_pooled_agent_without_a_lease_never_falls_back_to_a_login_of_this_machine(tmp_path, monkeypatch):
+    monkeypatch.setattr(claude_home, "keychain_secret", lambda: json.dumps(CREDENTIALS))
+    own = agent(
+        tmp_path,
+        {**owner(tmp_path), "CLAUDE_CODE_OAUTH_TOKEN": "daemon-token"},
+        own_home=True,
+        account_pool=True,
+        profile=profile(),
+    )
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in own.env()
+    with pytest.raises(RunFailed) as failed:
+        asyncio.run(own.prepare_home(own.context("go", None)))
+    assert failed.value.fields["cause"] == "credentials"
+    assert "account pool" in str(failed.value)
+    assert not (claude_home.config_dir(tmp_path / "worktree") / claude_home.CREDENTIALS_FILE).exists()
+    plain = agent(
+        tmp_path / "p", owner(tmp_path / "p"), own_home=True, profile=profile()
+    )  # not pooled: copied as before
+    asyncio.run(plain.prepare_home(plain.context("go", None)))
+    assert (claude_home.config_dir(tmp_path / "p" / "worktree") / claude_home.CREDENTIALS_FILE).exists()
+
+
 def test_own_home_codex_keeps_the_owners_home_and_says_so_once(tmp_path):
     codex = agent(tmp_path, owner(tmp_path), runtime="codex", own_home=True, profile=profile())
     context = codex.context("go", None)

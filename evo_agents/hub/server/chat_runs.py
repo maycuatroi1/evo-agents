@@ -38,7 +38,15 @@ from evo_agents.hub import chat_bridge_events, chats, profiles, runs, tables
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
-from evo_agents.hub.server import attachment_store, autonomy_hold, gateway_accounts, run_access_rules, run_autonomy
+from evo_agents.hub.server import (
+    agent_placement,
+    attachment_store,
+    autonomy_hold,
+    gateway_accounts,
+    pool_accounts,
+    run_access_rules,
+    run_autonomy,
+)
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
@@ -64,7 +72,8 @@ class Hand:
     """What one mention asks: work of ``profile`` for ``dispatcher_id`` (``dispatcher``), the person at the origin of
     the chain, at ``hop``, in the thread of ``root_id`` of ``chat``, woken by message ``message_id`` that ``author``
     wrote, with the credential kind ``via`` (runs.dispatched_via). ``route`` is set by ``hand_work`` for a profile
-    whose agent type sends its chat runs to the workers of its run_as."""
+    whose agent type sends its chat runs under the name of its run_as. ``on_worker`` is the worker a new session goes to
+    when that worker can take it: the machine the work is about (a program to install, ``triage``)."""
 
     chat: ChatAccess
     message_id: int
@@ -77,6 +86,7 @@ class Hand:
     author: str
     body: str
     route: Route | None = None
+    on_worker: int | None = None
 
     @property
     def owner_id(self) -> int:
@@ -112,32 +122,26 @@ async def project_repos(conn: AsyncConnection, project_id: int) -> list[str]:
     return list(dict.fromkeys([*([harness] if harness else []), *names]))
 
 
-def _no_worker(hand: Hand) -> str:
-    profile, route = hand.profile, hand.route
-    if route is None:
-        return (
-            f"{hand.dispatcher} has no worker that takes runs of project {profile.project}, which @{profile.handle} "
-            "works in, and no member shares one there: join one, or add the project to one"
-        )
-    named = f" among those its agent type names ({', '.join(route.workers)})" if route.workers else ""
-    return (
-        f"@{profile.handle} runs on the workers of {route.login}, who has no worker{named} that takes runs of project "
-        f"{profile.project}: {route.login} joins one or adds the project to one, or an admin names other workers"
-    )
-
-
 async def pick_worker(conn: AsyncConnection, hand: Hand):
-    """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher or one another member
-    shares in the project, or of the run_as of the agent's type among its own workers the type names (``hand.route``),
-    fit for the profile (``unfit_worker``); the dispatcher's own before a shared one, then the one with a checkout of
+    """(the worker a new session goes to, None), (None, why none can take it) or (None, None) when no node is ready, so
+    the run queues and the admins hear of it (``agent_placement.watch``): a node of the agent's own pool, whoever
+    mentioned the agent and whatever the agent type's run_as names. ``hand.on_worker`` when it is one of them and fit,
+    else the node that ran the thread's last turn of the agent when it is still fit, else the one with a checkout of
     the most repos of the project, then the most free slots."""
+    home = await agent_placement.home_of(conn, hand.profile.id)
+    if home is None:
+        return None, f"@{hand.profile.handle} has no pool of its own: an admin adds one (`evo-agents worker pool`)"
+    return await _pool_worker(conn, hand, home)
+
+
+async def _pool_worker(conn: AsyncConnection, hand: Hand, home: agent_placement.Home):
+    """The pick of ``pick_worker`` among the nodes of ``home``'s pool."""
     profile = hand.profile
-    rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id))).all()
-    if hand.route is not None:
-        rows = [row for row in rows if row.owner_id == hand.owner_id and hand.route.named(row.name)]
+    rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id, pool_id=home.pool_id))).all()
+    ready = {row.id for row in await agent_placement.ready_nodes(conn, home)}
+    rows = [row for row in rows if row.id in ready]
     if not rows:
-        return None, _no_worker(hand)
-    repos = await project_repos(conn, profile.project_id)
+        return None, None
     fit, unfit = [], []
     for row in rows:
         why = unfit_worker(row, profile, hand.run_via)
@@ -146,19 +150,33 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
         else:
             unfit.append(f"{row.name} {why}")
     if not fit:
-        return None, f"no worker of {hand.owner} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
+        return None, f"no node of pool {home.pool} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
+    asked = next((row for row in fit if row.id == hand.on_worker), None)
+    if asked is not None:
+        return asked, None
+    last = await _last_node(conn, hand)
+    repos = await project_repos(conn, profile.project_id)
 
     def rank(row):
         held = sum(1 for name in repos if f"{profile.project}/{name}" in (row.checkouts or {}))
-        return (row.owner_id != hand.owner_id, -held, row.holding - row.slots, row.id)
+        return (row.id != last, -held, row.holding - row.slots, row.id)
 
     return min(fit, key=rank), None
+
+
+async def _last_node(conn: AsyncConnection, hand: Hand) -> int | None:
+    """The node that ran the agent's latest turn in the thread of ``hand``, for any dispatcher; None when it ran none."""
+    query = _sessions(hand.chat.chat_id, hand.root_id, None, hand.profile.id).where(
+        tables.runs.c.worker_id.is_not(None)
+    )
+    row = (await conn.execute(query.limit(1))).one_or_none()
+    return None if row is None else row.worker_id
 
 
 # Sessions
 
 
-def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | None = None):
+def _sessions(chat_id: int, root_id: int, dispatcher_id: int | None, profile_id: int | None = None):
     """The chat runs in the thread of ``root_id`` dispatched by ``dispatcher_id`` (of ``profile_id`` when given), the
     latest first, with the state of their worker and the person who wrote the message that started each."""
     r, m, w = tables.runs, tables.chat_messages, tables.workers
@@ -176,11 +194,11 @@ def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | 
         .select_from(r.join(m, m.c.id == r.c.chat_message_id).outerjoin(w, w.c.id == r.c.worker_id))
         .where(
             r.c.chat_id == chat_id,
-            r.c.dispatched_by == dispatcher_id,
             func.coalesce(m.c.thread_root_id, m.c.id) == root_id,
         )
         .order_by(r.c.id.desc())
     )
+    query = query if dispatcher_id is None else query.where(r.c.dispatched_by == dispatcher_id)
     return query if profile_id is None else query.where(r.c.profile_id == profile_id)
 
 
@@ -240,14 +258,15 @@ def _continue_run(previous: int, values: dict):
     run takes the title of ``previous``."""
     r = tables.runs
     copied = tuple(name for name in CONTINUED if name not in values)
+    pin = [] if "pinned_worker_id" in values else [r.c.worker_id.label("pinned_worker_id")]  # values may unpin it
     source = select(
         *(r.c[name] for name in copied),
-        r.c.worker_id.label("pinned_worker_id"),
+        *pin,
         r.c.runtime.label("requested_runtime"),
         r.c.id.label("resume_of_run_id"),
         *(literal(value, r.c[name].type).label(name) for name, value in values.items()),
     ).where(r.c.id == previous)
-    columns = [*copied, "pinned_worker_id", "requested_runtime", "resume_of_run_id", *values]
+    columns = [*copied, *(["pinned_worker_id"] if pin else []), "requested_runtime", "resume_of_run_id", *values]
     return insert(r).from_select(columns, source).returning(r.c.id)
 
 
@@ -296,6 +315,21 @@ async def _missed(conn: AsyncConnection, previous_id: int, hand: Hand) -> list[H
     return [replace(hand, message_id=row.id, body=row.body) for row in reversed(rows)]
 
 
+async def _pooled(conn: AsyncConnection, previous_id: int, values: dict) -> dict:
+    """``values`` of the run that goes on in the session of chat run ``previous_id``, placed on the pool of its agent
+    when the agent is in pool mode: the pool's selector and tolerations, pinned to the node of the session while it is
+    ready and to no node when it is gone, so another node of the pool takes the run."""
+    r = tables.runs
+    row = (await conn.execute(select(r.c.profile_id, r.c.worker_id).where(r.c.id == previous_id))).one()
+    home = await agent_placement.home_of(conn, row.profile_id)
+    if home is None:
+        return values
+    await agent_placement.watch(conn, home)
+    ready = {node.id for node in await agent_placement.ready_nodes(conn, home)}
+    kept = {} if row.worker_id in ready else {"pinned_worker_id": None}
+    return {**values, **kept, **agent_placement.stamped(home)}
+
+
 async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
     """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title;
     ``autonomy_hold.Stopped`` while a stop of autonomy holds its principal."""
@@ -309,6 +343,7 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
         "budget": rules.run_budget(),
     }
     values = _titled(values, rules.turn_title(hand.profile.handle, hand.chat.title, hand.body))
+    values = await _pooled(conn, previous.id, values)
     new_id = (await conn.execute(_continue_run(previous.id, values))).scalar_one()
     for missed in await _missed(conn, previous.id, hand):
         await _to_inbox(conn, new_id, missed)
@@ -356,6 +391,7 @@ async def go_on_parked(
     await move_run(
         conn, parked_id, "parked", "done", "owner", reason="resumed in a new run", token_id=token_id, decisions=None
     )
+    values = await _pooled(conn, parked_id, values)
     new_id = (await conn.execute(_continue_run(parked_id, values))).scalar_one()
     d, i = tables.decisions, tables.run_inbox
     await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
@@ -368,17 +404,22 @@ async def go_on_parked(
 
 
 async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
-    """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>, with the repos of the
-    project the worker has a checkout of: of them, the project's harness alone on a daemon of
+    """Queue the first run of a session of ``hand`` on ``worker`` (on none, for an agent in pool mode whose pool has no
+    node ready: the run waits for one, and starts with the project's harness alone), on the branch chat/<its id>, with
+    the repos of the project the worker has a checkout of: of them, the project's harness alone on a daemon of
     ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``). A daemon that clones
     what it lacks (``runs.CLONES_CHECKOUTS``) starts with the harness without a checkout of it too, when a project of
     the owner's lists an origin to clone it from (``repo_origins``)."""
     profile = hand.profile
     listed = await project_repos(conn, profile.project_id)
-    names = [name for name in listed if f"{profile.project}/{name}" in (worker.checkouts or {})]
-    if runs.LAZY_CHAT_REPOS in (worker.features or ()):
+    checkouts, features = (None, ()) if worker is None else (worker.checkouts, worker.features)
+    names = [name for name in listed if f"{profile.project}/{name}" in (checkouts or {})]
+    if worker is None:
         harness = await project_harness(conn, profile.project_id)
-        if harness is not None and harness not in names and runs.CLONES_CHECKOUTS in (worker.features or ()):
+        names = [harness] if harness is not None else []
+    elif runs.LAZY_CHAT_REPOS in (features or ()):
+        harness = await project_harness(conn, profile.project_id)
+        if harness is not None and harness not in names and runs.CLONES_CHECKOUTS in (features or ()):
             if harness in await repo_origins(conn, profile.project_id, hand.owner_id, [harness]):
                 names.append(harness)
         names = [name for name in names if name == harness]
@@ -393,7 +434,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
         "title": title,
         "dispatched_by": hand.owner_id,
         "dispatched_via": hand.run_via,
-        "pinned_worker_id": worker.id,
+        "pinned_worker_id": None if worker is None else worker.id,
         "requested_runtime": "any",
         "runtime": "any",
         "model": model,
@@ -499,6 +540,8 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         refusal = await _run_as_refusal(conn, hand) or await _seat_refusal(conn, hand.route.user_id, hand.route.login)
         if refusal is not None:
             return None, refusal
+    if (why := pool_accounts.needs_pool(hand.profile, hand.profile.project)) is not None:
+        return None, why
     session = await _session(conn, hand)
     if session is not None and session.state in runs.MESSAGE_STATES:
         await _to_inbox(conn, session.id, hand)
@@ -518,7 +561,7 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         except autonomy_hold.Stopped as exc:
             return None, exc.detail
     worker, why = await pick_worker(conn, hand)
-    if worker is None:
+    if worker is None and why is not None:
         return None, why
     try:
         return await _start(conn, hand, worker), None
@@ -755,6 +798,7 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
         "budget": rules.run_budget(),
     }
     values = _titled(values, await _woken_title(conn, run_id, rules.woken_text(untaken[0].body)))
+    values = await _pooled(conn, run_id, values)
     new_id = (await conn.execute(_continue_run(run_id, values))).scalar_one()
     i = tables.run_inbox
     await conn.execute(update(i).values(run_id=new_id).where(i.c.id.in_([row.id for row in untaken])))

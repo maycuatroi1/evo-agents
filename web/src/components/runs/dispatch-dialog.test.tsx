@@ -129,7 +129,7 @@ function Harness({ onDispatched }: { onDispatched: (runs: Run[]) => void }) {
 }
 
 describe("DispatchDialog", () => {
-  it("offers the ready steps only, fills the worker that can take them, and dispatches with the CSRF header", async () => {
+  it("offers the ready steps only, names no worker, and dispatches with the CSRF header", async () => {
     const user = userEvent.setup();
     const dispatched = vi.fn();
     api.answer = answer(() => json([queued(41, "4"), queued(42, "2")], 201));
@@ -151,24 +151,16 @@ describe("DispatchDialog", () => {
     expect(within(dialog).getByRole("checkbox", { name: /Model/ })).toBeDisabled();
     expect(within(dialog).getByTestId("dispatch-step-1")).toHaveTextContent("Trạng thái là Xong, không phải chưa làm");
 
-    // Only the visitor's own worker is offered, and filled in since it can take the runs now.
-    const workerSelect = within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement;
-    await waitFor(() => expect(workerSelect.value).toBe("7"));
-    expect(within(workerSelect).getAllByRole("option").map((option) => option.textContent)).toEqual(["lab-ws-01: còn 2 slot trống", "Worker bất kỳ phù hợp"]);
-    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
+    // No worker is picked: the agent's own pool takes the runs.
+    expect(within(dialog).queryByTestId("dispatch-worker")).toBeNull();
+    expect(within(dialog).queryByTestId("dispatch-worker-select")).toBeNull();
     await user.click(within(dialog).getByRole("checkbox", { name: /Queue/ }));
     expect(within(dialog).getByRole("button", { name: "Dispatch 2 run" })).toBeEnabled();
 
-    // A runtime the worker lacks: the worker cannot be picked, and below the dropdown it says why.
+    // A runtime no worker of the visitor's has still says so on its tile, and the dialog still dispatches.
     const codex = within(dialog).getByRole("radio", { name: "Codex CLI" });
     expect(codex).toHaveAccessibleDescription("Chưa worker nào có");
-    await user.click(codex);
-    expect(within(workerSelect).getByRole("option", { name: "lab-ws-01: không có Codex CLI" })).toBeDisabled();
-    expect(workerSelect.value).toBe("any");
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("lab-ws-01: không có Codex CLI");
     await user.click(within(dialog).getByRole("radio", { name: "Claude Code" }));
-    expect(workerSelect.value).toBe("7");
-    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
     expect(within(dialog).getByTestId("dispatch-approval-info")).toHaveAccessibleDescription(/Giữ lại chờ duyệt: bạn đọc diff và log/);
     await user.click(within(dialog).getByRole("radio", { name: "Đánh dấu xong" }));
     await user.selectOptions(within(dialog).getByLabelText("Thời gian tối đa mỗi run"), "120");
@@ -184,7 +176,6 @@ describe("DispatchDialog", () => {
       mode: "headless",
       approval: "auto",
       timeout_min: 120,
-      worker_id: 7,
       as_me: false,
     });
     expect(dispatched).toHaveBeenCalledWith([queued(41, "4"), queued(42, "2")]);
@@ -220,7 +211,7 @@ describe("DispatchDialog", () => {
     expect(alert).toHaveTextContent("Hub báo: step 4 of plan rollout is not ready");
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
     expect(dispatched).not.toHaveBeenCalled();
-    expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.worker_id).toBe(7);
+    expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).not.toHaveProperty("worker_id");
   });
 
   it("fills the ready account for the runtime, dispatches with it, and says why when the hub refuses it", async () => {

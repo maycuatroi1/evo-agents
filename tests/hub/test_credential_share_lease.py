@@ -4,7 +4,8 @@ all) on a project of the share is leased the shared secret after the member's ow
 ceiling, its most running runs or its budget, or whose account its owner's runs need, lends nothing and the run's
 events say why naming the share by id alone; revoking or ending a share takes back the leases out under it; each lease
 records its principal, and an account's cost splits by principal, which its owner sees whole and a grantee for
-themselves alone. Schema 0106 goes up and down.
+themselves alone. Schema 0106 goes up and down. The secret shared sets a variable of no model: a run of an agent takes
+its model account from the agent's account pool alone, never from a share (plan agent-dedicated-pools).
 
 Everything but the first tests needs the hub and skips without EVO_HUB_TEST_DSN."""
 
@@ -82,6 +83,7 @@ from tests.hub.test_credentials_api import (  # noqa: E402
     PROJECT,
     STEPS,
     by_name,
+    claimable,
     env_secret,
     git_secret,
     leased,
@@ -100,7 +102,7 @@ app_key, config, hub, client = (
     credentials_api.client,
 )
 
-VAR = "ANTHROPIC_API_KEY"  # an API key: shared without the terms acknowledgement a subscription token needs
+VAR = "DEPLOY_TOKEN"  # no model's (shared without the terms acknowledgement a subscription token needs)
 LAB = "lab"
 
 
@@ -118,12 +120,17 @@ def share(client, headers, name: str, status: int = 201, **body) -> dict:
 
 
 def run_on(client, headers, worker: dict, repo: str) -> int:
-    body = {"plan_id": PLAN, "steps": [STEPS[repo]], "worker_id": worker["id"]}
+    body = {"plan_id": PLAN, "steps": [STEPS[repo]]}
     response = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=headers)
     assert response.status_code == 201, response.text
     run_id = response.json()[0]["id"]
     assert claim(client, worker)["id"] == run_id
     return run_id
+
+
+def taken_for(db, run_id: int) -> list[tuple]:
+    """``taken_how`` of VAR alone: the run takes its model account from the pool of the project's default agent."""
+    return [row for row in taken_how(db, run_id) if row[0] == VAR]
 
 
 def env_of(client, worker: dict, run_id: int) -> dict:
@@ -177,7 +184,9 @@ def assert_named_by_id(body: dict, share_id: int, *hidden: str) -> None:
 
 @pytest.fixture
 def shared(client, hub) -> dict:
-    """owner's API key "team-key", shared with someone-else on the project; someone-else's worker desk."""
+    """owner's deploy token "team-key", shared with someone-else on the project; someone-else's worker desk, a node
+    of the pool of the project's default agent, which has an account pool."""
+    claimable(client)
     value = sample()
     env_secret(client, hub["owner"], "team-key", VAR, value)
     found = share(client, hub["owner"], "team-key")
@@ -192,7 +201,7 @@ def test_credential_share_lease_lends_the_shared_account_and_records_its_princip
     run_id = run_on(client, hub["other"], desk, "notes")
     assert env_of(client, desk, run_id) == {"name": "team-key", "value": shared["value"]}
     assert share_leases(hub_db, run_id) == [("team-key", user_id(hub_db, OTHER), shared["share"], False)]
-    assert taken_how(hub_db, run_id) == [(VAR, "team-key", "shared")]
+    assert taken_for(hub_db, run_id) == [(VAR, "team-key", "shared")]
     # asked again: the same lease
     assert env_of(client, desk, run_id)["name"] == "team-key"
     assert len(share_leases(hub_db, run_id)) == 1
@@ -336,7 +345,7 @@ def test_credential_share_priority_the_owners_runs_go_first_while_the_account_co
     box = worker_of(client, hub["owner"], "box")
     own = run_on(client, hub["owner"], box, "evo-agents")
     assert env_of(client, box, own)["name"] == "team-key"
-    assert taken_how(hub_db, own) == [(VAR, "team-key", "cooling")]
+    assert taken_for(hub_db, own) == [(VAR, "team-key", "cooling")]
 
 
 # Taking back (criterion a3)
@@ -392,7 +401,8 @@ def test_credential_share_cost_by_principal_the_owner_sees_every_row_a_grantee_t
     assert grantee_view.status_code == 200, grantee_view.text
     seen = grantee_view.json()
     assert [row["principal"] for row in seen["cost_by_principal"]] == [OTHER]
-    assert seen["runs_7d"] == 1 and seen["cost_7d_usd"] == 1.25
+    assert seen["cost_by_principal"][0]["cost_7d_usd"] == 1.25
+    assert seen["runs_7d"] == 1 and seen["cost_7d_usd"] is None  # no model's: its runs' cost is their model account's
     assert [run["run_id"] for run in seen["held_by"]] == [theirs]
     assert [item["id"] for item in seen["shares"]] == [shared["share"]] and seen["workers"] == []
     assert shared["value"] not in grantee_view.text

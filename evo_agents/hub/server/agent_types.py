@@ -5,18 +5,18 @@ project enabled it; PUT .../agent-types/{plugin}/{name}, an admin of the project
 
 Enabling a type the first time creates its agent profile in the project from the type's template: the handle, name,
 description, instructions and permissions it names, the agent packs of the plugin it names attached at the version the
-project runs (``agent_packs.pinned``), and its environment, when it names one, as the only one its runs may take. A
+project runs (``agent_packs.pinned``), and its environment, when it names one, as the only one its runs may take; and
+the agent's own pool, ``agent-<handle>``, where its runs go (``profile_store.create_pool``). A
 handle is unique on the hub and a core plugin's type is enabled in many projects, so the profile takes the handle the
 admin names (``handle``), else the template's, else ``<template's>-<project>`` when another agent, deleted ones
 included, or a project holds the template's (``_handle``); none of them free refuses it (409), as does a plugin the
 project did not enable or that is turned off. Enabling it again keeps that profile, which the project's admins edit as
 any other, and changes the rest: the member whose name its runs go under (``run_as``, a writer or an admin of the
-project), the workers of that member they may run on (none named: any the profile allows) and the cap of what its task
-runs may cost in ``task_runs.BUDGET_HOURS`` (``daily_usd``). Turning it off keeps the row and the profile: the plugin's
+project) and the cap of what its task runs may cost in ``task_runs.BUDGET_HOURS`` (``daily_usd``). Turning it off keeps the row and the profile: the plugin's
 tasks are refused until an admin enables it again. Every member of the project reads the list.
 
 Each change is audited in the project: agent-type.enable, its target ``<project>/plugin:<plugin> agent-type:<name>``
-then `` @<handle> run-as=<login> workers=<names> daily-usd=<cap>``, and agent-type.disable; the profile it creates
+then `` @<handle> run-as=<login> daily-usd=<cap>``, and agent-type.disable; the profile it creates
 adds its agent.create.
 """
 
@@ -42,10 +42,9 @@ from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
 from evo_agents.hub.server.agent_profiles import AgentPermissions
 from evo_agents.hub.server.chat_members import LOGIN_PATTERN
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.profile_store import write_version
+from evo_agents.hub.server.profile_store import create_pool, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.server.worker_models import WORKER_NAME
 from evo_agents.plugins.manifest import PLUGIN_ID
 from evo_agents.plugins.runtimes import CONTRIBUTION
 
@@ -65,18 +64,13 @@ router = APIRouter(prefix="/v1/projects", tags=["agents"], responses={401: {"mod
 
 
 class AgentTypeIn(BaseModel):
-    """How a project runs an agent type: under whose name, on which of that member's workers, at what cost a day."""
+    """How a project runs an agent type: under whose name, at what cost a day."""
 
     model_config = ConfigDict(extra="forbid")
 
     run_as: str = Field(
         pattern=LOGIN_PATTERN,
         description="the member whose name its runs go under: a writer or an admin of the project",
-    )
-    workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] = Field(
-        default_factory=list,
-        max_length=task_runs.MAX_WORKERS,
-        description="the workers of run_as its runs may take, by name; none: any the profile allows",
     )
     daily_usd: float = Field(
         gt=0,
@@ -105,7 +99,6 @@ class AgentType(BaseModel):
     packs: list[str] = Field(description="the agent packs of the plugin it attaches, <plugin>/<name>")
     enabled: bool = Field(description="enabled in the project and not turned off: the plugin may hand it tasks")
     run_as: str | None
-    workers: list[str]
     daily_usd: float | None
     spent_usd: float = Field(description=f"what its task runs cost in the last {task_runs.BUDGET_HOURS} hours")
     enabled_by: str | None
@@ -143,7 +136,6 @@ def _rows(project_id: int):
             t.c.profile_id,
             t.c.run_as.label("run_as_id"),
             runner.c.login.label("run_as"),
-            t.c.workers,
             t.c.daily_usd,
             enabler.c.login.label("enabled_by"),
             t.c.enabled_at,
@@ -177,7 +169,6 @@ def _view(plugin: str, item: dict, row, spent: float) -> AgentType:
         packs=[f"{plugin}/{pack}" for pack in item.get("packs") or ()],
         enabled=row is not None and row.disabled_at is None and row.profile_deleted_at is None,
         run_as=row.run_as if row is not None else None,
-        workers=list(row.workers or ()) if row is not None else [],
         daily_usd=row.daily_usd if row is not None else None,
         spent_usd=spent,
         enabled_by=row.enabled_by if row is not None else None,
@@ -241,22 +232,6 @@ async def _member(conn: AsyncConnection, access: ProjectAccess, login: str) -> i
             422, f"the runs of an agent type go under a writer of project {access.name}, and {login} {held}; {NOTHING}"
         )
     return row.id
-
-
-async def _workers(conn: AsyncConnection, user_id: int, login: str, names: list[str]) -> list[str]:
-    """``names``, each once, lowered: workers of ``user_id`` that are not revoked; 422 for one that is not."""
-    wanted = list(dict.fromkeys(name.lower() for name in names))
-    w = tables.workers
-    query = select(func.lower(w.c.name)).where(w.c.owner_id == user_id, w.c.revoked_at.is_(None))
-    held = set((await conn.execute(query)).scalars())
-    missing = [name for name in wanted if name not in held]
-    if missing:
-        raise HTTPException(
-            422,
-            f"{login} has no worker {', '.join(missing)} that is not revoked: name workers of {login}, or none for "
-            f"any; {NOTHING}",
-        )
-    return wanted
 
 
 def _permissions(plugin: str, item: dict) -> dict:
@@ -332,6 +307,7 @@ async def _create_profile(
             f"agent meanwhile: {NOTHING}",
         )
     await write_version(conn, profile_id, 1, values, user.user_id)
+    await create_pool(conn, profile_id, handle, access.project_id, user.user_id)  # its runs go to its own pool
     await _record(conn, user, access, audit.AGENT_CREATE, f"{access.name}/@{handle} v1")
     return profile_id
 
@@ -357,7 +333,6 @@ async def enable_agent_type(
         _admin(access, "enabling an agent type")
         enabled, item = await _contribution(conn, access, plugin, name)
         run_as = await _member(conn, access, body.run_as)
-        workers = await _workers(conn, run_as, body.run_as, body.workers)
         row = await enabled_type(conn, access.project_id, enabled.id, name, lock=True)
         if row is not None and row.profile_deleted_at is not None:
             raise HTTPException(
@@ -377,12 +352,12 @@ async def enable_agent_type(
             if row is not None
             else await _create_profile(conn, user, access, plugin, item, hub, body.handle)
         )
-        values = {"profile_id": profile_id, "run_as": run_as, "workers": workers, "daily_usd": body.daily_usd}
+        values = {"profile_id": profile_id, "run_as": run_as, "daily_usd": body.daily_usd}
         values |= {"enabled_by": user.user_id, "enabled_at": func.now(), "disabled_at": None}
         statement = pg_insert(t).values(project_id=access.project_id, plugin_id=enabled.id, name=name, **values)
         await conn.execute(statement.on_conflict_do_update(constraint="project_agent_types_name_key", set_=values))
         row = await enabled_type(conn, access.project_id, enabled.id, name)
-        said = f" @{row.handle} run-as={row.run_as} workers={','.join(workers) or '-'} daily-usd={body.daily_usd}"
+        said = f" @{row.handle} run-as={row.run_as} daily-usd={body.daily_usd}"
         await _record(conn, user, access, audit.AGENT_TYPE_ENABLE, _target(access, plugin, name) + said)
         view = _view(plugin, item, row, await type_spend(conn, row.id))
     log.info("agent type enabled", extra={"project": project, "plugin": plugin, "agent_type": name})

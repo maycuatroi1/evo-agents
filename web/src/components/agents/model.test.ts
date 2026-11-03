@@ -18,6 +18,8 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     icon_url: null,
     avatar_sha256: null,
     is_default: false,
+    home_pool: null,
+    account_pool: null,
     permissions: { tool: { mode: "allowlist", allow: ["read"] } },
     restricted: ["tool"],
     packs: [],

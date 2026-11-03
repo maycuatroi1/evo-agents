@@ -214,7 +214,7 @@ chat. No run waits on the answer.
 ### A decision of the Loop
 
 The hub itself asks decisions of category `loop` too (plan loop-engine): when a work item of a project's Loop fails a
-third time, the person its last run stands for (the run_as of a task run's agent type, the owner of `loop.worker` for
+third time, the person its last run stands for (the run_as of a task run's agent type, the owner of the default agent's pool for
 an author or a plan run) gets one on that run, with the three options `retry` (the Loop hands it out again, its
 failures counted from 0), `drop` and `manual` (the work item cancelled, its chain left to a person). That person
 answers it, through the Inbox or `hub decision answer`, with one of those options; any other answer is 422. The hub

@@ -132,6 +132,9 @@ SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value in
 # The hub (by=hub, as K12 of the run's principal is auto) or the owner's answer (by=owner) bound the owner's secret to
 # a run's project for its credential request: "secret:<id> run:<id> decision:<id> by=<hub|owner>", never its name.
 SECRET_BIND = "secret.bind"
+# The owner bound their secret to other workers or pools, or to any worker, its value untouched (PATCH
+# /v1/secrets/{name}): "secret:<id> workers=<names>", "secret:<id> pools=<names>" or "secret:<id> anywhere".
+SECRET_REBIND = "secret.rebind"
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
 # A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
 # and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
@@ -161,6 +164,21 @@ ACCOUNT_FAILOVER = "account.failover"
 AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
+AGENT_PLACEMENT = "agent.placement"  # no longer written: an admin once moved an agent between legacy and its own pool
+# Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
+# " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
+# account or a value.
+ACCOUNT_POOL_CREATE = "account-pool.create"  # an admin made a named account pool
+ACCOUNT_POOL_DELETE = "account-pool.delete"  # an admin deleted a pool no agent uses
+ACCOUNT_POOL_ADD = "account-pool.add"  # an admin added an account to it
+ACCOUNT_POOL_REMOVE = "account-pool.remove"  # an admin took an account out of it
+ACCOUNT_POOL_ATTACH = "account-pool.attach"  # an admin attached it to an agent, or detached it (none)
+# The lists of the core plugin guard (evo_agents.core_plugins.guard), in the project; the target is
+# "<project> guard-term:<id>" or "<project> guard-target:<id>", never the term itself.
+GUARD_TERM_ADD = "guard-term.add"  # an admin added a private name of the project
+GUARD_TERM_REMOVE = "guard-term.remove"  # an admin removed one
+GUARD_TARGET_ADD = "guard-target.add"  # an admin added a pattern of the repos the project publishes
+GUARD_TARGET_REMOVE = "guard-target.remove"  # an admin removed one
 # The accounts of an agent profile (evo_agents.hub.server.agent_accounts), in the project; the target is
 # "<project>/@<handle> secret:<id>", with " fields=<names>" for a change, never a name of the account or a value.
 AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
@@ -372,6 +390,9 @@ CREDENTIAL_REVOKE = "credential.revoke"
 RUN_ACCESS_GRANT = "run_access.grant"
 RUN_ACCESS_REVOKE = "run_access.revoke"
 RUN_ACCESS_WRITE = "run_access.write"
+# A member changed the groups the tokens of their runs reach (run_access_rules.REACH_GROUPS), hub-wide:
+# "reach <login> <before>-><after>", each a comma-separated list or none.
+RUN_ACCESS_REACH = "run_access.reach"
 # The signals of a project (evo_agents.hub.server.signal_keys), in the project: "<project> key=<name>" for its registry,
 # "<project> ingest:<id> name=<name>" for an ingest key; never a token.
 SIGNAL_KEY_ADD = "signal.key-add"  # an admin added a key to the registry

@@ -69,7 +69,7 @@ test("an author run's decisions are cards in its Chat: answered with the mouse, 
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   const live = await authorWorker(me, project, uniqueName("desk"));
-  const run = await dispatchAuthor(me, project, live.worker.id, REQUEST);
+  const run = await dispatchAuthor(me, project, REQUEST);
   await startAuthor(live, run.id);
   const [scope, shape] = await askTwo(live, run.id);
 
@@ -149,7 +149,7 @@ test("another member reads an author run's decision card in its Chat without a f
   const writer = newAccount("writer");
   await admin.grant(project, writer.login, "writer", "internal");
   const live = await authorWorker(writer, project, uniqueName("their-desk"));
-  const run = await dispatchAuthor(writer, project, live.worker.id, REQUEST);
+  const run = await dispatchAuthor(writer, project, REQUEST);
   await startAuthor(live, run.id);
   await askTwo(live, run.id);
 

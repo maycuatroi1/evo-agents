@@ -183,15 +183,19 @@ test.describe("members and grants", () => {
     await expect(member.page.getByTestId("state-not-found")).toBeVisible();
     await member.close();
 
-    // Both changes are in the audit trail, filed under the project with its registration.
+    // Both changes are in the audit trail, filed under the project with its registration and the account pool its
+    // default agent got from the hub admin (HubAdmin.giveAccountPool): made, given an account, attached.
     await page.goto(`/admin/audit?project=${project}`);
     const rows = page.getByTestId("audit-table").locator("tbody tr");
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(6);
     await expect(rows.nth(0)).toContainText("grant.delete");
     await expect(rows.nth(0)).toContainText(`${project}/${account.login}`);
     await expect(rows.nth(1)).toContainText(`${project}/${account.login} role=reader max_level=internal`);
-    await expect(rows.nth(2)).toContainText("project.register");
-    for (const index of [0, 1, 2]) await expect(rows.nth(index)).toContainText(ADMIN_ACCOUNT.login);
+    await expect(rows.nth(2)).toContainText("account-pool.attach");
+    await expect(rows.nth(3)).toContainText("account-pool.add");
+    await expect(rows.nth(4)).toContainText("account-pool.create");
+    await expect(rows.nth(5)).toContainText("project.register");
+    for (const index of [0, 1, 2, 3, 4, 5]) await expect(rows.nth(index)).toContainText(ADMIN_ACCOUNT.login);
   });
 
   test("a grant the API refuses is explained in the dialog, which then lets the admin fix it", async ({

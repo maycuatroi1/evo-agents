@@ -10,6 +10,10 @@ worker_pool_projects lists the projects the nodes of a pool serve. worker_join_t
 the hex SHA-256 of the ``evj_`` token, never the token, who made it, when it expires, how many machines it takes at
 most and how many joined with it, and when it was revoked.
 
+Since 0189 a pool may be an agent's: ``worker_pools.agent_id`` names the agent (``agent_profiles``) whose pool it is,
+NULL for a member's, and at most one pool names an agent (``worker_pools_agent_key``). An agent's pool is named
+``agent-<handle>`` and owned by the member who created the agent.
+
 Their CHECK constraints are the migration's alone. ``pool_tables`` also gives workers ``pool_id``, the pool a node joined, NULL for a worker paired or registered.
 ``placement_columns`` gives workers ``taints`` and runs ``selector`` and ``tolerations`` (0149), which place a run.
 """
@@ -53,6 +57,7 @@ def pools_table(metadata: MetaData) -> Table:
         _id(),
         Column("owner_id", BigInteger, nullable=False),
         Column("name", Text, nullable=False),
+        Column("agent_id", BigInteger),  # since 0189: the agent whose pool it is, NULL for a member's
         Column("slots", SmallInteger, nullable=False, server_default="1"),
         _texts("labels"),
         _texts("taints"),
@@ -60,10 +65,17 @@ def pools_table(metadata: MetaData) -> Table:
         Column("reap_after_days", SmallInteger, nullable=False, server_default="7"),
         _stamp("created_at"),
         _stamp("updated_at"),
+        Column(
+            "empty_notified_at", DateTime(timezone=True)
+        ),  # since 0190: the admins heard that no node was ready; cleared when one is
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="worker_pools_owner_id_fkey"),
+        ForeignKeyConstraint(
+            ["agent_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="worker_pools_agent_id_fkey"
+        ),
         PrimaryKeyConstraint("id", name="worker_pools_pkey"),
     )
     Index("worker_pools_name_key", pools.c.owner_id, func.lower(pools.c.name), unique=True)
+    Index("worker_pools_agent_key", pools.c.agent_id, unique=True, postgresql_where=pools.c.agent_id.is_not(None))
     return pools
 
 

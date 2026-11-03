@@ -15,6 +15,11 @@ EVO_HUB_S3_INTERNAL_ENDPOINT, optional, is where the api and the worker reach th
 store's address on the platform's network when EVO_HUB_S3_ENDPOINT is a public hostname behind a proxy that caps a
 request's body; the presigned URLs handed to clients keep EVO_HUB_S3_ENDPOINT. Set without the four, it is a
 ConfigError.
+EVO_HUB_S3_PROVIDER names the service behind that S3 API, one of S3_PROVIDERS (``r2`` when unset), and so the region
+the requests are signed for and the addressing style of their URLs. EVO_HUB_S3_REGION and EVO_HUB_S3_ADDRESSING_STYLE
+(``path`` or ``virtual``) override the provider's; a provider whose region has no default (``aws``, ``b2``) reads it
+from the endpoint's host name, and without one there it is a ConfigError naming EVO_HUB_S3_REGION. The three are
+ConfigErrors too when set without the four.
 EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
 (``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
 artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
@@ -175,7 +180,55 @@ MIN_GATEWAY_SECRET = 32  # characters of the root secret the api and the gateway
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
 S3_INTERNAL_ENDPOINT = "EVO_HUB_S3_INTERNAL_ENDPOINT"  # optional: where the hub itself reaches the store
+S3_PROVIDER = "EVO_HUB_S3_PROVIDER"  # optional: the service behind the S3 API, r2 when unset
+S3_REGION = "EVO_HUB_S3_REGION"  # optional: the region requests are signed for, the provider's when unset
+S3_ADDRESSING_STYLE = "EVO_HUB_S3_ADDRESSING_STYLE"  # optional: path or virtual, the provider's when unset
+S3_OPTIONAL = (S3_PROVIDER, S3_REGION, S3_ADDRESSING_STYLE)
+ADDRESSING_STYLES = ("path", "virtual")
+S3_REGION_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
+
+
+@dataclass(frozen=True)
+class S3Provider:
+    """What the hub needs to know of a service behind an S3 API. ``region`` None: the region is the bucket's own,
+    read from the endpoint's host name by ``region_in_host`` (its group ``region``) when EVO_HUB_S3_REGION is unset.
+    ``batch_delete`` False: the service has no DeleteObjects, so keys are deleted one call each."""
+
+    region: str | None
+    addressing_style: str = "path"
+    batch_delete: bool = True
+    region_in_host: re.Pattern | None = None
+
+
+S3_PROVIDERS = {
+    # Cloudflare R2: https://<account id>.r2.cloudflarestorage.com, region "auto" as Cloudflare documents.
+    "r2": S3Provider("auto"),
+    # Amazon S3: https://s3.<region>.amazonaws.com; buckets are reached by host name, as AWS recommends.
+    "aws": S3Provider(
+        None, "virtual", region_in_host=re.compile(r"s3[.-](?:dualstack\.)?(?P<region>[a-z0-9-]+)\.amazonaws\.com")
+    ),
+    # Google Cloud Storage's XML API with HMAC keys: https://storage.googleapis.com; it has no DeleteObjects.
+    "gcs": S3Provider("auto", batch_delete=False),
+    # Backblaze B2: https://s3.<region>.backblazeb2.com.
+    "b2": S3Provider(None, region_in_host=re.compile(r"s3\.(?P<region>[a-z0-9-]+)\.backblazeb2\.com")),
+    # Self-hosted stores, which take any region and serve every bucket under one host.
+    "minio": S3Provider("us-east-1"),
+    "seaweedfs": S3Provider("us-east-1"),
+    "other": S3Provider("us-east-1"),  # any other S3 API; EVO_HUB_S3_REGION and _ADDRESSING_STYLE adjust it
+}
+DEFAULT_S3_PROVIDER = "r2"
+# The HubConfig fields of the blob store, which evo_agents.hub.blobs.BlobStore.from_settings takes.
+BLOB_STORE_FIELDS = (
+    "s3_endpoint",
+    "s3_bucket",
+    "s3_access_key_id",
+    "s3_secret_access_key",
+    "s3_internal_endpoint",
+    "s3_provider",
+    "s3_region",
+    "s3_addressing_style",
+)
 SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
 SELLER_KEY_BYTES = 32  # the seed of an Ed25519 key
 SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.admin.PROJECT_NAME
@@ -235,6 +288,9 @@ class HubConfig:
     s3_access_key_id: str | None = None  # never logged
     s3_secret_access_key: str | None = None  # never logged or returned
     s3_internal_endpoint: str | None = None  # where the api and worker call the store; None: s3_endpoint
+    s3_provider: str = DEFAULT_S3_PROVIDER  # a key of S3_PROVIDERS
+    s3_region: str = "auto"  # the region requests are signed for
+    s3_addressing_style: str = "path"  # path: <endpoint>/<bucket>/<key>; virtual: <bucket>.<endpoint host>/<key>
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
@@ -503,12 +559,45 @@ def _blob_store(env: Mapping[str, str]) -> dict:
     if values["s3_bucket"] and not BUCKET.fullmatch(values["s3_bucket"]):
         raise ConfigError(bucket_name, f"{bucket_name} must be an S3 bucket name, got {values['s3_bucket']!r}")
     internal = _url(env, S3_INTERNAL_ENDPOINT, None)
-    if internal and missing:
+    optional = {S3_INTERNAL_ENDPOINT: internal, **{name: _text(env, name) for name in S3_OPTIONAL}}
+    for name, value in optional.items():
+        if value and missing:
+            raise ConfigError(
+                name, f"{name} is set but the blob store is not: set {', '.join(S3_VARIABLES)} too, or unset it"
+            )
+    return {**values, "s3_internal_endpoint": internal, **_s3_provider(env, values["s3_endpoint"])}
+
+
+def _s3_provider(env: Mapping[str, str], endpoint: str | None) -> dict:
+    """The provider, region and addressing style of the store at ``endpoint``: the variables, else the provider's."""
+    name = (_text(env, S3_PROVIDER) or DEFAULT_S3_PROVIDER).lower()
+    provider = S3_PROVIDERS.get(name)
+    if provider is None:
+        raise ConfigError(S3_PROVIDER, f"{S3_PROVIDER} must be one of {', '.join(S3_PROVIDERS)}, got {name!r}")
+    style = (_text(env, S3_ADDRESSING_STYLE) or provider.addressing_style).lower()
+    if style not in ADDRESSING_STYLES:
         raise ConfigError(
-            S3_INTERNAL_ENDPOINT,
-            f"{S3_INTERNAL_ENDPOINT} is set but the blob store is not: set {', '.join(S3_VARIABLES)} too, or unset it",
+            S3_ADDRESSING_STYLE, f"{S3_ADDRESSING_STYLE} must be {' or '.join(ADDRESSING_STYLES)}, got {style!r}"
         )
-    return {**values, "s3_internal_endpoint": internal}
+    region = (_text(env, S3_REGION) or "").lower() or provider.region
+    if region is None and endpoint and provider.region_in_host:
+        found = provider.region_in_host.fullmatch(urlsplit(endpoint).hostname or "")
+        region = found["region"] if found else None
+    if region is None:
+        if endpoint:
+            raise ConfigError(
+                S3_REGION, f"{S3_REGION} is not set: provider {name} signs for the bucket's region, such as us-west-2"
+            )
+        region = "auto"  # no store configured: nothing is signed
+    if not S3_REGION_NAME.fullmatch(region):
+        raise ConfigError(S3_REGION, f"{S3_REGION} must be a region name such as us-east-1, got {region!r}")
+    return {"s3_provider": name, "s3_region": region, "s3_addressing_style": style}
+
+
+def load_blob_store(env: Mapping[str, str]) -> dict:
+    """The blob store's HubConfig fields (BLOB_STORE_FIELDS) read from ``env`` alone, as load_config reads them, for
+    ``hub storage``, which may describe a second store in a file; ConfigError as load_config raises it."""
+    return _blob_store(env)
 
 
 def _secrets_key(env: Mapping[str, str]) -> bytes | None:

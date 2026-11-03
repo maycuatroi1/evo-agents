@@ -92,10 +92,13 @@ TUNE, HOLDOUT = "tune", "holdout"
 SPLITS = (TUNE, HOLDOUT)
 HOLDOUT_SHARE = 0.3  # of the questions of a set, by the hash of their id: changing it moves questions between parts
 # `kg eval-questions` (evo_agents.hub.kg_eval): the type of its questions, what of a step asks, the most files a step
-# may change and still make one question. Here so that building the command line imports nothing of the hub.
+# may change and still make one question; with --from-sessions (evo_agents.hub.kg_eval_sessions) the type of its
+# questions and the days of transcripts it reads. Here so that building the command line imports nothing of the hub.
 PLAN_STEP_TYPE = "plan-step"
 PLAN_TEXTS = ("title", "what")
 DEFAULT_MAX_FILES = 20
+SESSION_TYPE = "session"
+DEFAULT_SESSION_DAYS = 30
 WORD = re.compile(r"\w+")
 STOP_WORDS = frozenset(
     "the and for with from that this these those what where which when how does did into are was were has have had "
@@ -548,10 +551,14 @@ def run_kg(
     budget_tokens: int,
     line_budget: int = LINE_BUDGET,
     file_length: Callable[[str | None, str], int | None] = _no_length,
+    scope: str = "all",
 ) -> Outcome:
-    """Ask the graph through ``session.call`` (a local Session or the hub's RemoteSession) as an agent would."""
+    """Ask the graph through ``session.call`` (a local Session or the hub's RemoteSession) as an agent would; with
+    ``scope`` "repo", kg_search names the question's repo, as an agent searching inside one repo would."""
     if method == "kg_search":
         args, key = {"query": question.text, "limit": limit}, "results"
+        if scope == "repo" and question.repo:
+            args["repo"] = question.repo
     else:
         args, key = {"query": question.text, "budget_tokens": budget_tokens}, "nodes"
     start = time.perf_counter()
@@ -813,6 +820,7 @@ def evaluate(
     split: str | None = None,
     line_budget: int = LINE_BUDGET,
     acc: bool = False,
+    scope: str = "all",
 ) -> Report:
     """Run every method on every question. ``session_for`` and ``checkouts_for`` take a question's project (None:
     the default one) and are called once per project. ``question_set`` and ``split`` are only named in the settings:
@@ -839,7 +847,9 @@ def evaluate(
                     checkouts[question.project] = checkouts_for(question.project)
                 file_length = _length_reader(checkouts[question.project], grep_ref, lengths, question.project)
             outcomes.append(
-                run_kg(sessions[question.project], method, question, limit, budget_tokens, line_budget, file_length)
+                run_kg(
+                    sessions[question.project], method, question, limit, budget_tokens, line_budget, file_length, scope
+                )
             )
     settings = {
         "questions": len(questions),

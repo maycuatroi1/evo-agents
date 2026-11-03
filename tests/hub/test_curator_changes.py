@@ -41,6 +41,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture
     MINE,
     OTHER,
     app_key,
+    claimable,
     env_secret,
     git_secret,
     install,
@@ -50,7 +51,18 @@ from tests.hub.test_credentials_api import PLAN as MEMBERS_PLAN
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
-from tests.hub.test_curator import DAY, NIGHT, PROJECT, THE_NIGHT, charter_body, fire, grant, put_charter, written
+from tests.hub.test_curator import (
+    DAY,
+    NIGHT,
+    PROJECT,
+    THE_NIGHT,
+    charter_body,
+    fire,
+    grant,
+    home_node,
+    put_charter,
+    written,
+)
 from tests.hub.test_decisions import ask as ask_decision
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import reported
@@ -100,20 +112,30 @@ def taking(client, worker: dict) -> dict:
 
 
 def curator_charter(**changes) -> dict:
-    return charter_body(worker="mac-mini", night_plans=[], max_runs_per_night=20, night_budget_usd=5.0, **changes)
+    return charter_body(night_plans=[], max_runs_per_night=20, night_budget_usd=5.0, **changes)
+
+
+def duty_worker(client, db, headers) -> dict:
+    """Owner's worker mac-mini, which runs every kind of run, a node of the pool of the project's default agent, which
+    owner holds and whose runs (the night shift's, the Curator's) it takes; the agent with an account pool."""
+    worker = home_node(
+        client, db, headers["owner"], taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+    )
+    claimable(client)
+    return worker
 
 
 @pytest.fixture
 def world(hub_db, tmp_path, github, app_key):  # noqa: F811
     """test_credentials_api's project (evo-agents on GitHub, lumen-kb-docs on GitLab, two more repos), its hub holding the
     secrets key, the workers' App and the Curator's App, both installed on evo-agents, whose default branch has a
-    ruleset only the workers' App bypasses; owner an admin with a charter whose worker on duty, mac-mini, runs every
-    kind of run."""
+    ruleset only the workers' App bypasses; owner an admin with a charter, and the worker on duty mac-mini
+    (``duty_worker``)."""
     config = credentials_config(hub_db, tmp_path, github, app_key, curator=True)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
-        worker = taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+        worker = duty_worker(client, hub_db, headers)
         written(client, headers["owner"], curator_charter())
         install(github, "evo-agents", permissions=WORKERS_APP)
         install(github, "evo-agents", app="curator")
@@ -204,8 +226,19 @@ def inputs(world, run_id: int, worker=None, key: str | None = None):
     return world.client.get(f"/v1/worker/runs/{run_id}/judge", headers=headers)
 
 
+SECURITY_PASS = {
+    "verdict": "pass",
+    "reason": "none found",
+    "findings": [],
+    "candidates": 0,
+    "turns": 1,
+    "cost_usd": 0.02,
+}
+
+
 def verdict(world, run_id: int, *, key: str | None = None, **body):
     sent = {
+        "security": SECURITY_PASS,
         "verdict": "pass",
         "reasons": "The test covers the helper.",
         "head_sha": HEAD,
@@ -317,11 +350,8 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
 
 def test_curator_plan_no_member_dispatches_it(world):
     accepted(world)
-    owner, worker_id = world.headers["owner"], world.worker["id"]
-    for route, body in (
-        ("plan-runs", {"plan_id": PLAN_ID, "worker_id": worker_id}),
-        ("runs", {"plan_id": PLAN_ID, "steps": [1], "worker_id": worker_id}),
-    ):
+    owner = world.headers["owner"]
+    for route, body in (("plan-runs", {"plan_id": PLAN_ID}), ("runs", {"plan_id": PLAN_ID, "steps": [1]})):
         refused = world.client.post(f"/v1/projects/{PROJECT}/{route}", json=body, headers=owner)
         assert refused.status_code == 409 and "the night shift runs it itself, at any hour" in refused.text
     assert sql(world.db, select(func.count()).select_from(tables.runs).where(tables.runs.c.plan_id == PLAN_ID)) == [
@@ -510,7 +540,8 @@ def test_curator_plan_the_night_shift_keeps_why_it_passes_over_a_planned_change(
     taking(world.client, {**world.worker, "checkouts": {}})  # the worker on duty lost its checkouts
     assert queue_now(world, "builder") is None
     assert one_change(world)["reason"].startswith(
-        f"worker mac-mini on duty cannot build it: it has no checkout of {PROJECT}/evo-agents"
+        f"pool agent-{PROJECT} on duty cannot build it: no ready node of pool agent-{PROJECT} fits it: mac-mini: it "
+        f"has no checkout of {PROJECT}/evo-agents"
     )
 
 
@@ -551,9 +582,10 @@ def test_curator_plan_run_plan_queues_its_builder_now_beside_the_night_shifts_ot
     assert made.status_code == 201, made.text
     run = made.json()
     assert (run["kind"], run["plan_id"], run["state"], run["dispatched_by"]) == ("plan", PLAN_ID, "queued", "owner")
-    columns = (r.c.pinned_worker_id, r.c.dispatched_via, r.c.budget)
+    columns = (r.c.pinned_worker_id, r.c.selector, r.c.dispatched_via, r.c.budget)
     budget = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}  # the charter's caps
-    assert sql(world.db, select(*columns).where(r.c.id == run["id"])) == [(world.worker["id"], "schedule", budget)]
+    on_pool = [(None, [f"pool=agent-{PROJECT}"], "schedule", budget)]  # any ready node of the default agent's pool
+    assert sql(world.db, select(*columns).where(r.c.id == run["id"])) == on_pool
     texts = [row[0].get("text", "") for row in sql(world.db, select(e.c.body).where(e.c.run_id == run["id"]))]
     assert any("asked for it from Run plan" in text for text in texts)
     (target,) = sql(world.db, select(tables.audit.c.target).where(tables.audit.c.action == "curator.build_now"))
@@ -610,6 +642,7 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "history_key": None,
         "probe": None,  # a probe run's alone
         "probe_key": None,
+        "merge_result": False,  # a merge check's alone
     }
     lease = next(
         item for item in leased(world.client, world.worker, spec["id"])["leases"] if item["provider"] == "github-app"
@@ -636,7 +669,7 @@ def workers_app_alone(hub_db, tmp_path, github, app_key):  # noqa: F811
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
-        worker = taking(client, credential_worker(client, headers["owner"], "mac-mini"))
+        worker = duty_worker(client, hub_db, headers)
         written(client, headers["owner"], curator_charter())
         install(github, "evo-agents")
         yield SimpleNamespace(client=client, headers=headers, worker=worker, github=github, db=hub_db, app=client.app)
@@ -975,6 +1008,37 @@ def test_judge_a_verdict_without_its_hidden_checks_run_fails_the_change(world):
     assert one_change(world)["state"] == "open" and world.github.merges == []
 
 
+def test_judge_security_pass_finding_fails_the_change_with_its_path_and_line_in_the_findings(world):
+    found = {"path": "src/wait.py", "line": 3, "text": "command_injection (high): the name reaches a shell"}
+    security = {**SECURITY_PASS, "verdict": "fail", "reason": "1 vulnerability: src/wait.py:3", "findings": [found]}
+    change = through_the_judge(world, security=security)
+    assert change["passed"] is False
+    assert change["verdict"]["failures"] == ["the Judge failed security: 1 vulnerability: src/wait.py:3"]
+    assert change["verdict"]["dimensions"] == {
+        "security": {"verdict": "fail", "reason": "1 vulnerability: src/wait.py:3"}
+    }
+    (raised,) = change["verdict"]["findings"]
+    assert (raised["id"], raised["dimension"], raised["path"], raised["line"], raised["status"]) == (
+        "F1", "security", "src/wait.py", 3, "open"
+    )  # fmt: skip
+    assert change["verdict"]["security"] == {**{k: v for k, v in security.items() if k != "findings"}}
+
+
+def test_judge_security_pass_a_verdict_without_the_pass_fails_the_change(world):
+    change = through_the_judge(world, security=None)
+    assert change["passed"] is False
+    assert change["verdict"]["failures"] == ["the Judge failed security: the security pass gave no result"]
+    assert change["verdict"]["security"] is None
+
+
+def test_judge_security_pass_with_no_finding_left_passes_and_keeps_its_cost(world):
+    change = through_the_judge(world)
+    assert change["passed"] is True
+    assert change["verdict"]["dimensions"]["security"]["verdict"] == "pass"
+    assert (change["verdict"]["security"]["turns"], change["verdict"]["security"]["cost_usd"]) == (1, 0.02)
+    assert change["verdict"]["findings"] == []
+
+
 # The merge
 
 
@@ -1065,6 +1129,102 @@ def test_merge_refusals_leave_the_pull_request_open(world, setup, why):
     assert world.github.merges == [] and calls(world.github, "PUT", "/merge") == []
 
 
+# A charter that merges more tiers, and merges without CI (plan proposals-answer-themselves, a3)
+
+
+def without_ci(world, *, auto_merge=(0, 1, 2, 3), required=None) -> None:
+    """The charter with ``merge_without_ci`` and ``auto_merge``, and the ruleset requiring ``required`` (none)."""
+    written(world.client, world.headers["owner"], curator_charter(auto_merge=list(auto_merge), merge_without_ci=True))
+    world.github.repos[(MINE.lower(), "evo-agents")].rulesets = [{**RULESET, "required_checks": required or []}]
+
+
+def test_merge_a_tier_1_change_when_the_charters_auto_merge_names_tier_1(world):
+    written(world.client, world.headers["owner"], curator_charter(auto_merge=[0, 1]))
+    accepted(world, kind="fix", paths=[{"repo": "evo-agents", "path": "tests/test_wait.py"}])
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    assert judged(world)["tier"] == 1
+    world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    change = one_change(world)
+    assert (change["state"], change["tier"]) == ("merged", 1)
+    (merged,) = calls(world.github, "PUT", "/merge")
+    assert json.loads(merged.body)["commit_title"] == "Merge the Curator's change #1 (proposal #1, tier 1)"
+    n = tables.notifications
+    (body,) = sql(world.db, select(n.c.body).where(n.c.notice_kind == "merge_default_branch"))
+    assert "(proposal #1, tier 1) passed its Judge" in body[0] and "with CI green" in body[0]
+
+
+def test_merge_without_ci_merges_a_change_no_ci_ran_on(world):
+    through_the_judge(world)
+    without_ci(world)
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    change = one_change(world)
+    assert change["state"] == "merged" and world.github.merges == [(MINE, "evo-agents", 1, HEAD, "workers")]
+    n = tables.notifications
+    (body,) = sql(world.db, select(n.c.body).where(n.c.notice_kind == "merge_default_branch"))
+    assert "with no CI" in body[0]
+
+
+def test_merge_without_ci_merges_on_what_ran_when_the_ruleset_requires_no_check(world):
+    through_the_judge(world)
+    without_ci(world)
+    world.github.ci(HEAD, runs=[{"name": "lint", "status": "completed", "conclusion": "success"}])
+    assert moved_on(world) == {"checked": 1, "merged": 1}
+    assert one_change(world)["state"] == "merged"
+
+
+def test_merge_without_ci_still_waits_for_a_check_that_runs_and_stops_on_one_that_failed(world):
+    through_the_judge(world)
+    without_ci(world)
+    world.github.ci(HEAD, runs=[{"name": "lint", "status": "in_progress"}])
+    assert moved_on(world) == {"checked": 1, "wait": 1}
+    assert one_change(world)["state"] == "judged" and "lint is in_progress" in one_change(world)["reason"]
+    world.github.ci(HEAD, runs=[{"name": "lint", "status": "completed", "conclusion": "failure"}])
+    assert moved_on(world) == {"open": 1}
+    change = one_change(world)
+    assert (change["state"], change["reason"]) == ("open", "lint ended failure") and world.github.merges == []
+
+
+def test_merge_without_ci_still_waits_for_a_check_the_ruleset_requires(world):
+    through_the_judge(world)
+    without_ci(world, required=["test"])
+    assert moved_on(world) == {"checked": 1, "wait": 1}
+    change = one_change(world)
+    assert change["state"] == "judged" and "the required check test has not reported" in change["reason"]
+    assert world.github.merges == []
+
+
+@pytest.mark.parametrize(
+    "files, why",
+    [
+        (
+            [*CLEAN, {"filename": "curator.yaml", "status": "modified", "patch": "@@ -1 +1 @@\n-a: 1\n+a: 2\n"}],
+            "protected paths: protected_path",
+        ),
+        (
+            [
+                {
+                    "filename": "tests/test_wait.py",
+                    "status": "modified",
+                    "patch": "@@ -1,2 +1,2 @@\n def test_wait():\n-    assert wait_for()\n+    wait_for()\n",
+                }
+            ],
+            "signs of score hacking or protected paths: assert_removed",
+        ),
+    ],
+)
+def test_merge_without_ci_and_every_tier_still_leaves_a_sign_open(world, files, why):
+    through_the_judge(world)
+    without_ci(world)
+    world.github.repos[(MINE.lower(), "evo-agents")].files[BRANCH] = files
+    found = moved_on(world)
+    assert found.get("open") == 1 and "merged" not in found, found
+    change = one_change(world)
+    assert change["state"] == "open" and why in change["reason"], change
+    assert world.github.merges == [] and calls(world.github, "PUT", "/merge") == []
+
+
 def test_merge_never_for_a_gitlab_merge_request(world):
     from tests.hub.test_credentials_api import GITLAB_KB, sample
 
@@ -1096,7 +1256,7 @@ def test_merge_a_members_plan_run_still_works_on_the_default_branch_its_plan_nam
     """a12: the plan a member wrote names main for each repo; its plan run gets main, and its claim names no Curator."""
     from tests.hub.test_credentials_api import PLAN as MEMBER_PLAN
 
-    body = {"plan_id": MEMBER_PLAN, "worker_id": world.worker["id"]}
+    body = {"plan_id": MEMBER_PLAN}
     response = world.client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=world.headers["owner"])
     assert response.status_code == 201, response.text
     spec = claim(world.client, world.worker)

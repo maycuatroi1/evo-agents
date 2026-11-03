@@ -92,7 +92,7 @@ def running_author(client, hub, tmp_path, **extra) -> tuple[dict, int]:
 
 def started(client, hub, worker: dict, **extra) -> int:
     """Another author run of the owner's on ``worker``, claimed and running: its id."""
-    run_id = dispatched_author(client, hub["owner"], worker["id"], **extra)["id"]
+    run_id = dispatched_author(client, hub["owner"], **extra)["id"]
     spec = claim(client, worker)
     assert spec["id"] == run_id
     moved(client, worker, run_id, "running")
@@ -270,11 +270,11 @@ def test_an_author_run_on_a_plan_is_dispatched_with_a_prompt_that_names_its_revi
     worker = author_worker(client, hub["owner"], "mac-mini")
     missing = client.post(
         f"/v1/projects/{PROJECT}/author-runs",
-        json={"request": "Revise it.", "worker_id": worker["id"], "plan_id": "no-such-plan"},
+        json={"request": "Revise it.", "plan_id": "no-such-plan"},
         headers=hub["owner"],
     )
     assert missing.status_code == 404
-    run_id = dispatched_author(client, hub["owner"], worker["id"], plan_id=PLAN)["id"]
+    run_id = dispatched_author(client, hub["owner"], plan_id=PLAN)["id"]
     prompt = claim(client, worker)["prompt"]
     assert f"This run revises plan {PLAN} of the project, at revision 1" in prompt
     assert f"`{author.PUT_COMMAND} FILE --if-revision REVISION`" in prompt and author.READ_COMMAND in prompt

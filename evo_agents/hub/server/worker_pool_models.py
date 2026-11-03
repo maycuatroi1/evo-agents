@@ -13,6 +13,8 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.worker_doctor import CODE_PATTERN
 
 POOL_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+# The name in a path: an agent's pool is ``agent-<handle>``, up to 106 characters (0189).
+POOL_PATH_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$"
 # A label or a taint of a pool: a word, or key=value; the keys the hub gives labels itself are not one's to set.
 POOL_LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"
 RESERVED_KEYS = ("pool", "os", "arch", "runtime", "feature")
@@ -119,7 +121,8 @@ class PoolNode(BaseModel):
 class Pool(BaseModel):
     id: int
     name: str
-    owner: str = Field(description="the login of the member who made it")
+    owner: str = Field(description="the login of the member who made it, or who created the agent of an agent's pool")
+    agent: str | None = Field(None, description="the handle of the agent whose pool it is; null for a member's pool")
     projects: list[str]
     slots: int
     labels: list[str]

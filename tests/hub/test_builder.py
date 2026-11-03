@@ -35,6 +35,7 @@ from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_chat_runs import chat_worker, created, ended, sent, thread
 from tests.hub.test_chats import OPEN_SINKS
@@ -73,8 +74,8 @@ def client(hub_db, tmp_path, github, app_key, s3, builder_core):  # noqa: F811
 @pytest.fixture
 def hub(client, github) -> dict:
     """The project of ``test_credentials_api``, owner its admin, someone-else a writer, reader and the hub admin
-    readers; plugin builder enabled there, its agent type on under owner's name, and the agent @reviewer. The
-    headers of each."""
+    readers; plugin builder enabled there, its agent type on under owner's name, and the agent @reviewer; @builder and
+    @reviewer each with an account pool, so their runs are dispatched and claimed. The headers of each."""
     headers = {
         "admin": bearer(live.sign_in(client, github, ADMIN, credentials_api.ADMIN_ID)["token"]),
         "owner": bearer(live.sign_in(client, github, OWNER, credentials_api.OWNER_ID)["token"]),
@@ -103,12 +104,15 @@ def hub(client, github) -> dict:
         headers=headers["owner"],
     )
     assert made.status_code == 201, made.text
+    for handle in ("builder", "reviewer"):
+        give_account_pool(live.database_of(client), PROJECT, handle, OWNER)
     return headers
 
 
-def owners_worker(client, hub) -> dict:
-    """A worker of owner that runs chat runs and builds the packs of plugin builder."""
-    worker = chat_worker(client, hub["owner"], "studio")
+def owners_worker(client, hub, name: str = "studio", pool: str = "builder") -> dict:
+    """A worker of owner that runs chat runs and builds the packs of plugin builder, a node of the pool of agent
+    ``pool`` (@builder's by default)."""
+    worker = chat_worker(client, hub["owner"], name, pool=pool)
     assert set_plugins(client, hub["owner"], worker, ["builder"]).status_code == 200
     return worker
 
@@ -356,7 +360,7 @@ def test_builder_proposal_of_the_autonomy_policy_writes_its_next_revision_and_ro
         ({"set": {"merge.max_diff_lines": 500}}, "merge.max_diff_lines: the policy has no such key; nothing changed"),
         ({"set": {"repos.evo-agents.mode": "auto"}}, "repos.evo-agents.mode: evo-agents is on github.com, where "),
         ({"set": {"merge.hold_until": "soon"}}, 'merge.hold_until: one of merged, uat_check, prod_check, not "soon"'),
-        ({"unset": ["judge.worker"]}, "judge.worker: the layer does not set it, so there is nothing to unset"),
+        ({"unset": ["judge.model"]}, "judge.model: the layer does not set it, so there is nothing to unset"),
         ({"set": {"repos.ghost.mode": "auto"}}, "repos.ghost: the project has no repo ghost"),
         ({"target": {"agent": "reviewer"}, "set": {"merge.hold_until": "merged"}}, "the target of a policy proposal"),
     ):
@@ -760,8 +764,8 @@ def test_builder_tool_answers_the_agent_of_a_builder_run_of_an_admin_alone(clien
     change = {"kind": "features", "summary": "Monitor off", "target": {"layer": "hub"}, "set": {"monitor": False}}
     refused = f"error: only the agent of a chat run of @builder in project {PROJECT} proposes a change"
     assert rpc(client, hub["owner"], call(3, TOOL, change))["content"][0]["text"] == refused, "no run"
-    # the agent of another profile's run
-    worker = owners_worker(client, hub)
+    # the agent of another profile's run, on a node of @reviewer's pool
+    worker = owners_worker(client, hub, "reviewing", pool="reviewer")
     review = created(client, hub["owner"], "Review", agents=("reviewer",))
     sent(client, hub["owner"], review["id"], "@reviewer look at the diff")
     spec = claim(client, worker)
@@ -770,7 +774,7 @@ def test_builder_tool_answers_the_agent_of_a_builder_run_of_an_admin_alone(clien
     reviewer = {"Authorization": worker["headers"]["Authorization"], "X-Evo-Run": str(spec["id"])}
     assert proposed(client, reviewer, **change) == refused
     ended(client, worker, spec["id"])
-    run = started(client, hub, worker=worker)
+    run = started(client, hub)
     branding = {**change, "kind": "branding", "target": {}}
     for arguments, said in (
         ({**change, "kind": "secrets"}, "bad arguments for builder__propose: kind: must be one of 'branding', "),

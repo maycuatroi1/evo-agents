@@ -57,6 +57,10 @@ HUB_KIND = "hub"
 RUN_ACCESS = "run-access"
 HUB_TOKEN_ENV = "EVO_HUB_TOKEN"
 HUB_URL_ENV = "EVO_HUB_URL"
+# What a member may let the tokens of their runs reach besides what every run's token reaches (schema 0193,
+# ``users.run_reach``, ``evo_agents.hub.server.run_access_rules``): a project's agent profiles and agent types, workers
+# and their pools, the Curator's writes; in the order the hub keeps them.
+RUN_REACH_GROUPS = ("agents", "workers", "curator")
 
 ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 # Variables a secret may not set: they steer the shell, the daemon, git or the interpreter rather than the agent.

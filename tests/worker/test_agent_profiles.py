@@ -138,7 +138,11 @@ def test_claude_code_under_a_profile_gets_only_its_tools_skills_mcp_servers_and_
     assert command[command.index("--allowedTools") + 1] == "Skill(create-exec-plan)"
     assert "--setting-sources=user,project,local" in command, "the SDK alone would drop local"
     settings = json.loads(command[command.index("--settings") + 1])
-    assert settings == {"allowedMcpServers": [{"serverName": "github"}], "availableModels": ["opus", "sonnet"]}
+    assert settings == {
+        "allowedMcpServers": [{"serverName": "github"}],
+        "availableModels": ["opus", "sonnet"],
+        "attribution": claude_module.ATTRIBUTION,
+    }
     assert command[command.index("--model") + 1] == "sonnet"
     append = command[command.index("--append-system-prompt") + 1]
     assert append.startswith(claude_module.SYSTEM_NOTE + "\n\n")

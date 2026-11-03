@@ -23,7 +23,7 @@ from evo_agents.hub import tables
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_accounts_api import VAR, account_of, accounts, run_on, three
-from tests.hub.test_credentials_api import PROJECT, env_secret, leased, sample, worker_of
+from tests.hub.test_credentials_api import PROJECT, account_pool, env_secret, leased, pooled, sample, worker_of
 from tests.hub.test_rate_limit_failover import RESET, answer_of, lease_of
 from tests.hub.test_runs import report
 
@@ -95,9 +95,10 @@ def test_each_account_shows_its_runs_cost_usage_and_the_runs_holding_it(client, 
 def test_a_run_costs_its_model_account_and_leaves_its_service_account_without_a_cost(client, hub, hub_db):
     env_secret(client, hub["owner"], "claude-a", VAR, sample("claude-a-"))
     env_secret(client, hub["owner"], "gitlab-a", "GITLAB_TOKEN", sample("gitlab-a-"))
+    account_pool(client, "claude-a")
     worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
     run = run_on(client, hub["owner"], worker, "evo-agents")
-    assert {lease["name"] for lease in leased(client, worker, run)["leases"]} >= {"claude-a", "gitlab-a"}
+    assert {lease["name"] for lease in leased(client, worker, run)["leases"]} >= {pooled("claude-a"), "gitlab-a"}
     assert report(client, worker, run, "failed", error="done").status_code == 200
     cost(hub_db, run, 0.75)
 
@@ -131,7 +132,7 @@ def test_a_run_shows_its_account_and_each_failover_by_name_to_its_owner_alone(cl
     assert (taken["env_var"], taken["account"], taken["how"], taken["failovers"], taken["events"]) == (
         VAR,
         "claude-a",
-        "pool",
+        "worker",  # the pool's accounts are on every node of the agent's pool
         0,
         [],
     )

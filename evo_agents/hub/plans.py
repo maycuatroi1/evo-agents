@@ -25,6 +25,7 @@ from evo_agents.kg.protocol import canonical_json
 
 SECTIONS = ("steps", "repos", "tech_debt", "open_questions")  # what evo harness step, repo, debt, question set
 UPDATABLE = ("status", "done_at", "descoped_at", "fixed_at", "answered_at", "merged_at", "note", "evidence")
+HUB_UPDATABLE = ("proofs",)  # set on a step by the hub's own writes of a run's step alone, never by a member's PATCH
 STEP_STATUSES = ("done", "in_progress", "pending", "blocked", "descoped")
 CLOSED_STEP_STATUSES = ("done", "descoped")  # a descoped step was dropped on purpose; it no longer holds a plan open
 PLAN_ABANDON_STATUSES = ("abandoned", "superseded")
@@ -102,14 +103,19 @@ def step_index(body: dict, key) -> int:
     raise PlanProblem(f"no step {wanted!r} in plan {body.get('id')}; its steps are {known}")
 
 
-def update_item(body: dict, section: str, index: int, updates: dict) -> tuple[dict, dict]:
+def update_item(body: dict, section: str, index: int, updates: dict, *, hub: bool = False) -> tuple[dict, dict]:
     """The plan with ``updates`` set on item ``index`` of ``section``, and the item's old values of those keys
-    (None for a key it lacked). ``body`` is not changed."""
+    (None for a key it lacked). ``body`` is not changed. A write of the ``hub`` itself may also set HUB_UPDATABLE
+    keys of a step, lists the plan schema checks."""
     if section not in SECTIONS:
         raise PlanProblem(f"section must be one of {', '.join(SECTIONS)}, not {section!r}")
     if not updates:
         raise PlanProblem("nothing to set: give at least one key")
     for key, value in updates.items():
+        if hub and section == "steps" and key in HUB_UPDATABLE:
+            if not isinstance(value, list):
+                raise PlanProblem(f"{key} must be a list")
+            continue
         if key not in UPDATABLE:
             raise PlanProblem(f"{key!r} cannot be set on one item; the keys that can are {', '.join(UPDATABLE)}")
         if not isinstance(value, str):

@@ -37,6 +37,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub import (
+    tables_account_pools,
     tables_accounts,
     tables_attachments,
     tables_browser,
@@ -45,6 +46,7 @@ from evo_agents.hub import (
     tables_delivery,
     tables_docs,
     tables_goals,
+    tables_guard,
     tables_intake,
     tables_invites,
     tables_kg,
@@ -104,6 +106,7 @@ users = Table(
     Column("github_id", BigInteger),
     _stamp("created_at"),
     _when("last_seen_at"),
+    Column("run_reach", ARRAY(Text), nullable=False, server_default="{}"),  # 0193: run_access_rules.REACH_GROUPS
     PrimaryKeyConstraint("id", name="users_pkey"),
     UniqueConstraint("github_id", name="users_github_id_key"),
 )
@@ -467,6 +470,8 @@ runs = Table(
     Column("kind", Text, nullable=False, server_default="step"),
     Column("repos", JSONB),
     Column("model", Text),
+    Column("model_used", Text),  # the model its runtime ran it on, as its worker reported it (0185)
+    Column("routing", JSONB),  # what the routing by difficulty did: model_router.record (0185); NULL: it did not
     Column("run_seconds", Integer, nullable=False, server_default="0"),
     _when("counted_at"),
     _when("waiting_since"),
@@ -493,6 +498,8 @@ runs = Table(
     Column("claude_email", Text),  # the Claude account that ran the session; 'unknown' when it could not be read
     Column("claude_profile", Text),  # the claude-profiles profile, when it could be read
     _when("last_activity_at"),
+    # The proof of each acceptance criterion its step names, as the worker of a run of one step reported it (0186).
+    Column("proofs", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -601,6 +608,8 @@ decisions = Table(
     Column("evidence", JSONB(none_as_null=True)),  # the refs it rests on, an array of texts; None is SQL NULL (0155)
     # what a decision of category credential asks for: env_var, secret_name, hub_account; never a value (0167)
     Column("credential_request", JSONB(none_as_null=True)),
+    # a merge approval: the head and the scope of the request its answer holds for (0184, ``approval_heads``)
+    Column("approval", JSONB(none_as_null=True)),
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
     ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
@@ -1005,6 +1014,8 @@ channel_link_codes = Table(  # the one-time codes that link a member's channel: 
 
 accounts, account_policies, run_accounts, user_emails, provider_accounts = tables_accounts.account_tables(metadata)
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
+account_pools, account_pool_members = tables_account_pools.account_pool_tables(metadata)  # 0191
+guard_terms, guard_targets = tables_guard.guard_tables(metadata)  # the private names and published repos (0192)
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 chat_bridges, chat_bridge_codes, chat_bridge_messages = bridge_tables(metadata)  # 0165
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
@@ -1016,6 +1027,7 @@ hub_identity, market_listings, market_bundles, market_orders, market_payouts, ma
 )
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
+proposal_threads = tables_triage.proposal_thread_table(metadata)  # a proposal the agent answers (0188)
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
 push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0156)
@@ -1046,6 +1058,7 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
+merge_checks = tables_merge.check_table(metadata)  # a run's pull request on github.com judged (0187)
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 plugin_records, plugin_record_leases = tables_plugin_records.plugin_record_tables(metadata)  # 0169
 # the org chart (0099), shared workers (0107), autonomy levels (0112 to 0114) and their stops (0116)

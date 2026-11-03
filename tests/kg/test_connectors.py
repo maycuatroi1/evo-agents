@@ -199,10 +199,12 @@ def test_git_fetch_reads_the_remote_branch(tmp_path, monkeypatch):
 
 
 def cursor_of(messages) -> dict:
-    """The cursor a run ended with, but for ``input``, the digest of its config and code (tested on its own)."""
+    """The cursor a run ended with, but for ``input``, the digest of its config and code, and ``at``, the time of the
+    read (both tested on their own)."""
     cursor = next(m for m in messages if m["type"] == "state")["cursor"]
     assert cursor["input"].startswith("sha256:")
-    return {key: value for key, value in cursor.items() if key != "input"}
+    dt.datetime.strptime(cursor["at"], "%Y-%m-%dT%H:%M:%SZ")
+    return {key: value for key, value in cursor.items() if key not in ("input", "at")}
 
 
 def test_git_cursor_names_the_commit_read_and_how_far_behind_the_remote_default_branch(tmp_path, monkeypatch):
@@ -214,6 +216,14 @@ def test_git_cursor_names_the_commit_read_and_how_far_behind_the_remote_default_
     assert cursor_of(run_git(clone)) == {"commit": head, "ref": "HEAD", "base": "origin/main", "behind": 1}
     read = cursor_of(run_git(clone, ref="origin/main"))
     assert read == {"commit": tip, "ref": "origin/main", "base": "origin/main", "behind": 0}
+
+
+def test_git_cursor_says_when_the_commit_was_read(tmp_path):
+    _, clone = clone_behind(tmp_path)
+    before = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    cursor = next(m for m in run_git(clone) if m["type"] == "state")["cursor"]
+    at = dt.datetime.strptime(cursor["at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.UTC)
+    assert before <= at <= dt.datetime.now(dt.UTC)
 
 
 def test_git_cursor_without_a_remote_branch_names_only_the_commit(tmp_path):
@@ -229,7 +239,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     first = git(app, "rev-parse", "HEAD").strip()
     blob = "https://github.com/acme/demo-app/blob"
     corpus = project.corpus()
-    assert {k: v for k, v in corpus.cursor("app").items() if k != "input"} == {
+    assert {k: v for k, v in corpus.cursor("app").items() if k not in ("input", "at")} == {
         "commit": first,
         "ref": "HEAD",
         "url": f"https://github.com/acme/demo-app/commit/{first}",

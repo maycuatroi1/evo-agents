@@ -23,6 +23,7 @@ from tests.hub.test_runs import (  # noqa: F401  (fixtures)
     dispatched,
     hub,
     moved,
+    set_run,
 )
 
 OTHER_REPO = {f"{PROJECT}/lumen-kb-docs": {"path": "/src/lumen-kb-docs", "branch": "main"}}
@@ -33,8 +34,9 @@ def candidates(client, headers, run_id: int):
 
 
 def failed_on(client, hub, worker: dict, cause: str | None, step: int = 2) -> int:
-    """A run of ``step`` that ``worker`` claimed and that failed with ``cause``."""
-    (run,) = dispatched(client, hub["owner"], [step], worker_id=worker["id"])
+    """A run of ``step`` that ``worker`` (a node of the pool of the project's default agent) claimed and that failed
+    with ``cause``."""
+    (run,) = dispatched(client, hub["owner"], [step])
     spec = claim(client, worker)
     assert spec["id"] == run["id"]
     moved(client, worker, run["id"], "running", "failed", error="it stopped", failure_cause=cause)
@@ -76,10 +78,11 @@ def test_candidates_put_the_worker_of_the_run_first_for_a_missing_program_and_la
     assert ranks[stopped] == {"old": 2, "spare": 1}
 
 
-def test_candidates_say_why_a_worker_cannot_take_the_run(client, hub):
+def test_candidates_say_why_a_worker_cannot_take_the_run(client, hub, hub_db):
     old = add_worker(client, hub["owner"], "old", slots=1)
     busy = add_worker(client, hub["owner"], "busy", slots=1)
-    (held,) = dispatched(client, hub["owner"], [4], worker_id=busy["id"])  # queued for it: its one slot is taken
+    (held,) = dispatched(client, hub["owner"], [4])
+    set_run(hub_db, held["id"], pinned_worker_id=busy["id"])  # queued for it: its one slot is taken
     run_id = failed_on(client, hub, old, None)
     workers = by_name(candidates(client, hub["owner"], run_id).json())
     assert held["state"] == "queued"
@@ -110,7 +113,8 @@ def test_candidates_are_the_owners_for_a_run_that_failed(client, hub):
     run_id = failed_on(client, hub, old, None)
     assert candidates(client, hub["other"], run_id).status_code == 403
     assert candidates(client, hub["stranger"], run_id).status_code == 404
-    (queued,) = dispatched(client, hub["owner"], [4])
-    refusal = candidates(client, hub["owner"], queued["id"])
+    (running,) = dispatched(client, hub["owner"], [4])
+    assert claim(client, old)["id"] == running["id"]
+    refusal = candidates(client, hub["owner"], running["id"])
     assert refusal.status_code == 409 and "only a failed run has candidates" in refusal.json()["message"]
     assert CHECKOUTS  # the checkouts the workers above report

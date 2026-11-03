@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import cache
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, func, literal, or_, select
 
 from evo_agents.hub import org, profiles, runs, tables
 from evo_agents.hub.access import ROLES, has_role
@@ -72,16 +72,20 @@ def shared_in(project_id, principal_id):
     return w.c.shared & serves & writes(w.c.owner_id, project_id) & unit_admits(w.c.id, principal_id)
 
 
-def workers_of(user_id: int, project_id: int):
+def workers_of(user_id: int, project_id: int, pool_id: int | None = None):
     """The workers of ``user_id`` that serve project ``project_id`` and are not revoked, then those other members share
     in it (``shared_in``), with the owner of each, how many runs each holds or has waiting for it (queued, pinned to
     it), how many of the runs it holds are another member's than ``user_id`` (``others``: a shared worker takes no run
-    of ``user_id`` while it holds one), and whether it is online."""
+    of ``user_id`` while it holds one), and whether it is online. With ``pool_id``, the nodes of that pool instead,
+    whoever owns them, for the runs of the agent whose pool it is (``agent_placement``): ``others`` is 0 there, a
+    node runs whatever agent's runs come to it one after another."""
     w, wp, r, users = tables.workers, tables.worker_projects, tables.runs, tables.users
     held = (r.c.worker_id == w.c.id) & r.c.state.in_(runs.HELD_STATES)
     waiting = (r.c.pinned_worker_id == w.c.id) & (r.c.state == "queued")
     holding = select(func.count()).where(or_(held, waiting)).scalar_subquery()
     others = select(func.count()).where(held, r.c.dispatched_by != user_id).scalar_subquery()
+    if pool_id is not None:
+        others = literal(0)
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == project_id)
     owner = select(users.c.login).where(users.c.id == w.c.owner_id).scalar_subquery()
     return (
@@ -105,7 +109,13 @@ def workers_of(user_id: int, project_id: int):
             others.label("others"),
             *worker_placement.columns(w),
         )
-        .where(or_(w.c.owner_id == user_id, shared_in(project_id, user_id)), w.c.revoked_at.is_(None), serves)
+        .where(
+            w.c.pool_id == pool_id
+            if pool_id is not None
+            else or_(w.c.owner_id == user_id, shared_in(project_id, user_id)),
+            w.c.revoked_at.is_(None),
+            serves,
+        )
         .order_by(w.c.owner_id != user_id, w.c.id)
     )
 
@@ -162,10 +172,6 @@ def worker_problems(
         (row.holding >= row.slots, "has no free slot"),  # its runs and the runs queued for it
         (row.others > 0, "holds a run of another member, and a shared worker runs one member's runs at a time"),
         (not row.checkouts, "has no checkout, and claims nothing"),
-        (
-            not profiles.allows_worker(profile.permissions, row.name, row.labels or (), node.pool),
-            f"is not one @{profile.handle} allows",
-        ),
         (not usable_runtimes(row, profile), f"has no runtime @{profile.handle} allows"),
         (
             profiles.needs_worker(profile.permissions, profile.instructions)

@@ -4,7 +4,8 @@ A person who runs plans on more than one hub, or across many projects of one, us
 ``hub notifications``, then ``hub decision show`` and ``hub run show`` once per item with the right ``--project``,
 the browser's Inbox for what those did not show, and ``EVO_HUB_HOME`` for a second hub. ``gather`` reads it all in
 one pass, per hub: the open decisions of every project the person reads, the runs that need a person (in review,
-waiting or parked on a question, failed or lost lately and not run again, running with no event for a while), the
+waiting or parked on a question, failed or lost lately and neither run again nor closed in their plan, running with
+no event for a while, by the run's own last event), the
 unread notices that ask for an act, and the Curator's proposals that wait. Notices that only report (a merge, a push,
 files sent, a brief) are counted, not listed. ``locate`` finds one decision or run from an id or a link of the web
 without its project, and ``detail`` reads it whole: the decision, its run, the run's last events and leases, and the
@@ -46,6 +47,8 @@ WORKERS = 8  # projects read at once
 PERSON_STATES = ("review", "waiting", "parked", "failed", "lost")
 LIVE_STATES = ("running", "leased", "verifying")
 LATER_STATES = ("queued", "done", "cancelled")  # read only to see that a failed run's plan or step ran again
+PLAN_KINDS = ("plan", "step")  # the run kinds that do a plan's steps
+CLOSED_STEPS = ("done", "descoped")  # evo_agents.hub.plans.CLOSED_STEP_STATUSES: a step that needs no run any more
 # Notices that ask for an act; every other notice only reports, and is counted.
 ACTION_NOTICES = frozenset(
     {
@@ -230,9 +233,34 @@ def ran_again(run: dict, runs: list[dict]) -> bool:
     return False
 
 
-def run_items(runs: list[dict], open_runs: set[int], login: Login, now: datetime, stale: int, since: int) -> list[dict]:
+def step_closed(run: dict, steps: dict[str, dict[str, str]]) -> bool:
+    """Whether the plan no longer needs what ``run`` did: its step is done or descoped, for a step run, or every step
+    of its plan is, for a plan run. ``steps`` holds each plan's step statuses by step key; a plan it lacks is open."""
+    if run.get("kind") not in PLAN_KINDS or run.get("plan_id") not in steps:
+        return False
+    statuses = steps[run["plan_id"]]
+    if run.get("step_key"):
+        return statuses.get(str(run["step_key"])) in CLOSED_STEPS
+    return bool(statuses) and all(status in CLOSED_STEPS for status in statuses.values())
+
+
+def _ended_lately(run: dict, now: datetime, since: int) -> bool:
+    ended = age_minutes(run.get("finished_at"), now)
+    return ended is None or ended <= since * 60
+
+
+def run_items(
+    runs: list[dict],
+    open_runs: set[int],
+    login: Login,
+    now: datetime,
+    stale: int,
+    since: int,
+    steps: dict[str, dict[str, str]] | None = None,
+) -> list[dict]:
     """The runs of one project that need a person. A run waiting on an open decision is that decision's item; a
-    failed or lost run that a later run resumed or reran, or that ended before ``since`` hours ago, is left out."""
+    failed or lost run that a later run resumed or reran, whose step (or whole plan) is closed in ``steps``, or that
+    ended before ``since`` hours ago, is left out: a step a person finished by hand needs no rerun."""
     items = []
     for run in runs:
         if run.get("kind") in QUIET_KINDS or run["id"] in open_runs:
@@ -241,8 +269,9 @@ def run_items(runs: list[dict], open_runs: set[int], login: Login, now: datetime
         if found is None:
             continue
         kind, why = found
-        ended = age_minutes(run.get("finished_at"), now)
-        if kind in ("failed", "lost") and (ran_again(run, runs) or (ended is not None and ended > since * 60)):
+        if kind in ("failed", "lost") and (
+            ran_again(run, runs) or step_closed(run, steps or {}) or not _ended_lately(run, now, since)
+        ):
             continue
         items.append(
             {
@@ -321,12 +350,63 @@ def notice_items(notifications: list[dict], login: Login, now: datetime) -> tupl
     return items, reports
 
 
-def _read_project(hub: Hub, project: str) -> tuple[list[dict], list[dict]]:
+def _last_event_at(hub: Hub, project: str, run: dict) -> str | None:
+    """When the run's last event of any kind happened; None when it has none or the hub does not answer."""
+    seq = int(run.get("last_seq") or 0)
+    if seq < 1:
+        return None
+    query = urlencode({"after": seq - 1, "limit": 1})
+    try:
+        events = (_get(hub, f"{_project_path(project)}/runs/{run['id']}/events?{query}") or {}).get("events") or []
+    except HubError:
+        return None
+    return events[-1].get("at") if events else None
+
+
+def with_last_event(hub: Hub, project: str, run: dict, now: datetime, stale: int) -> dict:
+    """``run`` with ``last_activity_at`` set from its last event when the hub leaves it null, as it does for every run
+    but a local one: a worker's run would otherwise look idle since it started. Read only for a live run that would
+    look stale, one request each."""
+    if run["state"] not in LIVE_STATES or run.get("last_activity_at") or run.get("kind") in QUIET_KINDS:
+        return run
+    idle = age_minutes(run.get("started_at") or run.get("queued_at"), now)
+    if idle is None or idle < stale:
+        return run
+    at = _last_event_at(hub, project, run)
+    return {**run, "last_activity_at": at} if at else run
+
+
+def plan_steps(hub: Hub, project: str, runs: list[dict], now: datetime, since: int) -> dict[str, dict[str, str]]:
+    """The status of each step, by step key, of every plan with a failed or lost run the inbox might list, from
+    GET .../plans/{plan}/ready-steps, one request a plan; a plan the hub does not answer for is left out."""
+    plans = {
+        run["plan_id"]
+        for run in runs
+        if run["state"] in ("failed", "lost")
+        and run.get("kind") in PLAN_KINDS
+        and run.get("plan_id")
+        and _ended_lately(run, now, since)
+    }
+    found: dict[str, dict[str, str]] = {}
+    for plan in sorted(plans):
+        try:
+            body = _get(hub, f"{_project_path(project)}/plans/{quote(plan, safe='')}/ready-steps")
+        except HubError:
+            continue
+        if body is not None:
+            found[plan] = {str(step["key"]): step.get("status") or "pending" for step in body.get("steps") or ()}
+    return found
+
+
+def _read_project(
+    hub: Hub, project: str, now: datetime, stale: int, since: int
+) -> tuple[list[dict], list[dict], dict[str, dict[str, str]]]:
     path = _project_path(project)
     decisions = hub.call("GET", f"{path}/decisions?{urlencode({'state': 'open', 'limit': MAX_PAGE})}")["decisions"]
     query = [*(("state", state) for state in (*PERSON_STATES, *LIVE_STATES, *LATER_STATES)), ("limit", MAX_PAGE)]
     runs = hub.call("GET", f"{path}/runs?{urlencode(query)}")["runs"]
-    return decisions, runs
+    runs = [with_last_event(hub, project, run, now, stale) for run in runs]
+    return decisions, runs, plan_steps(hub, project, runs, now, since)
 
 
 def _sort_key(item: dict) -> tuple:
@@ -358,17 +438,17 @@ def gather_one(
 
     def read(name: str):
         try:
-            return _read_project(hub, name)
+            return _read_project(hub, name, now, stale, since)
         except HubError:
-            return [], []
+            return [], [], {}
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         read_all = list(pool.map(read, names))
-    for decisions, runs in read_all:
+    for decisions, runs, steps in read_all:
         open_runs = {decision["run_id"] for decision in decisions if decision.get("run_id")}
         shown = decisions if waits else [d for d in decisions if d.get("category") != "wait"]
         inbox.items += [decision_item(decision, login, now) for decision in shown]
-        inbox.items += run_items(runs, open_runs, login, now, stale, since)
+        inbox.items += run_items(runs, open_runs, login, now, stale, since, steps)
     inbox.items = fold_same_cause(inbox.items)
     notices, inbox.reports = notice_items(notes["notifications"], login, now)
     inbox.items += [item for item in notices if not project or item["project"] == project]
@@ -457,8 +537,20 @@ def _tail(hub: Hub, project: str, run: dict, count: int) -> list[dict]:
     return (_get(hub, path) or {}).get("events", [])[-count:]
 
 
-def diagnose(run: dict, decision: dict | None, now: datetime, stale: int = STALE_MINUTES) -> str:
-    """One line on where the run stands and what moves it."""
+def queued_why(hub: Hub, project: str, run: dict) -> str | None:
+    """Why no worker can take the queued ``run``, with the command that fixes it, as the hub says it (the diagnosis of
+    GET .../rerun-candidates); None when a worker can, or the hub does not say (another member's run, an older hub)."""
+    try:
+        found = _get(hub, f"{_project_path(project)}/runs/{run['id']}/rerun-candidates")
+    except HubError:
+        return None
+    return (found or {}).get("diagnosis")
+
+
+def diagnose(
+    run: dict, decision: dict | None, now: datetime, stale: int = STALE_MINUTES, nobody: str | None = None
+) -> str:
+    """One line on where the run stands and what moves it; ``nobody`` is why no worker can take a queued run."""
     state = run["state"]
     idle = age_minutes(run.get("last_activity_at") or run.get("started_at") or run.get("queued_at"), now)
     if decision and decision.get("state") == "open":
@@ -471,6 +563,8 @@ def diagnose(run: dict, decision: dict | None, now: datetime, stale: int = STALE
         if idle is not None and idle >= stale:
             return f"{state} on {run.get('worker') or 'no worker'}, no event for {idle} min (lease until {lease or '-'}): read the last events; cancel and rerun if the worker is gone"
         return f"{state} on {run.get('worker') or 'no worker'}, last event {idle} min ago: it is working"
+    if state == "queued" and nobody:
+        return f"queued {age_minutes(run.get('queued_at'), now)} min ago, and {nobody}"
     if state == "queued":
         return f"queued {age_minutes(run.get('queued_at'), now)} min ago: `evo-agents hub run candidates {run['id']}` says which workers can take it"
     if state in ("failed", "lost"):
@@ -497,6 +591,7 @@ def detail(ref: Ref, found: list[Login], first: str | None = None, events: int =
         listed = _get(hub, f"{_project_path(project)}/decisions?{query}")
         decision = ((listed or {}).get("decisions") or [None])[0]
     leases = _get(hub, f"{_project_path(project)}/runs/{run['id']}/credentials") if run else None
+    nobody = queued_why(hub, project, run) if run and run.get("state") == "queued" else None
     nexts = []
     if decision and decision.get("state") == "open":
         nexts.append(decision_item(decision, login, now)["next"])
@@ -504,6 +599,8 @@ def detail(ref: Ref, found: list[Login], first: str | None = None, events: int =
         found_kind = _run_kind(run, now, STALE_MINUTES)
         if found_kind and found_kind[0] in ("review", "failed", "lost") or (found_kind and run.get("kind") == "author"):
             nexts.append(_run_next(found_kind[0], run, login))
+        if nobody:
+            nexts.append(f"{login.prefix}evo-agents hub run candidates {run['id']} --project {project}")
         nexts.append(f"{login.prefix}evo-agents hub run logs {run['id']} --project {project} --follow")
     tail = _tail(hub, project, run, events) if run else []
     if run and not run.get("last_activity_at") and tail:
@@ -515,6 +612,6 @@ def detail(ref: Ref, found: list[Login], first: str | None = None, events: int =
         "run": run,
         "leases": leases,
         "events": tail,
-        "diagnosis": diagnose(run, decision, now) if run else None,
+        "diagnosis": diagnose(run, decision, now, nobody=nobody) if run else None,
         "next": nexts,
     }

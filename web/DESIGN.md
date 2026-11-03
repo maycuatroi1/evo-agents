@@ -1113,17 +1113,30 @@ Shared pieces built on them:
   grouped Agents, Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space,
   Escape closes it, a polite region says how many there are); the bar under the box says what the message will do ("Hands work to
   @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
-  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. A Markdown file of
-  a message (attached by a person or sent by a run) has "Open NAME beside the chat" (`BookOpen`) under it: the
-  document panel (`doc-panel.tsx`) reads it in a column beside the chat from lg, the composer in reach, and in a sheet
-  as a thread's below lg (split, a phone's height left no room for the messages); it takes the focus when it opens
-  and Close gives it back, and while it is a column a thread opens in its sheet. Files of the chat with the same last part of their name (any case) are versions of one document; the panel
-  shows the latest, and when a new one comes (an agent sends the file it fixed back under its name) it reloads by
-  itself, says so in a polite status and switches to Changes: a unified line diff (`doc-diff.tsx`, `lib/line-diff.ts`)
-  against the version read before, rows on `success-soft` with + for lines added and on `danger-soft` with − for
-  lines removed or replaced, each also named for screen readers, plain rows for the lines kept around them (runs of
-  more than 8 folded behind a button), +N −M in the bar. Selects pick the version shown and the one it is compared
-  with. A version over 2 MiB is not read there: the message's files open it. Members
+  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. A text file of a
+  message (Markdown, plain text, JSON, CSV, YAML or code, attached by a person or sent by a run; not an image, a PDF
+  or an archive, which open in the outputs' viewer only) has "Open NAME beside the chat" (`BookOpen`) under it: the
+  document panel (`components/data/doc-panel.tsx`, `chats/doc-panel.tsx`) reads it in a column beside the chat from
+  lg, the composer in reach, and in a sheet as a thread's below lg (split, a phone's height left no room for the
+  messages); it takes the focus when it opens and Close gives it back, and while it is a column a thread opens in its
+  sheet. Files of the chat with the same last part of their name (any case) are versions of one document, listed by
+  the hub (`GET /v1/chats/{id}/doc-versions`) so a reload that leaves the first version out of the page's messages
+  still finds it, and the stream adds a new one at once. A Markdown document has three views, Read, Marked ("Đánh
+  dấu") and By line ("Theo dòng"); any other text has Read, in mono, and By line. A document with an earlier version
+  opens on its changes (Marked for Markdown, By line otherwise), the latest against the one before, and when a new
+  one comes (an agent sends the file it fixed back under its name) the panel moves to it by itself, says so in a
+  polite status and shows it against the version that was shown. Marked renders the document as Read does with the
+  words the shown version added in `success` on `success-soft` and those it removed in `danger` on `danger-soft`,
+  struck through, each also named for screen readers ("Đã thêm:", "Đã xoá:"); a changed code block or table row is
+  marked whole, with a bar on its start edge (`tracked-markdown.tsx`, `lib/marked-markdown.ts`), and the document's
+  HTML stays text as in Read. By line is a unified line diff (`components/data/doc-diff.tsx`, `lib/line-diff.ts`)
+  against the same version, rows on `success-soft` with + for lines added and on `danger-soft` with −, the text in
+  `danger` and struck through, for lines removed or replaced, the words that differ in a replaced line on a stronger
+  tint (`lib/word-diff.ts`), plain rows for the lines kept around them (runs of more than 8 folded behind a button).
+  A legend over both says "Đã thêm" (green), "Đã xoá" (red, struck through), "Giữ nguyên"; +N −M sits in the bar.
+  Selects pick the version shown and the one it is compared with, any earlier one down to the original. The Chat tab
+  of an author run has the same panel, in a sheet on the right at any width, for its messages' files and the run's
+  outputs, asked again every 3 seconds while the chat goes on (`runs/run-docs.tsx`). A version over 2 MiB is not read there: the message's files open it. Members
   (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
   project, or takes one out), the people (any member adds one with New chat's people picker, or by login; the creator
   takes others out; each may Leave, confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its
@@ -1910,8 +1923,11 @@ Shared pieces built on them:
   is a writer's, Signals and Settings sit beside it. A canvas (`/canvases/{slug}`, `?archived=1` with archived claims)
   heads with the product's name and slug, Export JSON (`evo-canvas/1`, which the browser saves) and a writer's Add
   claim; then the banner of a baseline that waits for review, the claims by status in one `MetricStrip`, the proposals
-  that wait (new claims and changes from @strategist, changes of status from the value check, each with its fields
-  before and after, Accept or Reject with a reason), the grid, and the baselines before. The grid is the printed Lean
+  that wait (new claims and changes from @strategist, changes of status from the value check; those one writer made
+  for one reason, a brainstorm's, sit under that reason said once with who made them and the run as `RunRef`; a new
+  claim reads as the claim it would make, its cell and confidence as tags, its text, its test card as the claim's page
+  shows one in a `surface-sunken` well, then its signal keys; a change shows its fields before and after; Accept or
+  Reject with a reason), the grid, and the baselines before. The grid is the printed Lean
   Canvas from xl (ten tracks: Problem, Solution over Key metrics, the value proposition, Unfair advantage over Channels,
   Customer segments, then Cost structure beside Revenue streams), two columns from md, one on a phone; the cells come in
   the order Lean Canvas numbers them, which the keyboard and a screen reader follow, and each shows its number. A cell

@@ -40,20 +40,27 @@ first agent starts (``build_packs``, ``evo_agents.worker.packs``), and every age
 is of a plugin the owner did not accept), or that holds what the runtime does not load (``Adapter.pack_refusal``),
 fails the run with cause runtime before its agent starts, saying why. A run with packs is never handed to a person in
 a terminal UI, which loads none.
+
+A run whose claim carries ``routing`` (the project's policy has it on, and the run names no model) is rated before its
+first headless agent starts, and runs on the model the ladder gives its difficulty (``route_model``,
+``evo_agents.worker.model_router``). Every report of the run says the model its runtime used, as the runtime named it
+(``Adapter.model_used``), else the model the worker asked for, and what the routing did (``model_fields``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import browser_login, curator, runs
+from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import autonomy_hook, environments, interactive, orphans, packs, venvs
+from evo_agents.worker import autonomy_hook, environments, guard, interactive, model_router, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
@@ -66,7 +73,7 @@ from evo_agents.worker.runner.transitions import running_from, why_stopped
 from evo_agents.worker.runtimes import claude_home, gateway, hub_tools, profiles
 from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.runtimes.claude_code import compact_window, leased_oauth
-from evo_agents.worker.runtimes.common import with_first_request
+from evo_agents.worker.runtimes.common import SETTING_PREFIXES, with_first_request
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -104,6 +111,9 @@ class Agent:
         self.logins_seen: set[int] = set()  # the login decisions whose answer was handled
         self.credentials_seen: set[int] = set()  # the credential requests whose answer took the leases again
         self._gate: list = []  # the run's hook of autonomy (``autonomy_hook.for_run``), built for its first agent
+        self.routed = False  # the run's model was chosen by its difficulty, or is not to be (``route_model``)
+        self.routing: dict | None = None  # what the routing did (``model_router.record``); None: it did not run
+        self.model_asked: str | None = None  # the model the worker started the last agent on; None: the runtime's own
 
     # The runtime
 
@@ -239,6 +249,9 @@ class Agent:
         """The environment of the run's agent, and of the commands the daemon runs for the run."""
         run = self.run
         env = dict(run.daemon.env)
+        if claude_home.pooled(run.spec):  # an agent in pool mode: the model accounts leased to it, none of the daemon's
+            for key in MODEL_ENV_VARS:
+                env.pop(key, None)
         env.update(
             {
                 "EVO_RUN_ID": str(run.id),
@@ -263,7 +276,9 @@ class Agent:
         if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
             env.update(compact_window(env))
         env.update(authorship.author_env(run.spec, authorship.hub_url(run)))  # its own commits name the agent
-        env.update(self.trailer_config(env))  # and carry the run's trailers
+        env.update(self.trailer_config(env))  # and carry the run's trailers, and its git checks no private name
+        if run.worktree is not None and not run.spec.get("environment"):  # the gh shim of the guard, first on PATH
+            env.update(guard.agent_env(env, run.daemon.home.root))
         if claude_home.wanted(run.spec, run.runtime, route is not None) and run.worktree:  # a config dir of its own
             env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
             env["GH_CONFIG_DIR"] = str(claude_home.gh_dir(run.worktree))  # empty: none of the owner's gh logins
@@ -275,13 +290,15 @@ class Agent:
 
     def trailer_config(self, env: dict[str, str]) -> dict[str, str]:
         """The git configuration that names the run's hooks, which add its trailers Evo-Principal and Evo-Agent to the
-        agent's own commits (``authorship.trailer_hooks``), after what ``env`` sets; empty for a run without trailers,
-        without a work tree, or in an environment other than this machine's host."""
+        agent's own commits (``authorship.trailer_hooks``) and, while the hub's guard policy guards something, check
+        its commit messages and pushes for private names (``evo_agents.guard_check``), after what ``env`` sets; empty
+        for a run with neither, without a work tree, or in an environment other than this machine's host."""
         run = self.run
         if run.worktree is None or run.spec.get("environment"):
             return {}
         directory = run.daemon.home.run_dir(run.id) / "git-hooks"
-        hooks = authorship.trailer_hooks(run.spec, directory, Path(run.worktree))
+        checks = sys.executable if guard.on(env) else None
+        hooks = authorship.trailer_hooks(run.spec, directory, Path(run.worktree), guard=checks)
         return {} if hooks is None else config_env(env, [("core.hooksPath", str(hooks))])
 
     @property
@@ -332,6 +349,7 @@ class Agent:
                 owner_env=run.daemon.env,
                 leased=leased_oauth(context),
                 gateway=route,
+                pooled=claude_home.pooled(run.spec),
                 server=server,
                 lock=Path(run.daemon.home.root) / claude_home.REFRESH_LOCK,
             )
@@ -341,9 +359,16 @@ class Agent:
             raise RunFailed(why, cause="credentials") from None
         except OSError as exc:
             raise RunFailed(f"Claude Code's config dir {directory} was not written: {exc}", cause="runtime") from None
+        if (
+            login is None
+            and claude_home.pooled(run.spec)
+            and any(k in run.credentials.agent_vars for k in MODEL_ENV_VARS)
+        ):
+            login = "the account pool's lease"  # an API key leased from the pool: no OAuth token, and no login to copy
         if login is None:
-            run.note(f"{claude_home.REFUSAL}; the agent did not start.", cause="credentials")
-            raise RunFailed(claude_home.REFUSAL, cause="credentials")
+            refusal = claude_home.POOL_REFUSAL if claude_home.pooled(run.spec) else claude_home.REFUSAL
+            run.note(f"{refusal}; the agent did not start.", cause="credentials")
+            raise RunFailed(refusal, cause="credentials")
         self.note_once(claude_home.note(directory, login))
 
     def note_once(self, line: str) -> None:
@@ -384,11 +409,12 @@ class Agent:
     def context(self, prompt: str, session_id: str | None) -> RunContext:
         """What the adapter of an agent that starts now gets."""
         run = self.run
+        env = self.env()
         return RunContext(
             run=dict(run.spec),
             worktree=run.worktree,
             prompt=prompt,
-            env=self.env(),
+            env=env,
             resume_session=session_id,
             leased=run.credentials.withheld,
             spent_usd=run.watchdog.spent_usd,
@@ -396,12 +422,13 @@ class Agent:
             environment=self.environment,
             packs=self.with_browser(self._packs or ()),
             autonomy=self.gate(),
+            floor=autonomy_hook.floor_for_run(run, env),
         )
 
     def gate(self):
         """The run's hook of autonomy, None for a run without a snapshot: built once a run."""
         if not self._gate:
-            self._gate.append(autonomy_hook.for_run(self.run))
+            self._gate.append(autonomy_hook.for_run(self.run, self.env))
         return self._gate[0]
 
     def with_browser(self, built: tuple) -> tuple:
@@ -568,6 +595,8 @@ class Agent:
         await self.build_packs(cls)
         context = self.context(prompt, session_id)
         await self.check_login(cls, context)
+        if await self.route_model(context):
+            context = self.context(prompt, session_id)
         lacking = cls.environment_refusal(context)
         if lacking:
             raise RunFailed(lacking, cause="credentials")
@@ -584,6 +613,7 @@ class Agent:
             log.warning("agent did not start", extra={"run_id": run.id}, exc_info=True)
             raise RunFailed(f"{run.runtime} did not start: {type(exc).__name__}: {exc}") from None
         self.running = True
+        self.model_asked = self.asked_model(context)
         run.agent_starts()
         pid = self.group_of(adapter)
         await self.note_agent(pid)
@@ -604,6 +634,43 @@ class Agent:
         # Claude Code's total is the session's running total, which the next agent in the session starts from.
         run.watchdog.spent_usd = max(run.watchdog.spent_usd, curator.run_cost(outcome.usage))
         return outcome
+
+    # The model
+
+    async def route_model(self, context: RunContext) -> bool:
+        """Rate the run's difficulty with the scorer of its claim's routing and take the ladder's model for it, before
+        its first headless agent; whether the run's model changed. Nothing for a run whose claim carries no routing or
+        that is pinned to a model, and nothing after its first agent."""
+        if self.routed:
+            return False
+        self.routed = True
+        run = self.run
+        found = await model_router.route(run.spec, context.env)
+        if found is None:
+            return False
+        self.routing = found
+        chosen = found["model"]
+        how = "the scorer rated it" if found["scored"] else f"the scorer did not rate it ({found['error']}), so"
+        cost = f", for ${found['cost_usd']:.4f}" if found["cost_usd"] is not None else ""
+        if chosen:
+            run.note(f"Model routing: {how} {found['difficulty']}{cost}; the agent runs on {chosen}.")
+            run.spec["model"] = chosen
+        else:
+            run.note(f"Model routing: {how} {found['difficulty']}{cost}; {found['error']}, so the model stays.")
+        return chosen is not None
+
+    def asked_model(self, context: RunContext) -> str | None:
+        """The model the worker starts the agent on: the session's (``profiles.session_model``), else the run's."""
+        if self.run.runtime in SETTING_PREFIXES:
+            return profiles.session_model(context, self.run.runtime)
+        model = context.run.get("model")
+        return model.strip() if isinstance(model, str) and model.strip() else None
+
+    def model_fields(self) -> dict:
+        """What a report of the run says of its model: the one its runtime used (``Adapter.model_used``), else the one
+        the worker asked for, and what the routing did; each None while unknown."""
+        used = getattr(self.adapter, "model_used", None) if self.adapter is not None else None
+        return {"model_used": used or self.model_asked, "routing": self.routing}
 
     def group_of(self, adapter) -> int | None:
         try:

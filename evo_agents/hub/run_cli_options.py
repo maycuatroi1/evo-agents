@@ -145,39 +145,6 @@ def as_me_body(args) -> dict:
     return {"as_me": True} if getattr(args, "as_me", False) else {}
 
 
-def placement_option(parser) -> None:
-    """``--pool``, ``--label`` and ``--tolerate``: the worker that takes the run (``worker_placement`` on the hub)."""
-    parser.add_argument(
-        "--pool", metavar="NAME", help="only a node of this pool of yours takes the run (the label pool=NAME)"
-    )
-    parser.add_argument(
-        "--label",
-        metavar="LABEL",
-        action="append",
-        dest="labels",
-        help="a label the worker that takes the run must have, a word or key=value: its own, its pool's, or one the "
-        "hub gives it (os=, arch=, runtime=NAME, feature=browser); once for each, every one needed",
-    )
-    parser.add_argument(
-        "--tolerate",
-        metavar="TAINT",
-        action="append",
-        dest="tolerations",
-        help="a taint of a worker the run tolerates; a worker with a taint the run does not tolerate leaves it to "
-        "others unless the run is pinned to it; once for each",
-    )
-
-
-def placement_body(args) -> dict:
-    """What a dispatch sends of ``--pool``, ``--label`` and ``--tolerate``: only what was given, so an older hub takes
-    the rest."""
-    body = {"pool": args.pool} if getattr(args, "pool", None) else {}
-    for name in ("labels", "tolerations"):
-        if getattr(args, name, None):
-            body[name] = list(args.__dict__[name])
-    return body
-
-
 def usage_error(text: str) -> int:
     """Say on stderr what is wrong with the options; the exit status of a usage error."""
     print(f"error: {text}", file=sys.stderr)
@@ -199,13 +166,11 @@ def rerun_options(parser) -> None:
         help="let the rules of your policy pick the account, not keep the one picked by hand for the run rerun",
     )
     browser_option(parser)
-    placement_option(parser)
 
 
 def rerun_body(args) -> dict | None:
-    """The body of a rerun: none when it keeps everything, so an older hub, which takes none, still takes it; no
-    --pool, --label or --tolerate keeps the run's own."""
-    body = browser_body(args) | placement_body(args)
+    """The body of a rerun: none when it keeps everything, so an older hub, which takes none, still takes it."""
+    body = browser_body(args)
     if getattr(args, "account", None):
         body["account"] = args.account
     elif getattr(args, "account_by_rule", False):
@@ -220,11 +185,6 @@ def dispatch_options(dispatch) -> None:
         "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
     )
     dispatch.add_argument(
-        "--worker",
-        help="pin the runs to this worker of yours, or one shared with you, by id, name or owner/name (default: any "
-        "of yours or shared with you that can take one)",
-    )
-    dispatch.add_argument(
         "--approval",
         choices=APPROVALS,
         help="default: review, which waits for `hub run approve`; auto marks the step done once every verify command "
@@ -232,7 +192,6 @@ def dispatch_options(dispatch) -> None:
     )
     dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
     browser_option(dispatch, identities=True)
-    placement_option(dispatch)
     as_me_option(dispatch)
 
 
@@ -267,11 +226,6 @@ def list_options(listed) -> None:
 
 def plan_options(plan, with_model) -> None:
     """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
-    plan.add_argument(
-        "--worker",
-        help="pin the run to this worker of yours, or one shared with you, by id, name or owner/name (default: any "
-        "of yours or shared with you with every repo)",
-    )
     plan.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
     with_model(plan)
     plan.add_argument(
@@ -292,7 +246,6 @@ def plan_options(plan, with_model) -> None:
         "than one session for every step; a worker takes it once its daemon says it runs one",
     )
     browser_option(plan, identities=True)
-    placement_option(plan)
     account_option(plan)
     as_me_option(plan)
 
@@ -303,11 +256,6 @@ def author_options(authored) -> None:
         "--plan",
         metavar="PLAN",
         help="the plan to revise, one you can read; the agent puts it back with its revision (default: a new plan)",
-    )
-    authored.add_argument(
-        "--worker",
-        help="pin it to this worker of yours, or one shared with you, by id, name or owner/name; it needs the harness "
-        "checked out (default: any that --pool, --label and --tolerate let take it)",
     )
     authored.add_argument(
         "--runtime",
@@ -322,5 +270,4 @@ def author_options(authored) -> None:
         metavar="HOURS",
         help=f"hours of agent time, one of {', '.join(map(str, AUTHOR_TIMEOUT_CHOICES))} (default {DEFAULT_TIMEOUT_H})",
     )
-    placement_option(authored)
     account_option(authored)

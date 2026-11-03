@@ -17,6 +17,9 @@ transaction of its own that holds the project's row of loop_states, at the local
 - ``loop_brief``: a project whose Curator sends no morning brief (no night_shift schedule under a charter, or the
   feature curator off) gets the Loop's part of it at BRIEF_AT, within ``curator.BRIEF_GRACE``, once a local day, for
   each owner of an active goal.
+- ``srs_adopt``: a plan the Loop has not adopted holds use cases of the backlog of an active goal out of any build
+  (``adopt.waiting``): the goal's owner (its admins when it has none) gets the notice once for that goal and plan, with
+  the command that adopts it.
 
 Each goes to a member who holds a grant on the project, once: the hub looks for the notice of that month (or day) it
 sent them already, by its details. The web, Telegram and the other channels get them as any notice
@@ -35,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import curator, goals, tables
 from evo_agents.hub.server import hub_settings
 from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.loop import adopt
 from evo_agents.hub.server.loop.board_items import board_path, line
 from evo_agents.hub.server.loop.model import DISPATCHED, DONE_EVENT, WAITING_HUMAN
 from evo_agents.hub.server.loop.view import loop_zone, reached
@@ -42,7 +46,7 @@ from evo_agents.hub.server.notifications import notify
 
 log = logging.getLogger(__name__)
 
-GOAL_REVIEW, LOOP_BRIEF = "goal_review", "loop_brief"  # runs.NOTICE_KINDS
+GOAL_REVIEW, LOOP_BRIEF, SRS_ADOPT = "goal_review", "loop_brief", "srs_adopt"  # runs.NOTICE_KINDS
 BRIEF_AT = "07:00"  # the local time of a loop_brief
 REVIEW_DAYS = 7  # the first days of a month a goal_review may still go out in
 WINDOW = timedelta(hours=24)  # what a brief counts as handed out and finished
@@ -255,6 +259,39 @@ async def _loop_brief(conn: AsyncConnection, project_id: int, project: str, loca
     return len(to)
 
 
+async def _srs_adopt(conn: AsyncConnection, project_id: int, project: str) -> int:
+    """The srs_adopt notices (see the module); how many members they told."""
+    sent = 0
+    for held in await adopt.waiting(conn, project_id):
+        key = f"{held.goal}/{held.plan}"
+        owner = [held.owner_id] if held.owner_id else []
+        told = await _told(conn, project_id, SRS_ADOPT, "held", key)
+        to = [user for user in await _holders(conn, project_id, owner, admins=not owner) if user not in told]
+        count = len(held.use_cases)
+        title = f"Plan {held.plan} holds {_plural(count, 'use case')} of {held.goal} out of the Loop: adopt it"
+        body = (
+            f"Plan {held.plan} names use cases of goal {held.goal} ({', '.join(held.groups)}) that the Loop has not "
+            f"adopted, so it makes no build for them: {', '.join(held.use_cases)}. Adopt the plan for them:\n\n"
+            f"    {held.command} --project {project}\n\nOr an admin sets them undelivered (evo-agents hub loop "
+            f"baseline --goal {held.goal} --set CODE=undelivered --project {project}) for a build to take them."
+        )
+        details = {"held": key, "goal": held.goal, "plan": held.plan, "use_cases": list(held.use_cases)}
+        for user_id in to:
+            await notify(
+                conn,
+                user_id=user_id,
+                kind="notice",
+                notice_kind=SRS_ADOPT,
+                project_id=project_id,
+                title=title,
+                body=body,
+                details=details,
+                link=board_path(project),
+            )
+        sent += len(to)
+    return sent
+
+
 async def _project(conn: AsyncConnection, project_id: int, project: str, now: datetime | None) -> Counter:
     """The notices of one project whose Loop is on, in the caller's transaction, at ``now`` (the database's when
     None)."""
@@ -268,6 +305,7 @@ async def _project(conn: AsyncConnection, project_id: int, project: str, now: da
     told = Counter()
     told[GOAL_REVIEW] += await _goal_review(conn, project_id, project, local_now, moment)
     told[LOOP_BRIEF] += await _loop_brief(conn, project_id, project, local_now, moment)
+    told[SRS_ADOPT] += await _srs_adopt(conn, project_id, project)
     return told
 
 
@@ -292,4 +330,4 @@ async def send(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
     return sent
 
 
-__all__ = ["BRIEF_AT", "GOAL_REVIEW", "LOOP_BRIEF", "blocks", "curator_briefs", "facts", "send", "totals"]
+__all__ = ["BRIEF_AT", "GOAL_REVIEW", "LOOP_BRIEF", "SRS_ADOPT", "blocks", "curator_briefs", "facts", "send", "totals"]

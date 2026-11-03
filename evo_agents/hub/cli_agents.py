@@ -5,6 +5,9 @@ over GET, POST, PATCH and DELETE /v1/projects/{p}/agents. ``agent account`` is i
 deleted ones. ``show`` prints one profile whole, each axis with its allowlist. Every member of the project may read
 them. ``create``, ``edit`` and ``delete`` need the admin role on the project.
 
+Each agent has a pool of its own, ``agent-<handle>``, made with it (manage it with ``evo-agents worker pool``): every
+run of the agent goes to a node of that pool, and nobody picks the machine.
+
 A profile's permissions are eight axes (credential, tool, skill, worker, project, model, runtime, environment), each
 ``all`` or an allowlist; an axis a profile does not name, as a hub older than the axis answers, reads as ``all``. ``--allow AXIS:ITEM`` (repeatable) makes AXIS an allowlist of the items given for it, such as ``--allow
 tool:read --allow tool:edit --allow credential:github-app``; ``--none AXIS`` makes AXIS an allowlist of nothing, and
@@ -49,6 +52,8 @@ AGENT_KEYS = (
     "permissions",
     "restricted",
     "packs",
+    "home_pool",
+    "account_pool",
     "version",
     "created_by",
     "created_at",
@@ -103,6 +108,7 @@ def _show(agent: dict) -> None:
         print(f"  {label}{_axis_text(agent['permissions'].get(axis) or {})}")
     packs = [f"{pack['plugin']}/{pack['name']}@{pack['version']}" for pack in agent.get("packs") or ()]
     print(f"  {'packs:'.ljust(12)}{', '.join(packs) or 'none'}")
+    print(f"  {'pool:'.ljust(12)}{agent.get('home_pool') or 'none'}")
     print(f"  created by {agent['created_by']} at {when(agent['created_at'])} UTC, changed {when(agent['updated_at'])}")
 
 
@@ -124,11 +130,12 @@ def cmd_list(args) -> int:
             a["version"],
             "yes" if a["is_default"] else "",
             ", ".join(a["restricted"]) or "-",
+            a["home_pool"] or "-",
             when(a["deleted_at"]) if a.get("deleted_at") else "",
         )
         for a in found
     ]
-    table(("HANDLE", "NAME", "VERSION", "DEFAULT", "LIMITS", "DELETED (UTC)"), rows)
+    table(("HANDLE", "NAME", "VERSION", "DEFAULT", "LIMITS", "POOL", "DELETED (UTC)"), rows)
     return 0
 
 
@@ -310,6 +317,7 @@ def _handle(parser) -> None:
 
 
 def register_agents(hsub) -> None:
+    from evo_agents.hub.cli_account_pools import register_account_pools, register_agent_account_pool
     from evo_agents.hub.cli_agent_accounts import register_agent_accounts
 
     agent = hsub.add_parser("agent", help="the agent profiles of a project: who its agents are and what they may use")
@@ -353,4 +361,7 @@ def register_agents(hsub) -> None:
     delete.add_argument("--project", help=PROJECT_HELP)
     json_option(delete, returns_object(*AGENT_KEYS, schema="Agent"))
     delete.set_defaults(func=cmd_delete)
+
     register_agent_accounts(asub)
+    register_agent_account_pool(asub)
+    register_account_pools(hsub)

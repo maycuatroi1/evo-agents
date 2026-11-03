@@ -111,7 +111,7 @@ function Harness({ planId = null, onDispatched }: { planId?: string | null; onDi
 }
 
 describe("AuthorRunDialog", () => {
-  it("takes the request, picks a worker with the harness, and queues a new plan's author run with the CSRF header", async () => {
+  it("takes the request, names no worker, and queues a new plan's author run with the CSRF header", async () => {
     const user = userEvent.setup();
     const dispatched = vi.fn();
     const queued = { id: 61, kind: "author", project: "demo", plan_id: "", state: "queued" } as Run;
@@ -121,14 +121,9 @@ describe("AuthorRunDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Plan mới" });
     expect(dialog).toHaveAttribute("data-mode", "new");
     expect(within(dialog).getByTestId("author-run-runtime")).toHaveTextContent("Claude Code");
-    // The worker with a checkout of the harness is picked first; the one without is said to fail to take it.
-    const select = await within(dialog).findByTestId("author-run-worker-select");
-    await waitFor(() => expect(select).toHaveValue("7"));
-    expect(within(dialog).getByTestId("author-run-worker")).toHaveTextContent("harness");
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("lab-ws-01 nhận được author run này ngay.");
-    await user.selectOptions(select, "9");
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("laptop chưa nhận được author run này (không có checkout của harness)");
-    await user.selectOptions(select, "7");
+    // No worker is picked: the agent's own pool takes the run.
+    expect(within(dialog).queryByTestId("author-run-worker")).toBeNull();
+    expect(within(dialog).queryByTestId("author-run-worker-select")).toBeNull();
 
     // A blank request is refused here, with the reason next to the field.
     await user.click(within(dialog).getByTestId("author-run-submit"));
@@ -148,7 +143,6 @@ describe("AuthorRunDialog", () => {
     expect(post?.headers.get("X-Evo-CSRF")).toBe("csrf-1");
     expect(await post?.clone().json()).toEqual({
       request: "Let members write plans from the web.",
-      worker_id: 7,
       plan_id: null,
       runtime: "claude-code",
       model: "opus",
@@ -172,7 +166,7 @@ describe("AuthorRunDialog", () => {
     expect(alert).toHaveTextContent("Hub báo: worker lab-ws-01 runs no author run");
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
     expect(dispatched).not.toHaveBeenCalled();
-    expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toMatchObject({ plan_id: "rollout", worker_id: 7, model: null, timeout_h: 2 });
+    expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toMatchObject({ plan_id: "rollout", model: null, timeout_h: 2 });
   });
 
   it("says when the project has no harness to write in, and offers no run", async () => {

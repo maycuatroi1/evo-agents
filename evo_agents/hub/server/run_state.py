@@ -38,7 +38,9 @@ of ``runs.CLOCK_STATES``, and ``counted_at`` moves on to where the count stopped
 those states; a heartbeat settles it the same way (``settle``). A move to ``waiting`` sets ``waiting_since`` (any other
 move clears it) and one to ``parked`` sets ``parked_at``. A run that ends cancels its decisions still open, unless the
 caller deals with them (``decisions=None``): the reaper lets those of a run parked too long expire, and an answer to a
-parked run hands them to the run that resumes it. A plan run that ends ``failed`` sends its owner the notice
+parked run hands them to the run that resumes it. The hub's decisions about what the run stands for
+(``runs.OUTLIVING_DECISION_CATEGORIES``: a stopped release cycle's, a Loop work item's) stay open, since what they
+decide outlives the run. A plan run that ends ``failed`` sends its owner the notice
 ``run_failed``, and one that ends ``done`` with every step of its plan done the notice ``plan_finished``
 (``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
 author run sends ``run_failed`` when its worker failed it with a cause of ``runs.PREFLIGHT_CAUSES`` (a repo the project
@@ -115,7 +117,7 @@ PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cance
 CAUSED_KINDS = ("step", "plan", "author", "chat")
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
-MOVE_COLUMNS |= {"evidence", "usage", "failure_cause"}
+MOVE_COLUMNS |= {"evidence", "usage", "failure_cause", "model_used", "routing", "proofs"}
 
 
 # Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.
@@ -230,8 +232,9 @@ async def move_run(
     (of MOVE_COLUMNS) too; write the ``state`` event and the plugins' ``run.state`` event, then record the move in the
     plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held
     without a lease (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state
-    ``decisions``, or leaves them open when it is None. Returns the plan revision the move wrote, or None. Raises
-    ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
+    ``decisions`` (but those of ``runs.OUTLIVING_DECISION_CATEGORIES``), or leaves them open when it is None. Returns
+    the plan revision the move wrote, or None. Raises ``runs.TransitionRefused`` for a move the table refuses or a run
+    that is no longer in ``old``."""
     runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
@@ -253,7 +256,8 @@ async def move_run(
         await tool_stats.record(conn, run_id)
     if new in runs.TERMINAL_STATES and decisions is not None:
         d = tables.decisions
-        await conn.execute(update(d).values(state=decisions).where(d.c.run_id == run_id, d.c.state == "open"))
+        own = (d.c.run_id == run_id, d.c.state == "open", d.c.category.not_in(runs.OUTLIVING_DECISION_CATEGORIES))
+        await conn.execute(update(d).values(state=decisions).where(*own))
     if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 
@@ -310,6 +314,7 @@ class RunStep:
     repos: list | None = None  # a plan run's repos, each {"repo", "branch"}
     project_id: int | None = None
     failure_cause: str | None = None  # why it failed, as its worker reported it
+    proofs: list | None = None  # the proof of each criterion its step names, as a run of one step reported them
 
 
 def _run_step(run_id: int):
@@ -337,6 +342,7 @@ def _run_step(run_id: int):
             r.c.repos,
             r.c.project_id,
             r.c.failure_cause,
+            r.c.proofs,
         )
         .select_from(
             r.join(p, p.c.id == r.c.project_id)
@@ -417,6 +423,8 @@ def step_updates(found: RunStep, old: str, new: str, reason: str):
         updates = {"status": "in_progress", "note": _note(f"run #{found.run_id} on worker {found.worker}")}
     elif new == "done":
         updates = {"status": "done", "done_at": _today(), "evidence": found.evidence or evidence(found)}
+        if found.proofs:
+            updates["proofs"] = found.proofs
     elif new == "failed":
         updates = {"status": "pending", "note": _note(f"run #{found.run_id} failed: {found.error or reason}")}
     elif new == "cancelled":
@@ -499,6 +507,7 @@ async def write_step(
                             updates,
                             if_revision=held.revision,
                             step=found.step_key,
+                            hub=True,
                         )
                 except plan_routes.PlanError as exc:
                     if exc.code != plan_routes.REVISION_CONFLICT or attempt == PLAN_TRIES:

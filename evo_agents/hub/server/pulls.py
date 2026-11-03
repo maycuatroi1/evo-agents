@@ -60,6 +60,7 @@ SERVER_PERMISSIONS = {
     "open": {"pull_requests": "write", "contents": "read", "metadata": "read"},
     "read": {"pull_requests": "read", "checks": "read", "statuses": "read", "metadata": "read"},
     "pulls": {"pull_requests": "read", "metadata": "read"},
+    "merged": {"pull_requests": "read", "contents": "read", "metadata": "read"},  # a merged pull request and its base
     "check": {"checks": "write", "metadata": "read"},
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
@@ -417,6 +418,25 @@ async def pull(app: GitHubApp, token: str, owner: str, repo: str, number: int) -
     if response.status_code != 200:
         raise _refused(response, doing)
     return app._json(response, doing)
+
+
+async def compare_status(app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str) -> str:
+    """How ``head`` stands to ``base`` on owner/repo as GitHub compares them: ahead, behind, identical or diverged; a
+    commit GitHub does not know (404) is ``missing``."""
+    doing = f"comparing {head[:12]} with {base} on {owner}/{repo}"
+    response = await _api(
+        app,
+        token,
+        "GET",
+        _path("repos", owner, repo, "compare") + "/" + f"{quote(base, safe='')}...{quote(head, safe='')}",
+        doing,
+    )
+    if response.status_code == 404:
+        return "missing"
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    status = app._json(response, doing).get("status")
+    return status if isinstance(status, str) else "missing"
 
 
 async def _pages(app: GitHubApp, token: str, path: str, doing: str, key: str | None = None) -> list[dict]:

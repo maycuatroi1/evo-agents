@@ -34,6 +34,32 @@ English "an". The score is then weighed by what the node is (``weight``): up whe
 (``named_words``), down when it is background, a test, a migration, a fixture, generated JSON or the history of closed
 work, that the query does not ask for (``background``, ``asked``). ``kg_search`` then follows each step, section or document it found to what it mentions
 (``with_mentions``).
+
+The text of code and markup files is not in ``node_fts``: a symbol is found by its name and docstring, and a file's
+code would bury the documents and steps a question in prose asks about. It sits in an index of its own, ``code_fts``,
+whose tokenizer keeps ``_``, ``-`` and ``$`` inside a word, so ``MOBILE_AI_CHAT_V2_ENABLED``, ``app-course-card`` and
+``$route`` are one word each. ``kg_search`` looks up there the words of a query that reads like a search of code
+(``code_words``: every word of a query of at most CODE_WORDS words, else only the words written like identifiers),
+and puts the files that hold the most of them after its first CODE_LEAD results, each with the first CODE_LINES lines
+that hold them: where a name is used, which grep would have found and the graph's resolved edges often do not (a
+setting read through ``settings.X``, a selector in a template, a class in a stylesheet). A word more than CODE_POOL
+files hold is left out: a brand or a framework every file of a kind names points at none of them. On 412 searches
+agents ran with grep in the sessions of a harness of 16 repos, the file the agent opened next was in the first five
+24.5% of the time, 32.5% with the searched repo given, against 19.9% before (grep 30.3%), at 1,053 tokens of result
+per file found against grep's 8,418; that harness's 511 plan-step questions stayed at 71.0% (75.2% with the repo),
+and the 600 tune questions of evo-agents went from 27.7% to 27.8%.
+
+A word of a query can also sit inside a word of a name or a path: "api" in ``northwind-api.md`` is a word of its
+own, but "ops" in ``lumenops-dashboard.md`` is not, and no way above reads it there. ``node_tri`` holds the name and
+the path of each node's own row of ``node_fts`` (no passage, no row with an audience) cut in trigrams, and the nodes
+whose name or path holds every word of at least TRIGRAM_MIN letters of the query as a substring (``trigram_query``)
+are ranked by BM25 times the prior and ``weight``, then fused with the ranking by words by reciprocal rank fusion at
+TRIGRAM_WEIGHT. Background the query does not ask for is left out of that ranking: an image whose path holds every
+word would come first in it, and a fused rank does not keep the weight that holds it back among words. On the
+evo-agents questions hit@5 went from 0.7317 to 0.7350 on tune (600) and from 0.6783 to 0.6826 on holdout (230), MRR
+from 0.4603 to 0.4612 and from 0.4403 to 0.4419; the bodies indexed too, or any word of the query (OR), lowered hit@5
+on tune. A graph built before ``node_tri`` came, or by an SQLite without the trigram tokenizer, searches by words
+alone.
 """
 
 from __future__ import annotations
@@ -41,6 +67,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Callable, Iterable, Iterator
+from pathlib import PurePosixPath
 
 MAX_TEXT_CHARS = 100_000  # a node's body past this is cut and counted in the build's coverage
 # Words of a query read; the rest are dropped. A question often names its subject late ("does the weekly review
@@ -85,6 +112,17 @@ ASKED_WEIGHT = 1.0
 # its heading; its passage too cost a third more tokens a call on the harness's question set and found nothing more.
 SNIPPET_KINDS = frozenset({"Document"})
 SNIPPET_TOKENS = 16
+CODE_WORDS = 4  # a query of at most this many words is read as a search of code: each of its words is looked up there
+CODE_TERMS = 6  # words of a query looked up in code, at most
+CODE_POOL = 50  # files read from code_fts per word; a word more files hold is too common to look up
+CODE_LEAD = 2  # results of the ranking kept before the files whose code holds the query's words
+CODE_LINES = 3  # lines a code hit shows
+_CODE_WORD = re.compile(r"[\w$.-]+")
+# Written like an identifier: a _, - or $ between characters, or a camelCase hump. A word in capitals alone (SCORM,
+# YAML) is more often an acronym every file of a kind names: on plan-step questions it pushed the answers out.
+_IDENTIFIER = re.compile(r".[_$-].|[a-z][A-Z]")
+TRIGRAM_MIN = 3  # letters a word needs to be looked up as a substring: the trigram tokenizer matches no shorter one
+TRIGRAM_WEIGHT = 0.5  # the weight of the ranking by substrings in the fusion with the one by words
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})
 _WORD = re.compile(r"[^\W_]+")
@@ -180,8 +218,39 @@ def plain_query(query: str) -> str | None:
     return " OR ".join(_quote(w) for w in terms) or None
 
 
+def code_words(query: str) -> list[str]:
+    """The words of ``query`` to look up in code (``code_fts``), as written, once each, at most CODE_TERMS: all of a
+    query of at most CODE_WORDS words, else only those written like identifiers; none of under three characters, all
+    digits, or a word that only asks. Dots and dashes at a word's ends are dropped (``.hostname``)."""
+    words = [w.strip(".-") for w in _CODE_WORD.findall(fold(query))]
+    words = list(dict.fromkeys(w for w in words if len(w) >= 3 and not w.isdigit() and w.lower() not in STOP_WORDS))
+    if len(query.split()) > CODE_WORDS:
+        words = [w for w in words if _IDENTIFIER.search(w)]
+    return words[:CODE_TERMS]
+
+
+def lines_holding(text: str, words: list[str], most: int = CODE_LINES) -> list[int]:
+    """The numbers of the first ``most`` lines of ``text`` holding a word of ``words`` whole, as ``code_fts`` cuts
+    words (``_``, ``-`` and ``$`` inside one), ignoring case and accents."""
+    wanted = [bare(w) for w in words]
+    patterns = [re.compile(rf"(?<![\w$-]){re.escape(w)}(?![\w$-])") for w in wanted if w]
+    found: list[int] = []
+    for number, line in enumerate(text.splitlines(), 1):
+        read = line.lower() if line.isascii() else bare(line)
+        if any(p.search(read) for p in patterns):
+            found.append(number)
+            if len(found) >= most:
+                break
+    return found
+
+
 def _quote(word: str) -> str:
     return '"' + word.lower().replace('"', '""') + '"'
+
+
+def phrase(word: str) -> str:
+    """``word`` as one FTS5 phrase: the tokenizer splits it into the words it indexes (``store.py``: store py)."""
+    return _quote(word)
 
 
 def _word_match(word: str, prefix: bool) -> str:
@@ -204,6 +273,18 @@ def fts_queries(words: list[str]) -> Iterator[str]:
     loose = dict.fromkeys(t for t in terms if bare(t) not in BARE_STOP_WORDS)
     if len(loose) > 1 or (loose and len(words) > 1):
         yield " OR ".join(_quote(t) for t in loose)
+
+
+def tri_text(text: str) -> str:
+    """``text`` as ``node_tri`` holds it and a query reads it: lower case, accents folded (``bare``)."""
+    return text.lower() if text.isascii() else bare(text)
+
+
+def trigram_query(words: list[str]) -> str | None:
+    """The FTS5 query of ``words`` against ``node_tri``: every word of TRIGRAM_MIN letters or more as a substring
+    (AND); None when no word is that long."""
+    terms = dict.fromkeys(t for t in (tri_text(w) for w in words) if len(t) >= TRIGRAM_MIN)
+    return " AND ".join(_quote(t) for t in terms) or None
 
 
 _PHRASE = re.compile(r'"(?:[^"]|"")*"\*?')
@@ -239,7 +320,29 @@ BACKGROUND_WORDS = {
     "closed": frozenset({"completed", "closed", "đã đóng", "plan cũ", "old plan"}),
     "report": frozenset({"report", "reports", "báo cáo"}),
     "history": frozenset({"history", "lịch sử", "changelog"}),
+    "asset": frozenset(
+        {
+            "image",
+            "images",
+            "screenshot",
+            "screenshots",
+            "png",
+            "svg",
+            "jpg",
+            "icon",
+            "diagram",
+            "drawio",
+            "hình ảnh",
+            "ảnh chụp",
+            "sơ đồ",
+        }
+    ),
 }
+# A file known by its path alone (an image, a diagram, a video: ``asset_item``) has no text but its path, so a slug
+# match in the path scores high and BACKGROUND_WEIGHT does not move it; it never answers a question about code or a
+# plan, so it weighs ASSET_WEIGHT unless the query asks for an image. Its words are whole phrases where a single
+# Vietnamese word is ambiguous: "hình" also reads "mô hình" (model), "ảnh" also "ảnh hưởng" (effect).
+ASSET_WEIGHT = 0.25
 _TEST_PATH = re.compile(r"(?:^|/)(?:tests?|__tests__|e2e)/|(?:^|/)test_[^/]*$|_test\.[a-z]+$|\.(?:test|spec)\.[a-z]+$")
 _MIGRATION_PATH = re.compile(r"(?:^|/)(?:migrations|alembic/versions)/")
 _FIXTURE_PATH = re.compile(r"(?:^|/)fixtures?/")
@@ -247,6 +350,7 @@ _GENERATED_JSON = re.compile(r"(?:^|/)golden/[^/]*\.json$|bundle-budget\.json$|c
 _CLOSED_PATH = re.compile(r"(?:^|/)plans/completed/")
 _REPORT_PATH = re.compile(r"(?:^|/)reports/")
 _HISTORY_PATH = re.compile(r"(?:^|/)(?:docs/history\.md|CHANGELOG\.md)$")
+_ASSET_PATH = re.compile(r"\.(?:png|jpe?g|gif|webp|svg|ico|bmp|drawio|excalidraw|webm|mp4|mov)$", re.IGNORECASE)
 
 
 def named_words(query: str) -> list[str]:
@@ -265,20 +369,31 @@ def named_words(query: str) -> list[str]:
 
 
 def names(node_id: str, name: str, path: str, words: list[str]) -> bool:
-    """Whether one of ``words`` (``named_words``) is the node's name, its path or its file's name, or ends its id
-    (``…::Store.search``, ``…/search.py``)."""
+    """Whether one of ``words`` (``named_words``) is the node's name or its path, ends its id (``…::Store.search``,
+    ``…/search.py``), or, for the file itself, is its file name or stem (``file_named``). A symbol or section is not
+    named by its file's name: the file is what such a word asks for."""
     for word in words:
-        if word == name or word == path or path.endswith("/" + word):
+        if word == name or word == path:
             return True
         if node_id.endswith(("::" + word, "/" + word, "." + word)):
             return True
+        if path and node_id.endswith(path) and file_named(path, word):
+            return True
     return False
+
+
+def file_named(path: str, word: str) -> bool:
+    """Whether ``word`` is the file name of ``path`` (``store.py``) or its stem (``kg_health_eval``)."""
+    pure = PurePosixPath(path)
+    return word == pure.name or ("." not in word and word == pure.stem)
 
 
 def background(node_id: str, kind: str, path: str, closed_plan: bool = False) -> str | None:
     """The kind of background a node is (BACKGROUND_WORDS), or None: by its path, and a plan or step of a closed
     plan (``closed_plan``) as ``closed``."""
     if path:
+        if _ASSET_PATH.search(path):
+            return "asset"
         if _FIXTURE_PATH.search(path):
             return "fixture"
         if _TEST_PATH.search(path):
@@ -312,7 +427,7 @@ def weight(node_id: str, kind: str, name: str, path: str, named: list[str], want
     w = NAMED_WEIGHT if named and names(node_id, name, path, named) else 1.0
     found = background(node_id, kind, path, closed)
     if found is not None and found not in wanted:
-        w *= BACKGROUND_WEIGHT
+        w *= ASSET_WEIGHT if found == "asset" else BACKGROUND_WEIGHT
     return w
 
 

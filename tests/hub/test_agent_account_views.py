@@ -25,7 +25,7 @@ from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import bearer, sql
-from tests.hub.test_agent_account_leases import VAR, finish, run_under, worker_of
+from tests.hub.test_agent_account_leases import VAR, finish, lease_name, pooled, run_under, worker_of
 from tests.hub.test_agent_accounts import added, body, path
 from tests.hub.test_credentials_api import PROJECT, leased, sample
 from tests.hub.test_run_cli import as_json, ok, write_credentials
@@ -77,11 +77,10 @@ def test_agent_account_figures_are_read_by_every_member_as_a_members_own_are(cli
     claude, gitlab = sample("agent-claude-"), sample("agent-gitlab-")
     added(client, hub["owner"], "claude-a", body(claude, workers=["box"]))
     added(client, hub["owner"], "gitlab-a", body(gitlab, workers=["box"], env_var=SERVICE_VAR))
+    pooled(client, hub["owner"], "claude-a", "gitlab-a")
     done = run_under(client, hub["owner"], worker)
-    assert {lease["name"] for lease in leased(client, worker, done)["leases"]} >= {
-        "@auditor:claude-a",
-        "@auditor:gitlab-a",
-    }
+    # an agent's account reaches its runs through its account pool, which leases model accounts alone
+    assert {lease["name"] for lease in leased(client, worker, done)["leases"]} == {lease_name("claude-a")}
     finish(client, worker, done)
     cost(hub_db, done, 0.75)
     held = run_under(client, hub["owner"], worker)
@@ -97,7 +96,7 @@ def test_agent_account_figures_are_read_by_every_member_as_a_members_own_are(cli
     assert (a["runs_24h"], a["runs_7d"], a["cost_24h_usd"], a["cost_7d_usd"]) == (2, 2, 0.75, 0.75)
     assert a["held_by"] == [{"run_id": held, "project": PROJECT, "state": "leased"}]
     assert a["last_leased_at"] is not None and a["last_usage"] is None
-    assert (g["provider"], g["category"], g["runs_7d"]) == ("gitlab", "service", 2)
+    assert (g["provider"], g["category"], g["runs_7d"]) == ("gitlab", "service", 0)  # leased to no run
     assert (g["cost_24h_usd"], g["cost_7d_usd"]) == (None, None)
     one = client.get(path("claude-a"), headers=hub["other"])
     assert one.status_code == 200 and one.json() == a, one.text

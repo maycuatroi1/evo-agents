@@ -60,15 +60,19 @@ def snapshot(db, run_id: int) -> dict:
 def test_autonomy_level_share_a_share_with_a_level_holds_the_run_it_lends_from_that_lease_on(
     client, hub, hub_db, shared
 ):
-    set_share(hub_db, shared["share"], level="A1")
+    # the token shared is no model's (a run's model account is its agent's account pool's): labelled test, it is
+    # still lent at A2, whose K7 lends the secrets of a test environment
+    set_share(hub_db, shared["share"], level="A2")
+    s = tables.secrets
+    sql(hub_db, update(s).where(s.c.name == "team-key").values(environment="test"))
     desk = shared["desk"]
     run_id = run_on(client, hub["other"], desk, "notes")
     before = snapshot(hub_db, run_id)
     assert before["level"] == "A5", "dispatch takes no share: the run holds no lease yet"
     assert env_of(client, desk, run_id)["name"] == "team-key"
     after = snapshot(hub_db, run_id)
-    assert (after["level"], after["level_source"]) == ("A1", CREDENTIAL_SHARE)
-    assert after["classes"]["K5"]["mode"] == "ask" and "tightened_at" in after
+    assert (after["level"], after["level_source"]) == ("A2", CREDENTIAL_SHARE)
+    assert after["classes"]["K6"]["mode"] == "ask" and "tightened_at" in after
 
 
 def test_autonomy_level_share_a_share_without_a_level_leaves_the_run_as_it_was(client, hub, hub_db, shared):

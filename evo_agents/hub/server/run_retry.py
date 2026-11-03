@@ -35,6 +35,7 @@ def next_attempt(run_id: int):
         "repo",
         "branch",
         "repos",
+        "session_per_step",
         "model",
         "schedule_id",
         "schedule_night",

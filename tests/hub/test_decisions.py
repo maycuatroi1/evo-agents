@@ -23,6 +23,7 @@ from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server.app import create_app
 from tests.hub.fake_github import Account
 from tests.hub.live import bearer, sql
+from tests.hub.test_agent_pool_placement import join
 from tests.hub.test_plan_runs import (
     PLAN,
     REPOS,
@@ -847,6 +848,62 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
     assert decision(client, hub["owner"], later["id"])["state"] == "open"
     answered(client, hub["owner"], later["id"], option="sqlite")
     assert [item["decision_id"] for item in inbox(client, worker, new_id)] == [found["id"], later["id"]]
+
+
+def parked_on_a_node(client, hub, hub_db) -> tuple[dict, dict, dict]:
+    """``waiting``, on a ready node of the pool of the project's default agent, which has the account pool
+    ``test_runs.members`` gave it (since agent-dedicated-pools only such a node claims the runs of the agent), and the
+    run parked."""
+    worker = join(client, hub_db, fleet_worker(client, hub["owner"], "mac-mini"), PROJECT)
+    run = dispatched_plan(client, hub["owner"])
+    assert claim(client, worker)["id"] == run["id"]
+    moved(client, worker, run["id"], "running", session_id=SESSION)
+    reported(client, worker, run["id"], 2, "in_progress")
+    found = asked(client, worker, run["id"])
+    moved(client, worker, run["id"], "waiting")
+    park(hub_db, run["id"])
+    assert recover(client) == {**NOTHING_RECOVERED, "parked": 1}
+    return worker, run, found
+
+
+def fit_of(client, hub, run_id: int, name: str) -> tuple:
+    """(diagnosis, fit, reasons) of worker ``name`` for the queued run ``run_id``, as ``queue_fit`` says them."""
+    answer = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/rerun-candidates", headers=hub["owner"])
+    assert answer.status_code == 200, answer.text
+    (found,) = [item for item in answer.json()["workers"] if item["worker"] == name]
+    return answer.json()["diagnosis"], found["fit"], found["reasons"]
+
+
+def test_a_drained_worker_claims_the_run_that_resumes_one_it_parked_and_nothing_else(client, hub, hub_db):
+    worker, run, found = parked_on_a_node(client, hub, hub_db)
+    assert client.post(f"/v1/workers/{worker['id']}/drain", headers=hub["owner"]).status_code == 200
+    (other,) = dispatch_steps(client, hub["owner"], [2], plan_id="rollout").json()  # older than the resume
+    assert beat(client, worker)["drain"] is True and claim(client, worker) is None
+    draining = (
+        "is draining, and takes only the runs that resume one it parked: on its machine, "
+        "`evo-agents worker drain --resume`"
+    )
+    assert fit_of(client, hub, other["id"], "mac-mini")[1:] == (False, [draining])
+
+    new_id = answered(client, hub["owner"], found["id"], option="postgres")["answer_run_id"]
+    assert fit_of(client, hub, new_id, "mac-mini") == (None, True, ["can take it now"])
+    # the heartbeat lets its daemon claim, and the claim hands it the resume, never the older run
+    assert beat(client, worker)["drain"] is False
+    spec = claim(client, worker)
+    assert (spec["id"], spec["resume_of_run_id"], spec["session_id"]) == (new_id, run["id"], SESSION)
+    assert beat(client, worker, runs_held=[new_id])["drain"] is True
+    moved(client, worker, new_id, "running", "failed", error="the agent stopped")
+    assert claim(client, worker) is None and state_of(hub_db, other["id"]) == "queued"
+    assert fit_of(client, hub, other["id"], "mac-mini")[1:] == (False, [draining])
+
+
+def test_a_revoked_worker_claims_nothing_even_a_resume_pinned_to_it(client, hub, hub_db):
+    worker, _, found = parked_on_a_node(client, hub, hub_db)
+    new_id = answered(client, hub["owner"], found["id"], option="postgres")["answer_run_id"]
+    w = tables.workers
+    sql(hub_db, update(w).values(revoked_at=func.now(), drained_at=func.now()).where(w.c.id == worker["id"]))
+    refused = client.post("/v1/worker/claim", json={"wait_s": 0}, headers=worker["headers"])
+    assert refused.status_code == 403 and state_of(hub_db, new_id) == "queued"
 
 
 def test_answering_a_parked_plan_run_with_a_session_per_step_resumes_it_with_one(client, hub, hub_db):

@@ -6,7 +6,9 @@ SessionStart (startup, resume, clear) does in one process what three commands do
 - ``hub plan export``, when the harness around the directory names ``hub.project`` in its harness.yaml: the copies of
   the project's plans are written and never committed, and a file someone edited by hand stays as it is and is
   reported rather than overwritten (``mirror.export`` with ``keep_edited``);
-- ``hub skills sync --check``: how many skills differ from the hub's, writing nothing.
+- ``hub skills sync --check``: how many skills differ from the hub's, writing nothing;
+- the guard's policy of private names (core plugin guard): kept in the login directory for the PreToolUse hook of Bash
+  (``evo_agents.hub.guard_hook``), which denies a command that would put one in a repo the hub's projects publish.
 
 It prints one line for the session as ``additionalContext``: the hub, the project, the memories pulled, what the export
 did and the skills to sync. Stop does ``hub memory push`` for the directory, so another machine sees a new memory at its
@@ -413,6 +415,12 @@ def session_start(payload: dict, line: Line) -> None:
         if harness is not None and run_id is None:
             _export_plans(hub, *harness, line)
         _check_skills(hub, line)
+        if run_id is None:  # a run's agent is guarded by its worker's git hooks and gh shim
+            from evo_agents.hub import guard_hook
+
+            trouble = guard_hook.take(hub)
+            if trouble:
+                line.add(trouble, trouble=True)
     except HubError as exc:
         if not transient(exc):  # the token was refused
             line.add(
@@ -784,6 +792,12 @@ def cmd_hook_local_ask(args) -> int:
     return local_sync.cmd_hook_local_ask(args)
 
 
+def cmd_hook_pre_tool_use(args) -> int:
+    from evo_agents.hub import guard_hook
+
+    return guard_hook.cmd_hook_pre_tool_use(args)
+
+
 def cmd_hook_session_end(args) -> int:
     outcome = Outcome()
     seconds = BUDGETS["session-end"]
@@ -846,3 +860,8 @@ def register_hooks(hsub) -> None:
         help="put the questions of an AskUserQuestion dialog about to open to the hub as decisions of the session's "
         "local run, so the member can answer them there too; it does not wait",
     ).set_defaults(func=cmd_hook_local_ask)
+    ksub.add_parser(
+        "pre-tool-use",
+        help="deny a Bash command that would commit, push or write with gh a private name of the hub's projects to a "
+        "repo they publish (the core plugin guard's policy, kept at SessionStart)",
+    ).set_defaults(func=cmd_hook_pre_tool_use)

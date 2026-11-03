@@ -170,7 +170,11 @@ READ_SCHEMA = {
     "properties": {
         "document": {**_SLUG, "description": "the document's slug; left out: the documents of the project"},
         "version": _VERSION,
-        "item": {**_REF, "description": "an item's code, an alias or its key: that item and the items under it"},
+        "item": {
+            **_REF,
+            "description": "an item's code (its kind word may be left out: ABC-1 for UC ABC-1), an alias or its key: "
+            "that item and the items under it",
+        },
     },
 }
 SEARCH_SCHEMA = {

@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from evo_agents.hub import author, profiles, question_runs, runs
+from evo_agents.hub import author, profiles, proofs, question_runs, runs
 from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -20,7 +20,8 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
-from evo_agents.hub.server.runs.models.placement import PlacementFields, RunPlacement
+from evo_agents.hub.server.runs.models.placement import HubPlaced, RunPlacement
+from evo_agents.hub.server.runs.models.routing import RoutingRecord, RunRouting
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     LostAttempt,
@@ -123,16 +124,13 @@ class ReadySteps(BaseModel):
     steps: list[StepReadiness] = Field(description="every step of the plan, in plan order")
 
 
-class Dispatch(PlacementFields):
+class Dispatch(HubPlaced):
     plan_id: str = Field(pattern=PLAN_ID)
     steps: list[int | Annotated[str, Field(min_length=1, max_length=STEP_KEY_CHARS)]] = Field(
         min_length=1, max_length=MAX_DISPATCH_STEPS, description="step ids (or orders), one run each"
     )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     mode: Literal[runs.MODES] = "headless"
-    worker_id: int | None = Field(
-        None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours, or one shared with you in the project"
-    )
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
     timeout_min: int = Field(60, ge=5, le=240)
     model: ModelName | None = Field(
@@ -154,19 +152,12 @@ class Dispatch(PlacementFields):
         return self
 
 
-class AuthorRunDispatch(PlacementFields):
+class AuthorRunDispatch(HubPlaced):
     request: str = Field(
         min_length=1,
         max_length=author.MAX_REQUEST_BYTES,
         description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
         "of UTF-8",
-    )
-    worker_id: int | None = Field(
-        None,
-        ge=1,
-        le=MAX_ID,
-        description="pin the run to this worker of yours, or one shared with you in the project; null: a worker its "
-        "labels and tolerations fit takes it",
     )
     plan_id: str | None = Field(
         None,
@@ -185,11 +176,8 @@ class AuthorRunDispatch(PlacementFields):
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
 
 
-class PlanRunDispatch(PlacementFields):
+class PlanRunDispatch(HubPlaced):
     plan_id: str = Field(pattern=PLAN_ID)
-    worker_id: int | None = Field(
-        None, ge=1, le=MAX_ID, description="pin the run to this worker of yours, or one shared with you in the project"
-    )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     model: ModelName | None = Field(
         None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
@@ -211,9 +199,8 @@ class PlanRunDispatch(PlacementFields):
     as_me: bool = Field(False, description=AS_ME_HELP)
 
 
-class Rerun(PlacementFields):
-    """What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
-    keep the run's own selector and tolerations."""
+class Rerun(HubPlaced):
+    """What a rerun may change of the run it reruns; no body keeps everything."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -243,6 +230,14 @@ class AccessChange(BaseModel):
     as_me: bool = Field(
         description=AS_ME_HELP + "; false: it stops, and its token ends at once, as a run that never ran as you"
     )
+
+
+class OverlapWait(BaseModel):
+    """The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
+    in its what or note, so the hub leaves the run in the queue until they end."""
+
+    run_ids: list[int] = Field(description="the running step runs it waits for, the oldest first")
+    paths: list[str] = Field(description="the files they edited that the step names, at most 10")
 
 
 class SteadyWait(BaseModel):
@@ -301,6 +296,12 @@ class Run(RunPlacement):
     requested_runtime: str = Field(description="as the dispatch asked: any, a runtime of the core or a plugin's")
     runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
+    model_used: str | None = Field(
+        None, description="the model its runtime ran it on, as its worker reported it; null until then, or not said"
+    )
+    routing: RoutingRecord | None = Field(
+        None, description="what the routing by difficulty did; null for a run it did not rate"
+    )
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
@@ -350,6 +351,16 @@ class Run(RunPlacement):
         None,
         description="a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only "
         "once it is; another worker may take it now unless it is pinned to that one. Null otherwise",
+    )
+    overlap_wait: OverlapWait | None = Field(
+        None,
+        description="a queued step run that waits for another run of the same plan and repo, which has edited files "
+        "the step names; null otherwise",
+    )
+    warning: str | None = Field(
+        None,
+        description="set on the answer of a dispatch alone: no worker could take the run as it queued, why, and the "
+        "command that fixes it (`evo-agents hub run candidates` says more); null otherwise",
     )
     failure_cause: str | None = Field(
         None,
@@ -504,6 +515,11 @@ class CuratorSpec(BaseModel):
     base_branch: str | None = Field(None, description="the default branch the pull request goes into, when known")
     head_sha: str | None = Field(None, description="a Judge's commit to judge; null: the branch's tip")
     pr_url: str | None = None
+    merge_result: bool = Field(
+        False,
+        description="a Judge of a merge check: merge the current base into the head in a scratch worktree and run the "
+        "checks there; a conflict fails it with needs a rebase",
+    )
     judge_key: str | None = Field(
         None,
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
@@ -553,6 +569,11 @@ class RunSpec(BaseModel):
     )
     runtime: str = Field(description="a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
+    routing: RunRouting | None = Field(
+        None,
+        description="while the project's policy has routing on, for a run that names no model: the scorer that rates "
+        "its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise",
+    )
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
     timeout_min: int
@@ -581,6 +602,13 @@ class RunSpec(BaseModel):
         "worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other "
         "kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)",
     )
+    criteria: list[str] | None = Field(
+        None,
+        exclude_if=lambda value: value is None,
+        description="the ids of the criteria of the plan's acceptance that the step of a run of one step names: its "
+        "result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step "
+        "that names none",
+    )
     session_per_step: bool = Field(
         False,
         description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
@@ -597,6 +625,13 @@ class RunSpec(BaseModel):
         False,
         description="true for a run under a profile that is not its project's default: the agent of a claude-code "
         "run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
+    )
+    account_pool: bool = Field(
+        False,
+        description="true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's "
+        "account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none "
+        "of the owner's",
+        exclude_if=lambda value: not value,
     )
     origin: RunOrigin | None = Field(
         None,
@@ -883,6 +918,11 @@ class WorkerSettings(BaseModel):
         description="the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends "
         "none, and a daemon that got none keeps those of its config",
     )
+    guard: str = Field(
+        "",
+        description="the digest of the hub's guard policy (GET /v1/guard/policy), empty when it guards nothing: the "
+        "daemon fetches the policy when the digest differs from the one it holds; a hub before 0192 sends none",
+    )
 
 
 class NightlyRead(BaseModel):
@@ -948,6 +988,27 @@ class Diffstat(BaseModel):
     deletions: int = Field(ge=0)
 
 
+class StepProof(BaseModel):
+    """The proof of one criterion a step names (``evo_agents.hub.proofs``)."""
+
+    id: str = Field(pattern=r"^a\d+$", max_length=20, description="the criterion's id in the plan's acceptance")
+    kind: Literal[proofs.KINDS] = Field(description="test (path::name), command, or n/a")
+    locator: str | None = Field(
+        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="the test or the command"
+    )
+    reason: str | None = Field(
+        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="with n/a: why"
+    )
+
+    @model_validator(mode="after")
+    def _kind_has_its_key(self):
+        if self.kind == proofs.NA and not self.reason:
+            raise ValueError(f"the proof of {self.id} is n/a, which comes with a reason")
+        if self.kind != proofs.NA and not self.locator:
+            raise ValueError(f"the proof of {self.id} is a {self.kind}, which comes with its locator")
+        return self
+
+
 class StateReport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -968,6 +1029,14 @@ class StateReport(BaseModel):
         "the run as its failure_cause, and ignored with any other state",
     )
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
+    model_used: ModelName | None = Field(None, description="the model the run's runtime runs it on")
+    routing: RoutingRecord | None = Field(None, description="what the routing by difficulty did, for a run it rated")
+    proofs: list[StepProof] | None = Field(
+        None,
+        max_length=proofs.MAX_PROOFS,
+        description="with done or review of a run of one step: the proof of each criterion it names, which the "
+        "step keeps once done",
+    )
     answer: str | None = Field(
         None,
         min_length=1,
@@ -999,6 +1068,12 @@ class StepReport(BaseModel):
         None, max_length=50, description="each verify command the worker ran again; done needs one, every one exit 0"
     )
     commit_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the repo's commit the step ends on")
+    proofs: list[StepProof] | None = Field(
+        None,
+        max_length=proofs.MAX_PROOFS,
+        description="with done: one proof for each criterion of the plan's acceptance the step names, which the step "
+        "keeps; 422 when one is missing or names another criterion. Absent from an older worker's report",
+    )
 
 
 class StepWritten(BaseModel):

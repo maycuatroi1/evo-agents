@@ -1,15 +1,17 @@
 """A run's account hits its usage limit: POST /v1/worker/runs/{id}/rate-limit (``evo_agents.hub.server.rate_limits``)
 and ``account_choice.fail_over``.
 
-The checks the claude-account-rotation plan names for its third step, on the hub's side: a report that is not
-rejected keeps the usage alone; a rejected one cools the account down until the reset the CLI gave, else for the
-policy's cooldown_seconds, revokes the run's old lease and moves the run to the next account by the rules, which its
-next ask for leases carries, and an event and an audit row record the switch by secret id; an account picked by hand,
-failover off, max_failovers reached or no account ready answers stop with the earliest time one is ready. Around them:
-a retry answers the same move, a lease that is not the run's is 404, a daemon without the protocol header 426, and no
-answer, event or audit row holds a value or an account's name. An account that failed to authenticate (``unauthorized``,
-a refused token) keeps no usage, cools down for the policy's cooldown_seconds with a reason that says to log in again,
-and the run fails over, or stops when no other account is ready."""
+The checks the claude-account-rotation plan names for its third step, on the hub's side, for the accounts of the
+account pool of the run's agent (which follow the default policy, never their owner's: plan agent-dedicated-pools): a
+report that is not rejected keeps the usage alone; a rejected one cools the account down until the reset the CLI gave,
+else for the default policy's cooldown_seconds, revokes the run's old lease and moves the run to the next account of the
+pool by the rules, which its next ask for leases carries, and an event and an audit row record the switch by secret id;
+an account picked by hand, max_failovers of the default policy reached or no account ready answers stop with the
+earliest time one is ready. Around them: a retry answers the same move, a lease that is not the run's is 404, a daemon
+without the protocol header 426, and no answer, event or audit row holds a value or an account's name. An account that
+failed to authenticate (``unauthorized``, a refused token) keeps no usage, cools down for the default policy's
+cooldown_seconds with a reason that says to log in again, and the run fails over, or stops when no other account is
+ready."""
 
 import json
 from datetime import UTC, datetime, timedelta
@@ -24,10 +26,20 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
+from evo_agents.hub.accounts import DEFAULT_COOLDOWN_SECONDS, DEFAULT_MAX_FAILOVERS
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_accounts_api import VAR, account_of, cool, events, run_on, set_policy, three
-from tests.hub.test_credentials_api import audit_rows, leased, secret_ids, worker_of
+from tests.hub.test_credentials_api import (
+    account_pool,
+    audit_rows,
+    env_secret,
+    leased,
+    pooled,
+    sample,
+    secret_ids,
+    worker_of,
+)
 
 app_key, config, hub, client = (
     credentials_api.app_key,
@@ -160,8 +172,8 @@ def test_a_rejected_report_cools_the_account_revokes_its_lease_and_fails_over(cl
     # the next ask carries the new account's value, and the run keeps it
     again = leased(client, worker, run_id)
     (lease,) = [lease for lease in again["leases"] if lease.get("env_var") == VAR]
-    assert (lease["name"], lease["value"]) == ("claude-b", values["claude-b"]) and lease["id"] != lease_id
-    assert run_account(hub_db, run_id) == ("claude-b", "pool", 1)
+    assert (lease["name"], lease["value"]) == (pooled("claude-b"), values["claude-b"]) and lease["id"] != lease_id
+    assert run_account(hub_db, run_id) == ("claude-b", "worker", 1)  # the pool's accounts are on every node
     assert account_of(client, worker, run_id) == "claude-b"
     # an event and an audit row record the switch, by secret id
     a_id = int(secret_ids(hub_db, "claude-a"))
@@ -182,16 +194,17 @@ def test_a_rejected_report_cools_the_account_revokes_its_lease_and_fails_over(cl
     assert account_of(client, worker, run_on(client, hub["owner"], worker, "notes")) == "claude-c"
 
 
-def test_a_rejected_report_without_a_reset_cools_for_the_policys_cooldown(client, hub, hub_db):
+def test_a_rejected_report_without_a_reset_cools_for_the_default_policys_cooldown_not_the_owners(client, hub, hub_db):
     three(client, hub["owner"])
-    set_policy(client, hub["owner"], cooldown_seconds=600)
+    set_policy(client, hub["owner"], cooldown_seconds=600)  # the owner's: an account of the pool follows the default
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = run_on(client, hub["owner"], worker, "evo-agents")
     before = datetime.now(UTC)
     answer = answer_of(client, worker, run_id, lease_of(client, worker, run_id), rate_limit_type=None)
     assert answer["action"] == "failover"
     until = account_row(hub_db, "claude-a")[0]
-    assert before + timedelta(seconds=590) < until < datetime.now(UTC) + timedelta(seconds=610)
+    cooldown = timedelta(seconds=DEFAULT_COOLDOWN_SECONDS)
+    assert before + cooldown - timedelta(seconds=10) < until < datetime.now(UTC) + cooldown + timedelta(seconds=10)
     assert account_row(hub_db, "claude-a")[1] == f"usage limit reached, reported by run {run_id}"
 
 
@@ -207,9 +220,7 @@ def test_an_account_picked_by_hand_never_fails_over(client, hub, hub_db):
     three(client, hub["owner"])
     worker = worker_of(client, hub["owner"], "mac-mini")
     body = {"plan_id": credentials_api.PLAN, "steps": [credentials_api.STEPS["evo-agents"]], "account": "claude-b"}
-    response = client.post(
-        f"/v1/projects/{credentials_api.PROJECT}/runs", json={**body, "worker_id": worker["id"]}, headers=hub["owner"]
-    )
+    response = client.post(f"/v1/projects/{credentials_api.PROJECT}/runs", json=body, headers=hub["owner"])
     assert response.status_code == 201, response.text
     run_id = response.json()[0]["id"]
     assert client.post("/v1/worker/claim", json={"wait_s": 0}, headers=worker["headers"]).json()["run"]["id"] == run_id
@@ -220,26 +231,29 @@ def test_an_account_picked_by_hand_never_fails_over(client, hub, hub_db):
     assert audit_rows(hub_db, "account.failover") == []
 
 
-def test_failover_off_stops_the_run(client, hub, hub_db):
+def test_the_owners_policy_turning_failover_off_does_not_stop_a_run_on_the_accounts_of_the_pool(client, hub, hub_db):
     three(client, hub["owner"])
-    set_policy(client, hub["owner"], failover=False)
+    set_policy(client, hub["owner"], failover=False)  # the owner's: an account of the pool follows the default
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = run_on(client, hub["owner"], worker, "evo-agents")
-    answer = stopped(client, hub_db, worker, run_id, "claude-a", lease_of(client, worker, run_id))
-    assert answer["reason"] == "the owner's policy turns failover off"
-    # the account cools down all the same
+    answer = answer_of(client, worker, run_id, lease_of(client, worker, run_id), resets_at=RESET.isoformat())
+    assert (answer["action"], answer["secret_id"]) == ("failover", int(secret_ids(hub_db, "claude-b")))
     assert account_row(hub_db, "claude-a")[0] == RESET
 
 
-def test_max_failovers_reached_stops_the_run(client, hub, hub_db):
+def test_max_failovers_of_the_default_policy_reached_stops_the_run(client, hub, hub_db):
     three(client, hub["owner"])
-    set_policy(client, hub["owner"], max_failovers=1)
+    env_secret(client, hub["owner"], "claude-d", VAR, sample("claude-d-"))
+    account_pool(client, "claude-d")
+    set_policy(client, hub["owner"], max_failovers=1)  # the owner's: an account of the pool follows the default
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = run_on(client, hub["owner"], worker, "evo-agents")
-    assert answer_of(client, worker, run_id, lease_of(client, worker, run_id))["action"] == "failover"
-    answer = stopped(client, hub_db, worker, run_id, "claude-b", lease_of(client, worker, run_id))
-    assert answer["reason"] == "it failed over 1 times, the most its owner's policy allows"
-    assert answer["failovers"] == 1 and run_account(hub_db, run_id) == ("claude-b", "pool", 1)
+    for _ in range(DEFAULT_MAX_FAILOVERS):
+        assert answer_of(client, worker, run_id, lease_of(client, worker, run_id))["action"] == "failover"
+    answer = stopped(client, hub_db, worker, run_id, "claude-d", lease_of(client, worker, run_id))
+    assert answer["reason"] == f"it failed over {DEFAULT_MAX_FAILOVERS} times, the most the default policy allows"
+    assert answer["failovers"] == DEFAULT_MAX_FAILOVERS
+    assert run_account(hub_db, run_id) == ("claude-d", "worker", DEFAULT_MAX_FAILOVERS)
 
 
 def test_no_account_ready_stops_the_run_with_the_earliest_reset(client, hub, hub_db):
@@ -257,7 +271,7 @@ def test_no_account_ready_stops_the_run_with_the_earliest_reset(client, hub, hub
 
 def test_an_account_that_failed_to_authenticate_cools_down_and_the_run_fails_over(client, hub, hub_db):
     values = three(client, hub["owner"])
-    set_policy(client, hub["owner"], cooldown_seconds=600)
+    set_policy(client, hub["owner"], cooldown_seconds=600)  # the owner's: an account of the pool follows the default
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = run_on(client, hub["owner"], worker, "evo-agents")
     lease_id = lease_of(client, worker, run_id)
@@ -272,10 +286,11 @@ def test_an_account_that_failed_to_authenticate_cools_down_and_the_run_fails_ove
     b_id = int(secret_ids(hub_db, "claude-b"))
     assert (answer["action"], answer["secret_id"], answer["failovers"]) == ("failover", b_id, 1)
     until, reason, usage, _ = account_row(hub_db, "claude-a")
-    assert before + timedelta(seconds=590) < until < datetime.now(UTC) + timedelta(seconds=610)
+    cooldown = timedelta(seconds=DEFAULT_COOLDOWN_SECONDS)
+    assert before + cooldown - timedelta(seconds=10) < until < datetime.now(UTC) + cooldown + timedelta(seconds=10)
     assert reason == f"authentication failed, reported by run {run_id}: log in again with evo-agents hub account login"
     assert usage is None  # a refused token says nothing of the account's usage
-    assert revoked(hub_db, lease_id) and run_account(hub_db, run_id) == ("claude-b", "pool", 1)
+    assert revoked(hub_db, lease_id) and run_account(hub_db, run_id) == ("claude-b", "worker", 1)
     a_id = int(secret_ids(hub_db, "claude-a"))
     (event,) = events(hub_db, run_id)
     assert event["account_event"] == "failover" and event["secret_id"] == a_id

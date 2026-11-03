@@ -122,8 +122,9 @@ class FakeLaunchctl:
 class FakeSystemctl:
     """systemctl --user for one unit, which runs once it was restarted and stops when disabled with --now."""
 
-    def __init__(self, missing=False):
+    def __init__(self, missing=False, unit=service.UNIT):
         self.missing = missing
+        self.unit = unit
         self.unit_file = None
         self.loaded = False
         self.active = False
@@ -141,7 +142,7 @@ class FakeSystemctl:
             assert self.loaded, "restart before daemon-reload"
             self.active = True
         elif verb == "disable":
-            assert rest == ["--now", service.UNIT]
+            assert rest == ["--now", self.unit]
             self.active = False
         elif verb == "show":
             facts = {
@@ -152,7 +153,7 @@ class FakeSystemctl:
                 "ExecMainStatus": "0",
                 "NRestarts": "0",
             }
-            assert rest == [service.UNIT, "--property=" + ",".join(facts)]
+            assert rest == [self.unit, "--property=" + ",".join(facts)]
             return subprocess.CompletedProcess(argv, 0, "".join(f"{k}={v}\n" for k, v in facts.items()), "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
@@ -328,6 +329,67 @@ def test_install_status_and_uninstall_against_a_fake_systemctl(home, joined, mon
     assert not unit_path.exists()
     assert main(["worker", "service", "status"]) == 0
     assert "evo-agents-worker.service (systemd) is not installed" in capsys.readouterr().out
+
+
+# One node per agent, side by side under one user
+
+
+def test_two_agents_nodes_run_side_by_side_under_one_user_each_with_a_service_of_its_own(
+    home, tmp_path, monkeypatch, capsys
+):
+    forbid_real_commands(monkeypatch)
+    monkeypatch.setattr(sys, "platform", "linux")
+    units = home / ".config" / "systemd" / "user"
+    states = {handle: tmp_path / f"state-{handle}" for handle in ("sandbox", "lms")}
+    fakes = {}
+    for handle, state in states.items():
+        WorkerHome(state).save(
+            WorkerConfig(url="https://hub.example.org", worker_id=7, name=handle, projects=["demo"]), "evw_" + "s" * 43
+        )
+        fakes[handle] = FakeSystemctl(unit=f"evo-agents-worker-{handle}.service")
+        fakes[handle].unit_file = units / f"evo-agents-worker-{handle}.service"
+
+    for handle, state in states.items():
+        monkeypatch.setenv("EVO_WORKER_HOME", str(state))
+        monkeypatch.setattr(subprocess, "run", fakes[handle])
+        assert main(["worker", "service", "install", "--agent", handle]) == 0
+        assert f"Installed evo-agents-worker-{handle}.service (systemd)" in capsys.readouterr().out
+
+    assert sorted(path.name for path in units.iterdir()) == [
+        "evo-agents-worker-lms.service",
+        "evo-agents-worker-sandbox.service",
+    ]
+    for handle, state in states.items():
+        unit = (units / f"evo-agents-worker-{handle}.service").read_text(encoding="utf-8")
+        assert f"EVO_WORKER_HOME={state}" in unit and f"EVO_WORKER_AGENT={handle}" in unit
+        assert f"Description=evo-agents worker of agent {handle}:" in unit
+
+    # the service of one agent is the one the variable names, and uninstalling it leaves the other
+    monkeypatch.setenv("EVO_WORKER_HOME", str(states["lms"]))
+    monkeypatch.setenv("EVO_WORKER_AGENT", "lms")
+    monkeypatch.setattr(subprocess, "run", fakes["lms"])
+    assert main(["worker", "service", "uninstall"]) == 0
+    assert not (units / "evo-agents-worker-lms.service").exists()
+    assert (units / "evo-agents-worker-sandbox.service").exists()
+
+
+def test_the_node_of_an_agent_needs_a_state_directory_of_its_own_and_the_launch_agent_is_named_for_it(
+    home, joined, monkeypatch, capsys
+):
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert main(["worker", "service", "install", "--agent", "sandbox"]) == 1
+    assert "needs a state directory of its own" in capsys.readouterr().err
+    assert main(["worker", "service", "install", "--agent", "Bad Handle"]) == 1
+    assert "not an agent handle" in capsys.readouterr().err
+
+    launchd = service.Launchd(agent="sandbox")
+    assert launchd.service == f"{service.LABEL}.sandbox"
+    assert launchd.file() == home / "Library" / "LaunchAgents" / f"{service.LABEL}.sandbox.plist"
+    spec = service.build_spec(WorkerHome(), argv0=EVO, agent="sandbox")
+    assert service.build_plist(spec)["Label"] == f"{service.LABEL}.sandbox"
+    assert service.build_plist(spec)["EnvironmentVariables"]["EVO_WORKER_AGENT"] == "sandbox"
+    assert service.Systemd().service == service.UNIT, "a machine with one node keeps the fixed names"
+    assert "EVO_WORKER_AGENT" not in service.build_spec(WorkerHome(), argv0=EVO).environment
 
 
 # Installing again keeps the worker's own variables

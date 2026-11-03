@@ -43,7 +43,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from sqlalchemy import null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import plugin_calls, plugin_events, profiles, runs, tables, task_runs
+from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pull_trailers, run_access_rules, run_autonomy
@@ -534,13 +534,16 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
             await conn.execute(query.join(pl, pl.c.id == t.c.plugin_id).where(r.c.id == run_id))
         ).one()
         signed = await pull_trailers.block(conn, run_id)
+        policy = await guard.policy(conn)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
     url, number, opened, problem = None, None, False, None
     if target is not None and app is not None:
         text = task_runs.DRAFT_TEXT.format(agent_type=agent_type, plugin=plugin, run=run_id) + signed
         try:
-            made, opened = await open_draft(app, target, body.branch, (title or body.branch)[:240], text)
+            where = f"github.com/{target[0]}/{target[1]}"
+            title, text = guard.scrub(policy, where, (title or body.branch)[:240], text)
+            made, opened = await open_draft(app, target, body.branch, title, text)
             url, number = made.get("html_url"), made.get("number")
         except (GitHubRefused, GitHubUnavailable) as exc:
             problem = str(exc)

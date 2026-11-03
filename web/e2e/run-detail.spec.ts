@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { call } from "../src/lib/api/client";
 
-import { createAgentByApi } from "./support/agents";
+import { createAgentByApi, poolAccountsOf } from "./support/agents";
 import { signOut } from "./support/auth";
 import { agentAnswers, chatHeartbeat, chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
@@ -451,16 +451,18 @@ test("the owner sees the credentials the run got, never a value, and nobody else
   admin,
   signInAs,
 }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   const oauth = secretValue("oauth");
   const git = secretValue("git");
   await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: oauth });
   await putSecretByApi(me, "github-org", { kind: "git", url_prefix: "https://github.com/example-org", projects: [project], value: git });
+  // A run of an agent takes its Claude account from the agent's account pool alone: the owner's, in pool mine.
+  await poolAccountsOf(me, project, ["claude-oauth"]);
   const { live, run } = await runningRun(me);
   // The worker gets the values, as the daemon does right after its claim.
   const leased = await leaseCredentials(live, run.id);
-  expect(Object.fromEntries(leased.leases.map((lease) => [lease.name, lease.value]))).toEqual({ "claude-oauth": oauth, "github-org": git });
+  expect(Object.fromEntries(leased.leases.map((lease) => [lease.name, lease.value]))).toEqual({ "@pool.mine:claude-oauth": oauth, "github-org": git });
   const received = recordResponses(page);
 
   await open(page, runPath(project, run.id));
@@ -981,12 +983,32 @@ test("from 1280 px the session and the side column scroll on their own, as tall 
   expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
 });
 
+test("from 1280 px a decision above a closed side column leaves the session its height, the page scrolling past it", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const { run } = await planRunUnderway(me, project, uniqueName("decision"), { waiting: true });
+
+  // A window too short for both: the decision keeps its height and the session its 30rem, one under the other.
+  await page.setViewportSize({ width: 1280, height: 620 });
+  await open(page, runPath(project, run.id));
+  const decision = main(page).getByTestId("run-decisions");
+  await expect(decision.getByTestId("decision-form")).toBeVisible();
+  const session = main(page).getByTestId("run-log");
+  await expect(main(page).getByTestId("run-split").getByTestId("run-decisions")).toHaveCount(0);
+  const card = (await decision.boundingBox())!;
+  const box = (await session.boundingBox())!;
+  expect(card.y + card.height, "the decision ends above the session").toBeLessThanOrEqual(box.y);
+  expect(box.height, "the session keeps its height").toBeGreaterThanOrEqual(479);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(620);
+});
+
 test("a turn of a chat session heads its page with the session's title, which turn it is and a link to each turn", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer" });
-  const live = await chatWorker(me, project, uniqueName("mini"));
+  const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
   const asks = ["please fix the flaky wait test", "one more thing: the retries"];
   const {
     runs: [first, second],

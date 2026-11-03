@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import plan_body
-from evo_agents.hub import author, runs, tables
+from evo_agents.hub import author, proofs, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import audit
@@ -191,6 +191,21 @@ def _check_step_report(run_id: int, key: str, body: StepReport) -> None:
         )
 
 
+def _checked_proofs(run_id: int, key: str, body: StepReport, plan: dict, step) -> list[dict] | None:
+    """The proofs a report of step ``key`` gives, as the step keeps them; 422 for proofs with another status than done,
+    and for a done report whose proofs leave a criterion the step names without one or prove one it does not name.
+    An older worker sends none, and its done stands as before."""
+    if body.proofs is None:
+        return None
+    if body.status != "done":
+        raise HTTPException(422, f"run {run_id}: proofs go with a report of step {key} done only")
+    given = [item.model_dump(exclude_none=True) for item in body.proofs]
+    why = proofs.problem(proofs.criteria(plan, step if isinstance(step, dict) else None), given)
+    if why is not None:
+        raise HTTPException(422, f"run {run_id}: step {key} is not done: {why}")
+    return proofs.stored(given)
+
+
 def _report_repo(run_id: int, body: StepReport, plan: dict, step, repos: list | None) -> dict | None:
     """The run's repo the step was done in: the one the report names (422 when the run has no such repo), else the
     one the plan gives the step, when the run has it."""
@@ -238,6 +253,9 @@ async def write_step_report(engine, user: Principal, run_id: int, key: str, body
             verify=verify,
         )
         updates = report_updates(found, body.status, body.evidence)
+        given = _checked_proofs(run_id, key, body, plan, step)
+        if given:
+            updates["proofs"] = given
 
         def updates_for(held_step):
             if held_step.get("status") != "done":

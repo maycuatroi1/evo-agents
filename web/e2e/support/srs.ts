@@ -5,7 +5,7 @@ import type { components } from "../../src/lib/api/schema";
 
 import { HARNESS_CHECKOUT } from "./author";
 import { API_URL, STACK_URL } from "./env";
-import { type Account, bearerClient, machineToken } from "./hub";
+import { ACCOUNT_POOL, type Account, bearerClient, machineToken } from "./hub";
 import { apiOf } from "./memories";
 import { enablePlugin } from "./plugins";
 import { type LiveWorker, liveWorker, MODELS, REPO } from "./runs";
@@ -157,20 +157,23 @@ async function baHeartbeat(live: LiveWorker, runs: number[] = []): Promise<void>
 }
 
 /**
- * @ba on in `project`, as its admin `admin` turns it on (`evo-agents hub agent-type enable srs/ba`): its runs go under
- * `runAs`, whose worker takes them, the packs of srs on it. Each version sent to review from now on hands @ba a review.
- * The handle ba is the hub's, deleted profiles included, so one project of a stack enables it: e2e/srs.spec.ts's. A page
- * that only needs a review with findings seeds them (`seedFindings`).
+ * @ba on in `project`, as its admin `admin` turns it on (`evo-agents hub agent-type enable srs/ba`) and gives it the
+ * project's account pool: its runs go under `runAs`, whose worker, a node of @ba's pool, takes them, the packs of srs on
+ * it. Each version sent to review from now on hands @ba a review. The handle ba is the hub's, deleted profiles
+ * included, so one project of a stack enables it: e2e/srs.spec.ts's. A page that only needs a review with findings
+ * seeds them (`seedFindings`).
  */
 export async function enableBa(admin: Account, project: string, runAs: Account): Promise<LiveWorker> {
   const api = await apiOf(admin);
-  await call(
+  const { handle } = await call(
     api.PUT("/v1/projects/{project}/agent-types/{plugin}/{name}", {
       params: { path: { project, plugin: "srs", name: "ba" } },
       body: { run_as: runAs.login, daily_usd: 5 },
     }),
   );
-  const live = await liveWorker(runAs, project, `ba-${project}`.slice(0, 40), 3, { report: { repos: [HARNESS_CHECKOUT, REPO], models: MODELS } });
+  // @ba's runs lease the accounts of its account pool, the project's, and go to a node of its own pool.
+  await call(api.PUT("/v1/projects/{project}/agents/{handle}/account-pool", { params: { path: { project, handle } }, body: { account_pool: ACCOUNT_POOL } }));
+  const live = await liveWorker(runAs, project, `ba-${project}`.slice(0, 40), 3, { report: { repos: [HARNESS_CHECKOUT, REPO], models: MODELS }, agent: handle });
   const owner = bearerClient(await machineToken(runAs));
   await call(owner.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: live.worker.id } }, body: { plugins: ["srs"] } }));
   await baHeartbeat(live);

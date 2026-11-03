@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { createAgentByApi } from "./support/agents";
+import { createAgentByApi, poolAccountsOf } from "./support/agents";
 import { chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
@@ -51,7 +51,6 @@ test("the sidebar leads to Runs, which offers a writer to dispatch the first run
   const dialog = page.getByTestId("dispatch-dialog");
   await expect(dialog.getByRole("heading", { name: "Dispatch runs" })).toBeVisible();
   await expect(dialog.getByTestId("dispatch-no-plans")).toContainText("no active plan");
-  await expect(dialog.getByTestId("dispatch-no-workers")).toContainText(`no worker registered for project ${project}`);
   await expect(dialog.getByTestId("dispatch-submit")).toBeDisabled();
 });
 
@@ -82,14 +81,11 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
   await expect(dialog.getByTestId("dispatch-step-5").getByRole("checkbox")).toBeDisabled();
 
   await expect(dialog.getByTestId("dispatch-submit")).toBeDisabled();
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveCount(0);
   await dialog.getByTestId("dispatch-step-2").click();
   await dialog.getByTestId("dispatch-step-4").click();
   await expect(dialog.getByTestId("dispatch-picked")).toHaveText("2 of 2 ready steps picked");
-  // One free slot for two runs: the dropdown leaves them to any worker that fits.
-  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue("any");
-  await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
-  await expect(dialog.getByTestId("dispatch-outlook")).toContainText(`${live.worker.name}: no Codex CLI`);
+  // The dialog has no machine picker: the hub places the runs on the nodes of the agent's pool.
+  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
   await dialog.getByRole("radio", { name: "Claude Code" }).check();
   await expect(dialog.getByRole("radio", { name: /^Hold for review/ })).toBeChecked();
   await expect(dialog.getByTestId("dispatch-submit")).toHaveText("Dispatch 2 runs");
@@ -145,11 +141,13 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
 });
 
 test("the dispatch form's Model field offers the models of the visitor's provider accounts, and the run asks for one", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
   await liveWorker(me, project, uniqueName("laptop"));
   await putProviderByApi(me, "glm-runs", { provider: "glm", value: providerKey(), projects: [project], models: ["fake-large", "fake-coder"] });
+  // A run of an agent goes through the gateway with an account of the agent's account pool alone.
+  await poolAccountsOf(me, project, ["glm-runs"]);
 
   await open(page, `/p/${project}/runs`);
   await main(page).getByTestId("runs-empty-dispatch").click();
@@ -162,8 +160,6 @@ test("the dispatch form's Model field offers the models of the visitor's provide
   await expect(group.locator("option")).toHaveText(["glm/fake-coder", "glm/fake-large"]);
   await select.selectOption({ label: "glm/fake-large" });
   await expect(select).toHaveValue(/glm\/fake-large$/);
-  // Left to any worker that fits: the one registered here reports no daemon version that runs a model through the gateway.
-  await dialog.getByTestId("dispatch-worker-select").selectOption("any");
   await dialog.getByTestId("dispatch-submit").click();
   await expect(dialog).toBeHidden();
   const [run] = await runsOf(me, project);
@@ -232,7 +228,7 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
-  const live = await liveWorker(me, project, uniqueName("mini"));
+  await liveWorker(me, project, uniqueName("mini"));
 
   // A step that is not ready says why, and its button does nothing.
   await open(page, `/p/${project}/plans/${RUN_PLAN}/steps/${WAITING_STEP}`);
@@ -250,14 +246,12 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
   const dialog = page.getByTestId("dispatch-dialog");
   await expect(dialog.getByTestId("dispatch-step-4").getByRole("checkbox")).toBeChecked();
   await expect(dialog.getByTestId("dispatch-step-2").getByRole("checkbox")).not.toBeChecked();
-  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveCount(0);
   await dialog.getByRole("radio", { name: "Mark done" }).check();
   await dialog.getByTestId("dispatch-submit").click();
   await expect(dialog).toBeHidden();
 
   const [run] = await runsOf(me, project);
-  expect(run).toMatchObject({ step_key: "4", state: "queued", pinned_worker_id: live.worker.id, approval: "auto" });
+  expect(run).toMatchObject({ step_key: "4", state: "queued", pinned_worker_id: null, approval: "auto" });
   await expect(toast(page, `Run #${run.id} dispatched`)).toBeVisible();
   await expect(runRow(page, run.id, "step-runs-table").getByTestId("run-state")).toHaveText("Queued");
   await expect(runRow(page, run.id, "step-runs-table")).toContainText(me.login);
@@ -270,7 +264,7 @@ test("a chat session is one row, as its latest turn, and opens into its turns, e
   const project = me.projects[0];
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer" });
-  const live = await chatWorker(me, project, uniqueName("mini"));
+  const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
   const asks = ["please fix the flaky wait test", "one more thing: the retries", "and the docs?"];
   const {
     runs: [first, second, third],

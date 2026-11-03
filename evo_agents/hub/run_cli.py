@@ -3,15 +3,17 @@
 ``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a plan
 run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent session or
 with ``--session-per-step`` in a new session for each step, and ``author`` queues an author run, a plan written from
-your request with the create-exec-plan skill on a worker of yours (POST /v1/projects/{p}/author-runs,
+your request with the create-exec-plan skill on the pool of its agent (POST /v1/projects/{p}/author-runs,
 ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project. ``list`` and ``show`` read runs
 of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
 .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
 until the hub sends ``end``. ``send`` leaves a message for the run's agent, files too with ``--attach``
 (``run_cli_send``), and ``cancel``, ``approve``, ``takeover``, ``handback``, ``rerun`` and ``access`` are the owner's
 controls (``access`` in ``run_cli_access``); ``outputs`` lists the files its agent made (``run_cli_outputs``).
-``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a value. Every command after
-``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's
+``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a
+value. Every command after
+``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. None of them picks the
+machine: an agent in pool mode runs on its own pool, and the hub refuses a worker, pool, label or taint for it. A refusal is the hub's
 message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
 dispatched with a token. ``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand,
 and all but ``rerun`` ``--agent``, an agent profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes
@@ -62,7 +64,6 @@ from evo_agents.hub.run_cli_options import (
     dispatch_options,
     kind_text,
     list_options,
-    placement_body,
     plan_options,
     rerun_body,
     rerun_options,
@@ -139,7 +140,7 @@ def _step(run: dict) -> str:
 
 
 def _author_on(run: dict) -> str:
-    """Where an author run goes: its pinned worker, or any its selector fits."""
+    """Where an author run goes: its pinned worker, or any its selector fits (an agent in pool mode: its pool)."""
     if run.get("pinned_worker_id"):
         return f"on worker #{run['pinned_worker_id']}"
     asked = run.get("selector") or []
@@ -157,6 +158,13 @@ def _timeout(run: dict) -> str:
     minutes = run["timeout_min"]
     hours = run.get("kind") in ("plan", "author") and minutes % 60 == 0
     return f"{minutes // 60} h" if hours else f"{minutes} min"
+
+
+def _warn(run: dict, args, project: str) -> None:
+    """On stderr, the warning the hub gave with a run it queued: no worker can take it now, and why."""
+    if run.get("warning"):
+        where = _with_project(args, project)
+        print(f"Warning: {run['warning']}. More: `evo-agents hub run candidates {run['id']}{where}`.", file=sys.stderr)
 
 
 def _model_check(args) -> str | None:
@@ -361,9 +369,9 @@ def cmd_dispatch(args) -> int:
     refused = _model_check(args)
     if refused:
         return usage_error(refused)
-    hub, credentials = _signed_in()
+    hub, _ = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args), **placement_body(args)}
+    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args)}
     body.update(as_me_body(args))
     chosen = {
         "runtime": args.runtime,
@@ -374,8 +382,6 @@ def cmd_dispatch(args) -> int:
         "account": args.account,
     }
     body.update({key: value for key, value in {**chosen, "profile": args.agent}.items() if value is not None})
-    if args.worker is not None:
-        body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
     queued = hub.call("POST", _runs_path(project), body)
     if args.json:
         _print_json(queued)
@@ -386,6 +392,7 @@ def cmd_dispatch(args) -> int:
             f"Queued run #{run['id']}: {_step(run)}, repo {run['repo']}; runtime {_runtime(run)}, "
             f"{run['mode']}, approval {run['approval']}, timeout {run['timeout_min']} min{pinned}{_as_you(run)}."
         )
+        _warn(run, args, project)
     print(f"Follow it with `evo-agents hub run logs {queued[0]['id']} --follow{_with_project(args, project)}`.")
     return 0
 
@@ -395,15 +402,13 @@ def cmd_plan(args) -> int:
     refused = _model_check(args)
     if refused:
         return usage_error(refused)
-    hub, credentials = _signed_in()
+    hub, _ = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), **browser_body(args), **placement_body(args), **as_me_body(args)}
+    body = {"plan_id": _plan_id(args.plan), **browser_body(args), **as_me_body(args)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in {**chosen, "session_per_step": each}.items() if value is not None})
-    if args.worker is not None:
-        body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
     run = hub.call("POST", f"{_project_path(project)}/plan-runs", body)
     if args.json:
         _print_json(run)
@@ -414,6 +419,7 @@ def cmd_plan(args) -> int:
         f"Queued plan run #{run['id']}: {_step(run)}, every step not done yet{each}, in {_repos(run)}; runtime "
         f"{_runtime(run)}, {run['mode']}, timeout {_timeout(run)} of agent time{pinned}{_as_you(run)}."
     )
+    _warn(run, args, project)
     where = _with_project(args, project)
     print(
         f"Follow it with `evo-agents hub run logs {run['id']} --follow{where}`; the decisions its agent asks you: "
@@ -431,11 +437,9 @@ def cmd_author(args) -> int:
         return usage_error(
             f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes",
         )
-    hub, credentials = _signed_in()
+    hub, _ = _signed_in()
     project = _project(args)
-    body = {"request": text, **placement_body(args)}
-    if args.worker is not None:
-        body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
+    body = {"request": text}
     chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in chosen.items() if value is not None})
@@ -447,6 +451,7 @@ def cmd_author(args) -> int:
         f"Queued author run #{run['id']}: {_step(run)}, {_author_on(run)} over {_repos(run)}; "
         f"runtime {_runtime(run)}, timeout {_timeout(run)} of agent time. It reads only and pushes nothing."
     )
+    _warn(run, args, project)
     print(f"Follow it with `evo-agents hub run logs {run['id']} --follow{_with_project(args, project)}`.")
     return 0
 
@@ -533,6 +538,10 @@ def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
         lines.append(("ended", f"{_when(run['finished_at'])} UTC"))
     if run["waiting_since"] and run["state"] == "waiting":
         lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+    if run.get("overlap_wait") and run["state"] == "queued":
+        wait = run["overlap_wait"]
+        who = ", ".join(f"#{number}" for number in wait["run_ids"])
+        lines.append(("waits for", f"run {who} to end: it edited {', '.join(wait['paths'])}, which this step names"))
     if run["session_id"]:
         lines.append(("session", run["session_id"]))
     lines.append(("events", f"{run['last_seq']}"))
@@ -822,8 +831,8 @@ def _control(action: str, said: Callable[[dict], str]):
 def _register_author(rsub, with_project) -> None:
     authored = rsub.add_parser(
         "author",
-        help="queue an author run: a plan written from your request with the create-exec-plan skill, on a worker of "
-        "yours (needs writer)",
+        help="queue an author run: a plan written from your request with the create-exec-plan skill, on the pool of "
+        "its agent (needs writer)",
     )
     authored.add_argument(
         "request",
@@ -838,7 +847,8 @@ def _register_author(rsub, with_project) -> None:
 
 def register_runs(hsub) -> None:
     run = hsub.add_parser(
-        "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
+        "run",
+        help="dispatch plan steps, or a whole plan, to the pool of their agent, and follow, steer and end their runs",
     )
     rsub = run.add_subparsers(dest="run_command", required=True)
 
@@ -858,8 +868,7 @@ def register_runs(hsub) -> None:
 
     dispatch = rsub.add_parser(
         "dispatch",
-        help="queue a run of each step named for a worker of yours or one shared with you, all of them or none "
-        "(needs writer)",
+        help="queue a run of each step named for the pool of its agent, all of them or none (needs writer)",
     )
     dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
     dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
@@ -872,7 +881,7 @@ def register_runs(hsub) -> None:
 
     plan = rsub.add_parser(
         "plan",
-        help="queue a plan run: one run, on a worker of yours or one shared with you, that does every step of the plan "
+        help="queue a plan run: one run, on the pool of its agent, that does every step of the plan "
         "not done yet (needs writer)",
     )
     plan.add_argument("plan", metavar="PLAN", help="the plan's id")

@@ -23,9 +23,11 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (app_key, client, con
     OWNER_ID,
     PROJECT,
     THEIRS,
+    account_pool,
     app_key,
     audit_rows,
     by_name,
+    claimable,
     client,
     config,
     env_secret,
@@ -35,6 +37,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (app_key, client, con
     leased,
     missing,
     plan_run,
+    pooled,
     put_secret,
     sample,
     worker_of,
@@ -50,7 +53,9 @@ def pref(client, headers, **classes) -> None:
 
 
 def autonomy_worker(client, headers) -> dict:
-    """A worker of ``headers`` whose daemon says ``autonomy``, so it may claim a restricted run."""
+    """A worker of ``headers`` whose daemon says ``autonomy``, so it may claim a restricted run: a node of the pool of
+    the project's default agent, which has an account pool (``claimable``), so its runs are dispatched and claimed."""
+    claimable(client)
     worker = worker_of(client, headers, "mac-mini")
     body = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "features": FEATURES}
     assert client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"]).status_code == 200
@@ -75,6 +80,7 @@ def secrets_of(client, hub) -> dict:
         "kb": sample("glpat-"),
     }
     env_secret(client, hub["owner"], "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", values["claude"])
+    account_pool(client, "claude-oauth")  # the runtime's sign-in comes from the account pool of the run's agent
     env_secret(client, hub["owner"], "stripe", "STRIPE_API_KEY", values["stripe"])
     env_secret(client, hub["owner"], "stripe-test", "STRIPE_TEST_KEY", values["stripe-test"], environment="test")
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, values["kb"])
@@ -90,7 +96,7 @@ def test_autonomy_level_lease_a_run_at_a5_is_leased_as_before(client, hub, githu
     secrets_of(client, hub)
     run_id = plan_run(client, hub["owner"], worker := autonomy_worker(client, hub["owner"]))
     leases = by_name(leased(client, worker, run_id))
-    assert {"claude-oauth", "stripe", "stripe-test", "gitlab-kb", f"github-app:{MINE}"} <= set(leases)
+    assert {pooled("claude-oauth"), "stripe", "stripe-test", "gitlab-kb", f"github-app:{MINE}"} <= set(leases)
     assert permissions(github, leases[f"github-app:{MINE}"])["contents"] == "write"
     assert leases[f"github-app:{MINE}"]["url_prefix"] == f"https://github.com/{MINE}"
 
@@ -104,8 +110,8 @@ def test_autonomy_level_lease_under_deny_gives_tokens_that_read_and_no_secret_bu
     run_id = plan_run(client, hub["owner"], worker := autonomy_worker(client, hub["owner"]))
     answer = leased(client, worker, run_id)
     leases = by_name(answer)
-    assert set(leases) == {"claude-oauth", f"github-app:{MINE}", f"github-app:{THEIRS}"}
-    assert leases["claude-oauth"]["value"] == values["claude"]
+    assert set(leases) == {pooled("claude-oauth"), f"github-app:{MINE}", f"github-app:{THEIRS}"}
+    assert leases[pooled("claude-oauth")]["value"] == values["claude"]
     for owner, name in ((MINE, "evo-agents"), (THEIRS, "lumen-identity")):
         token = leases[f"github-app:{owner}"]
         assert permissions(github, token)["contents"] == "read"
@@ -129,7 +135,7 @@ def test_autonomy_level_lease_under_run_branch_writes_only_where_a_ruleset_keeps
     run_id = plan_run(client, hub["owner"], worker := autonomy_worker(client, hub["owner"]))
     answer = leased(client, worker, run_id)
     leases = by_name(answer)
-    assert set(leases) == {"claude-oauth", f"github-app:{MINE}", f"github-app:{THEIRS}"}
+    assert set(leases) == {pooled("claude-oauth"), f"github-app:{MINE}", f"github-app:{THEIRS}"}
     mine, theirs = leases[f"github-app:{MINE}"], leases[f"github-app:{THEIRS}"]
     assert permissions(github, mine)["contents"] == "write" and mine["url_prefix"] == f"https://github.com/{MINE}"
     assert permissions(github, theirs)["contents"] == "read"
@@ -150,7 +156,7 @@ def test_autonomy_level_lease_under_test_secrets_adds_the_env_secrets_labelled_t
     run_id = plan_run(client, hub["owner"], worker := autonomy_worker(client, hub["owner"]))
     answer = leased(client, worker, run_id)
     leases = by_name(answer)
-    assert {"claude-oauth", "stripe-test"} <= set(leases) and "stripe" not in leases
+    assert {pooled("claude-oauth"), "stripe-test"} <= set(leases) and "stripe" not in leases
     assert leases["stripe-test"]["value"] == values["stripe-test"]
     assert permissions(github, leases[f"github-app:{THEIRS}"])["contents"] == "read"
 

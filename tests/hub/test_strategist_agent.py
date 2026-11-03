@@ -2,8 +2,9 @@
 ``agent``, ``acting``, ``commands``, ``proposals``, ``brainstorm``), as criterion a5 of plan living-lean-canvas names it.
 
 An admin of a project that enabled canvas enables the type under a member (``run_as``): the profile @strategist with
-the pack canvas/strategist. The plugin's tools are on the hub's /mcp only where the project enables it. A writer
-mentions @strategist in a chat: its run goes to a worker of run_as and acts for that writer, whose command applies at
+the pack canvas/strategist, its own pool agent-strategist and an account pool. The plugin's tools are on the hub's
+/mcp only where the project enables it. A writer mentions @strategist in a chat: its run goes under run_as's name to a
+node of the agent's pool and acts for that writer, whose command applies at
 once as an agent's rev for them, at the rev the agent read (a claim changed since is refused with what changed), and
 an undo in chat takes back the writer's last command. A brainstorm is a task run that only proposes: new claims at
 assumption, each with a test card; a writer accepts or rejects each, and a proposal whose claim changed goes stale.
@@ -45,6 +46,7 @@ from tests.hub.test_ba_agent import (  # noqa: F401
     mention,
     running,
     tool,
+    with_accounts,
 )
 from tests.hub.test_chat_runs import chat_worker, created, ended, run_of
 from tests.hub.test_chats import OPEN_SINKS
@@ -104,14 +106,17 @@ def hub(client, members) -> dict:  # noqa: F811
 
 
 def enable_strategist(client, hub, run_as: str = OWNER) -> dict:
+    """The admin enables the agent type strategist under ``run_as``; @strategist has an account pool."""
     typed = client.put(TYPE, json={"run_as": run_as, "daily_usd": 5}, headers=hub["owner"])
     assert typed.status_code == 200, typed.text
+    with_accounts(client, "strategist", run_as)
     return typed.json()
 
 
 def owners_worker(client, hub, name: str = "studio", slots: int = 3) -> dict:
-    """A worker of owner that runs chat and task runs and builds the packs of plugin canvas."""
-    worker = chat_worker(client, hub["owner"], name, slots=slots)
+    """A worker of owner that runs chat and task runs and builds the packs of plugin canvas: a ready node of the pool of
+    @strategist, which the type made (enable it first)."""
+    worker = chat_worker(client, hub["owner"], name, slots=slots, pool="strategist")
     assert set_plugins(client, hub["owner"], worker, ["canvas"]).status_code == 200
     return worker
 
@@ -278,7 +283,7 @@ def test_strategist_applies_a_writers_command_at_once_as_theirs_and_refuses_a_cl
         "strategist",
         ["canvas/strategist"],
     )
-    assert run_of(client, hub["chi"], spec["id"])["dispatched_by"] == OWNER, "it runs on a worker of run_as"
+    assert run_of(client, hub["chi"], spec["id"])["dispatched_by"] == OWNER, "it runs as run_as, on the agent's pool"
     assert sorted(name for name in tool_names(client, agent) if name.startswith("canvas__")) == TOOLS
     text, error = tool(client, agent, "canvas__read", canvas=SLUG)
     assert not error and "- CL-1 [assumption, medium, rev 1] Corner shops run out of stock" in text, text

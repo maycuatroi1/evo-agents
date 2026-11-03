@@ -1,7 +1,8 @@
 """A judge run (kind ``judge``, ``JudgeRun``): the Curator's Judge of one change, or the Judge of a merge request of
 the hub's merge queue on GitLab, whose claim names no change (``merge_gate.judges_merge_request``): it reads its inputs
 from GET /v1/worker/runs/{id}/merge-judge and posts its verdict, with what the Judge said of each dimension
-(``merge_gate.dimensions_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
+(``merge_gate.dimensions_from_message``), the findings it raised and its marks of earlier ones
+(``merge_gate.findings_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
 
 Once it holds its leases, the worker reads the plan's verify commands and the project's hidden checks from the hub
 (GET /v1/worker/runs/{id}/judge with the run's own key, which the claim handed the daemon and only its memory holds;
@@ -20,7 +21,12 @@ commit judged before it, and every process it left killed after it. For a change
 agent, unless a sign
 already fails the change, on the worktree put back again, the hub's prompt and what it ran (exit codes alone for the
 hidden checks). The agent's verdict is the JSON object that ends its last message (``judge.verdict_from_message``),
-which reaches the worker from the agent's own output: no file the code under test could write. The worker posts the
+which reaches the worker from the agent's own output: no file the code under test could write.
+
+Once a verdict exists and no sign fails the change, the run also does the security pass (``run_security_pass``,
+``evo_agents.hub.security_pass``): a find turn and one false-positive filter turn per finding, each a new session of the
+agent that never sees the Builder's transcript, whose outcome (the dimension ``security``, its findings with path and
+line, the turns and their cost) is posted with the verdict. The worker posts the
 verdict with the run's key and the paths the diff touches (POST /v1/worker/runs/{id}/verdict) and ends the run done,
 committing and pushing nothing.
 """
@@ -30,7 +36,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import judge, knowledge_diff, merge_gate, runs
+from evo_agents.hub import judge, knowledge_diff, merge_gate, runs, security_pass
 from evo_agents.worker import gitops, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
@@ -38,6 +44,7 @@ from evo_agents.worker.runner import access, judge_knowledge, origin, verify
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.sessions import LARGEST, add_usage
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 from evo_agents.worker.runner.verify import verify_event
 
@@ -63,8 +70,14 @@ class JudgeRun:
         self.conversation = Conversation(run, self.directory)
         self.head: str | None = None
         self.merge_base: str | None = None
+        self.merge_result = bool(change.get("merge_result"))  # a merge check's: the checks run on head and base merged
+        self.tested: str | None = None  # the commit the checks run at: the head, or its merge with the base
+        self.conflicts: list[str] | None = None  # where merging the base into the head conflicts
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
         self.dimensions: dict | None = None  # what the Judge of a merge request said of each dimension
+        self.findings: list[dict] = []  # what it found wrong
+        self.prior: dict[str, dict] = {}  # its marks of the findings of earlier rounds
+        self.usage: dict | None = None  # the Judge's turns and the security pass's, added up
 
     async def steps(self) -> None:
         run, change = self.run, self.run.curator or {}
@@ -100,6 +113,11 @@ class JudgeRun:
         run.check()
         await self.prepare(name, change)
         run.check()
+        if self.conflicts is not None:  # a merge check whose head needs a rebase: nothing to run
+            hidden.clear()
+            inputs.clear()
+            await self.post(self.conflict_body())
+            return
         workspace = self.directory.workspaces[name]
         files, signs = await self.read_diff(workspace, name, protected, verify_commands)
         results = await self.run_hidden(workspace.worktree, hidden)
@@ -109,6 +127,8 @@ class JudgeRun:
         if knowledge is not None:  # a change of knowledge.yaml: harness validate, a trial sync of each source
             checks += await judge_knowledge.run_checks(self, workspace.worktree, knowledge)
         verdict, reasons = await self.ask_judge(cls, workspace.worktree, checks, results, signs)
+        self.usage = run.outcome.usage if run.outcome else None
+        security = await self.run_security_pass(cls, workspace.worktree) if verdict is not None and not signs else None
         body = {
             "verdict": verdict,
             "reasons": reasons,
@@ -118,9 +138,10 @@ class JudgeRun:
             "hidden": results,
             "signs": signs,
             "paths": judge.changed_paths(files)[: judge.MAX_PATHS],
+            "security": security,
         }
         if self.merge:
-            body["dimensions"] = self.dimensions
+            body.update(dimensions=self.dimensions, findings=self.findings, prior=self.prior)
         await self.post(body)
 
     def run_path(self) -> str | None:
@@ -171,6 +192,9 @@ class JudgeRun:
             self.git_dir = await gitops.git_dir(path)
             if self.git_dir is None:
                 raise RunFailed(f"the worktree {path} has no git directory of its own")
+            self.tested = head
+            if self.merge_result:
+                self.tested, self.conflicts = await self.merge_with_base(checkout, target, head, base_branch)
         self.head, self.merge_base = head, base
         self.directory.workspaces[name] = gitops.Workspace(
             repo=name,
@@ -189,6 +213,44 @@ class JudgeRun:
             f"the merge base with origin's {base_branch}.",
             worktree=str(path),
         )
+
+    async def merge_with_base(
+        self, checkout: Path, target: str, head: str, base_branch: str
+    ) -> tuple[str | None, list[str] | None]:
+        """(the commit of ``head`` merged with ``target``, origin's ``base_branch`` now, made in the object store alone
+        with no branch, work tree or hook touched; None) for a merge check, or (None, the paths that conflict) when
+        the head needs a rebase. ``git merge-tree --write-tree`` merges without a work tree; exit 1 is a conflict."""
+        env = gitops.without_hooks(self.run.daemon.env)
+        code, out, err = await gitops.git(
+            checkout, "merge-tree", "--write-tree", "--name-only", "--no-messages", target, head, check=False, env=env
+        )
+        lines = [line for line in out.splitlines() if line.strip()]
+        if code == 1:
+            self.run.note(f"Merging origin's {base_branch} into {head[:12]} conflicts: the head needs a rebase.")
+            return None, list(dict.fromkeys(lines[1:]))[: judge.MAX_PATHS]
+        if code != 0 or not lines:
+            raise RunFailed(f"cannot merge origin's {base_branch} into {head[:12]}: {err.strip() or out.strip()}")
+        identity = {"GIT_AUTHOR_NAME": "evo-agents judge", "GIT_AUTHOR_EMAIL": "judge@evo-agents.invalid"}
+        identity |= {
+            "GIT_COMMITTER_NAME": identity["GIT_AUTHOR_NAME"],
+            "GIT_COMMITTER_EMAIL": identity["GIT_AUTHOR_EMAIL"],
+        }
+        message = f"The merge check's merge of origin/{base_branch} into {head[:12]}"
+        _, made, _ = await gitops.git(
+            checkout, "commit-tree", lines[0], "-p", head, "-p", target, "-m", message, env={**env, **identity}
+        )
+        self.run.note(f"Merged origin's {base_branch} into {head[:12]} as {made.strip()[:12]}: the checks run there.")
+        return made.strip(), None
+
+    def conflict_body(self) -> dict:
+        """The verdict of a merge check whose head needs a rebase: no Judge, the paths that conflict."""
+        return {
+            "verdict": None,
+            "reasons": "needs a rebase: merging the base into the head conflicts",
+            "head_sha": self.head,
+            "base_sha": self.merge_base,
+            "conflicts": self.conflicts,
+        }
 
     async def judged_commit(self, checkout: Path, name: str, change: dict) -> str:
         """The commit to judge: the pull request's head, else the tip of the change's branch on origin; RunFailed
@@ -242,6 +304,51 @@ class JudgeRun:
         await self.conversation.turns(cls, prompt, None)
         return self.read_verdict()
 
+    def last_message(self) -> str | None:
+        outcome = self.run.outcome
+        return outcome.summary if outcome is not None else None
+
+    async def run_security_pass(self, cls, cwd: Path) -> dict:
+        """The security pass (``evo_agents.hub.security_pass``): a turn that finds, in a session of its own on the
+        worktree put back at the commit judged, then a turn for each finding it raised that filters false positives,
+        each a session of its own too; none sees the Judge's reply or anything the Builder wrote. The result for the
+        verdict, with the turns and cost the pass added. A pass that gives no findings object fails the dimension."""
+        run, base = self.run, self.merge_base
+        spent: dict | None = None
+        turns = 0
+
+        async def turn(prompt: str) -> str | None:
+            nonlocal spent, turns
+            await self.restore(cwd)
+            await self.conversation.turns(cls, prompt, None)
+            turns += 1
+            spent = add_usage(spent, run.outcome.usage if run.outcome else None, largest=LARGEST)
+            return self.last_message()
+
+        found = security_pass.candidates(await turn(security_pass.find_prompt(base)))
+        scored = []
+        for item in (found or [])[: security_pass.MAX_CANDIDATES]:
+            scored.append((item, security_pass.score(await turn(security_pass.filter_prompt(base, item)))[0]))
+        over = max(len(found or []) - security_pass.MAX_CANDIDATES, 0)
+        outcome = security_pass.result(found, scored, over=over)
+        self.usage = add_usage(self.usage, spent, largest=LARGEST)
+        cost = (spent or {}).get("total_cost_usd")
+        cost = round(float(cost), 6) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+        run.note(
+            f"Security pass: {len(found or [])} candidate(s), {len(outcome['findings'])} finding(s) kept, {turns} "
+            f"agent turn(s)" + (f", ${cost} on top of the Judge's own cost." if cost is not None else "."),
+            security_turns=turns,
+            security_cost_usd=cost,
+        )
+        return {
+            "verdict": outcome["dimension"]["verdict"],
+            "reason": outcome["dimension"]["reason"],
+            "findings": [{k: item[k] for k in ("path", "line", "text")} for item in outcome["findings"]],
+            "candidates": len(found or []),
+            "turns": turns,
+            "cost_usd": cost,
+        }
+
     async def post(self, body: dict) -> None:
         """Post the verdict with the run's own key, and end the run done."""
         run = self.run
@@ -257,23 +364,21 @@ class JudgeRun:
         await self.conversation.ensure_running()
         await run.reports.report("verifying")
         run.check()
-        usage = run.outcome.usage if run.outcome else None
-        await run.reports.end("done", summary=cut(run.summary, MAX_SUMMARY_CHARS), usage=usage)
+        await run.reports.end("done", summary=cut(run.summary, MAX_SUMMARY_CHARS), usage=self.usage)
 
-    async def restore(self, cwd: Path) -> None:
-        """Put the worktree back at the commit judged: what a command of the change wrote in it before goes."""
-        run = self.run
+    async def restore(self, cwd: Path, at: str | None = None) -> None:
+        """Put the worktree back at the commit judged, or at ``at``: what a command of the change wrote in it before
+        goes."""
+        run, commit = self.run, at or self.head
         try:
-            await gitops.restore(
-                cwd, self.head, expected_git_dir=self.git_dir, env=gitops.without_hooks(run.daemon.env)
-            )
+            await gitops.restore(cwd, commit, expected_git_dir=self.git_dir, env=gitops.without_hooks(run.daemon.env))
         except gitops.GitError as exc:
-            raise RunFailed(f"the worktree {cwd} could not be put back at {self.head[:12]}: {exc}") from None
+            raise RunFailed(f"the worktree {cwd} could not be put back at {commit[:12]}: {exc}") from None
 
     async def run_untrusted(self, command: str, cwd: Path) -> tuple[int, str]:
         """(exit code, the end of its output) of ``command``, code of the change the worker does not trust, in the
-        worktree put back at the commit judged (``verify.run_untrusted``)."""
-        await self.restore(cwd)
+        worktree put back at the commit judged, or for a merge check its merge with the base (``verify.run_untrusted``)."""
+        await self.restore(cwd, self.tested)
         return await verify.run_untrusted(self.run, command, cwd)
 
     async def run_checks(self, cwd: Path, commands: list[str]) -> list[dict]:
@@ -318,6 +423,7 @@ class JudgeRun:
             return None, None
         if self.merge:
             self.dimensions = merge_gate.dimensions_from_message(message)
+            self.findings, self.prior = merge_gate.findings_from_message(message)
         return verdict, reasons or None
 
     def prompt(self) -> str:

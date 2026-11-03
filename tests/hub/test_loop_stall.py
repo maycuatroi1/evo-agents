@@ -34,7 +34,7 @@ from tests.hub.live import sql
 from tests.hub.test_author_runs import CHECKOUTS as AUTHOR_CHECKOUTS
 from tests.hub.test_author_runs import KINDS, publish_skill
 from tests.hub.test_author_runs import beat as heartbeat
-from tests.hub.test_ba_agent import members  # noqa: F401 (a fixture)
+from tests.hub.test_ba_agent import OWNER, members, with_accounts  # noqa: F401 (members is a fixture)
 from tests.hub.test_chat_runs import chat_worker
 from tests.hub.test_loop_admission import enable_strategist, queued
 from tests.hub.test_loop_rules import NOW, view
@@ -87,7 +87,8 @@ def fail_twice(client, db, worker: dict) -> dict:
 
 def test_loop_stall_a_task_run_failing_is_tried_again_then_triaged_then_its_person_decides(client, hub, hub_db):
     enable_strategist(client, hub)
-    studio = chat_worker(client, hub["owner"], "studio", slots=3)  # the owner's: the triage thread's agent runs there
+    with_accounts(client, PROJECT, OWNER)  # the default agent, which a triage thread asks, has an account pool
+    studio = chat_worker(client, hub["owner"], "studio", slots=3, pool=PROJECT)  # where the thread's agent runs
     policy(client, hub, {"enabled": True})
     assert ticked(client, hub_db)["dispatched"] == 1
     first = item(hub_db, BRAINSTORM)["run_id"]
@@ -163,7 +164,8 @@ def test_loop_stall_an_author_run_that_failed_twice_tells_its_own_triage_thread_
     harness_listed(client, hub)
     studio = add_worker(client, hub["owner"], "studio", slots=3, checkouts=AUTHOR_CHECKOUTS)
     heartbeat(client, studio, KINDS)
-    policy(client, hub, {"enabled": True, "worker": "studio"})
+    with_accounts(client, PROJECT, OWNER)  # the default agent's runs are claimed while its account pool has one
+    policy(client, hub, {"enabled": True})
     queued(hub_db, "build", BUILD, use_case="UC ORD-1", srs_version=1)
     runs_failed = []
     for _ in range(2):

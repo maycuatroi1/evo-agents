@@ -132,12 +132,13 @@ VIEWER_ACTIONS = ("browser.view", "browser.control")
 
 
 def browser_run(client, hub, *, dispatcher: str = "owner", step: int = 2, state: str = "running", shared=False):
-    """A worker of owner with the feature browser (shared, or not) and a run of ``step`` with a browser that
-    ``dispatcher`` dispatched to it and that it claimed and moved to ``state``: (worker, run id)."""
+    """A worker of owner with the feature browser (shared, or not), a node of the pool of the project's default agent,
+    and a run of ``step`` with a browser that ``dispatcher`` dispatched and that it claimed and moved to ``state``:
+    (worker, run id)."""
     worker = add_browser_worker(client, hub["owner"], f"lab-{step}")
     if shared:
         assert share(client, hub["owner"], worker).status_code == 200
-    (run,) = dispatched(client, hub[dispatcher], [step], worker_id=worker["id"], browser=True)
+    (run,) = dispatched(client, hub[dispatcher], [step], browser=True)
     assert claim(client, worker)["id"] == run["id"]
     if state != "leased":
         moved(client, worker, run["id"], state)
@@ -172,6 +173,12 @@ def kept_state(client, run_id: int) -> bytes | None:
     """The worker's last STATE the hub keeps for the run's channel, None while it has none."""
     channel = client.app.state.browser_views.get(run_id)
     return None if channel is None else channel.state
+
+
+def attached(client, run_id: int) -> bool:
+    """The hub has attached the worker's end: it accepts the socket first and attaches after checking the worker."""
+    channel = client.app.state.browser_views.get(run_id)
+    return channel is not None and channel.worker is not None
 
 
 def target(run_id: int, step: int = 2) -> str:
@@ -309,7 +316,7 @@ def test_browser_view_refuses_as_the_web_terminal_does(client, hub, hub_db):
 
 def test_browser_view_of_a_run_without_browser_or_no_longer_held_is_refused(client, hub, hub_db):
     plain = add_worker(client, hub["owner"], "plain")
-    (run,) = dispatched(client, hub["owner"], [4], worker_id=plain["id"])
+    (run,) = dispatched(client, hub["owner"], [4])
     assert claim(client, plain)["id"] == run["id"]
     moved(client, plain, run["id"], "running")
     worker, held = browser_run(client, hub, step=5)
@@ -405,6 +412,7 @@ def test_browser_view_audits_control_as_the_worker_state_says_and_never_what_was
     token = web_session(hub_db, OWNER)
     secret = "hunter2-northwind"
     with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
+        wait_until(lambda: attached(client, run_id), "the worker's end attached")
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
         end.send_bytes(state("human"))
@@ -441,6 +449,7 @@ def test_browser_view_a_run_waiting_on_a_login_decision_opens_in_human_mode(clie
     moved(client, worker, run_id, "waiting")
     token = web_session(hub_db, OWNER)
     with worker_end(client, worker, run_id) as end:
+        wait_until(lambda: attached(client, run_id), "the worker's end attached")
         with viewer(client, run_id, token) as view:
             opened(client, view, token, worker=True)
             assert body(received(end), frames.VIEW) == {"viewing": True, "login": False}  # a decision, not a login

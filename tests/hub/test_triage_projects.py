@@ -15,6 +15,7 @@ if not pg.DSN:
 from sqlalchemy import insert, select
 
 from evo_agents.hub import tables
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker
 from tests.hub.test_chats import agent
@@ -57,7 +58,7 @@ def invite(client, worker, agent_run: int, handle: str = OTHER_AGENT):
 
 
 def failing(client, hub, hub_db, **kw):
-    worker = chat_worker(client, hub["owner"], "mac-mini", checkouts=BOTH, slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", checkouts=BOTH, slots=4, pool=PROJECT)
     serve(hub_db, worker)
     run_id = failed_step(client, hub, worker, 2, cause="runtime", error=ERROR, **kw)
     return worker, run_id, agent_of(client, worker, run_id, hub_db)
@@ -81,7 +82,7 @@ def test_triage_project_named_in_the_error_is_listed_with_its_agents_and_the_own
 
 def test_triage_project_not_named_in_the_error_is_no_one_to_invite(client, hub, hub_db):
     other_project(client, hub, hub_db)
-    worker = chat_worker(client, hub["owner"], "mac-mini", checkouts=BOTH, slots=4)
+    worker = chat_worker(client, hub["owner"], "mac-mini", checkouts=BOTH, slots=4, pool=PROJECT)
     serve(hub_db, worker)
     run_id = failed_step(client, hub, worker, 2, cause="runtime", error="the runtime stopped")
     found = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/rerun-candidates", headers=hub["owner"]).json()
@@ -102,6 +103,7 @@ def test_triage_invites_the_agent_of_the_other_project_and_hands_it_work_by_a_me
     assert f"run:{run_id}" in target and f"invited:@{OTHER_AGENT}" in target
     again = invite(client, worker, agent_run)
     assert again.status_code == 201 and again.json()["added"] is False
+    give_account_pool(hub_db, OTHER_PROJECT, OTHER_AGENT, "owner")  # a run of lms-bot has an account to use
     handed = client.post(
         f"/v1/worker/runs/{agent_run}/chat/mentions",
         json={"handle": OTHER_AGENT, "body": "the lms worker refused the checkout: look at it"},

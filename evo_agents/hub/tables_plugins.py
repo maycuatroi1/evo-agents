@@ -36,8 +36,7 @@ it is due, the last error, when it was made and delivered. 0038 also records the
 plugins and plugin_versions: signature kind ``image``, published and installed by nobody.
 
 project_agent_types (0042) holds each agent type of a plugin a project enabled (``evo_agents.hub.task_runs``): the
-plugin, the type's name, the agent profile the hub made for it, the member its runs go under (``run_as``), the names
-of that member's workers they may run on, the cap of their cost per day, who enabled it and when, and when it was
+plugin, the type's name, the agent profile the hub made for it, the member its runs go under (``run_as``), the cap of their cost per day, who enabled it and when, and when it was
 turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft pull requests the hub opened
 of its branch.
 
@@ -320,7 +319,6 @@ def _agent_types(metadata: MetaData, runs: Table) -> Table:
         Column("name", Text, nullable=False),
         Column("profile_id", BigInteger, nullable=False),
         Column("run_as", BigInteger, nullable=False),
-        Column("workers", ARRAY(Text), nullable=False, server_default="{}"),
         Column("daily_usd", Double, nullable=False),
         Column("enabled_by", BigInteger, nullable=False),
         _stamp("enabled_at"),

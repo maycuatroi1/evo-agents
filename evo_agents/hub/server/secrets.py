@@ -7,13 +7,21 @@ names the variable of the agent's environment it sets (``env_var``, never one of
 answers for (``url_prefix``, kept in the form of ``credentials.normalize_origin``) and the user git sends with it
 (``username``, DEFAULT_GIT_USERNAME when left out); kind ``forge`` names the https prefix of the GitLab projects whose
 merge requests the hub drives with it (``url_prefix``, as for git, and no username: GitLab takes the token in a
-header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to one or more projects
-the caller holds the writer role on, the admin role for kind forge; ``workers`` narrows it to some of the caller's own
-workers that are not revoked, by name, and left out means any worker of the caller; a forge secret names none, as no
-worker ever gets it. ``expires_at`` is the end its owner gives it, which kind forge needs. The value is 1 to
+header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to projects the caller
+holds the writer role on, the admin role for kind forge; left out or empty, the secret is personal: kept for its owner
+alone and leased to no run until it is bound to a project, by a PUT naming its projects or when a run of its owner asks
+for its variable (``evo_agents.hub.server.credential_resolver``). A forge secret needs a project, and a personal secret
+names no workers or pools. ``workers`` narrows it to some of the caller's own workers that are not revoked, by
+name, and left out means any worker of the caller; a forge secret names none, as no worker ever gets it. ``expires_at`` is the end its owner gives it, which kind forge needs. The value is 1 to
 MAX_SECRET_BYTES bytes of UTF-8, sealed with ``Sealer`` under the associated data of its owner, name and kind before
 it reaches the database; without EVO_HUB_SECRETS_KEY the route answers 503 and keeps nothing. A member keeps at most
 MAX_SECRETS_PER_OWNER secrets.
+
+PATCH /v1/secrets/{name} replaces the binding of the caller's secret ``name`` alone, without its value: ``workers``
+or ``pools``, exactly one of them, checked as PUT checks them, an empty list binding it to any worker of its owner
+again. Its value, kind, target, projects, end, OAuth tokens and shares stay, and so does ``updated_at``, the time its
+value was written; the leases already out stay too, as after a PUT. A secret the caller does not own is 404, and the
+name of a provider account 409.
 
 GET /v1/secrets lists the caller's own secrets that are not deleted: name, kind, target, bindings and dates, never the
 value, sealed or not. A hub admin sees only their own too; /v1/admin/stats counts the rows of every table and shows
@@ -29,10 +37,11 @@ An env secret for CLAUDE_CODE_OAUTH_TOKEN may carry ``oauth``, the refresh token
 sign-in with OAuth (``evo_agents.hub.server.account_oauth``): the hub seals them with the value in the account's row,
 and a write without ``oauth`` drops what was there.
 
-Each write adds one audit row, secret.put or secret.delete, whose target is the secret's id (``secret:<id>``), never
-its name: the audit is for hub admins, and a secret's name is for its owner alone, as GET /v1/secrets and a run's
-credentials are. No audit row, log line or error holds a value. A write made with a web session needs X-Evo-CSRF, as
-every write does (``evo_agents.hub.server.security``).
+Each write adds one audit row, secret.put, secret.rebind or secret.delete, whose target is the secret's id
+(``secret:<id>``), never its name: the audit is for hub admins, and a secret's name is for its owner alone, as GET
+/v1/secrets and a run's credentials are; secret.rebind names the new binding after the id (``binding_text``). No
+audit row, log line or error holds a value. A write made with a web session needs X-Evo-CSRF, as every write does
+(``evo_agents.hub.server.security``).
 """
 
 from __future__ import annotations
@@ -45,7 +54,7 @@ from urllib.parse import urlsplit
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Request, Response
-from pydantic import AwareDatetime, BaseModel, Field, SecretStr
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy import Text, column, delete, func, insert, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -143,9 +152,10 @@ class SecretWrite(BaseModel):
         "leased the env secrets labelled test alone (docs/autonomy.md)",
     )
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
-        min_length=1,
+        default_factory=list,
         max_length=MAX_BINDINGS,
-        description="the projects whose runs get it; the writer role on each, the admin role for kind forge",
+        description="the projects whose runs get it; the writer role on each, the admin role for kind forge; left out "
+        "or empty for a personal secret, kept for its owner and leased to no run, which kind forge cannot be",
     )
     workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] = Field(
         default_factory=list,
@@ -177,6 +187,25 @@ class SecretWrite(BaseModel):
     )
 
 
+class SecretRebind(BaseModel):
+    """The binding a PATCH puts in place of the secret's: workers or pools, exactly one of them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] | None = Field(
+        None,
+        max_length=MAX_BINDINGS,
+        description="names of the caller's own workers that are not revoked, in place of its binding; empty for any "
+        "worker of the caller; never with pools",
+    )
+    pools: list[PoolName] | None = Field(
+        None,
+        max_length=MAX_BINDINGS,
+        description="names of the caller's own worker pools, in place of its binding: each node of each gets it, the "
+        "nodes that join later too; empty for any worker of the caller; never with workers",
+    )
+
+
 class Secret(BaseModel):
     """A secret as its owner sees it: everything but the value."""
 
@@ -186,7 +215,7 @@ class Secret(BaseModel):
     url_prefix: str | None = Field(description="kinds git and forge: the https prefix of the origins it answers for")
     username: str | None = Field(description="kind git: the user git sends with it")
     environment: str | None = Field(None, description="kind env: the environment it is labelled for (test)")
-    projects: list[str] = Field(description="the projects whose runs get it")
+    projects: list[str] = Field(description="the projects whose runs get it; empty for a personal secret")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
     pools: list[str] = Field([], description="the worker pools it is bound to, each node of each")
     expires_at: datetime | None
@@ -321,13 +350,9 @@ def _target(body: SecretWrite) -> tuple[str | None, str | None, str | None]:
 
 
 def _forge_refusal(body: SecretWrite) -> str | None:
-    """Why ``body`` cannot be a forge secret, or None: it needs an end, and binds to no worker, as none ever gets it."""
-    if body.kind != FORGE_KIND:
-        return None
-    if body.expires_at is None:
+    """Why ``body`` cannot be a forge secret, or None: it needs an end; its binding is ``binding_refusal``'s."""
+    if body.kind == FORGE_KIND and body.expires_at is None:
         return "a secret of kind forge needs expires_at: set the end of the GitLab token it holds"
-    if body.workers or body.pools:
-        return "a secret of kind forge binds to no worker or pool: only the hub uses it, and no run is ever leased it"
     return None
 
 
@@ -429,6 +454,26 @@ def both_refusal(workers: list[str], pools: list[str]) -> str | None:
     return None
 
 
+def personal_refusal(kind: str, projects: list[str], workers: list[str], pools: list[str]) -> str | None:
+    """Why a secret bound to no project cannot be of ``kind`` or name ``workers`` or ``pools``, or None: a personal
+    secret is leased to no run, and a forge secret is for the merge requests of its projects."""
+    if projects:
+        return None
+    if kind == FORGE_KIND:
+        return "a secret of kind forge needs a project: the hub drives the merge requests of its projects with it"
+    if workers or pools:
+        return "a secret bound to no project takes no workers or pools: no run gets it until it is bound to a project"
+    return None
+
+
+def binding_refusal(kind: str, workers: list[str], pools: list[str]) -> str | None:
+    """Why a secret of ``kind`` cannot be bound to ``workers`` and ``pools``, or None: a forge secret binds to none, as
+    no worker ever gets it, and no secret binds to workers and pools both."""
+    if kind == FORGE_KIND and (workers or pools):
+        return "a secret of kind forge binds to no worker or pool: only the hub uses it, and no run is ever leased it"
+    return both_refusal(workers, pools)
+
+
 async def live_secrets(conn: AsyncConnection, owner_id: int, other_than: str) -> int:
     s = tables.secrets
     live = (
@@ -493,10 +538,11 @@ async def put_secret(
     expires_at = oauth.access_expires_at if oauth is not None else body.expires_at
     if expires_at is not None and expires_at <= datetime.now(UTC):
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
-    refusal = _forge_refusal(body)
-    if refusal is not None:
-        raise HTTPException(422, refusal)
-    refusal = both_refusal(body.workers, body.pools)
+    refusal = (
+        _forge_refusal(body)
+        or binding_refusal(body.kind, body.workers, body.pools)
+        or personal_refusal(body.kind, body.projects, body.workers, body.pools)
+    )
     if refusal is not None:
         raise HTTPException(422, refusal)
     projects, workers, pools = unique_names(body.projects), unique_names(body.workers), unique_names(body.pools)
@@ -547,6 +593,81 @@ async def put_secret(
     log.info("secret written", extra=extra)
     response.headers.update(NO_STORE)
     return SecretWritten(**secret.model_dump(), created=created)
+
+
+# Rebinding a secret
+
+
+REBIND_NEITHER = "give workers or pools: the binding that replaces the secret's; an empty list is any worker of yours"
+REBIND_BOTH = "give workers or pools, not both: the one given replaces the secret's binding whole"
+
+
+def _rebinding(body: SecretRebind) -> tuple[list[str], list[str]]:
+    """(workers, pools) of the binding ``body`` gives, each name once; 422 for a body that names neither or both."""
+    if body.workers is None and body.pools is None:
+        raise HTTPException(422, REBIND_NEITHER)
+    if body.workers is not None and body.pools is not None:
+        raise HTTPException(422, REBIND_BOTH)
+    return unique_names(body.workers or []), unique_names(body.pools or [])
+
+
+def binding_text(secret: Secret) -> str:
+    """The binding of ``secret`` as its audit row names it: ``workers=<names>``, ``pools=<names>`` or ``anywhere``, by
+    the names the hub keeps."""
+    if secret.workers:
+        return "workers=" + ",".join(secret.workers)
+    if secret.pools:
+        return "pools=" + ",".join(secret.pools)
+    return "anywhere"
+
+
+async def bound_projects(conn: AsyncConnection, secret_id: int) -> list[int]:
+    """The ids of the projects the secret's bindings name, each once."""
+    b = tables.secret_bindings
+    bound = select(b.c.project_id).distinct().where(b.c.secret_id == secret_id).order_by(b.c.project_id)
+    return list((await conn.execute(bound)).scalars())
+
+
+@router.patch(
+    "/{name}",
+    response_model=Secret,
+    responses={**REFUSALS, 409: {"model": ErrorBody}, 422: {"model": ErrorBody}},
+)
+async def rebind_secret(
+    request: Request, name: SecretName, body: SecretRebind, user: CurrentUser, response: Response
+) -> Secret:
+    """Bind the caller's secret ``name`` to other workers or pools, or to any worker; its value and the rest stay."""
+    workers, pools = _rebinding(body)
+    s = tables.secrets
+    found = (
+        select(s.c.id, s.c.kind)
+        .where(s.c.owner_id == user.user_id, s.c.name == name, s.c.deleted_at.is_(None))
+        .with_for_update()
+    )
+    async with request.app.state.engine.begin() as conn:
+        row = (await conn.execute(found)).one_or_none()
+        if row is None:
+            raise HTTPException(404, NO_SECRET.format(name=name))
+        if row.kind == PROVIDER_KIND:
+            raise HTTPException(409, PROVIDER_HOLDS.format(name=name))
+        refusal = binding_refusal(row.kind, workers, pools)
+        if refusal is not None:
+            raise HTTPException(422, refusal)
+        worker_ids = await own_workers(conn, user, workers)
+        pool_ids = await own_pools(conn, user, pools)
+        project_ids = await bound_projects(conn, row.id)
+        if not project_ids:  # personal, or its projects went: nothing to bind them on
+            raise HTTPException(409, f"secret {name} is bound to no project: write it whole with PUT, naming them")
+        await bind_secret(conn, row.id, project_ids, worker_ids, pool_ids)
+        (secret,) = await _secrets(conn, user.user_id, name)
+        target = f"{audit_target(row.id)} {binding_text(secret)}"
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_REBIND, target=target
+        )
+    extra = {"secret": name, "login": user.login, "workers": len(worker_ids), "pools": len(pool_ids)}
+    log.info("secret rebound", extra=extra)
+    response.headers.update(NO_STORE)
+    return secret
 
 
 async def retire_secret(conn: AsyncConnection, secret_id: int, actor_id: int) -> int:

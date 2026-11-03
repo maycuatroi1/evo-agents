@@ -309,6 +309,7 @@ def create_app(config: HubConfig) -> FastAPI:
         curator,
         decisions,
         digests,
+        doc_versions,
         kg_worker,
         local_runs,
         notifications,
@@ -348,6 +349,8 @@ def create_app(config: HubConfig) -> FastAPI:
         attachments.router,  # the files people attach to messages (evo_agents.hub.attachments)
         attachments.chat_router,
         attachments.worker_router,
+        doc_versions.chat_router,  # the versions of a document in a chat or a run
+        doc_versions.router,
     ):
         app.include_router(routes)
 
@@ -362,6 +365,7 @@ def create_app(config: HubConfig) -> FastAPI:
         history_search,
         kg_health,
         ledger,
+        merged_work,
         org,
         playbook,
         probe_report,
@@ -403,6 +407,7 @@ def create_app(config: HubConfig) -> FastAPI:
         autonomy_page.router,  # what the web's autonomy pages read
         worker_shares.router,  # shared workers narrowed to units (plan credential-sharing)
         worker_doctor.worker_router,  # the doctor reports of workers, which narrowing to units needs
+        merged_work.worker_router,  # the ended runs whose work merged, whose worktrees a worker removes at once
     ):
         app.include_router(routes)
 
@@ -414,6 +419,7 @@ def create_app(config: HubConfig) -> FastAPI:
     _include_websockets(app)
 
     from evo_agents.hub.server import (
+        account_pools,
         account_views,
         accounts,
         agent_account_views,
@@ -441,6 +447,7 @@ def create_app(config: HubConfig) -> FastAPI:
         context_answer_reuse,
         credential_shares,
         credentials,
+        curator_threads,
         features,
         gateway_proxy,
         goals,
@@ -448,6 +455,7 @@ def create_app(config: HubConfig) -> FastAPI:
         market,
         market_install,
         market_licenses,
+        merge_check,
         merge_judge,
         merge_view,
         model_catalog,
@@ -491,6 +499,7 @@ def create_app(config: HubConfig) -> FastAPI:
         worker_autonomy.worker_router,
         agent_profiles.router,
         agent_accounts.router,
+        account_pools.router,
         agent_provider_accounts.router,
         agent_account_views.router,
         agent_packs.router,
@@ -520,6 +529,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_agents.worker_router,
         chat_read.worker_router,
         triage_actions.worker_router,
+        curator_threads.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
         plugin_publishers.router,
@@ -557,6 +567,7 @@ def create_app(config: HubConfig) -> FastAPI:
         loop_routes.router,
         merge_view.router,
         merge_judge.worker_router,
+        merge_check.worker_router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503

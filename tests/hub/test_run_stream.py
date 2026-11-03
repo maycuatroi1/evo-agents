@@ -37,6 +37,7 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub.server import listen, run_events
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import claims as run_claims
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.s3 import get_url, put_presigned
 from tests.hub.test_plans import registration
@@ -81,9 +82,12 @@ def serving(app):
         assert thread.is_alive(), "the hub did not start"
         assert time.monotonic() < deadline, "the hub did not start within 30s"
         time.sleep(0.05)
+    url = f"http://127.0.0.1:{port}"
+    live.SERVED[url] = app.state.config.dsn  # live.database_of reads the hub's database from an httpx client's URL
     try:
-        yield f"http://127.0.0.1:{port}"
+        yield url
     finally:
+        live.SERVED.pop(url, None)
         server.should_exit = True
         thread.join(30)
         assert not thread.is_alive(), "the hub did not stop"
@@ -91,14 +95,17 @@ def serving(app):
 
 @pytest.fixture
 def start(hub_db, tmp_path, github):
-    """Start the hub with the configuration changes given; the members of ``members`` signed in on it."""
+    """Start the hub with the configuration changes given; the members of ``members`` signed in on it, and the
+    project's default agent with an account pool, which its runs need."""
     with ExitStack() as stack:
 
         def started(**changes) -> SimpleNamespace:
             app = create_app(live.hub_config(hub_db, tmp_path, github, **changes))
             url = stack.enter_context(serving(app))
             client = stack.enter_context(httpx.Client(base_url=url, timeout=10))
-            return SimpleNamespace(app=app, client=client, headers=members(client, github), db=hub_db)
+            headers = members(client, github)
+            give_account_pool(hub_db, PROJECT, PROJECT, OWNER)
+            return SimpleNamespace(app=app, client=client, headers=headers, db=hub_db)
 
         yield started
 

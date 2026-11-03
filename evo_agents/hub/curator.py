@@ -4,16 +4,17 @@ datetimes, standard library only, so the api, the hub's worker, the command line
 ``evo_agents.hub.server.curator`` holds the routes and the job built on them.
 
 A project has at most one charter on the hub, and every revision of it is kept. Only an admin of the project writes
-it, with a web session or a machine token; a worker token never reaches it. The charter names the worker on duty,
-one of the writer's own workers, and the member who owns that worker is the owner of the project's schedules: the
-runs they queue are dispatched by that member, so the rule that a worker takes only its owner's runs holds as it is.
+it, with a web session or a machine token; a worker token never reaches it. The charter names no worker: the night
+shift runs on the pool of the project's default agent, and the member who owns that pool is the owner of the project's
+schedules: the runs they queue are dispatched by that member, so the rule that a worker takes only its owner's runs
+holds as it is.
 
 The window is two local times and an IANA time zone. When the end is not after the start, the window runs past midnight.
 The night a moment belongs to is the local date the window last opened on (``night_of``), so the hours after midnight
 count toward the night that began the evening before. Each minute the hub's job ``hub.fire_schedules`` looks at every
 schedule that is not paused: inside the window, with no run of the schedule queued or held, fewer runs this night than
 ``max_runs_per_night`` and the night's cost under ``night_budget_usd``, it queues a plan run of the first plan of
-``night_plans`` that has a ready step and no active run, pinned to the worker on duty. Outside the window it queues only
+``night_plans`` that has a ready step and no active run, on a node of that pool. Outside the window it queues only
 the runs of the Curator's changes (their Builder, judge and replay runs), within the same caps and counted toward the
 night that last opened, and cancels any other run of the schedule still queued; paused, it queues nothing and cancels
 every run of the schedule still queued.
@@ -26,6 +27,10 @@ budget also says what the run spent already (``spent_usd``, ``spent_seconds``), 
 
 At the charter's ``brief_at``, in its time zone, the hub sends the schedule's owner the morning brief of the night
 (``brief_due``, ``evo_agents.hub.server.brief``).
+
+The charter's ``answer_by`` (ANSWERERS) says who answers the Curator's proposals: ``owner``, the default, leaves them
+to the project's admins; ``agent`` has the hub open a thread for each proposal in the project's triage chat, where the
+project's default agent answers it for the schedule's owner (``evo_agents.hub.server.curator_threads``).
 
 The circuit breaker stops a night shift that keeps failing: once the charter's ``circuit_breaker.max_failed_in_a_row``
 jobs of one night failed in a row (``failed_in_a_row``), a run of the schedule that ended failed or a merged change of
@@ -49,7 +54,8 @@ from datetime import date, datetime, time, timedelta
 
 SCHEDULE_KINDS = ("night_shift",)  # the schedules a charter makes; later kinds join this tuple
 TIERS = (0, 1, 2, 3)  # of a change the Curator proposes, from what merges by itself to what the owner alone merges
-AUTO_MERGE_TIERS = (0,)  # the tiers a charter may let the hub merge; tier 1 waits for a plan of its own
+AUTO_MERGE_TIERS = TIERS  # the tiers a charter may let the hub merge (auto_merge); none unless it names them
+ANSWERERS = ("owner", "agent")  # who answers the proposals (answer_by): an admin, or the project's agent
 DEFAULT_RUNTIME = "claude-code"
 
 TIME_OF_DAY = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"  # HH:MM, 24 hours
@@ -79,7 +85,7 @@ BRIEF_GRACE = timedelta(hours=3)  # a morning brief the hub could not send this 
 
 # What `charter show --json` prints besides the charter body; `charter set` leaves them out of what it sends, and the
 # api ignores them in a write, so what was shown can be written back.
-CHARTER_META = ("project", "revision", "updated_by", "updated_at", "worker_id", "pool_id", "schedule_owner")
+CHARTER_META = ("project", "revision", "updated_by", "updated_at", "schedule_owner")
 BUDGET_KEYS = ("max_usd", "max_turns", "max_seconds")  # a run's caps (runs.budget)
 SPENT_KEYS = ("spent_usd", "spent_seconds")  # added to them in a claim
 

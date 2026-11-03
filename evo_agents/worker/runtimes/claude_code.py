@@ -6,7 +6,9 @@ here.
 - The agent works in the worktree (``cwd``) with ``permission_mode="bypassPermissions"``, the SDK's form of
   ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
   and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
-  hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+  hooks, plugins and CLAUDE.md load as for ``claude`` itself, but for ``attribution``: the run's flag settings
+  (``--settings``) set ATTRIBUTION over them, so a commit or pull request of a run names no co-author on any machine
+  (47 of 301 commits on main from 2026-10-27 to 2026-11-03 had the trailer, from workers whose own settings left it on).
 - The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
   (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
   their own names, and their instructions after the profile's in the appended system prompt. A run of the Curator
@@ -106,7 +108,7 @@ here.
 - The model is the run's ``model`` (``options.model``, the CLI's ``--model``), else ``EVO_WORKER_CLAUDE_CODE_MODEL``,
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
-  the CLI takes.
+  the CLI takes. The model the session's init message names is ``model_used``, which the worker records on the run.
 - A turn that ends with an error that reads as the account's usage limit (``limit_of_text``) gives an outcome with
   ``limit`` set, and its ``rate_limit_event`` messages reach the run's log raw: ``evo_agents.worker.runner.limits``
   reports them and moves the run to another account. One whose error reads as the account failing to authenticate
@@ -119,7 +121,8 @@ here.
   tool allowlist, the adapter asks the CLI for its MCP servers once it is connected, before the prompt, and raises
   ``ProfileRefused`` on one the profile leaves out (the owner's own settings may allow more).
 - A run with a snapshot of autonomy gets the PreToolUse hook of ``evo_agents.worker.autonomy_hook`` on its Bash
-  commands, with a profile or without one (``RunContext.autonomy``).
+  commands, with a profile or without one (``RunContext.autonomy``); every run of the daemon gets its file floor on
+  Edit, Write, MultiEdit, NotebookEdit, Read, Grep, Glob and Bash (``RunContext.floor``).
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -133,6 +136,7 @@ import base64
 import collections
 import contextlib
 import dataclasses
+import json
 import logging
 import os
 import re
@@ -186,6 +190,8 @@ MIN_VERSION = "2.1.289"  # Claude Code
 SDK = ("claude-agent-sdk", "0.2.163")
 # Variables of a parent Claude Code session that must not reach the agent, which is no child of it.
 DROPPED_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
+# What Claude Code adds to a commit message and a pull request body: nothing (module docstring).
+ATTRIBUTION = {"commit": "", "pr": ""}
 # Claude Code's credentials in the agent's environment: a token of `claude setup-token`, and the API key that comes
 # before it in Claude Code's order of authentication.
 OAUTH_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
@@ -786,6 +792,8 @@ class ClaudeCodeAdapter(QueueAdapter):
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))
+        flags = json.loads(settings.get("settings") or "{}")
+        settings["settings"] = json.dumps({**flags, "attribution": ATTRIBUTION})
         if claude_home.isolated(self.context.run, self.runtime, self.context.env, self.context.worktree):
             hub = hub_tools.home_server(self.context, profile)  # strict: its .claude.json is not read for servers
             servers = {**({hub_tools.SERVER: hub} if hub else {}), **settings.get("mcp_servers", {})}
@@ -793,7 +801,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         else:
             servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
         settings.update({"mcp_servers": servers} if servers else {})
-        hooks = profiles.claude_hooks(profile, self.context.autonomy)  # the run's hook of autonomy beside the profile's
+        # the run's file floor and hook of autonomy beside the profile's
+        hooks = profiles.claude_hooks(profile, self.context.autonomy, self.context.floor)
         if hooks is not None:
             settings["hooks"] = hooks
         if self.budget is not None:
@@ -856,6 +865,9 @@ class ClaudeCodeAdapter(QueueAdapter):
                     session = message.data.get("session_id")
                     if isinstance(session, str) and session:
                         self._session = session
+                    model = message.data.get("model")
+                    if isinstance(model, str) and model:
+                        self.model_used = model  # the full name, where the run may have named an alias
                 self.emit(events_of(message))
                 self._peak = larger(self._peak, context_of(message))
                 self._first = self._first or first_request_of(message)

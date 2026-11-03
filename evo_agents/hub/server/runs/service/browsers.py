@@ -61,10 +61,9 @@ def unfit(features, browser: bool) -> list[str]:
     return [NO_BROWSER] if browser and runs.BROWSER not in features else []
 
 
-async def profile_default(conn: AsyncConnection, profile_id: int, pinned) -> tuple[list[int], int]:
+async def profile_default(conn: AsyncConnection, profile_id: int) -> tuple[list[int], int]:
     """The browser identity the agent profile ``profile_id`` hands every run under it, as ``([id], worker id)``, or
-    ``([], 0)`` when it has none live and not disabled. 422 when the run is ``pinned`` to another worker than the one
-    that holds it."""
+    ``([], 0)`` when it has none live and not disabled."""
     b = tables.browser_identities
     query = select(b.c.id, b.c.name, b.c.worker_id).where(
         b.c.profile_id == profile_id, b.c.profile_default, b.c.deleted_at.is_(None), b.c.status != "disabled"
@@ -72,12 +71,6 @@ async def profile_default(conn: AsyncConnection, profile_id: int, pinned) -> tup
     found = (await conn.execute(query)).one_or_none()
     if found is None:
         return [], 0
-    if pinned is not None and pinned.id != found.worker_id:
-        raise HTTPException(
-            422,
-            f"the run is pinned to worker {pinned.name}, and the browser identity {found.name} of its agent opens only "
-            "on the worker that holds it: pin it there or not at all; nothing was dispatched",
-        )
     return [found.id], found.worker_id
 
 
@@ -89,12 +82,10 @@ def _mine_or_project(user: Principal, *, agents: bool = False):
     return or_(b.c.owner_kind.in_(kinds), and_(b.c.owner_kind == "member", b.c.owner_id == user.user_id))
 
 
-async def resolve(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, names, pinned
-) -> tuple[list[int], int]:
+async def resolve(conn: AsyncConnection, user: Principal, access: ProjectAccess, names) -> tuple[list[int], int]:
     """The ids of the browser identities ``names`` a dispatch by ``user`` in project ``access`` names, in its order,
     and the worker that holds them: each the caller's own of that name, else the project's. 422 for a name that is
-    neither, an identity disabled, identities on more than one worker, or a dispatch ``pinned`` to another worker."""
+    neither, an identity disabled, or identities on more than one worker."""
     names = list(dict.fromkeys(names))
     if not names:
         return [], 0
@@ -123,19 +114,14 @@ async def resolve(
             "dispatched",
         )
     worker_id = workers.pop()
-    if pinned is not None and pinned.id != worker_id:
-        raise HTTPException(
-            422,
-            f"the run is pinned to worker {pinned.name}, and its browser identities open only on the worker that "
-            "holds them: pin it there or not at all; nothing was dispatched",
-        )
     return [found[name].id for name in names], worker_id
 
 
-async def rerun_browser(conn: AsyncConnection, user: Principal, run_id: int, body: Rerun | None, worker):
-    """Whether the rerun of run ``run_id`` by ``user`` gets a browser, as ``body`` asks, else as the run had one, and
-    the ids of the browser identities it keeps: the run's, unless it gets no browser. 409 when one of them is deleted,
-    disabled or no longer ``user``'s to use, or the rerun goes to another ``worker`` than theirs."""
+async def rerun_browser(conn: AsyncConnection, user: Principal, run_id: int, body: Rerun | None):
+    """Whether the rerun of run ``run_id`` by ``user`` gets a browser, as ``body`` asks, else as the run had one, the
+    ids of the browser identities it keeps: the run's, unless it gets no browser, and the id of the worker that holds
+    them, which the rerun is pinned to (None for no identity). 409 when one of them is deleted, disabled or no longer
+    ``user``'s to use, or they are on several workers."""
     r = tables.runs
     browser, ids = (await conn.execute(select(r.c.browser, r.c.browser_identities).where(r.c.id == run_id))).one()
     if body is not None and body.browser is not None:
@@ -150,10 +136,11 @@ async def rerun_browser(conn: AsyncConnection, user: Principal, run_id: int, bod
             _mine_or_project(user, agents=True),
         )
         workers = (await conn.execute(usable)).scalars().all()
-        if len(workers) != len(set(ids)) or worker is None or {worker.id} != set(workers):
+        if len(workers) != len(set(ids)) or len(set(workers)) != 1:
             raise HTTPException(
                 409,
-                f"run {run_id} opened browser identities that are deleted, disabled, not yours to use, or on another "
-                "worker than the rerun's: rerun it with browser false, or dispatch the step again with identities",
+                f"run {run_id} opened browser identities that are deleted, disabled, not yours to use, or on several "
+                "workers: rerun it with browser false, or dispatch the step again with identities",
             )
-    return bool(browser), ids
+        return bool(browser), ids, workers[0]
+    return bool(browser), ids, None

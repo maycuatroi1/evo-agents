@@ -255,15 +255,16 @@ async function seedAgents(me: Member) {
 }
 
 /**
- * A chat of `me` with another person and the default agent of their first project: a message that mentions the agent
- * before `me` has a worker (so the hub answers in its thread why it took no work), a reply and a reaction on it; then,
- * with a worker, a mention the agent takes, its run claimed and its reply in the thread, linking a draft pull request.
+ * A chat of `me` with another person and the default agent of their first project: a message that mentions the default
+ * agent of their second project, which is not in the chat (so the hub answers in its thread why it took no work), a
+ * reply and a reaction on it; then, with a worker, a mention the agent takes, its run claimed and its reply in the
+ * thread, linking a draft pull request.
  */
 async function seedChat(me: Member) {
   const project = me.projects[0];
   const mai = await signedInPerson("a11y-mai", [project]);
   const chat = await createChatByApi(me, { title: "Release talk", people: [mai.login], agents: [project] });
-  const root = await sendByApi(me, chat.id, `@${project} please look at **the flaky wait test**`);
+  const root = await sendByApi(me, chat.id, `@${me.projects[1]} please look at **the flaky wait test**`);
   await sendByApi(mai, chat.id, "I can review it after lunch.", root.id);
   await reactByApi(mai, chat.id, root.id, "\u{1F440}");
   const live = await chatWorker(me, project, uniqueName("a11y-chat"));
@@ -1060,7 +1061,7 @@ const PAGES: Entry[] = [
       const dialog = page.getByTestId("dispatch-dialog");
       await dialog.getByTestId("dispatch-step-2").click();
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
-      await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
+      await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
       // A click moves the pointer and clicks at once, so the timer of the hover could open the tip just before the
       // click toggles it closed. Once the hover has shown it, a click keeps it shown.
@@ -1557,7 +1558,7 @@ const PAGES: Entry[] = [
       await page.locator("#main").getByTestId("run-plan").click();
       const dialog = page.getByTestId("plan-run-dialog");
       await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
-      await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
+      await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
       await expectNoSeriousViolations(page, "run plan dialog");
       await dialog.getByTestId("plan-run-model-select").selectOption({ label: "Another model…" });
       await dialog.getByTestId("plan-run-model-input").fill("sonnet");

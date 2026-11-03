@@ -14,6 +14,15 @@ run has reached; a file of a repo of the project, ``graph`` or ``unmatched`` (ke
 has a knowledge graph (``graph_view``). Each piece is kept with how the hub found it. A finding like a closed one of
 earlier nights whose evidence that one cited already is refused (409, ``earlier.closed_like``).
 
+A member's own session records findings and proposals the same way, outside any night (the curator skill): POST
+/v1/projects/{p}/curator/findings and .../curator/proposals take the same bodies with ``run_id``, the session's own
+local run (``runs.LOCAL_KIND``, registered by the evo-hub hooks), which must be the caller's, of that project, and not
+ended (404 otherwise); a machine or web credential only, never a worker's or a run's (403), and the writer role. The
+session's local run takes the place of the review run: its log gets the event, the caps per run hold, and its proposals
+get their tier, their ledger line and, with ``answer_by`` agent, their thread, as a review run's do. ``fix_of`` is the
+night's alone (422): a fix proposal answers a probe the night's review run was assigned. A session's open tier 2
+proposals become no Inbox items, since no review run of theirs ends; the member who recorded them answers them.
+
 A proposal names a lens, a kind of change (``tiers.CHANGE_KINDS``), a title, a markdown summary, the paths it would
 edit (``{repo, path}``, each a repo of the project), the findings it rests on (of the project) and evidence of its own,
 at least one of the two, and a draft plan: a plan of plan.schema.json in outcome steps, each step with ``what``,
@@ -38,12 +47,15 @@ branch, pull request and why it waits) when the caller may read that change's pl
 .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
-curator.proposal. Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) also makes its draft the Curator's
-plan, which the night shift builds on a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST
-.../proposals/{id}/plan does the same for an accepted proposal that has no change yet); a draft that cannot become one
-leaves a change open with the reason, and nothing of it runs. Accepting one of tier 3 records the answer alone. The hub
-merges a change of tier 0 alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time has
-passed (the job curator.collect). A proposal of kind memory may promote agents' memories in place of a plan
+curator.proposal. Accepting a proposal of a tier the charter's ``planned_tiers`` names (``planned_tiers_of``: tiers 0
+to 2 unless it names others, tier 3 included) also makes its draft the Curator's plan, which the night shift builds on
+a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST .../proposals/{id}/plan does the same for an
+accepted proposal that has no change yet); a draft that cannot become one leaves a change open with the reason, and
+nothing of it runs. Accepting one of another tier records the answer alone. The hub merges a change of a tier the
+charter's ``auto_merge`` names alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time
+has passed (the job curator.collect). With the charter's ``answer_by`` agent, a proposal recorded open, or open
+again, gets a thread in the project's triage chat whose agent answers it for the review run's owner
+(``evo_agents.hub.server.curator_threads``). A proposal of kind memory may promote agents' memories in place of a plan
 (``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
@@ -100,7 +112,7 @@ from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser, Principal
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -381,6 +393,49 @@ async def held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -
     return _ReviewRun(run_id, row.project_id, row.name, owner)
 
 
+SESSION_KINDS = (MACHINE, WEB)  # the credentials a member's session records findings and proposals with
+
+
+async def session_review_run(conn: AsyncConnection, user: Principal, project: str, run_id: int) -> _ReviewRun:
+    """The local run ``run_id`` of ``user``'s own session in ``project``, its row locked, standing for a review run;
+    403 for a worker's or a run's credential, 404 for any other run or one that ended."""
+    if user.kind not in SESSION_KINDS:
+        raise HTTPException(
+            403,
+            "a session records findings and proposals with a member's credential; a review run's agent uses "
+            "POST /v1/worker/runs/{id}/findings and .../proposals",
+        )
+    r, p = tables.runs, tables.projects
+    query = (
+        select(r.c.state, r.c.kind, r.c.dispatched_by, r.c.project_id, p.c.name)
+        .join_from(r, p, p.c.id == r.c.project_id)
+        .where(r.c.id == run_id)
+        .with_for_update(of=r)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    if (
+        row is None
+        or row.name != project
+        or row.kind != runs.LOCAL_KIND
+        or row.dispatched_by != user.user_id
+        or row.state == "ended"
+    ):
+        raise HTTPException(
+            404,
+            f"run {run_id} is no live local run of yours in project {project}: a session records findings and "
+            "proposals in its own local run (`evo-agents hub curator finding|propose` finds it)",
+        )
+    owner = Principal(user.user_id, user.login, False, user.token_id, user.kind, "")
+    return _ReviewRun(run_id, row.project_id, row.name, owner)
+
+
+def _night_only(body) -> None:
+    if body.fix_of is not None:
+        raise _refused(
+            "fix_of", "a fix proposal answers a probe assigned to the night's review run; a session gives none"
+        )
+
+
 async def writer_of(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
     access = await project_access(conn, run.owner, run.project)
     if not has_role(access.role, "writer"):
@@ -491,9 +546,27 @@ def _finding(project: str, row) -> Finding:
 @worker_router.post("/runs/{run_id}/findings", status_code=201, response_model=Finding, responses=REFUSALS)
 async def record_finding(request: Request, run_id: RunId, body: FindingIn, user: CurrentUser) -> Finding:
     """Record a finding of the review run this worker holds, with evidence the hub finds."""
+    return await _record_finding(request, body, lambda conn: held_review_run(conn, user, run_id))
+
+
+class SessionFindingIn(FindingIn):
+    run_id: int = Field(ge=1, le=MAX_ID, description="the local run of your session that records it")
+
+
+@router.post("/{project}/curator/findings", status_code=201, response_model=Finding, responses=REFUSALS)
+async def record_session_finding(
+    request: Request, project: ProjectName, body: SessionFindingIn, user: CurrentUser
+) -> Finding:
+    """Record a finding of your own session, in its local run, as a review run's agent records one."""
+    _night_only(body)
+    return await _record_finding(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
+
+
+async def _record_finding(request: Request, body: FindingIn, held) -> Finding:
     f = tables.findings
     async with request.app.state.engine.begin() as conn:
-        run = await held_review_run(conn, user, run_id)
+        run = await held(conn)
+        run_id = run.id
         access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(f.c.run_id == run_id))).scalar_one()
@@ -569,12 +642,20 @@ def _check_draft(plan: dict) -> None:
             raise _refused(where, f"step {key} has no verify: an outcome step says how it is checked")
 
 
-async def _protected(conn: AsyncConnection, project_id: int) -> list[str]:
+async def _charter_body(conn: AsyncConnection, project_id: int) -> dict:
     c = tables.charters
-    body = (
-        await conn.execute(select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1))
-    ).scalar_one_or_none()
-    return list((body or {}).get("protected_paths") or [])
+    query = select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
+    return (await conn.execute(query)).scalar_one_or_none() or {}
+
+
+async def _protected(conn: AsyncConnection, project_id: int) -> list[str]:
+    return list((await _charter_body(conn, project_id)).get("protected_paths") or [])
+
+
+async def planned_tiers_of(conn: AsyncConnection, project_id: int) -> tuple[int, ...]:
+    """The tiers whose accepted proposals become the Curator's plans in the project, as its newest charter says
+    (``judge.planned_tiers``): tiers 0 to 2 for a project without a charter or a charter that names none."""
+    return judge.planned_tiers(await _charter_body(conn, project_id))
 
 
 async def _finding_evidence(conn: AsyncConnection, access: ProjectAccess, ids: list[int]) -> int:
@@ -696,11 +777,30 @@ def _summary(project: str, row) -> ProposalSummary:
 async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, user: CurrentUser) -> Proposal:
     """Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
     computes its tier and drops it when it repeats a proposal rejected lately."""
+    return await _record_proposal(request, body, lambda conn: held_review_run(conn, user, run_id))
+
+
+class SessionProposalIn(ProposalIn):
+    run_id: int = Field(ge=1, le=MAX_ID, description="the local run of your session that records it")
+
+
+@router.post("/{project}/curator/proposals", status_code=201, response_model=Proposal, responses=REFUSALS)
+async def record_session_proposal(
+    request: Request, project: ProjectName, body: SessionProposalIn, user: CurrentUser
+) -> Proposal:
+    """Record a proposal of your own session, in its local run, as a review run's agent records one: the same
+    evidence, draft plan, tier and repeat checks."""
+    _night_only(body)
+    return await _record_proposal(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
+
+
+async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal:
     if body.plan is not None:
         _check_draft(body.plan)
     p = tables.proposals
     async with request.app.state.engine.begin() as conn:
-        run = await held_review_run(conn, user, run_id)
+        run = await held(conn)
+        run_id = run.id
         access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(p.c.run_id == run_id))).scalar_one()
@@ -780,6 +880,9 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}
         await write_event(conn, run_id, event)
+        from evo_agents.hub.server.curator_threads import on_open  # it answers through this module
+
+        await on_open(conn, proposal_id)
         row = (await conn.execute(_proposals().where(p.c.id == proposal_id))).one()
         probe = await stored_probes.of_proposal(conn, run.project, proposal_id, shown=False)
     log.info(
@@ -943,10 +1046,14 @@ async def answer_proposal_as(
     body: ProposalAnswer,
     *,
     via: str | None = None,
+    agent: tuple[str, int] | None = None,
 ) -> Proposal:
     """Accept, reject or defer proposal ``proposal_id`` of ``project`` as ``user``, an admin of it, in the caller's
-    transaction, and read its notifications. The answer route and the Telegram channel (``via="telegram"``, which the
-    audit row names) both answer through it; it raises the HTTPException the route answers with."""
+    transaction, and read its notifications. The answer route, the Telegram channel (``via="telegram"``, which the
+    audit row names) and the project's agent for ``user`` (``agent``: its handle and chat run, ``curator_threads``)
+    answer through it; it raises the HTTPException the route answers with."""
+    if agent is not None:
+        via = f"@{agent[0]} in chat run {agent[1]}"
     p, n = tables.proposals, tables.notifications
     access = await project_access(conn, user, project)
     _reader(access)
@@ -977,10 +1084,12 @@ async def answer_proposal_as(
         note=body.note,
         days=days if body.action == "defer" else None,
         via=via,
+        agent=None if agent is None else f"@{agent[0]}",
+        chat_run_id=None if agent is None else agent[1],
     )
     if body.action == "accept" and row.promotion is not None:
         await memory_promotion.promote(conn, access, user, proposal_id, row.promotion)
-    elif body.action == "accept" and row.tier in judge.PLANNED_TIERS:
+    elif body.action == "accept" and row.tier in await planned_tiers_of(conn, access.project_id):
         from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
 
         await plan_from_proposal(conn, access, user, row)

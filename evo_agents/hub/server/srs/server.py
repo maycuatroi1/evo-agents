@@ -82,7 +82,6 @@ from evo_agents.hub.server.srs.models import (
     summary_model,
     version_model,
 )
-from evo_agents.hub.server.srs.template import code_key
 from evo_agents.hub.server.srs.writes import Writer, dropped, give_screen_codes, unheld_problems, write_version
 from evo_agents.hub.tables_srs import FINDING_STATUSES, MAX_SUMMARY_CHARS, SLUG
 
@@ -198,17 +197,7 @@ async def show_item(
         doc = await store.document(conn, access, slug, sink)
         row = await store.version(conn, doc, version)
         snap = await store.snapshot(conn, row)
-        wanted = code_key(ref)
-        found = next(
-            (
-                at
-                for at, item in enumerate(snap.doc.items)
-                if item.key == ref or wanted in {code_key(code) for code in item.codes()}
-            ),
-            None,
-        )
-        if found is None:
-            raise SrsError(404, f"version {row.number} of {slug} has no item {ref}")
+        found = snap.doc.item_index(ref, f"version {row.number} of {slug}")
         return item_detail_model(slug, row.number, snap.doc, found)
 
     return await _answer(request, work)

@@ -156,7 +156,7 @@ def test_the_graph_summary_names_the_commit_each_source_the_member_can_see_read(
     text = status["content"][0]["text"]
     assert f"read {DOCS_SHA[:7]} of origin/main, 2 behind origin/main" in text
     assert f"read {DEALS_SHA[:7]} of HEAD" in text
-    assert status["structuredContent"]["reads"] == [deals, docs]
+    assert status["structuredContent"]["reads"] == [{**deals, "at": None}, {**docs, "at": None}]  # cursors without at
 
 
 def test_search_finds_the_fixture_node_as_kg_search_does(hub):

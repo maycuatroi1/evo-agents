@@ -10,9 +10,10 @@ items of that repo sit under it.
 A path written short is read, in order, from the directories above the document's own, from the package roots of
 its repo (a top-level Python package, a tsconfig ``baseUrl`` or ``paths`` target: ``hub/server/runs.py`` means
 ``evo_agents/hub/server/runs.py``), then of other repos, and last as the tail of one path of the project (its own
-repo first, then the files a commit or pull request changed). A path whose directory no repo holds is outside the
-project, like a URL, and is not counted. A path whose file name holds spaces (``reports/Backend cho agent.md``) and a
-document at a repo's root named in capitals (``CLUSTER.md``, of the plan step's repo, then of the item's) link only
+repo first, then the files a commit or pull request changed). A path written from a root (``/master-plan/x.md``, as a
+docs bundle links from its ``docs/``) is read as the tail of one file of the document's own repo. A path whose
+directory no repo holds is outside the project, like a URL, and is not counted. A path whose file name holds spaces
+(``reports/Backend cho agent.md``) and a document at a repo's root named in capitals (``CLUSTER.md``, of the plan step's repo, then of the item's) link only
 when they are files of the project, and are not counted otherwise. A plain lower-case word in backticks (```name```) is prose, not a symbol;
 a short name several symbols share goes to the one nearest the document: its repo, the files a commit changed,
 the directories it shares with the document, the topic its file name gives, and outside tests for a text that is
@@ -73,7 +74,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "17"
+LINK_VERSION = "18"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -645,7 +646,8 @@ class Linker:
         ``resolved`` as written from a repo's root, ``ambiguous`` or ``dangling`` when it finds two or none. With
         ``guess`` (a path in prose), a path not found as written is also tried ``resolved``: relative to a directory
         above this item's, under a package root of a repo (``_package_roots``), then as the end of one file's path,
-        in this item's repo before any other. A path still not found whose directory no directory of the project ends
+        in this item's repo before any other; a path from a root (``/x/y.md``), as the end of one file's path in this
+        item's repo alone (``_site_path``). A path still not found whose directory no directory of the project ends
         with is ``outside``, as a URL of an unknown host is: it names a file of another tree (``.evo-run/plan.yaml``,
         ``icons/x.svg`` of a vendored package), not a missing file of this one."""
         as_dir = path.endswith("/")
@@ -667,13 +669,26 @@ class Linker:
         if entries:
             target = _unique(entries)
             return (target, "parsed" if is_dir else "resolved") if target else (None, "ambiguous")
-        if guess and not path.startswith(("/", "./", "../")) and key not in (".", ""):
-            found = self._guess_path(key, as_dir)
+        if guess and key not in (".", "") and not path.startswith(("./", "../", "//")):
+            found = self._site_path(key, as_dir) if path.startswith("/") else self._guess_path(key, as_dir)
             parent = posixpath.dirname(key.rstrip("/"))
             if found[1] == "dangling" and parent and parent not in self.index["dirsuffix"]:
                 return None, "outside"  # no directory of the project ends so: a path of another tree
             return found
         return None, "dangling"
+
+    def _site_path(self, key: str, as_dir: bool) -> tuple[str | None, str]:
+        """A path written from the root of a site or a docs bundle (``/master-plan/x.md`` for ``docs/master-plan/x.md``
+        when the bundle's root is ``docs/``): the one file of this item's repo whose path ends with it, those under a
+        directory above this item first (a fixture's copy of the bundle is another site)."""
+        if as_dir or not self.repo:
+            return None, "dangling"
+        found = [e for e in self.index["pathsuffix"].get(key, []) if e.get("repo") == self.repo]
+        if not found:
+            return None, "dangling"
+        above = f"{self.base_dir}/" if self.base_dir else None
+        target = _unique([e for e in found if above and above.startswith(e["path"][: -len(key)])] or found)
+        return (target, "resolved") if target else (None, "ambiguous")
 
     def _guess_path(self, key: str, as_dir: bool) -> tuple[str | None, str]:
         """A path written short: the one match of the first way that finds any (``path_target``)."""
@@ -1255,8 +1270,8 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     elif texts:
         for t in texts:
             linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
-    elif kind in ("config", "asset"):
-        pass  # config and assets are not prose
+    elif kind in ("config", "asset", "markup"):
+        pass  # config, assets, templates and stylesheets are not prose
     elif fragments:
         document_like = node_kind_for_item(kind) == "Document"  # only documents get Section nodes
         for frag in fragments:

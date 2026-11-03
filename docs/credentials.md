@@ -50,7 +50,10 @@ must have its credentials to work. What the design limits is **how much** they g
 A **secret** belongs to the member who wrote it. Its value goes into the hub once (`PUT /v1/secrets/{name}`, the web
 page Secrets, or `evo-agents hub secret set` reading stdin) and never comes back out through the owner's routes:
 listing shows names, kinds, targets, bindings and dates, never the value. A secret is bound to one or more projects
-the owner holds writer on, and optionally to some of the owner's workers or worker pools. A hub admin sees only their own secrets.
+the owner holds writer on, and optionally to some of the owner's workers or worker pools. A secret bound to no project
+is **personal**: the hub keeps it for its owner and leases it to no run until it is bound to a project, by a PUT that
+names its projects, or when a run of its owner asks for its variable and the owner (or K12 on auto) binds it, as
+"A run that asks for a credential" tells. A hub admin sees only their own secrets.
 
 The **GitHub App** is the hub's own (`EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY`). For each owner of a
 run's github.com repos the hub finds the installation (`GET /repos/{owner}/{repo}/installation`) and asks for a token
@@ -89,6 +92,7 @@ not in its backups.
 | --- | --- |
 | `PUT /v1/secrets/{name}` | creates the caller's secret `name`, or replaces it whole, value included; `created` says which |
 | `GET /v1/secrets` | the caller's own secrets that are not deleted, without their values |
+| `PATCH /v1/secrets/{name}` | replaces its binding alone, `workers` or `pools`, without its value |
 | `DELETE /v1/secrets/{name}` | deletes it softly: the row stays, its sealed value and bindings go, its live leases are revoked |
 
 The body of a PUT:
@@ -98,8 +102,9 @@ The body of a PUT:
   password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out), or
   `forge` with `url_prefix` alone (see [Forge secrets](#forge-secrets-the-hubs-own)). A field of another kind is
   refused.
-- `projects`: one or more projects the caller holds writer on; a project the caller holds less on is 403, one they
-  cannot see 404.
+- `projects`: the projects the caller holds writer on; a project the caller holds less on is 403, one they cannot
+  see 404. Left out or empty, the secret is personal (above): it takes no `workers` or `pools` then, and a `forge`
+  secret, which needs a project, is 422. `evo-agents hub secret set` without `--project` writes one.
 - `workers`: optional names of the caller's own workers that are not revoked; any other name, another member's worker
   included, is 403, also for a hub admin. Left out, the secret goes to any worker of its owner. The bindings are each
   project on each named worker.
@@ -111,11 +116,19 @@ The body of a PUT:
 - `expires_at`: optional, with a time zone, in the future.
 - `value`: 1 to `MAX_SECRET_BYTES` (16384) bytes of UTF-8, without NUL; one line for kind `git`.
 
+The body of a PATCH is `{"workers": [...]}` or `{"pools": [...]}`, exactly one of them (a body naming neither or
+both is 422). The list given replaces the secret's binding on each of its projects, checked as the PUT checks it; an
+empty list binds it to any worker of its owner again. The value, kind, target, projects, end, OAuth tokens and shares
+stay, and so does `updated_at`, the time the value was written; the leases already out stay too. A name the caller
+keeps no secret under is 404, a provider account's 409, and a personal secret's 409: it has no project to bind on. Use it when the workers a secret was bound to are drained or
+revoked and its runs now go to other nodes, such as the agent's own pool `agent-<handle>`.
+
 A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit, unique among the
 owner's secrets that are not deleted; a deleted secret's name is free again. A member keeps at most
 `MAX_SECRETS_PER_OWNER` (200) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
 only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` without showing one. Each write adds an
-audit row `secret.put`, `secret.delete` or `secret.bind` (a credential request's binding, below) whose target is the
+audit row `secret.put`, `secret.delete`, `secret.rebind` (a PATCH, the target followed by `workers=<names>`,
+`pools=<names>` or `anywhere`) or `secret.bind` (a credential request's binding, below) whose target is the
 secret's id, `secret:<id>`, never its name: hub admins
 read the audit (`/v1/admin/audit`), and a secret's name is its owner's alone, as their list and a run's credentials
 are. No audit row, log line or error carries a value, and a 422 never repeats the input.
@@ -131,6 +144,7 @@ pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_COD
 evo-agents hub secret set gitlab-docs --kind git --url-prefix https://gitlab.example.org/group \
   --project demo --worker mac-mini --expires 2027-09-15
 evo-agents hub secret list --json
+evo-agents hub secret bind gitlab-docs --pool agent-reviewer
 evo-agents hub secret delete gitlab-docs
 ```
 
@@ -143,6 +157,12 @@ arguments are checked first, then that the machine is signed in, and only then i
 costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
 one line for kind `git`) without being shown, and no output or error of the command carries it. `--expires` ends the
 secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry date, so the token's own date fits.
+
+`secret bind NAME (--worker NAME ... | --pool NAME ... | --anywhere) [--json]` moves a secret to other workers or
+pools without sending its value again (`PATCH /v1/secrets/{name}`), for a secret whose workers were drained or
+revoked, or whose agent moved to a pool of its own. `--worker` and `--pool` repeat and replace the binding it has;
+`--anywhere` clears it, so runs on any of your workers get it. Exactly one of the three is given. It prints the secret
+as a row of `secret list`, or the hub's answer with `--json`.
 
 ## Forge secrets: the hub's own
 
@@ -576,6 +596,30 @@ a run that holds it runs the agent's code: an admin, through the instructions of
 them); a writer, through the agent of any run they dispatch; the owner of the worker and a root user on it, for every
 account bound to it; and every other run on that worker, as for any lease (see "What is still a risk").
 
+### Account pools
+
+An account pool is a named set of accounts that an admin of a project (or of the hub) keeps for the agents of that
+project. A member is an env account (a Claude account is the env account of `CLAUDE_CODE_OAUTH_TOKEN`) or a provider
+account: one of the admin's own, named by its name, or one of an agent of the project, named with the agent's handle.
+A pool holds a name once, an agent has exactly one account pool, and one pool may serve many agents. A pool an agent
+uses cannot be deleted (409). Each change adds an `account-pool.*` audit row whose target names the pool and the account
+by id, never by name or value.
+
+- API: `GET|POST /v1/projects/{p}/account-pools`, `GET|DELETE .../account-pools/{pool}`,
+  `PUT .../account-pools/{pool}/accounts` (body `name`, optional `agent`), `DELETE .../accounts/{secret_id}` and
+  `PUT /v1/projects/{p}/agents/{handle}/account-pool` (body `account_pool`, null to detach). Reading and changing need the
+  admin role on the project or on the hub.
+- CLI: `evo-agents hub account-pool list|show|create|delete|add|remove` and `evo-agents hub agent account-pool HANDLE POOL`
+  (`--none` detaches).
+- Web: the Account pools group of the Accounts page, for each project the visitor administers.
+
+A run of an agent leases model accounts from the agent's pool alone, chosen by weight,
+priority and cooldown as any account is. When none is usable the run waits in the queue: it does not take the
+dispatcher's account and does not use a login stored on the node. On the worker, a pool-mode run never authenticates with
+the machine's login and never copies the owner's `~/.claude` (spec field `account_pool`, additive: a daemon that does
+not know it keeps its behaviour). Dispatching, or mentioning in chat, an agent that has no account pool is refused with
+a message saying an admin must attach one; in chat, that message is the reply. `local` runs and worker protocol v1 are unchanged.
+
 ### Provider accounts
 
 A **provider account** is an API key of a model provider with the endpoint it calls and the models it serves
@@ -850,7 +894,8 @@ on `/mcp` stays the one above.
 ## A run that runs as its owner
 
 The owner of a run of a step, a plan run or an author run can let its agent call the hub's REST API as them, with
-their grants on every project and hub admin when they are one, but never their secrets, tokens or workers. A run of
+their grants on every project and hub admin when they are one, but never their secrets or tokens, and their workers
+only when they opened them to their runs (the run reach below). A run of
 the Curator, a release run, a chat run and the hub's other kinds never run as their owner. The agent then needs no
 login on the worker: `evo-agents hub ...` in the run signs in as the owner with a token of the run's own.
 
@@ -890,24 +935,48 @@ later call gets 401. A run that resumes gets a new token at its first ask.
 the method, and a route added later under one of their prefixes is refused with the group:
 
 - secrets and everything that holds a credential's value: `/v1/secrets`, `/v1/shares`, the accounts and provider
-  accounts, an agent's accounts, browser identities, a run's credentials and accounts;
+  accounts, an agent's accounts and provider accounts, browser identities, a run's credentials and accounts;
 - tokens, invite links and signing in: `/v1/tokens`, `/v1/admin/tokens`, the invites, `/v1/auth/*` but `whoami`, a
   project's signal ingest keys;
-- workers with their pools, the terminal, the live view, takeover and handback of a run;
-- the access of any run, its own included, so no run grants running as its owner onward.
+- the worker protocol (`/v1/worker/*`) and the terminal, the live view, takeover and handback of a run;
+- the access of any run, its own included, so no run grants running as its owner onward, and the owner's run reach
+  (`/v1/autonomy/run-reach`), so no run widens what it reaches;
+- workers: `/v1/workers*`, `/v1/worker-pools*` and `/v1/org/workers*`, with pools, join tokens, labels, drain and
+  revoke, unless the owner's run reach holds `workers`.
 
 These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
 
 - grants: `/v1/admin/projects/{p}/grants/*` and `/v1/admin/users/*`, an access that would outlive the run;
-- the owner's autonomy: `/v1/autonomy*`, the whole org chart `/v1/org*` (seats, units, ceilings), a project's policy,
-  its agent profiles (`/v1/projects/{p}/agents*`) and agent types;
+- the owner's autonomy: `/v1/autonomy*`, the org chart `/v1/org*` (seats, units, ceilings; its workers are the group
+  workers'), a project's policy;
+- agent profiles and agent types: `/v1/projects/{p}/agents*` (an agent's placement and account pool among them) and
+  `/v1/projects/{p}/agent-types*`, unless the owner's run reach holds `agents`;
 - runs: a dispatch (`POST /v1/projects/{p}/runs`), a plan run, an author run, a rerun, a message to a run or to a
   local run's inbox, a release run or schedule, an editorial post's run. No run starts from it, with or without
   `as_me`: the owner's account would go on into work the owner never chose, with the accounts, browser identities or
   worker the request names;
 - decisions: the answer to a decision of any run, a local run's decision marked answered, the approval of a run in
   review, the merge queue's answers, the reset of the Loop's breaker, the answers and rollbacks of `@builder`;
-- the Curator: its charter, proposals, changes, probes and builds.
+- the Curator: its charter, proposals, changes, probes and builds, unless the owner's run reach holds `curator`.
+
+**The run reach.** Three of those groups are the owner's to open to every run that runs as them: `agents`, `workers`
+and `curator`. The set is per member and hub-wide, empty unless the member chose, which refuses as above; a refusal of
+one of the three says how to open it. Only the member sets their own, with their own sign-in:
+
+```sh
+evo-agents hub autonomy run-reach                                # show it
+evo-agents hub autonomy run-reach --allow agents,workers,curator # replace it with these
+evo-agents hub autonomy run-reach --none                         # clear it
+```
+
+That is `GET` and `PUT /v1/autonomy/run-reach` with `{"groups": [...]}`, which replaces the set whole; each change adds
+the audit row `run_access.reach`, "reach <login> <before>-><after>". The hub reads the set with the run's token, so a
+change holds from the next request of every run of the member, running or not. Whatever the set holds, the agent's
+accounts and provider accounts stay in the group secrets, the terminal, the live view, takeover and handback of a run
+and the worker protocol stay refused, and so do secrets, tokens, run access, grants, the rest of the owner's autonomy,
+runs and decisions. The routes inside a group still check their own rules: the K12 class of the run's autonomy holds a
+write of an agent profile (`route_autonomy`), and the routes of workers and pools keep their own checks of who may
+call them.
 
 Behind the groups, every rule of the form "the agent of a run never does X" takes the run's token as it takes the agent
 of a run on `/mcp` (`Principal.acts_for_run`): it writes no goal, opportunity or problem, answers no decision, approves
@@ -949,7 +1018,10 @@ before.
 **The risk.** For as long as the run holds the token, whatever steers its agent acts as the owner on the hub, within
 the groups above: a prompt injected through a page, an issue or a file the agent reads can read every project the
 owner reads, and change plans, memories, chats and their labels, a project's sinks and plugins, and, when the owner is a
-hub admin, what a hub admin changes outside the groups (features, branding, market sources). It cannot start a run,
+hub admin, what a hub admin changes outside the groups (features, branding, market sources). Each group of the run
+reach the owner opens widens that to every run of theirs: `agents` lets it move an agent to another pool or attach
+another account pool, `workers` lets it drain or revoke a worker and make a join token of a pool, `curator` lets it
+answer and build the Curator's proposals. It cannot start a run,
 answer a decision, change a grant or anyone's autonomy, nor reach a secret or a token. A chat label it changes moves
 which members read a chat, and a sink it changes moves where a project's messages may go: both are written in the audit
 as `run_access.write`. Let a run run as you only when its work needs your account, and cut it with `evo-agents hub run

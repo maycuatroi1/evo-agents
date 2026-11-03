@@ -1648,8 +1648,31 @@ def worker_of(hub, member: str, name: str) -> SimpleNamespace:
     return worker
 
 
+def home_node(hub, worker) -> None:
+    """``worker`` made a ready node of the pool of alpha's default agent, which gets an account pool of alice's
+    unless it has one: where a run of rollout goes."""
+    from sqlalchemy import select, update
+
+    from evo_agents.hub import tables
+    from tests.hub.account_pool_setup import give_account_pool
+
+    ap, p, w, wp = tables.agent_profiles, tables.projects, tables.workers, tables.worker_pools
+    alpha = select(p.c.id).where(p.c.name == PROJECT).scalar_subquery()
+    ((account_pool_id,),) = live.sql(
+        hub.db, select(ap.c.account_pool_id).where(ap.c.project_id == alpha, ap.c.handle == PROJECT)
+    )
+    if account_pool_id is None:
+        give_account_pool(hub.db, PROJECT, PROJECT, "alice")
+    pool_id = select(wp.c.id).where(wp.c.name == f"agent-{PROJECT}").scalar_subquery()
+    live.sql(hub.db, update(w).values(pool_id=pool_id).where(w.c.id == worker.id))
+    doctor = hub.client.post("/v1/worker/doctor", json={"findings": []}, headers=worker.headers)
+    assert doctor.status_code == 200, doctor.text
+
+
 def run_on(hub, member: str, worker, step: int) -> int:
-    """The run of ``step`` of rollout that ``member`` dispatched, approval auto, and ``worker`` claimed."""
+    """The run of ``step`` of rollout that ``member`` dispatched, approval auto, and ``worker``, a node of the pool of
+    alpha's default agent, claimed."""
+    home_node(hub, worker)
     body = {"plan_id": "rollout", "steps": [step], "approval": "auto"}
     response = hub.client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=getattr(hub, member))
     assert response.status_code == 201, response.text

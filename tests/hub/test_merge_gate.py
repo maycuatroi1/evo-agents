@@ -36,7 +36,7 @@ from evo_agents.hub.server.sealing import KEY_BYTES
 from tests.hub import test_credentials_api as leases_api
 from tests.hub.fake_gitlab import FakeGitLab, sha_of
 from tests.hub.live import sql
-from tests.hub.test_runs import PROJECT, claim, moved
+from tests.hub.test_runs import PROJECT, add_worker, claim, moved
 
 KB_HOST = "gitlab.lumenops.example"
 GROUP = f"https://{KB_HOST}/fir-gb-lumen"
@@ -126,15 +126,16 @@ def put_policy(client, headers, policy: dict) -> None:
 
 
 def auto(**judge_keys) -> dict:
-    return {"repos": {REPO: {"mode": "auto", "target_branch": "dev"}}, "judge": {"worker": "mac-mini", **judge_keys}}
+    return {"repos": {REPO: {"mode": "auto", "target_branch": "dev"}}, "judge": dict(judge_keys)}
 
 
 @pytest.fixture
 def world(hub_db, tmp_path, github, monkeypatch):
     """test_credentials_api's project (lumen-kb-docs on GitLab among its repos), its hub holding the secrets key; owner
-    an admin with a forge secret over the GitLab group and the worker mac-mini, which judges merge requests; the
-    policy has lumen-kb-docs in mode auto with target branch dev; the fake GitLab holds its project, set up as the
-    queue needs it. The audit sample's draw is 0.5: a merge is a sample only at a rate above it."""
+    an admin with a forge secret over the GitLab group and the worker mac-mini, which judges merge requests, a node of
+    the pool of the project's default agent (which has an account pool), where the judge runs go; the policy has
+    lumen-kb-docs in mode auto with target branch dev; the fake GitLab holds its project, set up as the queue needs it.
+    The audit sample's draw is 0.5: a merge is a sample only at a rate above it."""
     monkeypatch.setattr(after_merge, "draw", lambda: 0.5)
     config = live.hub_config(
         hub_db, tmp_path, github, secrets_key=secrets.token_bytes(KEY_BYTES), **live.web_changes(github)
@@ -145,6 +146,7 @@ def world(hub_db, tmp_path, github, monkeypatch):
         granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/owner", json=ADMIN, headers=headers["admin"])
         assert granted.status_code == 200, granted.text
         worker = taking(client, leases_api.worker_of(client, headers["owner"], "mac-mini"))
+        leases_api.claimable(client)
         expires = (datetime.now(UTC) + timedelta(days=90)).isoformat()
         forge = {"kind": "forge", "url_prefix": GROUP, "projects": [PROJECT], "expires_at": expires, "value": token}
         assert client.put("/v1/secrets/gitlab-merge", json=forge, headers=headers["owner"]).status_code == 200
@@ -170,7 +172,7 @@ def plan_done(world) -> int:
     owner = world.headers["owner"]
     pushed = world.client.put(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json={"body": plan_body()}, headers=owner)
     assert pushed.status_code == 200, pushed.text
-    body = {"plan_id": PLAN_ID, "steps": [1], "worker_id": world.worker["id"], "approval": "auto"}
+    body = {"plan_id": PLAN_ID, "steps": [1], "approval": "auto"}
     response = world.client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=owner)
     assert response.status_code == 201, response.text
     run_id = response.json()[0]["id"]
@@ -215,15 +217,27 @@ def judge_headers(world, spec: dict) -> dict:
     return {**world.worker["headers"], judge.JUDGE_KEY_HEADER: spec["curator"]["judge_key"]}
 
 
+SECURITY_PASS = {
+    "verdict": "pass",
+    "reason": "none found",
+    "findings": [],
+    "candidates": 0,
+    "turns": 1,
+    "cost_usd": 0.02,
+}
+
+
 def dimensions(names=merge_gate.DIMENSIONS, **failed) -> dict:
     return {
         name: {"verdict": "fail" if name in failed else "pass", "reason": failed.get(name, "fine")} for name in names
     }
 
 
-def judged(world, *, head: str, names=merge_gate.DIMENSIONS, verdict: str = "pass", **failed) -> tuple[dict, dict]:
-    """The judge run the queue queued, claimed by mac-mini, its inputs read and its verdict posted, then ended
-    done; (its claim, the verdict's answer)."""
+def judged(
+    world, *, head: str, names=merge_gate.DIMENSIONS, verdict: str = "pass", extra: dict | None = None, **failed
+) -> tuple[dict, dict]:
+    """The judge run the queue queued, claimed by mac-mini, its inputs read and its verdict posted (with ``extra``,
+    its findings and marks), then ended done; (its claim, the verdict's answer)."""
     spec = claim(world.client, world.worker)
     assert spec["kind"] == "judge" and not spec["plan_id"], spec
     headers = judge_headers(world, spec)
@@ -238,6 +252,8 @@ def judged(world, *, head: str, names=merge_gate.DIMENSIONS, verdict: str = "pas
         "hidden": [],
         "signs": [],
         "dimensions": dimensions(names, **failed),
+        "security": SECURITY_PASS,
+        **(extra or {}),
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.status_code == 200, answer.text
@@ -268,9 +284,10 @@ def test_merge_gate_opens_a_plans_merge_request_and_takes_it_through_every_gate(
 
     r = tables.runs
     (run,) = sql(
-        world.db, select(r.c.kind, r.c.plan_id, r.c.runtime, r.c.model, r.c.pinned_worker_id).where(r.c.kind == "judge")
+        world.db, select(r.c.kind, r.c.plan_id, r.c.runtime, r.c.model, r.c.selector).where(r.c.kind == "judge")
     )
-    assert tuple(run) == ("judge", None, "claude-code", "sonnet", world.worker["id"])  # never the Builder's model
+    placed = [f"pool=agent-{PROJECT}"]  # a node of the pool of the project's default agent takes it
+    assert tuple(run) == ("judge", None, "claude-code", "sonnet", placed)  # never the Builder's model
     spec = claim(world.client, world.worker)
     curator = spec["curator"]
     assert (curator["role"], curator["change_id"], curator["forge"]) == ("judge", None, "gitlab")
@@ -292,6 +309,7 @@ def test_merge_gate_opens_a_plans_merge_request_and_takes_it_through_every_gate(
         "head_sha": merge_request.sha,
         "verify": [{"command": VERIFY, "exit_code": 0}],
         "dimensions": dimensions(),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(
         f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=judge_headers(world, spec)
@@ -305,7 +323,9 @@ def test_merge_gate_opens_a_plans_merge_request_and_takes_it_through_every_gate(
     kinds = [event["kind"] for event in reversed(entry["events"])]
     assert kinds[0] == "opened" and "judged" in kinds and kinds[-1] == "queued"
     verdict = next(event for event in entry["events"] if event["kind"] == "judged")
-    assert verdict["detail"]["model"] == "sonnet" and set(verdict["detail"]["dimensions"]) == set(merge_gate.DIMENSIONS)
+    assert verdict["detail"]["model"] == "sonnet" and set(verdict["detail"]["dimensions"]) == set(
+        merge_gate.gate_names()
+    )
     assert entry["verdict"]["first"]["passed"] is True and "second" not in entry["verdict"]
     audit = tables.audit
     actions = [row[0] for row in sql(world.db, select(audit.c.action).where(audit.c.action.like("merge.%")))]
@@ -457,6 +477,7 @@ def test_merge_gate_a_failed_check_of_the_judge_run_blocks_it_at_gate_4(world):
         "head_sha": merge_request.sha,
         "verify": [{"command": VERIFY, "exit_code": 1}],
         "dimensions": dimensions(),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.json()["state"] == "blocked"
@@ -509,6 +530,7 @@ def test_merge_gate_a_high_risk_needs_a_second_judge_on_opus(world):
         "head_sha": merge_request.sha,
         "verify": [{"command": VERIFY, "exit_code": 0}],
         "dimensions": dimensions(merge_gate.RISK_DIMENSIONS, migration="it drops a column it cannot bring back"),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.json()["state"] == "blocked"
@@ -551,6 +573,85 @@ def test_merge_gate_a_head_with_the_same_patch_keeps_the_verdict(world):
     assert len(sql(world.db, select(tables.runs.c.id).where(tables.runs.c.kind == "judge"))) == 1
     kept = [event for event in entry["events"] if event["gate"] == 5 and event["reason"]]
     assert kept and "its verdict holds" in kept[0]["reason"]
+
+
+# Finding memory (plan super-board-parity-1, step 3)
+
+
+def pushed(world, merge_request, name: str, line: str) -> None:
+    """A new head of ``merge_request`` whose patch differs: the report returns ``line``."""
+    merge_request.sha = sha_of(name)
+    files = [{**CLEAN[0], "diff": f"@@ -0,0 +1,2 @@\n+def total():\n+    {line}\n"}, CLEAN[1]]
+    green(world, merge_request, files)
+
+
+def test_merge_gate_finding_memory_a_later_round_marks_the_findings_of_the_one_before(world):
+    plan_done(world)
+    gate_pass(world)
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    gate_pass(world)
+    raised = {"dimension": "tests", "path": "kb/report.py", "line": 2, "text": "no test covers an empty report"}
+    _, answer = judged(
+        world, head=merge_request.sha, verdict="fail", extra={"findings": [raised], "prior": {}},
+        tests="no test of an empty report",
+    )  # fmt: skip
+    assert answer["state"] == "blocked"
+    entry = one(world)
+    (finding,) = entry["verdict"]["findings"]
+    assert (finding["id"], finding["dimension"], finding["path"], finding["line"]) == ("F1", "tests", "kb/report.py", 2)
+    assert entry["verdict"]["first"]["findings"] == ["F1"]
+    event = next(event for event in entry["events"] if event["kind"] == "judged")
+    assert [item["id"] for item in event["detail"]["findings"]] == ["F1"]
+    gate_pass(world)
+    (note,) = [text for _, text in world.project.notes]
+    assert "- F1 (tests, kb/report.py:2): no test covers an empty report" in note
+    assert one(world)["verdict"]["findings"][0]["posted"] is True
+
+    # A new patch: the verdict goes, its finding stays, and the next Judge must mark it; passing alone is not enough.
+    pushed(world, merge_request, "second", "return 4")
+    assert gate_pass(world) == {"judging": 1}
+    entry = one(world)
+    assert "first" not in entry["verdict"] and entry["verdict"]["findings"][0]["status"] == "open"
+    spec, answer = judged(world, head=merge_request.sha, extra={"findings": [], "prior": {}})
+    assert "# Findings of earlier rounds" in spec["prompt"] and "- F1 (tests, kb/report.py:2)" in spec["prompt"]
+    assert answer["state"] == "blocked"
+    assert one(world)["reason"] == "gate 5 (Judge): the hub failed tests: the Judge did not say whether F1 is fixed"
+    gate_pass(world)
+    assert len(world.project.notes) == 2
+    assert "no test covers" not in world.project.notes[1][1]  # an id posted before is named, not posted again
+    assert "Still open from an earlier comment: F1." in world.project.notes[1][1]
+
+    pushed(world, merge_request, "third", "return 5")
+    gate_pass(world)
+    not_fixed = {"F1": {"status": "not_fixed", "where": "kb/report.py:2", "reason": "still no test"}}
+    _, answer = judged(world, head=merge_request.sha, extra={"findings": [], "prior": not_fixed})
+    assert answer["state"] == "blocked"
+    assert one(world)["reason"] == "gate 5 (Judge): the hub failed tests: F1 is not fixed: still no test"
+
+    pushed(world, merge_request, "fourth", "return 6")
+    gate_pass(world)
+    fixed = {"F1": {"status": "fixed", "where": "tests/test_report.py:2", "reason": "a test covers it"}}
+    _, answer = judged(world, head=merge_request.sha, extra={"findings": [], "prior": fixed})
+    assert answer["state"] == "ready"
+    entry = one(world)
+    (finding,) = entry["verdict"]["findings"]
+    assert finding["status"] == "fixed" and [mark["status"] for mark in finding["marks"]] == ["not_fixed", "fixed"]
+    event = next(event for event in entry["events"] if event["kind"] == "judged")
+    assert event["detail"]["prior"]["F1"]["status"] == "fixed"
+
+
+def test_merge_gate_finding_memory_a_verdict_kept_before_findings_still_reads(world):
+    plan_done(world)
+    gate_pass(world)
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    gate_pass(world)
+    old = {"fingerprint": "f" * 64, "hidden_count": 0, "first": {"passed": False, "dimensions": dimensions()}}
+    sql(world.db, update(tables.merge_queue).values(verdict=old))
+    _, answer = judged(world, head=merge_request.sha)  # an older worker: no findings and no marks
+    assert answer["state"] == "ready"
+    assert one(world)["verdict"]["findings"] == []
 
 
 # Who comes in
@@ -637,30 +738,37 @@ def test_merge_gate_turning_the_repo_off_hands_its_merge_requests_back_to_people
 
 
 def test_merge_gate_a_worker_whose_daemon_does_not_judge_merge_requests_gets_no_judge_run(world):
-    taking(world.client, world.worker, features=[f for f in runs.WORKER_FEATURES if f != runs.MERGE_JUDGE])
     plan_done(world)
+    taking(world.client, world.worker, features=[f for f in runs.WORKER_FEATURES if f != runs.MERGE_JUDGE])
     gate_pass(world)
     (merge_request,) = world.project.merge_requests.values()
     green(world, merge_request)
     gate_pass(world)
     entry = one(world)
-    assert entry["state"] == "judging"
-    assert entry["reason"] == (
-        "gate 5 (Judge): waits: the daemon of worker mac-mini does not say it judges merge requests: upgrade it and "
-        "restart it"
+    assert entry["state"] == "judging"  # the judge run waits in the queue of the default agent's pool
+    assert claim(world.client, world.worker) is None
+    taking(world.client, world.worker)  # its daemon says it judges merge requests now
+    assert claim(world.client, world.worker)["kind"] == "judge"
+
+
+def test_merge_gate_a_policy_naming_a_judge_worker_is_refused_and_the_judge_runs_on_the_default_agents_pool(world):
+    repos = {REPO: {"mode": "auto", "target_branch": "dev"}}
+    named = {"policy": {"repos": repos, "judge": {"worker": "mac-mini"}}}
+    refused = world.client.put(f"/v1/projects/{PROJECT}/policy", json=named, headers=world.headers["owner"])
+    assert refused.status_code == 422 and "judge.worker: no such key" in refused.text
+    put_policy(world.client, world.headers["owner"], {"repos": repos})
+    outside = taking(
+        world.client,
+        add_worker(world.client, world.headers["owner"], "studio", checkouts=leases_api.CHECKOUTS, pool=None),
     )
-
-
-def test_merge_gate_a_policy_without_a_judge_worker_or_charter_says_so(world):
-    put_policy(world.client, world.headers["owner"], {"repos": {REPO: {"mode": "auto", "target_branch": "dev"}}})
     plan_done(world)
     gate_pass(world)
     (merge_request,) = world.project.merge_requests.values()
     green(world, merge_request)
-    gate_pass(world)
-    assert one(world)["reason"] == (
-        "gate 5 (Judge): waits: the policy names no judge.worker and the project has no charter with a worker on duty"
-    )
+    assert gate_pass(world) == {"judging": 1}
+    assert one(world)["reason"] is None
+    assert claim(world.client, outside) is None  # a worker of no pool takes no run of an agent
+    assert claim(world.client, world.worker)["kind"] == "judge"
 
 
 def test_merge_gate_a_task_runs_branch_gets_its_merge_request(world):
@@ -711,3 +819,27 @@ def test_merge_gate_a_task_runs_branch_gets_its_merge_request(world):
     entry = one(world)
     assert (entry["source"], entry["run_id"], entry["source_branch"]) == ("task", task_id, f"task/{task_id}")
     assert world.project.merge_requests[1].title == "Index the kb"
+
+
+# The security pass of the merge queue's Judges (plan super-board-parity-1, step 4)
+
+
+def test_merge_gate_security_pass_a_finding_blocks_the_judge_and_enters_the_ledger(world):
+    plan_done(world)
+    gate_pass(world)
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    gate_pass(world)
+    found = {"path": "src/report.py", "line": 7, "text": "command_injection (high): the name reaches a shell"}
+    security = {**SECURITY_PASS, "verdict": "fail", "reason": "1 vulnerability: src/report.py:7", "findings": [found]}
+    _, answer = judged(world, head=merge_request.sha, extra={"security": security})
+    assert answer["passed"] is False and answer["state"] == "blocked"
+    assert one(world)["reason"] == "gate 5 (Judge): the Judge failed security: 1 vulnerability: src/report.py:7"
+    verdict = one(world)["verdict"]
+    (raised,) = verdict["findings"]
+    assert (raised["dimension"], raised["path"], raised["line"], raised["status"]) == (
+        "security", "src/report.py", 7, "open"
+    )  # fmt: skip
+    assert (
+        verdict["first"]["security"]["turns"] == 1 and verdict["first"]["dimensions"]["security"]["verdict"] == "fail"
+    )

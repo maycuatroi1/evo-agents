@@ -42,6 +42,7 @@ from evo_agents.hub.server.notifications import channel_class, notify
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import core_notes
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.northwind_channel import northwind  # noqa: F401 (a fixture)
 from tests.hub.test_mcp import MCP_HEADERS, call, request
 from tests.hub.test_runs import OTHER, OWNER, PLAN, PROJECT, READER, add_worker, claim, dispatched, members
@@ -343,14 +344,15 @@ def test_plugin_mcp_tool_shows_to_a_run_agent_only_when_its_profile_tool_axis_al
             headers=hub["owner"],
         )
         assert made.status_code == 201, made.text
-    worker = add_worker(client, hub["owner"], "mac-mini")
-    beat = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "runs": []}
-    # its daemon applies profiles, so it claims a run whose tools are cut, and gives its agent a home of its own
-    beat["features"] = [runs.AGENT_PROFILES, runs.AGENT_HOME]
-    assert client.post("/v1/worker/heartbeat", json=beat, headers=worker["headers"]).status_code == 200
-    agent = {"Authorization": worker["headers"]["Authorization"]}
     seen = {}
     for handle in ("open", "narrow"):
+        give_account_pool(hub_db, PROJECT, handle, OWNER)  # a run of the agent takes its account from it
+        worker = add_worker(client, hub["owner"], f"{handle}-box", pool=handle)  # a node of the agent's pool
+        beat = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "runs": []}
+        # its daemon applies profiles, so it claims a run whose tools are cut, and gives its agent a home of its own
+        beat["features"] = [runs.AGENT_PROFILES, runs.AGENT_HOME]
+        assert client.post("/v1/worker/heartbeat", json=beat, headers=worker["headers"]).status_code == 200
+        agent = {"Authorization": worker["headers"]["Authorization"]}
         (run,) = dispatched(client, hub["owner"], [2], profile=handle)
         assert claim(client, worker)["id"] == run["id"]
         seen[handle] = tool_names(client, {**agent, "X-Evo-Run": str(run["id"])}, project=None)

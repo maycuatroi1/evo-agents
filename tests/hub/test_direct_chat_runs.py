@@ -147,15 +147,17 @@ def test_an_answer_naming_its_own_agent_is_refused_nothing_and_hands_no_work(cli
     assert len(chat_runs_of(hub_db)) == 1
 
 
-def test_a_direct_message_with_no_worker_gets_the_hubs_reason_and_makes_no_run(client, hub, hub_db):
+def test_a_direct_message_while_no_node_of_the_pool_is_ready_queues_its_run_for_the_node_that_comes(
+    client, hub, hub_db
+):
     chat = direct(client, hub["owner"])
     asked = sent(client, hub["owner"], chat["id"], "look at the diff of run 120")
-    ((name, via, made, refusal),) = handed(asked)
-    assert (name, via, made) == ("reviewer", "direct", False)
-    assert refusal.startswith(f"@reviewer: {OWNER} has no worker that takes runs of project {PROJECT}")
-    answer = thread(client, hub["owner"], chat["id"], asked["id"])[-1]
-    assert (answer["author"]["kind"], answer["body"]) == ("hub", refusal)
-    assert chat_runs_of(hub_db) == []
+    assert handed(asked) == [("reviewer", "direct", True, None)]
+    ((run_id, state, _, _, _),) = chat_runs_of(hub_db)
+    assert state == "queued"
+    assert [m["author"]["kind"] for m in thread(client, hub["owner"], chat["id"], asked["id"])] == ["person"]
+    worker = chat_worker(client, hub["owner"], "studio")
+    assert claimed(client, hub, worker, asked)["id"] == run_id
 
 
 def test_a_direct_message_after_a_costly_run_still_makes_a_run(client, hub, hub_db):

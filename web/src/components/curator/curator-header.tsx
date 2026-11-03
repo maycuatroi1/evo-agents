@@ -9,7 +9,6 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import type { WriteFailure } from "@/components/admin/notice";
-import { Identifier } from "@/components/data/identifier";
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { StatusBadge } from "@/components/status/status-badge";
@@ -34,7 +33,7 @@ const TABS: readonly { id: CuratorPage; icon: LucideIcon; page: CuratorPageSegme
   { id: "charter", icon: ScrollText, page: "charter" },
 ];
 
-/** Whether the worker on duty said, with the latest night's figures, that it could not keep the graph fresh. */
+/** Whether the night shift said, with the latest night's figures, that it could not keep the graph fresh. */
 function useSyncFailed(project: string): boolean {
   const { data } = useQuery(figuresQuery(browserApi, project));
   const sync = syncOf((data?.figures as Record<string, unknown> | undefined)?.kg_sync);
@@ -43,7 +42,7 @@ function useSyncFailed(project: string): boolean {
 
 /**
  * The Curator's own pages as tabs under its head, the page shown underlined in `brand`, as the admin area's; the row
- * scrolls sideways when it does not fit. Graph health carries a `danger` dot while the worker on duty could not keep the
+ * scrolls sideways when it does not fit. Graph health carries a `danger` dot while the night shift could not keep the
  * graph fresh, and nothing otherwise.
  */
 export function CuratorTabs({ project, waiting }: { project: string; waiting: number }) {
@@ -173,7 +172,7 @@ function PauseControl({ project, status }: { project: string; status: CuratorSta
 
 /**
  * The head of the Curator's pages: "Curator", where its night shift stands as a pill, Pause or Resume for those who
- * may, and one line under it: the worker on duty, the member it runs as and its window, or who paused it and when.
+ * may, and one line under it: the member it runs as and its window, or who paused it and when.
  */
 export function CuratorHeader({ project, status, actions }: { project: string; status: CuratorStatus; actions?: ReactNode }) {
   const t = useTranslations("curator");
@@ -192,7 +191,6 @@ export function CuratorHeader({ project, status, actions }: { project: string; s
           end: charter.window.end,
           timezone: charter.window.timezone,
           owner: charter.schedule_owner,
-          worker: () => <Identifier value={charter.worker ?? `pool=${charter.pool}`} className="align-baseline" />,
         })
     : null;
   return (

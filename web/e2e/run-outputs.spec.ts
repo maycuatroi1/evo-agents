@@ -403,7 +403,7 @@ test("an agent's message in a group chat carries the files its run sent", async 
   const project = me.projects[0];
   const handle = uniqueName("painter");
   await createAgentByApi(me, project, { handle, name: "Painter" });
-  const live = await chatWorker(me, project, uniqueName("chat-box"));
+  const live = await chatWorker(me, project, uniqueName("chat-box"), 1, handle);
   const { chat, runs } = await chatSession(me, handle, live, ["Draw the release chart"]);
   await sendOutputs(live, runs[0], [{ name: "chart.png", media_type: "image/png", data: pageShot(720, 480, [15, 140, 128]) }]);
   await agentSays(live, runs[0], "Here is the chart.");

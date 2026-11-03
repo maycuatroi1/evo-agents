@@ -25,7 +25,12 @@ medium findings as warnings (``doctor.warnings``); they never stop the install.
 
 The daemon writes ``worker.log`` itself (``logs``: rotated at 10 MiB, five old files kept). What it prints before that
 log is open, such as a missing extra or a machine that is not a worker, goes to ``service.log`` in the state directory
-on macOS and to the user journal on Linux. Standard library only.
+on macOS and to the user journal on Linux.
+
+A machine may hold the nodes of several agents, each with a state directory of its own (``EVO_WORKER_HOME``) and a
+service of its own: ``--agent HANDLE`` (or ``EVO_WORKER_AGENT``) names the service ``evo-agents-worker-<handle>.service``
+(Linux) or ``<LABEL>.<handle>`` (macOS) and is written into the service's environment. Without it the names are the
+fixed ones of the one node of a machine, and nothing changes for it. Standard library only.
 """
 
 from __future__ import annotations
@@ -52,6 +57,8 @@ from evo_agents.worker.home import EXIT_REVOKED, HOME_VARIABLE, REVOKED_EXIT_VAR
 
 LABEL = "io.github.maycuatroi1.evo-agents.worker"
 UNIT = "evo-agents-worker.service"
+AGENT_VARIABLE = "EVO_WORKER_AGENT"  # the handle of the agent whose node this service runs; unset for the one node
+_HANDLE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,38}$")
 RUN_ARGS = ("worker", "run", "--quiet")
 RESTART_SECONDS = 10
 UMASK = 0o077  # files the daemon and its agents create are the user's alone
@@ -67,12 +74,37 @@ EXIT_FAILED = 1
 EXIT_USAGE = 2
 SYSTEMD_PROPERTIES = ("LoadState", "ActiveState", "SubState", "MainPID", "ExecMainStatus", "NRestarts")
 KEPT_PREFIX = "EVO_WORKER_"  # the variables of the installed service that installing again keeps
-WRITTEN = ("PATH", HOME_VARIABLE, REVOKED_EXIT_VARIABLE)  # what each install writes, whatever the old file said
+WRITTEN = (
+    "PATH",
+    HOME_VARIABLE,
+    REVOKED_EXIT_VARIABLE,
+    AGENT_VARIABLE,
+)  # what each install writes, whatever the old file said
 _PRINT_LINE = re.compile(r"^\t([a-z][a-z ]*?) = (.*)$")
 
 
 class ServiceError(Exception):
     """The service could not be installed, removed or read; ``str`` says why and what to do."""
+
+
+def agent_handle(value: str | None) -> str | None:
+    """``value`` as the handle of an agent (lower case), None for none; ServiceError when it cannot name a service."""
+    if value is None or not value.strip():
+        return None
+    handle = value.strip().lstrip("@").lower()
+    if not _HANDLE.match(handle):
+        raise ServiceError(f"{value!r} is not an agent handle: use letters, digits, - and _")
+    return handle
+
+
+def label_of(agent: str | None = None) -> str:
+    """The LaunchAgent label: ``LABEL`` for the one node of a machine, ``LABEL.<agent>`` for an agent's node."""
+    return f"{LABEL}.{agent}" if agent else LABEL
+
+
+def unit_of(agent: str | None = None) -> str:
+    """The systemd user unit: ``UNIT`` for the one node of a machine, ``evo-agents-worker-<agent>.service``."""
+    return f"{UNIT.removesuffix('.service')}-{agent}.service" if agent else UNIT
 
 
 @dataclass(frozen=True)
@@ -84,6 +116,7 @@ class Spec:
     path: str
     home: Path
     kept: dict[str, str] = field(default_factory=dict)
+    agent: str | None = None
 
     @property
     def output(self) -> Path:
@@ -92,7 +125,8 @@ class Spec:
 
     @property
     def environment(self) -> dict[str, str]:
-        return {"PATH": self.path, HOME_VARIABLE: str(self.home), **kept_variables(self.kept)}
+        agent = {AGENT_VARIABLE: self.agent} if self.agent else {}
+        return {"PATH": self.path, HOME_VARIABLE: str(self.home), **agent, **kept_variables(self.kept)}
 
 
 @dataclass
@@ -141,15 +175,17 @@ def build_spec(
     argv0: str | None = None,
     path: str | None = None,
     kept: Mapping[str, str] | None = None,
+    agent: str | None = None,
 ) -> Spec:
-    """The service of ``home``; ``kept`` is the environment of the service installed before, whose EVO_WORKER_*
-    variables it keeps."""
+    """The service of ``home``, of the node of ``agent`` when given; ``kept`` is the environment of the service
+    installed before, whose EVO_WORKER_* variables it keeps."""
     home = home or WorkerHome()
     return Spec(
         program=(*executable(argv0), *RUN_ARGS),
         path=service_path(path),
         home=Path(os.path.abspath(home.root)),
         kept=kept_variables(kept),
+        agent=agent,
     )
 
 
@@ -165,7 +201,7 @@ def build_plist(spec: Spec) -> dict:
     # KeepAlive starts again any job that exits other than 0, so a daemon that is no longer a worker exits 0 here.
     environment = {**spec.environment, REVOKED_EXIT_VARIABLE: "0"}
     return {
-        "Label": LABEL,
+        "Label": label_of(spec.agent),
         "ProgramArguments": list(spec.program),
         "EnvironmentVariables": environment,
         "WorkingDirectory": str(spec.home),
@@ -211,7 +247,9 @@ def build_unit(spec: Spec) -> str:
     lines = [
         "# Written by `evo-agents worker service install`; install again to change it.",
         "[Unit]",
-        "Description=evo-agents worker: runs the plan steps a hub hands this machine",
+        "Description=evo-agents worker"
+        + (f" of agent {spec.agent}" if spec.agent else "")
+        + ": runs the plan steps a hub hands this machine",
         "Documentation=https://github.com/maycuatroi1/evo-agents/blob/main/docs/workers.md",
         "After=network-online.target",
         "",
@@ -245,9 +283,15 @@ class Manager:
     tool = ""
     service = ""
 
-    def __init__(self, run=None, sleep=None):
+    def __init__(self, run=None, sleep=None, agent: str | None = None):
         self._run = run or subprocess.run
         self._sleep = sleep or time.sleep
+        self.agent = agent
+        self.service = self.name_of(agent)
+
+    @staticmethod
+    def name_of(agent: str | None) -> str:
+        raise NotImplementedError
 
     def file(self) -> Path:
         raise NotImplementedError
@@ -326,16 +370,20 @@ class Launchd(Manager):
     tool = "launchctl"
     service = LABEL
 
+    @staticmethod
+    def name_of(agent: str | None) -> str:
+        return label_of(agent)
+
     @property
     def domain(self) -> str:
         return f"gui/{os.getuid()}"
 
     @property
     def target(self) -> str:
-        return f"{self.domain}/{LABEL}"
+        return f"{self.domain}/{self.service}"
 
     def file(self) -> Path:
-        return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+        return Path.home() / "Library" / "LaunchAgents" / f"{self.service}.plist"
 
     def render(self, spec: Spec) -> str:
         return plistlib.dumps(build_plist(spec)).decode("utf-8")
@@ -375,7 +423,7 @@ class Launchd(Manager):
         facts = self._facts()
         status = Status(
             manager=self.name,
-            name=LABEL,
+            name=self.service,
             file=str(self.file()),
             installed=self.file().exists(),
             loaded=facts is not None,
@@ -418,19 +466,23 @@ class Systemd(Manager):
     tool = "systemctl"
     service = UNIT
 
+    @staticmethod
+    def name_of(agent: str | None) -> str:
+        return unit_of(agent)
+
     def _base_args(self) -> list[str]:
         return [self.tool, "--user"]
 
     def file(self) -> Path:
         config = os.environ.get("XDG_CONFIG_HOME") or ""
         base = Path(config) if os.path.isabs(config) else Path.home() / ".config"
-        return base / "systemd" / "user" / UNIT
+        return base / "systemd" / "user" / self.service
 
     def render(self, spec: Spec) -> str:
         return build_unit(spec)
 
     def _facts(self) -> dict[str, str]:
-        proc = self._call("show", UNIT, f"--property={','.join(SYSTEMD_PROPERTIES)}")
+        proc = self._call("show", self.service, f"--property={','.join(SYSTEMD_PROPERTIES)}")
         facts = {}
         for line in proc.stdout.splitlines():
             key, sep, value = line.partition("=")
@@ -441,19 +493,19 @@ class Systemd(Manager):
     def start(self, spec: Spec) -> None:
         self._write(spec)
         self._call("daemon-reload")
-        self._call("enable", UNIT)
-        self._call("restart", UNIT, timeout=STOP_SECONDS + CALL_TIMEOUT)
+        self._call("enable", self.service)
+        self._call("restart", self.service, timeout=STOP_SECONDS + CALL_TIMEOUT)
 
     def stop(self) -> bool:
         path = self.file()
         existed = path.exists()
         loaded = self._facts().get("LoadState") == "loaded"
         if loaded:
-            self._call("disable", "--now", UNIT, timeout=STOP_SECONDS + CALL_TIMEOUT)
+            self._call("disable", "--now", self.service, timeout=STOP_SECONDS + CALL_TIMEOUT)
         path.unlink(missing_ok=True)
         if existed or loaded:
             self._call("daemon-reload")
-            self._call("reset-failed", UNIT, check=False)
+            self._call("reset-failed", self.service, check=False)
         return existed or loaded
 
     def status(self) -> Status:
@@ -463,7 +515,7 @@ class Systemd(Manager):
         restarts = facts.get("NRestarts", "")
         return Status(
             manager=self.name,
-            name=UNIT,
+            name=self.service,
             file=str(self.file()),
             installed=self.file().exists(),
             loaded=facts.get("LoadState") == "loaded",
@@ -510,12 +562,15 @@ class Systemd(Manager):
         return Path("/var/lib/systemd/linger", user).exists()
 
 
-def manager(platform: str | None = None, run=None, sleep=None) -> Manager:
+def manager(platform: str | None = None, run=None, sleep=None, agent: str | None = None) -> Manager:
+    """The service manager of this machine, for the node of ``agent`` (default: ``$EVO_WORKER_AGENT``, else the one
+    node of the machine)."""
     platform = sys.platform if platform is None else platform
+    agent = agent_handle(agent if agent is not None else os.environ.get(AGENT_VARIABLE))
     if platform == "darwin":
-        return Launchd(run, sleep)
+        return Launchd(run, sleep, agent)
     if platform.startswith("linux"):
-        return Systemd(run, sleep)
+        return Systemd(run, sleep, agent)
     raise ServiceError(
         f"evo-agents worker service needs launchd (macOS) or systemd (Linux), not {platform}; run "
         "`evo-agents worker run` under a supervisor of your own instead"
@@ -578,8 +633,13 @@ def _describe(status: Status) -> str:
 def _logs(service: Manager, home: Path) -> str:
     log = home / "worker.log"
     if isinstance(service, Systemd):
-        return f"{log}; before it opens: journalctl --user -u {UNIT}"
+        return f"{log}; before it opens: journalctl --user -u {service.service}"
     return f"{log}; before it opens: {home / 'service.log'}"
+
+
+def _manager_of(args) -> Manager:
+    """The manager of the node ``--agent`` names (default: ``$EVO_WORKER_AGENT``, else the one node of the machine)."""
+    return manager(agent=getattr(args, "agent", None))
 
 
 @_command
@@ -587,7 +647,13 @@ def cmd_install(args) -> int:
     from evo_agents.worker.cli import EXTRA_HINT
 
     home = WorkerHome()
-    service = manager()
+    service = _manager_of(args)
+    if service.agent and not os.environ.get(HOME_VARIABLE):
+        raise ServiceError(
+            f"the node of agent {service.agent} needs a state directory of its own: set {HOME_VARIABLE} (for "
+            f"example ~/.evo/worker-{service.agent}) for `worker join` and for this command, so it does not share "
+            "the directory of another node"
+        )
     home.load_config()  # a machine that is not a worker yet: the daemon would only fail and be started again
     home.load_token()
     missing = missing_extra()
@@ -598,7 +664,7 @@ def cmd_install(args) -> int:
         )
         return EXIT_USAGE
     _refuse_foreign_daemon(home, service)
-    spec = build_spec(home, kept=service.installed_environment())
+    spec = build_spec(home, kept=service.installed_environment(), agent=service.agent)
     home.ensure()
     status = service.install(spec)
     found = runtimes_on(spec.path)
@@ -639,7 +705,7 @@ def cmd_install(args) -> int:
 
 @_command
 def cmd_uninstall(args) -> int:
-    service = manager()
+    service = _manager_of(args)
     if service.stop():
         print(f"Uninstalled {service.service} ({service.name}): the daemon is stopped and {service.file()} deleted.")
     else:
@@ -649,7 +715,7 @@ def cmd_uninstall(args) -> int:
 
 @_command
 def cmd_status(args) -> int:
-    service = manager()
+    service = _manager_of(args)
     status = service.status()
     home = service.installed_home() or Path(os.path.abspath(WorkerHome().root))
     if args.json:
@@ -680,14 +746,21 @@ def register(wsub) -> None:
         help="keep the daemon running in the background: a LaunchAgent on macOS, a systemd user unit on Linux",
     )
     ssub = service.add_subparsers(dest="service_command", required=True)
+    agent_help = (
+        "the node of this agent (handle): a service of its own, next to the nodes of other agents; needs "
+        f"{HOME_VARIABLE} for its state directory. Default: ${AGENT_VARIABLE}, else the one node of the machine"
+    )
     install = ssub.add_parser(
         "install",
         help="run the daemon now and at each login, again after it exits with an error, with PATH as it is now; "
         "installing again keeps the EVO_WORKER_* variables the installed service sets",
     )
+    install.add_argument("--agent", metavar="HANDLE", help=agent_help)
     install.set_defaults(func=cmd_install)
     uninstall = ssub.add_parser("uninstall", help="stop the daemon and remove the service")
+    uninstall.add_argument("--agent", metavar="HANDLE", help=agent_help)
     uninstall.set_defaults(func=cmd_uninstall)
     status = ssub.add_parser("status", help="whether the service is installed and the daemon runs")
     status.add_argument("--json", action="store_true", help="machine-readable output")
+    status.add_argument("--agent", metavar="HANDLE", help=agent_help)
     status.set_defaults(func=cmd_status)

@@ -1,7 +1,8 @@
 """``evo-agents hub curator``: the night shift of a project, as its charter sets it (``evo_agents.hub.curator``).
 
 ``curator charter show`` prints the charter at its newest revision, or ``--revision N`` (GET
-/v1/projects/{p}/curator/charter); ``--json`` prints it whole, with ``auto_merge`` and ``judge.runtime`` among its keys.
+/v1/projects/{p}/curator/charter); ``--json`` prints it whole, with ``planned_tiers``, ``auto_merge``,
+``merge_without_ci``, ``answer_by`` and ``judge.runtime`` among its keys.
 ``curator charter set FILE`` writes a new revision from a YAML or JSON file (``-`` reads stdin), which only an admin of
 the project may (PUT .../curator/charter); the keys ``show --json`` adds to the body are left out, so what was shown can
 be edited and written back. ``curator charter history`` lists every revision.
@@ -16,13 +17,14 @@ cancels the runs they queued that are still queued; within a minute nothing of t
 with its tier's reasons, its evidence, its draft plan and the change accepting it made, with why that change waits;
 ``curator proposal accept|reject|defer ID`` answers it, which only an admin of the project may (POST
 .../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
-Accepting a proposal of tier 0 to 2 makes it the Curator's plan, which the night shift builds; one of tier 3 builds
-nothing. ``curator proposal plan ID`` makes an accepted proposal of tier 0 to 2 that has no change yet the Curator's
-plan, as accepting it does now, which only an admin of the project may (POST .../curator/proposals/{id}/plan); it
-prints the change. ``curator findings`` lists what the review runs found (GET .../curator/findings), and ``curator
-figures`` prints the figures of the latest night, or of ``--night`` (GET .../curator/figures).
+Accepting a proposal of a tier the charter's ``planned_tiers`` names (0 to 2 unless it names others, 3 included) makes
+it the Curator's plan, which the night shift builds; one of another tier builds nothing. ``curator proposal plan ID``
+makes an accepted proposal of such a tier that has no change yet the Curator's plan, as accepting it does now, which
+only an admin of the project may (POST .../curator/proposals/{id}/plan); it prints the change. ``curator findings``
+lists what the review runs found (GET .../curator/findings), and ``curator figures`` prints the figures of the latest
+night, or of ``--night`` (GET .../curator/figures).
 
-``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
+``curator changes`` lists what the accepted proposals the charter plans became: the Curator's plan, its branch, its pull
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator change close ID --reason
 TEXT`` closes a change left open with no pull request, such as one whose proposal named no repo, which only an admin of
 the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|show``
@@ -30,6 +32,8 @@ the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|sh
 (``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
 ``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember, and
 ``curator probe list|show|add|retire|report`` (``evo_agents.hub.probe_cli``) the probes of proposals and changes. ``curator
+finding|propose`` (``evo_agents.hub.curator_session_cli``) record what a member's own session finds and proposes,
+as a review run does. ``curator
 protection`` lists the project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check
 REPO`` checks one now with the Curator's App, which only an admin of the project may (POST
 .../curator/protection/{repo}/check): a Builder runs on a repo of GitHub only once its default branch keeps the
@@ -52,6 +56,7 @@ from evo_agents.hub.cli_client import _client_command, _print_json, _project_pat
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money
+from evo_agents.hub.curator_session_cli import register_session
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
 from evo_agents.hub.plan_cli import _project
@@ -65,8 +70,6 @@ from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, 
 CHARTER_BODY_KEYS = (
     "goals",
     "window",
-    "worker",
-    "pool",
     "night_budget_usd",
     "run_budget_usd",
     "run_max_turns",
@@ -75,7 +78,10 @@ CHARTER_BODY_KEYS = (
     "night_plans",
     "max_decisions_per_day",
     "brief_at",
+    "planned_tiers",
     "auto_merge",
+    "merge_without_ci",
+    "answer_by",
     "protected_paths",
     "circuit_breaker",
     "outcome_days",
@@ -90,7 +96,7 @@ CHARTER_BODY_KEYS = (
     "env_secrets",
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
-REVISION_KEYS = ("revision", "updated_by", "updated_at", "worker", "worker_id", "pool", "pool_id")
+REVISION_KEYS = ("revision", "updated_by", "updated_at")
 STATUS_KEYS = (
     "project",
     "charter",
@@ -191,7 +197,7 @@ def _read_charter(source: str) -> dict:
     except yaml.YAMLError as exc:
         raise HubError(f"{source} is neither YAML nor JSON: {exc}") from None
     if not isinstance(data, dict):
-        raise HubError(f"{source} holds no mapping: a charter is one, with window, worker and night_budget_usd")
+        raise HubError(f"{source} holds no mapping: a charter is one, with window and night_budget_usd")
     return {key: value for key, value in data.items() if key not in CHARTER_META}
 
 
@@ -220,9 +226,7 @@ def _history(charter: dict) -> str:
     return f"facets of the sessions and runs by {model}, at most {money(cap)} a night"
 
 
-def _on_duty(item: dict, key: str = "worker") -> str:
-    """``worker <name>`` or ``pool <name>``: where a charter's or a schedule's night runs go."""
-    return f"pool {item['pool']}" if item.get("pool") else f"worker {item[key]}"
+ON_DUTY = "the pool of the default agent"  # where the night shift's runs go: the hub places them
 
 
 def _print_charter(charter: dict) -> None:
@@ -234,12 +238,15 @@ def _print_charter(charter: dict) -> None:
     run_cap = money(charter["run_budget_usd"]) if charter["run_budget_usd"] is not None else "what the night has left"
     lines = [
         ("window", f"{window['start']} to {window['end']}, {window['timezone']}"),
-        ("on duty", f"{_on_duty(charter)}, runs dispatched as {charter['schedule_owner']}"),
+        ("on duty", f"{ON_DUTY}, runs dispatched as {charter['schedule_owner']}"),
         ("night", f"{money(charter['night_budget_usd'])}, at most {charter['max_runs_per_night']} runs"),
         ("each run", f"{run_cap}, {charter['run_max_turns']} turns, {charter['run_minutes']} minutes of agent time"),
         ("plans", ", ".join(charter["night_plans"]) or "none"),
         ("decisions", f"at most {charter['max_decisions_per_day']} a day, brief at {charter['brief_at']}"),
+        ("planned", ", ".join(f"tier {tier}" for tier in charter.get("planned_tiers", [0, 1, 2])) or "none"),
         ("auto merge", ", ".join(f"tier {tier}" for tier in charter["auto_merge"]) or "none"),
+        ("without CI", "merges once the Judge passed" if charter.get("merge_without_ci") else "no: CI must be green"),
+        ("answers", "the project's agent, in a thread" if charter.get("answer_by") == "agent" else "the admins"),
         ("protected", ", ".join(charter["protected_paths"]) or "none"),
         ("breaker", f"{charter['circuit_breaker']['max_failed_in_a_row']} failed in a row"),
         ("outcome", f"figures counted again {charter.get('outcome_days', 7)} days after a merge"),
@@ -285,7 +292,7 @@ def cmd_charter_set(args) -> int:
         return 0
     print(f"Charter of {charter['project']} is at revision {charter['revision']}.")
     print(
-        f"The night shift runs {', '.join(charter['night_plans']) or 'no plan'} on {_on_duty(charter)} as "
+        f"The night shift runs {', '.join(charter['night_plans']) or 'no plan'} on {ON_DUTY} as "
         f"{charter['schedule_owner']}, {charter['window']['start']} to {charter['window']['end']} "
         f"{charter['window']['timezone']}."
     )
@@ -300,9 +307,9 @@ def cmd_charter_history(args) -> int:
     if args.json:
         _print_json(revisions)
         return 0
-    rows = [(row["revision"], row["updated_by"], _when(row["updated_at"]), _on_duty(row)) for row in revisions]
+    rows = [(row["revision"], row["updated_by"], _when(row["updated_at"])) for row in revisions]
     if rows:
-        _table(("REVISION", "BY", "AT (UTC)", "ON DUTY"), rows)
+        _table(("REVISION", "BY", "AT (UTC)"), rows)
     print(f"{len(rows)} revision(s) of the charter of {project}")
     return 0
 
@@ -319,7 +326,7 @@ def _print_status(status: dict) -> None:
     for schedule in status["schedules"]:
         by = schedule["paused_by"] or "the hub"
         paused = f", paused by {by} at {_when(schedule['paused_at'])} UTC" if schedule["paused_at"] else ""
-        print(f"  {schedule['kind']}: {_on_duty(schedule)}, runs dispatched as {schedule['owner']}{paused}")
+        print(f"  {schedule['kind']}: runs dispatched as {schedule['owner']}{paused}")
         if schedule.get("pause_reason"):
             print(f"    {schedule['pause_reason']}")
     night = status["night"]
@@ -789,5 +796,12 @@ def register_curator(hsub) -> None:
     json_option(close, returns_object(*CHANGE_KEYS, schema="Change"))
     close.set_defaults(func=cmd_change_close)
 
-    for register in (_register_protection, register_replay, register_history, register_playbook, register_probe):
+    for register in (
+        _register_protection,
+        register_replay,
+        register_history,
+        register_playbook,
+        register_probe,
+        register_session,
+    ):
         register(csub, with_project)

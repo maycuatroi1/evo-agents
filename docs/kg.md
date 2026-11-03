@@ -4,7 +4,7 @@ How the graph of a project answers an agent: what `kg_impact` follows and covers
 tool is written, who sees an element through the audience of its label, how `kg_search` finds nodes, what the note
 after a grep adds, how plans of the hub, commits and pull requests enter the graph, which commit each git source read
 and when a sync or a build does anything, how long this machine keeps old data, and how `kg eval` measures retrieval.
-The README shows how to build a graph and call the tools.
+[Graph setup](kg-setup.md) covers building a graph and calling the tools.
 
 ## What kg_impact follows
 
@@ -50,7 +50,7 @@ package under that name. Even two sources of the same repo may read different re
 lookup scopes. This restriction does not change explicit bindings or references in documents.
 
 Declare a cross-repo dependency with a qualified `from`, `rel: depends_on` and `to` in `bindings/*.yaml` (the
-[README example](../README.md#trace-a-schema-change-across-repos)). The binding enters the graph as `declared`;
+[schema example](kg-setup.md#trace-a-schema-change-across-repos)). The binding enters the graph as `declared`;
 `kg_impact` follows it across sources. An endpoint that does not resolve fails the build instead of dropping the
 dependency silently. Declaring a relationship asserts that it exists; the graph does not verify runtime behavior
 or schema compatibility for you.
@@ -188,10 +188,10 @@ The text is what an agent's model reads, so it is kept short and readable:
   git source on a forge, `kg_node` gives the link at the commit the source read (`.../blob/<sha>/path`), so a span's
   lines match the file it opens; the corpus keeps the link by branch, which does not change an item's hash on every
   commit (`evo_agents/kg/freshness.py`).
-- `kg_status` names, per git source, the commit read and how far behind the remote's default branch it is:
-  `read    app 1550c7a of HEAD, 3 behind origin/main`. On a machine with the checkout the count is taken again from
-  the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout, shows the count of the
-  machine that synced the source.
+- `kg_status` names, per git source, the commit read, when, and how far behind the remote's default branch it is:
+  `read    app 1550c7a of HEAD at 2026-10-30T13:54:33Z, 3 behind origin/main`. On a machine with the checkout the
+  count is taken again from the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout,
+  shows the count of the machine that synced the source, as of the read: `..., 0 behind origin/main then`.
 - The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
   a node with another label names it on its line, and a label with an audience ends with it
   (`internal,U audience chat:5 grant:demo:internal`). `kg_search` prints the status most of its results share once
@@ -271,12 +271,28 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - That score is then weighed by what the node is (`search.weight`). A word of the query that reads as a name (it holds
   `_`, `.`, `/` or `:`, mixes letters and digits, is camelCase or all capitals: `Store.search`, `HUB_DEGREE`) counts
   1.5 for the node it names (its name, its path or the end of its id), and such a node that no text way found ranks as
-  the best of them. Background counts 0.6 unless the query asks for it: tests (`tests/`, `test_*.py`, `*.test.ts`),
+  the best of them. A file name or its stem (`store.py`, `kg_health_eval`) names the file itself, found through the
+  path column of the index and ranked as the best text match, not the symbols of the file. Background counts 0.6
+  unless the query asks for it: tests (`tests/`, `test_*.py`, `*.test.ts`),
   migrations, fixtures and golden files, generated JSON (`bundle-budget.json`, catalogs, baselines), closed plans
   (`plans/completed/`, a plan whose steps are all done, and its steps), reports and `docs/history.md`. Each kind is
   lifted by its own words only (`test`, `migration`, `fixture`, `golden`, `completed`, `đã đóng`, `report`,
   `history`, `lịch sử`, ...; `BACKGROUND_WORDS`): a closing step's title that says `đóng` asks for no history. On the
-  tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709.
+  tune part of the evo-agents questions this raised hit@5 of `kg_search` from 0.633 to 0.709. A file known by its path
+  alone (`.png`, `.svg`, `.drawio`, a video) counts 0.25 (`ASSET_WEIGHT`), since a slug in its path outranks the page
+  that holds the words, unless the query asks for an image (`image`, `screenshot`, `png`, `sơ đồ`, `hình ảnh`, ...).
+- Words inside a word: `node_tri` (FTS5, `trigram` tokenizer) holds the name and path of each node's own row of
+  `node_fts` again, lower case and without accents, and no passage and no row with an audience. The nodes whose name
+  or path holds every word of three letters or more of the query as a substring (`ops` and `dashboard` in
+  `docs/lumenops-dashboard.md`, where `ops` is no word of its own) are ranked by BM25 times the prior and the weight
+  above, and fused with the ranking by words by reciprocal rank fusion at weight 0.5 (`TRIGRAM_WEIGHT`, k 60).
+  Background the query does not ask for (an image, a test, a closed plan) is left out of that ranking, since a fused
+  rank would not keep the weight that holds it back among words. On the evo-agents questions hit@5 went from 0.7317
+  to 0.7350 on tune (600) and from 0.6783 to 0.6826 on holdout (230), MRR from 0.4603 to 0.4612 and from 0.4403 to
+  0.4419. Indexing the bodies too, or matching any word (OR), lowered hit@5 on tune. The table adds about 5% to
+  `graph.sqlite` (28 MB on evo-agents' 526 MB). A graph built before it came, or by an SQLite without the trigram
+  tokenizer (before 3.34), has no such rows and searches by words alone; the next build that writes the index fills
+  it whole, in about a second for 60,000 to 85,000 nodes, and the builds after it write only the rows that changed.
 - A project whose semantic mode is `on` also ranks by meaning: the vectors of a local embedding model, fused with the
   ranking by words by reciprocal rank fusion. Off by default, and a graph without vectors searches as above
   ([docs/kg-semantic.md](kg-semantic.md)).
@@ -302,9 +318,10 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - Each result `kg_search` found by its words that holds only some of the query's words says how many its name, path
   or body holds whole (` words=2/3` on its line; `matched` in the structured result counts them all), and a query of
   two words or more whose results hold none of them all says so under the header (`no result holds all N words of the
-  query`) and, when the call names no `limit`, gets at most 5 results (`WEAK_LIMIT`): the reader can tell a question
-  the graph does not answer from one it does, instead of opening one file after another. A caller that names a
-  `limit` gets that many, weak or not: a long bug report rarely has a node holding all its words. A node listed
+  query`): the reader can tell a question the graph does not answer from one it does, instead of opening one file
+  after another. Such a query still gets `limit` results: a question in plain words that chains facts finds each fact
+  in a node holding only some of its words, and the 5-result cap it had until 0.53.3 kept recall@10 at recall@5 on a
+  MuSiQue bench (200 answerable questions: 0.468 to 0.541 once lifted, at 94 more tokens a search). A node listed
   because a hit mentions it gets no count. A document, named by its path, is also quoted: the passage of its body
   where the query's words gather, about 16 words, on the line below it (`    > ...`). A section is named by its
   heading and is not quoted. The count and the passage come from the same index rows the search read
@@ -312,6 +329,21 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - The text shows the first 5 results whole (`FULL_LINES`); a result past them, a mentioned one too, shows its id
   alone (`[repo:path]`), with no count and no passage: an agent reads the first few, and kg_node gives the rest. The
   structured result keeps every node whole.
+- `repo` keeps the results to one repo: a source of the project or the git repo it reads (`django` or
+  `northwind-django`), any case. The ranking reads 12 candidates per result asked instead of 4, since most are of
+  other repos, and drops what a hit mentions in another repo. Nothing matched says so and points at `kg_status`.
+- Where a name is written in code: the text of code and markup files (templates and stylesheets: `.html`, `.css`,
+  `.scss`, `.sass`, `.less`, read since this index came) is not in `node_fts` but in `code_fts`, whose tokenizer keeps
+  `_`, `-` and `$` inside a word (`LUMEN_CARDS_ENABLED`, `app-course-card` and `$route` are one word each).
+  `kg_search` looks up there every word of a query of at most 4 words, or only the words of a longer one written like
+  identifiers (`search.code_words`: a `_`, `-` or `$` between characters, or a camelCase hump), and puts the files that
+  hold the most of them after its first 2 results (`CODE_LEAD`), each with the first 3 lines that hold them
+  (` line 5 code`; `code` in the structured result). A file the ranking listed already keeps its place and shows its
+  lines too. A word more than 50 files hold (`CODE_POOL`) is left out: a brand or a framework names a kind of file,
+  not the one asked for. This answers what agents grep for: where a setting, a selector or a class is used, which no
+  resolved edge of the graph says. On 412 searches agents of a 16-repo harness ran with grep, the file they opened
+  next was in the first five 24.5% of the time, 32.5% with the repo given, against 19.9% before and grep's 30.3%;
+  the harness's plan-step questions kept their 71.0%, and evo-agents' tune split went from 27.7% to 27.8%.
 
 What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
 `session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:
@@ -321,6 +353,9 @@ step (what, why, note) or a seam (notes), not their verify commands nor their ev
 symbol or module, the comment right above a definition in another language or at the top of its file, and a
 requirement's code. `đ` is indexed and searched as `d`. URIs and repo names are not indexed. A body longer than
 100,000 characters is cut there, and the build counts the cut ones in its coverage (`search.cut`, with samples).
+`code_fts` holds the whole text of each code or markup file without an audience, and `code_fts_rows` its row id and
+digest, written like `node_fts`: only the files whose text changed. A graph built before it came has no such table,
+and `kg_search` reads it as holding nothing.
 
 The index holds the latest build only. A build deletes and inserts only the rows whose content changed:
 `node_fts_rows` keeps each node's row id and digest, and an index without it is written again whole. The build's
@@ -433,10 +468,11 @@ The graph is a snapshot of what its sources held when they synced. It says which
 when a source read something new.
 
 **The commit read.** A git source ends each run with a cursor that names what it read (`evo_agents/kg/freshness.py`):
-the commit, the ref, the remote's default branch it compares with (`base`: `origin/<default_branch>` of harness.yaml,
+the commit, the ref, when it was read (`at`, UTC), the remote's default branch it compares with (`base`: `origin/<default_branch>` of harness.yaml,
 else the clone's `origin/HEAD`), how many commits of that branch the commit read lacks (`behind`), and, for an origin
 on a forge, a link to the commit. `behind` is counted from the clone's remote-tracking branch without fetching; a
-clone without that branch has no `base` and no `behind`. A build copies the read into the source's coverage, so the
+clone without that branch has no `base` and no `behind`. The count is true at `at` only: a sync that finds the ref
+still at the commit read keeps no log, so nothing newer reaches the hub. A build copies the read into the source's coverage, so the
 graph says what it holds wherever it is read:
 
 - `kg status` and `kg_status` name, per git source, the commit read and how far behind it is. The SessionStart note
@@ -643,7 +679,9 @@ decisions` lists and takes them (`docs/hub.md`, Memories, skills and knowledge g
 `evo-agents kg eval questions.jsonl` asks `kg_search` and `kg_context` each question of a set as an agent would,
 greps the same checkouts for comparison, and prints Recall@1 and @5, MRR, the share of empty answers, answers per
 1,000 tokens of output and the time per call, by question type and method. `kg eval-questions` turns the done steps
-of the hub's plans into questions whose answers are the files their commits changed. The command ships without
+of the hub's plans into questions whose answers are the files their commits changed, and with `--from-sessions` the
+code searches agents ran in the harness's sessions into questions whose answers are the files they opened next. The
+command ships without
 questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
 tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.
 

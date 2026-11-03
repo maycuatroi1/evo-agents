@@ -3,8 +3,9 @@ criterion a6 of plan loop-engine names it, on the hub with Postgres.
 
 Each kind of work item goes to a run kind the hub has: a brainstorm to a task run of @strategist, a use case to a task
 run of @ba whose version ``srs__propose`` writes as the goal's owner, a build to an author run of its frame task in
-Loop mode on worker loop.worker in its owner's name (none while no project of the owner's lists an origin for the
-harness: the worker's preflight would fail it), and a deliver to a plan run of the plan that author run wrote.
+Loop mode on the pool of the project's default agent, in the name of the owner of its node (none while no project of
+the owner's lists an origin for the harness: the worker's preflight would fail it), and a deliver to a plan run of the
+plan that author run wrote, which a plan's worker_labels narrow to the nodes that hold them.
 The Loop makes no task: an approval leaves only the tasks of the plugin srs's auto_tasks, however often it is read. A
 claim validated and a test card past its deadline make nothing of the Loop. The chain is ``tests.hub.test_loop_tick``'s:
 goal G-1 of owner drives the canvas of Northwind Pantry, whose claim CL-1 links use case UC ORD-1 of demo-shop.
@@ -49,6 +50,7 @@ from tests.hub.test_ba_agent import (  # noqa: F401 (members is a fixture)
     submitted,
     tool,
     version,
+    with_accounts,
 )
 from tests.hub.test_ba_agent import item as srs_item
 from tests.hub.test_chat_runs import chat_worker
@@ -78,6 +80,7 @@ app_key = credentials_api.app_key  # a fixture
 TASKS = f"/v1/x/tasks/{PROJECT}"
 PLAN = "pantry-reorder"
 NEW_CASE = "UC ORD-4"
+POOL = f"pool=agent-{PROJECT}"  # the selector of the Loop's author and plan runs: the default agent's pool
 
 
 def ticked(client, db) -> dict:
@@ -138,11 +141,12 @@ def author_notices(db) -> int:
 
 
 def frame_ready(client, hub, db, tmp_path) -> tuple[dict, int, int]:
-    """A Loop that is on with worker studio of owner as loop.worker, and the frame task of UC ORD-1, with a child
-    task, ready for its build: (studio, the frame task's id, its number)."""
+    """A Loop that is on, worker studio of owner a node of the pool of the project's default agent, and the frame task
+    of UC ORD-1, with a child task, ready for its build: (studio, the frame task's id, its number)."""
     publish_skill(client, hub, tmp_path, "The author mode.")
     studio = author_worker(client, hub["owner"], "studio")
-    policy(client, hub, {"enabled": True, "worker": "studio"})
+    with_accounts(client, PROJECT, OWNER)  # the default agent's runs are claimed while its account pool has one
+    policy(client, hub, {"enabled": True})
     edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
     push_baseline(client, hub, "CL-1")
     ticked(client, db)  # @strategist and @ba are off: their work items wait (type_refused)
@@ -205,7 +209,7 @@ def test_loop_dispatch_hands_a_brainstorm_to_strategist_and_a_use_case_to_ba_who
     assert "Corner shops reorder weekly" in run["request"], "the claim's test card"
 
     # its agent proposes version 2 with a new use case: written as the goal's owner, drafted by the run
-    lumen = chat_worker(client, hub["other"], "lumen-box", slots=3)
+    lumen = chat_worker(client, hub["other"], "lumen-box", slots=3, pool="ba")
     assert set_plugins(client, hub["other"], lumen, ["srs"]).status_code == 200
     spec = running(client, lumen, "task")
     assert spec["id"] == case["run_id"]
@@ -278,15 +282,16 @@ def test_loop_dispatch_a_frame_task_gets_one_author_run_in_loop_mode_then_a_plan
     harness_listed(client, hub)
     studio, frame_id, frame = frame_ready(client, hub, hub_db, tmp_path)
 
-    # the frame task ready: one author run, on studio in its owner's name, with the caps of loop.caps.author
+    # the frame task ready: one author run, on the pool in the name of studio's owner, with the caps of loop.caps.author
     assert ticked(client, hub_db)["dispatched"] == 1
     build = item(hub_db, f"build:{FRAME}")
     assert (build["state"], build["owner"], build["attempts"], build["task_id"]) == ("running", OWNER, 1, frame_id)
     run = run_of(hub_db, build["run_id"])
-    assert (run["kind"], run["owner"], run["pinned_worker_id"], run["dispatched_via"]) == (
+    assert (run["kind"], run["owner"], run["pinned_worker_id"], run["selector"], run["dispatched_via"]) == (
         "author",
         OWNER,
-        studio["id"],
+        None,
+        [POOL],
         "machine",
     )
     assert (run["budget"], run["timeout_s"]) == ({"max_usd": None, "max_turns": 200, "max_seconds": 3600}, 3900)
@@ -340,11 +345,11 @@ def test_loop_dispatch_a_frame_task_gets_one_author_run_in_loop_mode_then_a_plan
     deliver = item(hub_db, f"deliver:{PLAN}")
     plan_run = run_of(hub_db, deliver["run_id"])
     assert (deliver["state"], deliver["plan_id"], deliver["task_id"]) == ("running", PLAN, frame_id)
-    assert (plan_run["kind"], plan_run["plan_id"], plan_run["owner"], plan_run["pinned_worker_id"]) == (
+    assert (plan_run["kind"], plan_run["plan_id"], plan_run["owner"], plan_run["selector"]) == (
         "plan",
         PLAN,
         OWNER,
-        studio["id"],
+        [POOL],
     )
     assert plan_run["repos"] == [{"repo": "evo-agents", "branch": "loop/pantry-reorder"}]
     assert plan_run["budget"] == {"max_usd": None, "max_turns": 600, "max_seconds": 14400}
@@ -377,20 +382,17 @@ def test_loop_dispatch_hands_out_no_author_run_while_no_project_lists_an_origin_
     assert (run["kind"], run["repos"][0]["repo"]) == ("author", HARNESS)
 
 
-def test_loop_dispatch_loop_labels_replace_the_pinned_worker_and_a_plans_worker_labels_narrow_its_plan_run(
+def test_loop_dispatch_runs_carry_the_pools_selector_and_a_plans_worker_labels_narrow_its_plan_run(
     client, hub, hub_db, tmp_path
 ):
     harness_listed(client, hub)
     studio, frame_id, frame = frame_ready(client, hub, hub_db, tmp_path)
-    patched = client.patch(f"/v1/workers/{studio['id']}", json={"labels": ["gpu"]}, headers=hub["owner"])
-    assert patched.status_code == 200, patched.text
-    policy(client, hub, {"enabled": True, "labels": ["gpu"]})  # no loop.worker: the labels pick the worker
 
-    # the author run pins no worker: it carries the selector, and goes in the name of the owner of the worker found
+    # the author run pins no worker: it carries the pool's selector, and goes in the name of the owner of the node found
     assert ticked(client, hub_db)["dispatched"] == 1
     build = item(hub_db, f"build:{FRAME}")
     run = run_of(hub_db, build["run_id"])
-    assert (run["kind"], run["owner"], run["pinned_worker_id"], run["selector"]) == ("author", OWNER, None, ["gpu"])
+    assert (run["kind"], run["owner"], run["pinned_worker_id"], run["selector"]) == ("author", OWNER, None, [POOL])
     moved(client, studio, claim(client, studio)["id"], "running")
     body = {**plan_body(), "worker_labels": ["fast"]}
     assert put(client, studio, run["id"], body).status_code == 200
@@ -398,36 +400,19 @@ def test_loop_dispatch_loop_labels_replace_the_pinned_worker_and_a_plans_worker_
     moved(client, studio, run["id"], "waiting")
     moved(client, studio, run["id"], "running", "verifying", "done", summary=f"Wrote plan {PLAN}.")
 
-    # the plan asks for fast, which no worker holds: the deliver waits on worker
+    # the plan asks for fast, which no node of the pool holds: the deliver waits on worker
     ticked(client, hub_db)
     deliver = item(hub_db, f"deliver:{PLAN}")
     assert (deliver["state"], deliver["reason"], deliver["run_id"]) == ("queued", "worker", None)
     why = waits(hub_db, f"deliver:{PLAN}")[-1][2]["why"]
-    assert "gpu" in why and "fast" in why
+    assert POOL in why and "fast" in why
 
-    # a worker that holds both takes it, as the run's selector says
-    patched = client.patch(f"/v1/workers/{studio['id']}", json={"labels": ["gpu", "fast"]}, headers=hub["owner"])
+    # a node that holds it takes it, as the run's selector says
+    patched = client.patch(f"/v1/workers/{studio['id']}", json={"labels": ["fast"]}, headers=hub["owner"])
     assert patched.status_code == 200, patched.text
     assert ticked(client, hub_db)["dispatched"] == 1
     plan_run = run_of(hub_db, item(hub_db, f"deliver:{PLAN}")["run_id"])
-    assert (plan_run["kind"], plan_run["pinned_worker_id"], plan_run["selector"]) == ("plan", None, ["gpu", "fast"])
-
-
-def test_loop_dispatch_a_plans_worker_labels_stop_the_pinned_worker_that_lacks_them(client, hub, hub_db, tmp_path):
-    harness_listed(client, hub)
-    studio, frame_id, frame = frame_ready(client, hub, hub_db, tmp_path)  # loop.worker studio, no labels
-    assert ticked(client, hub_db)["dispatched"] == 1
-    run = run_of(hub_db, item(hub_db, f"build:{FRAME}")["run_id"])
-    assert (run["pinned_worker_id"], run["selector"]) == (studio["id"], [])
-    moved(client, studio, claim(client, studio)["id"], "running")
-    assert put(client, studio, run["id"], {**plan_body(), "worker_labels": ["fast"]}).status_code == 200
-    said(client, studio, run["id"], f"Put plan {PLAN} at revision 1.")
-    moved(client, studio, run["id"], "waiting")
-    moved(client, studio, run["id"], "running", "verifying", "done", summary=f"Wrote plan {PLAN}.")
-    ticked(client, hub_db)
-    deliver = item(hub_db, f"deliver:{PLAN}")
-    assert (deliver["state"], deliver["reason"]) == ("queued", "worker")
-    assert "lacks the label fast" in waits(hub_db, f"deliver:{PLAN}")[-1][2]["why"]
+    assert (plan_run["kind"], plan_run["pinned_worker_id"], plan_run["selector"]) == ("plan", None, [POOL, "fast"])
 
 
 def test_loop_dispatch_a_claim_validated_makes_no_build_and_a_card_past_its_deadline_no_decision(client, hub, hub_db):
@@ -499,10 +484,11 @@ def test_loop_dispatch_rules2_hands_out_a_problem_to_strategist_and_a_claim_to_a
     harness_listed(client, hub)
     publish_skill(client, hub, tmp_path, "The author mode.")
     studio = author_worker(client, hub["owner"], "studio")
+    with_accounts(client, PROJECT, OWNER)  # the default agent's runs are claimed while its account pool has one
     enable_strategist(client, hub)
     answers_shortage(client, hub, hub_db)
     edit(client, hub["chi"], {"cell": "problem", "text": "Shops cannot tell what sold out", "problems": ["P-1"]})
-    policy(client, hub, {"enabled": True, "worker": "studio", "use_cases": "never"})
+    policy(client, hub, {"enabled": True, "use_cases": "never"})
 
     # the brainstorm of a goal that answers a problem: the problem, what hurts, its metric and the claims that link it
     assert ticked(client, hub_db)["dispatched"] == 1
@@ -541,7 +527,7 @@ def test_loop_dispatch_rules2_hands_out_a_problem_to_strategist_and_a_claim_to_a
     # CL-1, a solution, in testing: an author run of a plan for the claim, in Loop mode, its request the problem
     build = item(hub_db, f"build:claim:{SLUG}:CL-1:b1")
     author_run = run_of(hub_db, build["run_id"])
-    assert (author_run["kind"], author_run["owner"], author_run["pinned_worker_id"]) == ("author", OWNER, studio["id"])
+    assert (author_run["kind"], author_run["owner"], author_run["selector"]) == ("author", OWNER, [POOL])
     assert "the Loop's build of claim CL-1" in author_run["title"]
     for said_ in (
         f"Write the execution plan that builds what claim CL-1 of canvas {SLUG} proposes, in project {PROJECT}",

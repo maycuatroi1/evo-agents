@@ -144,6 +144,8 @@ CANDIDATES = {
     ],
     "cause_inferred": False,
     "triage": None,
+    "pools": [],
+    "diagnosis": None,
 }
 
 
@@ -637,6 +639,7 @@ if pg.DSN:
     import httpx
 
     from evo_agents.hub.server.app import create_app
+    from tests.hub.account_pool_setup import give_account_pool
     from tests.hub.test_decisions import ANSWER_TEXT, OPTIONS, QUESTION, asked
     from tests.hub.test_plan_runs import PLAN as FLEET
     from tests.hub.test_plan_runs import REPOS, dispatched_plan, fleet_worker, push
@@ -660,11 +663,13 @@ if pg.DSN:
 
 @pytest.fixture
 def hub(hub_db, tmp_path, github):
-    """The hub under uvicorn with project evo-agents and plan rollout (``tests.hub.test_run_stream.members``), and a
-    home signed in to it for owner, someone-else and reader."""
+    """The hub under uvicorn with project evo-agents and plan rollout (``tests.hub.test_run_stream.members``), the
+    project's default agent with an account pool, which its runs need, and a home signed in to it for owner,
+    someone-else and reader."""
     app = create_app(live.hub_config(hub_db, tmp_path, github))
     with serving(app) as url, httpx.Client(base_url=url, timeout=10) as client:
         headers = members(client, github)
+        give_account_pool(hub_db, PROJECT, PROJECT, OWNER)
         homes = {
             who: write_credentials(tmp_path / who, url, login, headers[who]["Authorization"].removeprefix("Bearer "))
             for who, login in (("owner", OWNER), ("other", OTHER), ("reader", READER))
@@ -677,9 +682,33 @@ def runs_of(hub, monkeypatch, capsys, who: str, *args: str) -> SimpleNamespace:
 
 
 @needs_pg
+def test_a_dispatch_no_worker_can_take_warns_and_its_candidates_say_why(hub, monkeypatch, capsys):
+    from sqlalchemy import delete
+
+    from evo_agents.hub import tables
+
+    worker = add_worker(hub.client, hub.headers["owner"], "laptop")
+    served = tables.worker_projects
+    live.sql(hub.db, delete(served).where(served.c.worker_id == worker["id"]))
+    printed = ok(runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "2"))
+    run_id = int(printed.out.split("#")[1].split(":")[0])
+    fix = f"`evo-agents worker projects --worker laptop --add {PROJECT}`"
+    assert printed.err == (
+        f"Warning: run #{run_id} is queued, but no worker serves project {PROJECT}: {fix}. More: `evo-agents hub run "
+        f"candidates {run_id} --project {PROJECT}`.\n"
+    )
+    shown = ok(runs_of(hub, monkeypatch, capsys, "owner", "candidates", str(run_id))).out
+    assert shown.splitlines()[:2] == [
+        f"Run #{run_id} (step) is queued: who can take it now",
+        f"No worker can take it: no worker serves project {PROJECT}: {fix}",
+    ]
+    assert f"laptop  no   claude-code  1     does not serve project {PROJECT}: {fix}" in shown
+
+
+@needs_pg
 def test_show_and_list_print_the_cause_the_worker_reported_with_a_failure(hub, monkeypatch, capsys):
     worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
-    (run,) = dispatched(hub.client, hub.headers["owner"], [2], worker_id=worker["id"])
+    (run,) = dispatched(hub.client, hub.headers["owner"], [2])
     assert claim(hub.client, worker)["id"] == run["id"]
     error = "verify command `pnpm test` calls pnpm, which is not on this worker's PATH"
     moved(hub.client, worker, run["id"], "failed", error=error, failure_cause="missing_tool")
@@ -694,11 +723,9 @@ def test_show_and_list_print_the_cause_the_worker_reported_with_a_failure(hub, m
 
 @needs_pg
 def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, capsys):
-    worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
+    add_worker(hub.client, hub.headers["owner"], "mac-mini")
     flags = ["--runtime", "claude-code", "--mode", "headless", "--approval", "auto", "--timeout", "30"]
-    queued = as_json(
-        runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "4", "5", *flags, "--worker", "mac-mini", "--json")
-    )
+    queued = as_json(runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "4", "5", *flags, "--json"))
     assert_json_keys("hub run dispatch", queued)
     assert [(r["step_key"], r["title"], r["state"]) for r in queued] == [
         ("4", "Docs", "queued"),
@@ -711,7 +738,7 @@ def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, ca
             "auto",
             30,
         )
-        assert (run["pinned_worker_id"], run["dispatched_by"], run["repo"]) == (worker["id"], OWNER, "evo-agents")
+        assert (run["pinned_worker_id"], run["dispatched_by"], run["repo"]) == (None, OWNER, "evo-agents")
     by_id = as_json(runs_of(hub, monkeypatch, capsys, "owner", "show", str(queued[0]["id"]), "--json"))
     assert by_id == queued[0]
 
@@ -726,13 +753,6 @@ def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, ca
     assert again.code == 1 and again.out == ""
     assert (
         again.err.startswith("error: step 2 of plan rollout is not ready: ") and "nothing was dispatched" in again.err
-    )
-    nobody = runs_of(hub, monkeypatch, capsys, "owner", "dispatch", PLAN, "2", "--worker", "nope")
-    assert nobody.code == 1 and "you have no worker named 'nope'" in nobody.err
-    pinned_elsewhere = runs_of(hub, monkeypatch, capsys, "other", "dispatch", PLAN, "5", "--worker", str(worker["id"]))
-    assert (
-        pinned_elsewhere.code == 1
-        and "a run goes only to a worker of the member who dispatches it" in pinned_elsewhere.err
     )
     reader = runs_of(hub, monkeypatch, capsys, "reader", "dispatch", PLAN, "5")
     assert reader.code == 1 and reader.err == (
@@ -793,7 +813,7 @@ def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, ca
     assert fields["state"] == "queued, attempt 1 of 3"
     assert fields["step"] == "4: Docs"
     assert fields["plan"] == f"{PLAN} of project {PROJECT}, revision 1"
-    assert fields["worker"] == f"none yet, pinned to worker #{worker['id']}"
+    assert fields["worker"] == "none yet"
     assert fields["runtime"] == "claude-code, headless, approval auto, timeout 30 min"
     missing = runs_of(hub, monkeypatch, capsys, "reader", "show", "999999")
     assert missing.code == 1 and missing.err.startswith(f"error: project {PROJECT} has no run 999999")
@@ -1007,7 +1027,7 @@ def test_run_author_queues_an_author_run_from_stdin_and_shows_it(hub, monkeypatc
             monkeypatch,
             capsys,
             hub.homes["owner"],
-            *("hub", "run", "author", "-", "--project", PROJECT, "--worker", "mac-author", "--model", "opus"),
+            *("hub", "run", "author", "-", "--project", PROJECT, "--model", "opus"),
             *("--timeout-h", "1", "--json"),
             stdin=request,
         )
@@ -1020,20 +1040,22 @@ def test_run_author_queues_an_author_run_from_stdin_and_shows_it(hub, monkeypatc
         "opus",
         60,
     )
-    assert run["repos"][0] == {"repo": HARNESS, "branch": None} and run["pinned_worker_id"] == worker["id"]
+    assert run["repos"][0] == {"repo": HARNESS, "branch": None} and run["pinned_worker_id"] is None
 
-    printed = ok(runs_of(hub, monkeypatch, capsys, "owner", "author", "A second plan.", "--worker", "mac-author"))
+    printed = ok(runs_of(hub, monkeypatch, capsys, "owner", "author", "A second plan."))
     second = run["id"] + 1
-    assert printed.out.splitlines() == [
-        f"Queued author run #{second}: author (Plan from: A second plan.), on worker #{worker['id']} over {HARNESS}, "
-        "agent-skills, evo-agents; runtime claude-code, timeout 2 h of agent time. It reads only and pushes nothing.",
-        f"Follow it with `evo-agents hub run logs {second} --follow --project {PROJECT}`.",
-    ]
-    other = runs_of(hub, monkeypatch, capsys, "owner", "author", "x", "--worker", "mac-author", "--runtime", "codex")
+    first, follow_up = printed.out.splitlines()
+    assert first.startswith(
+        f"Queued author run #{second}: author (Plan from: A second plan.), on a worker with pool=agent-{PROJECT} "
+        f"over {HARNESS}, agent-skills, evo-agents"
+    )
+    assert first.endswith("; runtime claude-code, timeout 2 h of agent time. It reads only and pushes nothing.")
+    assert follow_up == f"Follow it with `evo-agents hub run logs {second} --follow --project {PROJECT}`."
+    other = runs_of(hub, monkeypatch, capsys, "owner", "author", "x", "--runtime", "codex")
     assert other.code == 1 and other.err.startswith("error: an author run runs on claude-code only, not codex: ")
-    reader = runs_of(hub, monkeypatch, capsys, "reader", "author", "x", "--worker", str(worker["id"]))
+    reader = runs_of(hub, monkeypatch, capsys, "reader", "author", "x")
     assert reader.code == 1 and "needs the writer role" in reader.err
-    empty = runs_of(hub, monkeypatch, capsys, "owner", "author", " ", "--worker", "mac-author")
+    empty = runs_of(hub, monkeypatch, capsys, "owner", "author", " ")
     assert empty.code == 2 and "the request is empty" in empty.err
 
     fields = fields_of(ok(runs_of(hub, monkeypatch, capsys, "reader", "show", str(run["id"]))).out)
@@ -1052,7 +1074,7 @@ def test_a_plan_run_is_dispatched_listed_and_shown(hub, monkeypatch, capsys):
     assert refused.code == 2 and "needs --runtime with that runtime" in refused.err
 
     flags = ["--runtime", "claude-code", "--model", "opus", "--mode", "headless", "--timeout-h", "8"]
-    run = as_json(runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET, *flags, "--worker", "mac-plan", "--json"))
+    run = as_json(runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET, *flags, "--json"))
     assert_json_keys("hub run plan", run)
     assert (run["kind"], run["plan_id"], run["step_key"], run["title"], run["state"]) == (
         "plan",
@@ -1067,7 +1089,7 @@ def test_a_plan_run_is_dispatched_listed_and_shown(hub, monkeypatch, capsys):
         "headless",
         480,
     )
-    assert (run["pinned_worker_id"], run["dispatched_by"], run["repos"]) == (worker["id"], OWNER, REPOS)
+    assert (run["pinned_worker_id"], run["dispatched_by"], run["repos"]) == (None, OWNER, REPOS)
     busy = runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET)
     assert busy.code == 1 and busy.err == (
         f"error: plan {FLEET} has plan run #{run['id']}, queued, dispatched by {OWNER}; nothing was dispatched\n"
@@ -1088,7 +1110,7 @@ def test_a_plan_run_is_dispatched_listed_and_shown(hub, monkeypatch, capsys):
     assert fields["title"] == "Run the fleet"
     assert fields["plan"] == f"{FLEET} of project {PROJECT}, revision 1"
     assert fields["repos"] == "evo-agents (feat/plan-runs), agent-skills (main)"
-    assert fields["worker"] == f"mac-plan (#{worker['id']}), pinned to worker #{worker['id']}"
+    assert fields["worker"] == f"mac-plan (#{worker['id']})"
     assert fields["runtime"] == "claude-code, model opus, headless, timeout 8 h"
     assert shown.splitlines()[-1] == (
         f"Its decisions: `evo-agents hub decision list --run {run['id']} --project {PROJECT}`."
@@ -1289,8 +1311,8 @@ def test_dispatch_plan_author_and_rerun_send_the_account_picked_by_hand(hub, mon
     refused = "you have no env secret named claude-z on this hub"
     for args in (
         ("dispatch", PLAN, "2"),
-        ("plan", FLEET, "--worker", "mac-plan"),
-        ("author", "Write a plan.", "--worker", "mac-author"),
+        ("plan", FLEET),
+        ("author", "Write a plan."),
     ):
         result = runs_of(hub, monkeypatch, capsys, "owner", *args, "--account", "claude-z")
         assert result.code == 1 and refused in result.err and "nothing was dispatched" in result.err, args
@@ -1305,3 +1327,13 @@ def test_dispatch_plan_author_and_rerun_send_the_account_picked_by_hand(hub, mon
     assert both.value.code == 2 and "not allowed with argument --account" in capsys.readouterr().err
     again = as_json(runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account-by-rule", "--json"))
     assert (again["parent_run_id"], again["state"]) == (int(queued), "queued")
+
+
+@pytest.mark.parametrize("command", ["dispatch", "plan", "author", "rerun"])
+@pytest.mark.parametrize("flag", ["--worker", "--pool", "--label", "--tolerate"])
+def test_no_run_command_picks_the_machine(command, flag, monkeypatch, capsys):
+    """An agent in pool mode runs on its own pool: no flag names a worker, pool, label or taint."""
+    args = {"dispatch": ["rollout", "1"], "plan": ["rollout"], "author": ["text"], "rerun": ["1"]}[command]
+    with pytest.raises(SystemExit) as refused:
+        main(["hub", "run", command, *args, flag, "x"])
+    assert refused.value.code == 2 and f"unrecognized arguments: {flag}" in capsys.readouterr().err

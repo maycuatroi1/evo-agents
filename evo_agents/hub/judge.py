@@ -4,7 +4,8 @@ on a pull request, and when the hub may merge one. Pure functions over JSON valu
 the hub's worker, the worker daemon and the tests share them. ``evo_agents.hub.server.changes`` holds the routes and
 the job built on them; ``docs/curator.md`` the design.
 
-A proposal of tier 0 to 2 (PLANNED_TIERS) that an admin accepts becomes a plan on the hub (``curator_plan_id``), the
+A proposal of a tier the charter's ``planned_tiers`` names (``planned_tiers``: tiers 0 to 2, PLANNED_TIERS, unless the
+charter names others, tier 3 included) that an admin accepts becomes a plan on the hub (``curator_plan_id``), the
 Curator's, in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_branch``), never a default branch. The
 night shift runs it as a plan run (the Builder); once that run ends done with every step of the plan done, the hub
 opens a pull request on GitHub (a merge request on GitLab opens with the push, ``GITLAB_PUSH_OPTIONS``), and queues a
@@ -34,15 +35,20 @@ request's head. The Judge's agent gives its verdict as the JSON object that ends
 (``verdict_from_message``): it travels in the daemon's memory, never through a file the code under test could write.
 ``ci_state`` reads the check runs and commit statuses of a commit; asked with the checks the default branch's ruleset
 requires, it is green only when each of them passed (a check run of the App the ruleset names, when it names one), and
-never when the ruleset requires none or the head commit's message asks CI to skip it (SKIP_CI). ``merge_decision`` says
-whether the hub merges a pull request now, waits, or leaves it open for its owner: only a tier 0 change on GitHub,
-passed by the Judge at the pull request's head, with CI green, no protected path touched, a repo whose ruleset the hub
-checked, and tier 0 among the charter's ``auto_merge``. A merge request on GitLab the Judge passed goes to the hub's
+never when the ruleset requires none or the head commit's message asks CI to skip it (SKIP_CI). A charter with
+``merge_without_ci`` lets a ruleset that requires no check pass on what ran (``without_ci``). ``merge_decision`` says
+whether the hub merges a pull request now, waits, or leaves it open for its owner: only a change on GitHub of a tier
+among the charter's ``auto_merge`` (0 to 3), passed by the Judge at the pull request's head, with CI green (or, with
+``merge_without_ci``, no CI at all), no sign and no protected path touched, and a repo whose ruleset the hub checked; a
+check that ran and failed still leaves it open, and one still running still makes it wait. A merge request on GitLab
+the Judge passed goes to the hub's
 merge queue when the project's autonomy policy has its repo in mode auto and a forge secret covers it
 (``evo_agents.hub.merge_gate``), whatever its tier; otherwise it stays open, as before the policy.
+``agent_merge_decision`` says whether the agent of a proposal's thread may merge a change the hub left open: as
+``merge_decision`` with its tier allowed and the signs of protected paths no bar, every other sign still one.
 
 A Curator's plan is the hub's to write (``progress_free``): after the hub made it, a write may change the status,
-done_at, evidence and note of its steps and the plan's status, nothing else; and a plan whose id starts with
+done_at, evidence, proofs and note of its steps and the plan's status, nothing else; and a plan whose id starts with
 CURATOR_PLAN_PREFIX is made from an accepted proposal alone.
 """
 
@@ -50,10 +56,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 
-from evo_agents.hub import tiers
+from evo_agents.hub import proofs, tiers
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
 from evo_agents.hub.judges import codex_cleared as codex_cleared  # their home before evo_agents.hub.judges
 from evo_agents.hub.judges import judge_runtime as judge_runtime
@@ -73,7 +79,8 @@ CHANGE_STATES = (
     "closed",  # its pull request was closed without a merge
 )
 ACTIVE_CHANGE_STATES = ("pr_pending", "judge_pending", "judging", "judged")  # what the job still moves on
-PLANNED_TIERS = (0, 1, 2)  # the tiers whose accepted proposals become the Curator's plans; tier 3 the owner makes
+PLANNED_TIERS = (0, 1, 2)  # the tiers whose accepted proposals become the Curator's plans unless the charter says
+PLANNABLE_TIERS = (0, 1, 2, 3)  # what a charter's planned_tiers may name: tier 3 only when its owner adds it
 FORGES = ("github", "gitlab")  # where a Curator change goes: a pull request, or a merge request (never merged)
 BRANCH_PREFIX = "curator/"
 CURATOR_PLAN_PREFIX = "curator-"  # the ids of the Curator's plans, which the hub alone makes
@@ -318,6 +325,26 @@ SHA = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 # The plan and the branch
 
 
+def planned_tiers(charter: dict | None) -> tuple[int, ...]:
+    """The tiers whose accepted proposals become the Curator's plans in a project whose charter body is ``charter``:
+    its ``planned_tiers``, or PLANNED_TIERS for a charter that names none, as one written before the key did not."""
+    named = (charter or {}).get("planned_tiers")
+    if not isinstance(named, list):
+        return PLANNED_TIERS
+    return tuple(sorted({tier for tier in named if type(tier) is int and tier in PLANNABLE_TIERS}))
+
+
+def tier_words(found: tuple[int, ...]) -> str:
+    """``tiers 0 to 2``, ``tiers 0, 3``, ``tier 1`` or ``no tier``, for a reason a person reads."""
+    if not found:
+        return "no tier"
+    if len(found) == 1:
+        return f"tier {found[0]}"
+    if found == tuple(range(found[0], found[-1] + 1)):
+        return f"tiers {found[0]} to {found[-1]}"
+    return "tiers " + ", ".join(str(tier) for tier in found)
+
+
 def slug(text: str, limit: int = SLUG_CHARS) -> str:
     """``text`` as lower case letters, digits and single dashes, at most ``limit`` characters; ``change`` when
     nothing is left."""
@@ -344,7 +371,7 @@ def is_curator_branch(name: str | None) -> bool:
     return not re.search(r"\.\.|[\x00-\x20~^:?*\[\\]|//|/$|\.lock$|@\{", name)
 
 
-STEP_PROGRESS = ("status", "done_at", "evidence", "note")  # what a draft's step may say of progress, dropped
+STEP_PROGRESS = ("status", "done_at", "evidence", "proofs", "note")  # what a draft's step may say of progress, dropped
 
 
 def curator_plan(draft: dict, *, plan_id: str, repo: str, branch: str, proposal_id: int, project: str) -> dict:
@@ -387,8 +414,8 @@ PLAN_PROGRESS = ("status",)  # what a write of a Curator's plan may change of th
 
 
 def progress_free(body: dict) -> str:
-    """A Curator's plan without what its progress writes (the plan's status; each step's status, done_at, evidence
-    and note), as canonical JSON: two writes of it differ in anything else exactly when these differ."""
+    """A Curator's plan without what its progress writes (the plan's status; each step's status, done_at, evidence,
+    proofs and note), as canonical JSON: two writes of it differ in anything else exactly when these differ."""
     found = {key: value for key, value in (body if isinstance(body, dict) else {}).items() if key not in PLAN_PROGRESS}
     found.pop("hub", None)
     steps = found.get("steps")
@@ -826,29 +853,32 @@ def ci_state(
     own_name: str = JUDGE_CHECK_NAME,
     required: list[dict] | None = None,
     head_message: str | None = None,
+    without_ci: bool = False,
 ) -> tuple[str, list[str]]:
     """(state, why) of CI on a commit, from its check runs and its combined status (None when either could not be
     read): ``green``, ``pending``, ``red``, ``none`` (no CI ran) or ``unreadable``. The Judge's own check run does not
     count. With ``required``, the checks the default branch's ruleset requires (``required_checks``), CI is green only
     when each of them concluded success, as a check run of its App when it names one or as a commit status, and red
-    when the ruleset requires none; a ``head_message`` that asks CI to skip the commit makes it red."""
+    when the ruleset requires none; a ``head_message`` that asks CI to skip the commit makes it red.
+
+    ``without_ci``, a charter's ``merge_without_ci``: a ruleset that requires no check is not red, and CI is what ran,
+    green when nothing ran failed or still runs. A check the ruleset requires still has to pass, so a commit with none
+    run is ``pending`` then, never ``none``."""
     if check_runs is None or statuses is None:
         return "unreadable", ["the hub could not read the commit's check runs and statuses"]
     runs = [item for item in check_runs if isinstance(item, dict) and item.get("name") != own_name]
     count = statuses.get("total_count") if isinstance(statuses.get("total_count"), int) else 0
-    if not runs and count == 0:
+    needed = [item for item in required or [] if item.get("context") and item["context"] != own_name]
+    if not runs and count == 0 and not (without_ci and needed):
         return "none", ["no CI ran on the commit"]
     marker = skip_ci_marker(head_message)
     if marker is not None:
         return "red", [f"the head commit's message asks CI to skip it ({marker}): what ran is not the whole of CI"]
-    needed: list[dict] = []
-    if required is not None:
-        needed = [item for item in required if item.get("context") and item["context"] != own_name]
-        if not needed:
-            return "red", [
-                "the ruleset of the default branch requires no status check: the hub merges only once the checks a "
-                "ruleset requires have passed"
-            ]
+    if required is not None and not needed and not without_ci:
+        return "red", [
+            "the ruleset of the default branch requires no status check: the hub merges only once the checks a "
+            "ruleset requires have passed"
+        ]
     red, pending = [], []
     names = {item["context"] for item in needed}
     for item in runs:
@@ -902,12 +932,14 @@ class MergeFacts:
     ci_reasons: tuple[str, ...] = ()
     mergeable: bool | None = None
     queue: bool = False  # GitLab: the policy has the repo in mode auto and a forge secret covers its origin
+    merge_without_ci: bool = False  # the charter's: no CI at all is no bar once the Judge passed it
 
 
 def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
     """``("merge", [])`` when the hub merges the pull request now, ``("wait", why)`` when CI is still running,
     ``("queue", why)`` when a merge request on GitLab goes to the merge queue, and ``("open", why)`` when it stays open
-    for its owner. Every condition fails closed."""
+    for its owner. Every condition fails closed; a sign, a protected path among them, leaves it open whatever the
+    charter says."""
     if facts.forge != "github":
         if facts.queue and facts.passed:
             return "queue", ["its repo is in mode auto with a forge secret: the merge queue gates and merges it"]
@@ -921,10 +953,10 @@ def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
     if facts.signs:  # before the tier, which the same files may have raised: the signs say more
         kinds = sorted({item.get("kind", "?") for item in facts.signs})
         return "open", [f"its files show signs of score hacking or protected paths: {', '.join(kinds)}"]
-    if facts.tier != 0:
+    if facts.tier not in facts.auto_merge:
+        if facts.tier == 0:
+            return "open", ["the charter's auto_merge does not name tier 0"]
         return "open", [f"tier {facts.tier} waits for its owner to merge it"]
-    if 0 not in facts.auto_merge:
-        return "open", ["the charter's auto_merge does not name tier 0"]
     if not facts.repo_checked:
         return "open", ["the hub has not checked that the repo's ruleset keeps the Curator off its default branch"]
     if not facts.judged_sha or facts.pr_head != facts.judged_sha:
@@ -935,9 +967,21 @@ def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
         return "open", ["GitHub cannot merge it as it is: it conflicts with the default branch"]
     if facts.ci == "pending":
         return "wait", list(facts.ci_reasons) or ["CI is still running"]
+    if facts.ci == "none" and facts.merge_without_ci:
+        return "merge", []
     if facts.ci != "green":
         return "open", list(facts.ci_reasons) or [f"CI is {facts.ci}"]
     return "merge", []
+
+
+def agent_merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
+    """``("merge", [])`` when the agent of a proposal's thread may merge, for its owner, a change the hub left open,
+    else ``("refuse", why)``: as ``merge_decision`` with the change's tier merged whatever the charter's ``auto_merge``
+    says, and a sign of a protected path no bar; any other sign, CI still running or failed, and every other condition
+    still refuse it."""
+    kept = tuple(item for item in facts.signs if item.get("kind") != "protected_path")
+    decided, why = merge_decision(replace(facts, auto_merge=(facts.tier,), signs=kept))
+    return ("merge", []) if decided == "merge" else ("refuse", why)
 
 
 def check_run_output(passed: bool, reasons: list[str], verify: list[dict], hidden: list[dict], signs: list[dict]):
@@ -1005,8 +1049,9 @@ def build_judge_prompt(
     folder: str | None = None,
 ) -> str:
     """The prompt of the judge run of a Curator change: the rules, the proposal (title, kind, tier, summary), the
-    plan's goal and each step's what, verify and acceptance (never its evidence, which the Builder wrote), where the
-    change is. The worker adds the results of the verify commands and the hidden checks it ran before the agent
+    plan's goal and each step's what, verify and acceptance, the criteria of the plan's acceptance it names in the
+    plan's words with the locator of each proof (never its evidence or a proof's reason, which the Builder wrote),
+    where the change is. The worker adds the results of the verify commands and the hidden checks it ran before the agent
     starts."""
     lines = [
         f"You are the Judge of a change the Curator of project {project} proposed and its Builder made, on the "
@@ -1032,8 +1077,11 @@ def build_judge_prompt(
             value = step.get(key)
             if isinstance(value, str) and value.strip():
                 part.append(f"{heading}: {value.strip()}")
+        proved = proofs.judge_lines(plan, step)
         acceptance = step.get("acceptance")
-        if isinstance(acceptance, list) and acceptance:
+        if proved:
+            part += proved
+        elif isinstance(acceptance, list) and acceptance:
             part.append("Acceptance:")
             part += [f"- {' '.join(str(item).split())}" for item in acceptance]
         steps.append("\n".join(part))

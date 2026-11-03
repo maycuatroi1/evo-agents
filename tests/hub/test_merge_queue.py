@@ -35,6 +35,7 @@ from tests.hub.test_merge_gate import (  # noqa: F401 (world: a fixture)
     CLEAN,
     PATH,
     REPO,
+    SECURITY_PASS,
     auto,
     dimensions,
     gate_pass,
@@ -78,6 +79,7 @@ def judge_next(world) -> dict:
         "head_sha": spec["curator"]["head_sha"],
         "verify": [{"command": item, "exit_code": 0} for item in inputs.json()["verify"]],
         "dimensions": dimensions(),
+        "security": SECURITY_PASS,
     }
     answer = world.client.post(f"/v1/worker/runs/{spec['id']}/merge-verdict", json=body, headers=headers)
     assert answer.status_code == 200, answer.text

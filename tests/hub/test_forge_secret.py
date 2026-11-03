@@ -167,13 +167,14 @@ def test_a_run_is_never_leased_a_forge_secret_even_one_covering_its_origin(clien
     assert put(client, hub["owner"], "gitlab-merge", forge(GROUP, merge_token)).status_code == 200
     env = {"kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "projects": [PROJECT], "value": oauth}
     assert put(client, hub["owner"], "claude-oauth", env).status_code == 200
+    leases_api.account_pool(client, "claude-oauth")  # the model account of the run's agent
     worker = leases_api.worker_of(client, hub["owner"], "mac-mini")
     run_id = leases_api.step_run(client, hub["owner"], "lumen-kb-docs", worker)
 
     asked = leases_api.ask(client, worker["headers"], run_id)
     assert asked.status_code == 200, asked.text
     answer = asked.json()
-    assert set(leases_api.by_name(answer)) == {"claude-oauth"}
+    assert set(leases_api.by_name(answer)) == {leases_api.pooled("claude-oauth")}
     assert leases_api.missing(answer) == {
         "lumen-kb-docs": (
             ORIGINS["lumen-kb-docs"],
@@ -186,7 +187,7 @@ def test_a_run_is_never_leased_a_forge_secret_even_one_covering_its_origin(clien
     git = {"kind": "git", "url_prefix": GITLAB_KB, "projects": [PROJECT], "value": push_token}
     assert put(client, hub["owner"], "gitlab-push", git).status_code == 200
     again = leases_api.ask(client, worker["headers"], run_id)
-    assert set(leases_api.by_name(again.json())) == {"claude-oauth", "gitlab-push"}
+    assert set(leases_api.by_name(again.json())) == {leases_api.pooled("claude-oauth"), "gitlab-push"}
     assert merge_token not in again.text
     leases = tables.credential_leases
     forge_id = sql(hub_db, select(tables.secrets.c.id).where(tables.secrets.c.name == "gitlab-merge"))[0][0]

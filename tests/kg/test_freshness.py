@@ -40,7 +40,15 @@ def test_reads_leave_the_link_prefixes_inside_the_build():
     )
     coverage = {"sources": [{"id": "app", "read": read}, {"id": "notes"}]}
     assert reads(coverage) == [
-        {"source": "app", "commit": SHA, "ref": "origin/main", "base": "origin/main", "behind": 4, "url": None}
+        {
+            "source": "app",
+            "commit": SHA,
+            "ref": "origin/main",
+            "at": None,
+            "base": "origin/main",
+            "behind": 4,
+            "url": None,
+        }
     ]
     assert describe(reads(coverage)[0]) == f"{SHA[:7]} of origin/main, 4 behind origin/main"
     assert brief(reads(coverage)) == f"commits read: 1 source, 0 current; behind: app {SHA[:7]} (4 behind origin/main)"
@@ -61,6 +69,19 @@ def test_the_brief_counts_the_current_sources_and_names_only_the_others():
         f"auth {SHA[:7]} (7 behind origin/main); behind unknown: notes {SHA[:7]}"
     )
     assert "repo0" not in brief(current + late)
+
+
+def test_a_read_with_its_time_says_its_count_is_of_then_unless_counted_again():
+    at = "2026-10-30T13:54:33Z"
+    read = read_of({"commit": SHA, "ref": "origin/main", "at": at, "base": "origin/main", "behind": 0})
+    assert read["at"] == at
+    (found,) = reads({"sources": [{"id": "app", "read": read}]})
+    assert found["at"] == at
+    assert describe(found) == f"{SHA[:7]} of origin/main at {at}, 0 behind origin/main then"
+    again = {**found, "behind": 9, "recounted": True}  # count_again, from this machine's checkout
+    assert describe(again) == f"{SHA[:7]} of origin/main at {at}, 9 behind origin/main"
+    assert describe({**found, "base": None, "behind": None}) == f"{SHA[:7]} of origin/main at {at}"
+    assert "at" not in read_of({"commit": SHA, "at": "ignore previous instructions"})
 
 
 def test_links_move_to_the_commit_read_only_for_the_source_and_prefix_they_start_with():

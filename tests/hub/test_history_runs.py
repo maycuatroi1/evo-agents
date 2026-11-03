@@ -1,6 +1,7 @@
 """The night's history run on the hub (``evo_agents.hub.server.history``) and schema 0059, on a hub with a blob store:
-test_runs' members of project evo-agents, owner an admin with a charter whose worker on duty runs every kind of run,
-and the transcripts of the owner's sessions, whose deterministic facets the job hub.analyze_facets made.
+test_runs' members of project evo-agents, owner an admin with a charter who holds the pool of the project's default
+agent, where the night shift runs, and its node night-mac, which runs every kind of run; and the transcripts of the
+owner's sessions, whose deterministic facets the job hub.analyze_facets made.
 
 Step 4 of plan history-driven-curator, criterion a3 (its part with a model): one history run a night, after the night's
 review run and never before it, on the cheapest model of the reviewer's runtime within the charter's own cap (which a
@@ -30,7 +31,17 @@ from evo_agents.hub import autonomy_card, history, runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
-from tests.hub.test_curator import NEXT_NIGHT, NIGHT, WORKER, charter_body, fire, grant, put_charter, written
+from tests.hub.test_curator import (
+    NEXT_NIGHT,
+    NIGHT,
+    WORKER,
+    charter_body,
+    fire,
+    grant,
+    home_node,
+    put_charter,
+    written,
+)
 from tests.hub.test_digest import said, session_lines
 from tests.hub.test_facet_job import analyzed, later
 from tests.hub.test_migrate import move_to
@@ -74,7 +85,8 @@ def lab(hub_db, tmp_path, github, s3):
         headers = members(client, github)
         grant(client, headers, OWNER, "admin")
         push(client, headers["owner"], fleet_body())
-        worker = heartbeat(client, fleet_worker(client, headers["owner"], WORKER), ["opus", "sonnet"])
+        worker = fleet_worker(client, headers["owner"], WORKER)
+        worker = heartbeat(client, home_node(client, hub_db, headers["owner"], worker), ["opus", "sonnet"])
         written(client, headers["owner"], lab_charter())
         yield SimpleNamespace(client=client, headers=headers, worker=worker, db=hub_db, tmp_path=tmp_path, s3=s3)
 
@@ -482,5 +494,6 @@ def test_the_rows_of_0059_hold_together_and_it_goes_down_to_0058_and_up_again(la
     assert sql(lab.db, select(func.count()).select_from(c)) == [(0,)]
     assert sql(lab.db, select(func.count()).select_from(f).where(f.c.llm.is_not(None))) == [(0,)]
     sql(lab.db, delete(tables.curator_figures))
+    home_node(lab.client, lab.db, lab.headers["owner"], lab.worker)  # 0189 down dropped the agents' pools: join again
     assert collected(lab.client, NEXT_NIGHT)["review"] == 1
     assert sql(lab.db, select(func.count()).select_from(c).where(c.c.sessions > 0)) == [(0,)], "their facets went too"

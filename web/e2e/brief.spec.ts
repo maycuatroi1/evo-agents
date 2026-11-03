@@ -34,9 +34,9 @@ function main(page: Page) {
 test("the morning brief reaches the owner's Inbox and the Curator's page names it", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
-  const live = await dutyWorker(me, project, uniqueName("night"));
+  await dutyWorker(me, project, uniqueName("night"));
   const now = new Date();
-  await writeCharter(me, project, live.worker.name, { brief_at: `${two(now.getUTCHours())}:${two(now.getUTCMinutes())}` });
+  await writeCharter(me, project, { brief_at: `${two(now.getUTCHours())}:${two(now.getUTCMinutes())}` });
   expect(await sendBrief(project, new Date())).toEqual(["brief"]);
   expect(await sendBrief(project, new Date())).toEqual(["sent"]); // once a day
 
@@ -48,7 +48,8 @@ test("the morning brief reaches the owner's Inbox and the Curator's page names i
   // A brief a day for each project: it stays folded to its first line until opened.
   await expect(item).toHaveAttribute("data-open", "false");
   await item.getByTestId("notification-toggle").click();
-  await expect(item.getByTestId("notification-body")).toContainText(`Worker ${live.worker.name}: online`);
+  // The night shift runs on the pool of the project's default agent, whose ready nodes the brief counts.
+  await expect(item.getByTestId("notification-body")).toContainText(`Pool agent-${project}: 1 of 1 node ready.`);
   await expectNoSeriousViolations(page, "the Inbox with a morning brief");
 
   await open(page, `/p/${project}/curator`);

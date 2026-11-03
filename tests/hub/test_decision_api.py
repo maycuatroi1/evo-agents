@@ -97,7 +97,7 @@ def on_hub(client, work):
 
 @pytest.fixture
 def worker(client, hub):  # noqa: F811
-    return chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    return chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
 
 
 def failed(client, hub, worker, *, cause, error="verify command `pytest` exited 1", **extra) -> int:

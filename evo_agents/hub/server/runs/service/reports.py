@@ -18,7 +18,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import guard, proofs, runs, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -31,8 +31,8 @@ from evo_agents.hub.server.runs.models import (
     StateReport,
     WorkerSettings,
 )
-from evo_agents.hub.server.runs.service import plugin_runtimes
-from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service import plugin_runtimes, reroute
+from evo_agents.hub.server.runs.service.claims import resume_waits, worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
@@ -154,7 +154,8 @@ async def record_heartbeat(
         )
         fields = dict(held.one()._mapping)
         fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's (worker_pools)
-        settings = WorkerSettings(**fields, projects=list((await conn.execute(served)).scalars()))
+        served_names = list((await conn.execute(served)).scalars())
+        settings = WorkerSettings(**fields, projects=served_names, guard=guard.digest_of(await guard.policy(conn)))
         nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
         asked = await update_now.settle(conn, worker_id, body, nightly)
         install = await browser_install.settle(conn, worker_id, body)
@@ -165,6 +166,8 @@ async def record_heartbeat(
                 for runtime in await plugin_runtimes.offered(conn, worker_id, settings.plugins)
             ]
         duties = await kg_duties(conn, worker_id) if runs.KG_SYNC in (body.features or ()) else []
+        # a drained worker claims the run that resumes one it parked, which no other worker can take
+        resuming = drained_at is not None and await resume_waits(conn, worker_id)
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -213,7 +216,7 @@ async def record_heartbeat(
         else:
             controls.append(RunControl(id=run_id, held=False, state=None, lease_expires_at=None, cancel=True))
     return HeartbeatAnswer(
-        drain=drained_at is not None,
+        drain=drained_at is not None and not resuming,
         runs=controls,
         settings=settings,
         plugin_runtimes=declared,
@@ -224,7 +227,8 @@ async def record_heartbeat(
     )
 
 
-SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set
+# what a report without a move may set
+SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage", "model_used", "routing")
 
 
 def _waits_for(run_id: int):
@@ -243,6 +247,8 @@ def _reported_columns(body: StateReport) -> dict:
         "diffstat": body.diffstat.model_dump() if body.diffstat else None,
         "verify": [item.model_dump(exclude_none=True) for item in body.verify] if body.verify is not None else None,
         "usage": body.usage,
+        "model_used": body.model_used,
+        "routing": body.routing.model_dump() if body.routing is not None else None,
     }
     return {name: value for name, value in columns.items() if value is not None}
 
@@ -265,17 +271,23 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         await _check_answer(conn, run_id, kind, body)
         error = await _moved_columns(conn, run_id, name, body, columns)
         reason = _move_reason(body, name, error, cancel_requested_at)
-        await move_run(
-            conn,
-            run_id,
-            state,
-            body.state,
-            "worker",
-            reason=reason,
-            error=error,
-            columns=columns,
-            token_id=user.token_id,
-        )
+        other = None
+        if body.state == "failed":
+            other = await reroute.next_worker(conn, run_id, state, body.failure_cause, error)
+        if other is not None:
+            await reroute.move_on(conn, run_id, state, other, error=error, columns=columns, token_id=user.token_id)
+        else:
+            await move_run(
+                conn,
+                run_id,
+                state,
+                body.state,
+                "worker",
+                reason=reason,
+                error=error,
+                columns=columns,
+                token_id=user.token_id,
+            )
         if body.state == "waiting" and kind == "author":
             from evo_agents.hub.server import author_chat  # it reads runs through this package
             from evo_agents.hub.server.loop.author_mode import turn_ended
@@ -356,6 +368,8 @@ async def _moved_columns(conn, run_id: int, name: str, body: StateReport, column
             verify=columns.get("verify", found.verify),
         )
         columns["evidence"] = evidence(found, body.summary)
+        if body.proofs:
+            columns["proofs"] = proofs.stored(item.model_dump(exclude_none=True) for item in body.proofs)
     return error
 
 

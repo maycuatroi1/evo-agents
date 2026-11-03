@@ -80,7 +80,6 @@ async function start(live: LiveWorker, run: Run, holding: number[], session: str
 async function stepRun(live: LiveWorker, spec: Machine, step: string, model: string, session: string, holding: number[] = []): Promise<Run> {
   const [run] = await dispatch(spec.owner, PROJECT, [step], {
     plan_id: CHECKOUT_PLAN,
-    worker_id: live.worker.id,
     runtime: "claude-code",
     model,
     approval: "review",
@@ -139,7 +138,7 @@ export async function seedDemo(): Promise<Demo> {
   const mayaRun = await stepRun(studio, MACHINES.maya, "4", MODELS[0], "5a8f3c1d-7e2b-4d9a-8c6f-0b1e4d7a2c95");
   await sendEvents(studio, mayaRun.id, mayaTrace());
 
-  const planRun = await dispatchPlan(MAYA, PROJECT, { plan_id: SEARCH_PLAN, worker_id: studio.worker.id, runtime: "claude-code", model: MODELS[0] });
+  const planRun = await dispatchPlan(MAYA, PROJECT, { plan_id: SEARCH_PLAN, runtime: "claude-code", model: MODELS[0] });
   await start(studio, planRun, [mayaRun.id], "e7b3a9d1-4c2f-4e8a-9b1d-3f6c8a0e2d47", MACHINES.maya.repos);
   const trace = planRunTrace();
   await sendEvents(studio, planRun.id, trace.merged);

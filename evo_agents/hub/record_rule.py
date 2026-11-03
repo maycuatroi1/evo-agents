@@ -12,7 +12,9 @@ def record_rule(key: str, which: str) -> str:
     return (
         f"- Record progress only with `evo-agents worker step`: `evo-agents worker step {key} in_progress --repo REPO` "
         f"when you start {which}, and `evo-agents worker step {key} done --repo REPO --evidence TEXT --verify COMMAND` "
-        "(--verify once for each command) when it is done. The worker runs each verify command again in that repo's "
+        "(--verify once for each command) when it is done. When the step's acceptance names criteria of the plan's "
+        "acceptance (a4), done also takes one `--proof ID=VALUE` for each: the test that proves it (path::test_name), "
+        "the command that shows it, or `n/a: why`; done without one for each is refused. The worker runs each verify command again in that repo's "
         "worktree and refuses done when one exits other than 0; then it commits what is left there and pushes the "
         f"repo's branch. Test what you changed, then run the whole verify once: `evo-agents worker step {key} verify "
         "--repo REPO --verify COMMAND` runs it on its own, past your turn, and done with the same commands reuses its "

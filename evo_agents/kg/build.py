@@ -62,7 +62,9 @@ STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "pr
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config", "commit", "pr"}
 DEFINITION_SAMPLES = 15
-UNSEARCHED_ITEMS = ("code", "plan")  # their text reaches search through symbols, docstrings, plans and steps
+# Their text reaches node_fts through symbols, docstrings, plans and steps; code and markup reach code_fts whole.
+UNSEARCHED_ITEMS = ("code", "plan", "markup")
+CODE_TEXT_ITEMS = ("code", "markup")  # the items whose text kg_search looks up words in (``kg.search``, code_fts)
 UNSEARCHED_FIELDS = ("title", "verify", "evidence")  # the name already; commands and run output
 STAT_KEYS = (
     "mentions",
@@ -416,8 +418,9 @@ def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Co
 
 def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, list[str]]) -> list[str]:
     """Fill ``graph.texts`` and ``graph.paths``, what the full-text index holds besides names (``kg.search``): the
-    sections of a document, the text of an item that is neither code nor a plan (a plan's text is on its plan and
-    step nodes), the descriptions and docstrings in ``notes``, and a requirement's code; the path of a node that has
+    sections of a document, the text of an item that is neither code, markup nor a plan (a plan's text is on its plan
+    and step nodes), the descriptions and docstrings in ``notes``, and a requirement's code; ``graph.code``, the text
+    of a code or markup file without an audience, for ``code_fts``; the path of a node that has
     one, a section's being its document's; and ``graph.passages``, a section or a file read whole longer than
     ``kg.search.PASSAGE_FROM`` cut into passages with their lines, each after the document's name and the headings
     above it. The ids of the nodes whose body was cut (``kg.search.MAX_TEXT_CHARS``)."""
@@ -443,6 +446,10 @@ def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, l
             parts[r["id"]].append(text)
             if node["kind"] in ("File", "Document") and len(text) > text_search.PASSAGE_FROM:  # lines of a file
                 long.append((r["id"], 1, text, [node["name"] or r["id"]]))
+        if r["kind"] in CODE_TEXT_ITEMS and node["kind"] == "File" and not node["label"].audience:
+            text = body(rec)
+            if text:
+                graph.code[r["id"]] = text
     for nid, first, text, context in long:  # past MAX_TEXT_CHARS, a passage would index what the body cut
         prefix = " > ".join(dict.fromkeys(c for c in context if c))
         found = split_passages(text[: text_search.MAX_TEXT_CHARS], first, text_search.PASSAGE_CHARS)
