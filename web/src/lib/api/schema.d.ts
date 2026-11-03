@@ -14173,7 +14173,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "srs_baseline" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
+            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "srs_baseline" | "srs_adopt" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
             /**
              * Title
              * @description what waits, in one line
@@ -40153,7 +40153,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -40167,7 +40167,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier

@@ -13,7 +13,9 @@ Quyết định): where a person decides the direction of the project.
   none.
 - gate 3, ``policy``: each pending proposal of @builder of kind policy or goal, each repo of the merge queue whose
   breaker tripped, each active goal that aims at an SRS document whose baseline is not confirmed (``srs_baseline``,
-  plan srs-backlog-loop; ``evo-agents hub loop baseline``), and the Loop's own breaker tripped; an admin decides each.
+  plan srs-backlog-loop; ``evo-agents hub loop baseline``), each plan the Loop has not adopted that holds use cases of
+  such a goal's backlog out of any build (``srs_adopt``, ``adopt.waiting``; for those who read the plan, decided by an
+  admin or the goal's owner), and the Loop's own breaker tripped; an admin decides each.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, goals, tables
 from evo_agents.hub.server.canvas.proposals import brainstorm_runs
-from evo_agents.hub.server.loop import baseline
+from evo_agents.hub.server.loop import adopt, baseline
 from evo_agents.hub.server.loop.board_items import (
     ADMIN,
     WRITER,
@@ -308,6 +310,19 @@ async def policy_items(conn: AsyncConnection, reading: Reading, crowd: People) -
         link = project_path(reading.project, "goals")
         refs = {"goal": f"G-{row.number}", "document": row.slug}
         found.append(item("srs_baseline", title, row.since, ADMIN, admins, link, refs=refs))
+    for held in await adopt.waiting(conn, reading.project_id):
+        if held.plan not in reading.plans:
+            continue
+        title = (
+            f"Plan {held.plan} names {_plural(len(held.use_cases), 'use case')} of goal {held.goal} that no build takes "
+            f"until the plan is adopted (evo-agents hub loop adopt {held.plan} --goal {held.goal}) "
+            "or an admin sets them undelivered"
+        )
+        link = project_path(reading.project, "plans", held.plan)
+        refs = {"goal": held.goal, "plan": held.plan, "use_cases": ", ".join(held.use_cases)}
+        owner = set(crowd.logins([held.owner_id] if held.owner_id else [])) & set(crowd.holding(WRITER))
+        deciders = [*admins, *owner]
+        found.append(item("srs_adopt", title, None, ADMIN, deciders, link, refs=refs))
     s = tables.loop_states
     query = select(s.c.breaker_reason, s.c.tripped_at).where(
         s.c.project_id == reading.project_id, s.c.breaker == TRIPPED

@@ -79,6 +79,29 @@ def test_under_keeps_the_use_cases_below_a_heading_by_code_or_title():
     assert srs_backlog.under(cases, None) == cases and srs_backlog.under(cases, "Nowhere") == []
 
 
+def test_a_plan_names_a_use_case_as_a_whole_word_outside_its_non_goals_and_holds_its_group():
+    body = {
+        "goal": "Simulation activity: UC LAB-385 to UC\nLAB-395.",
+        "steps": [{"what": "Grade it (UC LAB-387 BR008); like UC LAB-39."}],
+        "non_goals": ["UC LAB-400 comes later."],
+    }
+    text = srs_backlog.plan_text(body)
+    named = [
+        ref
+        for ref in ("UC LAB-385", "uc  lab-395", "UC LAB-387", "UC LAB-38", "UC LAB-400")
+        if srs_backlog.names(text, ref)
+    ]
+    assert named == ["UC LAB-385", "uc  lab-395", "UC LAB-387"], (
+        "a code that starts another, or a non-goal, is not"
+    )
+    assert srs_backlog.plan_text(None) == "" and not srs_backlog.names("", "UC A-1")
+    found = groups([case("UC A-1", None, "Orders"), case("UC A-2", None, "Orders"), case("UC A-3", None, "Returns")])
+    free, held = srs_backlog.held(found, {"uc a-2": ("plan-b", "plan-a")})
+    assert [g.key for g in free] == ["heading:returns"]
+    assert [(h.group.key, h.plans) for h in held] == [("heading:orders", ("plan-a", "plan-b"))], "the whole group"
+    assert srs_backlog.held(found, {}) == (found, [])
+
+
 # The command line
 
 

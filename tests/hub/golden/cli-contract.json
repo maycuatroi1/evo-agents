@@ -100267,6 +100267,7 @@
                 "merge_breaker",
                 "loop_breaker",
                 "srs_baseline",
+                "srs_adopt",
                 "loop_decision",
                 "run_decision",
                 "author_question",
@@ -127720,7 +127721,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 33,
+              "maxItems": 34,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -160367,7 +160368,8 @@
                 "market_license_expiring",
                 "today",
                 "kg_optimize",
-                "agent_pool_empty"
+                "agent_pool_empty",
+                "srs_adopt"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -160434,7 +160436,8 @@
                 "market_license_expiring",
                 "today",
                 "kg_optimize",
-                "agent_pool_empty"
+                "agent_pool_empty",
+                "srs_adopt"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

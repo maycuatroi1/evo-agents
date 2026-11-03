@@ -2371,7 +2371,8 @@ waits for a person, the three gates first: the goals (the month's review once th
 `goal_review`, until a goal gets a revision or the month ends, and each active goal past its deadline), the canvases
 (each baseline still proposed with an item to decide, its overdue test cards among them, and each open proposal of a
 claim) and the policy (each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose
-breaker tripped, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
+breaker tripped, each SRS goal whose baseline waits, each plan outside the Loop that holds use cases of an SRS goal's
+backlog, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
 decisions of a run it handed out and an author run of its asking in its chat, its merge requests held for a person
 (one blocked at a gate says how it goes on: an admin passes a hold at gate 3, a new push moves any other) and its repos
 to merge by hand, the merge queue's audit samples not answered, and the SRS versions its use cases drafted
@@ -2388,7 +2389,9 @@ project's hub sink); each page's buttons call the object's own route, so who may
 of a project whose Loop is on, and `loop_brief`, the Loop's part of the morning brief, at 07:00 in the Loop's zone to
 the goal owners of a project whose Curator sends no brief; the Curator's brief carries that part itself
 (`docs/notifications.md`, Notices). Schema 0096 lets `notifications.notice_kind` take both; going back to 0095 deletes
-them.
+them. It also sends `srs_adopt` once to the owner of an SRS goal (its admins when it has none) for each plan outside
+the Loop that holds use cases of the goal's backlog out of any build, with the `evo-agents hub loop adopt` line
+(`docs/loop.md`, SRS là nguồn); the kind has the shape of a plugin's, so the check of the column takes it.
 
 ## Docs
 
@@ -3375,8 +3378,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   (`docs/loop.md`); it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
   (`HubContext.loop_tick`).
 - `hub.loop_notices`, every 5 minutes: for each project whose Loop is on, in the Loop's zone, the notice `goal_review`
-  on the first day of a month and the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, each
-  once (The decision board, above; `evo_agents.hub.server.loop.notices`).
+  on the first day of a month, the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, and the
+  notice `srs_adopt` for a plan outside the Loop that holds use cases of an SRS goal, each once (The decision board,
+  above; `evo_agents.hub.server.loop.notices`).
 - `hub.merge_queue`, every minute, one pass at a time: for each project with an autonomy policy, the merge requests of
   its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
   merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched

@@ -7,16 +7,23 @@ the document and use cases as its ancestors; it goes through admission, the caps
 build does. In the same transaction the use cases are ``delivering`` in the ledger (``srs_ledger.hold``), so no build
 takes them. A plan already completed has nothing to run: the deliver is made ``done`` and the use cases ``delivered`` at
 once, with the plan and its merge requests as evidence (``srs_ledger.sync``).
+
+``waiting`` lists what waits for an adopt: for each active goal of the project whose baseline is confirmed, each plan
+that holds groups of its backlog out of any build (``backlog.split_of``), with the use cases of those groups. The
+decision board shows each at gate 3 (``srs_adopt``) and ``loop.notices`` tells the goal's owner once.
 """
 
 from __future__ import annotations
+
+import shlex
+from dataclasses import dataclass
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import goals, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.loop import backlog, baseline, delivery, srs_ledger, tick
@@ -26,6 +33,22 @@ from evo_agents.hub.srs_backlog import DELIVERING, ref_key
 
 ADOPT = "loop.adopt"  # a plan adopted as a deliver: "<project>/goal G-<n> plan=<plan> use_cases=<count>"
 MAX_CODES = 200
+
+
+@dataclass(frozen=True)
+class Waiting:
+    """A plan that holds use cases of the backlog of a goal out of any build until it is adopted."""
+
+    goal: str
+    owner_id: int | None
+    plan: str
+    use_cases: tuple[str, ...]
+    groups: tuple[str, ...]
+
+    @property
+    def command(self) -> str:
+        codes = " ".join(shlex.quote(code) for code in self.use_cases)
+        return f"evo-agents hub loop adopt {self.plan} --goal {self.goal} --use-cases {codes}"
 
 
 class LoopAdopt(BaseModel):
@@ -125,4 +148,28 @@ async def adopt(conn: AsyncConnection, user, access, body: LoopAdopt) -> LoopAdo
     )
 
 
-__all__ = ["ADOPT", "LoopAdopt", "LoopAdopted", "adopt"]
+async def waiting(conn: AsyncConnection, project_id: int) -> list[Waiting]:
+    """What waits for an adopt in the project (see the module), in the order of the goals' rank, then by plan."""
+    g, r, b = tables.goals, tables.goal_revisions, tables.srs_baselines
+    query = (
+        select(g.c.id, g.c.number, r.c.owner_id)
+        .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
+        .join(b, (b.c.goal_id == g.c.id) & (b.c.document_id == r.c.srs_document_id))
+        .where(g.c.project_id == project_id, r.c.status == goals.ACTIVE)
+        .order_by(r.c.rank, g.c.number)
+    )
+    found = []
+    for row in (await conn.execute(query)).all():
+        by_plan: dict[str, list] = {}
+        for one in (await backlog.split_of(conn, row.id))[1]:
+            for plan in one.plans:
+                by_plan.setdefault(plan, []).append(one.group)
+        for plan, held in sorted(by_plan.items()):
+            codes = tuple(case.ref for group in held for case in group.use_cases)
+            found.append(
+                Waiting(goals.code(row.number), row.owner_id, plan, codes, tuple(group.title for group in held))
+            )
+    return found
+
+
+__all__ = ["ADOPT", "LoopAdopt", "LoopAdopted", "Waiting", "adopt", "waiting"]
