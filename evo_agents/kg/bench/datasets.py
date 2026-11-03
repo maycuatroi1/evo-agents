@@ -334,10 +334,21 @@ def _usable(task: dict, skipped: dict) -> bool:
 # -- the sets ------------------------------------------------------------------------------------------------------
 
 
+WORKSPACE = re.compile(r"^/workspace/[^/]+/")
+
+
+def strip_workspace(path: str) -> str:
+    """ContextBench writes some answers as /workspace/OWNER__REPO__VERSION/PATH: the repo's own path is PATH."""
+    return WORKSPACE.sub("", path)
+
+
 def read_contextbench(cache: Path) -> tuple[list[dict], dict]:
     tasks, skipped = [], {}
     for row in _source_rows(cache, CONTEXTBENCH, SOURCES[CONTEXTBENCH][0]):
-        gold = _json_value(row.get("gold_context")) or []
+        gold = [
+            {**g, "file": strip_workspace(str(g["file"]))} if isinstance(g, dict) and g.get("file") else g
+            for g in (_json_value(row.get("gold_context")) or [])
+        ]
         lines = [
             (g["file"], int(g["start_line"]), int(g["end_line"]))
             for g in gold

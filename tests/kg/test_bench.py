@@ -673,3 +673,23 @@ def test_warm_reads_a_graph_once_and_skips_what_is_missing(tmp_path):
     (tmp_path / "graph.sqlite").write_bytes(b"x" * 1000)
     assert graphs.warm(tmp_path) == 1000
     assert graphs.warm(tmp_path / "gone") == 0
+
+
+def test_contextbench_workspace_prefix_is_stripped_from_answer_paths(monkeypatch):
+    gold = [
+        {"file": "/workspace/ow__repo__1.2/src/a.c", "start_line": 3, "end_line": 9},
+        {"file": "lib/b.py", "start_line": 1, "end_line": 2},
+    ]
+    row = {
+        "instance_id": "x__1",
+        "original_inst_id": "x__1",
+        "repo": "ow/repo",
+        "base_commit": "abc",
+        "problem_statement": "it breaks",
+        "gold_context": json.dumps(gold),
+        "language": "c",
+    }
+    monkeypatch.setattr(datasets, "_source_rows", lambda cache, bench, source: [row])
+    tasks, _ = datasets.read_contextbench(Path("."))
+    assert tasks[0]["files"] == ["src/a.c", "lib/b.py"]
+    assert sorted(tasks[0]["lines"]) == [["lib/b.py", 1, 2], ["src/a.c", 3, 9]]
