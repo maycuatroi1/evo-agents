@@ -24,20 +24,24 @@ def keeper(s):
     """The id of the worker that keeps the knowledge graph of schedule row ``s``'s project fresh: the live node of the
     pool of the project's default agent, of the lowest id, that serves the project and is online (NULL for none)."""
     w, wp, pl, a = tables.workers, tables.worker_projects, tables.worker_pools, tables.agent_profiles
+    # ``s`` sits two levels up from these subqueries and ``node`` names it in no FROM of its own, so SQLAlchemy would
+    # add it to their FROM lists instead: correlate it by hand (a cross join returns a row per schedule, and Postgres
+    # refuses a scalar subquery with more than one).
     home = (
         select(pl.c.id)
         .join(a, a.c.id == pl.c.agent_id)
         .where(a.c.project_id == s.c.project_id, a.c.is_default, a.c.deleted_at.is_(None))
+        .correlate(s)
         .scalar_subquery()
     )
     fresh = w.c.last_heartbeat_at > func.now() - timedelta(seconds=runs.OFFLINE_AFTER_SECONDS)
     node = select(func.min(w.c.id)).where(
         w.c.pool_id == home,
         w.c.revoked_at.is_(None),
-        exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == s.c.project_id),
+        exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == s.c.project_id).correlate(s, w),
         fresh,
     )
-    return node.scalar_subquery()
+    return node.correlate(s).scalar_subquery()
 
 
 def kept_by(s, worker_id):

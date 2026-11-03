@@ -22,7 +22,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from evo_agents.hub import kg_push, review, runs, tables
 from evo_agents.hub.server import collect
@@ -94,8 +94,14 @@ def hub(hub_db, s3, tmp_path):
         schedules = tables.schedules
         project_id = ids(hub_db, tables.projects, tables.projects.c.name, PROJECT)
         owner_id = ids(hub_db, tables.users, tables.users.c.login, OWNER)
-        values = {"project_id": project_id, "kind": "night_shift", "owner_id": owner_id, "worker_id": duty["id"]}
-        live.sql(hub_db, insert(schedules).values(**values))
+        # Two night shifts: the keeper's subqueries must correlate to their own schedule, or Postgres finds more than
+        # one row where it wants one and every heartbeat answers 500 (hub 0.54.5).
+        for project in (project_id, ids(hub_db, tables.projects, tables.projects.c.name, OTHER)):
+            live.sql(hub_db, insert(schedules).values(project_id=project, kind="night_shift", owner_id=owner_id))
+        pools, workers = tables.worker_pools, tables.workers
+        home = ids(hub_db, pools, pools.c.name, f"agent-{PROJECT}")
+        live.sql(hub_db, update(workers).where(workers.c.id == duty["id"]).values(pool_id=home))
+        beat(client, duty)  # the keeper is the pool's node that is online
         yield SimpleNamespace(
             client=client, db=hub_db, s3=s3, tmp=tmp_path, admin=admin, duty=duty, spare=spare, outsider=outsider,
             project_id=project_id, owner_id=owner_id, **members,
