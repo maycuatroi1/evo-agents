@@ -23,7 +23,7 @@ from evo_agents.plugins.bundle import Bundle, pack
 from evo_agents.worker import packs
 from evo_agents.worker.adapter import Adapter
 from evo_agents.worker.runtimes import common, profiles
-from evo_agents.worker.runtimes.claude_code import ClaudeCodeAdapter
+from evo_agents.worker.runtimes.claude_code import ATTRIBUTION, ClaudeCodeAdapter
 from evo_agents.worker.runtimes.codex import CodexAdapter, thread_compaction
 from evo_agents.worker.runtimes.opencode import OpencodeAdapter
 from tests.plugins.samples import manifest, pack_files, write_plugin
@@ -295,6 +295,7 @@ def test_pack_skills_and_servers_count_as_named_on_an_allowlist_profile_on_claud
     assert settings == {
         "allowedMcpServers": [{"serverName": "github"}, {"serverName": "docs"}, {"serverName": "lint"}],
         "availableModels": ["opus"],
+        "attribution": ATTRIBUTION,
     }
     tools = command[command.index("--tools") + 1].split(",")
     assert "Bash" not in tools and "WebFetch" not in tools and "Agent" not in tools, "no other axis widens"
