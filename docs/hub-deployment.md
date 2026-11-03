@@ -361,7 +361,7 @@ The overlay adds three services. `seaweedfs` holds the data and is on an interna
 its own ports check no credential. `s3` is SeaweedFS's S3 gateway, with the hub's key pair as its one identity, on a
 network it shares with `api` and `worker` and never with `plugins` or `web`. `storage-init` runs
 `hub storage check --create-bucket` at every `up`, so the api starts only on a store that works; it needs an image
-of a release after 0.54.3, the first with `hub storage`. Set the four `EVO_HUB_S3_*` variables as for any store, with a key pair you generate
+whose CLI has `hub storage` (`docker run --rm <image> evo-agents hub storage -h`), the first release after 0.54.4. Set the four `EVO_HUB_S3_*` variables as for any store, with a key pair you generate
 (`python -c 'import secrets; print(secrets.token_hex(20))'` for each), and `EVO_HUB_S3_ENDPOINT` the public address
 of the gateway: a domain of the reverse proxy forwarding to it, Host header unchanged, since SigV4 signs the host.
 The gateway's port is published on `EVO_HUB_SEAWEEDFS_BIND:EVO_HUB_SEAWEEDFS_PORT` (`127.0.0.1:8333`) for a proxy on
