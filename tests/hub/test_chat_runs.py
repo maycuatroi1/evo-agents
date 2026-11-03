@@ -122,18 +122,9 @@ def chat_worker(
     profiles, and its chat runs start with every repo it has a checkout of unless they name LAZY_CHAT_REPOS. It is a
     node of the pool of agent ``pool`` (@reviewer's by default; None for a worker outside every pool), ready by its
     doctor report."""
-    worker = add_worker(client, headers, name, slots=slots, checkouts=checkouts)
+    worker = add_worker(client, headers, name, slots=slots, checkouts=checkouts, pool=pool)
     worker["features"] = list(features)
     beat(client, worker, kinds=kinds)
-    if pool is not None and getattr(client, "db", None) is not None:
-        w, p = tables.workers, tables.worker_pools
-        sql(
-            client.db,
-            update(w)
-            .values(pool_id=select(p.c.id).where(p.c.name == f"agent-{pool}").scalar_subquery())
-            .where(w.c.id == worker["id"]),
-        )
-        assert client.post("/v1/worker/doctor", json={"findings": []}, headers=worker["headers"]).status_code == 200
     return worker
 
 

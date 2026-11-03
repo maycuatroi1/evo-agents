@@ -81,9 +81,12 @@ def serving(app):
         assert thread.is_alive(), "the hub did not start"
         assert time.monotonic() < deadline, "the hub did not start within 30s"
         time.sleep(0.05)
+    url = f"http://127.0.0.1:{port}"
+    live.SERVED[url] = app.state.config.dsn  # live.database_of reads the hub's database from an httpx client's URL
     try:
-        yield f"http://127.0.0.1:{port}"
+        yield url
     finally:
+        live.SERVED.pop(url, None)
         server.should_exit = True
         thread.join(30)
         assert not thread.is_alive(), "the hub did not stop"

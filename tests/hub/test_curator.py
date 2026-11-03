@@ -31,7 +31,7 @@ from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.fake_github import Account
 from tests.hub.live import sql
-from tests.hub.test_agent_pool_placement import give_account_pool, join
+from tests.hub.test_agent_pool_placement import join
 from tests.hub.test_decisions import answered, asked, park
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import PLAN as FLEET
@@ -105,11 +105,11 @@ def night(web_client, github, hub_db):  # noqa: F811
 
 
 def home_node(client, db, headers, worker: dict) -> dict:
-    """``worker`` made a node of the pool of the project's default agent, which the owner holds, with an account pool."""
+    """``worker`` made a node of the pool of the project's default agent, which the owner holds, with the account pool
+    ``test_runs.members`` gave it."""
     assert client.get(f"/v1/projects/{PROJECT}/agents/{PROJECT}", headers=headers).status_code == 200
     pools = tables.worker_pools
     sql(db, update(pools).values(owner_id=user_id(db, OWNER)).where(pools.c.name == f"agent-{PROJECT}"))
-    give_account_pool(db, PROJECT, PROJECT, OWNER)
     return join(client, db, worker, PROJECT)
 
 

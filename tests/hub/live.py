@@ -163,6 +163,17 @@ def connect(db: pg.Database, *, admin: bool = False):
         yield conn.execution_options(isolation_level="AUTOCOMMIT")
 
 
+SERVED: dict[str, str] = {}  # the DSN of each hub under uvicorn in this process, by its URL (test_run_stream.serving)
+
+
+def database_of(client) -> pg.Database:
+    """The database of the in-process hub ``client`` talks to, as ``sql`` takes it, for a helper that gets the client
+    alone: the DSN of a TestClient's app, or of the hub under uvicorn an httpx client's base URL names."""
+    app = getattr(client, "app", None)
+    dsn = app.state.config.dsn if app is not None else SERVED[str(client.base_url).rstrip("/")]
+    return pg.Database(name="", password="", dsn=dsn, admin_dsn="")
+
+
 def sql(db: pg.Database, statement, params=()):
     """Run one Core statement (on ``evo_agents.hub.tables``) on ``engine(db)``, in a transaction of its own, with
     ``params`` as a dict or a list of dicts; its rows as tuples, or None when it returns none. A refusal raises the

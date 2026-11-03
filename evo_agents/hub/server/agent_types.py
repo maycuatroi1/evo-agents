@@ -5,7 +5,8 @@ project enabled it; PUT .../agent-types/{plugin}/{name}, an admin of the project
 
 Enabling a type the first time creates its agent profile in the project from the type's template: the handle, name,
 description, instructions and permissions it names, the agent packs of the plugin it names attached at the version the
-project runs (``agent_packs.pinned``), and its environment, when it names one, as the only one its runs may take. A
+project runs (``agent_packs.pinned``), and its environment, when it names one, as the only one its runs may take; and
+the agent's own pool, ``agent-<handle>``, where its runs go (``profile_store.create_pool``). A
 handle is unique on the hub and a core plugin's type is enabled in many projects, so the profile takes the handle the
 admin names (``handle``), else the template's, else ``<template's>-<project>`` when another agent, deleted ones
 included, or a project holds the template's (``_handle``); none of them free refuses it (409), as does a plugin the
@@ -41,7 +42,7 @@ from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
 from evo_agents.hub.server.agent_profiles import AgentPermissions
 from evo_agents.hub.server.chat_members import LOGIN_PATTERN
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.profile_store import write_version
+from evo_agents.hub.server.profile_store import create_pool, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.plugins.manifest import PLUGIN_ID
@@ -306,6 +307,7 @@ async def _create_profile(
             f"agent meanwhile: {NOTHING}",
         )
     await write_version(conn, profile_id, 1, values, user.user_id)
+    await create_pool(conn, profile_id, handle, access.project_id, user.user_id)  # its runs go to its own pool
     await _record(conn, user, access, audit.AGENT_CREATE, f"{access.name}/@{handle} v1")
     return profile_id
 

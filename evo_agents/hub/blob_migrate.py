@@ -264,17 +264,22 @@ def _copy(
                 return "present", None
         if dry_run:
             return "copied", None
-        with tempfile.NamedTemporaryFile(dir=scratch, prefix="blob-") as sink:
-            fetched = source.fetch(key, sink, size)
-            if fetched is None:
-                return "", "gone from the source"
-            digest, read = fetched
-            if read != size:
-                return "", f"the source holds {read} bytes, its listing said {size}"
-            if digest != sha256:
-                return "", "the source's bytes do not have the SHA-256 the blob is named after"
-            sink.flush()
-            target.put_file(sha256, Path(sink.name), replace=True)
+        # closed before put_file opens it again by name, which Windows refuses while it is open; removed here
+        sink = tempfile.NamedTemporaryFile(dir=scratch, prefix="blob-", delete=False)
+        path = Path(sink.name)
+        try:
+            with sink:
+                fetched = source.fetch(key, sink, size)
+                if fetched is None:
+                    return "", "gone from the source"
+                digest, read = fetched
+                if read != size:
+                    return "", f"the source holds {read} bytes, its listing said {size}"
+                if digest != sha256:
+                    return "", "the source's bytes do not have the SHA-256 the blob is named after"
+            target.put_file(sha256, path, replace=True)
+        finally:
+            path.unlink(missing_ok=True)
         return "copied", None
     except BlobStoreUnavailable as exc:
         return "", str(exc)
