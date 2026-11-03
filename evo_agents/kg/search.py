@@ -203,6 +203,21 @@ def query_words(query: str) -> list[str]:
     return (meaning or words)[:MAX_TERMS]
 
 
+# Plain BM25 (``Store.plain_search``, ``kg bench run --search plain``): the baseline the public benches print, to set
+# the ranking against. Every word of the query, ORed, over the repo's content at its commit, the columns name, path and
+# body weighed alike, with no prior, boost or cut.
+PLAIN_KINDS = ("File", "Symbol", "Document", "Section")
+PLAIN_WEIGHTS = (0.0, 0.0, 1.0, 1.0, 1.0)
+PLAIN_TERMS = 512
+
+
+def plain_query(query: str) -> str | None:
+    """The FTS5 query of plain BM25: each word of ``query`` but stop words, lowercased, once, ORed; None for none."""
+    words = dict.fromkeys(w.lower() for w in _WORD.findall(fold(query)))
+    terms = [w for w in words if w not in STOP_WORDS and (len(w) >= 2 or w.isdigit())][:PLAIN_TERMS]
+    return " OR ".join(_quote(w) for w in terms) or None
+
+
 def code_words(query: str) -> list[str]:
     """The words of ``query`` to look up in code (``code_fts``), as written, once each, at most CODE_TERMS: all of a
     query of at most CODE_WORDS words, else only those written like identifiers; none of under three characters, all

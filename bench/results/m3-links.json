@@ -1,0 +1,906 @@
+{
+ "format": "evo-kg-bench/1",
+ "kind": "links",
+ "split": "holdout",
+ "created_at": "2026-11-02T19:09:07.614516Z",
+ "evo_ak": {
+  "version": "0.52.1",
+  "sha": "4589fdb7ed29e6897ba037e013d3373c1fdc81ef"
+ },
+ "extractor": "8418fefbc7d7eafc",
+ "settings": {
+  "search": "links",
+  "seed": 20261103,
+  "graphs_per_set": 4,
+  "hide": 0.1,
+  "choose": 0.05,
+  "false_edges": "one per hidden edge: same head and relation, a tail of its kind, of its name when one exists",
+  "model": "distmult",
+  "dim": 64,
+  "epochs": 20,
+  "precision": 0.85
+ },
+ "cost": {
+  "usd": 0.0,
+  "model_calls": 0
+ },
+ "benches": {
+  "evo-agents": {
+   "primary": "precision",
+   "method": "links-distmult",
+   "parts": {
+    "holdout": {
+     "n": 11997,
+     "primary": 0.8521,
+     "precision": 0.8521,
+     "recall": 0.7064,
+     "proposed": 9946,
+     "true": 8475,
+     "auc": 0.8546,
+     "train_seconds": 167.1
+    }
+   },
+   "graphs": {
+    "evo-agents": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 56823,
+     "parsed": 119970,
+     "train": 101975,
+     "chosen": 5998,
+     "n": 11997,
+     "same_name_false": 8224,
+     "threshold": 0.0879,
+     "precision": 0.8521,
+     "recall": 0.7064,
+     "proposed": 9946,
+     "true": 8475,
+     "auc": 0.8546,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.4512,
+      "seconds": 167.1
+     },
+     "relations": {
+      "in_repo": {
+       "n": 259,
+       "precision": 0.892,
+       "recall": 0.861,
+       "auc": 0.9489
+      },
+      "child_of": {
+       "n": 689,
+       "precision": 0.9463,
+       "recall": 0.7155,
+       "auc": 0.9137
+      },
+      "changes": {
+       "n": 4726,
+       "precision": 0.9112,
+       "recall": 0.8407,
+       "auc": 0.948
+      },
+      "in_source": {
+       "n": 938,
+       "precision": 0.5798,
+       "recall": 0.9957,
+       "auc": 0.9393
+      },
+      "mentions": {
+       "n": 1231,
+       "precision": 0.8007,
+       "recall": 0.5743,
+       "auc": 0.7563
+      },
+      "part_of": {
+       "n": 268,
+       "precision": 0.8824,
+       "recall": 0.056,
+       "auc": 0.6551
+      },
+      "defines": {
+       "n": 761,
+       "precision": 0.8947,
+       "recall": 0.067,
+       "auc": 0.581
+      },
+      "imports": {
+       "n": 2287,
+       "precision": 0.9298,
+       "recall": 0.7473,
+       "auc": 0.9436
+      },
+      "merged_as": {
+       "n": 34,
+       "precision": null,
+       "recall": 0.0,
+       "auc": 0.6038
+      },
+      "defined_in": {
+       "n": 21,
+       "precision": 0.6667,
+       "recall": 0.0952,
+       "auc": 0.5805
+      },
+      "has_step": {
+       "n": 146,
+       "precision": 0.9204,
+       "recall": 0.7123,
+       "auc": 0.9064
+      },
+      "touches": {
+       "n": 45,
+       "precision": 0.7636,
+       "recall": 0.9333,
+       "auc": 0.9338
+      },
+      "depends_on": {
+       "n": 171,
+       "precision": 0.8889,
+       "recall": 0.3275,
+       "auc": 0.8044
+      },
+      "calls": {
+       "n": 355,
+       "precision": 0.9753,
+       "recall": 0.4451,
+       "auc": 0.9152
+      },
+      "member_of": {
+       "n": 31,
+       "precision": null,
+       "recall": 0.0,
+       "auc": 0.4485
+      },
+      "inherits": {
+       "n": 25,
+       "precision": 1.0,
+       "recall": 0.08,
+       "auc": 0.7792
+      }
+     },
+     "seconds": 168.0
+    }
+   }
+  },
+  "swe-explore": {
+   "primary": "precision",
+   "method": "links-distmult",
+   "parts": {
+    "holdout": {
+     "n": 30661,
+     "primary": 0.8515,
+     "precision": 0.8515,
+     "recall": 0.7358,
+     "proposed": 26494,
+     "true": 22559,
+     "auc": 0.8322,
+     "train_seconds": 265.0
+    }
+   },
+   "graphs": {
+    "pydata__xarray-a41edc7bf530": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 8669,
+     "parsed": 18521,
+     "train": 15743,
+     "chosen": 926,
+     "n": 1852,
+     "same_name_false": 1371,
+     "threshold": 0.1132,
+     "precision": 0.8437,
+     "recall": 0.5421,
+     "proposed": 1190,
+     "true": 1004,
+     "auc": 0.7868,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.8308,
+      "seconds": 12.8
+     },
+     "relations": {
+      "child_of": {
+       "n": 35,
+       "precision": 0.7619,
+       "recall": 0.4571,
+       "auc": 0.8065
+      },
+      "in_source": {
+       "n": 360,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "changes": {
+       "n": 1203,
+       "precision": 0.7765,
+       "recall": 0.4505,
+       "auc": 0.7637
+      },
+      "defines": {
+       "n": 52,
+       "precision": 0.7143,
+       "recall": 0.0962,
+       "auc": 0.4623
+      },
+      "imports": {
+       "n": 114,
+       "precision": 0.7732,
+       "recall": 0.6579,
+       "auc": 0.7937
+      },
+      "member_of": {
+       "n": 37,
+       "precision": 1.0,
+       "recall": 0.027,
+       "auc": 0.5508
+      },
+      "overrides": {
+       "n": 34,
+       "precision": null,
+       "recall": 0.0,
+       "auc": 0.7491
+      }
+     },
+     "seconds": 12.9
+    },
+    "laravel__framework-37d48c45e0e2": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 76937,
+     "parsed": 202150,
+     "train": 171828,
+     "chosen": 10107,
+     "n": 20215,
+     "same_name_false": 13820,
+     "threshold": 0.008,
+     "precision": 0.8531,
+     "recall": 0.7882,
+     "proposed": 18676,
+     "true": 15933,
+     "auc": 0.8791,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.5673,
+      "seconds": 188.9
+     },
+     "relations": {
+      "child_of": {
+       "n": 355,
+       "precision": 0.8255,
+       "recall": 0.6394,
+       "auc": 0.8294
+      },
+      "changes": {
+       "n": 12062,
+       "precision": 0.784,
+       "recall": 0.7798,
+       "auc": 0.8604
+      },
+      "in_source": {
+       "n": 4127,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "defines": {
+       "n": 458,
+       "precision": 0.6778,
+       "recall": 0.1332,
+       "auc": 0.5618
+      },
+      "member_of": {
+       "n": 1441,
+       "precision": 0.9674,
+       "recall": 0.6787,
+       "auc": 0.9014
+      },
+      "calls": {
+       "n": 1757,
+       "precision": 0.9666,
+       "recall": 0.6431,
+       "auc": 0.8954
+      }
+     },
+     "seconds": 191.1
+    },
+    "navidrome__navidrome-e434ca937255": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 7566,
+     "parsed": 19138,
+     "train": 16269,
+     "chosen": 956,
+     "n": 1913,
+     "same_name_false": 1195,
+     "threshold": 0.0336,
+     "precision": 0.861,
+     "recall": 0.6932,
+     "proposed": 1540,
+     "true": 1326,
+     "auc": 0.837,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.705,
+      "seconds": 12.7
+     },
+     "relations": {
+      "child_of": {
+       "n": 126,
+       "precision": 0.8624,
+       "recall": 0.746,
+       "auc": 0.8757
+      },
+      "changes": {
+       "n": 1068,
+       "precision": 0.7954,
+       "recall": 0.6479,
+       "auc": 0.8142
+      },
+      "in_source": {
+       "n": 421,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "defines": {
+       "n": 83,
+       "precision": 0.8235,
+       "recall": 0.1687,
+       "auc": 0.5577
+      },
+      "imports": {
+       "n": 53,
+       "precision": 0.7273,
+       "recall": 0.6038,
+       "auc": 0.738
+      },
+      "calls": {
+       "n": 100,
+       "precision": 0.9783,
+       "recall": 0.45,
+       "auc": 0.803
+      },
+      "member_of": {
+       "n": 58,
+       "precision": 0.96,
+       "recall": 0.4138,
+       "auc": 0.8445
+      }
+     },
+     "seconds": 12.8
+    },
+    "qutebrowser__qutebrowser-cb59619327e7": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 26937,
+     "parsed": 66813,
+     "train": 56792,
+     "chosen": 3340,
+     "n": 6681,
+     "same_name_false": 4626,
+     "threshold": 0.0627,
+     "precision": 0.8443,
+     "recall": 0.643,
+     "proposed": 5088,
+     "true": 4296,
+     "auc": 0.8259,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.8114,
+      "seconds": 50.6
+     },
+     "relations": {
+      "child_of": {
+       "n": 95,
+       "precision": 0.8219,
+       "recall": 0.6316,
+       "auc": 0.8577
+      },
+      "changes": {
+       "n": 4411,
+       "precision": 0.7597,
+       "recall": 0.5103,
+       "auc": 0.7716
+      },
+      "in_source": {
+       "n": 1776,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "imports": {
+       "n": 235,
+       "precision": 0.7689,
+       "recall": 0.8213,
+       "auc": 0.8503
+      },
+      "defines": {
+       "n": 94,
+       "precision": 0.5385,
+       "recall": 0.0745,
+       "auc": 0.5022
+      },
+      "member_of": {
+       "n": 29,
+       "precision": 1.0,
+       "recall": 0.0345,
+       "auc": 0.6659
+      },
+      "overrides": {
+       "n": 22,
+       "precision": 0.5,
+       "recall": 0.0455,
+       "auc": 0.719
+      }
+     },
+     "seconds": 50.8
+    }
+   }
+  },
+  "mulocbench": {
+   "primary": "precision",
+   "method": "links-distmult",
+   "parts": {
+    "holdout": {
+     "n": 3728,
+     "primary": 0.8499,
+     "precision": 0.8499,
+     "recall": 0.7323,
+     "proposed": 3212,
+     "true": 2730,
+     "auc": 0.6284,
+     "train_seconds": 26.5
+    }
+   },
+   "graphs": {
+    "antonosika__gpt-engineer-c6dd52374288": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 1696,
+     "parsed": 3806,
+     "train": 3236,
+     "chosen": 190,
+     "n": 380,
+     "same_name_false": 234,
+     "threshold": 0.1054,
+     "precision": 0.8538,
+     "recall": 0.5684,
+     "proposed": 253,
+     "true": 216,
+     "auc": 0.7663,
+     "fit": {
+      "epochs": 20,
+      "loss": 1.0468,
+      "seconds": 3.1
+     },
+     "relations": {
+      "changes": {
+       "n": 228,
+       "precision": 0.7692,
+       "recall": 0.3947,
+       "auc": 0.6816
+      },
+      "in_source": {
+       "n": 105,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      }
+     },
+     "seconds": 3.1
+    },
+    "geekan__metagpt-f0df3144d68e": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 9539,
+     "parsed": 31728,
+     "train": 26970,
+     "chosen": 1586,
+     "n": 3172,
+     "same_name_false": 2512,
+     "threshold": 0.0523,
+     "precision": 0.8504,
+     "recall": 0.7904,
+     "proposed": 2948,
+     "true": 2507,
+     "auc": 0.884,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.7704,
+      "seconds": 21.6
+     },
+     "relations": {
+      "child_of": {
+       "n": 110,
+       "precision": 0.8659,
+       "recall": 0.6455,
+       "auc": 0.8587
+      },
+      "changes": {
+       "n": 2202,
+       "precision": 0.8113,
+       "recall": 0.7888,
+       "auc": 0.8848
+      },
+      "in_source": {
+       "n": 552,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "defines": {
+       "n": 55,
+       "precision": 0.8333,
+       "recall": 0.0909,
+       "auc": 0.514
+      },
+      "imports": {
+       "n": 215,
+       "precision": 0.8535,
+       "recall": 0.6233,
+       "auc": 0.841
+      }
+     },
+     "seconds": 21.8
+    },
+    "deepfakes__faceswap-a799f769e4c4": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 233,
+     "parsed": 432,
+     "train": 368,
+     "chosen": 21,
+     "n": 43,
+     "same_name_false": 26,
+     "threshold": 0.5418,
+     "precision": 0.6364,
+     "recall": 0.1628,
+     "proposed": 11,
+     "true": 7,
+     "auc": 0.4524,
+     "fit": {
+      "epochs": 20,
+      "loss": 1.2989,
+      "seconds": 0.2
+     },
+     "relations": {
+      "changes": {
+       "n": 23,
+       "precision": 0.5,
+       "recall": 0.1304,
+       "auc": 0.5028
+      }
+     },
+     "seconds": 0.2
+    },
+    "corentinj__real-time-voice-cloning-5425557efe30": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 796,
+     "parsed": 1331,
+     "train": 1132,
+     "chosen": 66,
+     "n": 133,
+     "same_name_false": 79,
+     "threshold": null,
+     "precision": null,
+     "recall": 0.0,
+     "proposed": 0,
+     "true": 0,
+     "auc": 0.4108,
+     "fit": {
+      "epochs": 20,
+      "loss": 1.0969,
+      "seconds": 1.6
+     },
+     "relations": {
+      "in_source": {
+       "n": 40,
+       "precision": null,
+       "recall": 0.0,
+       "auc": null
+      },
+      "changes": {
+       "n": 53,
+       "precision": null,
+       "recall": 0.0,
+       "auc": 0.3425
+      }
+     },
+     "seconds": 1.6
+    }
+   }
+  },
+  "contextbench": {
+   "primary": "precision",
+   "method": "links-distmult",
+   "parts": {
+    "holdout": {
+     "n": 40211,
+     "primary": 0.8499,
+     "precision": 0.8499,
+     "recall": 0.9109,
+     "proposed": 43098,
+     "true": 36629,
+     "auc": 0.8984,
+     "train_seconds": 367.9
+    }
+   },
+   "graphs": {
+    "sveltejs__svelte-6307a3322c20": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 20822,
+     "parsed": 33484,
+     "train": 28462,
+     "chosen": 1674,
+     "n": 3348,
+     "same_name_false": 2088,
+     "threshold": 0.0028,
+     "precision": 0.8578,
+     "recall": 0.6921,
+     "proposed": 2701,
+     "true": 2317,
+     "auc": 0.8095,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.8164,
+      "seconds": 26.6
+     },
+     "relations": {
+      "child_of": {
+       "n": 1206,
+       "precision": 0.8618,
+       "recall": 0.3516,
+       "auc": 0.6686
+      },
+      "changes": {
+       "n": 525,
+       "precision": 0.7121,
+       "recall": 0.7867,
+       "auc": 0.8119
+      },
+      "in_source": {
+       "n": 1093,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "defines": {
+       "n": 101,
+       "precision": 0.5366,
+       "recall": 0.6535,
+       "auc": 0.6331
+      },
+      "imports": {
+       "n": 283,
+       "precision": 0.7902,
+       "recall": 0.8516,
+       "auc": 0.896
+      },
+      "inherits": {
+       "n": 21,
+       "precision": 0.6552,
+       "recall": 0.9048,
+       "auc": 0.8844
+      },
+      "calls": {
+       "n": 95,
+       "precision": 0.8545,
+       "recall": 0.4947,
+       "auc": 0.7809
+      }
+     },
+     "seconds": 26.9
+    },
+    "clap-rs__clap-b2a8fd7f46a7": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 12445,
+     "parsed": 23878,
+     "train": 20298,
+     "chosen": 1193,
+     "n": 2387,
+     "same_name_false": 1602,
+     "threshold": 0.0389,
+     "precision": 0.8647,
+     "recall": 0.7817,
+     "proposed": 2158,
+     "true": 1866,
+     "auc": 0.8731,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.7857,
+      "seconds": 17.0
+     },
+     "relations": {
+      "child_of": {
+       "n": 92,
+       "precision": 0.7959,
+       "recall": 0.8478,
+       "auc": 0.9164
+      },
+      "in_source": {
+       "n": 519,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "changes": {
+       "n": 1257,
+       "precision": 0.8218,
+       "recall": 0.8035,
+       "auc": 0.8793
+      },
+      "defines": {
+       "n": 105,
+       "precision": 0.7286,
+       "recall": 0.4857,
+       "auc": 0.6746
+      },
+      "part_of": {
+       "n": 48,
+       "precision": 0.6769,
+       "recall": 0.9167,
+       "auc": 0.8624
+      },
+      "calls": {
+       "n": 238,
+       "precision": 0.9592,
+       "recall": 0.395,
+       "auc": 0.8331
+      },
+      "member_of": {
+       "n": 107,
+       "precision": 0.9677,
+       "recall": 0.5607,
+       "auc": 0.8535
+      }
+     },
+     "seconds": 17.2
+    },
+    "mui__material-38ac830eedf6": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 69238,
+     "parsed": 160242,
+     "train": 136206,
+     "chosen": 8012,
+     "n": 16024,
+     "same_name_false": 10828,
+     "threshold": 0.0007,
+     "precision": 0.8512,
+     "recall": 0.9445,
+     "proposed": 17781,
+     "true": 15135,
+     "auc": 0.9567,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.8456,
+      "seconds": 151.2
+     },
+     "relations": {
+      "child_of": {
+       "n": 4367,
+       "precision": 0.8656,
+       "recall": 0.9377,
+       "auc": 0.962
+      },
+      "changes": {
+       "n": 3325,
+       "precision": 0.6366,
+       "recall": 0.9221,
+       "auc": 0.875
+      },
+      "in_source": {
+       "n": 4995,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "part_of": {
+       "n": 130,
+       "precision": 0.5818,
+       "recall": 0.4923,
+       "auc": 0.5387
+      },
+      "defines": {
+       "n": 179,
+       "precision": 0.3981,
+       "recall": 0.2291,
+       "auc": 0.3832
+      },
+      "imports": {
+       "n": 2861,
+       "precision": 0.9573,
+       "recall": 0.9783,
+       "auc": 0.9942
+      },
+      "calls": {
+       "n": 134,
+       "precision": 0.7027,
+       "recall": 0.3881,
+       "auc": 0.6542
+      },
+      "member_of": {
+       "n": 26,
+       "precision": 0.8947,
+       "recall": 0.6538,
+       "auc": 0.7633
+      }
+     },
+     "seconds": 156.0
+    },
+    "mui__material-ui-1a4263a50af0": {
+     "model": "distmult",
+     "dim": 64,
+     "nodes": 83451,
+     "parsed": 184525,
+     "train": 156847,
+     "chosen": 9226,
+     "n": 18452,
+     "same_name_false": 12296,
+     "threshold": 0.0003,
+     "precision": 0.8462,
+     "recall": 0.9382,
+     "proposed": 20458,
+     "true": 17311,
+     "auc": 0.9543,
+     "fit": {
+      "epochs": 20,
+      "loss": 0.8108,
+      "seconds": 173.1
+     },
+     "relations": {
+      "child_of": {
+       "n": 5056,
+       "precision": 0.8375,
+       "recall": 0.9244,
+       "auc": 0.9522
+      },
+      "changes": {
+       "n": 3690,
+       "precision": 0.6488,
+       "recall": 0.91,
+       "auc": 0.8722
+      },
+      "in_source": {
+       "n": 5902,
+       "precision": 1.0,
+       "recall": 1.0,
+       "auc": null
+      },
+      "part_of": {
+       "n": 244,
+       "precision": 0.5,
+       "recall": 0.4057,
+       "auc": 0.5176
+      },
+      "defines": {
+       "n": 237,
+       "precision": 0.5784,
+       "recall": 0.4515,
+       "auc": 0.5822
+      },
+      "imports": {
+       "n": 3128,
+       "precision": 0.933,
+       "recall": 0.9795,
+       "auc": 0.9925
+      },
+      "calls": {
+       "n": 166,
+       "precision": 0.7909,
+       "recall": 0.5241,
+       "auc": 0.7607
+      }
+     },
+     "seconds": 179.0
+    }
+   }
+  }
+ },
+ "tasks": []
+}

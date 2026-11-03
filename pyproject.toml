@@ -28,6 +28,13 @@ clusters = ["graspologic-native==1.3.1"]
 # Search by meaning next to BM25 (evo_agents.kg.semantic): an embedding model run on this machine through ONNX Runtime,
 # no third party's API. 0.9: TextEmbedding.add_custom_model with local_files_only. docs/kg-semantic.md.
 semantic = ["fastembed>=0.9,<0.10", "numpy>=1.26"]
+# `kg bench`: reads the parquet files of the code benches (evo_agents.kg.bench, docs/kg-bench.md); downloads are stdlib.
+bench = ["pyarrow>=15"]
+# The learned order of kg_search's first results (evo_agents.kg.rank): a LightGBM LambdaMART model that ships in the package
+# (kg/rank_model.txt), trained by `kg rank train` on numbers only. Without it kg_search keeps its own order.
+rank = ["lightgbm>=4.5", "numpy>=1.26"]
+# Edges the graph may lack, proposed by a graph model (evo_agents.kg.links): DistMult or RotatE trained on CPU with numpy alone.
+links = ["numpy>=1.26"]
 hub-server = [
     "fastapi>=0.135",
     "uvicorn[standard]>=0.34",
@@ -51,6 +58,8 @@ hub-server = [
     "evo-ak[graphify]",
     # ...and computes the clusters of each build, so the hub's map has them.
     "evo-ak[clusters]",
+    # ...and orders kg_search's files with the learned model when its setting is on (evo_agents.kg.rank).
+    "evo-ak[rank]",
     # Pinned: /mcp subclasses MCPServer and mounts its Streamable HTTP app, whose surface still moves within 2.x.
     "mcp==2.3.0",
     # Keyless Sigstore signatures of plugin bundles (evo_agents.plugins.signing): the Verifier and policy API of 4.x.
@@ -100,6 +109,7 @@ include = ["evo_agents*"]
 [tool.setuptools.package-data]
 evo_agents = [
     "harness/schemas/*.json",
+    "kg/rank_model.txt",  # the learned order of kg_search (evo_agents.kg.rank), at most 5 MB
     "hub/model_catalog.json",
     "hub/migrations/*.py",
     "hub/migrations/*.mako",
@@ -179,6 +189,7 @@ ignore_imports = [
     # The CLI of the knowledge graph: `kg` commands that push to the hub, read its graphs, or schedule a push.
     "evo_agents.kg.cli -> evo_agents.hub.**",
     "evo_agents.kg.cli_graph -> evo_agents.hub.**",
+    "evo_agents.kg.cli_links -> evo_agents.hub.**",
     "evo_agents.kg.schedule -> evo_agents.hub.**",
 ]
 broken_contract_guidance = """\
@@ -350,6 +361,7 @@ ignore_imports = [
     # The CLI of the knowledge graph reaches the hub (contract kg-not-hub-or-worker).
     "evo_agents.kg.cli -> evo_agents.hub.**",
     "evo_agents.kg.cli_graph -> evo_agents.hub.**",
+    "evo_agents.kg.cli_links -> evo_agents.hub.**",
     "evo_agents.kg.schedule -> evo_agents.hub.**",
     # The MCP proxy finds a worker's home to serve the agent of a run.
     "evo_agents.hub.mcp_proxy -> evo_agents.worker.home",
@@ -375,13 +387,23 @@ source_modules = [
     "evo_agents.kg.post_search",
     "evo_agents.kg.store",
     "evo_agents.kg.serve",
+    "evo_agents.kg.locate",
+    "evo_agents.kg.rank",
+    "evo_agents.kg.links",
     "evo_agents.kg.tools",
     "evo_agents.kg.text",
     "evo_agents.kg.budget",
     "evo_agents.hub.kg_graph",
     "evo_agents.hub.kg_web",
 ]
-forbidden_modules = ["evo_agents.kg.evaluate", "evo_agents.hub.kg_health_eval", "evo_agents.hub.server.kg_eval_sets"]
+forbidden_modules = [
+    "evo_agents.kg.evaluate",
+    "evo_agents.kg.bench",
+    "evo_agents.kg.cli_bench",
+    "evo_agents.kg.cli_rank",
+    "evo_agents.hub.kg_health_eval",
+    "evo_agents.hub.server.kg_eval_sets",
+]
 broken_contract_guidance = """\
 What ranks and serves the graph never reads a question set: a ranking tuned on the answers it is scored with scores \
 what it memorized (plan kg-retrieval-quality, docs/kg-eval.md, section Tune and holdout). Tune on `kg eval --split \

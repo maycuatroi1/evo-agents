@@ -304,6 +304,14 @@ Projects and who sees what), and the core plugin chats labels each message with 
   the phrase alone, over its IDF in `node_fts_aud`, times its IDF in `node_fts` (`Store._as_public`), so the rows of an
   audience the reader lacks weigh in no score through the IDF either.
 - `kinds` is part of the query, so a search for sections gets as many sections as it asks for.
+- On a code graph (most of the best text matches are symbols or source files) and without `kinds`, the matches are
+  read again the way a developer reads a bug report (`evo_agents/kg/locate.py`): what the query names exactly (a
+  path, a `File "x.py", line 12` traceback line and the symbol that holds it, a dotted, backticked, snake_case or
+  camelCase name) gains a score of its own; the best nodes lend a share of theirs to what they call, import, inherit
+  from or override, to their tests and to the files changed in the same commits, through edges that are `parsed` or
+  resolved with a confidence of 0.5 or more; nodes add up to their file, and the list gives each file's best symbol
+  before any file's second one, so five results name five places with their line ranges. A graph that is not code
+  keeps the text order. The weights were tuned on the tune part of `kg bench` only (docs/kg-bench.md, step 4).
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
   may see: a search that finds a step or a page of the docs also names the code they point at.
@@ -676,6 +684,10 @@ code searches agents ran in the harness's sessions into questions whose answers 
 command ships without
 questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
 tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.
+
+Edges a build left out, the names that matched several nodes or none, are scored by a graph model trained on the
+parsed edges: `kg links propose` proposes the likely ones to the hub, where a writer or the Curator accepts or rejects
+each ([docs/kg-links.md](kg-links.md)).
 
 ## The optimize loop
 

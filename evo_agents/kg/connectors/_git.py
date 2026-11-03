@@ -6,9 +6,12 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 FETCH_TIMEOUT = 120.0
+COMMIT_START = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})? ")  # %H and the space before %P, as a history record opens
+ISO_TIME = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-])(\d+):(\d{2})$")
 
 
 class GitError(RuntimeError):
@@ -16,11 +19,12 @@ class GitError(RuntimeError):
 
 
 def git(repo: Path, *args: str, binary: bool = False):
-    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=not binary)
+    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
     if result.returncode != 0:
-        err = result.stderr if not binary else result.stderr.decode("utf-8", "replace")
+        err = result.stderr.decode("utf-8", "replace")
         raise GitError(f"git {' '.join(args)} failed in {repo}: {err.strip()}")
-    return result.stdout
+    # text is UTF-8 with bad bytes replaced: a history holds commits in Latin-1 (sympy), which must not stop a sync
+    return result.stdout if binary else result.stdout.decode("utf-8", "replace")
 
 
 def is_repo(path: Path) -> bool:
@@ -92,6 +96,18 @@ def cat_blobs(repo: Path, shas: list[str]) -> dict[str, bytes]:
     return blobs
 
 
+def iso_time(text: str) -> str:
+    """A time of ``%cI`` as the protocol takes it. A few old commits hold an offset no clock has (psf/requests has
+    one at +518:00), which ``%cI`` prints as is: such a time is moved to UTC, the same instant."""
+    text = text.strip()
+    m = ISO_TIME.match(text)
+    if not m or (len(m[3]) == 2 and int(m[3]) <= 23):
+        return text
+    offset = timedelta(hours=int(m[3]), minutes=int(m[4]))
+    moment = datetime.fromisoformat(m[1]) - (offset if m[2] == "+" else -offset)
+    return moment.isoformat() + "Z"
+
+
 def last_change_times(repo: Path, commit: str) -> dict[str, str]:
     """Committer time of the latest commit touching each path, from one walk of the history."""
     out = git(repo, "log", "--format=%x00%cI", "--name-only", "--no-renames", commit)
@@ -99,7 +115,7 @@ def last_change_times(repo: Path, commit: str) -> dict[str, str]:
     current = None
     for line in out.splitlines():
         if line.startswith("\0"):
-            current = line[1:]
+            current = iso_time(line[1:])
         elif line and current and line not in times:
             times[line] = current
     return times
@@ -116,8 +132,14 @@ def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
     args += ["--no-renames", "--diff-merges=first-parent", commit]
     if since:
         args.append(f"^{since}")
+    records: list[str] = []
+    for piece in git(repo, *args).split("\x01")[1:]:
+        if records and not COMMIT_START.match(piece):  # a \x01 a message held (ansible has some), not a new commit
+            records[-1] += "\x01" + piece
+        else:
+            records.append(piece)
     found: list[dict] = []
-    for record in git(repo, *args).split("\x01")[1:]:
+    for record in records:
         head, _, listed = record.partition("\x03")
         shas, time, email, message = (head.split("\x02", 3) + ["", "", ""])[:4]
         sha, *parents = shas.split()
@@ -126,7 +148,7 @@ def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
             {
                 "sha": sha,
                 "parents": parents,
-                "time": time,
+                "time": iso_time(time),
                 "author_email": email.strip(),
                 "message": message.strip(),
                 "paths": paths,
@@ -146,7 +168,7 @@ def is_ancestor(repo: Path, older: str, newer: str) -> bool:
 
 
 def commit_time(repo: Path, commit: str) -> str:
-    return git(repo, "show", "-s", "--format=%cI", commit).strip()
+    return iso_time(git(repo, "show", "-s", "--format=%cI", commit))
 
 
 def remote_head(repo: Path, remote: str = "origin") -> str | None:

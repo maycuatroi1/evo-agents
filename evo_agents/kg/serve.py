@@ -35,7 +35,8 @@ import uuid
 from collections import Counter, deque
 
 from evo_agents import __version__
-from evo_agents.kg import semantic
+from evo_agents.kg import locate, semantic
+from evo_agents.kg import rank as learned
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
     CONTEXT_MIN_LINE,
@@ -129,6 +130,10 @@ class Session:
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None
+        self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
+        self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (kg.filebm25)
+        # kg_search orders files by the learned model (evo_agents.kg.rank): None as the setting says, True or False always
+        self.rank: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -306,9 +311,20 @@ class Session:
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
         repo = repo.strip() if isinstance(repo, str) and repo.strip() else None
+        if self.plain:
+            return self._plain_search(store, b, query, kinds, limit)
         vector = semantic.query_vector(store, query, self.semantic)
         pool = limit * (REPO_POOL if repo else 4)
-        ids = store.search(query, b, limit=pool, kinds=kinds, deprecated=self.deprecated, vector=vector)
+        ids = None
+        if not kinds and not repo:
+            scored = store.search_scored(query, b, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
+            ids = locate.arrange(store, b, query, scored, ranker=learned.ranker_for(self.rank), limit=limit)
+            if ids is None:
+                ids = [i for i, _ in scored][: limit * 12]  # as many as store.search read before
+            else:
+                ids = ids[: max(limit * 4, 40)]
+        if ids is None:
+            ids = store.search(query, b, limit=pool, kinds=kinds, deprecated=self.deprecated, vector=vector)
         named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
         if named is not None:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
@@ -369,6 +385,36 @@ class Session:
             "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
             "matched": matched,
             "code": {nid: found_lines for nid, found_lines in code.items() if any(n["id"] == nid for n in results)},
+            "summary": f"{len(results)} results",
+        }
+
+    def _plain_search(self, store: Store, b: int, query: str, kinds: list | None, limit: int) -> tuple[str, dict]:
+        """kg_search by plain BM25: the nodes in its order, no mention, cut or exploring; the passages matched."""
+        if self.plain_files:
+            from evo_agents.kg import filebm25
+
+            clone, commit = self.plain_files
+            files = {
+                i.split(":file:", 1)[1]: i
+                for (i,) in store.db.execute("SELECT node_id FROM nodes WHERE kind = 'File' AND tx_to IS NULL")
+                if ":file:" in i
+            }
+            ids = [files[p] for p in filebm25.rank_files(clone, commit, set(files), query, limit * 4)]
+        else:
+            ids = store.plain_search(query, limit * 4, kinds)
+        found = store.nodes(ids, b)
+        results = [found[i] for i in ids if i in found and self.seen(found[i])][:limit]
+        matched = store.matched(
+            [n["id"] for n in results], query, {n["id"] for n in results if n["kind"] in SNIPPET_KINDS}
+        )
+        shared, label_line = self._labels(results)
+        lines = [f"{len(results)} result(s) in project {self.project.name} (build {b}), plain BM25", *label_line]
+        lines += [self._line(n, shared, (matched.get(n["id"]) or {}).get("lines"), n["status"]) for n in results]
+        return "\n".join(lines), {
+            "build": b,
+            "results": [self._node_json(n) for n in results],
+            "mentioned_by": {},
+            "matched": matched,
             "summary": f"{len(results)} results",
         }
 
