@@ -21,7 +21,6 @@ from sqlalchemy import func, select, update
 from evo_agents.hub import runs, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server.app import create_app
-from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.fake_github import Account
 from tests.hub.live import bearer, sql
 from tests.hub.test_agent_pool_placement import join
@@ -852,9 +851,9 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
 
 
 def parked_on_a_node(client, hub, hub_db) -> tuple[dict, dict, dict]:
-    """``waiting``, on a ready node of the pool of the project's default agent, which has an account pool (since
-    agent-dedicated-pools only such a node claims the runs of the agent), and the run parked."""
-    give_account_pool(hub_db, PROJECT, PROJECT, OWNER)
+    """``waiting``, on a ready node of the pool of the project's default agent, which has the account pool
+    ``test_runs.members`` gave it (since agent-dedicated-pools only such a node claims the runs of the agent), and the
+    run parked."""
     worker = join(client, hub_db, fleet_worker(client, hub["owner"], "mac-mini"), PROJECT)
     run = dispatched_plan(client, hub["owner"])
     assert claim(client, worker)["id"] == run["id"]
