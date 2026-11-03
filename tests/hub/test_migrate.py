@@ -5285,3 +5285,23 @@ def test_migration_0192_adds_the_guards_lists_of_a_project(hub_db):
     move_to(hub_db, "0191", down=True)
     assert {"guard_terms", "guard_targets"}.isdisjoint(tables(hub_db))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0192") :]
+
+
+def test_migration_0193_adds_the_run_reach_of_a_user(hub_db):
+    move_to(hub_db, "0192")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0193")
+    u = t.users
+    assert query(hub_db, select(u.c.run_reach).where(u.c.id == ids["user"])) == [([],)]  # nobody reaches more
+    with live.connect(hub_db) as conn:
+        conn.execute(update(u).values(run_reach=["agents", "workers", "curator"]).where(u.c.id == ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # the three groups alone
+        conn.execute(update(u).values(run_reach=["agents", "secrets"]).where(u.c.id == ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.NotNullViolation):
+        conn.execute(update(u).values(run_reach=None).where(u.c.id == ids["user"]))
+    move_to(hub_db, "0192", down=True)
+    columns = select(INFO_COLUMNS.c.column_name).where(INFO_COLUMNS.c.table_name == "users")
+    assert "run_reach" not in {row[0] for row in query(hub_db, columns)}
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0193") :]
