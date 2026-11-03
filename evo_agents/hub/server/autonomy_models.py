@@ -1,6 +1,7 @@
 """The shapes of the autonomy routes (``evo_agents.hub.server.autonomy_routes``, plan autonomy-levels): the effective
-autonomy GET /v1/autonomy answers, whose keys are those `evo-agents hub autonomy show --json` prints (criterion a3), and
-a person's own preference PUT /v1/autonomy/prefs writes (criterion a2)."""
+autonomy GET /v1/autonomy answers, whose keys are those `evo-agents hub autonomy show --json` prints (criterion a3),
+a person's own preference PUT /v1/autonomy/prefs writes (criterion a2), and the run reach of a person that GET and PUT
+/v1/autonomy/run-reach read and write (``run_access_rules.REACH_GROUPS``)."""
 
 from __future__ import annotations
 
@@ -9,8 +10,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from evo_agents.hub.server.org_models import CLASSES_FIELD, Level
+from evo_agents.hub.server.run_access_rules import REACH_GROUPS
 
 Mode = Literal["deny", "ask", "notify", "auto"]
+ReachGroup = Literal[REACH_GROUPS]
+REACH_FIELD = (
+    "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a "
+    "project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's "
+    "writes); empty: none, as for everyone who never chose"
+)
 
 
 class AutonomyClass(BaseModel):
@@ -49,3 +57,22 @@ class PrefWritten(BaseModel):
     level: Level
     previous: Level | None = Field(description="the level of the revision before; null for the first")
     classes: dict[str, str] = Field(description=CLASSES_FIELD)
+
+
+class RunReach(BaseModel):
+    login: str = Field(description="the person whose runs it is")
+    groups: list[ReachGroup] = Field(description=REACH_FIELD)
+
+
+class RunReachSet(BaseModel):
+    """The whole run reach of the caller: it replaces the one before, and an empty list clears it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[ReachGroup] = Field(max_length=len(REACH_GROUPS), description=REACH_FIELD)
+
+
+class RunReachWritten(BaseModel):
+    login: str = Field(description="the person whose runs it is")
+    groups: list[ReachGroup] = Field(description=REACH_FIELD)
+    previous: list[ReachGroup] = Field(description="the groups before this write")

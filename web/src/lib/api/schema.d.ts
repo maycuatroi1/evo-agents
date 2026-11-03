@@ -5149,6 +5149,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/autonomy/run-reach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Run Reach
+         * @description The groups the caller's runs that run as them reach besides what every run's token reaches.
+         */
+        get: operations["show_run_reach_v1_autonomy_run_reach_get"];
+        /**
+         * Set Run Reach
+         * @description Replace the caller's own run reach; an empty list clears it. The next request of each of their runs reads it.
+         */
+        put: operations["set_run_reach_v1_autonomy_run_reach_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/autonomy/stops": {
         parameters: {
             query?: never;
@@ -35827,6 +35851,48 @@ export interface components {
              */
             log_sha256?: string | null;
         };
+        /** RunReach */
+        RunReach: {
+            /**
+             * Login
+             * @description the person whose runs it is
+             */
+            login: string;
+            /**
+             * Groups
+             * @description the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose
+             */
+            groups: ("agents" | "workers" | "curator")[];
+        };
+        /**
+         * RunReachSet
+         * @description The whole run reach of the caller: it replaces the one before, and an empty list clears it.
+         */
+        RunReachSet: {
+            /**
+             * Groups
+             * @description the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose
+             */
+            groups: ("agents" | "workers" | "curator")[];
+        };
+        /** RunReachWritten */
+        RunReachWritten: {
+            /**
+             * Login
+             * @description the person whose runs it is
+             */
+            login: string;
+            /**
+             * Groups
+             * @description the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose
+             */
+            groups: ("agents" | "workers" | "curator")[];
+            /**
+             * Previous
+             * @description the groups before this write
+             */
+            previous: ("agents" | "workers" | "curator")[];
+        };
         /**
          * RunRepo
          * @description A repo of a plan run, with the branch the plan names for it.
@@ -60828,6 +60894,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PrefWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_run_reach_v1_autonomy_run_reach_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunReach"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_run_reach_v1_autonomy_run_reach_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunReachSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunReachWritten"];
                 };
             };
             /** @description Unauthorized */

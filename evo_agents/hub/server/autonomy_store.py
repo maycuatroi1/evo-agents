@@ -5,6 +5,9 @@ lists (``autonomy_levels.effective``).
 
 A preference above the ceilings is stored as it is: the effective level is the lowest of the sources, so the ceiling
 still decides. Who sees whose autonomy is ``org.view_refusal``: the person, a lead of a unit above them, a hub admin.
+
+A person's run reach, ``users.run_reach``, is the set of ``run_access_rules.REACH_GROUPS`` the tokens of their runs
+that run as them reach; they read and set their own alone, each change with its ``run_access.reach`` audit row.
 """
 
 from __future__ import annotations
@@ -12,12 +15,20 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy, autonomy_levels, org, tables
-from evo_agents.hub.server import audit, autonomy_policies
-from evo_agents.hub.server.autonomy_models import AutonomyClass, AutonomyView, PrefSet, PrefWritten
+from evo_agents.hub.server import audit, autonomy_policies, run_access_rules
+from evo_agents.hub.server.autonomy_models import (
+    AutonomyClass,
+    AutonomyView,
+    PrefSet,
+    PrefWritten,
+    RunReach,
+    RunReachSet,
+    RunReachWritten,
+)
 from evo_agents.hub.server.org_store import load, lock, profile_by_handle, today, user_by_login
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
@@ -71,6 +82,41 @@ async def write_pref(conn: AsyncConnection, user: Principal, body: PrefSet) -> P
     )
     log.info("autonomy preference set", extra={"login": user.login, "revision": revision})
     return PrefWritten(login=user.login, revision=revision, level=level, previous=previous, classes=classes)
+
+
+def _no_run_reach(user: Principal) -> None:
+    if user.acts_for_run is not None:  # a run's token never gets here (run_access_rules); the agent on /mcp neither
+        raise HTTPException(403, "the agent of a run never reads or changes what its owner's runs reach")
+
+
+async def run_reach(conn: AsyncConnection, user: Principal) -> RunReach:
+    """The caller's own run reach; the agent of a run is refused."""
+    _no_run_reach(user)
+    u = tables.users
+    held = (await conn.execute(select(u.c.run_reach).where(u.c.id == user.user_id))).scalar_one()
+    return RunReach(login=user.login, groups=list(run_access_rules.reach_order(held)))
+
+
+def _shown(groups: tuple[str, ...]) -> str:
+    return ",".join(groups) or "none"
+
+
+async def write_run_reach(conn: AsyncConnection, user: Principal, body: RunReachSet) -> RunReachWritten:
+    """Replace the caller's own run reach with ``body.groups``, with the audit row ``run_access.reach`` when it
+    changes; the agent of a run is refused."""
+    _no_run_reach(user)
+    u = tables.users
+    found = select(u.c.run_reach).where(u.c.id == user.user_id).with_for_update()
+    before = run_access_rules.reach_order((await conn.execute(found)).scalar_one())
+    groups = run_access_rules.reach_order(body.groups)
+    if groups != before:
+        await conn.execute(update(u).values(run_reach=list(groups)).where(u.c.id == user.user_id))
+        target = f"reach {user.login} {_shown(before)}->{_shown(groups)}"
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.RUN_ACCESS_REACH, target=target
+        )
+        log.info("run reach set", extra={"login": user.login, "groups": list(groups)})
+    return RunReachWritten(login=user.login, groups=list(groups), previous=list(before))
 
 
 async def _policy(conn: AsyncConnection, project: str, project_id: int, repo: str) -> autonomy_levels.Source:
