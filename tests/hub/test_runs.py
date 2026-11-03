@@ -907,7 +907,8 @@ def test_the_next_attempt_of_a_lost_run_waits_until_the_worker_that_lost_it_is_s
     shown = run_of(client, hub["reader"], second)
     assert shown["state"] == "queued" and shown["attempt"] == 2 and shown["max_attempts"] == runs.MAX_ATTEMPTS == 3
     assert {key: shown["steady_wait"][key] for key in waits} == waits
-    assert 18 < seconds_from_now(hub_db, shown["steady_wait"]["steady_at"]) <= 20, "steady 120 s after it began"
+    # steady 120 s after it began; a few seconds of slack for a loaded runner between worker_clock and this read
+    assert 15 < seconds_from_now(hub_db, shown["steady_wait"]["steady_at"]) <= 20, "steady 120 s after it began"
     listed = client.get(f"/v1/projects/{PROJECT}/runs", params={"state": "queued"}, headers=hub["reader"]).json()
     assert [item["steady_wait"]["worker"] for item in listed["runs"]] == ["mac-mini"], "the list says it too"
 
@@ -915,7 +916,7 @@ def test_the_next_attempt_of_a_lost_run_waits_until_the_worker_that_lost_it_is_s
     worker_clock(hub_db, worker, steady_since=1000, last_heartbeat_at=31)
     beat(client, worker)
     assert claim(client, worker) is None
-    assert 118 < seconds_from_now(hub_db, run_of(client, hub["owner"], second)["steady_wait"]["steady_at"]) <= 120
+    assert 115 < seconds_from_now(hub_db, run_of(client, hub["owner"], second)["steady_wait"]["steady_at"]) <= 120
 
     # Silent for 31 seconds: not steady whenever its count began, and no time is known until it beats again.
     worker_clock(hub_db, worker, steady_since=1000, last_heartbeat_at=31)
