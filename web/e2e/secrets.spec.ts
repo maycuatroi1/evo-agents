@@ -208,31 +208,32 @@ test("Delete asks first, then the secret is gone and the leases of it still out 
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   const value = secretValue("delete");
-  await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value });
+  // A variable of the member's own: a run of an agent takes its Claude account from the agent's account pool alone.
+  await putSecretByApi(me, "npm-token", { kind: "env", env_var: "NPM_TOKEN", projects: [project], value });
   await seedRunPlan(me, project);
   const live = await liveWorker(me, project, uniqueName("laptop"));
   const [run] = await dispatch(me, project, ["2"]);
   expect((await claimRun(live))?.id).toBe(run.id);
   await startRun(live, run.id);
   const leased = await leaseCredentials(live, run.id);
-  expect(leased.leases.map((lease) => [lease.name, lease.value])).toEqual([["claude-oauth", value]]);
+  expect(leased.leases.filter((lease) => lease.name === "npm-token").map((lease) => [lease.name, lease.value])).toEqual([["npm-token", value]]);
 
   await page.goto("/secrets");
-  await row(page, "claude-oauth").getByTestId("secret-delete").click();
+  await row(page, "npm-token").getByTestId("secret-delete").click();
   const dialog = page.getByTestId("delete-secret-dialog");
-  await expect(dialog.getByRole("heading", { name: "Delete secret claude-oauth?" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Delete secret npm-token?" })).toBeVisible();
   await expect(dialog).toContainText("leases of it still out are revoked");
   await dialog.getByTestId("delete-secret-dialog-confirm").click();
   await expect(dialog).toBeHidden();
-  await expect(toast(page, "Secret claude-oauth deleted")).toContainText("Revoke the token where it was made");
+  await expect(toast(page, "Secret npm-token deleted")).toContainText("Revoke the token where it was made");
   await expect(main(page).getByTestId("state-empty")).toBeVisible();
   expect(await secretsOf(me)).toEqual([]);
 
   const credentials = await runCredentialsOf(me, project, run.id);
   expect(credentials.status).toBe(200);
-  const leases = credentials.body as RunLease[];
+  const leases = (credentials.body as RunLease[]).filter((lease) => lease.name === "npm-token");
   expect(leases).toHaveLength(1);
-  expect(leases[0]).toMatchObject({ name: "claude-oauth", provider: "secret", kind: "env", target: "CLAUDE_CODE_OAUTH_TOKEN" });
+  expect(leases[0]).toMatchObject({ name: "npm-token", provider: "secret", kind: "env", target: "NPM_TOKEN" });
   expect(leases[0].revoked_at).not.toBeNull();
   expect(JSON.stringify(leases)).not.toContain(value);
 });

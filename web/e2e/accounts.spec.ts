@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { agentPath, createAgentByApi, putAgentAccountByApi } from "./support/agents";
+import { agentPath, createAgentByApi, poolAccountsOf, putAgentAccountByApi } from "./support/agents";
 import { API_URL } from "./support/env";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
@@ -47,9 +47,13 @@ async function twoAccounts(me: Member): Promise<string[]> {
   return values;
 }
 
-/** A run of `me` that a worker leased and started, holding one of their accounts. */
+/**
+ * A run of `me` that a worker leased and started, holding one of their accounts: `me`, an admin of their first project,
+ * puts both in an account pool of the project's default agent, whose runs lease the accounts of that pool alone.
+ */
 async function heldRun(me: Member) {
   const project = me.projects[0];
+  await poolAccountsOf(me, project, ["claude-a", "claude-b"]);
   await seedRunPlan(me, project);
   const live = await liveWorker(me, project, uniqueName("laptop"));
   const [run] = await dispatch(me, project, ["2"]);
@@ -57,7 +61,7 @@ async function heldRun(me: Member) {
   await startRun(live, run.id);
   const credentials = await leaseCredentials(live, run.id);
   const lease = credentials.leases.find((item) => item.env_var === VAR);
-  expect(lease?.name).toBe("claude-a");
+  expect(lease?.name).toBe("@pool.mine:claude-a");
   return { project, live, run, leaseId: lease?.id ?? 0 };
 }
 
@@ -194,7 +198,7 @@ test("each account shows its state, usage limits, runs and holder without a valu
   page,
   member,
 }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const values = await twoAccounts(me);
   const { project, live, run, leaseId } = await heldRun(me);
   const windows = { five_hour: { utilization: 0.42, resets_at: RESET } };
@@ -304,7 +308,7 @@ test("the rotation policy of a project is set on the page and reset to the defau
 });
 
 test("the run page names the account a run took and the usage limit it moved on from", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const values = await twoAccounts(me);
   const { project, live, run, leaseId } = await heldRun(me);
   expect((await rateLimit(live, run.id, { lease_id: leaseId, status: "rejected", rate_limit_type: "five_hour", resets_at: RESET })).action).toBe(
@@ -319,7 +323,8 @@ test("the run page names the account a run took and the usage limit it moved on 
   const taken = card.getByTestId("run-account-item");
   await expect(taken).toHaveAttribute("data-env-var", VAR);
   await expect(taken.getByTestId("run-account-name")).toHaveText("claude-b");
-  await expect(taken.getByTestId("run-account-how")).toHaveText("From the pool");
+  // The hub leases an account pool's accounts as bound to the run's worker (credentials.survey_run, on_worker).
+  await expect(taken.getByTestId("run-account-how")).toHaveText("Bound to the worker");
   await expect(taken.getByTestId("run-account-failovers")).toHaveText("1 failover");
   const event = taken.getByTestId("run-account-event");
   await expect(event).toHaveAttribute("data-action", "failover");
@@ -434,7 +439,7 @@ test("a hub with model accounts only says there is no service credential, and th
 });
 
 test("a share whose account is past its usage ceiling says shared runs wait, and only that one", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   await twoAccounts(me);
   const { project, live, run, leaseId } = await heldRun(me);
   const windows = { five_hour: { utilization: 0.9, resets_at: RESET } };

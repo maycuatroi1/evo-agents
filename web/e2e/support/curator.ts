@@ -98,8 +98,18 @@ export async function dutyWorker(owner: Account, project: string, name: string):
   return live;
 }
 
-/** The charter `owner` (an admin of `project`) writes through the API. */
+/**
+ * The pool of `project`'s default agent given to `owner` (hub_stack POST /pools/owner), as it is the pool of the member
+ * who registered the project: the night shift dispatches its runs as that pool's owner, and sends the morning brief to
+ * them (plan agent-dedicated-pools). The hub admin registers the specs' projects and holds no grant on them.
+ */
+export async function ownDefaultPool(owner: Account, project: string): Promise<void> {
+  await stack("/pools/owner", { agent: project, login: owner.login });
+}
+
+/** The charter `owner` (an admin of `project`, who holds the pool of its default agent) writes through the API. */
 export async function writeCharter(owner: Account, project: string, extra: Record<string, unknown> = {}): Promise<Charter> {
+  await ownDefaultPool(owner, project);
   const api = bearerClient(await machineToken(owner));
   return call(api.PUT("/v1/projects/{project}/curator/charter", { params: { path: { project } }, body: charterBody(extra) as never }));
 }

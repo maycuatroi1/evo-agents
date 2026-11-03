@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { createAgentByApi } from "./support/agents";
+import { createAgentByApi, poolAccountsOf } from "./support/agents";
 import { chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
@@ -141,11 +141,13 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
 });
 
 test("the dispatch form's Model field offers the models of the visitor's provider accounts, and the run asks for one", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
   await liveWorker(me, project, uniqueName("laptop"));
   await putProviderByApi(me, "glm-runs", { provider: "glm", value: providerKey(), projects: [project], models: ["fake-large", "fake-coder"] });
+  // A run of an agent goes through the gateway with an account of the agent's account pool alone.
+  await poolAccountsOf(me, project, ["glm-runs"]);
 
   await open(page, `/p/${project}/runs`);
   await main(page).getByTestId("runs-empty-dispatch").click();
@@ -262,7 +264,7 @@ test("a chat session is one row, as its latest turn, and opens into its turns, e
   const project = me.projects[0];
   const handle = uniqueName("reviewer");
   await createAgentByApi(me, project, { handle, name: "Code reviewer" });
-  const live = await chatWorker(me, project, uniqueName("mini"));
+  const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
   const asks = ["please fix the flaky wait test", "one more thing: the retries", "and the docs?"];
   const {
     runs: [first, second, third],

@@ -5,7 +5,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { type ApiClient, call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
 
-import { API_URL } from "./env";
+import { API_URL, STACK_URL } from "./env";
 import { type Account, bearerClient, HubAdmin, machineToken, type Repo } from "./hub";
 import { HOST, PROTOCOL_HEADER } from "./workers";
 
@@ -74,15 +74,16 @@ export type LiveWorker = { worker: Worker; token: string; project: string };
 
 /**
  * A worker of `account` serving `project`, registered from a signed-in machine, after a first heartbeat that reports
- * Claude Code and a checkout of the plan's repo: a dispatch to `account` matches it. `terminal` registers it with
- * `--allow-web-terminal`.
+ * Claude Code and a checkout of the plan's repo, and a ready node of the pool of `agent` (the project's default agent,
+ * whose handle is the project's name, unless named; null for a worker of no pool): a run of an agent goes to a node of
+ * its pool alone (plan agent-dedicated-pools). `terminal` registers it with `--allow-web-terminal`.
  */
 export async function liveWorker(
   account: Account,
   project: string,
   name: string,
   slots = 1,
-  { terminal = false, report = {} }: { terminal?: boolean; report?: MachineReport } = {},
+  { terminal = false, report = {}, agent = project }: { terminal?: boolean; report?: MachineReport; agent?: string | null } = {},
 ): Promise<LiveWorker> {
   const api = bearerClient(await machineToken(account));
   const credential = await call(
@@ -100,7 +101,23 @@ export async function liveWorker(
   );
   const live = { worker: credential.worker, token: credential.token, project };
   await workerHeartbeat(live, [], report);
+  if (agent !== null) await joinAgentPool(live, agent);
   return live;
+}
+
+/**
+ * `live` made a node of the pool of agent `handle` (hub_stack POST /workers/pool), then ready with a doctor report of no
+ * finding, as `evo-agents worker doctor` sends one: a node of a pool takes no run until it has a fresh report with no
+ * high finding. A worker is a node of one pool at a time.
+ */
+export async function joinAgentPool(live: LiveWorker, handle: string): Promise<void> {
+  const response = await fetch(`${STACK_URL}/workers/pool`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ worker_id: live.worker.id, agent: handle }),
+  });
+  if (!response.ok) throw new Error(`hub_stack /workers/pool: ${response.status} ${await response.text()}`);
+  await workerCall(live, "/v1/worker/doctor", { findings: [] });
 }
 
 async function workerCall(live: LiveWorker, path: string, body: unknown): Promise<unknown> {
@@ -447,7 +464,7 @@ export async function planRunUnderway(
   }: { waiting?: boolean; dispatch?: Record<string, unknown>; terminal?: boolean } = {},
 ): Promise<{ live: LiveWorker; run: Run; decision: number | null }> {
   const live = await planRunWorker(owner, project, name, { terminal });
-  const run = await dispatchPlan(owner, project, { worker_id: live.worker.id, runtime: "claude-code", model: MODELS[1], ...dispatch });
+  const run = await dispatchPlan(owner, project, { runtime: "claude-code", model: MODELS[1], ...dispatch });
   const claimed = await claimRun(live);
   if (claimed?.id !== run.id) throw new Error(`the worker claimed ${claimed?.id ?? "nothing"}, not plan run #${run.id}`);
   await workerHeartbeat(live, [run.id], { repos: [REPO, HARNESS_REPO], models: MODELS });

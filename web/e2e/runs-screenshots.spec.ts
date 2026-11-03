@@ -300,7 +300,7 @@ test.describe("runs screenshots", () => {
       await seedRunPlan(me, project);
       const handle = uniqueName("reviewer");
       await createAgentByApi(me, project, { handle, name: "Code reviewer" });
-      const live = await chatWorker(me, project, uniqueName("mini"));
+      const live = await chatWorker(me, project, uniqueName("mini"), 1, handle);
       const asks = ["please fix the flaky wait test", "one more thing: the retries", "and the docs, while you are at it?"];
       const {
         runs: [, second],
