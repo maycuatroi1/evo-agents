@@ -292,7 +292,7 @@ class Session:
         ids = None
         if not kinds:
             scored = store.search_scored(query, b, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
-            ids = locate.arrange(store, b, query, scored, ranker=learned.ranker_for(self.rank))
+            ids = locate.arrange(store, b, query, scored, ranker=learned.ranker_for(self.rank), limit=limit)
             if ids is None:
                 ids = [i for i, _ in scored][: limit * 12]  # as many as store.search read before
             else:

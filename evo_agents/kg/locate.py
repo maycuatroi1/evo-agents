@@ -501,22 +501,25 @@ def code_like(pool: Pool, top: int = 10) -> bool:
     return bool(best) and sum(c.kind in CODE_KINDS for c in best) * 2 > len(best)
 
 
-def arrange(store, b: int, query: str, scored, params: Params = DEFAULT, ranker=None) -> list[str] | None:
-    """The ids of a question's candidates in reading order, or None when the graph is not code (the text order stands).
+def arrange(
+    store, b: int, query: str, scored, params: Params = DEFAULT, ranker=None, limit: int = 10
+) -> list[str] | None:
+    """The ids of a question's candidates in reading order, or None when the graph is not code and no ``ranker`` is
+    given (the text order stands).
 
     ``scored`` is ``Store.search_scored``: (id, text score) of the text matches, best first. The text matches that the
-    reading leaves out follow the ones it lists. ``ranker``, a learned model of ``evo_agents.kg.rank``, orders the
-    files again before their nodes are placed; None keeps the order of step 3.
+    reading leaves out follow the ones it lists. ``ranker``, a learned model of ``evo_agents.kg.rank``, fills the first
+    places of the reading, told the ``limit`` of results asked for, and reads a pool of mostly documents too (on the
+    tune part, the file order of such pools found more answering files than the text order); None keeps the order of
+    step 3.
     """
     scored = list(scored)
     if not scored:
         return None
     pool = gather(store, b, query, scored, params)
-    if not code_like(pool):
+    if ranker is None and not code_like(pool):
         return None
     ranked = files(pool, params)
-    if ranker is not None:
-        ranked = ranker.rerank(store, b, query, pool, ranked, params)
-    listed = place(ranked, params)
+    listed = ranker.order(store, b, query, pool, ranked, params, limit) if ranker is not None else place(ranked, params)
     seen = set(listed)
     return listed + [i for i, _ in scored if i not in seen]

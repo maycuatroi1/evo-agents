@@ -30,7 +30,7 @@ clusters = ["graspologic-native==1.3.1"]
 semantic = ["fastembed>=0.9,<0.10", "numpy>=1.26"]
 # `kg bench`: reads the parquet files of the code benches (evo_agents.kg.bench, docs/kg-bench.md); downloads are stdlib.
 bench = ["pyarrow>=15"]
-# The learned order of kg_search's files (evo_agents.kg.rank): a LightGBM LambdaMART model that ships in the package
+# The learned order of kg_search's first results (evo_agents.kg.rank): a LightGBM LambdaMART model that ships in the package
 # (kg/rank_model.txt), trained by `kg rank train` on numbers only. Without it kg_search keeps its own order.
 rank = ["lightgbm>=4.5", "numpy>=1.26"]
 # Edges the graph may lack, proposed by a graph model (evo_agents.kg.links): DistMult or RotatE trained on CPU with numpy alone.

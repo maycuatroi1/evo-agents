@@ -1,17 +1,20 @@
-"""A learned order of the files of a code question (model M1): a LightGBM LambdaMART model that orders again the files
-``evo_agents.kg.locate`` found for a kg_search, from numbers alone.
+"""A learned order of the first results of a code question (model M1): a LightGBM LambdaMART model that picks, from
+the nodes ``evo_agents.kg.locate`` found for a kg_search, the ones read first, from numbers alone.
 
-``locate`` reads a question by hand-set weights (its step 3 orders files by a weighted sum). Here each of its first
-TOP_FILES files is described by FEATURES, numbers only: the text match (the BM25 score, whether the search matched it
-exactly, the share of the query's words in its name and its path), the anchors the question names and how many hops
-of the graph a file is from one, the score each kind of edge lent it, its kind and whether it is a test, a source file
-or a document, the PageRank of the candidates' graph seeded by their text match, its degree in that graph and in the
-whole graph, the status of the edges that reached it, how many other candidates share its directory, whether a test is
-linked to it, how many commits changed it and how long ago the last one did next to the other candidates, the lines it
-spans, the prior an agent's clicks gave it (``evo_agents.kg.asked``), and the cosine of its embedding when the search
-ranked by meaning. No word of a project is a feature, so the model file holds no text of any project, and one model
-serves every graph. The model gives each file a score; the files are ordered by it, then ``locate.place`` lists their
-nodes as before. Files past TOP_FILES keep their order after the reordered ones.
+``locate`` reads a question by hand-set weights (its step 3 orders files by a weighted sum, then places each file's
+nodes). Here each of its first TOP_FILES files is described by FILE_FEATURES, numbers only: the text match (the BM25
+score, whether the search matched it exactly, the share of the query's words in its name and its path), the anchors the
+question names and how many hops of the graph a file is from one, the score each kind of edge lent it, its kind and
+whether it is a test, a source file or a document, the PageRank of the candidates' graph seeded by their text match, its
+degree in that graph and in the whole graph, the status of the edges that reached it, how many other candidates share
+its directory, whether a test is linked to it, how many commits changed it and how long ago the last one did next to
+the other candidates, the lines it spans, the prior an agent's clicks gave it (``evo_agents.kg.asked``), and the cosine
+of its embedding when the search ranked by meaning. Each of the first PER_FILE nodes of the first FILES files then adds
+NODE_FEATURES: where locate placed it, its own score, text match and anchor next to its file's best, its kind and the
+lines it spans, whether the question names it, and the number of results asked for. No word of a project is a
+feature, so the model file holds no text of any project, and one model serves every graph. The model scores each node;
+the SLOTS it scores best are read first, then the others in ``locate.place``'s order. With the model on, a pool whose
+best text matches are mostly documents is read the same way (``locate.arrange``).
 
 The model ships in the package (MODEL_FILE). kg_search uses it when LightGBM is installed (the ``rank`` extra) and the
 setting is on: ``Session.rank`` when a caller sets it, else $EVO_KG_RANK (on or off), else DEFAULT_ON. Without either
@@ -24,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import re
 from collections import Counter, deque
 from datetime import datetime
 from functools import lru_cache
@@ -34,15 +38,18 @@ from evo_agents.kg.asked import terms
 
 MODEL_FILE = Path(__file__).with_name("rank_model.txt")
 ENV = "EVO_KG_RANK"
-DEFAULT_ON = False  # on only when the model passed the bench's gate (docs/kg-bench.md)
-TOP_FILES = 30  # the files of locate's order the model orders again
+DEFAULT_ON = False  # off: on by default it reorders what tests of serve, eval and hybrid fix (docs/kg-bench.md, M1)
+TOP_FILES = 30  # the files of locate's order described by FILE_FEATURES (their neighbourhood is read among these)
+FILES = 15  # the files whose nodes the model orders
+PER_FILE = 6  # the nodes of each of them it orders, locate's best first
+SLOTS = 3  # the first places of the reading the model fills; locate's order follows
 PAGERANK_STEPS = 15
 PAGERANK_DAMPING = 0.85
 AGE_COMMITS = 64  # the commits of a file read for the time of its last change: the newest the edge index gives first
 MAX_HOPS = 4  # a file this many hops or more from every anchor, or with no anchor at all
 KIND_CODE = {"Symbol": 0, "File": 1, "Document": 2, "Section": 3}
 
-FEATURES = (
+FILE_FEATURES = (
     # the question
     "q_words",
     "q_anchors",
@@ -107,6 +114,37 @@ FEATURES = (
     "asked",
     "cosine",
 )
+NODE_FEATURES = (
+    # where locate put the node
+    "file_rank",
+    "node_rank",
+    "placed",
+    "node_ratio",
+    "node_in_file",
+    "file_ratio",
+    # the node itself
+    "node_rel",
+    "node_anchor",
+    "node_kind",
+    "node_lines",
+    "node_whole",
+    "node_bm25",
+    "node_exact",
+    "node_text_pos",
+    "node_from_text",
+    "node_member",
+    "node_first",
+    # what the question names of it
+    "node_named",
+    "node_named_any_case",
+    "parent_ratio",
+    # its file's nodes
+    "file_lines",
+    "file_nodes",
+    # the results asked for
+    "limit",
+)
+FEATURES = FILE_FEATURES + NODE_FEATURES
 EXP_RELS = ("calls", "imports", "inherits", "overrides", "changes", "mentions", "tests", "cochange")
 
 
@@ -157,7 +195,7 @@ def _load(path: str, _mtime: int, _size: int) -> Ranker | None:
         return None
     text = Path(path).read_text(encoding="utf-8")
     booster = lightgbm.Booster(model_str=text)
-    if tuple(booster.feature_name()) != FEATURES:
+    if tuple(booster.feature_name()) != FEATURES:  # a model of other features (an older one) is not used
         return None
     return Ranker(booster, hashlib.sha256(text.encode()).hexdigest()[:12])
 
@@ -176,15 +214,18 @@ class Ranker:
 
         return [float(s) for s in self.model.predict(numpy.asarray(rows, dtype=float))]
 
-    def rerank(self, store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT) -> list:
-        """``ranked`` (``locate.files``) with its first TOP_FILES files in the model's order."""
-        head, rest = ranked[:TOP_FILES], ranked[TOP_FILES:]
-        if len(head) < 2:
-            return ranked
-        rows = features(store, b, query, pool, head, params)
+    def order(
+        self, store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, limit: int = 10
+    ) -> list[str]:
+        """The ids of ``ranked``'s nodes (``locate.files``) in reading order: the SLOTS nodes the model scores best
+        of the first PER_FILE nodes of the first FILES files, then the others as ``locate.place`` lists them."""
+        ids, rows = node_rows(store, b, query, pool, ranked, params, limit=limit)
+        if len(ids) < 2:
+            return locate.place(ranked, params)
         got = self.scores(rows)
-        order = sorted(range(len(head)), key=lambda i: (-got[i], i))
-        return [head[i] for i in order] + rest
+        chosen = [ids[i] for i in sorted(range(len(ids)), key=lambda i: (-got[i], i))][:SLOTS]
+        seen = set(chosen)
+        return chosen + [i for i in locate.place(ranked, params) if i not in seen]
 
 
 # -- the features ----------------------------------------------------------------------------------------------------
@@ -411,3 +452,106 @@ def features(store, b: int, query: str, pool: locate.Pool, ranked: list, params=
             ]
         )
     return rows
+
+
+_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+
+
+def _short(name: str) -> str:
+    return name.rsplit("::", 1)[-1].rsplit(".", 1)[-1]
+
+
+def _file_lines(store, file_ids: list[str]) -> dict[str, int]:
+    """The last line of the last symbol of each File node of ``file_ids``: the lines a whole-file result stands for,
+    at least (a file's own length is not in the graph)."""
+    out: dict[str, int] = {}
+    if store is None:
+        return out
+    for file_id in file_ids:
+        repo, sep, path = file_id.partition(":file:")
+        if not sep:
+            continue
+        prefix = f"symbol:{repo}:{path}::"
+        (last,) = store.db.execute(
+            "SELECT max(json_extract(props, '$.end_line')) FROM nodes WHERE node_id >= ? AND node_id < ?"
+            " AND tx_to IS NULL",
+            (prefix, prefix + "\uffff"),
+        ).fetchone()
+        if isinstance(last, int):
+            out[file_id] = last
+    return out
+
+
+def node_rows(
+    store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None, limit: int = 10
+):
+    """(ids, rows of FEATURES) of the nodes the model orders: the first PER_FILE nodes of each of the first FILES
+    files of ``ranked`` (``locate.files``), each its file's FILE_FEATURES then its own NODE_FEATURES."""
+    head = ranked[:TOP_FILES]
+    if not head:
+        return [], []
+    file_rows = features(store, b, query, pool, head, params, cosine)
+    total = locate.scores(pool, params)
+    picked = [(g, k, i) for g, (_, _, ids) in enumerate(head[:FILES]) for k, i in enumerate(ids[:PER_FILE])]
+    placed = {i: p for p, i in enumerate(locate.place(head[:FILES], params))}
+    position = {i: k for k, i in enumerate(pool.order)}
+    cands = pool.cands
+    best = max((total.get(i, 0.0) for _, _, i in picked), default=0.0) or 1.0
+    top_file = head[0][0] or 1.0
+    named = set(_NAME.findall(query))
+    named_lower = {w.lower() for w in named}
+    whole = [i for _, _, i in picked if cands[i].kind == "File"]
+    lines_of = _file_lines(store, whole)
+    ids, rows = [], []
+    for g, (score, _, file_ids) in enumerate(head[:FILES]):
+        mine = file_ids[:PER_FILE]
+        names = {cands[i].name: total.get(i, 0.0) for i in file_ids}
+        spans = []
+        for i in mine:
+            c = cands[i]
+            if c.line and c.end:
+                spans.append(c.end - c.line + 1)
+            elif c.kind == "File" and i in lines_of:
+                spans.append(lines_of[i])
+        ftop = total.get(mine[0], 0.0) or 1.0
+        for k, i in enumerate(mine):
+            c = cands[i]
+            name = c.name or ""
+            short = _short(name)
+            if c.line and c.end:
+                span = float(c.end - c.line + 1)
+            elif c.kind == "File" and i in lines_of:
+                span = float(lines_of[i])
+            else:
+                span = math.nan
+            parent = name.rsplit(".", 1)[0] if "." in name else ""
+            ids.append(i)
+            rows.append(
+                file_rows[g]
+                + [
+                    float(g),
+                    float(k),
+                    float(placed.get(i, len(placed))),
+                    total.get(i, 0.0) / best,
+                    total.get(i, 0.0) / ftop,
+                    score / top_file,
+                    c.rel,
+                    c.anchor,
+                    float(KIND_CODE.get(c.kind, 4)),
+                    math.log1p(span) if span == span else math.nan,
+                    float(c.kind == "File"),
+                    math.log1p(pool.scores[i]) if i in pool.scores else math.nan,
+                    float(i in pool.exact),
+                    float(position.get(i, -1)),
+                    float(c.from_pool),
+                    float("." in name),
+                    math.log1p(c.line or 0),
+                    float(short in named),
+                    float(len(short) > 3 and short.lower() in named_lower),
+                    names.get(parent, 0.0) / best if parent else 0.0,
+                    math.log1p(sum(spans)),
+                    float(len(file_ids)),
+                    float(limit),
+                ]
+            )
+    return ids, rows

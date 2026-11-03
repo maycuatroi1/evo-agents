@@ -38,14 +38,14 @@ ROWS = [
 
 
 class Reverse:
-    """A model that scores the files in the reverse of locate's order."""
+    """A model that scores the nodes in the reverse of locate's placed order."""
 
     def __init__(self):
         self.seen = []
 
     def predict(self, rows):
         self.seen.append(rows)
-        return [row[rank.FEATURES.index("loc_rank")] for row in rows]
+        return [row[rank.FEATURES.index("placed")] for row in rows]
 
 
 def test_features_are_numbers_one_row_per_file_in_order():
@@ -53,7 +53,7 @@ def test_features_are_numbers_one_row_per_file_in_order():
     pool.cands["s:pkg/a.py::load_config"].anchor = 1.0
     ranked = locate.files(pool)
     rows = rank.features(None, 1, "load_config fails to parse pkg/a.py", pool, ranked)
-    assert len(rows) == len(ranked) and all(len(r) == len(rank.FEATURES) for r in rows)
+    assert len(rows) == len(ranked) and all(len(r) == len(rank.FILE_FEATURES) for r in rows)
     assert all(isinstance(v, float) for r in rows for v in r)
     col = {name: i for i, name in enumerate(rank.FEATURES)}
     by_path = {key: rows[k] for k, (_, key, _) in enumerate(ranked)}
@@ -67,22 +67,34 @@ def test_features_are_numbers_one_row_per_file_in_order():
     assert [r[col["loc_rank"]] for r in rows] == [float(k) for k in range(len(rows))]
 
 
-def test_a_ranker_orders_the_first_files_again_and_keeps_the_rest_after():
+def test_node_rows_describe_each_node_with_its_files_features_then_its_own():
     pool = _pool(ROWS)
     ranked = locate.files(pool)
+    ids, rows = rank.node_rows(None, 1, "load_config fails in pkg/a.py", pool, ranked, limit=5)
+    assert sorted(ids) == sorted(i for _, _, nodes in ranked for i in nodes)
+    assert all(len(r) == len(rank.FEATURES) and all(isinstance(v, float) for v in r) for r in rows)
+    col = {name: i for i, name in enumerate(rank.FEATURES)}
+    by_id = dict(zip(ids, rows, strict=True))
+    first = by_id["s:pkg/a.py::load_config"]
+    assert first[col["node_named"]] == 1.0 and by_id["s:pkg/a.py::other"][col["node_named"]] == 0.0
+    assert first[col["node_lines"]] == pytest.approx(math.log1p(21)) and first[col["limit"]] == 5.0
+    assert by_id["s:pkg/a.py::other"][col["node_rank"]] == 1.0 and first[col["node_rank"]] == 0.0
+    assert first[col["node_in_file"]] == 1.0 > by_id["s:pkg/a.py::other"][col["node_in_file"]]
+    assert by_id["f:docs/guide.md"][col["node_whole"]] == 1.0
+    assert math.isnan(by_id["f:docs/guide.md"][col["node_lines"]])  # no graph to read the file's length from
+    placed = locate.place(ranked)
+    assert [i for _, i in sorted((r[col["placed"]], i) for i, r in by_id.items())] == placed
+
+
+def test_a_ranker_fills_the_first_slots_and_keeps_locates_order_after():
+    pool = _pool(ROWS)
+    ranked = locate.files(pool)
+    placed = locate.place(ranked)
     model = Reverse()
-    again = rank.Ranker(model).rerank(None, 1, "parse config", pool, ranked)
-    assert [k for _, k, _ in again] == [k for _, k, _ in reversed(ranked)]
+    again = rank.Ranker(model).order(None, 1, "parse config", pool, ranked)
     assert len(model.seen) == 1
-    limited = rank.TOP_FILES
-    try:
-        rank.TOP_FILES = 2
-        again = rank.Ranker(Reverse()).rerank(None, 1, "parse config", pool, ranked)
-    finally:
-        rank.TOP_FILES = limited
-    assert [k for _, k, _ in again] == [ranked[1][1], ranked[0][1], *(k for _, k, _ in ranked[2:])]
-    placed = locate.place(again)
-    assert placed[0] == ranked[1][2][0]  # the file the model put first lists its best node first
+    head = list(reversed(placed))[: rank.SLOTS]
+    assert again == head + [i for i in placed if i not in head]
 
 
 def test_the_setting_is_the_callers_then_the_environment_then_the_default(monkeypatch):
@@ -126,8 +138,8 @@ def test_the_shipped_model_loads_when_lightgbm_is_installed():
     assert model is not None and model.digest
     pool = _pool(ROWS)
     ranked = locate.files(pool)
-    again = model.rerank(None, 1, "parse config", pool, ranked)
-    assert sorted(k for _, k, _ in again) == sorted(k for _, k, _ in ranked)
+    again = model.order(None, 1, "parse config", pool, ranked)
+    assert sorted(again) == sorted(locate.place(ranked))
 
 
 def test_lightgbm_stays_an_extra():
@@ -152,22 +164,22 @@ def _code_project(tmp_path, home):
     return project
 
 
-def test_kg_search_orders_files_by_the_model_only_when_the_setting_is_on(tmp_path, kg_env, monkeypatch):
+def test_kg_search_orders_results_by_the_model_only_when_the_setting_is_on(tmp_path, kg_env, monkeypatch):
     project = _code_project(tmp_path, kg_env)
     model = Reverse()
     monkeypatch.setattr(rank, "load", lambda path: rank.Ranker(model, "test"))
 
-    def files_of(on):
+    def ids_of(on):
         session = Session(project, "agent")
         session.rank = on
         found = session.call("kg_search", {"query": "parse_config load_config", "limit": 10})["structuredContent"]
-        paths = [r.get("props", {}).get("path") or r["id"] for r in found["results"]]
-        return list(dict.fromkeys(p for p in paths if p))
+        return [r["id"] for r in found["results"]]
 
-    plain = files_of(False)
+    plain = ids_of(False)
     assert not model.seen
-    learned = files_of(True)
+    learned = ids_of(True)
     assert model.seen and all(len(r) == len(rank.FEATURES) for r in model.seen[0])
+    assert model.seen[0][0][rank.FEATURES.index("limit")] == 10.0
     assert sorted(plain) == sorted(learned) and plain != learned
 
 
@@ -238,19 +250,58 @@ def test_a_model_fit_on_rows_learns_which_feature_answers():
     import random
 
     rng = random.Random(1)
-    col = rank.FEATURES.index("anchor_max")
+    col = rank.FEATURES.index("node_named")
+    placed = rank.FEATURES.index("placed")
     groups = []
     for g in range(120):
         rows, labels = [], []
+        answer = rng.randrange(8)
         for k in range(8):
             row = [rng.random() for _ in rank.FEATURES]
-            hit = k == rng.randrange(8)
-            row[col] = 1.0 if hit else 0.0
+            row[placed] = float(k)
+            row[col] = 1.0 if k == answer else 0.0
             rows.append(row)
-            labels.append(int(hit))
-        if any(labels):
-            groups.append(Group("bench", "s", f"o/r{g % 10}", 1.0, rows, labels, 1))
+            labels.append(4 if k == answer else 0)
+        groups.append(Group("bench", "s", f"o/r{g % 10}", 1.0, rows, labels, 1))
     booster = rank_train.fit(groups, 30, {"min_data_in_leaf": 5})
-    assert rank_train.importance(booster)[0][0] == "anchor_max"
+    assert rank_train.importance(booster)[0][0] == "node_named"
     cv = rank_train.evaluate_cv(groups, [30], {"min_data_in_leaf": 5}, k=3)
-    assert cv["s"]["30"]["hit@1"] > cv["s"]["base"]["hit@1"]
+    assert cv["s"]["30"]["lines"] > cv["s"]["base"]["lines"]
+
+
+def test_a_nodes_grade_rises_with_the_share_of_its_lines_that_answer():
+    label = Label("bench", "s", "o/r", "q", frozenset({"a.py"}), lines=(("a.py", 10, 19),))
+    answer = {"a.py": set(range(10, 20))}
+    assert rank_train.grade("b.py", 10, 19, label, answer) == 0
+    assert rank_train.grade("a.py", 30, 40, label, answer) == 1  # the file, not its lines
+    assert rank_train.grade("a.py", 10, 19, label, answer) == 5
+    assert rank_train.grade("a.py", 1, 200, label, answer) == 2  # a twentieth of it
+    assert rank_train.grade("a.py", 1, 100, label, answer) == 3  # a tenth
+    assert rank_train.grade("a.py", None, None, label, answer) == 1
+    no_lines = Label("plan", "p", "p", "q", frozenset({"a.py"}))
+    assert rank_train.grade("a.py", 10, 19, no_lines, {}) == 1
+
+
+def test_hunks_are_the_lines_a_commit_replaced_unless_the_file_moved_on(tmp_path):
+    import subprocess
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True, text=True).stdout
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (tmp_path / "a.py").write_text("".join(f"line {i}\n" for i in range(1, 21)))
+    (tmp_path / "b.py").write_text("x\n")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD").strip()
+    (tmp_path / "b.py").write_text("y\n")
+    git("commit", "-qam", "b moves on")
+    text = (tmp_path / "a.py").read_text().replace("line 5\n", "five\n").replace("line 6\n", "six\n")
+    (tmp_path / "a.py").write_text(text)
+    (tmp_path / "b.py").write_text("z\n")
+    git("commit", "-qam", "fix")
+    sha = git("rev-parse", "HEAD").strip()
+    assert rank_train.hunks(tmp_path, sha, base, ["a.py"]) == (("a.py", 5, 6),)
+    assert rank_train.hunks(tmp_path, sha, base, ["a.py", "b.py"]) is None

@@ -1,4 +1,4 @@
-"""`evo-agents kg rank`: train the learned order of kg_search's files (evo_agents.kg.rank, docs/kg-bench.md)."""
+"""`evo-agents kg rank`: train the learned order of kg_search's first results (evo_agents.kg.rank, docs/kg-bench.md)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def register(ksub) -> None:
-    rank = ksub.add_parser("rank", help="the learned order of kg_search's files (docs/kg-bench.md, section M1)")
+    rank = ksub.add_parser("rank", help="the learned order of kg_search's first results (docs/kg-bench.md, section M1)")
     sub = rank.add_subparsers(dest="rank_command", required=True)
 
     train = sub.add_parser(
@@ -32,7 +32,7 @@ def register(ksub) -> None:
     train.add_argument("--clicks", type=Path, help="a project's kg_search labels of the hub, JSON lines")
     train.add_argument("--project", help="project of --plan-questions and --clicks (default: from the cwd)")
     train.add_argument(
-        "--rounds", default="50,100,200,400", help="numbers of trees cross-validated (default %(default)s)"
+        "--rounds", default="100,200,300,600", help="numbers of trees cross-validated (default %(default)s)"
     )
     train.add_argument("--folds", type=int, default=5, help="folds over repos (default %(default)s)")
     train.add_argument("--out", type=Path, help="where the model goes (default: the package's kg/rank_model.txt)")
@@ -102,7 +102,10 @@ def cmd_train(args) -> int:
         args.report.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     for name, by in cv.items():
         base, mine = by["base"], by[str(best)]
-        _say(f"{name}: all@5 {base['all@5']:.3f} -> {mine['all@5']:.3f}, mrr {base['mrr']:.3f} -> {mine['mrr']:.3f}")
+        _say(
+            f"{name}: grade {base['grade']:.3f} -> {mine['grade']:.3f}, on lines {base['lines']:.3f} -> "
+            f"{mine['lines']:.3f}, in a file {base['file']:.3f} -> {mine['file']:.3f}"
+        )
     _say("importance: " + ", ".join(f"{n} {g:.3f}" for n, g, _ in found[:12]))
     print(f"{out}: {best} trees, {size} bytes, {len(groups)} groups")
     return 0

@@ -1,24 +1,28 @@
-"""Training the learned order of kg_search's files (``evo_agents.kg.rank``, model M1) from labels: `kg rank train`.
+"""Training the learned order of kg_search's first results (``evo_agents.kg.rank``, model M1) from labels:
+`kg rank train`.
 
-A label is a question, the graph it is asked of, and the files that answer it. Four kinds, none from a repo of the
-bench's holdout or test part (``tasks.repo_split``):
+A label is a question, the graph it is asked of, the files that answer it and, when known, their lines. Four kinds,
+none from a repo of the bench's holdout or test part (``tasks.repo_split``):
 
-- ``bench``: the tune part of the code benches (their issues and gold files; ContextBench's /workspace/<repo>/ paths
-  read as the repo's own);
+- ``bench``: the tune part of the code benches (their issues, gold files and gold lines; ContextBench's
+  /workspace/<repo>/ paths read as the repo's own);
 - ``git``: the history of the tune repos after the commit each graph was built at, so the graph never holds the commit
   it is asked about: a commit's subject and body is the question, the files it changed that the graph holds are the
-  answer. Commits of a bot, with fewer than ``min_words`` words, or changing more than ``max_files`` files once lock
-  files and generated files are left out, are not labels (the thresholds were chosen on the tune part; docs/kg-bench.md);
+  answer and the lines its hunks replaced are the answer's lines. Commits of a bot, with fewer than ``min_words``
+  words, changing more than ``max_files`` files once lock files and generated files are left out, or changing a file
+  that changed since the graph's commit (its lines would not be the graph's) are not labels (the thresholds were chosen
+  on the tune part; docs/kg-bench.md);
 - ``plan``: a `kg eval-questions` set of a local project (its plans' steps, each to the files its commits changed),
   the questions of its tune split only (``evaluate.split_of``), so the project's holdout stays unseen;
 - ``click``: a project's kg_search labels as the hub keeps them (``evo_agents.hub.kg_labels``, one JSON object per
   line), each clicked file weighed by the inverse propensity of its rank (``evo_agents.kg.asked.propensities``).
 
-Each label is asked the way kg_search asks it (the text search, then ``locate``), and each of the first TOP_FILES files
-becomes a row of ``rank.features`` with 1 when it answers and 0 else: the model learns from numbers only, so it holds no
-text of the repos or projects it learned from. ``fit`` trains LightGBM's LambdaMART on the rows, picking the number of
-trees by cross-validation over repos; ``evaluate_cv`` scores the reordered files against locate's order on the bench
-labels of held-out repos.
+Each label is asked the way kg_search asks it with the model on (the text search, then ``locate``), and each node the
+model orders (``rank.node_rows``) becomes a row graded by ``grade``: 0 outside the answer, 1 in an answering file but
+off its lines (or in an answering file of a label without lines), 2 to 5 as more of the node's lines are answer
+lines. The model learns from numbers only, so it holds no text of the repos or projects it learned from. ``fit``
+trains LightGBM's LambdaMART on the rows, picking the number of trees by cross-validation over repos;
+``evaluate_cv`` scores the model's first ``rank.SLOTS`` nodes against locate's on the bench labels of held-out repos.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ import re
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents.kg import asked, locate, rank
@@ -45,7 +49,7 @@ DEFAULT_LIMIT = 10
 MIN_WORDS = 4  # a commit message of fewer words says too little to be a question (chosen on tune: docs/kg-bench.md)
 MAX_FILES = 8  # a commit changing more files than this is a sweep, not one place (chosen on tune)
 PER_GRAPH = 40  # the commits after each graph's own commit taken as labels, the nearest first
-WEIGHTS = {"bench": 1.0, "git": 0.5, "plan": 0.5, "click": 1.0}
+WEIGHTS = {"bench": 1.0, "git": 1.0, "plan": 0.5, "click": 1.0}  # git at 1: chosen on tune (docs/kg-bench.md)
 BOTS = re.compile(r"\[bot\]|dependabot|renovate|pre-commit-ci|github-actions|greenkeeper", re.I)
 GENERATED = re.compile(
     r"(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|uv\.lock|Pipfile\.lock|Cargo\.lock|go\.sum|"
@@ -55,6 +59,8 @@ GENERATED = re.compile(
     re.I,
 )
 WORKSPACE = re.compile(r"^/workspace/[^/]+/")
+HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+")
+GRADES = (0.1, 0.3, 0.6)  # the shares of a node's lines that are answer lines past which its grade rises
 PR_REF = re.compile(r"\(#\d+\)|#\d+")
 
 
@@ -69,11 +75,12 @@ class Label:
     limit: int = DEFAULT_LIMIT
     task: Task | None = None  # the bench task whose graph it is asked of
     project: str | None = None  # else the local project
+    lines: tuple[tuple[str, int, int], ...] = ()  # (path, first, last) of the answer, when known
 
 
 @dataclass
 class Group:
-    """The rows of one label: the features of its first files, which answer, and locate's order of them."""
+    """The rows of one label: the features of the nodes the model orders and the grade of each (``grade``)."""
 
     source: str
     set: str
@@ -82,7 +89,6 @@ class Group:
     rows: list[list[float]]
     labels: list[int]
     gold: int  # answering files, found in the rows or not
-    places: list[int] = field(default_factory=list)  # nodes each file lists first (for the placed order)
 
     def to_json(self) -> dict:
         return {
@@ -120,6 +126,7 @@ def bench_labels(cache: Path, sets: Iterable[str] = TUNED_SETS) -> list[Label]:
                 continue
             gold = _gold_of(task)
             if gold:
+                lines = tuple((WORKSPACE.sub("", p), a, b) for p, a, b in task.lines if p)
                 out.append(
                     Label(
                         "bench",
@@ -130,6 +137,7 @@ def bench_labels(cache: Path, sets: Iterable[str] = TUNED_SETS) -> list[Label]:
                         WEIGHTS["bench"],
                         SEARCH_LIMITS.get(bench, DEFAULT_LIMIT),
                         task,
+                        lines=lines,
                     )
                 )
     return out
@@ -185,6 +193,28 @@ def commit_label(commit: dict, held: set[str], min_words: int, max_files: int) -
     return (text.strip(), gold) if gold else None
 
 
+def hunks(clone: Path, commit: str, base: str, files: Iterable[str]) -> tuple[tuple[str, int, int], ...] | None:
+    """(path, first, last) of the lines of ``files`` that ``commit`` replaced, as they read at ``base`` (an insertion
+    marks the two lines around it); None when one of the files changed between ``base`` and the commit's parent."""
+    files = sorted(files)
+    parent = f"{commit}^"
+    same = subprocess.run(
+        ["git", "-C", str(clone), "diff", "--quiet", base, parent, "--", *files], capture_output=True
+    ).returncode
+    if same != 0:
+        return None
+    out = []
+    path = None
+    for line in _git(clone, "diff", "-U0", parent, commit, "--", *files).splitlines():
+        if line.startswith("--- "):
+            path = line[6:] if line.startswith("--- a/") else None
+        m = HUNK.match(line)
+        if m and path:
+            first, n = int(m[1]), int(m[2] if m[2] is not None else 1)
+            out.append((path, max(first, 1), first + n - 1 if n else first + 1))
+    return tuple(out)
+
+
 def git_labels(
     cache: Path,
     tasks: list[Task],
@@ -215,8 +245,15 @@ def git_labels(
             found = commit_label(commit, held, min_words, max_files)
             if found is None:
                 continue
+            lines = hunks(lay.clone(task.repo), commit["sha"], task.commit, found[1])
+            if not lines:
+                continue
             seen[task.repo.lower()].add(commit["sha"])
-            out.append(Label("git", task.bench, task.repo, found[0], found[1], WEIGHTS["git"], DEFAULT_LIMIT, task))
+            out.append(
+                Label(
+                    "git", task.bench, task.repo, found[0], found[1], WEIGHTS["git"], DEFAULT_LIMIT, task, lines=lines
+                )
+            )
             taken += 1
     return out
 
@@ -285,21 +322,54 @@ def click_labels(path: Path, project: str) -> list[Label]:
 # -- the rows ------------------------------------------------------------------------------------------------------
 
 
-def group_of(store, b: int, label: Label, params=locate.DEFAULT) -> Group | None:
-    """The rows of ``label`` asked of ``store`` the way kg_search asks it; None when locate does not read the graph
-    as code (kg_search then keeps the text order, and the model is not asked)."""
+def grade(path: str | None, first: int | None, last: int | None, label: Label, answer: dict[str, set[int]]) -> int:
+    """The grade of a node of ``path`` over ``first``..``last`` (see the module); ``answer`` is the label's lines by
+    path."""
+    if not path or path not in label.gold:
+        return 0
+    if not label.lines or first is None or last is None:
+        return 1
+    want = answer.get(path)
+    if not want:
+        return 1
+    last = min(last, first + 499)  # the bench reads at most 500 lines of a result
+    hit = sum(1 for x in range(first, last + 1) if x in want)
+    if not hit:
+        return 1
+    share = hit / (last - first + 1)
+    return 2 + sum(share >= g for g in GRADES)
+
+
+def group_of(store, b: int, label: Label, params=locate.DEFAULT, length=None) -> Group | None:
+    """The rows of ``label`` asked of ``store`` the way kg_search asks it with the model on; None when the search
+    finds nothing. ``length`` (path -> lines) gives a whole file's lines."""
+    from evo_agents.kg.evaluate import node_file, node_span
+
     limit = label.limit
     scored = store.search_scored(label.query, b, limit=max(limit * 4, 30), deprecated=False)
     if not scored:
         return None
     pool = locate.gather(store, b, label.query, scored, params)
-    if not locate.code_like(pool):
+    ranked = locate.files(pool, params)
+    ids, rows = rank.node_rows(store, b, label.query, pool, ranked, params, limit=limit)
+    if not ids:
         return None
-    ranked = locate.files(pool, params)[: rank.TOP_FILES]
-    if not ranked:
-        return None
-    rows = rank.features(store, b, label.query, pool, ranked, params)
-    labels = [int(key in label.gold) for _, key, _ in ranked]
+    answer: dict[str, set[int]] = defaultdict(set)
+    for path, first, last in label.lines:
+        answer[path].update(range(first, last + 1))
+    nodes = store.nodes(ids, b)
+    labels = []
+    for i in ids:
+        node = nodes.get(i)
+        if node is None:
+            labels.append(0)
+            continue
+        _, path = node_file(node)
+        first, last = node_span(node)
+        if path and first is None and length is not None:
+            n = length(path)
+            first, last = (1, n) if n else (None, None)
+        labels.append(grade(path, first, last, label, answer))
     return Group(label.source, label.set, label.repo, label.weight, rows, labels, len(label.gold))
 
 
@@ -330,10 +400,20 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                 if progress:
                     progress(f"{name}: {exc}")
                 continue
+            length = None
+            if kind == "bench":
+                from evo_agents.kg.evaluate import _length_reader
+
+                clone = lay.clone(group[0].task.repo)
+                read = _length_reader({clone.name: clone}, group[0].task.commit, {}, None)
+
+                def length(path, read=read):
+                    return read(None, path)
+
             for label in group:
-                found = group_of(store, b, label)
+                found = group_of(store, b, label, length=length)
                 if found is None:
-                    stats[f"{label.source}:not_code"] += 1
+                    stats[f"{label.source}:not_found"] += 1
                     continue
                 stats[f"{label.source}:asked"] += 1
                 stats[f"{label.source}:with_answer"] += any(found.labels)
@@ -367,6 +447,7 @@ PARAMS = {
     "seed": 7,
     "deterministic": True,
     "num_threads": 4,
+    "label_gain": [0, 1, 3, 7, 15, 31],
 }
 
 
@@ -410,17 +491,21 @@ def folds(groups: list[Group], k: int = 5, seed: int = 7) -> list[set[str]]:
     return out
 
 
-def file_metrics(group: Group, order: list[int]) -> dict:
-    """Of a group's files in ``order``: all answers in the first 5 files, one in the first 1 and 5, and the reciprocal
-    rank of the first."""
-    first = [k for k, i in enumerate(order) if group.labels[i]]
-    found = sum(group.labels)
+def slot_metrics(group: Group, order: list[int]) -> dict:
+    """Of the first ``rank.SLOTS`` rows of a group in ``order``: their mean grade, and whether one of them lies on
+    answer lines (grade 2 or more) or in an answering file."""
+    head = [group.labels[i] for i in order[: rank.SLOTS]]
     return {
-        "all@5": float(found == group.gold and all(k < 5 for k in first)),
-        "hit@1": float(bool(first) and first[0] < 1),
-        "hit@5": float(bool(first) and first[0] < 5),
-        "mrr": 1.0 / (first[0] + 1) if first else 0.0,
+        "grade": sum(head) / len(head) if head else 0.0,
+        "lines": float(any(v >= 2 for v in head)),
+        "file": float(any(v >= 1 for v in head)),
     }
+
+
+def placed_order(group: Group) -> list[int]:
+    """The rows of a group in locate's own order (``rank.NODE_FEATURES``' placed)."""
+    col = rank.FEATURES.index("placed")
+    return sorted(range(len(group.rows)), key=lambda i: (group.rows[i][col], i))
 
 
 def evaluate_cv(
@@ -430,8 +515,10 @@ def evaluate_cv(
     k: int = 5,
     sources: Iterable[str] = ("bench",),
 ) -> dict:
-    """Per bench set and number of trees, the mean ``file_metrics`` of the held-out repos' groups of ``sources``, with
+    """Per bench set and number of trees, the mean ``slot_metrics`` of the held-out repos' groups of ``sources``, with
     the model and with locate's order (``base``), over ``k`` folds by repo."""
+    import numpy
+
     rounds = sorted(set(rounds))
     sources = set(sources)
     out: dict = defaultdict(lambda: defaultdict(list))
@@ -442,13 +529,11 @@ def evaluate_cv(
             continue
         booster = fit(train, max(rounds), params)
         for g in test:
-            out[g.set]["base"].append(file_metrics(g, list(range(len(g.labels)))))
-            import numpy
-
+            out[g.set]["base"].append(slot_metrics(g, placed_order(g)))
             for n in rounds:
                 got = booster.predict(numpy.asarray(g.rows, dtype=float), num_iteration=n)
                 order = sorted(range(len(got)), key=lambda i: (-got[i], i))
-                out[g.set][n].append(file_metrics(g, order))
+                out[g.set][n].append(slot_metrics(g, order))
     summary = {}
     for name, by in out.items():
         summary[name] = {
@@ -458,7 +543,7 @@ def evaluate_cv(
     return summary
 
 
-def best_rounds(cv: dict, rounds: Iterable[int], metric: str = "all@5") -> int:
+def best_rounds(cv: dict, rounds: Iterable[int], metric: str = "grade") -> int:
     """The number of trees whose mean ``metric`` over the sets of ``cv`` is highest, the fewest on a tie."""
     rounds = sorted(set(rounds))
     names = [n for n in cv if all(str(r) in cv[n] for r in rounds)]

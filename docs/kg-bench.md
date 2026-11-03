@@ -337,6 +337,108 @@ graphs had been evicted): text order with the cut lifted 0.057 and 0.052, locate
 near-zero rows by language). The reader in `datasets.py` should strip that prefix; doing so changes the
 answers, so it needs the baselines asked again and is left to a later step.
 
+## Learned ranking (M1, step 5)
+
+`evo_agents/kg/rank.py` holds a LightGBM LambdaMART model that picks the first results of a code question. locate
+orders files and places their nodes as before; the model then scores the first 6 nodes of each of locate's first 15
+files and puts the 3 it scores best first. locate's own order follows, without those 3. Each node is described by
+numbers only, so the model file holds no text of any project:
+
+- **Its file (55 numbers):** BM25 of the file's best match and its share of the best file's score, locate's place and
+  gap, how much of the query the file's name, path and symbols cover, exact matches, anchors and hops from them,
+  expansion per edge kind (calls, imports, inherits, overrides, changes, mentions, tests, co-changed), parsed and
+  resolved links, PageRank over the pool's edges seeded with the text scores, file kind (test, source or doc), path
+  depth and lines, same directory as an anchor, a linked test, imports in, symbols defined, commits and the age of the
+  last one, the asked weight, and the cosine of the query's vector (missing when the graph has none).
+- **The node itself (23 numbers):** where locate placed it, its score next to its file's best, its text match and
+  anchor, its kind and the lines it spans, whether the question names it, and the number of results asked for.
+
+The model ships in the package as `evo_agents/kg/rank_model.txt` (LightGBM's text format: feature names, thresholds and
+leaf values, 300 trees, 542 KB). kg_search asks it only when the `rank` extra is installed (`pip install
+'evo-ak[rank]'`: LightGBM and NumPy; `hub-server` pulls it in) and the setting is on. The setting is a session's `rank`,
+else `EVO_KG_RANK=on|off`, else `rank.DEFAULT_ON`. Without LightGBM or the model file, or with the setting off, the
+order is locate's, unchanged. **It ships off**, though the gate below passed: on by default, it changes orders that
+existing tests of `serve`, `eval` and `hybrid` fix on their small graphs (a plan step before the file it mentions, a
+section found by meaning before code), which invariant a13 keeps. Turning it on is a decision of its own, together
+with those tests.
+
+With the model on, a pool whose best text matches are mostly documents is ordered the same way; without it, such a
+pool keeps the text order. On the evo-agents tune questions this moved hit@5 from 0.660 to 0.670 and MRR from 0.347 to
+0.631 (their plan steps are among the training labels, so this is no holdout number). Handing documents back to the
+text order instead gave 0.673 and 0.428. `kg bench run` puts the setting and the model's digest in the summary's
+`settings.rank` and in the key of its cached answers, so a run with the model never reuses the answers of one without
+it.
+
+**Training: `evo-agents kg rank train`.** None of the labels come from a holdout or test repo (`rank_train.tune_only`).
+Each label is asked the way kg_search asks it with the model on. Every node the model would score becomes a row with a
+grade: 0 outside the answer, 1 in an answering file but off its lines, 2 to 5 as more of its lines (10, 30, 60%) are
+answer lines.
+
+| Source | groups | weight |
+|---|---|---|
+| bench tune tasks (SWE-Explore, MuLocBench and ContextBench, 150 each sampled, seed 0), files and lines | 458 | 1.0 |
+| commits after each tune graph's commit (40 per graph, the nearest first), the files and the lines their hunks replaced | 8,018 | 1.0 |
+| evo-agents plan steps, tune split of `kg eval-questions` (files only) | 306 | 0.5 |
+| hub clicks weighed by inverse propensity (`--clicks`) | 0 | |
+
+A commit is a label unless a bot made it, its message (PR refs and trailers removed) has fewer than 4 words, it
+changes more than 8 files once lock files, generated files and change logs are left out, or one of its files changed
+between the graph's commit and the commit's parent (its line numbers would not be the graph's). Those thresholds are
+step 5's first attempt's, picked by cross-validation of file MRR. ContextBench answers under `/workspace/<repo>/` are
+read as the repo's own paths for training only; the bench's reader is unchanged, so the holdout numbers below stay
+comparable with `no-train.json`. The hub keeps click labels only in its database, which no route reads; the shipped
+model has none, and `--clicks FILE` takes them as JSON lines (query, results, clicks) once an export exists.
+
+The commit weight, the number of trees and the number of places the model fills were chosen by 5-fold
+cross-validation over tune repos, scoring each set's primary metric on the bench labels of the held-out repos:
+
+| tune, cross-validated | ContextBench line F1 (152) | MuLocBench Acc@5 (161) | SWE-Explore line F1 (145) |
+|---|---|---|---|
+| locate's order | 0.046 | 0.230 | 0.092 |
+| commits at 0.25, 300 trees, 3 places | 0.048 | 0.261 | 0.136 |
+| commits at 0.5, 300 trees, 3 places | 0.050 | 0.261 | 0.132 |
+| commits at 1.0, 300 trees, 1 place | 0.049 | 0.273 | 0.127 |
+| commits at 1.0, 300 trees, 3 places (kept) | 0.048 | 0.273 | 0.138 |
+| commits at 1.0, 100 trees, 3 places | 0.049 | 0.267 | 0.133 |
+
+900 trees did no better than 300. The first attempt of this step reordered locate's first 30 files and kept locate's
+node placement. It raised file MRR on every holdout set (ContextBench 0.403 to 0.454, LocBench 0.543 to 0.608) but no
+primary metric beyond its 95% interval, and SWE-Explore's line F1 fell by 0.009: a file placed higher brought its
+larger nodes into the 5 results. Grading nodes by line overlap, and letting the model fill only the first places,
+fixed that.
+
+**Feature importance** (share of the total gain, 300 trees): place of the first text match 0.214, node spans its whole
+file 0.088, expansion along change edges 0.074, locate's gap 0.056 and ratio 0.046, PageRank 0.041, age of the last
+commit 0.037, the file's and the best node's score next to the best 0.036 and 0.030, node lines 0.029, commits 0.026,
+locate's score 0.025, path cover 0.023. Anchors weigh 0.001 to 0.003, since locate's own score already holds them.
+**Cosine 0**: no bench graph has vectors (`--search graph`), so the feature is missing in every row and no tree splits
+on it. The same holds for the asked weight, as no bench graph has clicks. So these numbers cannot say whether vectors
+add anything beyond the rest; that needs a model trained on graphs built with `semantic`, which is the input M5's
+decision needs.
+
+**Holdout, `bench/results/m1.json` against `no-train.json`** (the same tasks, `--like no-train.json --part holdout`,
+`EVO_KG_RANK=on`, one set at a time, merged with `kg bench merge`):
+
+| Holdout primary metric | no-train | M1 | difference (95% interval) |
+|---|---|---|---|
+| ContextBench line F1 (126) | 0.082 | 0.101 | +0.019 (+0.002, +0.037) |
+| SWE-Explore line F1 (230) | 0.160 | 0.211 | +0.051 (+0.033, +0.071) |
+| LocBench Acc@5 (300) | 0.490 | 0.530 | +0.040 (+0.010, +0.070) |
+| MuLocBench Acc@5 (183) | 0.186 | 0.230 | +0.044 (+0.011, +0.082) |
+| evo-agents hit@5 (134, not a target) | 0.627 | 0.605 | -0.022 (-0.067, +0.022), one standard error down |
+
+File MRR rose too: ContextBench 0.406 to 0.519, SWE-Explore 0.679 to 0.706, LocBench 0.543 to 0.610 (Acc@1 0.317 to
+0.400), MuLocBench 0.357 to 0.386 (Acc@1 0.071 to 0.115). SWE-Explore's line precision rose from 0.385 to 0.472 where
+the first attempt lowered it. kg_search p95 with the model: 200.6 ms over the five sets (ContextBench 242, SWE-Explore
+194, LocBench 193, MuLocBench 201, evo-agents 114), against 169 to 244 without it. SWE-Explore was asked again alone
+for its times: its first run shared the machine with a MuLocBench run and timed 410 ms at p95, and 33 of its tasks
+were skipped (their builds collided with that run's: database locked); the rerun built them and asked all 230.
+
+**Gate (a6): passed.** All four sets improve beyond their 95% interval (three needed), none falls by more than two
+standard errors, and p95 is under 300 ms. The model still ships off (see above): with `rank.DEFAULT_ON = True`,
+5 of the 113 tests of rank, store, serve, eval and hybrid fail. Applying the model only to pools that read as code, as
+locate does, still leaves 3 of them failing.
+
 ## Memory sets: LongMemEval and MemoryAgentBench (step 8)
 
 Two more sets score how well `kg_search` finds the chats a question needs. Each case is a haystack of chat sessions,
