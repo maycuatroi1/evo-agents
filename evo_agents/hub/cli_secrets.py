@@ -12,8 +12,9 @@ project's repos under ``--url-prefix``: it needs ``--expires`` and the admin rol
 ``--username`` and no ``--worker``, as no run ever gets it.
 
 ``list`` prints the caller's own secrets without their values (GET /v1/secrets), and ``delete`` deletes one (DELETE
-/v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``hub run credentials``,
-in ``run_cli``, lists the leases one run got of them.
+/v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``bind``, in
+``cli_bindings``, binds one to other workers or pools without its value. ``hub run credentials``, in ``run_cli``, lists
+the leases one run got of them.
 
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
 variable. ``account list`` prints them and the provider accounts, never a value (GET /v1/accounts); ``account set``
@@ -63,7 +64,19 @@ from evo_agents.hub.accounts import (
     RENEW_WITHIN_DAYS,
     STRATEGIES,
 )
-from evo_agents.hub.cli_bindings import BOTH, add_pool_flag, bound_to, where_cell, where_text
+from evo_agents.hub.cli_bindings import (
+    BOTH,
+    SECRET_COLUMNS,
+    SECRET_KEYS,
+    add_pool_flag,
+    bound_to,
+    register_bind,
+    secret_path,
+    secret_row,
+    target_text,
+    where_cell,
+    where_text,
+)
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.cli_provider_accounts import print_gateway, provider_text, register_provider_accounts
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -79,30 +92,10 @@ from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-# The keys of a secret in `hub secret list --json` (the contract, `evo-agents hub contract print`).
-SECRET_KEYS = (
-    "name",
-    "kind",
-    "env_var",
-    "url_prefix",
-    "username",
-    "environment",
-    "projects",
-    "workers",
-    "pools",
-    "expires_at",
-    "created_at",
-    "updated_at",
-    "shares",
-)
 
 
 class Refused(Exception):
     """The arguments or the value cannot make a secret; ``str`` says why, never with the value."""
-
-
-def _secret_path(name: str) -> str:
-    return f"/v1/secrets/{quote(name, safe='')}"
 
 
 def _usage_error(text: str) -> int:
@@ -194,15 +187,6 @@ def check_value(kind: str, value: str) -> None:
         raise Refused("the value of a secret of kind forge is one line: an HTTP header holds it")
 
 
-def _target_text(secret: dict) -> str:
-    if secret["kind"] == "env":
-        labelled = f" ({secret['environment']})" if secret.get("environment") else ""
-        return (secret["env_var"] or "-") + labelled
-    if secret["kind"] == FORGE_KIND:
-        return secret["url_prefix"] or "-"
-    return f"{secret['url_prefix']} as {secret['username']}"
-
-
 def _workers_text(secret: dict) -> str:
     if secret["kind"] == FORGE_KIND:
         return "used by the hub alone, never leased to a run"
@@ -227,12 +211,12 @@ def cmd_set(args) -> int:
         check_value(args.kind, value)
     except Refused as exc:
         return _usage_error(str(exc))
-    written = hub.call("PUT", _secret_path(args.name), {**body, "value": value})
+    written = hub.call("PUT", secret_path(args.name), {**body, "value": value})
     verb = "Created" if written["created"] else "Replaced"
     projects = ", ".join(written["projects"])
     ends = f"; it ends {_when(written['expires_at'])} UTC" if written["expires_at"] else ""
     print(
-        f"{verb} secret {written['name']} ({written['kind']}, {_target_text(written)}) for project(s) {projects}, "
+        f"{verb} secret {written['name']} ({written['kind']}, {target_text(written)}) for project(s) {projects}, "
         f"{_workers_text(written)}{ends}. The hub keeps the value sealed and never shows it again."
     )
     return 0
@@ -248,19 +232,7 @@ def cmd_list(args) -> int:
     if not found:
         print("You keep no secret on this hub; `evo-agents hub secret set` adds one.")
         return 0
-    rows = [
-        (
-            s["name"],
-            s["kind"],
-            _target_text(s),
-            ", ".join(s["projects"]),
-            "-" if s["kind"] == FORGE_KIND else where_cell(s),
-            _when(s["expires_at"]),
-            _when(s["updated_at"]),
-        )
-        for s in found
-    ]
-    _table(("NAME", "KIND", "TARGET", "PROJECTS", "WORKERS", "EXPIRES (UTC)", "UPDATED (UTC)"), rows)
+    _table(SECRET_COLUMNS, [secret_row(s) for s in found])
     return 0
 
 
@@ -271,7 +243,7 @@ def cmd_delete(args) -> int:
     except Refused as exc:
         return _usage_error(str(exc))
     hub, _ = _signed_in()
-    hub.call("DELETE", _secret_path(args.name))
+    hub.call("DELETE", secret_path(args.name))
     print(
         f"Deleted secret {args.name}: its value and bindings are gone from the hub, and its leases still out are "
         "revoked. Revoke it where it was made as well."
@@ -341,6 +313,7 @@ def register_secrets(hsub) -> None:
     )
     delete.add_argument("name", metavar="NAME")
     delete.set_defaults(func=cmd_delete)
+    register_bind(ssub)
     cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
@@ -771,7 +744,7 @@ def cmd_account_login(args) -> int:
         token = login_token(_login_value(args.name, claude))
     except Refused as exc:
         return _usage_error(str(exc))
-    written = hub.call("PUT", _secret_path(args.name), {**body, "value": token})
+    written = hub.call("PUT", secret_path(args.name), {**body, "value": token})
     account = hub.call("GET", _account_path(args.name))
     if args.json:
         _print_json(account)
@@ -841,7 +814,7 @@ def cmd_account_oauth_login(args) -> int:
         "organization_uuid": tokens.organization_uuid,
         "email": tokens.email,
     }
-    written = hub.call("PUT", _secret_path(args.name), {**body, "value": tokens.access_token, "oauth": oauth})
+    written = hub.call("PUT", secret_path(args.name), {**body, "value": tokens.access_token, "oauth": oauth})
     account = hub.call("GET", _account_path(args.name))
     if args.json:
         _print_json(account)

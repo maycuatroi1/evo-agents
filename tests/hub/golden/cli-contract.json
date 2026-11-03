@@ -20883,6 +20883,70 @@
         "schema": "CauseRestored"
       }
     },
+    "hub secret bind": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--pool"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--anywhere"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "kind",
+          "env_var",
+          "url_prefix",
+          "username",
+          "environment",
+          "projects",
+          "workers",
+          "pools",
+          "expires_at",
+          "created_at",
+          "updated_at",
+          "shares"
+        ],
+        "schema": "Secret"
+      }
+    },
     "hub secret delete": {
       "positionals": [
         {
@@ -71455,6 +71519,100 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "secrets"
+          ],
+          "summary": "Rebind Secret",
+          "description": "Bind the caller's secret ``name`` to other workers or pools, or to any worker; its value and the rest stay.",
+          "operationId": "rebind_secret_v1_secrets__name__patch",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretRebind"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Secret"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         },
@@ -151816,6 +151974,48 @@
           ],
           "title": "Secret",
           "description": "A secret as its owner sees it: everything but the value."
+        },
+        "SecretRebind": {
+          "properties": {
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "names of the caller's own workers that are not revoked, in place of its binding; empty for any worker of the caller; never with pools"
+            },
+            "pools": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pools",
+              "description": "names of the caller's own worker pools, in place of its binding: each node of each gets it, the nodes that join later too; empty for any worker of the caller; never with workers"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SecretRebind",
+          "description": "The binding a PATCH puts in place of the secret's: workers or pools, exactly one of them."
         },
         "SecretWrite": {
           "properties": {

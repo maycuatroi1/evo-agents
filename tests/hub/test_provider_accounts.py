@@ -256,6 +256,7 @@ def test_provider_account_shares_the_name_space_of_secrets_and_is_never_written_
     assert client.put(path("taken"), json=account(sample()), headers=hub["owner"]).status_code == 409
     written(client, hub["owner"], "mine", account(sample()))
     assert client.put("/v1/secrets/mine", json=env, headers=hub["owner"]).status_code == 409
+    assert client.patch("/v1/secrets/mine", json={"workers": []}, headers=hub["owner"]).status_code == 409
     assert client.delete("/v1/secrets/mine", headers=hub["owner"]).status_code == 404
     assert stored(hub_db, "mine")[7] is None
 
