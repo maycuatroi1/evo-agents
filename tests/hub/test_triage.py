@@ -33,7 +33,18 @@ from evo_agents.hub.server import triage
 from evo_agents.hub.server.run_state import run_step, write_event
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker, thread
-from tests.hub.test_runs import PLAN, PROJECT, claim, client, dispatched, hub, moved, notices, report  # noqa: F401
+from tests.hub.test_runs import (  # noqa: F401
+    PLAN,
+    PROJECT,
+    claim,
+    client,
+    dispatched,
+    hub,
+    join_pool,
+    moved,
+    notices,
+    report,
+)
 
 ERROR = "no credential reads evo-agents: git could not read Username"
 VAR = "CLAUDE_CODE_OAUTH_TOKEN"
@@ -43,7 +54,9 @@ def failed_step(
     client, hub, worker, key: int = 2, *, cause="credentials", error=ERROR, plan=PLAN, who="owner", claims=2
 ) -> int:
     """Dispatch step ``key`` of ``plan`` as member ``who``, have ``worker`` (theirs) claim it, in at most ``claims``
-    claims, and report it failed; its run id."""
+    claims, and report it failed; its run id. ``worker`` is made a ready node of the pool of the project's default
+    agent first, where a step run goes (the core plugins' tests hand it a worker of another agent's pool)."""
+    join_pool(client, worker, PROJECT)
     run_id = dispatched(client, hub[who], [key], plan_id=plan)[0]["id"]
     claimed = [claim(client, worker) for _ in range(claims)]  # the chat runs earlier failures queued may come first
     assert run_id in [spec["id"] for spec in claimed if spec]
