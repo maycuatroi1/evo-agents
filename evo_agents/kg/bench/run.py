@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import pickle
 import subprocess
 import sys
@@ -324,11 +325,12 @@ def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> As
 
 def ranking_digest() -> str:
     """Digest of the code that ranks and serves a search (not of the graph's extractor): a change of it asks again."""
-    from evo_agents.kg import asked, locate, rank, search, semantic, serve, store, text
+    from evo_agents.kg import asked, locate, ppr, rank, search, semantic, serve, store, text
 
-    parts = [Path(m.__file__).read_bytes() for m in (asked, locate, rank, search, semantic, serve, store, text)]
+    parts = [Path(m.__file__).read_bytes() for m in (asked, locate, ppr, rank, search, semantic, serve, store, text)]
     # the learned order: on or off, and which model (a run with it on never reuses the answers of one without)
     parts.append(json.dumps(rank.state(), sort_keys=True).encode())
+    parts.append(os.environ.get(ppr.ENV, "").encode())  # the walk asked for, the same way
     return hashlib.sha256(b"\0".join(parts)).hexdigest()[:12]
 
 
