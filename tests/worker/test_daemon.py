@@ -17,13 +17,17 @@ holds the run, and keeps the worktree of a run the hub parked.
 Step 8 of the worker-credentials plan: a run whose owner set secrets fetches and pushes its origin, a ``git
 http-backend`` behind Basic auth, with its lease, its agent gets the env lease and the lease's token from ``git
 credential fill``, the machine's own helper is never asked, no event, log line or file under HOME holds a value, and
-the push fails once the run gave its leases back; a hub without secrets leaves the run to the machine's credentials,
-with a note saying so."""
+the push fails once the run gave its leases back; an origin no secret covers is left to the machine's credentials,
+with a note saying so.
+
+Plan agent-dedicated-pools: every run here is one of the project's default agent, on a worker that is a ready node of
+its pool, leased the account its account pool holds (``Stack.register``, ``lend_account``)."""
 
 import asyncio
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -46,7 +50,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 import httpx
 import uvicorn
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
@@ -54,7 +58,8 @@ from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.mirror import render
 from evo_agents.hub.server import run_state
 from evo_agents.hub.server.app import create_app
-from evo_agents.worker import list_cli
+from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.worker import doctor, list_cli
 from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration
 from tests.hub.test_runs import OWNER, PLAN, PROJECT, WRITER, plan_body
@@ -71,6 +76,7 @@ GIT_IDENTITY = {
     "GIT_COMMITTER_EMAIL": "owner@example.org",
 }
 TOKEN_LEAK = re.compile(r"ev[hsw]_(?!\*\*\*)[A-Za-z0-9_-]{8,}")
+OAUTH = "sk-ant-oat01-" + "d" * 40  # owner's Claude Code token, which the runs of the default agent are leased
 WAIT = 90.0
 
 
@@ -132,12 +138,13 @@ def git(*args, cwd: Path | None = None, env=None) -> str:
 
 
 class Stack:
-    """A hub with project evo-agents and the plan rollout pushed by owner, a home directory for the worker with the
-    owner signed in to the hub, a checkout of evo-agents whose origin is a bare repository, and the harness registry
-    pointing at it."""
+    """A hub with project evo-agents and the plan rollout pushed by owner, whose default agent has an account pool
+    holding owner's Claude Code token (``lend_account``), a home directory for the worker with the owner signed in to
+    the hub, a checkout of evo-agents whose origin is a bare repository, and the harness registry pointing at it."""
 
-    def __init__(self, tmp: Path, server: Server, client: httpx.Client, headers: dict, machine_token: str):
+    def __init__(self, tmp: Path, server: Server, client: httpx.Client, headers: dict, machine_token: str, db):
         self.tmp = tmp
+        self.db = db
         self.server = server
         self.url = server.url
         self.client = client
@@ -211,11 +218,14 @@ class Stack:
         return pg.cli(["worker", *args], env or self.env)
 
     def register(self, slots: int = 1) -> dict:
+        """The worker registered, a ready node of the pool of the project's default agent, where its runs go."""
         result = self.cli("register", "--name", WORKER, "--project", PROJECT, "--slots", str(slots))
         assert result.returncode == 0, result.stderr
         self.worker_token = (self.state / "token").read_text(encoding="utf-8").strip()
         assert self.worker_token not in result.stdout + result.stderr
-        return json.loads((self.state / "config.json").read_text(encoding="utf-8"))
+        config = json.loads((self.state / "config.json").read_text(encoding="utf-8"))
+        ready_node(self.client, self.db, config["worker_id"], self.worker_token)
+        return config
 
     def start_daemon(self) -> subprocess.Popen:
         with open(self.daemon_log, "ab") as out:
@@ -331,13 +341,52 @@ class Stack:
         assert not leaked, f"{where} holds what looks like a token"
 
 
+def ready_node(client: httpx.Client, db, worker_id: int, token: str, handle: str = PROJECT) -> None:
+    """Worker ``worker_id`` (its token ``token``) made a node of the pool of agent ``handle``, ready by a doctor report
+    of no finding. The pool accepts every code the doctor knows: the report the daemon sends at its start finds what
+    the test machine is (a home others read, an admin besides its user), which is not what these tests are about."""
+    w, p = tables.workers, tables.worker_pools
+    live.sql(db, update(p).values(accepted_findings=list(doctor.CODES)).where(p.c.name == f"agent-{handle}"))
+    pool_id = select(p.c.id).where(p.c.name == f"agent-{handle}").scalar_subquery()
+    live.sql(db, update(w).values(pool_id=pool_id).where(w.c.id == worker_id))
+    headers = {"Authorization": f"Bearer {token}", "X-Evo-Worker-Protocol": "1"}
+    reported = client.post("/v1/worker/doctor", json={"findings": []}, headers=headers)
+    assert reported.status_code == 200, reported.text
+
+
+def lend_account(client: httpx.Client, db, owner: dict) -> None:
+    """Owner's env secret of OAUTH, in an account pool of the project that its default agent uses (``pool_secret``)."""
+    body = {"projects": [PROJECT], "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": OAUTH}
+    saved = client.put("/v1/secrets/claude-main", json=body, headers=owner)
+    assert saved.status_code == 200, saved.text
+    pool_secret(db, "claude-main")
+
+
+def pool_secret(db, name: str) -> None:
+    """The member's secret ``name``, in an account pool of the project that its default agent uses: the account a run
+    of the agent is leased (the pool's rows written here; the project's admins would make them)."""
+    ap, p, s, pools = tables.agent_profiles, tables.projects, tables.secrets, tables.account_pools
+    ((project_id,),) = live.sql(db, select(p.c.id).where(p.c.name == PROJECT))
+    ((secret_id, owner_id),) = live.sql(db, select(s.c.id, s.c.owner_id).where(s.c.name == name))
+    values = {"project_id": project_id, "name": "main", "created_by": owner_id}
+    ((pool_id,),) = live.sql(db, insert(pools).values(**values).returning(pools.c.id))
+    members = {"pool_id": pool_id, "secret_id": secret_id, "added_by": owner_id}
+    live.sql(db, insert(tables.account_pool_members).values(**members))
+    live.sql(
+        db, update(ap).values(account_pool_id=pool_id).where(ap.c.project_id == project_id, ap.c.handle == PROJECT)
+    )
+
+
 @pytest.fixture
 def make_stack(hub_db, tmp_path, github):
     """Start the hub with the configuration changes given and set up the rest (``Stack``)."""
     with ExitStack() as stack:
 
         def started(**changes) -> Stack:
-            config = live.hub_config(hub_db, tmp_path, github, session_secret=live.session_secret(), **changes)
+            sealing = {"secrets_key": secrets.token_bytes(KEY_BYTES)}  # the account a run is leased is sealed
+            config = live.hub_config(
+                hub_db, tmp_path, github, session_secret=live.session_secret(), **{**sealing, **changes}
+            )
             server = Server(config, pg.free_port())
             server.start()
             stack.callback(server.stop)
@@ -355,7 +404,8 @@ def make_stack(hub_db, tmp_path, github):
             assert granted.status_code == 200, granted.text
             pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json={"body": plan_body()}, headers=owner)
             assert pushed.status_code == 200, pushed.text
-            made = Stack(tmp_path, server, client, owner, owner_token)
+            lend_account(client, hub_db, owner)
+            made = Stack(tmp_path, server, client, owner, owner_token, hub_db)
             stack.callback(made.kill_daemons)  # before the hub stops
             return made
 
@@ -433,10 +483,10 @@ def test_a_run_is_claimed_verified_committed_and_pushed_with_its_events_on_the_h
     assert "verify: `test -f feature.txt` exited 0" in " ".join(texts)
     assert any(text.startswith("Pushed ") for text in texts)
     assert any(
-        text.startswith(f"no leased credential for {stack.origin}: this hub keeps no secrets")
+        text.startswith(f"no leased credential for {stack.origin}: no git secret of {OWNER} bound to project {PROJECT}")
         and text.endswith("; git uses this machine's own")
         for text in texts
-    ), "a hub without secrets leaves the run to the machine's credentials, and the run's log says so"
+    ), "an origin no secret of the owner covers is left to the machine's credentials, and the run's log says so"
     moves = [event["body"]["to"] for event in events if event["kind"] == "state"]
     assert moves == ["leased", "running", "verifying", "done"]
 
@@ -1027,7 +1077,7 @@ def test_an_orphan_agent_of_a_run_the_hub_still_holds_is_stopped_and_its_lease_r
 def test_a_run_fetches_and_pushes_with_its_leases_which_it_gives_back_at_its_end(make_stack, hub_db, github):
     import secrets as random
 
-    token, oauth = "glpat-" + random.token_hex(16), "oauth-" + random.token_hex(16)
+    token, oauth = "glpat-" + random.token_hex(16), OAUTH  # the account of the default agent's pool (make_stack)
     stack = make_stack(secrets_key=random.token_bytes(32))
     called = stack.tmp / "machine-helper-called"
     helper = stack.tmp / "machine-helper.sh"
@@ -1045,15 +1095,9 @@ def test_a_run_fetches_and_pushes_with_its_leases_which_it_gives_back_at_its_end
         body = registration()
         body["repos"] = [{**repo, "origin": origin} if repo["name"] == REPO else repo for repo in body["repos"]]
         assert stack.client.put(f"/v1/projects/{PROJECT}", json=body, headers=admin).status_code == 200
-        prefix = server.url
-        for name, secret in {
-            "local-git": {"kind": "git", "url_prefix": prefix, "value": token},
-            "claude-oauth": {"kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN", "value": oauth},
-        }.items():
-            response = stack.client.put(
-                f"/v1/secrets/{name}", json={**secret, "projects": [PROJECT]}, headers=stack.owner
-            )
-            assert response.status_code == 200, response.text
+        secret = {"kind": "git", "url_prefix": server.url, "value": token, "projects": [PROJECT]}
+        response = stack.client.put("/v1/secrets/local-git", json=secret, headers=stack.owner)
+        assert response.status_code == 200, response.text
         stack.scenarios(
             {
                 "2": [

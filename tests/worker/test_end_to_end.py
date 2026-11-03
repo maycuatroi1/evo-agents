@@ -32,10 +32,12 @@ checkout's.
 from __future__ import annotations
 
 import asyncio
+import base64
 import functools
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import subprocess
@@ -67,7 +69,16 @@ from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration
 from tests.hub.test_runs import OWNER, PLAN, PROJECT, WRITER, plan_body
 from tests.worker import fake_adapter
-from tests.worker.test_daemon import GIT_IDENTITY, SLEEPER, TOKEN_LEAK, git, group_alive, wait_until
+from tests.worker.test_daemon import (
+    GIT_IDENTITY,
+    SLEEPER,
+    TOKEN_LEAK,
+    git,
+    group_alive,
+    lend_account,
+    ready_node,
+    wait_until,
+)
 from tests.worker.test_interactive import screen, tmux, tmux_socket  # noqa: F401 (a fixture, through request)
 
 ROOT = Path(__file__).parents[2]
@@ -132,6 +143,7 @@ class Hub:
             EVO_HUB_SESSION_SECRET=live.session_secret(),
             EVO_HUB_PUBLIC_URL="https://hub.test",
             EVO_HUB_RUN_LEASE_SECONDS=str(LEASE_SECONDS),
+            EVO_HUB_SECRETS_KEY=base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode(),
             **s3.env(),
         )
 
@@ -302,9 +314,13 @@ class Machine:
     # The worker
 
     def register(self) -> None:
+        """The worker registered, a ready node of the pool of the project's default agent, where its runs go."""
         done = self.cli("worker", "register", "--name", self.name, "--project", PROJECT)
         assert done.returncode == 0, done.stderr
-        self.world.tokens.append((self.state / "token").read_text(encoding="utf-8").strip())
+        token = (self.state / "token").read_text(encoding="utf-8").strip()
+        self.world.tokens.append(token)
+        worker_id = json.loads((self.state / "config.json").read_text(encoding="utf-8"))["worker_id"]
+        ready_node(self.world.client, self.world.hub.db, worker_id, token)
 
     def start_daemon(self) -> subprocess.Popen:
         env = {**self.env, "PYTHONPATH": str(DAEMON_ROOT)}
@@ -549,6 +565,7 @@ def world(hub_db, tmp_path, github, s3):
         plan = {"body": plan_body()}
         pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json=plan, headers=bearer(owner_token))
         assert pushed.status_code == 200, pushed.text
+        lend_account(client, hub_db, bearer(owner_token))
         made = World(tmp_path, hub, client, owner_token)
         stack.callback(made.kill_daemons)  # before the hub stops
         yield made

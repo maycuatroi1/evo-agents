@@ -25,6 +25,7 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_store import insert_message, status_reaction
 from evo_agents.hub.server.security import Principal
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_plans import registration
 from tests.hub.test_run_stream import PUBLIC_READER
@@ -297,22 +298,35 @@ def test_chat_threads_put_every_reply_in_the_thread_of_the_first_message(client,
     assert send(client, hub["owner"], chat["id"], "x" * (chats.MAX_MESSAGE_BYTES + 1)).status_code == 422
 
 
+def with_account_pool(db, handle: str) -> None:
+    """Agent ``handle`` of the project given an account pool of owner's, unless it has one already."""
+    ap, p = tables.agent_profiles, tables.projects
+    project_id = select(p.c.id).where(p.c.name == PROJECT).scalar_subquery()
+    (pool_id,) = sql(db, select(ap.c.account_pool_id).where(ap.c.project_id == project_id, ap.c.handle == handle))[0]
+    if pool_id is None:
+        give_account_pool(db, PROJECT, handle, OWNER)
+
+
 def test_chat_mentions_are_read_once_and_kept_with_the_message(client, hub, hub_db):
+    for handle in ("reviewer", PROJECT):
+        with_account_pool(hub_db, handle)
     chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer", PROJECT])
     text = "@Someone-Else and @reviewer, then @evo-agents. Mail me at owner@example.org; `@reviewer` and @nobody"
     message = sent(client, hub["owner"], chat["id"], text)
-    assert [(m["name"], m["via"], m["login"], m["handle"], m["run_id"]) for m in message["mentions"]] == [
-        (OTHER, "login", OTHER, None, None),
-        ("reviewer", "handle", None, "reviewer", None),
-        (PROJECT, "project", None, PROJECT, None),
+    assert [(m["name"], m["via"], m["login"], m["handle"]) for m in message["mentions"]] == [
+        (OTHER, "login", OTHER, None),
+        ("reviewer", "handle", None, "reviewer"),
+        (PROJECT, "project", None, PROJECT),
     ]
-    # the agents get the work, which owner has no worker to run: the mention and the hub's answer say so
-    no_worker = f"{OWNER} has no worker that takes runs of project {PROJECT}"
-    assert [m["refusal"] for m in message["mentions"]] == [
-        None,
-        f"@reviewer: {no_worker}, which @reviewer works in, and no member shares one there: join one, or add the project to one",
-        f"@{PROJECT}: {no_worker}, which @{PROJECT} works in, and no member shares one there: join one, or add the project to one",
+    # the agents get the work: a run of each, which waits in the queue for a node of the agent's pool
+    assert [(m["run_id"] is not None, m["refusal"]) for m in message["mentions"]] == [
+        (False, None),
+        (True, None),
+        (True, None),
     ]
+    r = tables.runs
+    queued = sql(hub_db, select(r.c.state, r.c.selector).where(r.c.kind == "chat").order_by(r.c.id))
+    assert queued == [("queued", ["pool=agent-reviewer"]), ("queued", [f"pool=agent-{PROJECT}"])]
     cm = tables.chat_mentions
     kept = sql(hub_db, select(cm.c.ordinal, cm.c.name).where(cm.c.message_id == message["id"]).order_by(cm.c.ordinal))
     assert kept == [(0, OTHER), (1, "reviewer"), (2, PROJECT)]

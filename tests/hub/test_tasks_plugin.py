@@ -31,6 +31,7 @@ from evo_agents.hub.server.tasks.events import steps_done
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_plans import registration
@@ -71,7 +72,8 @@ def client(hub_db, tmp_path, github, tasks_core):
 
 @pytest.fixture
 def members(client, github) -> dict:
-    """The project with its members of MEMBERS, the hub admin and the plan rollout; the headers of each."""
+    """The project with its members of MEMBERS, the hub admin and the plan rollout, the project's default agent with an
+    account pool of owner's; the headers of each."""
     headers = {"admin": bearer(live.sign_in(client, github, ADMIN, 302)["token"])}
     registered = client.put(f"/v1/projects/{PROJECT}", json=registration(OPEN_SINKS), headers=headers["admin"])
     assert registered.status_code == 200, registered.text
@@ -82,6 +84,7 @@ def members(client, github) -> dict:
         assert granted.status_code == 200, granted.text
     pushed = client.put(f"/v1/projects/{PROJECT}/plans/{PLAN}", json={"body": plan_body()}, headers=headers["owner"])
     assert pushed.status_code == 200, pushed.text
+    give_account_pool(live.database_of(client), PROJECT, PROJECT, "owner")  # the runs of the default agent need one
     return headers
 
 

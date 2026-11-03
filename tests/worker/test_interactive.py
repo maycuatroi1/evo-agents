@@ -49,7 +49,13 @@ if pg.DSN and WORKER_EXTRA:
     from evo_agents.worker.run import HANDBACK_PROMPT
     from tests.hub import live
     from tests.hub.test_runs import OWNER, PROJECT
-    from tests.worker.test_daemon import WORKER, finished_cleanly, make_stack, wait_until  # noqa: F401 (a fixture)
+    from tests.worker.test_daemon import (  # noqa: F401 (make_stack is a fixture)
+        WORKER,
+        finished_cleanly,
+        make_stack,
+        ready_node,
+        wait_until,
+    )
 
 
 def _script(path: Path, body: str) -> Path:
@@ -651,6 +657,8 @@ def interactive_stack(request, tmux_socket):
         registered = stack.cli(*args)
         assert registered.returncode == 0, registered.stderr
         stack.worker_token = (stack.state / "token").read_text(encoding="utf-8").strip()
+        worker_id = json.loads((stack.state / "config.json").read_text(encoding="utf-8"))["worker_id"]
+        ready_node(stack.client, stack.db, worker_id, stack.worker_token)  # a node of the default agent's pool
         return stack
 
     return started

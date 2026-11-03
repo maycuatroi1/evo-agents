@@ -50,6 +50,7 @@ from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP, core_plugins
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker
@@ -442,7 +443,7 @@ def test_a_member_talks_to_an_agent_in_a_direct_chat_and_reads_its_answer_in_the
 
 def test_a_chat_user_asks_the_plugins_agent_type_and_reads_its_answer_in_the_chat(northwind):
     """Criteria a2, a3 and a5 of the plan core-plugin-agent-questions: anyone in the chat asks the help desk with
-    /ask, a worker of its run_as answers, and the answer comes back as agent.answer to the chat that asked."""
+    /ask, a node of its agent's pool answers, and the answer comes back as agent.answer to the chat that asked."""
     client, db, fake, headers = northwind.client, northwind.db, northwind.fake, northwind.headers
     stranger = {"group_id": "room-9", "user_id": "guest-3"}  # no member: a person outside the hub
     assert said(client, text(f"/ask {PROJECT} How do I reset my password?", **stranger)) == "refused"
@@ -450,9 +451,8 @@ def test_a_chat_user_asks_the_plugins_agent_type_and_reads_its_answer_in_the_cha
     body = {"run_as": OTHER, "daily_usd": 5}
     enabled = client.put(f"/v1/projects/{PROJECT}/agent-types/{PLUGIN}/helpdesk", json=body, headers=headers["owner"])
     assert enabled.status_code == 200, enabled.text
-    assert said(client, text(f"/ask {PROJECT} How do I reset my password?", **stranger)) == "refused"
-    assert "can take a question run now" in fake.last(*stranger.values())["text"]
-    worker = chat_worker(client, headers["other"], "desk")
+    give_account_pool(db, PROJECT, "helpdesk", OTHER)  # the account a run of @helpdesk takes
+    worker = chat_worker(client, headers["other"], "desk", pool="helpdesk")  # a node of @helpdesk's own pool
     update = {**text(f"/ask {PROJECT} How do I reset my password?", **stranger), "message_id": "m-41"}
     assert said(client, update) == "asked"
     assert said(client, update) == "asked"  # the same message again: the same question, nothing new
