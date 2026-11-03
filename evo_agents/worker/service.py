@@ -265,6 +265,8 @@ def build_unit(spec: Spec) -> str:
         # SIGTERM to the daemon alone, which lets its agents end; SIGKILL to all that is left after the timeout.
         "KillMode=mixed",
         f"TimeoutStopSec={STOP_SECONDS}",
+        # An OOM kill ends the command the kernel picked, not the daemon with its agents and leases.
+        "OOMPolicy=continue",
         "",
         "[Install]",
         "WantedBy=default.target",

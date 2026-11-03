@@ -218,7 +218,7 @@ def test_the_systemd_unit_restarts_on_failure_and_quotes_what_systemd_would_read
     assert 'ExecStart="/opt/my tools/evo-agents" worker run --quiet $$HOME 50%%' in lines
     environment = 'Environment="PATH=/opt/100%%/bin:/home/octo/My \\"Tools\\"/bin:/usr/bin"'
     assert f"{environment} EVO_WORKER_HOME=/home/octo/.evo/worker" in lines
-    for line in ("Type=simple", "Restart=on-failure", "RestartSec=10", "KillMode=mixed", "TimeoutStopSec=60"):
+    for line in ("Type=simple", "Restart=on-failure", "RestartSec=10", "KillMode=mixed", "TimeoutStopSec=60", "OOMPolicy=continue"):
         assert line in lines
     assert "UMask=0077" in lines[lines.index("[Service]") :], "what the daemon and its agents write is the user's alone"
     assert "RestartPreventExitStatus=3" in lines, "a daemon that is no longer a worker is not started again"

@@ -3250,6 +3250,9 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   the old file said; other variables are not kept.
 - Stopping the service, by `uninstall` or at logout, sends the daemon SIGTERM and kills what is left 60 seconds later
   (launchd `ExitTimeOut`, systemd `KillMode=mixed` and `TimeoutStopSec=60`).
+- A command of a run that the kernel's OOM killer ends fails alone: the systemd unit sets `OOMPolicy=continue`, so
+  the unit is not stopped with its daemon, agents and leases when one process of its cgroup is killed. A unit
+  installed before gets the line at the next `evo-agents worker service install`.
 - The daemon, and so its agents, start with umask 077 (launchd `Umask` 63, systemd `UMask=0077`): what a run writes
   is the user's alone.
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state
