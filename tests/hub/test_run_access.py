@@ -295,6 +295,7 @@ def test_a_run_not_let_acts_as_owner_gets_the_leases_it_always_did(client, hub, 
 REFUSED = [
     ("GET", "/v1/secrets"),
     ("PUT", "/v1/secrets/claude-oauth"),
+    ("PATCH", "/v1/secrets/claude-oauth"),  # its binding: a run never moves a secret to its own worker
     ("GET", "/v1/secrets/claude-oauth/shares"),
     ("DELETE", "/v1/shares/1"),
     ("GET", "/v1/accounts"),

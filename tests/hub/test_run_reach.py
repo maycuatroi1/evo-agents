@@ -87,6 +87,7 @@ FIXED = (
     ("PUT", "/v1/projects/p/agents/reviewer/accounts/claude"),
     ("GET", "/v1/projects/p/agents/reviewer/provider-accounts"),
     ("GET", "/v1/secrets"),
+    ("PATCH", "/v1/secrets/claude"),  # a secret's binding names workers and pools, but is no group of workers
     ("GET", "/v1/provider-accounts"),
     ("GET", "/v1/tokens"),
     ("POST", "/v1/auth/logout"),

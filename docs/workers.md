@@ -296,8 +296,9 @@ with the lowest id, and the Judge's merge goes to a ready node that has the merg
 node waits, as an offline worker does, and the Curator's status says so.
 
 **Secrets and accounts.** A secret or an account bound to a pool (`pools` on `PUT /v1/secrets/{name}`, `--pool` on
-`hub secret set` and `hub account login|oauth-login`) reaches each node of the pool, those that join later too; it
-ranks as a binding to the worker itself. A binding names workers or pools, never both
+`hub secret set` and `hub account login|oauth-login`, or later, without the value, `PATCH /v1/secrets/{name}` and
+`hub secret bind NAME --pool P`) reaches each node of the pool, those that join later too; it ranks as a binding to
+the worker itself. A binding names workers or pools, never both
 ([credentials.md](credentials.md#the-owners-routes)).
 
 **Revoking dead nodes.** The hub's hourly job `hub.reap_pool_nodes` revokes each node that has been offline longer

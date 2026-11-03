@@ -89,6 +89,7 @@ not in its backups.
 | --- | --- |
 | `PUT /v1/secrets/{name}` | creates the caller's secret `name`, or replaces it whole, value included; `created` says which |
 | `GET /v1/secrets` | the caller's own secrets that are not deleted, without their values |
+| `PATCH /v1/secrets/{name}` | replaces its binding alone, `workers` or `pools`, without its value |
 | `DELETE /v1/secrets/{name}` | deletes it softly: the row stays, its sealed value and bindings go, its live leases are revoked |
 
 The body of a PUT:
@@ -111,11 +112,19 @@ The body of a PUT:
 - `expires_at`: optional, with a time zone, in the future.
 - `value`: 1 to `MAX_SECRET_BYTES` (16384) bytes of UTF-8, without NUL; one line for kind `git`.
 
+The body of a PATCH is `{"workers": [...]}` or `{"pools": [...]}`, exactly one of them (a body naming neither or
+both is 422). The list given replaces the secret's binding on each of its projects, checked as the PUT checks it; an
+empty list binds it to any worker of its owner again. The value, kind, target, projects, end, OAuth tokens and shares
+stay, and so does `updated_at`, the time the value was written; the leases already out stay too. A name the caller
+keeps no secret under is 404, a provider account's 409. Use it when the workers a secret was bound to are drained or
+revoked and its runs now go to other nodes, such as the agent's own pool `agent-<handle>`.
+
 A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit, unique among the
 owner's secrets that are not deleted; a deleted secret's name is free again. A member keeps at most
 `MAX_SECRETS_PER_OWNER` (200) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
 only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` without showing one. Each write adds an
-audit row `secret.put`, `secret.delete` or `secret.bind` (a credential request's binding, below) whose target is the
+audit row `secret.put`, `secret.delete`, `secret.rebind` (a PATCH, the target followed by `workers=<names>`,
+`pools=<names>` or `anywhere`) or `secret.bind` (a credential request's binding, below) whose target is the
 secret's id, `secret:<id>`, never its name: hub admins
 read the audit (`/v1/admin/audit`), and a secret's name is its owner's alone, as their list and a run's credentials
 are. No audit row, log line or error carries a value, and a 422 never repeats the input.
@@ -131,6 +140,7 @@ pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_COD
 evo-agents hub secret set gitlab-docs --kind git --url-prefix https://gitlab.example.org/group \
   --project demo --worker mac-mini --expires 2027-09-15
 evo-agents hub secret list --json
+evo-agents hub secret bind gitlab-docs --pool agent-reviewer
 evo-agents hub secret delete gitlab-docs
 ```
 
@@ -143,6 +153,12 @@ arguments are checked first, then that the machine is signed in, and only then i
 costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
 one line for kind `git`) without being shown, and no output or error of the command carries it. `--expires` ends the
 secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry date, so the token's own date fits.
+
+`secret bind NAME (--worker NAME ... | --pool NAME ... | --anywhere) [--json]` moves a secret to other workers or
+pools without sending its value again (`PATCH /v1/secrets/{name}`), for a secret whose workers were drained or
+revoked, or whose agent moved to a pool of its own. `--worker` and `--pool` repeat and replace the binding it has;
+`--anywhere` clears it, so runs on any of your workers get it. Exactly one of the three is given. It prints the secret
+as a row of `secret list`, or the hub's answer with `--json`.
 
 ## Forge secrets: the hub's own
 

@@ -7937,7 +7937,11 @@ export interface paths {
         delete: operations["delete_secret_v1_secrets__name__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rebind Secret
+         * @description Bind the caller's secret ``name`` to other workers or pools, or to any worker; its value and the rest stay.
+         */
+        patch: operations["rebind_secret_v1_secrets__name__patch"];
         trace?: never;
     };
     "/v1/secrets/{name}/shares": {
@@ -36652,6 +36656,22 @@ export interface components {
              * @description its shares not revoked, newest first
              */
             shares: components["schemas"]["CredentialShare"][];
+        };
+        /**
+         * SecretRebind
+         * @description The binding a PATCH puts in place of the secret's: workers or pools, exactly one of them.
+         */
+        SecretRebind: {
+            /**
+             * Workers
+             * @description names of the caller's own workers that are not revoked, in place of its binding; empty for any worker of the caller; never with pools
+             */
+            workers?: string[] | null;
+            /**
+             * Pools
+             * @description names of the caller's own worker pools, in place of its binding: each node of each gets it, the nodes that join later too; empty for any worker of the caller; never with workers
+             */
+            pools?: string[] | null;
         };
         /** SecretWrite */
         SecretWrite: {
@@ -72227,6 +72247,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebind_secret_v1_secrets__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretRebind"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Secret"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
