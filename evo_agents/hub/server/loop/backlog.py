@@ -8,20 +8,41 @@ takes it out). The goal's heading limits them to those under it. The ledger is `
 delivered, delivering or unknown is out of the backlog. A goal with no SRS document, or one that is not there any more,
 has no backlog: ``scope`` is None and ``open_of`` None, so a Loop with no goal of that kind does as it did.
 
+A group of the backlog that a plan of the project names one use case of (``srs_backlog.held``) gets no build: the plan
+is active or completed, no work item of the Loop has it (the deliver of a build or of ``loop adopt``), and the use
+case's ledger row, if any, is not an admin's. Such a plan delivers the use cases already, mostly one written before they
+were approved; the goal's owner adopts it (``loop adopt``, the decision board's ``srs_adopt``), or an admin sets the use
+case undelivered for a build to take it.
+
 ``use_cases`` reads a document's approved use cases whatever a goal says, for the baseline.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import Integer, cast, select
+from collections.abc import Sequence
+
+from sqlalchemy import Integer, Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.hub_events import SRS_USE_CASE_APPROVED
 from evo_agents.hub.server.loop import delivery
-from evo_agents.hub.srs_backlog import Group, UseCase, backlog, groups, ref_key, under
+from evo_agents.hub.srs_backlog import (
+    ADMIN,
+    Group,
+    Held,
+    UseCase,
+    backlog,
+    groups,
+    held,
+    names,
+    plan_text,
+    ref_key,
+    under,
+)
 
 USE_CASE = "use_case"
+PLAN_AREAS = ("active", "completed")  # plans.AREAS
 REMOVED = "removed"  # use_case_reviews.REMOVED: the change an event tells of a use case a version drops
 
 
@@ -118,9 +139,53 @@ async def backlog_of(conn: AsyncConnection, goal_id: int) -> list[UseCase] | Non
     return backlog(approved, await delivery.states(conn, document_id))
 
 
+async def naming(conn: AsyncConnection, project_id: int, cases: Sequence[UseCase]) -> dict[str, tuple[str, ...]]:
+    """The plans of the project, active or completed and of no work item of the Loop, that name each of ``cases``, by
+    the case's ``ref_key``; the database keeps the plans whose JSON holds the last word of a ref."""
+    if not cases:
+        return {}
+    p, i = tables.plans, tables.loop_items
+    words = sorted({case.ref.split()[-1].casefold() for case in cases})
+    text = func.lower(cast(p.c.body, Text), type_=Text)
+    loop_plans = select(i.c.plan_id).where(i.c.project_id == project_id, i.c.plan_id.is_not(None))
+    query = (
+        select(p.c.plan_id, p.c.body)
+        .where(
+            p.c.project_id == project_id,
+            p.c.area.in_(PLAN_AREAS),
+            p.c.plan_id.not_in(loop_plans),
+            or_(*(text.contains(word, autoescape=True) for word in words)),
+        )
+        .order_by(p.c.plan_id)
+    )
+    found: dict[str, list[str]] = {}
+    for row in await conn.execute(query):
+        words_of_plan = plan_text(row.body)
+        for case in cases:
+            if names(words_of_plan, case.ref):
+                found.setdefault(ref_key(case.ref), []).append(row.plan_id)
+    return {key: tuple(plans) for key, plans in found.items()}
+
+
+async def split_of(conn: AsyncConnection, goal_id: int) -> tuple[list[Group], list[Held]]:
+    """The backlog of goal ``goal_id`` in groups: those a build may take, and those a plan holds (see the module);
+    none without a document."""
+    aimed = await scope(conn, goal_id)
+    if aimed is None:
+        return [], []
+    project_id, document_id, heading = aimed
+    ledger = await delivery.read(conn, document_id)
+    approved = under(await use_cases(conn, project_id, document_id), heading)
+    found = backlog(approved, {key: row.state for key, row in ledger.items()})
+    by_admin = {key for key, row in ledger.items() if row.source == ADMIN}
+    asked = [case for case in found if ref_key(case.ref) not in by_admin]
+    return held(groups(found), await naming(conn, project_id, asked))
+
+
 async def groups_of(conn: AsyncConnection, goal_id: int) -> list[Group]:
-    """The backlog of goal ``goal_id`` in groups, one build each (``srs_backlog.groups``); none without a document."""
-    return groups(await backlog_of(conn, goal_id) or [])
+    """The groups of the backlog of goal ``goal_id`` a build may take, one build each (``srs_backlog.groups``), those
+    a plan holds left out; none without a document."""
+    return (await split_of(conn, goal_id))[0]
 
 
 async def open_of(conn: AsyncConnection, goal_id: int) -> int | None:
@@ -129,4 +194,4 @@ async def open_of(conn: AsyncConnection, goal_id: int) -> int | None:
     return None if found is None else len(found)
 
 
-__all__ = ["backlog_of", "groups_of", "open_of", "scope", "use_cases"]
+__all__ = ["backlog_of", "groups_of", "naming", "open_of", "scope", "split_of", "use_cases"]

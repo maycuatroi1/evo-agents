@@ -10757,7 +10757,8 @@
       "merge_sample": "Mẫu kiểm",
       "srs_review": "Duyệt SRS",
       "srs_finding": "Finding SRS",
-      "srs_baseline": "Bản nền SRS"
+      "srs_baseline": "Bản nền SRS",
+      "srs_adopt": "Plan chờ adopt"
     },
     "decidedBy": {
       "admin": "Admin",

@@ -12,11 +12,17 @@ The backlog is split in groups, one build each: by the ``claim`` field of the us
 direct parent heading, else one group per use case. A group of more than ``MAX_GROUP`` use cases splits by the direct
 parent heading of its use cases when they are in more than one; a group that cannot split that way stays whole.
 ``srs.backlog.open``, the number of use cases in the backlog, is the metric a goal reads from it (``BACKLOG_METRIC``).
+
+A plan written outside the Loop may deliver use cases of the backlog already: one written before they were approved, or
+by hand. ``held`` keeps the group of a use case such a plan names out of any build: a plan *names* a use case when its
+words (``plan_text``, its non-goals left out) hold the use case's ref as a whole word (``names``: UC ORD-1 is not
+named by UC ORD-10). Whoever reads the plans says which count (``evo_agents.hub.server.loop.backlog.split_of``).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import re
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 DELIVERED, UNDELIVERED, UNKNOWN, DELIVERING = STATES = ("delivered", "undelivered", "unknown", "delivering")
@@ -24,6 +30,7 @@ KG, ADMIN, DELIVER = SOURCES = ("kg", "admin", "deliver")  # who put a use case 
 OUT_OF_BACKLOG = (DELIVERED, DELIVERING, UNKNOWN)  # the states that keep an approved use case out of the backlog
 BACKLOG_METRIC = "srs.backlog.open"  # a metric key the hub computes, no key of the registry of signals
 MAX_GROUP = 15  # use cases in one group before it splits by heading
+NOT_DELIVERED_BY_PLAN = ("non_goals",)  # the keys of a plan's body that name what it does not deliver
 
 
 @dataclass(frozen=True)
@@ -106,6 +113,51 @@ def groups(cases: Iterable[UseCase], limit: int = MAX_GROUP) -> list[Group]:
     return [group for key, (title, members) in found.items() for group in _split(key, title, members, limit)]
 
 
+@dataclass(frozen=True)
+class Held:
+    """A group of the backlog no build takes: ``plans`` name one of its use cases, and none of them is the Loop's."""
+
+    group: Group
+    plans: tuple[str, ...]
+
+
+def plan_text(body) -> str:
+    """The words of a plan's body (its JSON), but its non-goals, in the form refs are compared in (``ref_key``)."""
+    found: list[str] = []
+
+    def walk(value) -> None:
+        if isinstance(value, str):
+            found.append(value)
+        elif isinstance(value, Mapping):
+            for inner in value.values():
+                walk(inner)
+        elif isinstance(value, list):
+            for inner in value:
+                walk(inner)
+
+    if isinstance(body, Mapping):
+        walk({key: value for key, value in body.items() if key not in NOT_DELIVERED_BY_PLAN})
+    return ref_key("\n".join(found))
+
+
+def names(text: str, ref: str) -> bool:
+    """Whether ``text``, in ``ref_key`` form, holds ``ref`` as a whole word."""
+    return re.search(rf"(?<!\w){re.escape(ref_key(ref))}(?!\w)", text) is not None
+
+
+def held(found: Iterable[Group], naming: Mapping[str, Sequence[str]]) -> tuple[list[Group], list[Held]]:
+    """``found`` split in the groups a build may take and those plans hold: a group is held when ``naming`` (a use
+    case's ``ref_key`` to the plans that name it) names a plan for one of its use cases."""
+    free, waiting = [], []
+    for group in found:
+        plans = sorted({plan for case in group.use_cases for plan in naming.get(ref_key(case.ref), ())})
+        if plans:
+            waiting.append(Held(group, tuple(plans)))
+        else:
+            free.append(group)
+    return free, waiting
+
+
 def open_count(approved: Iterable[UseCase], ledger: dict[str, str]) -> int:
     """The value of ``srs.backlog.open``: the use cases in the backlog."""
     return len(backlog(approved, ledger))
@@ -119,16 +171,21 @@ __all__ = [
     "DELIVERING",
     "KG",
     "MAX_GROUP",
+    "NOT_DELIVERED_BY_PLAN",
     "OUT_OF_BACKLOG",
     "SOURCES",
     "STATES",
     "UNDELIVERED",
     "UNKNOWN",
     "Group",
+    "Held",
     "UseCase",
     "backlog",
     "groups",
+    "held",
+    "names",
     "open_count",
+    "plan_text",
     "ref_key",
     "under",
 ]

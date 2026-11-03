@@ -192,6 +192,14 @@ names the document; the Loop reads what is approved and not yet delivered and ha
   `delivering` at once so no build takes them. It goes through admission, the caps and the merge queue as any deliver; a
   plan already completed makes the deliver `done` and the use cases `delivered` with the plan and its merge requests as
   evidence. It needs no confirmed baseline.
+- **A plan outside the Loop.** A use case can be approved after the baseline while a plan written outside the Loop
+  already delivers it (often the plan that wrote it). The tick makes no build for a group of the backlog when an active
+  or completed plan of the project names one of its use cases as a whole word (UC ORD-1 is not named by UC ORD-10; a
+  plan's `non_goals` do not count), unless the plan is a work item's of the Loop or an admin set that use case
+  `undelivered`. The decision board lists each such plan at gate 3 (`srs_adopt`, with the use cases of its groups and
+  the goal), and `hub.loop_notices` tells the goal's owner (its admins when it has none) once, with the
+  `evo-agents hub loop adopt` line for the plan. Adopting it, or an admin's `--set CODE=undelivered`, lets the Loop go
+  on.
 - **Where they run.** Author and plan runs of the Loop go to a ready node of the pool of the project's default agent (a
   selector `pool=<name>`, no pinned worker); a plan's `worker_labels` narrow its plan run further. A deliver no node
   fits stays queued with the reason `worker`.
@@ -349,7 +357,8 @@ People decide the direction of the project at three gates, gathered on its decis
    together with one reason. A goal whose statement or metric changes makes the open proposals of its brainstorms
    stale, so they wait on nobody and hold back no weekly look (row 2 above).
 3. **Policy**: each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose breaker
-   tripped, and the Loop's own breaker.
+   tripped, each SRS goal whose baseline waits (`srs_baseline`), each plan outside the Loop that holds use cases of an
+   SRS goal's backlog (`srs_adopt`, section SRS là nguồn), and the Loop's own breaker.
 
 After the gates the board lists what the Loop's chain waits on: its decisions of category `loop`, the decisions and
 questions of the runs it handed out, merge requests held for a person (one held at gate 3 names the command an admin

@@ -10757,7 +10757,8 @@
       "merge_sample": "Audit sample",
       "srs_review": "SRS review",
       "srs_finding": "SRS finding",
-      "srs_baseline": "SRS baseline"
+      "srs_baseline": "SRS baseline",
+      "srs_adopt": "Plan to adopt"
     },
     "decidedBy": {
       "admin": "An admin",

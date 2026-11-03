@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
   Table,
   TriangleAlert,
+  FileInput,
   FileText,
   ListChecks,
 } from "lucide-react";
@@ -62,6 +63,7 @@ const KIND_ICONS: Record<BoardKind, LucideIcon> = {
   merge_breaker: PowerOff,
   loop_breaker: PowerOff,
   srs_baseline: ListChecks,
+  srs_adopt: FileInput,
   loop_decision: MessageSquare,
   run_decision: MessageSquare,
   author_question: MessageCircle,
