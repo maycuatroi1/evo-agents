@@ -639,6 +639,7 @@ if pg.DSN:
     import httpx
 
     from evo_agents.hub.server.app import create_app
+    from tests.hub.account_pool_setup import give_account_pool
     from tests.hub.test_decisions import ANSWER_TEXT, OPTIONS, QUESTION, asked
     from tests.hub.test_plan_runs import PLAN as FLEET
     from tests.hub.test_plan_runs import REPOS, dispatched_plan, fleet_worker, push
@@ -662,11 +663,13 @@ if pg.DSN:
 
 @pytest.fixture
 def hub(hub_db, tmp_path, github):
-    """The hub under uvicorn with project evo-agents and plan rollout (``tests.hub.test_run_stream.members``), and a
-    home signed in to it for owner, someone-else and reader."""
+    """The hub under uvicorn with project evo-agents and plan rollout (``tests.hub.test_run_stream.members``), the
+    project's default agent with an account pool, which its runs need, and a home signed in to it for owner,
+    someone-else and reader."""
     app = create_app(live.hub_config(hub_db, tmp_path, github))
     with serving(app) as url, httpx.Client(base_url=url, timeout=10) as client:
         headers = members(client, github)
+        give_account_pool(hub_db, PROJECT, PROJECT, OWNER)
         homes = {
             who: write_credentials(tmp_path / who, url, login, headers[who]["Authorization"].removeprefix("Bearer "))
             for who, login in (("owner", OWNER), ("other", OTHER), ("reader", READER))
@@ -705,7 +708,7 @@ def test_a_dispatch_no_worker_can_take_warns_and_its_candidates_say_why(hub, mon
 @needs_pg
 def test_show_and_list_print_the_cause_the_worker_reported_with_a_failure(hub, monkeypatch, capsys):
     worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
-    (run,) = dispatched(hub.client, hub.headers["owner"], [2], worker_id=worker["id"])
+    (run,) = dispatched(hub.client, hub.headers["owner"], [2])
     assert claim(hub.client, worker)["id"] == run["id"]
     error = "verify command `pnpm test` calls pnpm, which is not on this worker's PATH"
     moved(hub.client, worker, run["id"], "failed", error=error, failure_cause="missing_tool")
@@ -1043,7 +1046,7 @@ def test_run_author_queues_an_author_run_from_stdin_and_shows_it(hub, monkeypatc
     second = run["id"] + 1
     first, follow_up = printed.out.splitlines()
     assert first.startswith(
-        f"Queued author run #{second}: author (Plan from: A second plan.), on any worker of yours that can take it "
+        f"Queued author run #{second}: author (Plan from: A second plan.), on a worker with pool=agent-{PROJECT} "
         f"over {HARNESS}, agent-skills, evo-agents"
     )
     assert first.endswith("; runtime claude-code, timeout 2 h of agent time. It reads only and pushes nothing.")

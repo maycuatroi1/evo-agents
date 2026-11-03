@@ -31,6 +31,7 @@ from tests.hub.test_runs import (  # noqa: F401  (fixtures)
 )
 
 SERVE = f"`evo-agents worker projects --worker laptop --add {PROJECT}`"
+HOME = f"agent-{PROJECT}"  # the pool of the project's default agent, whose nodes take a run that names no agent
 
 
 def candidates(client, headers, run_id: int) -> dict:
@@ -90,14 +91,16 @@ def test_a_run_whose_only_worker_is_offline_names_it(client, hub, hub_db):
     answer = candidates(client, hub["owner"], run["id"])
     found = by_name(answer)["laptop"]
     assert not found["fit"] and found["reasons"][0].startswith("is offline")
-    assert answer["diagnosis"].startswith("no worker can take it; the nearest, laptop, is offline")
+    assert answer["diagnosis"].startswith(f"no node of pool {HOME} can take it; the nearest, laptop, is offline")
 
 
 def test_a_run_of_a_runtime_no_worker_has_names_the_runtime(client, hub):
     laptop = add_worker(client, hub["owner"], "laptop")
     (run,) = dispatched(client, hub["owner"], [2], runtime="codex")
     reason = "does not report codex available, which the run asks for"
-    assert run["warning"] == f"run #{run['id']} is queued, but no worker can take it; the nearest, laptop, {reason}"
+    assert run["warning"] == (
+        f"run #{run['id']} is queued, but no node of pool {HOME} can take it; the nearest, laptop, {reason}"
+    )
     assert by_name(candidates(client, hub["owner"], run["id"]))["laptop"]["reasons"] == [reason]
     assert claim(client, laptop) is None
 
@@ -105,7 +108,7 @@ def test_a_run_of_a_runtime_no_worker_has_names_the_runtime(client, hub):
 def test_a_run_a_worker_can_take_comes_with_no_warning_and_the_worker_claims_it(client, hub):
     laptop = add_worker(client, hub["owner"], "laptop")
     busy = add_worker(client, hub["owner"], "busy")
-    (held,) = dispatched(client, hub["owner"], [4], worker_id=busy["id"])
+    (held,) = dispatched(client, hub["owner"], [4])
     assert claim(client, busy)["id"] == held["id"]
     (run,) = dispatched(client, hub["owner"], [2])
     assert run["warning"] is None

@@ -1,10 +1,10 @@
 """A night shift on a pool, and secrets and accounts bound to a pool, step 3 of the worker-pools plan (criterion a4, and
-a9 for what stays as it was).
+a9 for what stays as it was), in the pools of the agents (plan agent-dedicated-pools).
 
-a4: a charter names ``pool`` or ``worker``, exactly one; the night shift places the runs of a pool's schedule with the
-selector pool=<name> instead of pinning them, so any ready node of the pool claims them; ``build_now`` and the brief
-say when the pool has no ready node. A secret or an account bound to a pool reaches each node of it, those that join
-after the binding too. A charter, schedule or binding naming a worker keeps its behaviour.
+a4: the night shift places its runs on the pool of the project's default agent with the selector pool=<name>, pinning
+none, so any ready node of the pool claims them; ``build_now`` and the brief say when the pool has no ready node. A
+charter names no worker or pool any more (``tests.hub.test_curator``). A secret or an account bound to a pool reaches
+each node of it, those that join after the binding too.
 """
 
 from __future__ import annotations
@@ -18,14 +18,16 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.cli_bindings import BOTH, bound_to, where_cell, where_text
 from evo_agents.hub.server.brief import _pool, _pool_words
 from evo_agents.hub.server.night_duty import on_duty
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401  (app_key, client and hub are fixtures)
+    CHECKOUTS,
     STEPS,
     app_key,
     by_name,
@@ -41,45 +43,41 @@ from tests.hub.test_credentials_api import (  # noqa: F401  (app_key, client and
 from tests.hub.test_curator import (
     NIGHT,
     OWNER,
-    audit_of,
     charter_body,
     count,
     fire,
     night,  # noqa: F401  (a fixture)
-    put_charter,
     scheduled,
-    shown,
     user_id,
     written,
 )
-from tests.hub.test_curator_changes import accepted, build_now, curator_charter, protect, world  # noqa: F401
+from tests.hub.test_curator_changes import accepted, build_now, protect, world  # noqa: F401
 from tests.hub.test_plan_runs import fleet_worker
-from tests.hub.test_pool_scheduling import doctor, pool, run_view
+from tests.hub.test_pool_scheduling import HIGH, agentless, doctor, pool, run_view
 from tests.hub.test_run_cli import HUB_URL, write_credentials
-from tests.hub.test_runs import PROJECT, claim, moved, web_client  # noqa: F401  (fixtures)
+from tests.hub.test_runs import PROJECT, add_worker, claim, dispatched, web_client  # noqa: F401  (fixtures)
 from tests.hub.test_secrets_cli import run_cli
+
+HOME = f"agent-{PROJECT}"  # the pool of the project's default agent, where the night shift runs
+
+
+def home_id(db) -> int:
+    p = tables.worker_pools
+    return sql(db, select(p.c.id).where(p.c.name == HOME))[0][0]
 
 
 def fleet_node(client, headers, db, name: str, of_pool: dict) -> dict:
-    """A worker of ``headers``' member with a checkout of the plan run's repos, made a node of ``of_pool``."""
-    worker = fleet_worker(client, headers, name)
+    """A worker of ``headers``' member with a checkout of the plan run's repos, made a node of ``of_pool`` with no
+    doctor report yet: not ready."""
+    worker = fleet_worker(client, headers, name, pool=None)
     sql(db, update(tables.workers).where(tables.workers.c.id == worker["id"]).values(pool_id=of_pool["id"]))
     return worker
 
 
-def pool_charter(**changes) -> dict:
-    return charter_body(worker=None, pool="ci", **changes)
-
-
-def schedule_of(db) -> tuple:
-    s = tables.schedules
-    return sql(db, select(s.c.worker_id, s.c.pool_id, s.c.owner_id))[0]
-
-
 def due_of(client, db) -> SimpleNamespace:
     s = tables.schedules
-    (row,) = sql(db, select(s.c.id, s.c.project_id, s.c.worker_id, s.c.pool_id))
-    return SimpleNamespace(id=row[0], project_id=row[1], worker_id=row[2], pool_id=row[3])
+    (row,) = sql(db, select(s.c.id, s.c.project_id))
+    return SimpleNamespace(id=row[0], project_id=row[1])
 
 
 def called(client, fn, *args):
@@ -90,159 +88,121 @@ def called(client, fn, *args):
     return client.portal.call(run)
 
 
-# The charter
-
-
-def test_a_charter_names_a_pool_of_its_writer_and_its_schedule_follows_the_pool(night, hub_db):
-    client, headers = night.client, night.headers
-    ci = pool(client, headers["owner"])
-    written(client, headers["owner"], pool_charter())
-    held = shown(client, headers["owner"])
-    assert (held["pool"], held["pool_id"], held["worker"], held["worker_id"]) == ("ci", ci["id"], None, None)
-    assert held["schedule_owner"] == OWNER
-    assert schedule_of(hub_db) == (None, ci["id"], user_id(hub_db, OWNER))
-    action, target, login, _ = audit_of(hub_db, "curator")[-1]
-    assert (action, login, target) == ("curator.charter", OWNER, f"{PROJECT} revision=1 pool=ci")
-
-    # back to the worker: the schedule follows it
-    written(client, headers["owner"], charter_body())
-    assert schedule_of(hub_db) == (night.worker["id"], None, user_id(hub_db, OWNER))
-    assert audit_of(hub_db, "curator")[-1][1].endswith(f"worker={night.worker['name']}")
-
-
-@pytest.mark.parametrize(
-    "changes",
-    [{"pool": "ci"}, {"worker": None}],
-    ids=["both", "neither"],
-)
-def test_a_charter_names_the_worker_or_the_pool_exactly_one(night, hub_db, changes):
-    client, headers = night.client, night.headers
-    pool(client, headers["owner"])
-    response = put_charter(client, headers["owner"], charter_body(**changes))
-    assert response.status_code == 422, response.text
-    assert "exactly one of the two" in response.text
-    assert count(hub_db, tables.charters) == 0
-
-
-def test_a_charter_names_no_pool_of_another_member_and_only_a_pool_that_serves_the_project(night, hub_db):
-    client, headers = night.client, night.headers
-    response = client.post("/v1/worker-pools", json={"name": "ci", "projects": [PROJECT]}, headers=headers["other"])
-    assert response.status_code == 201, response.text
-    refused = put_charter(client, headers["owner"], pool_charter())
-    assert refused.status_code == 403 and "you have no pool ci" in refused.text
-    mine = pool(client, headers["owner"])
-    pp = tables.worker_pool_projects
-    sql(hub_db, delete(pp).where(pp.c.pool_id == mine["id"]))
-    unlisted = put_charter(client, headers["owner"], pool_charter())
-    assert unlisted.status_code == 409 and f"does not serve project {PROJECT}" in unlisted.text
-    assert count(hub_db, tables.charters) == 0
-
-
 # The schedule
 
 
-def test_the_night_shift_places_a_pool_run_by_its_selector_and_a_ready_node_claims_it(night, hub_db):
+def test_the_night_shift_places_its_run_on_the_default_agents_pool_and_a_ready_node_claims_it(night, hub_db):
     client, headers = night.client, night.headers
-    ci = pool(client, headers["owner"])
-    lab = fleet_node(client, headers["owner"], hub_db, "lab", ci)
-    ready = fleet_node(client, headers["owner"], hub_db, "ready", ci)
-    doctor(client, ready)
-    written(client, headers["owner"], pool_charter())
+    lab = fleet_node(client, headers["owner"], hub_db, "lab", {"id": home_id(hub_db)})
+    stranger = fleet_worker(client, headers["owner"], "stranger", pool=None)
+    written(client, headers["owner"], charter_body())
 
     assert fire(client, NIGHT) == {"queued": 1}
     (run,) = scheduled(hub_db)
     assert run["pinned_worker_id"] is None and run["dispatched_by"] == user_id(hub_db, OWNER)
     view = run_view(client, headers["owner"], run["id"])
-    assert (view["selector"], view["tolerations"]) == (["pool=ci"], [])
+    assert (view["selector"], view["tolerations"]) == ([f"pool={HOME}"], [])
     e = tables.run_events
     (note,) = sql(hub_db, select(e.c.body).where(e.c.run_id == run["id"], e.c.kind == "system"))
-    assert "pool ci" in note[0]["text"]
+    assert f"pool {HOME}" in note[0]["text"]
 
-    assert claim(client, night.worker) is None  # the owner's worker of no pool
+    assert claim(client, stranger) is None  # the owner's worker of no pool
     assert claim(client, lab) is None  # a node with no doctor report is not ready
-    assert claim(client, ready)["id"] == run["id"]
+    assert claim(client, night.worker)["id"] == run["id"]
 
 
 def test_a_pool_runs_tolerate_the_pools_taints(night, hub_db):
     client, headers = night.client, night.headers
-    ci = pool(client, headers["owner"], taints=["ci-only"])
-    lab = fleet_node(client, headers["owner"], hub_db, "lab", ci)
-    doctor(client, lab)
-    written(client, headers["owner"], pool_charter())
+    tainted = client.patch(f"/v1/worker-pools/{HOME}", json={"taints": ["ci-only"]}, headers=headers["owner"])
+    assert tainted.status_code == 200, tainted.text
+    written(client, headers["owner"], charter_body())
     assert fire(client, NIGHT) == {"queued": 1}
     (run,) = scheduled(hub_db)
     assert run_view(client, headers["owner"], run["id"])["tolerations"] == ["ci-only"]
-    assert claim(client, lab)["id"] == run["id"]
+    assert claim(client, night.worker)["id"] == run["id"]
 
 
 def test_a_pool_with_no_ready_node_queues_nothing_and_the_brief_says_why(night, hub_db):
     client, headers = night.client, night.headers
-    ci = pool(client, headers["owner"])
-    written(client, headers["owner"], pool_charter())
+    w = tables.workers
+    sql(hub_db, update(w).values(pool_id=None).where(w.c.id == night.worker["id"]))  # the pool's one node leaves it
+    written(client, headers["owner"], charter_body())
     assert fire(client, NIGHT) == {"pool": 1}
     due = due_of(client, hub_db)
     duty, why = called(client, on_duty, due)
-    assert duty is None and why == "pool ci has no live node: add one with a join token"
+    assert duty is None and why == f"pool {HOME} has no live node: add one with a join token"
 
-    lab = fleet_node(client, headers["owner"], hub_db, "lab", ci)
+    lab = fleet_node(client, headers["owner"], hub_db, "lab", {"id": home_id(hub_db)})
     assert fire(client, NIGHT) == {"pool": 1}
     assert scheduled(hub_db) == []
     facts = called(client, _pool, due)
-    assert (facts["name"], facts["nodes"], facts["ready"]) == ("ci", 1, 0)
+    assert (facts["name"], facts["nodes"], facts["ready"]) == (HOME, 1, 0)
     words = _pool_words(facts)
-    assert words.startswith("Pool ci: no node ready for a run now: pool ci has no node ready for a run now (lab is")
+    assert words.startswith(
+        f"Pool {HOME}: no node ready for a run now: pool {HOME} has no node ready for a run now (lab is"
+    )
     assert "sent no doctor report" in words
 
     doctor(client, lab)
     facts = called(client, _pool, due)
-    assert (facts["ready"], _pool_words(facts)) == (1, "Pool ci: 1 of 1 node ready.")
+    assert (facts["ready"], _pool_words(facts)) == (1, f"Pool {HOME}: 1 of 1 node ready.")
     assert fire(client, NIGHT) == {"queued": 1}
 
 
 def test_run_plan_on_a_curator_plan_says_when_the_pool_has_no_ready_node(world):
     accepted(world)
     assert protect(world).json()["protected"] is True
-    ci = pool(world.client, world.headers["owner"])
-    sql(world.db, update(tables.workers).where(tables.workers.c.id == world.worker["id"]).values(pool_id=ci["id"]))
-    written(world.client, world.headers["owner"], {**curator_charter(), "worker": None, "pool": "ci"})
+    doctor(world.client, world.worker, HIGH)  # the one node of the default agent's pool is not ready
     refused = build_now(world)
     assert refused.status_code == 409, refused.text
-    assert "pool ci has no node ready for a run now (mac-mini is not ready" in refused.text
+    assert f"pool {HOME} has no node ready for a run now (mac-mini is not ready" in refused.text
     assert "nothing was queued" in refused.text
 
 
 # Secrets and accounts bound to a pool
 
 
-def ci_node(client, headers, db, name: str, of_pool: dict) -> dict:
-    """A worker of ``headers``' member with the checkouts of the credentials plan, made a ready node of ``of_pool``."""
-    worker = worker_of(client, headers, name)
-    sql(db, update(tables.workers).where(tables.workers.c.id == worker["id"]).values(pool_id=of_pool["id"]))
-    doctor(client, worker)
-    return worker
+def claimable(db) -> None:
+    """The project's default agent with an account pool, which a dispatch of its runs needs, unless it has one."""
+    p, ap = tables.projects, tables.agent_profiles
+    held = select(ap.c.account_pool_id).join_from(ap, p, p.c.id == ap.c.project_id)
+    if sql(db, held.where(p.c.name == PROJECT, ap.c.handle == PROJECT))[0][0] is None:
+        give_account_pool(db, PROJECT, PROJECT, OWNER)
+
+
+def owned_home(db) -> int:
+    """The pool of the project's default agent made the owner's, as if owner had made the agent, so that owner binds
+    secrets to it; its id."""
+    pools = tables.worker_pools
+    sql(db, update(pools).values(owner_id=user_id(db, OWNER)).where(pools.c.name == HOME))
+    return home_id(db)
 
 
 def test_a_secret_bound_to_a_pool_reaches_each_node_of_it_those_that_join_later_too(client, hub, hub_db):  # noqa: F811
-    ci = pool(client, hub["owner"])
-    desk = worker_of(client, hub["owner"], "desk")
+    claimable(hub_db)
+    home = owned_home(hub_db)
+    desk = add_worker(client, hub["owner"], "desk", checkouts=CHECKOUTS, pool=None)
     env_secret(client, hub["owner"], "everywhere", "API_TOKEN", sample("everywhere-"))
     ci_value = sample("ci-")
-    env_secret(client, hub["owner"], "ci-api", "API_TOKEN", ci_value, pools=["CI"])
-    env_secret(client, hub["owner"], "ci-only", "CI_TOKEN", sample("ci-only-"), pools=["ci"])
+    env_secret(client, hub["owner"], "ci-api", "API_TOKEN", ci_value, pools=[HOME.upper()])
+    env_secret(client, hub["owner"], "ci-only", "CI_TOKEN", sample("ci-only-"), pools=[HOME])
     (listed,) = [item for item in client.get("/v1/secrets", headers=hub["owner"]).json() if item["name"] == "ci-api"]
-    assert (listed["workers"], listed["pools"]) == ([], ["ci"])
+    assert (listed["workers"], listed["pools"]) == ([], [HOME])
     b = tables.secret_bindings
     assert sql(hub_db, select(b.c.worker_id, b.c.pool_id).where(b.c.secret_id == secret_id_of(hub_db, "ci-api"))) == [
-        (None, ci["id"])
+        (None, home)
     ]
 
-    lab = ci_node(client, hub["owner"], hub_db, "lab", ci)  # it joins after the bindings
+    lab = worker_of(client, hub["owner"], "lab")  # it joins the pool after the bindings
     on_lab = step_run(client, hub["owner"], "notes", lab)
     lab_leases = by_name(leased(client, lab, on_lab))
     # on a node of the pool a secret bound to the pool wins over one of the same variable bound to any worker
     assert set(lab_leases) == {"ci-api", "ci-only"} and lab_leases["ci-api"]["value"] == ci_value
-    on_desk = step_run(client, hub["owner"], "lumen-kb-docs", desk)
-    assert set(by_name(leased(client, desk, on_desk))) == {"everywhere"}
+    # a worker of no pool takes a run of no agent alone (one from before agents): the pool's secrets stay off it
+    (run,) = dispatched(client, hub["owner"], [STEPS["lumen-kb-docs"]], plan_id="credentials-smoke")
+    agentless(hub_db, run["id"])
+    assert claim(client, desk)["id"] == run["id"]
+    assert set(by_name(leased(client, desk, run["id"]))) == {"everywhere"}
 
 
 def secret_id_of(db, name: str) -> int:
@@ -265,10 +225,12 @@ def test_a_secret_binds_to_the_callers_own_pools_and_never_to_workers_and_pools_
     assert count(hub_db, tables.secret_bindings) == 0
 
 
-def test_an_account_bound_to_a_pool_goes_with_a_run_sent_to_the_pool_or_pinned_to_a_node_of_it(client, hub, hub_db):  # noqa: F811
-    ci = pool(client, hub["owner"])
-    lab = ci_node(client, hub["owner"], hub_db, "lab", ci)
-    desk = worker_of(client, hub["owner"], "desk")
+def test_an_account_bound_to_a_pool_goes_with_no_run_of_an_agent_elsewhere(client, hub, hub_db):  # noqa: F811
+    """A run of an agent goes to the nodes of the agent's own pool, and its dispatch names no worker or pool: an
+    account bound to another pool goes with none of its runs."""
+    claimable(hub_db)
+    pool(client, hub["owner"])
+    desk = add_worker(client, hub["owner"], "desk", checkouts=CHECKOUTS, pool=None)
     env_secret(client, hub["owner"], "ci-claude", "CLAUDE_CODE_OAUTH_TOKEN", sample(), pools=["ci"])
     (account,) = [a for a in client.get("/v1/accounts", headers=hub["owner"]).json() if a["name"] == "ci-claude"]
     assert (account["workers"], account["pools"]) == ([], ["ci"])
@@ -279,15 +241,10 @@ def test_an_account_bound_to_a_pool_goes_with_a_run_sent_to_the_pool_or_pinned_t
 
     loose = sent()
     assert loose.status_code == 422 and "on pool ci only" in loose.text
-    elsewhere = sent(worker_id=desk["id"])
-    assert elsewhere.status_code == 422 and "not on worker desk" in elsewhere.text
-    to_pool = sent(pool="ci")
-    assert to_pool.status_code == 201, to_pool.text
-    assert claim(client, desk) is None
-    assert claim(client, lab)["id"] == to_pool.json()[0]["id"]
-    moved(client, lab, to_pool.json()[0]["id"], "running", "failed", error="it stopped", failure_cause="verify_failed")
-    pinned = sent(worker_id=lab["id"])
-    assert pinned.status_code == 201, pinned.text
+    for placed in ({"pool": "ci"}, {"worker_id": desk["id"]}):
+        refused = sent(**placed)
+        assert refused.status_code == 422 and "agent-<handle>" in refused.text, (placed, refused.text)
+    assert count(hub_db, tables.runs) == 0
 
 
 # The command line

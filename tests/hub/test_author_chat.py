@@ -79,7 +79,7 @@ def running(client, hub, tmp_path) -> tuple[dict, int]:
     """An author run of the owner's on their worker, claimed and running in session SESSION: (worker, run id)."""
     publish_skill(client, hub, tmp_path, "The author mode: ask in the chat.")
     worker = author_worker(client, hub["owner"], "mac-mini")
-    run_id = dispatched_author(client, hub["owner"], worker["id"])["id"]
+    run_id = dispatched_author(client, hub["owner"])["id"]
     assert claim(client, worker)["id"] == run_id
     moved(client, worker, run_id, "running", session_id=SESSION)
     return worker, run_id
@@ -221,7 +221,7 @@ def test_an_author_run_waits_for_a_reply_without_a_decision_and_the_wait_does_no
     )
     assert recover(client) == NOTHING_RECOVERED
     assert run_view(client, hub["owner"], run_id)["run_seconds"] == spent
-    dispatched_author(client, hub["owner"], worker["id"])
+    dispatched_author(client, hub["owner"])
     assert claim(client, worker) is None, "the waiting run holds the worker's one slot"
     # the reply sets it going again
     sent(client, hub["owner"], run_id)
@@ -355,7 +355,7 @@ def test_ending_the_chat_of_a_parked_author_run_ends_it_done_at_once_and_a_queue
     assert moves(hub_db, run_id)[-1][1:] == ("parked", "done", "owner")
     assert last_reason(hub_db, run_id) == [(f"{OWNER} ended the chat",)]
 
-    queued = dispatched_author(client, hub["owner"], worker["id"])["id"]
+    queued = dispatched_author(client, hub["owner"])["id"]
     refused = control(client, hub["owner"], queued, "finish")
     assert refused.status_code == 409 and refused.json()["message"].endswith("cancel it instead")
     assert state_of(hub_db, queued) == "queued"
@@ -432,7 +432,7 @@ def test_a_restricted_projects_author_notice_on_a_channel_holds_its_name_and_the
         worker = author_worker(client, hub["owner"], f"mac-{clearance['level']}")
         if not sql(hub_db, select(tables.skills.c.id).limit(1)):
             publish_skill(client, hub, tmp_path, "The author mode.")
-        run_id = dispatched_author(client, hub["owner"], worker["id"])["id"]
+        run_id = dispatched_author(client, hub["owner"])["id"]
         assert claim(client, worker)["id"] == run_id
         moved(client, worker, run_id, "running")
         asked(client, worker, run_id)

@@ -27,11 +27,12 @@ from evo_agents.hub.server.run_access_rules import REACH_GROUPS, refusal
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_credentials_api import OWNER, PROJECT, worker_of
-from tests.hub.test_run_access import (
+from tests.hub.test_run_access import (  # noqa: F401  (hub is a fixture: its default agent has an account pool)
     as_me_run,
     as_run,
     audit_of,
     command,
+    hub,
     owner_admin,
     run_principal,
     saved_login,
@@ -39,12 +40,7 @@ from tests.hub.test_run_access import (
     token_of,
 )
 
-app_key, config, client, hub = (
-    credentials_api.app_key,
-    credentials_api.config,
-    credentials_api.client,
-    credentials_api.hub,
-)
+app_key, config, client = (credentials_api.app_key, credentials_api.config, credentials_api.client)
 
 ALL = frozenset(REACH_GROUPS)
 REACH = "/v1/autonomy/run-reach"

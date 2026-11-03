@@ -323,8 +323,7 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         project_id=ids["project"],
         kind="night_shift",
         owner_id=ids["user"],
-        worker_id=ids["worker"],
-    )
+    )  # a schedule names no worker since 0194: its runs go to the pool of the project's default agent
     for state in ("queued", *runs.TERMINAL_STATES):  # a project has one review run active at a time
         add_run(conn, ids, state, kind="review", schedule_id=schedule)
     for state in ("queued", *runs.TERMINAL_STATES):  # and one judge run (0017)

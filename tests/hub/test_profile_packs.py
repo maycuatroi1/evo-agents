@@ -3,8 +3,9 @@ profile attaches packs of the plugins its project enabled, each pinned at a vers
 bundle that declares the pack; editing them raises the profile's version, and the pin holds when the plugin moves on;
 the default profile attaches none; a worker claims a run whose profile attaches packs only when its daemon says it
 builds them and its owner accepted each plugin, else the run waits, queued; the claim hands each pack with a presigned
-GET of its bundle; a run whose pack the hub can no longer hand fails at the claim, saying why; a dispatch pinned to a
-worker that could never take the run is 409. What the worker builds from a pack is ``tests.worker.test_agent_packs``'s.
+GET of its bundle; a run whose pack the hub can no longer hand fails at the claim, saying why. Each run goes to a node
+of its agent's pool (plan agent-dedicated-pools), which a dispatch no longer names. What the worker builds from a pack
+is ``tests.worker.test_agent_packs``'s.
 """
 
 from __future__ import annotations
@@ -26,8 +27,9 @@ from sqlalchemy import insert, select, update
 from evo_agents.hub import profiles, runs, tables
 from evo_agents.hub.cli_agents import packs_from
 from evo_agents.hub.server.app import create_app
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.test_plugin_runtimes import ADMIN_GRANT, beat, enable, install, message, set_plugins, state_of
-from tests.hub.test_runs import OWNER, PROJECT, add_worker, claim, dispatch, dispatched, members, of_run
+from tests.hub.test_runs import OWNER, PROJECT, add_worker, claim, dispatched, join_pool, members, of_run
 from tests.plugins.samples import manifest
 
 REVIEW = {"name": "review", "title": "Code review", "description": "Skills and MCP servers that review a diff"}
@@ -88,8 +90,10 @@ def agent(client, headers, handle: str, packs: list[dict] | None = None, **body)
 
 
 def made(client, headers, handle: str, packs: list[dict]) -> dict:
+    """Profile ``handle`` (``agent``), with an account pool of the owner's, which its runs need."""
     response = agent(client, headers, handle, packs)
     assert response.status_code == 201, response.text
+    give_account_pool(live.database_of(client), PROJECT, handle, OWNER)
     return response.json()
 
 
@@ -101,9 +105,10 @@ def pinned(version: str = "1.0.0", name: str = "review") -> dict:
     return {"pack": f"sandbox/{name}", "plugin": "sandbox", "name": name, "version": version}
 
 
-def accepting(client, headers, name: str, *, features=FEATURES) -> dict:
-    """A worker whose owner accepted plugin sandbox and whose daemon says ``features``."""
-    worker = add_worker(client, headers, name)
+def accepting(client, headers, name: str, *, features=FEATURES, pool: str = "reviewer") -> dict:
+    """A worker whose owner accepted plugin sandbox and whose daemon says ``features``: a ready node of the pool of
+    agent ``pool`` (@reviewer's by default)."""
+    worker = add_worker(client, headers, name, pool=pool)
     assert set_plugins(client, headers, worker, ["sandbox"]).status_code == 200
     beat(client, worker, features=features)
     return worker
@@ -236,11 +241,12 @@ def test_profile_pack_only_a_worker_that_builds_packs_and_accepted_the_plugin_cl
     (run,) = dispatched(client, hub["owner"], [2], profile="reviewer")
     old = accepting(client, hub["owner"], "old-daemon", features=OLD_FEATURES)
     assert claim(client, old) is None, "a daemon that does not say it builds agent packs takes no such run"
-    new = add_worker(client, hub["owner"], "new-daemon")
+    new = add_worker(client, hub["owner"], "new-daemon", pool="reviewer")
     beat(client, new)
     assert claim(client, new) is None, "its owner did not accept the plugin"
     assert state_of(hub_db, run["id"]) == "queued", "the run waits; it does not fail"
     (plain,) = dispatched(client, hub["owner"], [4])
+    join_pool(client, old, PROJECT)  # a node of the default agent's pool now
     assert claim(client, old)["id"] == plain["id"], "a run that attaches no pack goes to any worker, as before"
 
     assert set_plugins(client, hub["owner"], new, ["sandbox"]).status_code == 200
@@ -279,7 +285,7 @@ def test_profile_pack_a_run_whose_pack_the_hub_cannot_hand_fails_at_its_claim_sa
     add_version(hub_db, hub["plugin_id"], "1.1.0")
     made(client, hub["owner"], "reviewer", [{"plugin": "sandbox", "name": "review"}])
     made(client, hub["owner"], "newer", [{"plugin": "sandbox", "name": "review", "version": "1.1.0"}])
-    worker = accepting(client, hub["owner"], "mac-mini")
+    worker = accepting(client, hub["owner"], "mac-mini", pool="newer")
 
     (gone,) = dispatched(client, hub["owner"], [2], profile="newer")
     v = tables.plugin_versions
@@ -293,6 +299,7 @@ def test_profile_pack_a_run_whose_pack_the_hub_cannot_hand_fails_at_its_claim_sa
         "pins"
     )
 
+    join_pool(client, worker, "reviewer")
     (off,) = dispatched(client, hub["owner"], [4], profile="reviewer")
     disabled = client.post(f"/v1/projects/{PROJECT}/plugins/sandbox/disable", headers=hub["owner"])
     assert disabled.status_code == 200, disabled.text
@@ -315,26 +322,6 @@ def test_profile_pack_a_hub_without_a_blob_store_fails_the_run_at_its_claim(hub_
         assert claim(client, worker) is None
     ((state, error),) = of_run(hub_db, run["id"], "state", "error")
     assert state == "failed" and error.startswith("the hub has no blob store, so it cannot hand the worker the bundles")
-
-
-# Dispatching
-
-
-def test_profile_pack_a_dispatch_pinned_to_a_worker_that_cannot_build_the_packs_is_409_saying_why(client, hub, hub_db):
-    enable(client, hub["owner"])
-    made(client, hub["owner"], "reviewer", [{"plugin": "sandbox", "name": "review"}])
-    worker = add_worker(client, hub["owner"], "mac-mini")
-
-    def why() -> str:
-        return message(dispatch(client, hub["owner"], [2], profile="reviewer", worker_id=worker["id"]), 409)
-
-    beat(client, worker, features=OLD_FEATURES)
-    assert "does not say it builds agent packs, and the run's agent attaches some" in why()
-    beat(client, worker)
-    assert "its owner has not let it take the agent packs of plugin sandbox: add it to the worker's plugins" in why()
-    assert set_plugins(client, hub["owner"], worker, ["sandbox"]).status_code == 200
-    (run,) = dispatched(client, hub["owner"], [2], profile="reviewer", worker_id=worker["id"])
-    assert claim(client, worker)["id"] == run["id"]
 
 
 # Without a hub

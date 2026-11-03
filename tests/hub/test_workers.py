@@ -51,7 +51,7 @@ from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.log import scrub
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, profile_store
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import MACHINE, WORKER, authenticate, hash_token
 from evo_agents.hub.server.workers import CROCKFORD, RefusalLimit, normal_code
@@ -144,7 +144,8 @@ def audit_rows(db, action: str) -> list[tuple]:
         db,
         select(audit_table.c.target, users.c.login)
         .join_from(audit_table, users, users.c.id == audit_table.c.actor_id)
-        .where(audit_table.c.action == action),
+        .where(audit_table.c.action == action)
+        .order_by(audit_table.c.id),
     )
 
 
@@ -1459,6 +1460,20 @@ def test_the_projects_of_a_worker_are_changed_by_its_owner_alone(client, hub, hu
     assert gone.status_code == 409 and "revoked" in gone.json()["message"]
 
 
+def default_pool(client, db, project: str) -> int:
+    """The id of the pool of ``project``'s default agent, made with the agent when the project has none
+    (``profile_store.ensure_default``)."""
+    project_id = sql(db, select(tables.projects.c.id).where(tables.projects.c.name == project))[0][0]
+
+    async def made() -> None:
+        async with client.app.state.engine.begin() as conn:
+            await profile_store.ensure_default(conn, project_id)
+
+    client.portal.call(made)
+    pools = tables.worker_pools
+    return sql(db, select(pools.c.id).where(pools.c.name == f"agent-{project}"))[0][0]
+
+
 def test_a_project_is_not_dropped_while_a_run_of_it_is_active_on_the_worker_or_its_night_shift_is_on_duty_there(
     client, hub, hub_db
 ):
@@ -1472,7 +1487,10 @@ def test_a_project_is_not_dropped_while_a_run_of_it_is_active_on_the_worker_or_i
         add_run(conn, ids, "done", step="3")  # ended: it needs the worker no more
     projects = tables.projects
     demo = sql(hub_db, select(projects.c.id).where(projects.c.name == "demo"))[0][0]
-    duty = {"project_id": demo, "kind": "night_shift", "owner_id": ids["user"], "worker_id": worker_id}
+    # the night shift of demo runs on the pool of demo's default agent, kept by its online node of the lowest id
+    node = {"pool_id": default_pool(client, hub_db, "demo"), "last_heartbeat_at": func.now()}
+    sql(hub_db, update(tables.workers).values(**node).where(tables.workers.c.id == worker_id))
+    duty = {"project_id": demo, "kind": "night_shift", "owner_id": ids["user"]}
     sql(hub_db, insert(tables.schedules).values(**duty))
 
     busy = client.patch(path, json={"projects": ["demo"]}, headers=hub["owner"])
@@ -1482,7 +1500,7 @@ def test_a_project_is_not_dropped_while_a_run_of_it_is_active_on_the_worker_or_i
     on_duty = client.patch(path, json={"projects": ["docs"]}, headers=hub["owner"])
     assert on_duty.status_code == 409, on_duty.text
     assert "cannot stop serving demo" in on_duty.json()["message"]
-    assert "evo-agents hub curator charter" in on_duty.json()["message"]
+    assert "add another node to that pool first" in on_duty.json()["message"]
     assert projects_of(hub_db, worker_id) == ["demo", "docs"] and audit_rows(hub_db, "worker.update") == []
 
     # once the runs ended, docs goes; the night shift of demo keeps demo, and the worker's id and token stay

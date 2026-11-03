@@ -1,13 +1,14 @@
-"""Author runs on the hub: dispatching one (POST /v1/projects/{p}/author-runs), who may, on which worker and with what
-request and runtime; the claim of one, with the skill create-exec-plan the hub holds at that moment; how one ends.
+"""Author runs on the hub: dispatching one (POST /v1/projects/{p}/author-runs), who may, and with what request and
+runtime; the claim of one, with the skill create-exec-plan the hub holds at that moment; how one ends.
 
-The checks step 1 of the hub-plan-authoring plan names on the hub: a writer dispatches an author run to a worker of
-their own, with a request of at most 16 KiB of UTF-8 (422 over it), claude-code (422 for another runtime, saying why)
-and a model; a reader gets 403, and so does a dispatch to another member's worker; only that worker claims it, and only
-with a checkout of the project's harness and a daemon that says it runs author runs, so an older daemon never does; the
-claim hands the latest global version of create-exec-plan with a presigned GET of its bundle, and the prompt names
-that version and the author mode; a hub without the skill fails the run at its claim, saying so; the run ends done
-without verify results and writes no plan."""
+The checks step 1 of the hub-plan-authoring plan names on the hub, in the pools of the agents (plan
+agent-dedicated-pools): a writer dispatches an author run, which goes to the pool of the project's default agent, with
+a request of at most 16 KiB of UTF-8 (422 over it), claude-code (422 for another runtime, saying why) and a model; a
+reader gets 403, and a dispatch that names a worker 422; only a node of the pool claims it, and only with a checkout of
+the project's harness and a daemon that says it runs author runs, so an older daemon never does; the claim hands the
+latest global version of create-exec-plan with a presigned GET of its bundle, and the prompt names that version and
+the author mode; a hub without the skill fails the run at its claim, saying so; the run ends done without verify
+results and writes no plan."""
 
 import hashlib
 
@@ -24,6 +25,7 @@ from sqlalchemy import select, update
 from evo_agents.hub import author, runs, skills, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import ADMIN, sql
+from tests.hub.test_plans import REPOS
 from tests.hub.test_runs import (
     OWNER,
     PROJECT,
@@ -82,19 +84,22 @@ def beat(
     assert response.status_code == 200, response.text
 
 
-def author_worker(client, headers, name: str, *, kinds=KINDS, checkouts=CHECKOUTS) -> dict:
-    worker = add_worker(client, headers, name, checkouts=checkouts)
+def author_worker(client, headers, name: str, *, kinds=KINDS, checkouts=CHECKOUTS, pool: str | None = PROJECT) -> dict:
+    """A worker whose daemon says it runs ``kinds``: a ready node of the pool of agent ``pool`` (the project's default
+    agent's by default; None for a worker of no pool)."""
+    worker = add_worker(client, headers, name, checkouts=checkouts, pool=pool)
     beat(client, worker, kinds)
     return worker
 
 
-def dispatch_author(client, headers, worker_id: int, **extra):
-    body = {"request": REQUEST, "worker_id": worker_id, **extra}
+def dispatch_author(client, headers, **extra):
+    """An author run dispatched, on the pool of its agent: the hub places it, so the body names no worker."""
+    body = {"request": REQUEST, **extra}
     return client.post(f"/v1/projects/{PROJECT}/author-runs", json=body, headers=headers)
 
 
-def dispatched_author(client, headers, worker_id: int, **extra) -> dict:
-    response = dispatch_author(client, headers, worker_id, **extra)
+def dispatched_author(client, headers, **extra) -> dict:
+    response = dispatch_author(client, headers, **extra)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -119,9 +124,9 @@ def author_runs(db) -> int:
 # Dispatching
 
 
-def test_a_writer_dispatches_an_author_run_to_their_own_worker_and_a_reader_gets_403(client, hub, hub_db):
+def test_a_writer_dispatches_an_author_run_to_the_pool_of_the_agent_and_a_reader_gets_403(client, hub, hub_db):
     worker = author_worker(client, hub["owner"], "mac-mini")
-    run = dispatched_author(client, hub["owner"], worker["id"], model="opus", timeout_h=4)
+    run = dispatched_author(client, hub["owner"], model="opus", timeout_h=4)
     assert (run["kind"], run["plan_id"], run["step_key"], run["plan_revision"], run["repo"]) == (
         "author",
         "",
@@ -131,9 +136,9 @@ def test_a_writer_dispatches_an_author_run_to_their_own_worker_and_a_reader_gets
     )
     assert run["repos"] == [
         {"repo": HARNESS, "branch": None},
-        {"repo": "agent-skills", "branch": None},
-        {"repo": "evo-agents", "branch": None},
-    ], "the harness first, then the project's repos the worker has a checkout of, in name order"
+        *({"repo": name, "branch": None} for name in sorted(REPOS)),
+    ], "the harness first, then every repo of the project, in name order: the worker leaves out those it lacks"
+    assert run["selector"] == [f"pool=agent-{PROJECT}"]
     assert (run["requested_runtime"], run["runtime"], run["model"], run["mode"], run["approval"]) == (
         "claude-code",
         "claude-code",
@@ -143,21 +148,20 @@ def test_a_writer_dispatches_an_author_run_to_their_own_worker_and_a_reader_gets
     )
     assert (run["timeout_min"], run["pinned_worker_id"], run["dispatched_by"], run["state"]) == (
         240,
-        worker["id"],
+        None,
         OWNER,
         "queued",
     )
     assert run["title"] == "Plan from: Members write plans on the hub with an agent."
     assert run["request"] == REQUEST and run["dispatched_via"] == "machine"
 
-    reader = dispatch_author(client, hub["reader"], worker["id"])
+    reader = dispatch_author(client, hub["reader"])
     assert reader.status_code == 403
     assert reader.json()["message"] == (
         f"dispatching runs in project {PROJECT} needs the writer role on it; you hold reader"
     )
-    elsewhere = dispatch_author(client, hub["other"], worker["id"])
-    assert elsewhere.status_code == 403
-    assert "a run goes only to a worker of the member who dispatches it" in elsewhere.json()["message"]
+    picked = dispatch_author(client, hub["owner"], worker_id=worker["id"])
+    assert picked.status_code == 422 and "agent-<handle>" in picked.text, "the hub places the run, not the dispatcher"
     assert author_runs(hub_db) == 1
 
     (row,) = [row for row in audit_rows(hub_db, "run") if row[0] == "run.dispatch_author"]
@@ -176,62 +180,36 @@ def test_a_writer_dispatches_an_author_run_to_their_own_worker_and_a_reader_gets
     assert rerun.status_code == 409 and "is an author run: dispatch a new one" in rerun.json()["message"]
 
 
-def test_an_author_run_needs_no_worker_and_goes_to_one_with_the_labels_it_asks(client, hub, hub_db, tmp_path):
-    publish_skill(client, hub, tmp_path, "The author mode.")
-    plain = author_worker(client, hub["owner"], "plain")
-    gpu = author_worker(client, hub["owner"], "gpu")
-    w = tables.workers
-    sql(hub_db, update(w).where(w.c.id == gpu["id"]).values(labels=["gpu"]))
-    response = client.post(
-        f"/v1/projects/{PROJECT}/author-runs", json={"request": REQUEST, "labels": ["gpu"]}, headers=hub["owner"]
-    )
-    assert response.status_code == 201, response.text
-    run = response.json()
-    assert (run["pinned_worker_id"], run["selector"], run["tolerations"]) == (None, ["gpu"], [])
-    assert run["repos"][0] == {"repo": HARNESS, "branch": None}
-    assert claim(client, plain) is None
-    assert claim(client, gpu)["id"] == run["id"]
-
-
 def test_an_author_run_on_another_runtime_or_with_a_request_over_16_kib_is_422_saying_why(client, hub, hub_db):
-    worker = author_worker(client, hub["owner"], "mac-mini")
     for runtime in ("opencode", "codex"):
-        refused = dispatch_author(client, hub["owner"], worker["id"], runtime=runtime)
+        refused = dispatch_author(client, hub["owner"], runtime=runtime)
         assert refused.status_code == 422, refused.text
         assert refused.json()["message"].startswith(f"an author run runs on claude-code only, not {runtime}: ")
     over = "é" * (author.MAX_REQUEST_BYTES // 2 + 1)
-    refused = dispatch_author(client, hub["owner"], worker["id"], request=over)
+    refused = dispatch_author(client, hub["owner"], request=over)
     assert refused.status_code == 422
     assert refused.json()["message"] == (
         f"the request is {len(over.encode())} bytes of UTF-8, over the 16384 an author run takes; nothing was "
         "dispatched"
     )
-    assert dispatch_author(client, hub["owner"], worker["id"], request=" \n").status_code == 422
+    assert dispatch_author(client, hub["owner"], request=" \n").status_code == 422
     assert author_runs(hub_db) == 0
 
-    whole = dispatched_author(client, hub["owner"], worker["id"], request="x" * author.MAX_REQUEST_BYTES, runtime="any")
+    whole = dispatched_author(client, hub["owner"], request="x" * author.MAX_REQUEST_BYTES, runtime="any")
     assert whole["runtime"] == "claude-code" and len(whole["request"]) == author.MAX_REQUEST_BYTES
 
 
-def test_an_author_run_needs_a_worker_with_the_harness_and_a_daemon_that_runs_author_runs(client, hub, hub_db):
-    without_harness = author_worker(client, hub["owner"], "no-harness", checkouts=NO_HARNESS)
-    refused = dispatch_author(client, hub["owner"], without_harness["id"])
-    assert refused.status_code == 409
-    assert f"it has no checkout of {PROJECT}/{HARNESS}" in refused.json()["message"]
-
-    old_daemon = author_worker(client, hub["owner"], "old-daemon", kinds=OLD_KINDS)
-    refused = dispatch_author(client, hub["owner"], old_daemon["id"])
-    assert refused.status_code == 409
-    assert "does not say it runs author runs: upgrade it and restart its daemon" in refused.json()["message"]
-
+def test_an_author_run_of_a_project_registered_without_its_harness_is_409(client, hub, hub_db):
+    """Which worker may take the run is the claim's to say, the harness's checkout and the daemon's kinds included: the
+    dispatch names no worker."""
     sql(
         hub_db,
         update(tables.projects)
         .values(cluster=None, workspace=None, harness_path=None)
         .where(tables.projects.c.name == PROJECT),
     )
-    good = author_worker(client, hub["owner"], "mac-mini")
-    refused = dispatch_author(client, hub["owner"], good["id"])
+    author_worker(client, hub["owner"], "mac-mini")
+    refused = dispatch_author(client, hub["owner"])
     assert refused.status_code == 409
     assert f"project {PROJECT} was registered without its harness" in refused.json()["message"]
     assert author_runs(hub_db) == 0
@@ -240,17 +218,17 @@ def test_an_author_run_needs_a_worker_with_the_harness_and_a_daemon_that_runs_au
 # The claim
 
 
-def test_only_the_owners_author_daemon_with_the_harness_claims_an_author_run_with_the_latest_skill(
+def test_only_a_node_of_the_pool_with_an_author_daemon_and_the_harness_claims_an_author_run_with_the_latest_skill(
     client, hub, hub_db, tmp_path
 ):
     publish_skill(client, hub, tmp_path, "Version one.")
     data, published = publish_skill(client, hub, tmp_path, "Version two: the author mode.")
     assert published["latest"]["version"] == 2
-    mine = author_worker(client, hub["owner"], "mac-mini")
-    theirs = author_worker(client, hub["other"], "their-mac")
-    run_id = dispatched_author(client, hub["owner"], mine["id"])["id"]
+    mine = author_worker(client, hub["other"], "mac-mini")  # a node of the pool, whoever owns it
+    outside = author_worker(client, hub["owner"], "their-mac", pool=None)
+    run_id = dispatched_author(client, hub["owner"])["id"]
 
-    assert claim(client, theirs) is None, "another member's worker never gets the run"
+    assert claim(client, outside) is None, "a worker of no pool never gets the run, even the dispatcher's own"
     beat(client, mine, None)  # the daemon of 0.8.0 names no kind
     assert claim(client, mine) is None
     beat(client, mine, OLD_KINDS)
@@ -286,8 +264,8 @@ def test_an_author_runs_prompt_asks_decisions_only_on_a_daemon_that_says_author_
     new = author_worker(client, hub["owner"], "new-box")
     beat(client, new, KINDS, features=[runs.SESSION_PER_STEP, runs.AUTHOR_DECISIONS])
     old = author_worker(client, hub["owner"], "old-box")  # a daemon of this release's predecessor says none
-    asks = dispatched_author(client, hub["owner"], new["id"])["id"]
-    chats = dispatched_author(client, hub["owner"], old["id"])["id"]
+    asks = dispatched_author(client, hub["owner"])["id"]  # the oldest run first: the new daemon claims first
+    chats = dispatched_author(client, hub["owner"])["id"]
 
     spec = claim(client, new)
     assert spec["id"] == asks
@@ -308,7 +286,7 @@ def test_an_author_runs_prompt_asks_decisions_only_on_a_daemon_that_says_author_
 
 def test_an_author_run_claimed_while_the_hub_has_no_create_exec_plan_skill_fails_saying_so(client, hub, hub_db):
     worker = author_worker(client, hub["owner"], "mac-mini")
-    run_id = dispatched_author(client, hub["owner"], worker["id"])["id"]
+    run_id = dispatched_author(client, hub["owner"])["id"]
     assert claim(client, worker) is None
     state, error, worker_id = of_run(hub_db, run_id, "state", "error", "worker_id")[0]
     assert (state, worker_id) == ("failed", None)
@@ -320,7 +298,7 @@ def test_an_author_run_claimed_while_the_hub_has_no_create_exec_plan_skill_fails
 def test_an_author_run_ends_done_without_verify_and_writes_no_plan(client, hub, hub_db, tmp_path):
     publish_skill(client, hub, tmp_path, "The author mode.")
     worker = author_worker(client, hub["owner"], "mac-mini")
-    run_id = dispatched_author(client, hub["owner"], worker["id"])["id"]
+    run_id = dispatched_author(client, hub["owner"])["id"]
     assert claim(client, worker)["id"] == run_id
     plans = tables.plans
     before = sql(hub_db, select(plans.c.plan_id, plans.c.revision).order_by(plans.c.plan_id))
