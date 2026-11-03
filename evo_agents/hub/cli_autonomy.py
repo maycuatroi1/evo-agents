@@ -1,5 +1,6 @@
-"""``evo-agents hub autonomy show|set|ceiling set``: the autonomy levels A0 to A5 of people and agents (plan
-autonomy-levels, criteria a2 and a3), over GET /v1/autonomy, PUT /v1/autonomy/prefs and PUT /v1/org/ceilings.
+"""``evo-agents hub autonomy show|set|ceiling set|run-reach``: the autonomy levels A0 to A5 of people and agents (plan
+autonomy-levels, criteria a2 and a3), over GET /v1/autonomy, PUT /v1/autonomy/prefs and PUT /v1/org/ceilings, and what
+the caller's runs that run as them reach, over GET and PUT /v1/autonomy/run-reach.
 
 ``autonomy show`` prints the effective level of a person (the caller without ``--login``), alone or running an agent
 profile (``--agent``) on a repo (``--repo``) of a project (``--project``): each class K1 to K12 with its mode and the
@@ -10,6 +11,11 @@ agent, level, classes (each {mode, source, detail}), environments, workers.
 before), or ``--reset`` to drop them. A preference above the ceilings is stored; the ceilings still decide.
 ``autonomy ceiling set`` writes the next ceiling revision of a unit, of a person's primary seat or of a seat, with its
 class overrides and the environments and workers it allows; each revision is whole, so what it leaves out it drops.
+
+``autonomy run-reach`` prints the groups a run's token (``evr_...``) of the caller reaches besides what every run's
+token reaches, of agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens) and
+curator (the Curator's writes); ``--allow agents,workers`` replaces them with those named, ``--none`` clears them.
+``--json`` prints login and groups, and previous too after ``--allow`` or ``--none``. No run's token reads or sets it.
 A refusal (403, 404, 409, 422) prints the hub's reason and exits 1.
 
 Standard library only, like the rest of the client.
@@ -24,6 +30,7 @@ from evo_agents.hub import autonomy_levels
 from evo_agents.hub.autonomy_levels import CLASSES, LEVELS
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.credentials import RUN_REACH_GROUPS
 
 EXIT_USAGE = 2
 # The keys of the hub's answers these commands print with --json (``evo_agents.hub.server.autonomy_models`` and
@@ -41,6 +48,9 @@ CEILING_KEYS = (
     "environments",
     "workers",
 )
+REACH_KEYS = ("login", "groups")
+REACH_WRITTEN_KEYS = ("login", "groups", "previous")
+RUN_REACH_PATH = "/v1/autonomy/run-reach"
 CLASS_HELP = (
     "a class and its mode, K1 to K12 = deny, ask, notify or auto (e.g. K6=deny, K5=notify:ask_on_risk_paths); repeat it"
 )
@@ -67,6 +77,22 @@ def overrides(given: list[str] | None) -> dict[str, str]:
             raise Usage(f"--class names {klass} twice")
         found[klass] = mode
     return {klass: found[klass] for klass in CLASSES if klass in found}
+
+
+def reach_groups(text: str) -> list[str]:
+    """``--allow agents,workers`` as the groups it names, once each in the hub's order; Usage naming a wrong one."""
+    names = [name.strip() for name in text.split(",") if name.strip()]
+    choices = ", ".join(RUN_REACH_GROUPS)
+    if not names:
+        raise Usage(f"--allow names one or more of {choices}; --none clears them")
+    for name in names:
+        if name not in RUN_REACH_GROUPS:
+            raise Usage(f"--allow: no group {name!r}; the groups are {choices}")
+    return [group for group in RUN_REACH_GROUPS if group in names]
+
+
+def _groups(groups: list[str]) -> str:
+    return ", ".join(groups) or "none"
 
 
 def _places(given: list[str] | None) -> list[str]:
@@ -155,6 +181,27 @@ def cmd_ceiling_set(args) -> int:
     return 0
 
 
+@client_command
+def cmd_run_reach(args) -> int:
+    try:
+        groups = [] if args.none else None if args.allow is None else reach_groups(args.allow)
+    except Usage as exc:
+        return _usage(str(exc))
+    hub, _ = signed_in()
+    if groups is None:
+        held = hub.call("GET", RUN_REACH_PATH)
+    else:
+        held = hub.call("PUT", RUN_REACH_PATH, {"groups": groups})
+    if args.json:
+        print_json(held)
+        return 0
+    was = "" if groups is None else f" (was {_groups(held['previous'])})"
+    print(f"Your runs that run as you also reach: {_groups(held['groups'])}{was}.")
+    if groups is None:
+        print(f"The groups: {', '.join(RUN_REACH_GROUPS)}. Change it with --allow GROUP[,GROUP...] or --none.")
+    return 0
+
+
 # Registering
 
 
@@ -201,3 +248,21 @@ def register_autonomy(hsub) -> None:
     pref.set_defaults(func=cmd_set)
 
     _register_ceiling(asub)
+
+    reach = asub.add_parser(
+        "run-reach",
+        help="what your runs that run as you reach besides what every run's token reaches: agents, workers, curator",
+    )
+    chosen = reach.add_mutually_exclusive_group()
+    chosen.add_argument(
+        "--allow",
+        metavar="GROUP[,GROUP...]",
+        help=f"replace it with these groups, comma-separated, of {', '.join(RUN_REACH_GROUPS)}",
+    )
+    chosen.add_argument("--none", action="store_true", help="clear it: your runs reach none of the groups")
+    written = returns_object(*REACH_WRITTEN_KEYS, schema="RunReachWritten")
+    json_option(
+        reach,
+        returns_object(*REACH_KEYS, schema="RunReach", variants=(("--allow", written), ("--none", written))),
+    )
+    reach.set_defaults(func=cmd_run_reach)

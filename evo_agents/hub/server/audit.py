@@ -387,6 +387,9 @@ CREDENTIAL_REVOKE = "credential.revoke"
 RUN_ACCESS_GRANT = "run_access.grant"
 RUN_ACCESS_REVOKE = "run_access.revoke"
 RUN_ACCESS_WRITE = "run_access.write"
+# A member changed the groups the tokens of their runs reach (run_access_rules.REACH_GROUPS), hub-wide:
+# "reach <login> <before>-><after>", each a comma-separated list or none.
+RUN_ACCESS_REACH = "run_access.reach"
 # The signals of a project (evo_agents.hub.server.signal_keys), in the project: "<project> key=<name>" for its registry,
 # "<project> ingest:<id> name=<name>" for an ingest key; never a token.
 SIGNAL_KEY_ADD = "signal.key-add"  # an admin added a key to the registry

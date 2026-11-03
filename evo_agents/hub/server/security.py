@@ -43,11 +43,13 @@ A run's token arrives as ``Authorization: Bearer`` and is its owner, with the ow
 admin when the owner is one, while its lease is out (``run_access``): the run is held by the worker it was leased to,
 its owner lets it run as them and still holds writer on its project, and neither the token nor its worker is revoked;
 otherwise it gets the same 401 as any other credential. It never works under WORKER_PREFIX, is refused the paths of
-``run_access_rules`` with 403 and the reason, and every write made with it, refused or not, adds an audit row naming
-the run. While it is answered, ``run_access_rules.ACTING_RUN`` names the run, so no run starts from it; its principal
-acts for the run (``Principal.acts_for_run``) as the agent of a run on /mcp does, for the rules of the routes open to
-it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The gateway route's
-token of a run (``gateway_leases``) shares the prefix and is a credential of those routes alone: here it is unknown.
+``run_access_rules`` with 403 and the reason, but those of the groups its owner's run reach opens, which the statement
+that finds the token reads with it (``Principal.run_reach``), and every write made with it, refused or not, adds an
+audit row naming the run. While it is answered, ``run_access_rules.ACTING_RUN`` names the run, so no run starts from
+it; its principal acts for the run (``Principal.acts_for_run``) as the agent of a run on /mcp does, for the rules of
+the routes open to it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The
+gateway route's token of a run (``gateway_leases``) shares the prefix and is a credential of those routes alone: here
+it is unknown.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
 one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the two ends of the web terminal, see
@@ -191,7 +193,8 @@ AUTHENTICATE = _authenticate()
 def _live_run_token(match):
     """The live token of a run that ``match`` names, while its lease is out (``run_access``): the lease is not given
     back, the run is held by the worker it was leased to and its owner lets it run as them, the owner dispatched it and
-    still holds writer on its project, and the worker is not revoked."""
+    still holds writer on its project, and the worker is not revoked; with the owner's run reach
+    (``run_access_rules.REACH_GROUPS``)."""
     tokens, users, cl, r, w, g = (
         tables.tokens,
         tables.users,
@@ -201,7 +204,7 @@ def _live_run_token(match):
         tables.grants,
     )
     return (
-        select(tokens.c.id, tokens.c.user_id, users.c.login, cl.c.run_id)
+        select(tokens.c.id, tokens.c.user_id, users.c.login, cl.c.run_id, users.c.run_reach)
         .join_from(tokens, users, users.c.id == tokens.c.user_id)
         .join(cl, cl.c.token_id == tokens.c.id)
         .join(r, r.c.id == cl.c.run_id)
@@ -224,8 +227,9 @@ def _live_run_token(match):
 
 
 def _authenticate_run():
-    """One statement: find the live token of a run, its hash ``:digest`` (``_live_run_token``), and push its expiry as
-    ``_authenticate`` does. The owner is not marked seen: the run is not them at their keyboard."""
+    """One statement: find the live token of a run, its hash ``:digest`` (``_live_run_token``), with its owner's run
+    reach, and push its expiry as ``_authenticate`` does. The owner is not marked seen: the run is not them at their
+    keyboard."""
     tokens = tables.tokens
     found = _live_run_token(tokens.c.token_hash == bindparam("digest")).cte("found")
     touched = (
@@ -238,7 +242,7 @@ def _authenticate_run():
         .returning(tokens.c.id)
         .cte("touched")
     )
-    return select(found.c.id, found.c.user_id, found.c.login, found.c.run_id).add_cte(touched)
+    return select(found.c.id, found.c.user_id, found.c.login, found.c.run_id, found.c.run_reach).add_cte(touched)
 
 
 AUTHENTICATE_RUN = _authenticate_run()
@@ -283,6 +287,9 @@ class Principal:
     token_hash: str
     scope: RunScope | None = None  # the agent of a run, on /mcp only; None for everyone else
     run_id: int | None = None  # RUN: the run whose token it is, which acts as its owner; None for everyone else
+    # RUN: the groups of run_access_rules.REACH_GROUPS its owner lets their runs reach (users.run_reach), read with the
+    # token; empty for everyone else
+    run_reach: frozenset[str] = frozenset()
 
     def __repr__(self) -> str:
         run = self.scope.run_id if self.scope is not None else self.run_id
@@ -429,7 +436,10 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
         return None
     token_id, user_id, login, *run = row
     admin = kind != WORKER and config.is_admin(login)  # a worker acts for its owner on its own routes only
-    return Principal(user_id, login, admin, token_id, kind, digest, run_id=run[0] if run else None)
+    if not run:
+        return Principal(user_id, login, admin, token_id, kind, digest)
+    run_id, reach = run
+    return Principal(user_id, login, admin, token_id, kind, digest, run_id=run_id, run_reach=frozenset(reach))
 
 
 async def still_live(conn: AsyncConnection, principal: Principal) -> bool:
@@ -552,7 +562,7 @@ class Authenticate:
             return unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}", clear_cookie=kind == WEB)
         request.state.principal = principal
         if kind == RUN:  # after the database: a run's token that is no longer live gets 401 everywhere
-            reason = run_access_rules.refusal(request.method, request.url.path)
+            reason = run_access_rules.refusal(request.method, request.url.path, principal.run_reach)
             if reason is not None:
                 log.warning("a run's token was refused", extra={"run_id": principal.run_id, "method": request.method})
                 return error_response(request, 403, reason)

@@ -2841,6 +2841,63 @@
         "schema": "CeilingWritten"
       }
     },
+    "hub autonomy run-reach": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--allow"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--none"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "groups"
+        ],
+        "schema": "RunReach",
+        "with": {
+          "--allow": {
+            "kind": "object",
+            "keys": [
+              "login",
+              "groups",
+              "previous"
+            ],
+            "schema": "RunReachWritten"
+          },
+          "--none": {
+            "kind": "object",
+            "keys": [
+              "login",
+              "groups",
+              "previous"
+            ],
+            "schema": "RunReachWritten"
+          }
+        }
+      }
+    },
     "hub autonomy set": {
       "positionals": [],
       "options": [
@@ -53677,6 +53734,138 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/PrefWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/run-reach": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Run Reach",
+          "description": "The groups the caller's runs that run as them reach besides what every run's token reaches.",
+          "operationId": "show_run_reach_v1_autonomy_run_reach_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunReach"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Set Run Reach",
+          "description": "Replace the caller's own run reach; an empty list clears it. The next request of each of their runs reads it.",
+          "operationId": "set_run_reach_v1_autonomy_run_reach_put",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunReachSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunReachWritten"
                   }
                 }
               }
@@ -135702,6 +135891,63 @@
           ],
           "title": "PoolAccount"
         },
+        "PoolCandidate": {
+          "properties": {
+            "pool": {
+              "type": "string",
+              "title": "Pool"
+            },
+            "agent": {
+              "type": "string",
+              "title": "Agent",
+              "description": "the handle of the agent whose pool it is"
+            },
+            "pool_mode": {
+              "type": "boolean",
+              "title": "Pool Mode",
+              "description": "the agent is in pool mode, so its runs go to this pool's nodes alone"
+            },
+            "takes_run": {
+              "type": "boolean",
+              "title": "Takes Run",
+              "description": "the pool the run goes to: its agent's, in pool mode"
+            },
+            "nodes": {
+              "type": "integer",
+              "title": "Nodes",
+              "description": "the nodes of the pool that are not revoked"
+            },
+            "ready_nodes": {
+              "type": "integer",
+              "title": "Ready Nodes",
+              "description": "those online, not draining and ready"
+            },
+            "fit": {
+              "type": "boolean",
+              "title": "Fit",
+              "description": "the run goes to this pool and one of its nodes can take it now"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Reasons"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pool",
+            "agent",
+            "pool_mode",
+            "takes_run",
+            "nodes",
+            "ready_nodes",
+            "fit",
+            "reasons"
+          ],
+          "title": "PoolCandidate"
+        },
         "PoolNode": {
           "properties": {
             "id": {
@@ -149719,6 +149965,101 @@
             "run_id"
           ],
           "title": "RunPush"
+        },
+        "RunReach": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the person whose runs it is"
+            },
+            "groups": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "agents",
+                  "workers",
+                  "curator"
+                ]
+              },
+              "type": "array",
+              "title": "Groups",
+              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "groups"
+          ],
+          "title": "RunReach"
+        },
+        "RunReachSet": {
+          "properties": {
+            "groups": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "agents",
+                  "workers",
+                  "curator"
+                ]
+              },
+              "type": "array",
+              "maxItems": 3,
+              "title": "Groups",
+              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "groups"
+          ],
+          "title": "RunReachSet",
+          "description": "The whole run reach of the caller: it replaces the one before, and an empty list clears it."
+        },
+        "RunReachWritten": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the person whose runs it is"
+            },
+            "groups": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "agents",
+                  "workers",
+                  "curator"
+                ]
+              },
+              "type": "array",
+              "title": "Groups",
+              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose"
+            },
+            "previous": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "agents",
+                  "workers",
+                  "curator"
+                ]
+              },
+              "type": "array",
+              "title": "Previous",
+              "description": "the groups before this write"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "groups",
+            "previous"
+          ],
+          "title": "RunReachWritten"
         },
         "RunRepo": {
           "properties": {
@@ -165002,63 +165343,6 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
-        },
-        "PoolCandidate": {
-          "properties": {
-            "pool": {
-              "type": "string",
-              "title": "Pool"
-            },
-            "agent": {
-              "type": "string",
-              "title": "Agent",
-              "description": "the handle of the agent whose pool it is"
-            },
-            "pool_mode": {
-              "type": "boolean",
-              "title": "Pool Mode",
-              "description": "the agent is in pool mode, so its runs go to this pool's nodes alone"
-            },
-            "takes_run": {
-              "type": "boolean",
-              "title": "Takes Run",
-              "description": "the pool the run goes to: its agent's, in pool mode"
-            },
-            "nodes": {
-              "type": "integer",
-              "title": "Nodes",
-              "description": "the nodes of the pool that are not revoked"
-            },
-            "ready_nodes": {
-              "type": "integer",
-              "title": "Ready Nodes",
-              "description": "those online, not draining and ready"
-            },
-            "fit": {
-              "type": "boolean",
-              "title": "Fit",
-              "description": "the run goes to this pool and one of its nodes can take it now"
-            },
-            "reasons": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array",
-              "title": "Reasons"
-            }
-          },
-          "type": "object",
-          "required": [
-            "pool",
-            "agent",
-            "pool_mode",
-            "takes_run",
-            "nodes",
-            "ready_nodes",
-            "fit",
-            "reasons"
-          ],
-          "title": "PoolCandidate"
         }
       }
     }

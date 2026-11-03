@@ -875,7 +875,8 @@ on `/mcp` stays the one above.
 ## A run that runs as its owner
 
 The owner of a run of a step, a plan run or an author run can let its agent call the hub's REST API as them, with
-their grants on every project and hub admin when they are one, but never their secrets, tokens or workers. A run of
+their grants on every project and hub admin when they are one, but never their secrets or tokens, and their workers
+only when they opened them to their runs (the run reach below). A run of
 the Curator, a release run, a chat run and the hub's other kinds never run as their owner. The agent then needs no
 login on the worker: `evo-agents hub ...` in the run signs in as the owner with a token of the run's own.
 
@@ -915,24 +916,48 @@ later call gets 401. A run that resumes gets a new token at its first ask.
 the method, and a route added later under one of their prefixes is refused with the group:
 
 - secrets and everything that holds a credential's value: `/v1/secrets`, `/v1/shares`, the accounts and provider
-  accounts, an agent's accounts, browser identities, a run's credentials and accounts;
+  accounts, an agent's accounts and provider accounts, browser identities, a run's credentials and accounts;
 - tokens, invite links and signing in: `/v1/tokens`, `/v1/admin/tokens`, the invites, `/v1/auth/*` but `whoami`, a
   project's signal ingest keys;
-- workers with their pools, the terminal, the live view, takeover and handback of a run;
-- the access of any run, its own included, so no run grants running as its owner onward.
+- the worker protocol (`/v1/worker/*`) and the terminal, the live view, takeover and handback of a run;
+- the access of any run, its own included, so no run grants running as its owner onward, and the owner's run reach
+  (`/v1/autonomy/run-reach`), so no run widens what it reaches;
+- workers: `/v1/workers*`, `/v1/worker-pools*` and `/v1/org/workers*`, with pools, join tokens, labels, drain and
+  revoke, unless the owner's run reach holds `workers`.
 
 These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
 
 - grants: `/v1/admin/projects/{p}/grants/*` and `/v1/admin/users/*`, an access that would outlive the run;
-- the owner's autonomy: `/v1/autonomy*`, the whole org chart `/v1/org*` (seats, units, ceilings), a project's policy,
-  its agent profiles (`/v1/projects/{p}/agents*`) and agent types;
+- the owner's autonomy: `/v1/autonomy*`, the org chart `/v1/org*` (seats, units, ceilings; its workers are the group
+  workers'), a project's policy;
+- agent profiles and agent types: `/v1/projects/{p}/agents*` (an agent's placement and account pool among them) and
+  `/v1/projects/{p}/agent-types*`, unless the owner's run reach holds `agents`;
 - runs: a dispatch (`POST /v1/projects/{p}/runs`), a plan run, an author run, a rerun, a message to a run or to a
   local run's inbox, a release run or schedule, an editorial post's run. No run starts from it, with or without
   `as_me`: the owner's account would go on into work the owner never chose, with the accounts, browser identities or
   worker the request names;
 - decisions: the answer to a decision of any run, a local run's decision marked answered, the approval of a run in
   review, the merge queue's answers, the reset of the Loop's breaker, the answers and rollbacks of `@builder`;
-- the Curator: its charter, proposals, changes, probes and builds.
+- the Curator: its charter, proposals, changes, probes and builds, unless the owner's run reach holds `curator`.
+
+**The run reach.** Three of those groups are the owner's to open to every run that runs as them: `agents`, `workers`
+and `curator`. The set is per member and hub-wide, empty unless the member chose, which refuses as above; a refusal of
+one of the three says how to open it. Only the member sets their own, with their own sign-in:
+
+```sh
+evo-agents hub autonomy run-reach                                # show it
+evo-agents hub autonomy run-reach --allow agents,workers,curator # replace it with these
+evo-agents hub autonomy run-reach --none                         # clear it
+```
+
+That is `GET` and `PUT /v1/autonomy/run-reach` with `{"groups": [...]}`, which replaces the set whole; each change adds
+the audit row `run_access.reach`, "reach <login> <before>-><after>". The hub reads the set with the run's token, so a
+change holds from the next request of every run of the member, running or not. Whatever the set holds, the agent's
+accounts and provider accounts stay in the group secrets, the terminal, the live view, takeover and handback of a run
+and the worker protocol stay refused, and so do secrets, tokens, run access, grants, the rest of the owner's autonomy,
+runs and decisions. The routes inside a group still check their own rules: the K12 class of the run's autonomy holds a
+write of an agent profile (`route_autonomy`), and the routes of workers and pools keep their own checks of who may
+call them.
 
 Behind the groups, every rule of the form "the agent of a run never does X" takes the run's token as it takes the agent
 of a run on `/mcp` (`Principal.acts_for_run`): it writes no goal, opportunity or problem, answers no decision, approves
@@ -974,7 +999,10 @@ before.
 **The risk.** For as long as the run holds the token, whatever steers its agent acts as the owner on the hub, within
 the groups above: a prompt injected through a page, an issue or a file the agent reads can read every project the
 owner reads, and change plans, memories, chats and their labels, a project's sinks and plugins, and, when the owner is a
-hub admin, what a hub admin changes outside the groups (features, branding, market sources). It cannot start a run,
+hub admin, what a hub admin changes outside the groups (features, branding, market sources). Each group of the run
+reach the owner opens widens that to every run of theirs: `agents` lets it move an agent to another pool or attach
+another account pool, `workers` lets it drain or revoke a worker and make a join token of a pool, `curator` lets it
+answer and build the Curator's proposals. It cannot start a run,
 answer a decision, change a grant or anyone's autonomy, nor reach a secret or a token. A chat label it changes moves
 which members read a chat, and a sink it changes moves where a project's messages may go: both are written in the audit
 as `run_access.write`. Let a run run as you only when its work needs your account, and cut it with `evo-agents hub run
