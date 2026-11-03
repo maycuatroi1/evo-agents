@@ -1,0 +1,140 @@
+# SeaweedFS as the hub's blob store, its bytes on a volume of this host: for a hub with no R2 or other S3 service. On
+# top of docker-compose.yml, with the same environment (docs/hub-deployment.md, section A blob store on the host):
+#
+#   docker compose -f deploy/hub/docker-compose.yml -f deploy/hub/docker-compose.seaweedfs.yml up -d
+#
+# Two services. seaweedfs (master, volume server and filer) keeps the bytes on the volume seaweedfs-data and is on the
+# network seaweedfs alone, which is internal: its ports check no credential, so only the gateway reaches them. s3 is
+# SeaweedFS's S3 gateway, which checks the signature of every request against one key pair, EVO_HUB_S3_ACCESS_KEY_ID
+# and EVO_HUB_S3_SECRET_ACCESS_KEY; it is on the network storage with api and worker, never with plugins or web.
+# storage-init runs `evo-agents hub storage check --create-bucket` at every `up`: it creates EVO_HUB_S3_BUCKET the
+# first time and puts, copies, reads, lists and deletes one object as the hub does, so the api starts only on a store
+# that works.
+#
+# Workers on members' machines and the CLI reach the store through presigned URLs that name EVO_HUB_S3_ENDPOINT, so
+# the gateway needs a public address: a domain of the reverse proxy forwarding to the gateway's port, set as
+# EVO_HUB_S3_ENDPOINT, Host header unchanged (SigV4 signs it). The port is published on
+# EVO_HUB_SEAWEEDFS_BIND:EVO_HUB_SEAWEEDFS_PORT (127.0.0.1:8333) for a proxy on the host. The api and the worker call
+# the gateway on the network storage (EVO_HUB_S3_INTERNAL_ENDPOINT, http://evo-agents-hub-s3:8333 by default).
+#
+# Back up the volume seaweedfs-data with the database: it holds every blob, and nothing rebuilds it.
+
+x-seaweedfs-hardening: &seaweedfs-hardening
+  init: true
+  # The image's entrypoint hands /data to its user seaweed and drops to it with su-exec, which needs these three.
+  cap_drop: [ALL]
+  cap_add: [CHOWN, SETUID, SETGID]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  seaweedfs:
+    <<: *seaweedfs-hardening
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command: ["server", "-ip=evo-agents-hub-seaweedfs", "-ip.bind=0.0.0.0", "-filer", "-s3=false", "-webdav=false"]
+    volumes:
+      - seaweedfs-data:/data
+    networks:
+      seaweedfs:
+        aliases: [evo-agents-hub-seaweedfs]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://evo-agents-hub-seaweedfs:8888/"]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    stop_grace_period: 30s
+
+  s3:
+    <<: *seaweedfs-hardening
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    # The key pair goes into the gateway's identity file, readable by its user alone, never onto a command line.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        : "$${EVO_HUB_S3_ACCESS_KEY_ID:?is not set}" "$${EVO_HUB_S3_SECRET_ACCESS_KEY:?is not set}"
+        umask 077
+        printf '{"identities":[{"name":"evo-agents-hub","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' \
+          "$$EVO_HUB_S3_ACCESS_KEY_ID" "$$EVO_HUB_S3_SECRET_ACCESS_KEY" > /tmp/s3.json
+        chown seaweed:seaweed /tmp/s3.json
+        unset EVO_HUB_S3_ACCESS_KEY_ID EVO_HUB_S3_SECRET_ACCESS_KEY
+        exec su-exec seaweed /usr/bin/weed -logtostderr=true s3 -filer=evo-agents-hub-seaweedfs:8888 \
+          -config=/tmp/s3.json -port=8333 -port.iceberg=0 -port.lance=0 -iam=false
+    command: []
+    environment:
+      EVO_HUB_S3_ACCESS_KEY_ID: ${EVO_HUB_S3_ACCESS_KEY_ID:-}
+      EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
+      # Tried first when the gateway checks a signature made for the public address behind a proxy.
+      S3_EXTERNAL_URL: ${EVO_HUB_S3_ENDPOINT:-}
+    ports:
+      - "${EVO_HUB_SEAWEEDFS_BIND:-127.0.0.1}:${EVO_HUB_SEAWEEDFS_PORT:-8333}:8333"
+    networks:
+      seaweedfs: {}
+      storage:
+        aliases: [evo-agents-hub-s3]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+    stop_grace_period: 15s
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  storage-init:
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    restart: "no"
+    command: ["evo-agents", "hub", "storage", "check", "--create-bucket"]
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # The check runs inside the network, so its presigned URLs name the gateway's address there.
+    environment:
+      EVO_HUB_S3_ENDPOINT: ${EVO_HUB_S3_INTERNAL_ENDPOINT:-http://evo-agents-hub-s3:8333}
+      EVO_HUB_S3_INTERNAL_ENDPOINT: ""
+      EVO_HUB_S3_BUCKET: ${EVO_HUB_S3_BUCKET:-}
+      EVO_HUB_S3_ACCESS_KEY_ID: ${EVO_HUB_S3_ACCESS_KEY_ID:-}
+      EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
+      EVO_HUB_S3_PROVIDER: seaweedfs
+    networks:
+      storage: {}
+    depends_on:
+      s3:
+        condition: service_healthy
+
+  api:
+    environment:
+      EVO_HUB_S3_PROVIDER: ${EVO_HUB_S3_PROVIDER:-seaweedfs}
+      EVO_HUB_S3_INTERNAL_ENDPOINT: ${EVO_HUB_S3_INTERNAL_ENDPOINT:-http://evo-agents-hub-s3:8333}
+    networks:
+      storage: {}
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+
+  worker:
+    environment:
+      EVO_HUB_S3_PROVIDER: ${EVO_HUB_S3_PROVIDER:-seaweedfs}
+      EVO_HUB_S3_INTERNAL_ENDPOINT: ${EVO_HUB_S3_INTERNAL_ENDPOINT:-http://evo-agents-hub-s3:8333}
+    networks:
+      storage: {}
+
+volumes:
+  seaweedfs-data:
+
+networks:
+  # The ports of master, volume server and filer, which check no credential: the gateway's alone.
+  seaweedfs:
+    internal: true
+  # The gateway's S3 API, for the api and the worker.
+  storage: {}
