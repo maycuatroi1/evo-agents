@@ -15,12 +15,12 @@ import pytest
 pytest.importorskip("sqlalchemy")
 
 from evo_agents.hub.autonomy import effective, problems
-from evo_agents.hub.server.loop.admit import Capacity, LoopWorker, open_repos, policy_selector, refusal
+from evo_agents.hub.server.loop.admit import Capacity, LoopWorker, open_repos, refusal
 from evo_agents.hub.server.loop.caps import run_budget, timeout_s
 from evo_agents.hub.server.loop.model import ItemView
 from evo_agents.hub.server.runs.models import RunBudget
 
-POLICY = effective({"loop": {"enabled": True, "worker": "studio"}}, {})["loop"]
+POLICY = effective({"loop": {"enabled": True}}, {})["loop"]
 STUDIO = LoopWorker("studio", 9, 7, free=2)
 
 
@@ -33,7 +33,7 @@ def capacity(**changes) -> Capacity:
 
 
 def policy(**loop) -> dict:
-    return effective({"loop": {"enabled": True, "worker": "studio", **loop}}, {})["loop"]
+    return effective({"loop": {"enabled": True, **loop}}, {})["loop"]
 
 
 def test_loop_admission_names_the_first_check_that_fails_breaker_cycle_rate_then_worker():
@@ -57,16 +57,16 @@ def test_loop_admission_names_the_first_check_that_fails_breaker_cycle_rate_then
     assert refusal(build, (), capacity(), POLICY) is None
 
 
-def test_loop_admission_a_cycle_at_zero_takes_nothing_and_a_task_run_needs_no_loop_worker():
+def test_loop_admission_a_cycle_at_zero_takes_nothing_and_a_task_run_needs_no_pool_node():
     stopped = policy(business={"max_running": 0})
     assert refusal(item("brainstorm"), (), capacity(), stopped)[0] == "concurrency"
-    nobody = capacity(worker=LoopWorker(None, down="the policy names no loop.worker"))
+    nobody = capacity(worker=LoopWorker(None, down="the default agent has no pool"))
     for kind in ("brainstorm", "use_case"):  # their task runs go to the agent type's run_as
         assert refusal(item(kind), (), nobody, POLICY) is None
     for kind in ("build", "deliver"):
         assert refusal(item(kind), (), nobody, POLICY) == (
             "worker",
-            {"worker": None, "why": "the policy names no loop.worker"},
+            {"worker": None, "why": "the default agent has no pool"},
         )
     assert refusal(item("brainstorm"), (), capacity(dispatched=0), policy(dispatches_per_hour=0))[0] == "rate"
 
@@ -94,7 +94,7 @@ def test_loop_admission_counts_each_run_it_hands_out_against_the_work_items_afte
     assert counted.worker.free == 0 and counted.worker.problem == "worker studio has no free slot"
     counted.take(item("brainstorm"), ())
     assert counted.running == Counter(development=1, business=1) and counted.dispatched == 2
-    assert counted.worker.free == 0  # a task run takes no slot of loop.worker
+    assert counted.worker.free == 0  # a task run takes no slot of the pool
     assert refusal(item("build"), (), counted, policy(development={"max_running": 2}))[0] == "worker"
 
 
@@ -126,14 +126,13 @@ def test_loop_caps_author_and_plan_runs_carry_the_turns_and_minutes_of_the_polic
     assert RunBudget(**run_budget("build", tight)) == RunBudget(max_usd=None, max_turns=50, max_seconds=1800)
 
 
-def test_loop_admission_loop_pool_and_loop_labels_make_the_selector_and_loop_worker_stays_without_them():
-    assert policy_selector(POLICY) == ()
-    assert policy_selector(policy(pool="ci", labels=["GPU", "zone=eu"])) == ("pool=ci", "gpu", "zone=eu")
-    assert policy_selector(policy(labels=["gpu"])) == ("gpu",)
-    nobody = capacity(worker=LoopWorker("pool=ci", down="no live worker holding pool=ci", selector=("pool=ci",)))
-    assert refusal(item("build"), (), nobody, policy(pool="ci")) == (
+def test_loop_admission_the_keys_that_placed_the_loop_are_gone_and_the_pool_of_the_default_agent_stays():
+    nobody = capacity(worker=LoopWorker("agent-helper", down="no ready node in pool agent-helper"))
+    assert refusal(item("build"), (), nobody, POLICY) == (
         "worker",
-        {"worker": "pool=ci", "why": "no live worker holding pool=ci"},
+        {"worker": "agent-helper", "why": "no ready node in pool agent-helper"},
     )
-    assert problems({"loop": {"pool": "ci", "labels": ["gpu"]}}, {}) == []
-    assert problems({"loop": {"labels": ["no spaces"]}}, {})[0].startswith("loop.labels: a list of at most 10 labels")
+    refused = problems(
+        {"loop": {"worker": "studio", "pool": "ci", "labels": ["gpu"]}, "judge": {"worker": "studio"}}, {}
+    )
+    assert [line.split(":")[0] for line in refused] == ["loop.worker", "loop.pool", "loop.labels", "judge.worker"]

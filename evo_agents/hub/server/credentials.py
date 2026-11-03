@@ -37,14 +37,11 @@ names ``github-app`` (a repo it would cover is missing, with the profile as the 
 and version it was handed out under; the credential.lease audit row names them (``profile=@<handle>:v<n>``) unless
 the profile is the project's default.
 
-The accounts of a run's agent (``agent_accounts``; a run under a named profile that is not the project's default,
-never a run of the Curator) win over the dispatcher's, variable by variable: for each variable the agent has a live
-account bound to this worker for (past its end or not), the run is leased one of those, chosen as ``account_choice``
-says by DEFAULT_POLICY, weight and priority, and never a secret of the dispatcher for that variable, whatever the
-profile's credential axis says about it; when every one of them is paused, cooling or past its end, the run is not
-leased the dispatcher's instead (``account_choice`` says why in an event). Every other variable is the dispatcher's as
-above, and on a worker the agent has no account on nothing changes. An account's lease is named ``@<handle>:<name>``
-(``credentials.agent_lease_name``), the audit row names it by id and handle (`` agent-accounts=12@<handle>``), and it
+The model accounts of a run under an agent (never a run of the Curator) are those of its account pool alone
+(``pool_accounts``), chosen as ``account_choice`` says by DEFAULT_POLICY, weight and priority: never a model account of
+the dispatcher's or of a share, whatever the profile's credential axis says; when every account of the pool is paused,
+cooling or past its end, the run waits in the queue (``account_choice`` says why in an event). Every other variable is
+the dispatcher's as above. An account's lease is named ``@<handle>:<name>`` (``credentials.agent_lease_name``), and it
 is opened with the agent's own associated data (``sealing.agent_secret_aad``).
 
 The answer is {leases, missing, repos}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value
@@ -95,7 +92,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import exists, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, releases, runs, tables
@@ -143,7 +140,6 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_leases import Refusal, end_unlent, note_refusals, own_secrets, shared_secrets
-from evo_agents.hub.server.worker_placement import bound_here
 
 if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
@@ -191,7 +187,6 @@ class _Run:
     profile_project_id: int | None = None  # the project of the profile: where its accounts are bound
     principal_id: int | None = None  # who it acts for (runs.principal_id); None for a local run or one before 0113
     as_owner: bool = False  # its owner lets it call the hub as them (``run_access``)
-    placement: str | None = None  # its profile's placement: legacy, or pool
     account_pool_id: int | None = None  # its profile's account pool (``account_pools``)
     account_pool: str | None = None  # that pool's name
 
@@ -203,9 +198,9 @@ class _Run:
 
     @property
     def pooled(self) -> bool:
-        """Whether the run goes under an agent in pool mode, whose account pool alone gives it model accounts (see the
-        module): not a run of the Curator, which has its charter's."""
-        return self.placement == "pool" and self.curator is None
+        """Whether the run goes under an agent, whose account pool alone gives it model accounts (see the module): not
+        a run of the Curator, which has its charter's."""
+        return self.profile_id is not None and self.curator is None
 
     @property
     def target(self) -> str:
@@ -335,7 +330,6 @@ def _run_row(run_id: int, *, lock: bool):
             credentials.label("credentials"),
             ap.c.project_id.label("profile_project_id"),
             r.c.as_owner,
-            ap.c.placement,
             ap.c.account_pool_id,
             select(tables.account_pools.c.name)
             .where(tables.account_pools.c.id == ap.c.account_pool_id)
@@ -354,30 +348,6 @@ def _owner_role(owner_id: int, project_id: int, *, lock: bool):
     grants = tables.grants
     statement = select(grants.c.role).where(grants.c.user_id == owner_id, grants.c.project_id == project_id)
     return statement.with_for_update(read=True) if lock else statement
-
-
-def _agent_accounts(run: _Run, worker_id: int, *, lock: bool):
-    """The accounts of the run's agent bound to this worker or its pool, live (not deleted) and past their end or not, by name. With
-    ``lock`` their rows are shared-locked."""
-    s, b = tables.secrets, tables.secret_bindings
-    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.profile_project_id, bound_here(b, worker_id))
-    statement = (
-        select(
-            s.c.id,
-            s.c.name,
-            s.c.kind,
-            s.c.env_var,
-            s.c.sealed,
-            s.c.nonce,
-            s.c.key_id,
-            s.c.expires_at,
-            s.c.environment,
-            func.coalesce(s.c.expires_at <= func.now(), False).label("ended"),
-        )
-        .where(s.c.profile_id == run.profile_id, s.c.kind == "env", s.c.deleted_at.is_(None), bound)
-        .order_by(s.c.name)
-    )
-    return statement.with_for_update(read=True, of=s) if lock else statement
 
 
 def _held_tokens(run_id: int, worker_id: int):
@@ -449,7 +419,6 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
         profile_default=row.profile_default,
         credentials=row.credentials,
         profile_project_id=row.profile_project_id,
-        placement=row.placement,
         account_pool_id=row.account_pool_id,
         account_pool=row.account_pool,
         principal_id=row.principal_id,
@@ -496,12 +465,6 @@ async def survey_run(
                 for row in await conn.execute(pool_env_accounts(run.account_pool_id, lock=lock))
                 if row.env_var in MODEL_ENV_VARS and (not run.release or row.env_var in RELEASE_ENV_VARS)
             ]
-    elif run.agent_owned:  # its own accounts for the variables it has any for on this worker (the module)
-        accounts = [
-            row
-            for row in await conn.execute(_agent_accounts(run, worker_id, lock=lock))
-            if not run.release or row.env_var in RELEASE_ENV_VARS
-        ]
     withheld = [row for row in [*rows, *accounts] if not lease_autonomy.secret_allowed(k7, *row_k7(row))]
     rows = [row for row in rows if lease_autonomy.secret_allowed(k7, *row_k7(row))]
     accounts = [row for row in accounts if lease_autonomy.secret_allowed(k7, *row_k7(row))]

@@ -9,7 +9,7 @@ import { type ReactNode, useMemo } from "react";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import type { DataListRow } from "@/components/data/data-list";
 import { DataCard } from "@/components/data/data-card";
-import { Identifier, RunRef, Tag } from "@/components/data/identifier";
+import { RunRef, Tag } from "@/components/data/identifier";
 import { MetricStrip } from "@/components/data/metric-strip";
 import { CARD_LINK, HomeCard } from "@/components/home/parts";
 import { runHref } from "@/components/runs/queries";
@@ -19,7 +19,6 @@ import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Ago } from "@/components/workers/ago";
-import { poolHref, workerHref } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
@@ -120,7 +119,7 @@ function briefsHref(project: string): Route {
 }
 
 /**
- * The schedule as the hub keeps it: the window, the worker on duty and the member it runs as, a pause, and the last
+ * The schedule as the hub keeps it: the window, the member it runs as, a pause, and the last
  * morning brief, with a link to the Inbox for the member it went to.
  */
 function ScheduleCard({ project, status }: { project: string; status: CuratorStatus }) {
@@ -132,7 +131,6 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
   if (!charter) return null;
   const schedule = status.schedules[0] ?? null;
   const night = status.night;
-  const ownWorker = viewer !== null && viewer.login === charter.schedule_owner;
   return (
     <HomeCard
       title={t("title")}
@@ -152,9 +150,6 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
             <span className="tabular-nums">{night.local_time}</span>, {night.in_window ? t("inWindow") : t("outWindow")}
           </Fact>
         ) : null}
-        <Fact label={t("worker")}>
-          <Identifier value={charter.worker ?? `pool=${charter.pool}`} href={!ownWorker ? undefined : charter.worker_id !== null ? workerHref(charter.worker_id) : charter.pool ? poolHref(charter.pool) : undefined} testId="curator-worker" />
-        </Fact>
         <Fact label={t("owner")}>
           <span className="font-mono text-xs">{charter.schedule_owner}</span>
         </Fact>

@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import agent_placement, worker_placement
-from evo_agents.hub.server.profile_store import POOL_MODE, profile_of, profile_select
+from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claims, overlap
 from evo_agents.hub.server.runs.service.candidates import PoolCandidate, RerunCandidates, WorkerCandidate
 from evo_agents.hub.server.runs.service.worker_fit import OFFLINE, worker_problems
@@ -357,7 +357,6 @@ async def _pools(conn: AsyncConnection, project_id: int, home, verdicts: list[Ve
             wp.c.taints,
             ap.c.id.label("agent_id"),
             ap.c.handle,
-            ap.c.placement,
             nodes.label("nodes"),
         )
         .join_from(wp, ap, ap.c.id == wp.c.agent_id)
@@ -371,9 +370,7 @@ async def _pools(conn: AsyncConnection, project_id: int, home, verdicts: list[Ve
         )
         ready = len(await agent_placement.ready_nodes(conn, place))
         takes = home is not None and home.pool_id == pool.id
-        if pool.placement != POOL_MODE:
-            reasons = [f"@{pool.handle} is in legacy mode: its runs go to workers as before, not to this pool"]
-        elif not takes:
+        if not takes:
             reasons = [f"takes the runs of @{pool.handle} alone"]
         elif not pool.nodes:
             reasons = [f"has no node: `evo-agents worker pool token create {pool.name}`, then join a machine with it"]
@@ -387,7 +384,6 @@ async def _pools(conn: AsyncConnection, project_id: int, home, verdicts: list[Ve
         candidate = PoolCandidate(
             pool=pool.name,
             agent=pool.handle,
-            pool_mode=pool.placement == POOL_MODE,
             takes_run=takes,
             nodes=pool.nodes,
             ready_nodes=ready,

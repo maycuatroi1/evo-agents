@@ -18,7 +18,6 @@ import { PageSkeleton } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { CharterFormView } from "./charter-form";
@@ -80,9 +79,6 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
         <Facts>
           <Fact label={t("fields.window")} testId="charter-window">
             {t("windowValue", { start: charter.window.start, end: charter.window.end, timezone: charter.window.timezone })}
-          </Fact>
-          <Fact label={t("fields.worker")}>
-            <Identifier value={charter.worker ?? `pool=${charter.pool}`} testId="charter-worker-name" />
           </Fact>
           <Fact label={t("fields.owner")}>
             <span className="font-mono text-xs">{charter.schedule_owner}</span>
@@ -207,7 +203,6 @@ function Revisions({ project, shown }: { project: string; shown: number }) {
                   <span className="text-xs text-fg-subtle">
                     <When value={revision.updated_at} short />
                   </span>
-                  <span className="ml-auto text-xs text-fg-subtle">{t("revisions.worker", { worker: revision.worker ?? `pool=${revision.pool}` })}</span>
                 </Link>
               </li>
             );
@@ -221,12 +216,11 @@ function Revisions({ project, shown }: { project: string; shown: number }) {
 function CharterBody({ project, status, revision, edit }: { project: string; status: CuratorStatus; revision: number | null; edit: boolean }) {
   const t = useTranslations("curator.charter");
   const rights = useCuratorRights(project, status);
-  const { data: me } = useQuery(whoamiQuery(browserApi));
   const charter = useHubQuery(charterQuery(browserApi, project, revision));
   if (edit && rights.charter) {
     return (
       <QueryView state={charter} loading={<PageSkeleton />}>
-        {(found) => <CharterFormView project={project} charter={found} login={me?.login ?? null} />}
+        {(found) => <CharterFormView project={project} charter={found} />}
       </QueryView>
     );
   }

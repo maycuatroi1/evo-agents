@@ -6,9 +6,9 @@ failed run's triage (``run_triage``; 404 for any other chat run) and whose dispa
 another member, who may talk to the agent but not rerun the owner's run). They act as the owner, as the chain of the
 chat run does, and the hub checks the frame again on each call, so an agent that ignored its instructions is refused:
 
-- POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on a worker, runtime or
-  account that is a fit candidate (``candidates.candidates_of``), for the causes of ``triage_rules.RERUN_CAUSES``, within
-  the chain cap; a plan run only for a program it lacked (``controls.rerun_plan_in``), on the worker the agent runs on. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
+- POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on its agent's pool, with a
+  runtime or account the owner names, for the causes of ``triage_rules.RERUN_CAUSES``, within the chain cap; a plan run
+  only for a program it lacked (``controls.rerun_plan_in``). Nobody picks the machine. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
   run act as them.
 - POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
   the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
-from evo_agents.hub.server import agent_placement, audit, chat_agents
+from evo_agents.hub.server import audit, chat_agents
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import put_agent
@@ -53,7 +53,8 @@ from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import REFUSALS, AccountName, Rerun, RunId
-from evo_agents.hub.server.runs.service.candidates import RerunCandidates, candidates_of
+from evo_agents.hub.server.runs.models.placement import HubPlaced
+from evo_agents.hub.server.runs.service.candidates import candidates_of
 from evo_agents.hub.server.runs.service.controls import rerun_in, rerun_plan_in
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, refuse_curator_plan
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
@@ -71,15 +72,9 @@ STEP_REASON_CHARS = 300
 Reason = Annotated[str, Field(min_length=1, max_length=REASON_CHARS, description="why, for the Decision: line")]
 
 
-class RerunOptions(BaseModel):
-    worker: str | None = Field(
-        None,
-        max_length=200,
-        description="a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name "
-        "one of theirs has too); a fit candidate",
-    )
-    runtime: str | None = Field(None, max_length=100, description="a runtime that worker has, for the rerun")
-    account: AccountName | None = Field(None, description="one of the owner's accounts ready on that worker")
+class RerunOptions(HubPlaced):
+    runtime: str | None = Field(None, max_length=100, description="a runtime for the rerun")
+    account: AccountName | None = Field(None, description="one of the owner's accounts")
     cause_confirmed: bool = Field(
         False, description="true after the agent read the run's log and the cause the hub guessed is the right one"
     )
@@ -295,55 +290,6 @@ async def _audit(conn: AsyncConnection, frame: Frame, action: str, tail: str) ->
     )
 
 
-def _unfit(found: RerunCandidates, options: RerunOptions, frame: Frame) -> tuple[int | None, str | None]:
-    """(the worker id the rerun is pinned to, or None to keep the run's pin; the runtime to ask for, or None): from the
-    options, against the candidates; 422 for a worker, runtime or account that is no candidate or no fit. A run that
-    lacked a program goes on the worker the agent installed it on, the one its chat run is on."""
-    failed = frame.failed
-    cause = failed.failure_cause
-    same = frame.on_worker if cause == triage_rules.MISSING_TOOL else failed.worker_id
-    name = options.worker
-    if name is None and cause in triage_rules.SAME_WORKER:
-        name = next((w.worker for w in found.workers if w.worker_id == same), None)
-        if name is None:
-            raise HTTPException(
-                422, f"cause {cause} is rerun on the worker the run was on, which the owner has no more"
-            )
-    chosen = None
-    if name is not None:
-        named = [w for w in found.workers if name in (w.worker, f"{w.owner}/{w.worker}")]
-        chosen = next((w for w in named if not w.shared), None) or next(iter(named), None)  # their own first
-        if chosen is None:
-            known = ", ".join(f"{w.owner}/{w.worker}" if w.shared else w.worker for w in found.workers) or "none"
-            raise HTTPException(
-                422, f"the owner has no worker {name}, nor one shared with them: their workers are {known}"
-            )
-        if not chosen.fit:
-            raise HTTPException(422, f"worker {name} is no fit to run it: {'; '.join(chosen.reasons)}")
-        if cause in triage_rules.SAME_WORKER and chosen.worker_id != same:
-            raise HTTPException(422, f"cause {cause} is rerun on the worker the run was on, not on {name}")
-    pool = [chosen] if chosen is not None else [w for w in found.workers if w.fit]
-    if options.runtime is not None and not any(options.runtime in w.runtimes for w in pool):
-        raise HTTPException(
-            422,
-            f"no fit worker has runtime {options.runtime}: {', '.join(sorted({x for w in pool for x in w.runtimes}))}",
-        )
-    if options.account is not None:
-        account = next((a for a in found.accounts if a.name == options.account), None)
-        if account is None or account.state != "ready" or not any(options.account in w.accounts for w in pool):
-            raise HTTPException(422, f"account {options.account} is not ready on a worker that can take the rerun")
-    if cause in triage_rules.NEW_ACCOUNT:
-        used = {a.name for a in found.accounts if a.used_by_run}
-        new_account = options.account is not None and options.account not in used
-        new_runtime = options.runtime is not None and options.runtime != failed.runtime
-        if not new_account and not new_runtime:
-            raise HTTPException(
-                422,
-                f"cause {cause} is rerun with an account the run did not use, or another runtime than {failed.runtime}",
-            )
-    return (None if chosen is None else chosen.worker_id), options.runtime
-
-
 async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, edited: bool) -> int:
     """Run the failed run again as ``options`` say, once the frame allows it; the id of the new run."""
     failed = frame.failed
@@ -371,33 +317,15 @@ async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, 
     refusal = triage_rules.chain_problem(depth, causes, frame.cause)
     if refusal:
         raise HTTPException(409, refusal)
-    found = await candidates_of(
-        conn,
-        project=frame.project,
-        project_id=frame.access.project_id,
-        role=frame.access.role,
-        owner_id=frame.owner.user_id,
-        kind=failed.kind,
-        state="failed",
-        run_id=failed.id,
-    )
-    r = tables.runs
-    home = await agent_placement.home_of(conn, await conn.scalar(select(r.c.profile_id).where(r.c.id == failed.id)))
-    if home is not None:  # the run is of an agent in pool mode: its pool's nodes take the rerun, nobody picks one
-        if options.worker is not None:
-            raise agent_placement.refuse_by_hand(home.handle)
-        worker_id, runtime = None, options.runtime
-    else:
-        worker_id, runtime = _unfit(found, options, frame)
     # the agent of the triage reruns the step as a run of the owner's that does not run as them: only the owner lets
     # a run act as them (``run_access``), never an agent on their behalf
     if plan_run:
-        if options.account is not None or runtime is not None:
+        if options.account is not None or options.runtime is not None:
             raise HTTPException(422, f"plan run {failed.id} goes on with the account and the runtime it asked for")
-        new_id = await rerun_plan_in(conn, frame.owner, frame.project, failed.id, worker_id)
+        new_id = await rerun_plan_in(conn, frame.owner, frame.project, failed.id)
     else:
         body = Rerun(account=options.account, as_me=False)
-        view = await rerun_in(conn, frame.owner, frame.project, failed.id, body, worker_id=worker_id, runtime=runtime)
+        view = await rerun_in(conn, frame.owner, frame.project, failed.id, body, runtime=options.runtime)
         new_id = view.id
     t = tables.run_triage
     await conn.execute(update(t).where(t.c.id == frame.triage_id).values(auto_reruns=t.c.auto_reruns + 1))

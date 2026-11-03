@@ -32,7 +32,6 @@ from tests.hub.test_run_cli import as_json
 from tests.hub.test_runs import OWNER, PROJECT, audit_rows
 
 POOLS = "/v1/worker-pools"
-NEW_AGENTS_PLACEMENT = "pool"  # tests/hub/conftest.py: an agent made here is placed as in a real hub
 
 
 def pool_path(handle: str, *rest: str) -> str:

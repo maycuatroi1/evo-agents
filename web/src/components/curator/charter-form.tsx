@@ -12,19 +12,16 @@ import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { poolsQuery, type Worker, workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { plansQuery } from "@/lib/plan-queries";
 
 import { Field, fieldId, Group, NightRunsGroup, RoleFields, useProblemText } from "./charter-fields";
 import { CHARTER_FIELDS, type CharterErrors, type CharterForm, charterBody, charterForm, ownTimeZone, timeZones } from "./charter-model";
 import { useCuratorFailure, useWriteCharter } from "./hooks";
-import { TEXT_LINK } from "./parts";
 import { type Charter, curatorHref } from "./queries";
-import { LIMITS, POOL_DUTY } from "./vocab";
+import { LIMITS } from "./vocab";
 
 /** The browser's own time zone once the page has hydrated; null on the server, so both render the same form. */
 function useOwnTimeZone(): string | null {
@@ -35,56 +32,34 @@ function useOwnTimeZone(): string | null {
   );
 }
 
-/** The visitor's workers that may take the night shift's runs: their own, live, serving the project, taking runs from anywhere. */
-export function dutyWorkers(workers: readonly Worker[], login: string | null, project: string): Worker[] {
-  return workers.filter(
-    (worker) =>
-      worker.owner === login && worker.status !== "revoked" && worker.projects.includes(project) && worker.dispatch_from !== "web",
-  );
-}
-
 /**
- * The charter as a form, for an admin of the project: its goals, its window and the worker on duty, its budget and
+ * The charter as a form, for an admin of the project: its goals, its window, its budget and
  * caps, the plans the night may run and what it may change, the review, the replays and the history run, and the
  * runtimes of the three roles; the owner's secrets the runs get (`git_secret`, `env_secrets`) are not in it. Every
  * field repeats the hub's limits, so nothing goes out while one is wrong, and the first wrong field takes focus. Saving
  * writes a new revision (the hub keeps every one); a body equal to the newest revision writes none. A refusal of the
- * hub (a worker that is not one of the writer's own, a time zone Postgres does not know) shows above the buttons.
+ * hub (a time zone Postgres does not know) shows above the buttons.
  */
-export function CharterFormView({ project, charter, login }: { project: string; charter: Charter | null; login: string | null }) {
+export function CharterFormView({ project, charter }: { project: string; charter: Charter | null }) {
   const t = useTranslations("curator.charter");
   const base = useId();
   const router = useRouter();
   const zone = useOwnTimeZone();
-  const workers = useQuery(workersQuery(browserApi));
-  const pools = useQuery(poolsQuery(browserApi));
   const plans = useQuery(plansQuery(browserApi, project));
   const mutation = useWriteCharter(project);
   const failure = useCuratorFailure();
-  const eligible = useMemo(() => dutyWorkers(workers.data ?? [], login, project), [workers.data, login, project]);
-  const [form, setForm] = useState<CharterForm>(() => charterForm(charter, { worker: "", timezone: "" }));
+  const [form, setForm] = useState<CharterForm>(() => charterForm(charter, { timezone: "" }));
   const [errors, setErrors] = useState<CharterErrors>({});
   const [error, setError] = useState<WriteFailure | null>(null);
   const zones = useMemo(() => (zone === null ? [] : timeZones()), [zone]);
   const activePlans = (plans.data ?? []).filter((plan) => plan.area === "active").map((plan) => plan.plan_id);
 
-  // A first charter: the visitor's own time zone and their first worker that may take the night's runs, until typed.
+  // A first charter: the visitor's own time zone, until typed.
   const resolved: CharterForm = {
     ...form,
     timezone: form.timezone || zone || "UTC",
-    worker: form.worker || eligible[0]?.name || "",
   };
   const set = <K extends keyof CharterForm>(key: K, value: CharterForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const workerOptions = [...new Set([...(charter?.worker ? [charter.worker] : []), ...eligible.map((worker) => worker.name)])];
-  // A pool of the visitor's that serves the project: its ready nodes take the night's runs, any of them.
-  const poolOptions = [
-    ...new Set([
-      ...(charter?.pool ? [charter.pool] : []),
-      ...(pools.data ?? []).filter((pool) => pool.owner === login && pool.projects.includes(project)).map((pool) => pool.name),
-    ]),
-  ];
-  const noDuty = workerOptions.length === 0 && poolOptions.length === 0;
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (mutation.isPending) return;
@@ -205,45 +180,6 @@ export function CharterFormView({ project, charter, login }: { project: string; 
         </Field>
         <Field base={base} field="briefAt" label={t("fields.briefAt")} hint={t("hints.briefAt")} errors={errors}>
           {(props) => <Input {...props} type="time" step={60} value={form.briefAt} onChange={(event) => set("briefAt", event.target.value)} data-testid="charter-brief-at" />}
-        </Field>
-        <Field
-          base={base}
-          field="worker"
-          label={t("fields.worker")}
-          className="md:col-span-2"
-          hint={
-            noDuty && !workers.isPending
-              ? t.rich("hints.noWorker", { link: (chunks) => <Link href="/workers" className={TEXT_LINK}>{chunks}</Link> })
-              : t("hints.worker")
-          }
-          errors={errors}
-        >
-          {(props) => (
-            <NativeSelect
-              {...props}
-              value={resolved.worker}
-              onChange={(event) => set("worker", event.target.value)}
-              className="w-full md:w-80"
-              disabled={noDuty}
-              data-testid="charter-worker"
-            >
-              {noDuty ? <NativeSelectOption value="">{t("noWorkerOption")}</NativeSelectOption> : null}
-              {workerOptions.map((name) => (
-                <NativeSelectOption key={name} value={name}>
-                  {name}
-                </NativeSelectOption>
-              ))}
-              {poolOptions.length > 0 ? (
-                <NativeSelectOptGroup label={t("poolsGroup")}>
-                  {poolOptions.map((name) => (
-                    <NativeSelectOption key={name} value={`${POOL_DUTY}${name}`}>
-                      {t("poolOption", { pool: name })}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelectOptGroup>
-              ) : null}
-            </NativeSelect>
-          )}
         </Field>
       </Group>
 

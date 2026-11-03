@@ -16,7 +16,7 @@ The policy has no key that caps a diff or the merges of a day (the member's answ
 judges a pull request a run opened at its head before the run merges it (``evo_agents.hub.server.merge_check``).
 
 ``loop`` (plan loop-engine, criterion a4) holds the keys of a project's Loop (``evo_agents.hub.server.loop``): whether
-it runs, the worker of its author and plan runs, the time zone of its schedule, how many work items of each cycle run
+it runs, the time zone of its schedule, how many work items of each cycle run
 at once and how many runs of a repo, how many runs it hands out an hour and how many work items it may make an hour
 before its breaker trips, how long a baseline stays approved before a work item comes of it, the weekday and time of
 its weekly look at each goal, whether a frame task must be in an active sprint, the turns and minutes of the author
@@ -65,9 +65,6 @@ TIME_OF_DAY = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # loop.brainstorm.ti
 TIME_ZONE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")  # loop.timezone, as an IANA name
 USE_CASE_MODES = ("always", "never", "auto")  # loop.use_cases (loop.model.USE_CASE_MODES)
 MAX_TIME_ZONE_CHARS = 64
-LABEL = re.compile(
-    r"[A-Za-z0-9][A-Za-z0-9._-]{0,39}(=[A-Za-z0-9][A-Za-z0-9._/-]{0,99})?"
-)  # loop.labels, as a placement label
 
 # Why a value is wrong, or None when it is right.
 Check = Callable[[Any], str | None]
@@ -145,14 +142,6 @@ def _optional(check: Check) -> Check:
     return optional
 
 
-def _labels(value) -> str | None:
-    """A list of placement labels (``worker_placement``), at most ten."""
-    right = (
-        isinstance(value, list) and len(value) <= 10 and all(isinstance(v, str) and LABEL.fullmatch(v) for v in value)
-    )
-    return None if right else "a list of at most 10 labels such as os=linux or gpu"
-
-
 def _flag(value) -> str | None:
     return None if isinstance(value, bool) else "true or false"
 
@@ -177,14 +166,6 @@ def _globs(value) -> str | None:
 
 LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no estimate and no budget
     Key("loop.enabled", False, _flag, "true: the project's Loop makes work items and hands out their runs"),
-    Key("loop.worker", None, _optional(_line(100)), "the worker of the Loop's author and plan runs; null: none run"),
-    Key(
-        "loop.pool",
-        None,
-        _optional(_line(100)),
-        "the pool of workers the Loop's author and plan runs go to, in place of loop.worker; null: loop.worker",
-    ),
-    Key("loop.labels", [], _labels, "the labels a worker of the Loop's author and plan runs holds, with loop.pool"),
     Key(
         "loop.timezone",
         None,
@@ -245,7 +226,6 @@ KEYS = (
         "how far the merge request before must get before the next one of the same target branch starts",
     ),
     Key("merge.pipeline_minutes", 60, _whole(1, 1440), "the longest the hub waits for a pipeline or a job"),
-    Key("judge.worker", None, _optional(_line(100)), "the worker that runs the Judge; null: the charter's worker"),
     Key("judge.model", None, _optional(_line(200)), "the first Judge's model; null: a Claude model not the Builder's"),
     Key("breaker.target_red_minutes", 30, _whole(1, 10080), "the target branch red this long trips the breaker"),
     Key("breaker.reverts_in_a_row", 2, _whole(1, 100), "this many automatic reverts in a row trip the breaker"),

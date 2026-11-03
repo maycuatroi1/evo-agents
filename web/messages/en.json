@@ -3755,18 +3755,12 @@
     },
     "placement": {
       "title": "Placement",
-      "mode": "Mode",
-      "modePool": "Pool: runs go to a node of its own pool",
-      "modeLegacy": "Legacy: runs go to the workers its worker axis allows",
       "pool": "Pool",
       "nodes": "Nodes",
       "noNodes": "No node has joined yet",
       "nodesFailed": "The nodes could not be read",
       "accountPool": "Account pool",
-      "none": "None",
-      "legacyNote": "A legacy agent still takes a worker named by hand. Switch it to pool mode and its runs go only to a node of its pool.",
-      "switch": "Switch to pool mode",
-      "switched": "@{handle} now runs in its pool"
+      "none": "None"
     }
   },
   "chats": {
@@ -7110,7 +7104,7 @@
       "syncFailed": "the worker could not keep the graph fresh"
     },
     "sub": {
-      "duty": "Night shift on <worker></worker> as {owner}, {start} to {end} {timezone}",
+      "duty": "Night shift as {owner}, {start} to {end} {timezone}",
       "paused": "Paused by {login} <ago></ago>",
       "pausedByHub": "Paused by the circuit breaker <ago></ago>"
     },
@@ -7149,7 +7143,7 @@
     },
     "empty": {
       "title": "No charter yet",
-      "description": "A charter tells the Curator when to work, on which worker, within what budget, and what it may change. Each night it reviews the project and proposes changes, each with its evidence.",
+      "description": "A charter tells the Curator when to work, within what budget, and what it may change. The night shift runs on the node of the default agent's pool. Each night it reviews the project and proposes changes, each with its evidence.",
       "admin": "Write the charter",
       "reader": "An admin of the project writes it, here or with <command></command>."
     },
@@ -7180,7 +7174,6 @@
       "now": "Local time now",
       "inWindow": "inside the window",
       "outWindow": "outside the window",
-      "worker": "Worker on duty",
       "owner": "Runs as",
       "caps": "Each night",
       "capsValue": "up to {budget} and {runs, plural, one {# run} other {# runs}}",
@@ -7196,7 +7189,7 @@
     },
     "lastReview": {
       "title": "Last review run",
-      "none": "The first review run is queued when the next window opens, on the worker on duty.",
+      "none": "The first review run is queued when the next window opens, on the node of the default agent's pool.",
       "run": "Run",
       "openRun": "Open review run #{id}",
       "night": "Night",
@@ -7579,7 +7572,6 @@
       "noGoals": "No goal yet. The Curator weighs its proposals against the goals, the first one highest.",
       "addGoal": "Add a goal",
       "removeGoal": "Remove goal {n}",
-      "noWorkerOption": "No worker of yours can take it",
       "windowValue": "{start} to {end}, {timezone}",
       "runBudgetNone": "What the night has left",
       "reviewBudgetNone": "As any run of the night",
@@ -7596,7 +7588,7 @@
       "roleValue": "{runtime}, {model}",
       "groups": {
         "goals": "Goals",
-        "window": "Window and worker",
+        "window": "Window",
         "budget": "Budget and caps",
         "scope": "What it may do",
         "review": "Review",
@@ -7605,7 +7597,7 @@
       },
       "groupHints": {
         "goals": "The product's goals, highest first.",
-        "window": "When the night shift works, on whose worker, and when the morning brief comes.",
+        "window": "When the night shift works, and when the morning brief comes. It runs on the node of the default agent's pool.",
         "budget": "What a night and each run may cost and take. The hub stops queueing at the first cap reached.",
         "scope": "The plans it runs, how many decisions a day it may ask, what it may merge and what it never touches.",
         "review": "The nightly review run: how many lenses it looks through and how far back it counts.",
@@ -7625,7 +7617,6 @@
         "windowEnd": "Window closes",
         "timezone": "Time zone",
         "briefAt": "Morning brief at",
-        "worker": "Worker on duty",
         "owner": "Runs as",
         "nightBudget": "Night budget, USD",
         "runBudget": "Run budget, USD",
@@ -7657,8 +7648,6 @@
         "windowEnd": "Before the start, the window runs past midnight.",
         "timezone": "An IANA name, such as Asia/Ho_Chi_Minh.",
         "briefAt": "The owner's morning summary, in the window's time zone.",
-        "worker": "One of your own workers that serves this project and takes runs from the hub, or one of your pools that serves it; the night shift runs as its owner.",
-        "noWorker": "None of your workers can take the night shift's runs. <link>Register one</link> for this project.",
         "usd": "More than 0, at most {max}.",
         "runBudget": "Empty: a run may use what the night has left.",
         "range": "From {min} to {max}.",
@@ -7675,7 +7664,7 @@
         "replayTasks": "Holdout tasks each change is replayed on, from {min} to {max}. Its replays need 6 before they can win.",
         "replayBudget": "Empty: no replay runs.",
         "historyBudget": "Empty: the smaller of 1 USD and a quarter of the night's budget. 0: no history run.",
-        "historyModel": "Empty: the cheapest model the worker on duty reports for the Reviewer's runtime.",
+        "historyModel": "Empty: the cheapest model the node reports for the Reviewer's runtime.",
         "probeK": "Sessions of each arm of a probe, on each model, from {min} to {max}.",
         "probeBudget": "Empty: no probe runs. Up to {max} for an ISO week, apart from the night budget."
       },
@@ -7688,7 +7677,6 @@
         "time": "Give a time as HH:MM, 24 hours.",
         "timezone": "Give an IANA time zone, such as Asia/Tokyo.",
         "sameTime": "The window opens and closes at the same time: give it a length.",
-        "worker": "A worker's name: letters, digits, dot, dash and underscore.",
         "money": "More than 0 and at most {max} US dollars.",
         "overNight": "It is over the night's budget: a run never gets more than the night has.",
         "whole": "A whole number from {min} to {max}.",
@@ -7706,18 +7694,15 @@
         "title": "Revisions",
         "count": "{count, plural, one {# revision} other {# revisions}}",
         "loading": "Reading the revisions",
-        "number": "Revision {revision}",
-        "worker": "on {worker}"
+        "number": "Revision {revision}"
       },
       "outcomeDaysValue": "{count, plural, one {# day after a merge} other {# days after a merge}}",
       "replayBudgetNone": "None: no replay runs",
       "historyBudgetDefault": "The smaller of 1 USD and a quarter of the night's budget",
       "historyBudgetOff": "None: no history run",
-      "historyModelDefault": "the cheapest model the worker reports",
+      "historyModelDefault": "the cheapest model the node reports",
       "probeBudgetNone": "None: no probe runs",
-      "probeModelsBuilder": "The Builder's runtime and model",
-      "poolsGroup": "Your pools",
-      "poolOption": "Pool {pool}, any ready node"
+      "probeModelsBuilder": "The Builder's runtime and model"
     },
     "metaHistory": "History of {project}",
     "metaGraph": "Graph health of {project}",

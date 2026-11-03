@@ -40,12 +40,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement, gateway_accounts, pool_accounts, run_autonomy, worker_placement
+from evo_agents.hub.server import gateway_accounts, pool_accounts, run_autonomy
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
 from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
-from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.run_environments import HOST
 
@@ -85,7 +84,6 @@ class Asked:
     picked: tuple = ()
     selector: tuple = ()  # the labels the run asks of its worker, and the taints it tolerates (worker_placement)
     tolerations: tuple = ()
-    by_hand: bool = False  # the dispatch names a worker, pool, labels or tolerations itself
 
 
 def _refuse(profile: Profile, why: str) -> HTTPException:
@@ -150,40 +148,6 @@ def _runtime(profile: Profile, asked: Asked) -> None:
         usable = [name for name in allow if name in runs.RUNTIMES and available(pinned.runtimes.get(name))]
         if not usable:
             raise _refuse(profile, f"allows {', '.join(allow)}, none of which worker {pinned.name} reports available")
-
-
-async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess, profile: Profile, asked: Asked):
-    if not profiles.limited(profile.permissions, "worker"):
-        return
-    pinned = asked.pinned
-    if pinned is not None:
-        if not profiles.allows_worker(profile.permissions, pinned.name, pinned.labels, pinned.pool):
-            raise _refuse(profile, f"does not allow worker {pinned.name}: {_workers_text(profile)}")
-        return
-    w, wp = tables.workers, tables.worker_projects
-    serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
-    mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id, user.user_id))
-    listed = select(w.c.name, w.c.labels, *worker_placement.columns(w))
-    rows = await conn.execute(listed.where(mine_or_shared, w.c.revoked_at.is_(None), serves))
-    allowed = [row for row in rows if profiles.allows_worker(profile.permissions, row.name, row.labels, row.place_pool)]
-    if not allowed:
-        raise _refuse(
-            profile,
-            f"allows none of your workers of project {access.name}, nor any shared there, to take the run: "
-            f"{_workers_text(profile)}",
-        )
-    placed = (worker_placement.Placement.of(row) for row in allowed)  # as the claim counts them, ready or not now
-    if not any(not one.problems(asked.selector, asked.tolerations, readiness=False) for one in placed):
-        raise _refuse(
-            profile,
-            f"allows no worker of yours of project {access.name}, nor any shared there, with the labels the run asks "
-            f"({', '.join(asked.selector) or 'none'}) and no taint it does not tolerate "
-            f"({', '.join(asked.tolerations) or 'none tolerated'}): {_workers_text(profile)}",
-        )
-
-
-def _workers_text(profile: Profile) -> str:
-    return f"it allows {', '.join(profiles.allowed(profile.permissions, 'worker')) or 'no worker'}"
 
 
 def _rest(profile: Profile, asked: Asked) -> None:
@@ -285,17 +249,11 @@ async def choose(
     profile = await ensure_default(conn, access.project_id) if handle is None else None
     if profile is None:
         profile = await _named(conn, user, access, handle)
-    if asked.by_hand and profile.placement == agent_placement.POOL_MODE:
-        raise agent_placement.refuse_by_hand(profile.handle)  # the hub places the runs of an agent in pool mode
     if (why := pool_accounts.needs_pool(profile, access.name)) is not None:
         raise HTTPException(422, why)  # a run of it would wait for an account no one can give it
     _runtime(profile, asked)
     await _environment(conn, access, profile, asked)
     model = _model(profile, asked.model)
-    if (
-        profile.placement != agent_placement.POOL_MODE
-    ):  # an agent in pool mode runs on its pool, whatever its worker axis
-        await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
     await _own_account(conn, profile, asked)
     return Chosen(profile, model, await _gateway(conn, user, access, profile, asked, model))
@@ -354,32 +312,23 @@ def _packs_fit(version, features, plugins):
 
 def claim_clause(
     name: str,
-    labels,
     runtimes: list[str],
     features,
     plugin_runtimes: list[str] = (),
     environments: list[str] = (),
     plugins: list[str] = (),
-    pool: str | None = None,
 ) -> object:
-    """Whether the profile of a queued run (``runs``, correlated) lets this worker take it: named by name, label or
-    ``pool`` (the pool it is a node of) on the worker axis, one of its ``runtimes`` of the core on the runtime axis, or for a run of a plugin's runtime one
-    of its ``plugin_runtimes``, host or one of the plugins' ``environments`` it takes on the environment axis, a
+    """Whether the profile of a queued run (``runs``, correlated) lets this worker take it: one of its ``runtimes`` of the
+    core on the runtime axis, or for a run of a plugin's runtime one of its ``plugin_runtimes``, host or one of the plugins' ``environments`` it takes on the environment axis, a
     daemon that applies profiles (``features``) when the profile needs one, and one that builds agent packs when it
     attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile. And,
     for a run with an autonomy snapshot, the workers, environments and daemon it allows (``run_autonomy.claim_clause``)."""
     r = tables.runs
     v, permissions = _rules()
-    names = profiles.worker_names(name, labels, pool)
     allow = permissions["runtime"]["allow"]
     conditions = [
         v.c.profile_id == r.c.profile_id,
         v.c.version == r.c.profile_version,
-        or_(
-            _all(permissions, "worker"),
-            permissions["worker"]["allow"].has_any(literal(names, ARRAY(Text))),
-            agent_placement.pooled_run(),  # an agent in pool mode runs on its pool, whatever its worker axis
-        ),
         or_(
             _all(permissions, "runtime"),
             allow.has_any(literal(runtimes, ARRAY(Text))),

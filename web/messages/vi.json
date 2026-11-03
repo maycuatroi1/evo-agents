@@ -3755,18 +3755,12 @@
     },
     "placement": {
       "title": "Vị trí chạy",
-      "mode": "Chế độ",
-      "modePool": "Pool: run đi tới một node của pool riêng",
-      "modeLegacy": "Cũ: run đi tới các worker mà trục worker cho phép",
       "pool": "Pool",
       "nodes": "Node",
       "noNodes": "Chưa có node nào tham gia",
       "nodesFailed": "Không đọc được các node",
       "accountPool": "Pool tài khoản",
-      "none": "Không có",
-      "legacyNote": "Agent theo kiểu cũ vẫn nhận worker chọn bằng tay. Chuyển sang chế độ pool thì run của nó chỉ đi tới một node của pool.",
-      "switch": "Chuyển sang chế độ pool",
-      "switched": "@{handle} giờ chạy trong pool của nó"
+      "none": "Không có"
     }
   },
   "chats": {
@@ -7110,7 +7104,7 @@
       "syncFailed": "worker không giữ graph tươi được"
     },
     "sub": {
-      "duty": "Ca đêm trên <worker></worker> với tư cách {owner}, từ {start} đến {end} {timezone}",
+      "duty": "Ca đêm với tư cách {owner}, từ {start} đến {end} {timezone}",
       "paused": "{login} đã tạm dừng <ago></ago>",
       "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>"
     },
@@ -7149,7 +7143,7 @@
     },
     "empty": {
       "title": "Chưa có charter",
-      "description": "Charter cho Curator biết khi nào làm việc, trên worker nào, trong ngân sách bao nhiêu và được đổi những gì. Mỗi đêm Curator xem xét dự án và đề xuất thay đổi, mỗi đề xuất kèm bằng chứng.",
+      "description": "Charter cho Curator biết khi nào làm việc, trong ngân sách bao nhiêu và được đổi những gì. Ca đêm chạy trên node thuộc pool của agent mặc định. Mỗi đêm Curator xem xét dự án và đề xuất thay đổi, mỗi đề xuất kèm bằng chứng.",
       "admin": "Viết charter",
       "reader": "Admin của dự án viết charter, tại đây hoặc bằng <command></command>."
     },
@@ -7180,7 +7174,6 @@
       "now": "Giờ địa phương",
       "inWindow": "trong cửa sổ",
       "outWindow": "ngoài cửa sổ",
-      "worker": "Worker trực",
       "owner": "Chạy với tư cách",
       "caps": "Mỗi đêm",
       "capsValue": "tối đa {budget} và {runs} run",
@@ -7196,7 +7189,7 @@
     },
     "lastReview": {
       "title": "Review run gần nhất",
-      "none": "Review run đầu tiên được xếp khi cửa sổ kế tiếp mở, trên worker trực.",
+      "none": "Review run đầu tiên được xếp khi cửa sổ kế tiếp mở, trên node thuộc pool của agent mặc định.",
       "run": "Run",
       "openRun": "Mở review run #{id}",
       "night": "Đêm",
@@ -7579,7 +7572,6 @@
       "noGoals": "Chưa có mục tiêu. Curator cân đề xuất theo các mục tiêu, mục tiêu đầu tiên quan trọng nhất.",
       "addGoal": "Thêm mục tiêu",
       "removeGoal": "Bỏ mục tiêu {n}",
-      "noWorkerOption": "Không worker nào của bạn nhận được",
       "windowValue": "Từ {start} đến {end}, {timezone}",
       "runBudgetNone": "Phần còn lại của đêm",
       "reviewBudgetNone": "Như mọi run trong đêm",
@@ -7596,7 +7588,7 @@
       "roleValue": "{runtime}, {model}",
       "groups": {
         "goals": "Mục tiêu",
-        "window": "Cửa sổ và worker",
+        "window": "Cửa sổ",
         "budget": "Ngân sách và giới hạn",
         "scope": "Được làm gì",
         "review": "Review",
@@ -7605,7 +7597,7 @@
       },
       "groupHints": {
         "goals": "Mục tiêu của sản phẩm, quan trọng nhất trước.",
-        "window": "Ca đêm làm khi nào, trên worker của ai, và bản tin sáng đến lúc nào.",
+        "window": "Ca đêm làm khi nào, và bản tin sáng đến lúc nào. Ca đêm chạy trên node thuộc pool của agent mặc định.",
         "budget": "Một đêm và mỗi run được tốn bao nhiêu. Hub ngừng xếp run ở giới hạn đầu tiên chạm tới.",
         "scope": "Plan được chạy, số quyết định mỗi ngày, thứ được merge và thứ không bao giờ đụng.",
         "review": "Review run hằng đêm: nhìn qua bao nhiêu lăng kính và đếm lùi bao xa.",
@@ -7625,7 +7617,6 @@
         "windowEnd": "Cửa sổ đóng",
         "timezone": "Múi giờ",
         "briefAt": "Bản tin sáng lúc",
-        "worker": "Worker trực",
         "owner": "Chạy với tư cách",
         "nightBudget": "Ngân sách đêm, USD",
         "runBudget": "Ngân sách mỗi run, USD",
@@ -7657,8 +7648,6 @@
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
         "timezone": "Tên IANA, ví dụ Asia/Ho_Chi_Minh.",
         "briefAt": "Bản tóm tắt buổi sáng cho chủ dự án, theo múi giờ của cửa sổ.",
-        "worker": "Một worker của chính bạn phục vụ dự án này và nhận run từ hub, hoặc một pool của bạn phục vụ dự án; ca đêm chạy với tư cách chủ của nó.",
-        "noWorker": "Không worker nào của bạn nhận được run của ca đêm. <link>Đăng ký một worker</link> cho dự án này.",
         "usd": "Lớn hơn 0, tối đa {max}.",
         "runBudget": "Để trống: run được dùng phần còn lại của đêm.",
         "range": "Từ {min} đến {max}.",
@@ -7675,7 +7664,7 @@
         "replayTasks": "Số tác vụ giữ lại mà mỗi thay đổi được replay, từ {min} đến {max}. Cần 6 tác vụ thì replay mới có thể thắng.",
         "replayBudget": "Để trống: không chạy replay.",
         "historyBudget": "Để trống: số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm. 0: không chạy run lịch sử.",
-        "historyModel": "Để trống: model rẻ nhất mà worker trực báo cho runtime của Reviewer.",
+        "historyModel": "Để trống: model rẻ nhất mà node báo cho runtime của Reviewer.",
         "probeK": "Số phiên của mỗi nhánh probe, trên mỗi model, từ {min} đến {max}.",
         "probeBudget": "Để trống: không chạy probe. Tối đa {max} cho một tuần ISO, tách khỏi ngân sách đêm."
       },
@@ -7688,7 +7677,6 @@
         "time": "Nhập giờ dạng HH:MM, 24 giờ.",
         "timezone": "Nhập múi giờ IANA, ví dụ Asia/Tokyo.",
         "sameTime": "Cửa sổ mở và đóng cùng giờ: hãy cho nó độ dài.",
-        "worker": "Tên worker: chữ, số, dấu chấm, gạch ngang và gạch dưới.",
         "money": "Lớn hơn 0 và tối đa {max} USD.",
         "overNight": "Vượt ngân sách đêm: một run không bao giờ được nhiều hơn cả đêm.",
         "whole": "Số nguyên từ {min} đến {max}.",
@@ -7706,18 +7694,15 @@
         "title": "Các bản",
         "count": "{count} bản",
         "loading": "Đang đọc các bản",
-        "number": "Bản {revision}",
-        "worker": "trên {worker}"
+        "number": "Bản {revision}"
       },
       "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}",
       "replayBudgetNone": "Không có: không chạy replay",
       "historyBudgetDefault": "Số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm",
       "historyBudgetOff": "Không có: không chạy run lịch sử",
-      "historyModelDefault": "model rẻ nhất worker báo",
+      "historyModelDefault": "model rẻ nhất node báo",
       "probeBudgetNone": "Không có: không chạy probe",
-      "probeModelsBuilder": "Runtime và model của Builder",
-      "poolsGroup": "Pool của bạn",
-      "poolOption": "Pool {pool}, node sẵn sàng bất kỳ"
+      "probeModelsBuilder": "Runtime và model của Builder"
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",

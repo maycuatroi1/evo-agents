@@ -17,7 +17,6 @@ const AGENT: Agent = {
   icon_url: null,
   avatar_sha256: null,
   is_default: false,
-  placement: "legacy",
   home_pool: null,
   account_pool: null,
   permissions: {},

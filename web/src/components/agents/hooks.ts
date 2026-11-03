@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useCallback } from "react";
 
 import { useWriteFailure, type WriteFailure } from "@/components/feedback/notice";
-import { agentKeys, createAgent, deleteAgent, deleteAvatar, editAgent, putAvatar, setPlacement } from "@/lib/agent-queries";
+import { agentKeys, createAgent, deleteAgent, deleteAvatar, editAgent, putAvatar } from "@/lib/agent-queries";
 import type { Agent, AgentCreate, AgentEdit } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
@@ -35,10 +35,6 @@ export function useCreateAgent(project: string) {
 
 export function useEditAgent(project: string, handle: string) {
   return useAgentWrite(project, (body: AgentEdit) => editAgent(browserApi(), project, handle, body));
-}
-
-export function useSetPlacement(project: string, handle: string) {
-  return useAgentWrite(project, (placement: Agent["placement"]) => setPlacement(browserApi(), project, handle, placement));
 }
 
 export function useDeleteAgent(project: string, handle: string) {

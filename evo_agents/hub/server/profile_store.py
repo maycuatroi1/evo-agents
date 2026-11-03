@@ -21,9 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import profiles, tables
 
 DEFAULT_DESCRIPTION = "The project's default agent: every permission, no instructions."
-POOL_MODE = "pool"
-NEW_AGENT_PLACEMENT = POOL_MODE  # the placement of an agent made now (an agent that existed before keeps legacy)
-PLACEMENTS = ("legacy", POOL_MODE)  # a bridge: ``pool`` sends the agent's runs to its own pool's nodes
 POOL_PREFIX = "agent-"  # an agent's pool is ``agent-<handle>``; a member's pool never starts with it
 SNAPSHOT = (
     "handle",
@@ -54,7 +51,6 @@ class Profile:
     is_default: bool
     permissions: dict
     packs: list  # the agent packs it attaches, each {"plugin", "name", "version"} (agent_packs)
-    placement: str  # PLACEMENTS: where a run of the agent goes
     home_pool: str | None  # the name of its own pool (``agent-<handle>``); None for an agent deleted before 0189
     account_pool_id: int | None  # its account pool (``account_pools``); None until an admin attaches one
     account_pool: str | None  # that pool's name
@@ -90,7 +86,6 @@ def profile_select() -> Select:
             ap.c.is_default,
             ap.c.permissions,
             ap.c.packs,
-            ap.c.placement,
             select(wp.c.name).where(wp.c.agent_id == ap.c.id).scalar_subquery().label("home_pool"),
             ap.c.account_pool_id,
             select(tables.account_pools.c.name)
@@ -166,7 +161,7 @@ async def ensure_default(conn: AsyncConnection, project_id: int) -> Profile:
         "permissions": profiles.all_access(),
         "packs": [],
     }
-    row_values = {**values, "created_by": project.created_by, "placement": NEW_AGENT_PLACEMENT}
+    row_values = {**values, "created_by": project.created_by}
     statement = pg_insert(ap).values(**row_values).on_conflict_do_nothing().returning(ap.c.id)
     created = (await conn.execute(statement)).scalar_one_or_none()
     if created is not None:

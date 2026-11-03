@@ -61,12 +61,12 @@ export async function authorWorker(account: Account, project: string, name: stri
 }
 
 /** Queue an author run through the API as `account`, as `evo-agents hub run author` does. */
-export async function dispatchAuthor(account: Account, project: string, workerId: number, request: string, planId: string | null = null): Promise<Run> {
+export async function dispatchAuthor(account: Account, project: string, request: string, planId: string | null = null): Promise<Run> {
   const api: ApiClient = bearerClient(await machineToken(account));
   return call(
     api.POST("/v1/projects/{project}/author-runs", {
       params: { path: { project } },
-      body: { request, worker_id: workerId, plan_id: planId, runtime: "claude-code", timeout_h: 2 },
+      body: { request, plan_id: planId, runtime: "claude-code", timeout_h: 2 },
     }),
   );
 }

@@ -11,15 +11,15 @@ from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import PROVIDER_KIND
 
 NEEDS_POOL = (
-    "agent @{handle} runs in pool mode and has no account pool, so a run of it has no account to use: ask an admin of "
+    "agent @{handle} has no account pool, so a run of it has no account to use: ask an admin of "
     "project {project} to attach one (`evo-agents hub agent account-pool {handle} POOL`)"
 )
 
 
 def needs_pool(profile, project: str) -> str | None:
-    """Why a run of ``profile`` (an agent in pool mode with no account pool) cannot be dispatched: an admin must attach
-    an account pool; None for any other agent."""
-    if profile.placement != "pool" or profile.account_pool_id is not None:
+    """Why a run of ``profile`` (an agent with no account pool) cannot be dispatched: an admin must attach an account
+    pool; None for an agent that has one."""
+    if profile.account_pool_id is not None:
         return None
     return NEEDS_POOL.format(handle=profile.handle, project=project)
 
@@ -96,8 +96,8 @@ async def is_pooled(conn: AsyncConnection, run_id: int) -> bool:
     of the Curator nor a browser login (``claim_gate``)."""
     r, ap = tables.runs, tables.agent_profiles
     query = (
-        select(ap.c.placement)
+        select(ap.c.id)
         .join_from(r, ap, ap.c.id == r.c.profile_id)
         .where(r.c.id == run_id, r.c.kind.not_in((*runs.CURATOR_KINDS, "browser")))
     )
-    return (await conn.execute(query)).scalar_one_or_none() == "pool"
+    return (await conn.execute(query)).scalar_one_or_none() is not None

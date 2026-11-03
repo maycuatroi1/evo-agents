@@ -26,11 +26,9 @@ const CHARTER: Charter = {
   revision: 3,
   updated_by: "octo",
   updated_at: "2026-10-07T10:00:00Z",
-  worker_id: 4,
   schedule_owner: "octo",
   goals: [{ id: "night-shift", what: "Run the approved plans at night." }],
   window: { start: "22:00", end: "06:00", timezone: "Asia/Ho_Chi_Minh" },
-  worker: "night-mac",
   night_budget_usd: 2,
   run_budget_usd: 0.5,
   run_max_turns: 40,
@@ -59,8 +57,6 @@ const schedule = (owner: string, paused: boolean): CuratorStatus["schedules"][nu
   id: 1,
   kind: "night_shift",
   owner,
-  worker_id: 4,
-  worker: "night-mac",
   paused_at: paused ? "2026-10-07T23:00:00Z" : null,
   paused_by: paused ? owner : null,
 });
@@ -188,28 +184,27 @@ describe("evidence", () => {
 
 describe("the charter as a form", () => {
   it("writes back the charter it was filled from", () => {
-    const result = charterBody(charterForm(CHARTER, { worker: "", timezone: "" }));
+    const result = charterBody(charterForm(CHARTER, { timezone: "" }));
     expect(result.errors).toBeNull();
-    const { project: _p, revision: _r, updated_by: _u, updated_at: _a, worker_id: _w, schedule_owner: _o, ...body } = CHARTER;
+    const { project: _p, revision: _r, updated_by: _u, updated_at: _a, schedule_owner: _o, ...body } = CHARTER;
     expect(result.body).toEqual(body);
   });
 
   it("keeps the tiers it plans and merges, merging without CI and who answers, though it switches tier 0 alone", () => {
     const wide: Charter = { ...CHARTER, planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true, answer_by: "agent" };
-    const form = charterForm(wide, { worker: "", timezone: "" });
+    const form = charterForm(wide, { timezone: "" });
     expect(charterBody(form).body).toMatchObject({ planned_tiers: [0, 1, 2, 3], auto_merge: [0, 1, 2, 3], merge_without_ci: true, answer_by: "agent" });
     expect(charterBody({ ...form, autoMerge: false }).body?.auto_merge).toEqual([1, 2, 3]);
-    const old = charterForm({ ...CHARTER, planned_tiers: undefined, auto_merge: [] }, { worker: "", timezone: "" });
+    const old = charterForm({ ...CHARTER, planned_tiers: undefined, auto_merge: [] }, { timezone: "" });
     expect(charterBody({ ...old, autoMerge: true }).body).toMatchObject({ planned_tiers: [0, 1, 2], auto_merge: [0], answer_by: "owner" });
   });
 
-  it("fills a first charter with the hub's defaults, the visitor's worker and time zone", () => {
-    const form = charterForm(null, { worker: "mini", timezone: "Europe/Paris" });
+  it("fills a first charter with the hub's defaults, the visitor's time zone", () => {
+    const form = charterForm(null, { timezone: "Europe/Paris" });
     const result = charterBody(form);
     expect(result.errors).toBeNull();
     expect(result.body).toMatchObject({
       window: { start: "22:00", end: "06:00", timezone: "Europe/Paris" },
-      worker: "mini",
       night_budget_usd: 5,
       run_budget_usd: null,
       max_runs_per_night: 6,
@@ -222,13 +217,13 @@ describe("the charter as a form", () => {
   });
 
   it("keeps the Judge's checks when the visitor may not see them", () => {
-    const form = charterForm({ ...CHARTER, judge: { runtime: "codex", model: null, hidden_checks: null } }, { worker: "", timezone: "" });
+    const form = charterForm({ ...CHARTER, judge: { runtime: "codex", model: null, hidden_checks: null } }, { timezone: "" });
     expect(form.hiddenChecks).toBeNull();
     expect(charterBody(form).body?.judge?.hidden_checks).toBeNull();
   });
 
   it("refuses what the hub refuses, field by field", () => {
-    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    const form = charterForm(CHARTER, { timezone: "" });
     const bad = charterBody({
       ...form,
       goals: [{ id: "Bad Id", what: "x" }],
@@ -257,27 +252,27 @@ describe("the charter as a form", () => {
   });
 
   it("takes the days before an outcome from 1 to 90, as the hub does", () => {
-    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    const form = charterForm(CHARTER, { timezone: "" });
     expect(charterBody({ ...form, outcomeDays: "14" }).body?.outcome_days).toBe(14);
     expect(charterBody({ ...form, outcomeDays: "0" }).errors).toEqual({ outcomeDays: { code: "whole", min: 1, max: 90 } });
     expect(charterBody({ ...form, outcomeDays: "91" }).errors).toEqual({ outcomeDays: { code: "whole", min: 1, max: 90 } });
-    expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body?.outcome_days).toBe(7);
+    expect(charterBody(charterForm(null, { timezone: "UTC" })).body?.outcome_days).toBe(7);
   });
 
   it("keeps the replays and the history run of the charter it was filled from", () => {
-    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    const form = charterForm(CHARTER, { timezone: "" });
     expect(form).toMatchObject({ replayTasks: "6", replayBudget: "0.8", historyBudget: "0", historyModel: "claude-haiku-4-5" });
     expect(charterBody(form).body).toMatchObject({ replay: { tasks: 6, budget_usd: 0.8 }, history: { budget_usd: 0, model: "claude-haiku-4-5" } });
-    const plain = charterForm({ ...CHARTER, replay: undefined, history: undefined }, { worker: "", timezone: "" });
+    const plain = charterForm({ ...CHARTER, replay: undefined, history: undefined }, { timezone: "" });
     expect(charterBody(plain).body).toMatchObject({ replay: { tasks: 3, budget_usd: null }, history: { budget_usd: null, model: null } });
-    expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body).toMatchObject({
+    expect(charterBody(charterForm(null, { timezone: "UTC" })).body).toMatchObject({
       replay: { tasks: 3, budget_usd: null },
       history: { budget_usd: null, model: null },
     });
   });
 
   it("refuses the replays' and the history run's settings the hub refuses", () => {
-    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    const form = charterForm(CHARTER, { timezone: "" });
     expect(charterBody({ ...form, replayTasks: "21" }).errors).toEqual({ replayTasks: { code: "whole", min: 0, max: 20 } });
     expect(charterBody({ ...form, replayTasks: "0" }).body?.replay).toEqual({ tasks: 0, budget_usd: 0.8 });
     expect(charterBody({ ...form, replayBudget: "0" }).errors).toEqual({ replayBudget: { code: "money", max: 1000 } });
@@ -289,18 +284,18 @@ describe("the charter as a form", () => {
   });
 
   it("keeps the probes of the charter, and lets a builder that takes the probes along change", () => {
-    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    const form = charterForm(CHARTER, { timezone: "" });
     expect(form).toMatchObject({ probeK: "2", probeBudget: "12" });
     expect(charterBody(form).body?.probes).toEqual(CHARTER.probes);
     // The hub filled in the builder for no models: written back as none, so a new builder takes the probes with it.
-    const onBuilder = charterForm({ ...CHARTER, probes: { k: 3, models: [{ runtime: "claude-code", model: "claude-opus-5-5" }], budget_usd: 4 } }, { worker: "", timezone: "" });
+    const onBuilder = charterForm({ ...CHARTER, probes: { k: 3, models: [{ runtime: "claude-code", model: "claude-opus-5-5" }], budget_usd: 4 } }, { timezone: "" });
     expect(charterBody({ ...onBuilder, builder: { runtime: "codex", model: "" } }).body?.probes).toEqual({ k: 3, models: [], budget_usd: 4 });
-    expect(charterBody(charterForm({ ...CHARTER, probes: undefined }, { worker: "", timezone: "" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
-    expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
+    expect(charterBody(charterForm({ ...CHARTER, probes: undefined }, { timezone: "" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
+    expect(charterBody(charterForm(null, { timezone: "UTC" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
   });
 
   it("refuses the probes' settings the hub refuses, and does not hold a week's budget against a night's", () => {
-    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    const form = charterForm(CHARTER, { timezone: "" });
     expect(charterBody({ ...form, probeK: "0" }).errors).toEqual({ probeK: { code: "whole", min: 1, max: 10 } });
     expect(charterBody({ ...form, probeK: "11" }).errors).toEqual({ probeK: { code: "whole", min: 1, max: 10 } });
     expect(charterBody({ ...form, probeBudget: "0" }).errors).toEqual({ probeBudget: { code: "money", max: 7000 } });

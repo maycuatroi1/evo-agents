@@ -2,9 +2,9 @@
 run works for.
 
 An agent type whose manifest declares ``chat_runs: run_as`` (RUN_AS) sends every chat run of its profile to a worker
-of the member the project enabled the type under (``run_as``), among the workers the type names, whoever mentioned
-the agent: a member without a worker reaches it too. The run's row is dispatched by that member, whose worker claims
-it, whose credentials it leases and whose grant the agent's session on the hub's /mcp carries; the person who
+of the member the project enabled the type under (``run_as``), to the nodes of the agent's pool, whoever mentioned
+the agent: a member without a worker reaches it too. The run's row is dispatched by that member, whose
+credentials it leases and whose grant the agent's session on the hub's /mcp carries; the person who
 mentioned the agent stays the origin of the chain, read from the message that started the run (``origin``), and the
 hub's chat code acts for that person as before. Every other profile, and that one while its type or its plugin is
 turned off in the project, routes as it did: to a worker of the person who mentioned it (MENTIONER, the default).
@@ -29,16 +29,11 @@ CHAT_RUNS = (MENTIONER, RUN_AS)  # plugin.schema.json, $defs.agent_type.chat_run
 @dataclass(frozen=True)
 class Route:
     """The member whose workers take the chat runs of a profile, ``run_as`` of agent type ``agent_type``: their id and
-    login, and the names of the workers the type names (none: any the profile allows)."""
+    login."""
 
     agent_type: str
     user_id: int
     login: str
-    workers: tuple[str, ...] = ()
-
-    def named(self, name: str) -> bool:
-        """Whether worker ``name`` is one the type lets take its runs."""
-        return not self.workers or name.lower() in self.workers
 
 
 def chat_runs_of(manifest: dict, name: str) -> str:
@@ -55,15 +50,14 @@ async def route_of(conn: AsyncConnection, profile_id: int) -> Route | None:
     t, u = tables.project_agent_types, tables.users
     query = (
         enabled_query()
-        .add_columns(t.c.name.label("agent_type"), t.c.run_as, u.c.login.label("run_as_login"), t.c.workers)
+        .add_columns(t.c.name.label("agent_type"), t.c.run_as, u.c.login.label("run_as_login"))
         .join(t, (t.c.plugin_id == tables.plugins.c.id) & (t.c.project_id == tables.projects.c.id))
         .join(u, u.c.id == t.c.run_as)
         .where(t.c.profile_id == profile_id, t.c.disabled_at.is_(None))
     )
     for row in await conn.execute(query):
         if chat_runs_of(row.manifest, row.agent_type) == RUN_AS:
-            workers = tuple(name.lower() for name in row.workers or ())
-            return Route(row.agent_type, row.run_as, row.run_as_login, workers)
+            return Route(row.agent_type, row.run_as, row.run_as_login)
     return None
 
 

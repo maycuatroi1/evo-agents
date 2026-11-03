@@ -36,7 +36,7 @@ test("the morning brief reaches the owner's Inbox and the Curator's page names i
   const project = me.projects[0];
   const live = await dutyWorker(me, project, uniqueName("night"));
   const now = new Date();
-  await writeCharter(me, project, live.worker.name, { brief_at: `${two(now.getUTCHours())}:${two(now.getUTCMinutes())}` });
+  await writeCharter(me, project, { brief_at: `${two(now.getUTCHours())}:${two(now.getUTCMinutes())}` });
   expect(await sendBrief(project, new Date())).toEqual(["brief"]);
   expect(await sendBrief(project, new Date())).toEqual(["sent"]); // once a day
 

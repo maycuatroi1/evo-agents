@@ -13,8 +13,6 @@ host resolves to public addresses only. Here no call leaves the machine: every h
 the documentation range, and the endpoint is a fake one (``fake_endpoint``) that lists FAKE_MODELS to a key starting
 with GOOD_KEY and answers 401 to any other.
 
-New agents are placed ``legacy`` (profile_store.NEW_AGENT_PLACEMENT), not in pool mode.
-
 Arguments are those of ``evo-agents hub serve``.
 """
 
@@ -33,7 +31,6 @@ sys.path.insert(0, str(ROOT))
 from evo_agents.cli import main  # noqa: E402
 from evo_agents.hub import migrate as hub_migrate  # noqa: E402
 from evo_agents.hub.server import app as hub_app  # noqa: E402
-from evo_agents.hub.server import profile_store  # noqa: E402
 from evo_agents.plugins import core  # noqa: E402
 from tests.hub import core_notes  # noqa: E402
 
@@ -87,9 +84,6 @@ def with_fake_endpoint(config):
     return app
 
 
-# An agent a spec makes is placed as before (``legacy``): the specs queue runs with worker_id and without an account pool,
-# as tests/hub/conftest.py does for the hub's tests; the agent pool's own pages are read in the units of web/src.
-profile_store.NEW_AGENT_PLACEMENT = "legacy"
 core.entry_points = with_notes
 hub_migrate.alembic_config = alembic_config
 hub_app.create_app = with_fake_endpoint

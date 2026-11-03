@@ -623,7 +623,6 @@ lease row records the profile and version it was handed out under.
 | `POST .../agents` | `hub agent create HANDLE --name NAME [...]` | an admin of the project |
 | `PATCH .../agents/{handle}` (`if_version`: 409 when it moved on) | `hub agent edit HANDLE [...]` | an admin of the project |
 | `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
-| `PUT .../agents/{handle}/placement` (`{"placement": "pool"}` or `"legacy"`) | `hub agent placement HANDLE pool\|legacy` | an admin of the project or of the hub |
 | `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
 | `GET .../agents/{handle}/avatar` | | a member |
 | `GET .../agent-packs`, the agent packs a profile of the project may attach | | a member |
@@ -651,23 +650,18 @@ for the agents that exist); `home_pool` names it in the agent's JSON. It is a wo
 created the agent and serving the agent's project. An admin of the project or of the hub sees and manages it with the
 routes, the CLI and the page of worker pools: join tokens, labels, taints, slots and the doctor codes it accepts. A
 member who is not an admin is refused (403, or 404 without a grant on the project), and the pool's `projects` do not
-change (422). A member's pool cannot take a name that starts with `agent-`. Each agent also has a `placement`: `legacy`,
-where a run of the agent is placed as before, or `pool`, where it goes to a node of its own pool. Schema 0189 leaves
-the agents that exist in `legacy`, and the hub creates new ones in `pool`; `PUT .../placement` moves one, audited as
-`agent.placement`, without a new version of the profile. The column is a bridge, which the plan agent-dedicated-pools
-removes when every agent is in `pool`. Worker protocol version 1 and `local` runs do not change.
+change (422). A member's pool cannot take a name that starts with `agent-`. Every agent runs on its own pool: schema 0194 dropped the `placement` bridge that 0189 added, and there is no legacy mode. Worker protocol version 1 and `local` runs do not change.
 
-In `pool` mode the hub places every run of the agent, of any kind and whoever dispatches it (`server/agent_placement.py`):
+The hub places every run of the agent, of any kind and whoever dispatches it (`server/agent_placement.py`):
 the run gets the selector `pool=agent-<handle>` and tolerations for the pool's taints when it is inserted
 (`insert_run`), and only a node of that pool that is online, not draining and ready claims it; a member's worker or a
 shared worker outside the pool never does, and a node of an agent's pool takes no run of another agent. A chat run
 prefers the node that ran the previous turn of the same chat while it is ready, else another node of the pool. Runs that
 name no agent, those of the Curator, `loop`, `judge` and an agent type that names no agent, go to the project's default
-agent, in its pool when it is in `pool` mode. When the pool has no ready node the run stays queued and each admin of the
+agent, in its pool. When the pool has no ready node the run stays queued and each admin of the
 project gets one notice `agent_pool_empty` for the outage (`worker_pools.empty_notified_at`, schema 0190, cleared when a
 node is ready again). The dispatch, plan-run, author-run, rerun and triage-rerun routes answer 422 with guidance when
-`worker_id`, `pool`, `labels` or `tolerations` is given for an agent in `pool` mode. An agent in `legacy` mode is placed
-as before.
+`worker_id`, `pool`, `labels` or `tolerations` is given.
 
 Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
 `agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
@@ -1371,11 +1365,9 @@ a queued attempt whose run before it was lost on a worker that is not steady yet
 worker and when it becomes steady (`steady_wait`; `docs/workers.md`, Run states).
 
 `dispatch`, `plan`, `author` and `rerun` do not pick the machine: they have no `--worker`, `--pool`, `--label` or
-`--tolerate`, and `worker triage rerun` has no `--worker`. The agent of the run decides: an agent in `pool` mode runs on
+`--tolerate`, and `worker triage rerun` has no `--worker`. The agent of the run decides: it runs on
 its own pool, `agent-<handle>` (the paragraphs on the pool of an agent, under the agent profiles), and the hub answers 422 with guidance when the body of the API
-names `worker_id`, `pool`, `labels` or `tolerations` for it. Until plan agent-dedicated-pools removes the `legacy`
-mode, the API still takes those fields for an agent in `legacy` mode, and `run list --worker` still filters the runs a
-worker claimed. A rerun keeps the run's own selector and tolerations.
+names `worker_id`, `pool`, `labels` or `tolerations`. `run list --worker` still filters the runs a worker claimed. A rerun keeps the run's own selector and tolerations.
 
 A run that failed has `failure_cause` (in `GET .../runs`, `GET .../runs/{id}`, `run list --json` and `run show --json`,
 and a `cause` line of `run show`): the cause its worker reported with the failure, one of `origin`, `credentials` and
@@ -2332,7 +2324,7 @@ evo-agents hub goal close G-1 --reason achieved --project demo
 **The Loop** of a project (plan loop-engine), on with the policy's `loop.enabled`, hands its work items out through run
 kinds the hub has: a brainstorm to a task run of @strategist, a use case to a task run of @ba (whose version
 `srs__propose` writes as the goal's owner), the frame task of an approved use case to one author run in Loop mode, and
-the plan that run wrote to a plan run; author and plan runs go to worker `loop.worker`, in its owner's name, with the
+the plan that run wrote to a plan run; author and plan runs go to a node of the default agent's pool, in the pool owner's name, with the
 caps of `loop.caps`. Its engine `rules/2` goes from the problem a goal answers: each work item carries that problem, a
 claim of the cell Problem in testing makes a `discover` of @strategist, and a solution goes through use cases only
 when the project keeps them (`loop.use_cases`), else straight to an author run (`docs/loop.md`). A work item that

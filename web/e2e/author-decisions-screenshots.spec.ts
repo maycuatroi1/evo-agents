@@ -25,7 +25,7 @@ test.describe("author run decision screenshots", () => {
       const me = await member([{ role: "writer", maxLevel: "internal" }]);
       const project = me.projects[0];
       const live = await authorWorker(me, project, uniqueName("desk"));
-      const run = await dispatchAuthor(me, project, live.worker.id, "Write a plan for the decisions of author runs.");
+      const run = await dispatchAuthor(me, project, "Write a plan for the decisions of author runs.");
       await startAuthor(live, run.id);
       await askDecision(live, run.id, "Does the first revision cover author runs, or plan runs only?", undefined, {
         category: "scope",
