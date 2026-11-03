@@ -16,7 +16,10 @@ same repo cannot both put the same function in the graph.
 Search (``evo_agents.kg.search``): the full-text index ``node_fts`` and the aliases ``node_alias`` hold the latest
 build only. A build rewrites the aliases, and only the rows of ``node_fts`` whose content changed: ``node_fts_rows``
 keeps the rowid and digest of each node's row. A node is found by its id, its name or an alias through an index,
-then by its words.
+then by its words. ``node_tri`` holds the name and path of each node's own row of ``node_fts`` again, under the same
+rowid, cut in trigrams, for words inside a word; it is outside the schema version and the content hash, being made
+from ``node_fts``: a file without it (written before it, or by an SQLite without the trigram tokenizer) searches by
+words alone, and the next build that writes the index fills it whole.
 
 Clusters (``evo_agents.kg.clusters``): ``clusters``, ``cluster_members`` and ``cluster_links`` are bitemporal like
 the graph and in its content hash, but only when a build has some, so a build without them hashes as before. A file
@@ -48,6 +51,7 @@ a reader whose ``asked_clearance`` (level, location) is set, and only the rows w
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -169,6 +173,14 @@ CREATE TABLE node_asked_rows (
 CREATE INDEX node_asked_node ON node_asked_rows(node_id);
 """
 FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without an audience, and with one
+# The name and path of each own row of node_fts (no passage, no audience) again, under its rowid, cut in trigrams
+# (``search.tri_text``), so a word of a query matches inside a word of them. Made apart from SCHEMA: an SQLite without
+# the trigram tokenizer (before 3.34) still opens the store, without it.
+TRIGRAM_SCHEMA = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS node_tri USING fts5("
+    "node_id UNINDEXED, kind UNINDEXED, name, path, tokenize = 'trigram')"
+)
+OWN_ROWS = "node_fts_rows WHERE aud = 0 AND instr(node_id, char(31)) = 0"  # the rows of node_fts that node_tri holds
 NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
 EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
 CLUSTER_TABLES = ("clusters", "cluster_members", "cluster_links")  # absent from a file written before clusters came
@@ -301,6 +313,8 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=OFF")
         self.db.executescript(SCHEMA)
+        with contextlib.suppress(sqlite3.OperationalError):  # no trigram tokenizer: search reads words alone
+            self.db.execute(TRIGRAM_SCHEMA)
         self.db.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', ?)", (SCHEMA_VERSION,))
         self.db.commit()
 
@@ -344,6 +358,7 @@ class Store:
         self.asked_clearance: tuple[int, int] | None = None  # the (level, location) of node_asked rows read; None: none
         self._asked: bool | None = None  # whether the file has the asked tables, once looked up
         self.asked_weight: float | None = None  # the weight of the asked rows to use in place of the file's (an eval)
+        self._trigram: bool | None = None  # whether the file has a filled node_tri, once looked up
         self._asked_weight: tuple[float | None] | None = None  # (the weight the file records or None), once read
         self.db.create_function("aud_seen", 1, lambda text: audience_below(stored_audience(text), self.reader))
 
@@ -770,11 +785,14 @@ class Store:
             key: (rowid, d, aud)
             for key, rowid, d, aud in db.execute("SELECT node_id, fts_rowid, digest, aud FROM node_fts_rows")
         }
+        trigram = db.execute("SELECT 1 FROM sqlite_master WHERE name = 'node_tri'").fetchone() is not None
         if sum(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in FTS_TABLES) != len(held):
-            for table in (*FTS_TABLES, "node_fts_rows"):
+            for table in (*FTS_TABLES, "node_fts_rows", *(("node_tri",) if trigram else ())):
                 db.execute(f"DELETE FROM {table}")
             held = {}
         gone = [(key, rowid, aud) for key, (rowid, d, aud) in held.items() if digests.get(key) != d]
+        tri_gone = [rowid for key, rowid, aud in gone if aud == 0 and text_search.PASSAGE_MARK not in key]
+        tri_added: list[tuple] = []
         for aud, table in enumerate(FTS_TABLES):
             db.executemany(f"DELETE FROM {table} WHERE rowid = ?", [(rowid,) for _, rowid, a in gone if a == aud])
         db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(key,) for key, _, _ in gone])
@@ -793,6 +811,31 @@ class Store:
                 "INSERT INTO node_fts_rows VALUES (?, ?, ?, ?)",
                 [(key, start + i, digests[key], aud) for i, (key, _) in enumerate(mine)],
             )
+            if not aud:
+                tri_added += [(start + i, *row[:4]) for i, (key, row) in enumerate(mine) if key == row[0]]
+        if trigram:
+            self._update_trigram(tri_gone, tri_added)
+
+    def _update_trigram(self, gone: list[int], added: list[tuple]) -> None:
+        """Bring ``node_tri`` to the own rows of ``node_fts`` (OWN_ROWS) after ``_update_fts``: delete the rowids of
+        ``gone``, insert ``added`` (rowid, node id, kind, name, path), and write it again whole from ``node_fts`` when
+        it does not then hold exactly those rows, under their rowids: a file written before it, or one a version
+        without it built again."""
+        db = self.db
+        insert = "INSERT INTO node_tri (rowid, node_id, kind, name, path) VALUES (?, ?, ?, ?, ?)"
+        db.executemany("DELETE FROM node_tri WHERE rowid = ?", [(rowid,) for rowid in gone])
+        db.executemany(insert, [_tri_row(row) for row in added])
+        held = db.execute("SELECT count(*) FROM node_tri").fetchone()[0]
+        stale = db.execute(
+            f"SELECT count(*) FROM node_tri WHERE (rowid, node_id) NOT IN (SELECT fts_rowid, node_id FROM {OWN_ROWS})"
+        ).fetchone()[0]
+        if not stale and held == db.execute(f"SELECT count(*) FROM {OWN_ROWS}").fetchone()[0]:
+            return
+        db.execute("DELETE FROM node_tri")
+        rows = db.execute(
+            f"SELECT rowid, node_id, kind, name, path FROM node_fts WHERE rowid IN (SELECT fts_rowid FROM {OWN_ROWS})"
+        )
+        db.executemany(insert, [_tri_row(row) for row in rows.fetchall()])
 
     def _diff(self, table: str, key_col: str | None, b: int, rows: dict[str, dict], cols: list[str]) -> None:
         """Close rows that vanished or changed, insert rows that are new or changed."""
@@ -1184,7 +1227,8 @@ class Store:
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
         hits = self.exact(query, b, want, kinds)
-        queries = list(text_search.fts_queries(text_search.query_words(query)))
+        words = text_search.query_words(query)
+        queries = list(text_search.fts_queries(words))
         scores: dict[str, float] = {}
         rows: dict[str, tuple[str, str, str]] = {}  # node id: (kind, name, path) as the index holds them
         for weight, fts_query in zip(text_search.STAGE_WEIGHTS, queries if any_word else queries[:2], strict=False):
@@ -1214,27 +1258,69 @@ class Store:
                 if row[0] and (not kinds or row[0] in kinds):
                     scores[node_id], rows[node_id] = score, row
         near = self._semantic_ranked(vector, kinds, set(hits)) if vector is not None else {}
-        for node_id in near.keys() - rows.keys():
+        tri = self._trigram_ranked(words, want, kinds, set(hits))
+        for node_id in (near.keys() | tri.keys()) - rows.keys():
             rows[node_id] = self._index_row(node_id)
         closed = self._closed_plans(b, [i for i, row in rows.items() if row[0] in ("Plan", "PlanStep")])
         wanted = text_search.asked(query)
         priors = self._asked_priors(list(rows))
         for node_id, (kind, name, path) in rows.items():
             factor = text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
+            if node_id in tri and factor < 1:  # background: first in that list, its weight would not hold it back
+                del tri[node_id]
             factor *= priors.get(node_id, 1.0)
             if node_id in scores:
                 scores[node_id] *= factor
             if node_id in near:
                 near[node_id] *= factor
+            if node_id in tri:
+                tri[node_id] *= factor
         ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
+        lists = [(1.0, ranked)]
+        if tri:
+            by_substring = sorted(tri, key=lambda node_id: (tri[node_id], node_id))[:want]
+            lists.append((text_search.TRIGRAM_WEIGHT, by_substring))
         if near:
-            by_meaning = sorted(near, key=lambda node_id: (-near[node_id], node_id))
-            ranked = semantic.fuse([(1.0, ranked), (semantic.SEMANTIC_WEIGHT, by_meaning)], semantic.RRF_K)
+            lists.append((semantic.SEMANTIC_WEIGHT, sorted(near, key=lambda node_id: (-near[node_id], node_id))))
+        if len(lists) > 1:
+            ranked = semantic.fuse(lists, semantic.RRF_K)
         found = [*hits, *(h for h in ranked if h not in hits)]
         if not deprecated:
             gone = self._deprecated(found, b)
             found = [h for h in found if h not in gone]
         return found[:want]
+
+    # -- the ranking by substrings (evo_agents.kg.search, node_tri) -------------------------------------------------
+
+    def has_trigram(self) -> bool:
+        """Whether the file has a filled ``node_tri``; one written before it, or by an SQLite without the trigram
+        tokenizer, has not, and search then reads words alone."""
+        if self._trigram is None:
+            try:
+                self._trigram = self.db.execute("SELECT 1 FROM node_tri LIMIT 1").fetchone() is not None
+            except sqlite3.OperationalError:
+                self._trigram = False
+        return self._trigram
+
+    def _trigram_ranked(self, words: list[str], limit: int, kinds: list[str], hits: set[str]) -> dict[str, float]:
+        """BM25 times the prior by kind of the best RERANK_POOL nodes whose name or path holds every word of ``words``
+        as a substring (``search.trigram_query``), not of ``hits``; lower is better, as in ``_ranked``. {} without
+        ``node_tri`` or such a word."""
+        fts_query = text_search.trigram_query(words)
+        if fts_query is None or not self.has_trigram():
+            return {}
+        of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
+        weights = ", ".join(str(w) for w in text_search.WEIGHTS[:4])  # node_id, kind, name, path
+        try:
+            found = self.db.execute(
+                f"SELECT node_id, kind, bm25(node_tri, {weights}) AS score FROM node_tri"
+                f" WHERE node_tri MATCH ?{of_kind} ORDER BY score, node_id LIMIT ?",
+                (fts_query, *kinds, max(limit, text_search.RERANK_POOL)),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        prior = text_search.PRIOR
+        return {node_id: score * prior.get(kind, 1.0) for node_id, kind, score in found if node_id not in hits}
 
     # -- the ranking by meaning (evo_agents.kg.semantic) ------------------------------------------------------------
 
@@ -1712,6 +1798,14 @@ def _top_audience(graph: Graph) -> dict:
     ]:
         found = audience_join(found, audience)
     return {"top_audience": sorted(found)} if found else {}
+
+
+def _tri_row(row) -> tuple:
+    """A row of ``node_tri`` from one of ``node_fts`` (rowid, node id, kind, name, path): the name without the parts
+    of its camelCase words ``search.index_text`` added, which substrings find, and both in ``search.tri_text``."""
+    rowid, node_id, kind, name, path = row
+    name = str(name or "").split("\n", 1)[0]
+    return (rowid, node_id, kind, text_search.tri_text(name), text_search.tri_text(path or ""))
 
 
 def _node_row(row) -> dict:

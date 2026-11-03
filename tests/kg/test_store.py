@@ -586,6 +586,17 @@ def fts_content(store: Store) -> list[tuple]:
     return store.db.execute("SELECT node_id, kind, name, path, body FROM node_fts ORDER BY node_id").fetchall()
 
 
+def tri_rows(store: Store) -> dict[int, str]:
+    """rowid -> node id of each row of the trigram index."""
+    return dict(store.db.execute("SELECT rowid, node_id FROM node_tri").fetchall())
+
+
+def own_rows(store: Store) -> dict[int, str]:
+    """rowid -> node id of each node's own row of node_fts: no passage, no audience; what node_tri holds."""
+    rows = store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows WHERE aud = 0").fetchall()
+    return {rowid: key for key, rowid in rows if text_search.PASSAGE_MARK not in key}
+
+
 def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     sync_build(project)
@@ -605,6 +616,7 @@ def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_
     assert {rowid: text_search.passage_lines(key)[0] for key, rowid in keys} == after
     assert any(text_search.passage_lines(key)[1] for key, _ in keys)  # docs/long.md is indexed as passages too
     assert any(nid.startswith("app:file:docs/plain.md") for nid in found(store, "zebracorn"))
+    assert tri_rows(store) == own_rows(store)  # the trigram rows follow the index's own rows, under their rowids
     fresh = Store(tmp_path / "fresh.sqlite")
     assert build_project(project, store=fresh).content_hash == report.content_hash
     assert fts_content(store) == fts_content(fresh)  # the index holds what a store written whole holds
@@ -616,6 +628,43 @@ def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_
     assert forced.content_hash == report.content_hash
     assert fts_content(store) == fts_content(fresh)
     assert len(fts_rows(store)) == store.db.execute("SELECT count(*) FROM node_fts_rows").fetchone()[0]
+    assert tri_rows(store) == own_rows(store)
+
+
+def test_search_finds_a_word_inside_a_name_or_a_path_through_trigrams(tmp_path, kg_env):
+    assert text_search.trigram_query(["an", "ops", "Đồ", "Dashboard"]) == '"ops" AND "dashboard"'
+    assert text_search.trigram_query(["an", "Đồ"]) is None  # no word of three letters: no substring to look up
+    project = make_searchable(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(app / "docs/lumenops-dashboard.md", "Panels of the team.\n")
+    write(app / "docs/dashboard.md", "# Dashboard\n\nThe dashboard of the dashboard team.\n")
+    commit(app, "two dashboards")
+    sync_build(project)
+    store = Store.for_project(project)
+    ops = "app:file:docs/lumenops-dashboard.md"
+    assert tri_rows(store) == own_rows(store)
+    assert found(store, "ops dashboard")[0] == ops  # "ops" is no word of the index, only part of one
+
+    # A graph built before node_tri came searches by words alone, and the next build fills it whole.
+    with store.db:
+        store.db.execute("DROP TABLE node_tri")
+    old = Store.open_file(store.path)
+    assert not old.has_trigram()
+    hits = found(old, "ops dashboard")
+    assert hits[0] != ops and ops in hits  # found by "dashboard" alone, after the page that holds it most
+    old.close()
+    store.close()
+    build_project(project, force=True)
+    store = Store.for_project(project)
+    assert tri_rows(store) == own_rows(store)
+    assert found(store, "ops dashboard")[0] == ops
+
+    # A version without node_tri built the graph again: as many rows, not the same ones. The next build mends it.
+    with store.db:
+        store.db.execute("DELETE FROM node_tri WHERE rowid = ?", (min(tri_rows(store)),))
+        store.db.execute("INSERT INTO node_tri (rowid, node_id, kind, name, path) VALUES (1000000, 'gone', '', '', '')")
+    build_project(project, force=True)
+    assert tri_rows(store) == own_rows(store)
 
 
 def test_a_build_records_its_size_and_its_highest_label(tmp_path, kg_env):
