@@ -57,7 +57,7 @@ A work item (table `loop_items`) is one piece of work the Loop keeps track of. I
 - a key, unique in the project (below);
 - a state and, for some states, a reason;
 - how often a run was handed out for it (`attempts`) and how often one failed (`failures`);
-- who it stands for (`owner`: `@strategist`, `@ba`, or the owner of worker `loop.worker`), the engine that made it
+- who it stands for (`owner`: `@strategist`, `@ba`, or the owner of the default agent's pool), the engine that made it
   (`rules/1` or `rules/2`) and a `detail` of what it waits on.
 
 Every change of a work item adds a row to its ledger, `loop_item_events`, in the same transaction; the ledger is only
@@ -192,10 +192,9 @@ names the document; the Loop reads what is approved and not yet delivered and ha
   `delivering` at once so no build takes them. It goes through admission, the caps and the merge queue as any deliver; a
   plan already completed makes the deliver `done` and the use cases `delivered` with the plan and its merge requests as
   evidence. It needs no confirmed baseline.
-- **Pool and labels.** `loop.pool` and `loop.labels` (The policy's keys) send the author and plan runs of the Loop to a
-  pool of workers holding the labels, in place of the pinned `loop.worker`; a plan's `worker_labels` narrow its plan run
-  further. The worker found must be live, ready, serving the project and owned by a writer. A deliver no worker fits
-  stays queued with the reason `worker`.
+- **Where they run.** Author and plan runs of the Loop go to a ready node of the pool of the project's default agent (a
+  selector `pool=<name>`, no pinned worker); a plan's `worker_labels` narrow its plan run further. A deliver no node
+  fits stays queued with the reason `worker`.
 
 ## The tick
 
@@ -256,8 +255,8 @@ work item's reason; it stays queued and no run is handed out:
    reach `loop.repo_max_running` (a deliver holds a repo while its plan run works there or a merge request of its plan
    on that repo is not merged);
 3. `rate`: the runs the Loop handed out in the last 60 minutes reach `loop.dispatches_per_hour`;
-4. `worker`: for a `build` or a `deliver`, worker `loop.worker` serves no live daemon of the project, is offline or
-   draining, or has no free slot.
+4. `worker`: for a `build` or a `deliver`, no node of the default agent's pool serves the project live, is online and not
+   draining, or has a free slot.
 
 A hand-out the agent type refuses (off, its run_as no writer, its daily cap spent) leaves the work item queued with
 `type_refused`. A reason is written, with its ledger row, only when it changes. Its figures (the cycle, the count and
@@ -285,11 +284,11 @@ Every run goes through a run kind the hub already has:
 | --- | --- | --- |
 | `brainstorm` | a task run of agent type strategist of the plugin canvas: the goal, its metric and target, the canvas | `@strategist` |
 | `use_case` | a task run of agent type ba of the plugin srs: the claim, its test card, the goal and the use cases it links, and a reviewer's words once changes were asked; `srs__propose` takes its version with the goal's owner as author | `@ba` |
-| `build` | an author run in Loop mode on worker `loop.worker`: the frame task as its request, its child tasks as the plan's steps, the use case at its version, the claim; for a build `rules/2` made straight from a claim, the problem, the goal, the claim and its test card, and the plan's problems | the worker's owner |
+| `build` | an author run in Loop mode on a node of the default agent's pool: the frame task as its request, its child tasks as the plan's steps, the use case at its version, the claim; for a build `rules/2` made straight from a claim, the problem, the goal, the claim and its test card, and the plan's problems | the worker's owner |
 | `discover` | a task run of agent type strategist of the plugin canvas: the claim of the Problem cell, its test card to run, the goal and its problem; it adds evidence (`canvas__evidence`) and proposes (`canvas__propose`), and changes no claim | `@strategist` |
-| `deliver` | a plan run of the plan the build's author run wrote, on worker `loop.worker`, over the repos of its steps not done | the worker's owner |
+| `deliver` | a plan run of the plan the build's author run wrote, on a node of that pool, over the repos of its steps not done | the worker's owner |
 
-The owner of `loop.worker` must hold writer on the project. The author and plan runs are dispatched with a machine
+The owner of the default agent's pool must hold writer on the project. The author and plan runs are dispatched with a machine
 credential and the project's default agent profile, linked to the frame task, and audited as `loop.dispatch`. A worker
 that cannot take the run, a harness for which no project of the worker's owner lists an origin (the worker's preflight
 would fail the author run), or a plan that cannot run (a repo of its steps the project lists no origin for, among
@@ -369,9 +368,6 @@ writes as a revision (`evo-agents hub policy`, `docs/merge-queue.md`). A key a r
 | Key | Default | What it sets |
 | --- | --- | --- |
 | `loop.enabled` | false | the Loop makes work items and hands out their runs |
-| `loop.worker` | null | the worker of the Loop's author and plan runs; null: none run |
-| `loop.pool` | null | the pool the author and plan runs go to, in place of `loop.worker` (a selector `pool=<name>`, no pinned worker); null: `loop.worker` |
-| `loop.labels` | `[]` | labels a worker of those runs holds, with `loop.pool`; a plan's `worker_labels` add to them for its plan run. The worker found must be live, ready, serving the project and owned by a writer; the runs go in its owner's name |
 | `loop.timezone` | null | the zone of the Loop's schedule; null: the charter's, else UTC |
 | `loop.business.max_running` | 2 | work items of the business cycle running at once |
 | `loop.development.max_running` | 1 | work items of the development cycle running at once |

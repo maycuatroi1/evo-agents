@@ -3,7 +3,7 @@
   "maxLines": {
     "src/components/admin/grant-dialog.tsx": 413,
     "src/components/admin/member-page.tsx": 405,
-    "src/components/curator/curator-page.tsx": 442,
+    "src/components/curator/curator-page.tsx": 437,
     "src/components/inbox/decision-view.tsx": 551,
     "src/components/inbox/mobile-decision.tsx": 432,
     "src/components/palette/command-palette.tsx": 698,
@@ -30,8 +30,7 @@
       "src/components/admin/notice.tsx"
     ],
     "src/components/curator/charter-form.tsx": [
-      "src/components/admin/notice.tsx",
-      "src/components/workers/queries.ts"
+      "src/components/admin/notice.tsx"
     ],
     "src/components/curator/charter-page.tsx": [
       "src/components/admin/when.tsx",
@@ -47,8 +46,7 @@
     "src/components/curator/curator-page.tsx": [
       "src/components/home/parts.tsx",
       "src/components/runs/queries.ts",
-      "src/components/workers/ago.tsx",
-      "src/components/workers/queries.ts"
+      "src/components/workers/ago.tsx"
     ],
     "src/components/curator/draft-plan.tsx": [
       "src/components/plans/prose.tsx"

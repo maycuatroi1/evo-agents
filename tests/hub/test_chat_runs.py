@@ -34,6 +34,7 @@ from evo_agents.hub import autonomy_card, chat_runs, chats, runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_chats import OPEN_SINKS
 from tests.hub.test_runs import PROJECT, add_worker, claim, expire, moved, recover, report, set_run, worker_clock
@@ -54,6 +55,7 @@ WORKERS_APP = {"contents": "write", "metadata": "read", "pull_requests": "write"
 def client(hub_db, tmp_path, github, app_key):  # noqa: F811
     config = credentials_api.hub_config(hub_db, tmp_path, github, app_key)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
+        client.db = hub_db  # chat_worker puts its worker in the pool of an agent
         yield client
 
 
@@ -75,7 +77,26 @@ def hub(client, github) -> dict:
         assert response.status_code == 200, response.text
     for handle in ("reviewer", "fixer"):
         agent(client, headers["owner"], handle)
+        give_account_pool(client.db, PROJECT, handle, OWNER)
     return headers
+
+
+def default_node(client, hub, db, worker: dict) -> dict:
+    """``worker`` made a node of the pool of the project's default agent (which the owner holds, with an account pool),
+    where the runs of a step go."""
+    assert client.get(f"/v1/projects/{PROJECT}/agents/{PROJECT}", headers=hub["owner"]).status_code == 200
+    pools, w = tables.worker_pools, tables.workers
+    owner = sql(db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0][0]
+    sql(db, update(pools).values(owner_id=owner).where(pools.c.name == f"agent-{PROJECT}"))
+    give_account_pool(db, PROJECT, PROJECT, OWNER)
+    sql(
+        db,
+        update(w)
+        .values(pool_id=select(pools.c.id).where(pools.c.name == f"agent-{PROJECT}").scalar_subquery())
+        .where(w.c.id == worker["id"]),
+    )
+    assert client.post("/v1/worker/doctor", json={"findings": []}, headers=worker["headers"]).status_code == 200
+    return worker
 
 
 def agent(client, headers, handle: str, **body) -> dict:
@@ -87,13 +108,32 @@ def agent(client, headers, handle: str, **body) -> dict:
 
 
 def chat_worker(
-    client, headers, name: str, *, checkouts=CHECKOUTS, kinds=runs.RUN_KINDS, slots: int = 1, features=EAGER
+    client,
+    headers,
+    name: str,
+    *,
+    checkouts=CHECKOUTS,
+    kinds=runs.RUN_KINDS,
+    slots: int = 1,
+    features=EAGER,
+    pool: str | None = "reviewer",
 ) -> dict:
     """A worker of ``headers``' member whose daemon says it runs ``kinds`` and does ``features``: it applies agent
-    profiles, and its chat runs start with every repo it has a checkout of unless they name LAZY_CHAT_REPOS."""
+    profiles, and its chat runs start with every repo it has a checkout of unless they name LAZY_CHAT_REPOS. It is a
+    node of the pool of agent ``pool`` (@reviewer's by default; None for a worker outside every pool), ready by its
+    doctor report."""
     worker = add_worker(client, headers, name, slots=slots, checkouts=checkouts)
     worker["features"] = list(features)
     beat(client, worker, kinds=kinds)
+    if pool is not None and getattr(client, "db", None) is not None:
+        w, p = tables.workers, tables.worker_pools
+        sql(
+            client.db,
+            update(w)
+            .values(pool_id=select(p.c.id).where(p.c.name == f"agent-{pool}").scalar_subquery())
+            .where(w.c.id == worker["id"]),
+        )
+        assert client.post("/v1/worker/doctor", json={"findings": []}, headers=worker["headers"]).status_code == 200
     return worker
 
 
@@ -224,45 +264,24 @@ def test_a_chat_mention_without_a_fit_worker_says_why_in_the_thread_and_makes_no
     mention = sent(client, hub["owner"], chat["id"], "@reviewer look at the diff")
     assert chat_runs_of(hub_db) == []
     (refusal,) = [m["refusal"] for m in mention["mentions"]]
-    assert refusal.startswith(f"@reviewer: no worker of {OWNER} can take a run of @reviewer now: ")
+    assert refusal.startswith("@reviewer: no node of pool agent-reviewer can take a run of @reviewer now: ")
     assert "old-daemon runs evo-agents" in refusal and "which takes no chat run" in refusal
-    assert "asleep is offline" in refusal
+    assert "asleep" not in refusal  # an offline node is no ready node of the pool, so it is not asked about
     answer = thread(client, hub["owner"], chat["id"], mention["id"])[-1]
     assert (answer["author"]["kind"], answer["body"]) == ("hub", refusal)
-    # a worker the profile leaves out does not take it either
-    agent(client, hub["owner"], "narrow", permissions={"worker": {"mode": "allowlist", "allow": ["studio"]}})
-    added = client.put(f"/v1/chats/{chat['id']}/agents/narrow", headers=hub["owner"])
-    assert added.status_code == 200, added.text
     beat(client, old)  # now it runs chat runs
-    narrowed = sent(client, hub["owner"], chat["id"], "@narrow and @reviewer")
-    assert [m["refusal"] for m in narrowed["mentions"]][0].endswith(
-        "old-daemon is not one @narrow allows; asleep is offline"
-    )
-    assert [m["run_id"] is not None for m in narrowed["mentions"]] == [False, True]
-    # someone with no worker for the project at all is told that
-    other = sent(client, hub["owner"], chat["id"], "@reviewer again")  # the owner's one worker is busy now
-    assert "old-daemon has no free slot" in other["mentions"][0]["refusal"]
-
-
-def test_a_chat_mention_of_an_agent_limited_to_a_pool_goes_to_a_node_of_that_pool(client, hub, hub_db):
-    chat_worker(client, hub["owner"], "studio")  # the most repos, but not a node of the pool
-    node = chat_worker(client, hub["owner"], "vps-1", checkouts=ONE_REPO)
-    made = client.post("/v1/worker-pools", json={"name": "vps", "projects": [PROJECT]}, headers=hub["owner"])
-    assert made.status_code == 201, made.text
-    sql(hub_db, update(tables.workers).where(tables.workers.c.id == node["id"]).values(pool_id=made.json()["id"]))
-    assert client.post("/v1/worker/doctor", json={"findings": []}, headers=node["headers"]).status_code == 200
-    agent(client, hub["owner"], "pooled", permissions={"worker": {"mode": "allowlist", "allow": ["pool:vps"]}})
-    chat = created(client, hub["owner"], agents=["pooled"])
-    mention = sent(client, hub["owner"], chat["id"], "@pooled look at the diff")
-    ((made_run, *_),) = chat_runs_of(hub_db)
-    assert [(m["run_id"], m["refusal"]) for m in mention["mentions"]] == [(made_run, None)]
-    assert run_of(client, hub["owner"], made_run)["pinned_worker_id"] == node["id"]
+    fits = sent(client, hub["owner"], chat["id"], "@reviewer again")
+    assert fits["mentions"][0]["run_id"] is not None
+    busy = sent(client, hub["owner"], chat["id"], "@reviewer once more")  # the pool's one node is busy now
+    assert "old-daemon has no free slot" in busy["mentions"][0]["refusal"]
 
 
 def test_a_chat_message_hands_work_to_three_agents_at_most(client, hub, hub_db):
-    chat_worker(client, hub["owner"], "studio", slots=4)
     for handle in ("third", "fourth"):
         agent(client, hub["owner"], handle)
+        give_account_pool(hub_db, PROJECT, handle, OWNER)
+    for handle in ("reviewer", "fixer", "third", "fourth"):  # each agent has a node of its own pool
+        chat_worker(client, hub["owner"], f"node-{handle}", pool=handle)
     chat = created(client, hub["owner"], agents=["reviewer", "fixer", "third", "fourth"])
     mention = sent(client, hub["owner"], chat["id"], "@reviewer @fixer @third @fourth: one each")
     assert [m["run_id"] is not None for m in mention["mentions"]] == [True, True, True, False]
@@ -506,7 +525,11 @@ def test_another_person_mentioning_the_agent_in_the_thread_starts_a_chat_session
     ended(client, mine, spec["id"])
     second = sent(client, hub["other"], chat["id"], "@reviewer do it my way", mention["id"])
     run = run_of(client, hub["other"], second["mentions"][0]["run_id"])
-    assert (run["dispatched_by"], run["pinned_worker_id"], run["resume_of_run_id"]) == (OTHER, theirs["id"], None)
+    assert (run["dispatched_by"], run["resume_of_run_id"]) == (OTHER, None)
+    assert run["pinned_worker_id"] in (
+        mine["id"],
+        theirs["id"],
+    )  # either node of the pool: the hub does not ask who wrote
     assert run["branch"] == f"chat/{run['id']}"
 
 
@@ -515,6 +538,7 @@ def test_another_person_mentioning_the_agent_in_the_thread_starts_a_chat_session
 
 def test_an_agent_mention_hands_work_one_hop_further_for_the_origin(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio", slots=3)
+    fixer = chat_worker(client, hub["owner"], "fixer-node", pool="fixer")
     chat = created(client, hub["owner"], agents=["reviewer", "fixer"])
     mention, spec = started(client, hub, worker, chat)
     handed = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "fixer", "body": "fix the retry loop"})
@@ -527,7 +551,7 @@ def test_an_agent_mention_hands_work_one_hop_further_for_the_origin(client, hub,
         "fixer",
         OWNER,
         2,
-        worker["id"],
+        fixer["id"],
     )
     # never itself, and never past the third hop
     itself = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "reviewer", "body": "me again"}).json()
@@ -547,6 +571,7 @@ def test_an_agent_mention_hands_work_one_hop_further_for_the_origin(client, hub,
 
 def test_a_chat_has_no_budget_and_its_runs_go_on_whatever_they_cost_under_a_time_cap(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio", slots=3)
+    chat_worker(client, hub["owner"], "fixer-node", pool="fixer")
     chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer", "fixer"])
     assert "budget_usd" not in chat
     mention, spec = started(client, hub, worker, chat)
@@ -594,7 +619,7 @@ def test_an_agent_posts_reacts_and_create_makes_a_chat_with_the_origin_who_is_to
 
 
 def test_the_chat_commands_of_a_step_run_name_a_chat_and_create_one_for_its_dispatcher(client, hub, hub_db):
-    worker = chat_worker(client, hub["owner"], "studio")
+    worker = default_node(client, hub, hub_db, chat_worker(client, hub["owner"], "studio", pool=None))
     plan = {"body": credentials_api.plan_body()}
     pushed = client.put(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}", json=plan, headers=hub["owner"])
     assert pushed.status_code == 200, pushed.text
@@ -784,19 +809,25 @@ def listed(prompt: str) -> list[str]:
 
 def test_a_lazy_daemons_chat_run_starts_with_the_harness_alone_and_another_with_every_checkout(client, hub, hub_db):
     studio = chat_worker(client, hub["owner"], "studio", checkouts=WITH_HARNESS, slots=3, features=runs.WORKER_FEATURES)
-    laptop = chat_worker(client, hub["other"], "laptop", checkouts=WITH_HARNESS)
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=WITH_HARNESS, slots=4, pool=None)
     chat = created(client, hub["owner"], people=[OTHER])
     mine = run_of(
         client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer fix it")["mentions"][0]["run_id"]
     )
     assert mine["pinned_worker_id"] == studio["id"]
     assert mine["repos"] == [{"repo": HARNESS, "branch": f"chat/{mine['id']}"}]
-    # a daemon that does not say LAZY_CHAT_REPOS gets every repo of the project it has a checkout of, as before
+    # a daemon that does not say LAZY_CHAT_REPOS gets every repo of the project it has a checkout of, as before: the
+    # laptop joins the pool with more free slots than the studio, so the hub picks it
+    w, pools = tables.workers, tables.worker_pools
+    reviewers = select(pools.c.id).where(pools.c.name == "agent-reviewer").scalar_subquery()
+    sql(hub_db, update(w).values(pool_id=reviewers).where(w.c.id == laptop["id"]))
+    assert client.post("/v1/worker/doctor", json={"findings": []}, headers=laptop["headers"]).status_code == 200
     said = sent(client, hub["other"], chat["id"], "@reviewer and mine")
     theirs = run_of(client, hub["other"], said["mentions"][0]["run_id"])
     assert theirs["pinned_worker_id"] == laptop["id"]
     assert repos_of(theirs) == [HARNESS, "evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
     # no checkout of the harness, or a project registered without one: the run starts with no repo
+    sql(hub_db, update(w).values(pool_id=None).where(w.c.id == laptop["id"]))  # the studio is the pool again
     studio["checkouts"] = CHECKOUTS
     beat(client, studio)
     bare = run_of(
@@ -930,14 +961,17 @@ def test_a_lazy_chat_run_opens_a_repo_its_leases_pulls_and_next_turn_take(client
     ended(client, studio, second)
 
     # a run of another kind opens no repo here
+    node = default_node(
+        client, hub, hub_db, chat_worker(client, hub["owner"], "step-node", pool=None, features=runs.WORKER_FEATURES)
+    )
     plan = {"body": credentials_api.plan_body()}
     pushed = client.put(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}", json=plan, headers=hub["owner"])
     assert pushed.status_code == 200, pushed.text
     body = {"plan_id": credentials_api.PLAN, "steps": [1]}
     assert client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"]).status_code == 201
-    step = claim(client, studio)
+    step = claim(client, node)
     assert step["kind"] == "step"
-    refused = opened(client, studio, step["id"], "evo-agents")
+    refused = opened(client, node, step["id"], "evo-agents")
     assert refused.status_code == 404 and "only a chat run's agent opens a repo here" in refused.json()["message"]
 
 
@@ -1016,6 +1050,7 @@ def test_the_runs_list_groups_a_chat_sessions_turns_as_its_latest_and_counts_and
     state that turn's for the state filter, the counts and the total; a search that finds any turn lists the session;
     session_run_id lists the turns of one session. Without group, every run is listed as before."""
     worker = chat_worker(client, hub["owner"], "studio", slots=2)
+    default_node(client, hub, hub_db, chat_worker(client, hub["owner"], "step-node", slots=2, pool=None))
     chat = created(client, hub["owner"], people=[OTHER])
     _, (first, second, third) = three_turns(client, hub, worker, chat)
     taken_and_ended(client, worker, third)

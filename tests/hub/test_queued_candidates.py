@@ -17,7 +17,6 @@ if not pg.DSN:
 from sqlalchemy import delete, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import profile_store
 from tests.hub.live import sql
 from tests.hub.test_agent_pool_placement import ADMIN_GRANT, OWNER, join, make_agent
 from tests.hub.test_agent_pool_placement import worker as pool_worker
@@ -132,7 +131,6 @@ def test_the_candidates_of_a_queued_run_are_its_owners(client, hub):
 
 
 def test_a_run_of_an_agent_whose_pool_is_empty_says_how_to_add_a_node(client, hub, hub_db, monkeypatch):
-    monkeypatch.setattr(profile_store, "NEW_AGENT_PLACEMENT", "pool")
     grant = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=hub["admin"])
     assert grant.status_code == 200, grant.text
     make_agent(client, hub["owner"], "helper", db=hub_db)

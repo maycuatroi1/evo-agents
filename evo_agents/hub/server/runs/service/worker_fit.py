@@ -13,7 +13,6 @@ from sqlalchemy import and_, exists, func, literal, or_, select
 from evo_agents.hub import org, profiles, runs, tables
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.server import worker_placement
-from evo_agents.hub.server.profile_store import POOL_MODE
 from evo_agents.hub.server.runs.models import available
 
 OFFLINE = func.make_interval(0, 0, 0, 0, 0, 0, runs.OFFLINE_AFTER_SECONDS)
@@ -173,11 +172,6 @@ def worker_problems(
         (row.holding >= row.slots, "has no free slot"),  # its runs and the runs queued for it
         (row.others > 0, "holds a run of another member, and a shared worker runs one member's runs at a time"),
         (not row.checkouts, "has no checkout, and claims nothing"),
-        (
-            getattr(profile, "placement", None) != POOL_MODE
-            and not profiles.allows_worker(profile.permissions, row.name, row.labels or (), node.pool),
-            f"is not one @{profile.handle} allows",
-        ),
         (not usable_runtimes(row, profile), f"has no runtime @{profile.handle} allows"),
         (
             profiles.needs_worker(profile.permissions, profile.instructions)

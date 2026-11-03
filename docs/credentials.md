@@ -609,13 +609,12 @@ by id, never by name or value.
   (`--none` detaches).
 - Web: the Account pools group of the Accounts page, for each project the visitor administers.
 
-A run of an agent in pool mode (placement `pool`) leases model accounts from the agent's pool alone, chosen by weight,
+A run of an agent leases model accounts from the agent's pool alone, chosen by weight,
 priority and cooldown as any account is. When none is usable the run waits in the queue: it does not take the
 dispatcher's account and does not use a login stored on the node. On the worker, a pool-mode run never authenticates with
 the machine's login and never copies the owner's `~/.claude` (spec field `account_pool`, additive: a daemon that does
-not know it keeps its behaviour). Dispatching, or mentioning in chat, a pool-mode agent that has no pool is refused with
-a message saying an admin must attach one; in chat, that message is the reply. An agent in `legacy` mode keeps today's
-routes, and `local` runs and worker protocol v1 are unchanged.
+not know it keeps its behaviour). Dispatching, or mentioning in chat, an agent that has no account pool is refused with
+a message saying an admin must attach one; in chat, that message is the reply. `local` runs and worker protocol v1 are unchanged.
 
 ### Provider accounts
 

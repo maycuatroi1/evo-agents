@@ -11,10 +11,8 @@ The checks, in order; the first that fails is the work item's reason, and it sta
    or while a merge request of its plan on that repo is not merged.
 3. ``rate``: the runs the Loop handed out in the last 60 minutes (its ledger's ``dispatched`` rows) reach
    ``loop.dispatches_per_hour``.
-4. ``worker``: for a ``build`` or a ``deliver``, worker ``loop.worker`` is named by no live worker serving the
-   project, is offline or draining, or has no free slot (the runs it holds and those queued for it counted). With
-   ``loop.pool`` or ``loop.labels`` set, they replace the pinned worker: no live, ready worker of the project, owned
-   by a writer, holds the pool and every label, or none of them has a free slot.
+4. ``worker``: for a ``build`` or a ``deliver``, no live, ready node of the pool of the project's default agent serves
+   the project, owned by a writer, or none of them has a free slot (the runs it holds and those queued for it counted).
 
 A work item that passes them goes to the hand-out (``Dispatch``), which hands out its run in the tick's transaction or
 says why not: a task run's agent type off, its run_as no writer, or its daily cap spent is ``type_refused``, as
@@ -64,7 +62,7 @@ from evo_agents.hub.server.runs.service.worker_fit import OFFLINE
 log = logging.getLogger(__name__)
 
 BREAKER, CONCURRENCY, RATE, WORKER, TYPE_REFUSED = REASONS[QUEUED]
-WORKER_KINDS = (BUILD, DELIVER)  # the kinds whose runs go to worker loop.worker: author runs and plan runs
+WORKER_KINDS = (BUILD, DELIVER)  # the kinds whose runs go to the default agent's pool: author runs and plan runs
 RATE_WINDOW = timedelta(hours=1)
 NOT_MERGED = (*merge_gate.QUEUED_STATES, "paused")  # a merge request of the queue its repo still waits on
 HANDED_REASONS = (WORKER, TYPE_REFUSED)  # why a hand-out hands out no run
@@ -78,16 +76,18 @@ FIGURE_KEYS = (
 
 @dataclass(frozen=True)
 class LoopWorker:
-    """Worker ``loop.worker`` as admission reads it: its id and owner (the Loop's author and plan runs go to it in its
-    owner's name), its free slots, and ``down``, why it takes no run whatever its slots (none named, none found,
-    offline, draining)."""
+    """The pool of the project's default agent as admission reads it: its best node's id and owner (the Loop's author
+    and plan runs go to the pool in that owner's name), the free slots of its nodes, and ``down``, why it takes no run
+    whatever its slots (no pool, no node ready)."""
 
     name: str | None
     id: int | None = None
     owner_id: int | None = None
     free: int = 0
     down: str | None = None
-    selector: tuple[str, ...] = ()  # set when loop.pool or loop.labels pick it: the runs carry it and pin no worker
+    selector: tuple[
+        str, ...
+    ] = ()  # the labels the runs carry: the pool's, and a plan's worker_labels; no worker is pinned
 
     @property
     def problem(self) -> str | None:
@@ -100,7 +100,7 @@ class LoopWorker:
 @dataclass
 class Capacity:
     """What the checks count, kept up to date as the pass hands out runs: whether the breaker tripped, the work items
-    running by cycle, the delivers holding each repo, the runs handed out in the last hour, and worker loop.worker."""
+    running by cycle, the delivers holding each repo, the runs handed out in the last hour, and the pool of the default agent."""
 
     tripped: bool
     worker: LoopWorker
@@ -166,13 +166,8 @@ def refusal(item: ItemView, repos: Sequence[str], capacity: Capacity, policy: Ma
 # What the checks read
 
 
-def policy_selector(policy: Mapping) -> tuple[str, ...]:
-    """The selector loop.pool and loop.labels make; empty when the policy sets neither (loop.worker then rules)."""
-    return tuple(selector_of(policy.get("pool"), policy.get("labels")))
-
-
 async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[str]) -> LoopWorker:
-    """The workers a selector reaches (loop.pool, loop.labels, a plan's worker_labels): live, ready, not draining,
+    """The workers a selector reaches (the default agent's pool, a plan's worker_labels): live, ready, not draining,
     serving the project, holding every label, and owned by a writer of the project (their runs go in the owner's
     name). The best of them, the most free slots, stands for the pick; its free slots are those of all of them."""
     from evo_agents.hub.server import worker_placement  # it reaches the runs package, which imports the Loop
@@ -200,7 +195,7 @@ async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[s
         .order_by(w.c.id)
     )
     found: list[tuple[int, object]] = []
-    why = f"no live worker holding {asked} (the policy's loop.pool and loop.labels) serves the project"
+    why = f"no live worker holding {asked} serves the project"
     for row in await conn.execute(query):
         place = worker_placement.Placement.of(row)
         if not row.online or row.drained_at is not None or place.problems(selector):
@@ -215,45 +210,15 @@ async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[s
     return LoopWorker(best.name, best.id, best.owner_id, sum(n for n, _ in found), selector=tuple(selector))
 
 
-async def loop_worker(
-    conn: AsyncConnection, project_id: int, name: str | None, selector: Sequence[str] = ()
-) -> LoopWorker:
-    """The worker of the Loop's author and plan runs. With a ``selector`` (loop.pool, loop.labels, a plan's
-    worker_labels), the workers it reaches; with none, worker ``name`` (the policy's loop.worker): the live worker of
-    that name, in any case, that serves the project, the oldest when several members name one so; its free slots are
-    its slots less the runs it holds and those queued for it."""
-    if selector:
-        return await _selected(conn, project_id, selector)
-    if not name:
-        return LoopWorker(None, down="the policy names no loop.worker")
-    w, wp, r = tables.workers, tables.worker_projects, tables.runs
-    held = (r.c.worker_id == w.c.id) & r.c.state.in_(runs.HELD_STATES)
-    waiting = (r.c.pinned_worker_id == w.c.id) & (r.c.state == "queued")
-    holding = select(func.count()).where(or_(held, waiting)).scalar_subquery()
-    serves = select(wp.c.worker_id).where(wp.c.project_id == project_id)
-    query = (
-        select(
-            w.c.id,
-            w.c.name,
-            w.c.owner_id,
-            w.c.slots,
-            w.c.drained_at,
-            (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
-            holding.label("holding"),
-        )
-        .where(func.lower(w.c.name) == name.lower(), w.c.revoked_at.is_(None), w.c.id.in_(serves))
-        .order_by(w.c.id)
-        .limit(1)
-    )
-    row = (await conn.execute(query)).first()
-    if row is None:
-        return LoopWorker(name, down=f"no live worker {name} (the policy's loop.worker) serves the project")
-    down = None
-    if not row.online:
-        down = f"worker {row.name} is offline"
-    elif row.drained_at is not None:
-        down = f"worker {row.name} is draining"
-    return LoopWorker(row.name, row.id, row.owner_id, max(row.slots - row.holding, 0), down)
+async def loop_worker(conn: AsyncConnection, project_id: int, labels: Sequence[str] = ()) -> LoopWorker:
+    """The pool of the Loop's author and plan runs: the pool of the project's default agent, narrowed by ``labels`` (a
+    plan's worker_labels), as the workers its selector reaches (``_selected``)."""
+    from evo_agents.hub.server import agent_placement
+
+    home = await agent_placement.default_home(conn, project_id)
+    if home is None:
+        return LoopWorker(None, down="the default agent of the project has no pool")
+    return await _selected(conn, project_id, selector_of(home.pool, labels))
 
 
 def open_repos(body) -> tuple[str, ...]:
@@ -320,7 +285,7 @@ async def measure(conn: AsyncConnection, project_id: int, view: View, *, tripped
     running = Counter(CYCLE_OF[item.kind] for item in view.items if item.state == RUNNING and item.kind != ACT)
     return Capacity(
         tripped=tripped,
-        worker=await loop_worker(conn, project_id, view.policy.get("worker"), policy_selector(view.policy)),
+        worker=await loop_worker(conn, project_id),
         running=running,
         repos=await _repos_held(conn, project_id, view),
         dispatched=await _handed_lately(conn, project_id, view),

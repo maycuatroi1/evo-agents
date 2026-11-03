@@ -24,17 +24,6 @@ def _no_worker_of_this_machine(monkeypatch):
             monkeypatch.delenv(name)
 
 
-@pytest.fixture(autouse=True)
-def _new_agents_legacy(request, monkeypatch):
-    """An agent made in a test is placed as before (``legacy``), the way the tests of runs were written; a test module
-    that tests agents in pool mode says ``NEW_AGENTS_PLACEMENT = "pool"`` and gets the placement of a real hub."""
-    if importlib.util.find_spec("sqlalchemy") is None:  # no hub-server extras (a plain CLI install): no agent to place
-        return
-    from evo_agents.hub.server import profile_store
-
-    monkeypatch.setattr(profile_store, "NEW_AGENT_PLACEMENT", getattr(request.module, "NEW_AGENTS_PLACEMENT", "legacy"))
-
-
 @pytest.fixture(scope="session")
 def pg_server():
     """The admin DSN of a Postgres that answers, after waiting up to 30 s for it. At the end of the session

@@ -1086,7 +1086,23 @@ def test_0042_takes_agent_types_and_task_runs_and_going_back_deletes_them(hub_db
             insert(agent_types).values({**row, "name": "other", "daily_usd": 0}),
             insert(agent_types).values({**row, "name": "other", "daily_usd": 1000.5}),
             insert(agent_types).values({**row, "name": "Other"}),
-            insert(agent_types).values({**row, "name": "other", "workers": [f"w{n}" for n in range(17)]}),
+            insert(  # agent_types no longer has the column: 0194 drops it
+                table(
+                    "project_agent_types",
+                    *(column(n) for n in ("project_id", "plugin_id", "name", "profile_id", "run_as", "daily_usd")),
+                    column("enabled_by"),
+                    column("workers"),
+                )
+            ).values(
+                project_id=ids["project"],
+                plugin_id=plugin_id,
+                name="other",
+                profile_id=profile_id,
+                run_as=ids["user"],
+                daily_usd=5,
+                enabled_by=ids["user"],
+                workers=[f"w{n}" for n in range(17)],
+            ),
         ):
             with pytest.raises(errors.CheckViolation):
                 conn.execute(bad)
@@ -5196,7 +5212,7 @@ def test_migration_0189_gives_every_agent_a_pool_and_leaves_it_in_legacy(hub_db)
         member = {"owner_id": ids["user"], "name": "agent-ci"}
         conn.execute(insert(t.worker_pools).values(member))
     move_to(hub_db, "0189")
-    p, a = t.worker_pools, t.agent_profiles
+    p = t.worker_pools
     read = select(p.c.name, p.c.agent_id, p.c.owner_id).order_by(p.c.name)
     assert query(hub_db, read) == [
         ("agent-helper", helper, ids["user"]),
@@ -5205,12 +5221,13 @@ def test_migration_0189_gives_every_agent_a_pool_and_leaves_it_in_legacy(hub_db)
     assert gone not in {row[1] for row in query(hub_db, read)}
     served = select(t.worker_pool_projects.c.project_id)
     assert query(hub_db, served) == [(ids["project"],)]
-    assert query(hub_db, select(a.c.handle, a.c.placement).order_by(a.c.handle)) == [
+    placement = table("agent_profiles", column("handle"), column("placement"), column("id"))
+    assert query(hub_db, select(placement.c.handle, placement.c.placement).order_by(placement.c.handle)) == [
         ("gone", "legacy"),
         ("helper", "legacy"),
     ]
-    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
-        conn.execute(update(a).values(placement="elsewhere").where(a.c.id == helper))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0194 drops the column
+        conn.execute(update(placement).values(placement="elsewhere").where(placement.c.id == helper))
     move_to(hub_db, "0188", down=True)
     assert query(hub_db, select(p.c.name)) == [("pool-ci",)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0189") :]
@@ -5305,3 +5322,70 @@ def test_migration_0193_adds_the_run_reach_of_a_user(hub_db):
     columns = select(INFO_COLUMNS.c.column_name).where(INFO_COLUMNS.c.table_name == "users")
     assert "run_reach" not in {row[0] for row in query(hub_db, columns)}
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0193") :]
+
+
+def test_migration_0194_drops_the_placement_and_the_legacy_worker_keys_and_carries_a_named_worker_into_the_pool(hub_db):
+    move_to(hub_db, "0193")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        profile = {"project_id": ids["project"], "handle": "helper", "name": "Helper", "color": "#336699"}
+        every = {
+            axis: {"mode": "all"}
+            for axis in ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+        }
+        profile |= {"permissions": every, "created_by": ids["user"], "is_default": True}
+        helper = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
+        pool = one(
+            conn,
+            insert(t.worker_pools)
+            .values(owner_id=ids["user"], name="agent-helper", agent_id=helper)
+            .returning(t.worker_pools.c.id),
+        )
+        named = one(conn, _worker_row(ids, ids["token"], "named", 1))
+        second = insert(t.tokens).values(
+            user_id=ids["user"],
+            kind="machine",
+            token_hash="b" * 64,
+            host="pc",
+            expires_at=func.now() + timedelta(days=90),
+        )
+        other = one(conn, _worker_row(ids, one(conn, second.returning(t.tokens.c.id)), "other", 1))
+        for worker in (named, other):
+            conn.execute(insert(t.worker_projects).values(worker_id=worker, project_id=ids["project"]))
+        body = {"worker": "named", "plan_budget_usd": 1}
+        charters = table(  # as of 0193, with the worker it names
+            "charters",
+            *(column(n) for n in ("project_id", "revision", "worker_id", "created_by")),
+            column("body", JSONB),
+        )
+        conn.execute(
+            insert(charters).values(
+                project_id=ids["project"], revision=1, body=body, worker_id=named, created_by=ids["user"]
+            )
+        )
+        policy = {
+            "loop": {"worker": "other", "pool": "x", "labels": ["gpu"], "enabled": True},
+            "judge": {"worker": "other"},
+        }
+        conn.execute(
+            insert(t.autonomy_policies).values(
+                project_id=ids["project"], revision=1, body=policy, created_by=ids["user"]
+            )
+        )
+    move_to(hub_db, "0194")
+    served = select(t.workers.c.name, t.workers.c.pool_id).order_by(t.workers.c.name)
+    assert query(hub_db, served) == [("named", pool), ("other", pool)]  # a worker a key named joined the pool
+    assert query(hub_db, select(charters.c.body)) == [({"plan_budget_usd": 1},)]
+    assert query(hub_db, select(t.autonomy_policies.c.body)) == [({"loop": {"enabled": True}, "judge": {}},)]
+    gone = {"placement", "worker_id", "pool_id", "workers"}
+    for name in ("agent_profiles", "charters", "schedules", "project_agent_types"):
+        assert not gone & columns(hub_db, name)
+    move_to(hub_db, "0193", down=True)
+    profiles = table("agent_profiles", column("placement"))
+    assert query(hub_db, select(profiles.c.placement)) == [("pool",)]
+    charters = table("charters", column("worker_id"), column("pool_id"))
+    assert query(hub_db, select(charters.c.worker_id, charters.c.pool_id)) == [
+        (named, None)
+    ]  # the first node of the pool
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0194") :]

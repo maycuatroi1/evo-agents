@@ -129,8 +129,6 @@ env_secrets: [claude-oauth]
 | --- | --- | --- |
 | `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. Since plan loop-engine the project's goals live on the hub (`docs/hub.md`, Goals): a goal of the charter becomes a goal without a metric the first time the goals are read, its `id` kept as its alias, and the lens `product_goals` reads the project's active goals by rank. Change one with `evo-agents hub goal set` |
 | `window` | required | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal |
-| `worker` | required, unless `pool` | the worker on duty, by name (below) |
-| `pool` | null | instead of `worker`: one of the writer's worker pools whose nodes are on duty, by name (below); a charter names exactly one of the two |
 | `night_budget_usd` | required | the most a night may cost, every run of the night together |
 | `run_budget_usd` | null | the most one run may cost; null gives a run what the night has left. Never above `night_budget_usd` |
 | `run_max_turns` | 300 | the agent's turns in one run |
@@ -155,25 +153,15 @@ env_secrets: [claude-oauth]
 | `git_secret` | null | the owner's `git` secret the Curator's runs use for origins not on GitHub (GitLab); without it no Builder runs there |
 | `env_secrets` | none | the owner's `env` secrets the Curator's runs get, by name; they get no other |
 
-**The worker on duty.** `worker` names one of the writer's own live workers that serves the project and takes runs
-dispatched by the hub: a worker set to take runs from the web only (`dispatch_from` `web`, `docs/credentials.md`)
-passes over every run the night shift queues, so the charter refuses it. A revision that keeps the worker of the
-newest revision may be written by another admin. The member who owns that worker owns the project's schedule: the
-night shift dispatches every run as that member (`dispatched_by`), so the rule that a worker takes only its owner's
-runs holds as it is. Give that worker `--slots 1` and no credential of its owner but its leases
-(`docs/credentials.md`, "What is still a risk").
-
-**A pool on duty.** `pool` names one of the writer's own worker pools that lists the project (`docs/workers.md`,
-Pools), in place of `worker`; a charter names exactly one of the two, and the schedules follow it (`charters.pool_id`
-and `schedules.pool_id`, schema 0150, with a CHECK that exactly one of `worker_id` and `pool_id` is set). The pool's
-owner owns the schedules and the night shift dispatches as that member. A run of a pool's schedule is not pinned: it
-goes out with the selector `pool=<name>`, tolerating the pool's taints, and any ready node of the pool that serves the
-project claims it. A node is ready for the night when it is live and online, serves the project, is not draining,
-takes runs dispatched by the hub, has a clean doctor report and has no taint beyond the pool's. The keeper of the
-project's graph is the ready node with the lowest id, and the Judge's merge goes to a ready node that has the merge
-judge feature. A pool with no ready node waits, as an offline worker does. `charter show` prints `on duty: pool
-<name>` and `charter history` an ON DUTY column naming the worker or the pool; the web's charter form offers the pools
-in its duty select.
+**The node on duty.** The charter names no worker and no pool. The night shift runs on the pool of the project's
+default agent (`agent-<handle>`, `docs/agents.md`, Where an agent's runs go), and the member who owns that pool owns
+the project's schedule: the night shift dispatches every run as that member (`dispatched_by`), who must hold writer on
+the project. A run is not pinned: it goes out with the selector `pool=<name>`, tolerating the pool's taints, and any
+ready node of the pool that serves the project claims it. A node is ready for the night when it is live and online,
+serves the project, is not draining, takes runs dispatched by the hub, has a clean doctor report and has no taint
+beyond the pool's. The keeper of the project's graph is the ready node with the lowest id, and the Judge's merge goes to
+a ready node that has the merge judge feature. A pool with no ready node waits, as an offline worker does. Schema 0194
+moved the workers that an older charter, schedule, loop or judge named into that pool and dropped the keys.
 
 **Hidden checks.** `judge.hidden_checks` are shown to the project's admins alone, and as null to anyone else. A write
 with `hidden_checks: null` keeps those of the newest revision, so a charter shown without them and written back keeps
@@ -188,7 +176,7 @@ A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). E
 - outside the window, or paused, it queues nothing and cancels the runs of the schedule still queued;
 - inside the window it queues at most one run, and only when no run of the schedule is queued or held, the night has
   queued fewer than `max_runs_per_night` runs, at least 0.01 USD of `night_budget_usd` is left, the schedule's owner
-  still holds writer on the project, and the worker on duty is live and fit for the run;
+  still holds writer on the project, and a node of the default agent's pool is ready for the run;
 - the run it queues is the first of these that has work: the night's review run, while the night has none; the
   night's history run, once the night's review run was queued, while the night has none, an item waits for a facet of
   the model or a group of facets has no name; the judge run of a change of the Curator that waits for one; the Builder

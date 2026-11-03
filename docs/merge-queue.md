@@ -42,7 +42,7 @@ workers (`docs/hub.md`, Worker and queue).
    policy names them; writing them is the repo's own work. A job the policy names that is missing from a pipeline counts
    as a failed check. The UAT deploy and check of one commit must not interleave with the next commit's; a repo that
    cannot promise it sets `merge.hold_until: uat_check`.
-4. **A worker that judges.** The Judge runs on `judge.worker`, else on the worker on duty of the project's charter. Its
+4. **A worker that judges.** The Judge runs on a node of the pool of the project's default agent. Its
    daemon must say it judges merge requests (the feature `merge_judge` of its heartbeat).
 5. **The policy**, with the repo in mode `auto`: `evo-agents hub policy set --file policy.yaml`.
 
@@ -82,7 +82,6 @@ revision 0: every repo `off`.
 | `merge.risk_paths` | `[]` | globs added to the risk paths the code knows |
 | `merge.hold_until` | `merged` | how far the merge request before must get before the next one of the same branch starts: `merged`, `uat_check`, `prod_check` |
 | `merge.pipeline_minutes` | 60 | the longest the hub waits for a pipeline, a rebase or a job |
-| `judge.worker` | null | the worker that runs the Judge; null: the charter's worker on duty |
 | `judge.model` | null | the first Judge's model; null: a Claude model other than the Builder's |
 | `breaker.target_red_minutes` | 30 | the target branch red this long trips the breaker |
 | `breaker.reverts_in_a_row` | 2 | this many automatic reverts in a row trip it |
@@ -351,8 +350,7 @@ the run parks and holds no worker slot, and the verdict comes back as the messag
 verdict never came wakes after 24 hours; asking again reads where the check stands. A repo that leaves `merge_check`
 off keeps its behaviour, and the command answers 409 there.
 
-The job `hub.merge_queue` queues the judge run, the same run the queue's gates 4 to 7 use: pinned to `judge.worker` or
-the charter's worker on duty, on Claude Code with a model other than the Builder's, one judge run active a project, and
+The job `hub.merge_queue` queues the judge run, the same run the queue's gates 4 to 7 use: on a node of the default agent's pool, on Claude Code with a model other than the Builder's, one judge run active a project, and
 tried again up to three times when a run ends without a verdict. Its worker:
 
 1. merges origin's current base branch into the head in a scratch commit, with no branch, work tree or hook touched. A

@@ -17,9 +17,8 @@ transaction. The admission pass writes the rest: the work item running with its 
   a work item the plugin's own job does (``plugin_rules.hand_out``).
 - ``deliver``: a plan run of the plan the build's author run wrote, over the repos of its steps not done.
 
-An author run and a plan run go to worker ``loop.worker``, pinned, or, when the policy sets ``loop.pool`` or
-``loop.labels``, to any worker that holds them (the run's selector, no pin; a plan's ``worker_labels`` add to it, or
-must be held by the pinned worker), in the name of the worker's owner, who must hold
+An author run and a plan run go to any node of the pool of the project's default agent (the run's selector, no pin; a
+plan's ``worker_labels`` add to it), in the name of the owner of the node that stands for the pool, who must hold
 writer on the project (the checkpoint of step 1, answer 6), dispatched with a machine credential, with the caps of
 ``loop.caps`` (``caps.run_budget``) and the project's default agent profile; each is linked to the frame task (a link
 ``run`` of the plugin tasks) and audited as ``loop.dispatch``. A worker that cannot take it (its daemon, its checkouts,
@@ -33,7 +32,6 @@ merge requests go through the merge queue as any plan run's do.
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -43,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement, audit, autonomy_hold, run_autonomy
+from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
 from evo_agents.hub.server.loop import act, caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker, loop_worker
 from evo_agents.hub.server.loop.model import (
@@ -89,21 +87,10 @@ async def _owner(conn: AsyncConnection, project_id: int, worker: LoopWorker) -> 
     role = await conn.scalar(select(g.c.role).where(g.c.user_id == worker.owner_id, g.c.project_id == project_id))
     if not has_role(role, "writer"):
         return login, (
-            f"{login}, the owner of worker {worker.name} (the policy's loop.worker), holds {role or 'no grant'} on the "
+            f"{login}, the owner of worker {worker.name} of the pool, holds {role or 'no grant'} on the "
             "project, not writer: the Loop's author and plan runs go in that name"
         )
     return login, None
-
-
-async def _unfit(conn: AsyncConnection, project: str, worker: LoopWorker, kind: str, repos, runtime) -> str | None:
-    """Why ``worker`` could never claim a run of ``kind`` over ``repos`` on ``runtime``; None when it can."""
-    from evo_agents.hub.server.runs.service.dispatch import unfit, worker_as_pinned  # it imports the routes' modules
-
-    if await agent_placement.default_home(conn, await _project_id(conn, project)) is not None:
-        return None  # the default agent is in pool mode: its pool's nodes take the run, not the Loop's worker
-    pinned = await worker_as_pinned(conn, worker.id)
-    problems = ["it is gone"] if pinned is None else unfit(pinned, project, kind, list(repos), runtime)
-    return f"worker {worker.name} cannot take the {kind} run: {'; '.join(problems)}" if problems else None
 
 
 async def _insert(conn: AsyncConnection, values: dict, item: ItemView) -> tuple[int | None, str | None]:
@@ -149,7 +136,7 @@ def _values(project_id: int, kind: str, item: ItemView, view: View, worker: Loop
         "project_id": project_id,
         "dispatched_by": worker.owner_id,
         "dispatched_via": DISPATCHED_VIA,
-        "pinned_worker_id": None if worker.selector else worker.id,
+        "pinned_worker_id": None,
         "selector": list(worker.selector),
         "requested_runtime": runtime,
         "runtime": runtime,
@@ -184,7 +171,6 @@ async def _author_run(conn: AsyncConnection, project_id: int, item: ItemView, vi
         return _refused(problem or "the project was registered without its harness, where plans live")
     harness, runtime = repos[0]["repo"], author.AUTHOR_RUNTIMES[0]
     problem = await _harness_origin(conn, project_id, project, worker, harness)
-    problem = problem or await _unfit(conn, project, worker, "author", [harness], runtime)
     if problem is not None:
         return _refused(problem)
     if item.from_srs:
@@ -236,29 +222,15 @@ async def _plan_worker(
     conn: AsyncConnection, project_id: int, item: ItemView, view: View, worker: LoopWorker
 ) -> tuple[LoopWorker, str | None]:
     """(the worker of the plan run of ``item``, why none): the plan's worker_labels, when it has any, narrow the
-    selector of the run to the workers that hold them as well. The pinned worker loop.worker must hold them itself."""
+    selector of the run to the nodes of the pool that hold them as well."""
     p = tables.plans
     body = await conn.scalar(select(p.c.body).where(p.c.project_id == project_id, p.c.plan_id == item.plan_id))
     wanted = body.get("worker_labels") if isinstance(body, dict) else None
     labels = normalized(wanted) if isinstance(wanted, list) and all(isinstance(v, str) for v in wanted) else []
     if not labels:
         return worker, None
-    selector = normalized([*worker.selector, *labels])
-    if worker.selector:
-        picked = await loop_worker(conn, project_id, None, selector)
-        return picked, picked.problem
-    if worker.id is None:
-        return worker, worker.problem
-    from evo_agents.hub.server import worker_placement
-
-    place = await worker_placement.placement(conn, worker.id)
-    lacks = place.missing(labels)
-    if lacks:
-        return (
-            worker,
-            f"worker {worker.name} lacks the label {', '.join(lacks)} that plan {item.plan_id} asks (worker_labels)",
-        )
-    return replace(worker, selector=()), None
+    picked = await loop_worker(conn, project_id, labels)
+    return picked, picked.problem
 
 
 async def _plan_run(conn: AsyncConnection, project_id: int, item: ItemView, view: View, worker: LoopWorker):
@@ -274,9 +246,6 @@ async def _plan_run(conn: AsyncConnection, project_id: int, item: ItemView, view
     if problem is not None:
         return _refused(problem)
     revision, title, repos = held
-    problem = await _unfit(conn, project, worker, "plan", [entry["repo"] for entry in repos], PLAN_RUNTIME)
-    if problem is not None:
-        return _refused(problem)
     values = _values(project_id, "plan", item, view, worker, PLAN_RUNTIME) | {
         "plan_id": item.plan_id,
         "plan_revision": revision,

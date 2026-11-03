@@ -15,7 +15,6 @@ const api = vi.hoisted(() => ({
   agent: null as unknown,
   patch: null as null | ((request: Request) => Response | Promise<Response>),
   seen: [] as Request[],
-  put: (async () => Response.json(null)) as (request: Request) => Response | Promise<Response>,
 }));
 
 vi.mock("@/lib/api/browser", () => ({
@@ -28,7 +27,6 @@ vi.mock("@/lib/api/browser", () => ({
         if (url.pathname === "/v1/auth/web/csrf") return Response.json({ csrf: "csrf-1", header: "X-Evo-CSRF" });
         if (url.pathname === "/v1/projects/demo/agents/reviewer" && request.method === "PATCH" && api.patch) return api.patch(request);
         if (url.pathname === "/v1/projects/demo/agents/reviewer") return Response.json(api.agent);
-        if (url.pathname === "/v1/projects/demo/agents/reviewer/placement" && request.method === "PUT") return api.put(request);
         if (url.pathname === "/v1/worker-pools/agent-reviewer") return Response.json({ name: "agent-reviewer", nodes: [{ id: 1, name: "node-a" }, { id: 2, name: "node-b" }] });
         if (url.pathname === "/v1/workers") return Response.json([worker("vps-1", "vps"), worker("desk", null)]);
         if (url.pathname === "/v1/worker-pools") return Response.json([{ name: "vps" }, { name: "spare" }]);
@@ -52,7 +50,6 @@ const AGENT: Agent = {
   icon_url: null,
   avatar_sha256: null,
   is_default: false,
-  placement: "legacy",
   home_pool: null,
   account_pool: null,
   permissions: {},
@@ -82,25 +79,13 @@ beforeEach(() => {
 });
 
 describe("where an agent's runs may go, from a chat", () => {
-  it("shows an admin the pool, nodes and account pool, and switches a legacy agent to pool mode", async () => {
-    const user = userEvent.setup();
-    let body: unknown = null;
+  it("shows an admin the pool, nodes and account pool", async () => {
     api.agent = { ...AGENT, home_pool: "agent-reviewer", account_pool: "team-claude" };
-    api.put = async (request) => {
-      body = await request.json();
-      api.agent = { ...(api.agent as Agent), placement: "pool", version: 4 };
-      return Response.json(api.agent);
-    };
     setup("admin");
     const placement = await screen.findByTestId("agent-placement");
-    expect(placement).toHaveAttribute("data-mode", "legacy");
     expect(within(placement).getByTestId("agent-placement-pool")).toHaveTextContent("agent-reviewer");
     expect(within(placement).getByTestId("agent-placement-account-pool")).toHaveTextContent("team-claude");
     await waitFor(() => expect(within(placement).getByTestId("agent-placement-nodes")).toHaveTextContent("node-a, node-b"));
-    await user.click(within(placement).getByTestId("agent-placement-switch"));
-    await waitFor(() => expect(body).toEqual({ placement: "pool" }));
-    await waitFor(() => expect(screen.getByTestId("agent-placement")).toHaveAttribute("data-mode", "pool"));
-    expect(screen.queryByTestId("agent-placement-switch")).toBeNull();
   });
 
   it("does not show a writer the placement", async () => {

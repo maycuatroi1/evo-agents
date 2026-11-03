@@ -142,12 +142,11 @@ own `tool_output_token_limit` ([docs/hub.md](hub.md), Codex).
 
 ## Where an agent's runs go
 
-Nobody picks the machine of a run. Each agent has a pool of its own, `agent-<handle>`, and an agent in `pool` mode
-runs everything it does (steps, plan runs, author runs, chat, tasks, triage, judge, loop) on a ready node of that
-pool, whoever dispatches it. `hub run dispatch|plan|author|rerun` and `worker triage rerun` therefore have no
-`--worker`, `--pool`, `--label` or `--tolerate`, and the web dispatch, plan run and author run dialogs have no worker
-field. An admin of the project sees the pool, its nodes, the placement mode and the account pool of an agent on the
-agent's page of the web, and moves an agent to `pool` mode there or with `evo-agents hub agent placement HANDLE pool`.
-Model accounts come from the agent's account pool alone, never from the dispatcher or the login stored on a node. See
+Nobody picks the machine of a run. Each agent has a pool of its own, `agent-<handle>`, and the agent runs everything it
+does (steps, plan runs, author runs, chat, tasks, triage, judge, loop) on a ready node of that pool, whoever dispatches
+it. `hub run dispatch|plan|author|rerun` and `worker triage rerun` therefore have no `--worker`, `--pool`, `--label` or
+`--tolerate`, and the web dispatch, plan run and author run dialogs have no worker field. An admin of the project sees
+the pool, its nodes and the account pool of an agent on the agent's page of the web. An agent whose pool has no ready
+node keeps its runs queued, and the admins hear of it once, until someone adds a node. Model accounts come from the agent's account pool alone, never from the dispatcher or the login stored on a node. See
 [docs/hub.md](hub.md) for the pool and its placement, [docs/workers.md](workers.md) for the nodes of several agents on
 one machine (`bootstrap.sh` with `EVO_AGENT_TOKENS`), and [docs/credentials.md](credentials.md) for account pools.

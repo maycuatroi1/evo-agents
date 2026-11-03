@@ -89,8 +89,7 @@ class AccountCandidate(BaseModel):
 class PoolCandidate(BaseModel):
     pool: str
     agent: str = Field(description="the handle of the agent whose pool it is")
-    pool_mode: bool = Field(description="the agent is in pool mode, so its runs go to this pool's nodes alone")
-    takes_run: bool = Field(description="the pool the run goes to: its agent's, in pool mode")
+    takes_run: bool = Field(description="the pool the run goes to: its agent's")
     nodes: int = Field(description="the nodes of the pool that are not revoked")
     ready_nodes: int = Field(description="those online, not draining and ready")
     fit: bool = Field(description="the run goes to this pool and one of its nodes can take it now")

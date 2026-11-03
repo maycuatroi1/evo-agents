@@ -44,7 +44,6 @@ TIMEOUT_MIN = 60  # the agent time of one task run
 TIME_CAP_SECONDS = 30 * 60  # and its time cap, what a runtime that reports no cost (Codex) stops at
 MAX_TASK_BYTES = 16 * 1024  # the task's text (runs.request, as schema 0020 bounds it)
 MAX_TITLE_CHARS = 200
-MAX_WORKERS = 16  # the workers an agent type's runs may go to, by name; none named: any the profile allows
 MAX_PULLS = 50  # the draft pull requests a task run keeps (runs.pulls), one for each repo of its project at most
 MAX_MINUTES = 120  # the most agent time a task asks for; none asked: TIME_CAP_SECONDS
 MAX_BRANCH_CHARS = 200

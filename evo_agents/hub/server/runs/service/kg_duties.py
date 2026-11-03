@@ -2,15 +2,15 @@
 shift names it and whose graph is on (feature kg). The heartbeat answer lists them (``kg_duties``) to a daemon that says
 kg_sync, and the routes a worker pushes and reads a project's graph through (``evo_agents.hub.server.kg_worker``) take
 only a worker on duty for that project (``duty_refusal``): a worker never writes to the graph of a project it does not
-serve, nor to one whose night shift another worker keeps. A night shift on a pool (plan worker-pools, criterion a4) is
-kept by one node of it (``keeper``): its live node of the lowest id that serves the project and is online, so another
-node takes it over when that one goes offline or leaves."""
+serve, nor to one whose night shift another worker keeps. The night shift runs on the pool of the project's default
+agent and is kept by one node of it (``keeper``): its live node of the lowest id that serves the project and is online,
+so another node takes it over when that one goes offline or leaves."""
 
 from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
@@ -21,22 +21,28 @@ NIGHT_SHIFT = "night_shift"
 
 
 def keeper(s):
-    """The id of the worker that keeps the knowledge graph of schedule row ``s``'s project fresh: its worker, or the
-    live node of its pool of the lowest id that serves the project and is online (NULL for none)."""
-    w, wp = tables.workers, tables.worker_projects
+    """The id of the worker that keeps the knowledge graph of schedule row ``s``'s project fresh: the live node of the
+    pool of the project's default agent, of the lowest id, that serves the project and is online (NULL for none)."""
+    w, wp, pl, a = tables.workers, tables.worker_projects, tables.worker_pools, tables.agent_profiles
+    home = (
+        select(pl.c.id)
+        .join(a, a.c.id == pl.c.agent_id)
+        .where(a.c.project_id == s.c.project_id, a.c.is_default, a.c.deleted_at.is_(None))
+        .scalar_subquery()
+    )
     fresh = w.c.last_heartbeat_at > func.now() - timedelta(seconds=runs.OFFLINE_AFTER_SECONDS)
     node = select(func.min(w.c.id)).where(
-        w.c.pool_id == s.c.pool_id,
+        w.c.pool_id == home,
         w.c.revoked_at.is_(None),
         exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == s.c.project_id),
         fresh,
     )
-    return func.coalesce(s.c.worker_id, node.scalar_subquery())
+    return node.scalar_subquery()
 
 
 def kept_by(s, worker_id):
     """The condition on schedule row ``s`` that worker ``worker_id`` keeps its project's graph."""
-    return or_(s.c.worker_id == worker_id, and_(s.c.pool_id.is_not(None), keeper(s) == worker_id))
+    return keeper(s) == worker_id
 
 
 async def keeper_of(conn: AsyncConnection, schedule_id: int) -> int | None:
@@ -86,7 +92,7 @@ async def duty_refusal(conn: AsyncConnection, worker_id: int, worker: str, proje
         return f"worker {worker} does not serve project {project}: it may not touch its knowledge graph"
     if not row.on_duty:
         return (
-            f"worker {worker} is not on duty for the night shift of project {project}: only the worker its charter "
-            "names, or one node of the pool it names, keeps its knowledge graph fresh"
+            f"worker {worker} is not on duty for the night shift of project {project}: only one node of "
+            "the pool of its default agent keeps its knowledge graph fresh"
         )
     return None

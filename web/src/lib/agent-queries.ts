@@ -64,12 +64,6 @@ export async function editAgent(api: ApiClient, project: string, handle: string,
   return call(api.PATCH("/v1/projects/{project}/agents/{handle}", { params: { path: { project, handle } }, body, headers }));
 }
 
-/** Switch where the agent's runs go: `pool` sends them to a node of its own pool, `legacy` as before the pools. */
-export async function setPlacement(api: ApiClient, project: string, handle: string, placement: Agent["placement"]): Promise<Agent> {
-  const headers = await csrfHeaders(api);
-  return call(api.PUT("/v1/projects/{project}/agents/{handle}/placement", { params: { path: { project, handle } }, body: { placement }, headers }));
-}
-
 /** Soft-delete: the agent takes no new run, and reads as before. */
 export async function deleteAgent(api: ApiClient, project: string, handle: string): Promise<Agent> {
   const headers = await csrfHeaders(api);

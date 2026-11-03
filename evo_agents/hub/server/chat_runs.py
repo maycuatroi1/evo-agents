@@ -72,7 +72,7 @@ class Hand:
     """What one mention asks: work of ``profile`` for ``dispatcher_id`` (``dispatcher``), the person at the origin of
     the chain, at ``hop``, in the thread of ``root_id`` of ``chat``, woken by message ``message_id`` that ``author``
     wrote, with the credential kind ``via`` (runs.dispatched_via). ``route`` is set by ``hand_work`` for a profile
-    whose agent type sends its chat runs to the workers of its run_as. ``on_worker`` is the worker a new session goes to
+    whose agent type sends its chat runs under the name of its run_as. ``on_worker`` is the worker a new session goes to
     when that worker can take it: the machine the work is about (a program to install, ``triage``)."""
 
     chat: ChatAccess
@@ -122,60 +122,20 @@ async def project_repos(conn: AsyncConnection, project_id: int) -> list[str]:
     return list(dict.fromkeys([*([harness] if harness else []), *names]))
 
 
-def _no_worker(hand: Hand) -> str:
-    profile, route = hand.profile, hand.route
-    if route is None:
-        return (
-            f"{hand.dispatcher} has no worker that takes runs of project {profile.project}, which @{profile.handle} "
-            "works in, and no member shares one there: join one, or add the project to one"
-        )
-    named = f" among those its agent type names ({', '.join(route.workers)})" if route.workers else ""
-    return (
-        f"@{profile.handle} runs on the workers of {route.login}, who has no worker{named} that takes runs of project "
-        f"{profile.project}: {route.login} joins one or adds the project to one, or an admin names other workers"
-    )
-
-
 async def pick_worker(conn: AsyncConnection, hand: Hand):
-    """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher or one another member
-    shares in the project, or of the run_as of the agent's type among its own workers the type names (``hand.route``),
-    fit for the profile (``unfit_worker``); ``hand.on_worker`` when it is one of them, else the dispatcher's own before
-    a shared one, then the one with a checkout of the most repos of the project, then the most free slots."""
-    profile = hand.profile
-    home = await agent_placement.home_of(conn, profile.id)
-    if home is not None:
-        return await _pool_worker(conn, hand, home)
-    rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id))).all()
-    if hand.route is not None:
-        rows = [row for row in rows if row.owner_id == hand.owner_id and hand.route.named(row.name)]
-    if not rows:
-        return None, _no_worker(hand)
-    repos = await project_repos(conn, profile.project_id)
-    fit, unfit = [], []
-    for row in rows:
-        why = unfit_worker(row, profile, hand.run_via)
-        if why is None:
-            fit.append(row)
-        else:
-            unfit.append(f"{row.name} {why}")
-    if not fit:
-        return None, f"no worker of {hand.owner} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
-    asked = next((row for row in fit if row.id == hand.on_worker), None)
-    if asked is not None:
-        return asked, None
-
-    def rank(row):
-        held = sum(1 for name in repos if f"{profile.project}/{name}" in (row.checkouts or {}))
-        return (row.owner_id != hand.owner_id, -held, row.holding - row.slots, row.id)
-
-    return min(fit, key=rank), None
+    """(the worker a new session goes to, None), (None, why none can take it) or (None, None) when no node is ready, so
+    the run queues and the admins hear of it (``agent_placement.watch``): a node of the agent's own pool, whoever
+    mentioned the agent and whatever the agent type's run_as names. ``hand.on_worker`` when it is one of them and fit,
+    else the node that ran the thread's last turn of the agent when it is still fit, else the one with a checkout of
+    the most repos of the project, then the most free slots."""
+    home = await agent_placement.home_of(conn, hand.profile.id)
+    if home is None:
+        return None, f"@{hand.profile.handle} has no pool of its own: an admin adds one (`evo-agents worker pool`)"
+    return await _pool_worker(conn, hand, home)
 
 
 async def _pool_worker(conn: AsyncConnection, hand: Hand, home: agent_placement.Home):
-    """``pick_worker`` for an agent in pool mode: a node of the agent's own pool, whoever dispatches and whatever the
-    agent type's run_as names, and (None, None) when no node of it is ready, so the run queues and the admins hear of
-    it (``agent_placement.watch``). The node that ran the thread's last turn of the agent when it is still fit, else
-    the one with a checkout of the most repos of the project, then the most free slots."""
+    """The pick of ``pick_worker`` among the nodes of ``home``'s pool."""
     profile = hand.profile
     rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id, pool_id=home.pool_id))).all()
     ready = {row.id for row in await agent_placement.ready_nodes(conn, home)}

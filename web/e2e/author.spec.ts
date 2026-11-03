@@ -223,7 +223,7 @@ test("a reader is offered neither New plan nor Revise with agent, and reads a wr
   await admin.grant(project, writer.login, "writer", "internal");
   await seedRunPlan(writer, project);
   const live = await authorWorker(writer, project, uniqueName("their-desk"));
-  const run = await dispatchAuthor(writer, project, live.worker.id, "Write a plan for the docs.");
+  const run = await dispatchAuthor(writer, project, "Write a plan for the docs.");
   await startAuthor(live, run.id);
   await agentAsks(live, run.id, "Which docs come first?");
 
@@ -252,7 +252,7 @@ test("the Chat is a tab of the session region, beside the side column from 1280 
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   const live = await authorWorker(me, project, uniqueName("split"));
-  const run = await dispatchAuthor(me, project, live.worker.id, REQUEST);
+  const run = await dispatchAuthor(me, project, REQUEST);
   await startAuthor(live, run.id);
   await agentAsks(live, run.id, QUESTION);
 
@@ -336,7 +336,7 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
   await seedRunPlan(me, project);
   const LONG = "a-rather-long-unbroken-name-that-never-wraps";
   const live = await authorWorker(me, project, `${LONG}-${uniqueName("w")}`);
-  const run = await dispatchAuthor(me, project, live.worker.id, `${LONG} ${"word ".repeat(80)}`);
+  const run = await dispatchAuthor(me, project, `${LONG} ${"word ".repeat(80)}`);
   await startAuthor(live, run.id);
   await agentAsks(live, run.id, `A long question: ${"https://example.org/".concat(LONG.repeat(4))} and a table\n\n| a | b |\n| - | - |\n| 1 | 2 |`);
 

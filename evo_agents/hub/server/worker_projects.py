@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.runs.service.kg_duties import kept_by
 from evo_agents.hub.server.security import Principal
 
 NIGHT_SHIFT = "night_shift"  # the kind of schedule the charter of a project's Curator keeps on one worker
@@ -53,7 +54,7 @@ async def served(conn: AsyncConnection, worker_id: int) -> dict[str, int]:
 
 async def still_needed(conn: AsyncConnection, worker_id: int, name: str, dropped: dict[str, int]) -> None:
     """409 naming why, when a project of ``dropped`` (name -> id) still needs the worker: a run of it that is active and
-    held by or pinned to the worker, or its night shift, which the charter of its Curator puts on duty there."""
+    held by or pinned to the worker, or its night shift, which it keeps as the first node of the pool of the project's default agent."""
     if not dropped:
         return
     r, s = tables.runs, tables.schedules
@@ -70,9 +71,7 @@ async def still_needed(conn: AsyncConnection, worker_id: int, name: str, dropped
     held: dict[str, list[str]] = {}
     for project_id, run_id in await conn.execute(active):
         held.setdefault(by_id[project_id], []).append(str(run_id))
-    duty = select(s.c.project_id).where(
-        s.c.project_id.in_(list(by_id)), s.c.kind == NIGHT_SHIFT, s.c.worker_id == worker_id
-    )
+    duty = select(s.c.project_id).where(s.c.project_id.in_(list(by_id)), s.c.kind == NIGHT_SHIFT, kept_by(s, worker_id))
     on_duty = {by_id[project_id] for project_id in (await conn.execute(duty)).scalars()}
     why = [
         f"{project} has active runs held by it or pinned to it ({', '.join(held[project])}): let them end or cancel "
@@ -80,8 +79,8 @@ async def still_needed(conn: AsyncConnection, worker_id: int, name: str, dropped
         for project in sorted(held)
     ]
     why += [
-        f"the Curator's charter of {project} puts its night shift on duty there: name another worker in the charter "
-        f"(`evo-agents hub curator charter`)"
+        f"the night shift of {project} is kept by it, as the node of its default agent's pool of the lowest id: "
+        f"add another node to that pool first"
         for project in sorted(on_duty)
     ]
     if why:

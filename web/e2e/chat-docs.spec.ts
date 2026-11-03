@@ -173,7 +173,7 @@ test("a YAML file of an author run's Chat tab opens in the panel By line, the wo
   await ensureAuthorSkill();
   await seedRunPlan(me, project);
   const live = await authorWorker(me, project, uniqueName("desk"));
-  const run = await dispatchAuthor(me, project, live.worker.id, "Tune the deploy file.");
+  const run = await dispatchAuthor(me, project, "Tune the deploy file.");
   await startAuthor(live, run.id);
   await agentAsks(live, run.id, "Send me the deploy file.");
   await open(page, `${runPath(project, run.id)}?tab=chat`);

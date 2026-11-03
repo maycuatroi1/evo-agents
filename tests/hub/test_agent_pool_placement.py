@@ -5,7 +5,7 @@ the ready nodes of that pool claim it, whoever dispatched it, and no member's wo
 does; a chat run prefers the node that ran the previous turn of its chat; with no ready node the run stays queued and
 the admins of the project hear of it once for each outage; the dispatch, plan-run, author-run and rerun routes answer
 422 with guidance for worker_id, pool, labels or tolerations; a node of an agent's pool takes no run of another agent.
-a7: an agent in legacy mode, a local run and the worker protocol v1 behave as before.
+a7: a local run and the worker protocol v1 behave as before (step 8 removed the legacy mode).
 """
 
 from __future__ import annotations
@@ -54,7 +54,6 @@ from tests.hub.test_runs import (  # noqa: F401  (fixtures)
 )
 from tests.hub.test_runs import hub as runs_hub  # noqa: F401  (a fixture)
 
-NEW_AGENTS_PLACEMENT = "pool"  # tests/hub/conftest.py: an agent made here is placed as in a real hub
 POOLS = "/v1/worker-pools"
 EMPTY = "agent_pool_empty"
 HIGH = {"code": "other-admin", "severity": "high", "detail": "carol administers this machine (group sudo)."}
@@ -70,7 +69,7 @@ def hub(client, runs_hub) -> dict:
 
 def worker(client, headers, name: str) -> dict:
     """A worker of a member, whose daemon says it runs every kind of run and applies agent profiles."""
-    return chat_worker(client, headers, name, checkouts=RUN_CHECKOUTS)
+    return chat_worker(client, headers, name, checkouts=RUN_CHECKOUTS, pool=None)
 
 
 def make_agent(client, headers, handle: str, *, db=None, account_pool: bool = True, **body) -> dict:
@@ -83,13 +82,6 @@ def make_agent(client, headers, handle: str, *, db=None, account_pool: bool = Tr
     if account_pool and db is not None:
         give_account_pool(db, PROJECT, handle, OWNER)
     return response.json()
-
-
-def placement(client, headers, handle: str, value: str) -> None:
-    response = client.put(
-        f"/v1/projects/{PROJECT}/agents/{handle}/placement", json={"placement": value}, headers=headers
-    )
-    assert response.status_code == 200, response.text
 
 
 def pool_id(db, handle: str) -> int:
@@ -165,30 +157,17 @@ def test_a_node_of_an_agents_pool_takes_the_runs_of_that_agent_alone(client, hub
     node = join(client, hub_db, worker(client, hub["owner"], "node"), "helper")
     (elsewhere,) = dispatched(client, hub["owner"], [2], profile="other-agent")
     assert claim(client, node) is None, "the run of another agent in pool mode is not its"
-    placement(client, hub["owner"], "other-agent", "legacy")
-    (plain,) = dispatched(client, hub["owner"], [4], profile="other-agent")
-    assert claim(client, node) is None, "a run of a legacy agent is not its either: its pool is the agent's alone"
-    assert elsewhere["id"] != plain["id"]
-
-
-def test_an_agent_in_legacy_mode_runs_as_before(client, hub, hub_db):
-    make_agent(client, hub["owner"], "old", db=hub_db)
-    placement(client, hub["owner"], "old", "legacy")
-    mine = worker(client, hub["owner"], "mine")
-    (run,) = dispatched(client, hub["owner"], [2], profile="old", worker_id=mine["id"])
-    assert run_row(hub_db, run["id"])[:3] == ([], [], mine["id"])
-    assert claim(client, mine)["id"] == run["id"]
-    (free,) = dispatched(client, hub["owner"], [4], profile="old")
-    assert run_row(hub_db, free["id"])[:3] == ([], [], None)
-    assert claim(client, worker(client, hub["owner"], "second"))["id"] == free["id"]
+    (mine,) = dispatched(client, hub["owner"], [4], profile="helper")
+    assert claim(client, node)["id"] == mine["id"], "its own agent's run is"
+    assert elsewhere["id"] != mine["id"]
 
 
 def test_the_default_agent_runs_in_the_same_way_in_pool_mode(client, hub, hub_db):
-    """A run that names no agent goes to the project's default agent, and so to its pool when that is in pool mode."""
+    """A run that names no agent goes to the project's default agent, and so to its pool."""
     make_agent(client, hub["owner"], "helper", db=hub_db)  # makes the project's default agent too, when it has none
     default = client.get(f"/v1/projects/{PROJECT}/agents/{PROJECT}", headers=hub["owner"])
     assert default.status_code == 200, default.text
-    assert default.json()["placement"] == "pool"
+    assert "placement" not in default.json()
     give_account_pool(hub_db, PROJECT, PROJECT, OWNER)  # the default agent needs an account pool too
     mine = worker(client, hub["owner"], "mine")
     (run,) = dispatched(client, hub["owner"], [2])
@@ -201,7 +180,7 @@ def test_the_default_agent_runs_in_the_same_way_in_pool_mode(client, hub, hub_db
 # 422 for a machine nobody picks
 
 
-def test_a_dispatch_that_picks_the_machine_of_an_agent_in_pool_mode_is_refused_with_guidance(client, hub, hub_db):
+def test_a_dispatch_that_picks_the_machine_is_refused_with_guidance(client, hub, hub_db):
     make_agent(client, hub["owner"], "helper", db=hub_db)
     mine = worker(client, hub["owner"], "mine")
     before = runs_count(hub_db)
@@ -214,19 +193,19 @@ def test_a_dispatch_that_picks_the_machine_of_an_agent_in_pool_mode_is_refused_w
     for extra in asked:
         response = dispatch(client, hub["owner"], [2], profile="helper", **extra)
         assert response.status_code == 422, (extra, response.text)
-        assert "pool mode" in response.json()["message"] and "agent-<handle>" in response.json()["message"]
+        assert "agent-<handle>" in response.text, response.text
     plan = client.post(
         f"/v1/projects/{PROJECT}/plan-runs",
         json={"plan_id": PLAN, "profile": "helper", "worker_id": mine["id"]},
         headers=hub["owner"],
     )
-    assert plan.status_code == 422 and "pool mode" in plan.json()["message"], plan.text
+    assert plan.status_code == 422 and "agent-<handle>" in plan.text, plan.text
     author = client.post(
         f"/v1/projects/{PROJECT}/author-runs",
         json={"request": "Write a plan.", "profile": "helper", "labels": ["gpu"]},
         headers=hub["owner"],
     )
-    assert author.status_code == 422 and "pool mode" in author.json()["message"], author.text
+    assert author.status_code == 422 and "agent-<handle>" in author.text, author.text
     assert runs_count(hub_db) == before, "nothing was dispatched"
 
 
@@ -242,7 +221,7 @@ def test_a_rerun_of_a_run_of_an_agent_in_pool_mode_stays_in_the_pool_and_refuses
     for body in ({"pool": "any"}, {"labels": ["gpu"]}, {"tolerations": ["gpu"]}):
         refused = client.post(path, json=body, headers=hub["owner"])
         assert refused.status_code == 422, (body, refused.text)
-        assert "pool mode" in refused.json()["message"]
+        assert "agent-<handle>" in refused.text
     again = client.post(path, headers=hub["owner"])
     assert again.status_code == 201, again.text
     selector, _, pinned, state = run_row(hub_db, again.json()["id"])
@@ -287,6 +266,7 @@ def test_a_run_with_no_ready_node_stays_queued_and_the_admins_hear_of_each_outag
 def chat_client(hub_db, tmp_path, github, app_key):  # noqa: F811
     config = credentials_api.hub_config(hub_db, tmp_path, github, app_key)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
+        client.db = hub_db
         yield client
 
 
@@ -310,7 +290,7 @@ def chat_hub(chat_client, hub_db, github) -> dict:
 
 
 def chat_node(client, db, headers, name: str, features=None) -> dict:
-    worker = chat_worker(client, headers, name)
+    worker = chat_worker(client, headers, name, pool=None)
     return join(client, db, worker, "reviewer")
 
 
@@ -324,7 +304,7 @@ def test_a_chat_run_goes_to_a_node_of_the_pool_and_the_next_turn_to_the_node_of_
     chat_client, chat_hub, hub_db
 ):
     client, hub = chat_client, chat_hub
-    outside = chat_worker(client, hub["owner"], "studio")  # the sender's own worker, outside the pool
+    outside = chat_worker(client, hub["owner"], "studio", pool=None)  # the sender's own worker, outside the pool
     one = chat_node(client, hub_db, hub["other"], "node-one")
     two = chat_node(client, hub_db, hub["other"], "node-two")
     chat = created(client, hub["owner"], people=[OTHER])
@@ -358,7 +338,7 @@ def test_a_chat_run_goes_to_a_node_of_the_pool_and_the_next_turn_to_the_node_of_
 
 def test_a_chat_run_with_no_ready_node_waits_in_the_queue_and_tells_the_admins(chat_client, chat_hub, hub_db):
     client, hub = chat_client, chat_hub
-    outside = chat_worker(client, hub["owner"], "studio")
+    outside = chat_worker(client, hub["owner"], "studio", pool=None)
     chat = created(client, hub["owner"])
     sent(client, hub["owner"], chat["id"], "@reviewer please fix the flaky wait test")
     ((_, state, pinned, selector),) = chat_runs_of(hub_db)

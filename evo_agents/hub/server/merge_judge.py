@@ -4,8 +4,7 @@ and its verdict. ``evo_agents.hub.merge_gate`` holds the rules, ``evo_agents.hub
 
 A judge run of the queue is a run of kind ``judge`` on no plan and no schedule (schema 0081), which the merge request
 it judges names (merge_queue.judge_run_id). The admin who wrote the policy's newest revision dispatches it, so it
-reads the repo with that admin's git secret and the project's graph as them; it is pinned to the policy's
-``judge.worker``, else to the worker on duty of the project's charter (or a ready node of its pool), whose daemon must say it judges merge requests
+reads the repo with that admin's git secret and the project's graph as them; it goes to the nodes of the pool of the project's default agent, whose daemon must say it judges merge requests
 (``runs.MERGE_JUDGE``); it runs on Claude Code with the model ``judges.merge_judge_model`` picks, and never reads the
 Builder's transcript. A project has one judge run active at a time, the Curator's included: another waits for it.
 
@@ -35,13 +34,13 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import findings, judge, judges, merge_gate, runs, tables, tiers
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement, audit
+from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.changes import (
@@ -53,12 +52,11 @@ from evo_agents.hub.server.changes import (
     security_findings,
 )
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId, VerifyResult
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import insert_run, pinnable, unfit
+from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -78,32 +76,6 @@ def _digest(key: str) -> str:
 # Queueing a judge run
 
 
-async def _judge_worker(conn: AsyncConnection, project) -> tuple[int | None, str | None]:
-    """(the worker the project's judge runs go to, why there is none): the policy's judge.worker, else the worker on
-    duty of its charter."""
-    w, wp, s = tables.workers, tables.worker_projects, tables.schedules
-    name = project.policy["judge"]["worker"]
-    if name:
-        serves = select(wp.c.worker_id).where(wp.c.project_id == project.id)
-        query = select(w.c.id).where(func.lower(w.c.name) == name.lower(), w.c.revoked_at.is_(None), w.c.id.in_(serves))
-        found = (await conn.execute(query.order_by((w.c.owner_id != project.owner_id), w.c.id).limit(1))).first()
-        if found is None:
-            return None, f"no live worker {name} (the policy's judge.worker) serves project {project.name}"
-        return found.id, None
-    query = select(s.c.worker_id, s.c.pool_id, s.c.project_id).where(
-        s.c.project_id == project.id, s.c.kind == NIGHT_SHIFT
-    )
-    found = (await conn.execute(query.order_by(s.c.id).limit(1))).first()
-    if found is None:
-        return None, "the policy names no judge.worker and the project has no charter with a worker on duty"
-    if found.pool_id is None:
-        return found.worker_id, None
-    duty, why = await on_duty(conn, found)  # a pool on duty: a ready node of it, one that judges merge requests first
-    if duty is None:
-        return None, why
-    return next((node for node in duty.nodes if runs.MERGE_JUDGE in node.features), duty.nodes[0]).id, None
-
-
 async def queue_judge_run(
     conn: AsyncConnection, project, *, repo: str, branch: str, title: str, builder_model, built: bool, second: bool
 ) -> tuple[int | None, str | None, str]:
@@ -121,24 +93,6 @@ async def queue_judge_run(
         access = None
     if access is None or not has_role(access.role, "writer"):
         return None, None, f"{login}, who wrote the policy, no longer holds writer on project {project.name}"
-    worker = None
-    if await agent_placement.default_home(conn, project.id) is None:  # in pool mode a node of the pool takes it
-        worker_id, why = await _judge_worker(conn, project)
-        if worker_id is None:
-            return None, None, why
-        try:
-            worker = await pinnable(conn, member, access, worker_id)
-        except HTTPException as exc:
-            return None, None, f"its worker cannot take it: {exc.detail}"
-        if runs.MERGE_JUDGE not in worker.features:
-            return (
-                None,
-                None,
-                f"the daemon of worker {worker.name} does not say it judges merge requests: upgrade it and restart it",
-            )
-        problems = unfit(worker, project.name, "judge", [repo], judges.CLAUDE_CODE)
-        if problems:
-            return None, None, f"worker {worker.name} cannot take it: {'; '.join(problems)}"
     model, chosen = judges.merge_judge_model(
         project.policy["judge"]["model"], builder_model, built=built, second=second
     )
@@ -150,7 +104,7 @@ async def queue_judge_run(
         "title": title[:200],
         "dispatched_by": project.owner_id,
         "dispatched_via": MACHINE,
-        "pinned_worker_id": None if worker is None else worker.id,
+        "pinned_worker_id": None,
         "requested_runtime": judges.CLAUDE_CODE,
         "runtime": judges.CLAUDE_CODE,
         "model": model,

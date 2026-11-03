@@ -35,7 +35,7 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   const project = me.projects[0];
   // A worker whose daemon does not say it runs review runs: no pass of curator.collect (other specs run it at any
   // time) queues a review run here, so the night shift stays on duty with nothing in flight.
-  const live = await liveWorker(me, project, uniqueName("night"));
+  await liveWorker(me, project, uniqueName("night"));
 
   await open(page, `/p/${project}/curator`);
   await expect(main(page).getByRole("heading", { level: 1, name: "Curator" })).toBeVisible();
@@ -47,7 +47,6 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   await main(page).getByTestId("curator-write-charter").click();
   await expect(page).toHaveURL(new RegExp(`/p/${project}/curator/charter\\?edit=1$`));
   const form = main(page).getByTestId("charter-form");
-  await expect(form.getByTestId("charter-worker")).toHaveValue(live.worker.name);
 
   // The form refuses what the hub would, before anything is sent, and the first wrong field takes focus.
   await form.getByTestId("charter-night-budget").fill("2");
@@ -82,7 +81,6 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   const view = main(page).getByTestId("charter-view");
   await expect(view).toHaveAttribute("data-revision", "1");
   await expect(view.getByTestId("charter-window")).toHaveText(`${windowStart} to ${windowEnd}, UTC`);
-  await expect(view.getByTestId("charter-worker-name")).toHaveText(live.worker.name);
   await expect(view.getByTestId("charter-night-budget-value")).toHaveText("$2.00");
   await expect(view.getByTestId("charter-protected-value")).toHaveText("deploy/**.github/workflows/**");
   await expect(view.getByTestId("charter-hidden-checks-value")).toHaveText("pnpm test -- hidden");
@@ -387,7 +385,7 @@ test("the Curator page shows the weekly probe report, flagging only what is wron
   await admin.grant(project, owner.login, "admin", "internal");
   await admin.grant(project, reader.login, "reader", "internal");
   const night = await seedCurator(owner, project, uniqueName("night"));
-  await writeCharter(owner, project, night.live.worker.name, { probes: { k: 2, budget_usd: 5 } });
+  await writeCharter(owner, project, { probes: { k: 2, budget_usd: 5 } });
   const proposal = night.proposals[0];
   const task = "Wait for the deploy to finish, then say what changed.";
   const probe = await addProbe(owner, project, proposal.id, task, "python3 -m pytest -q tests/test_wait.py");

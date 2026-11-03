@@ -20,7 +20,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
-from evo_agents.hub.server.runs.models.placement import PlacementFields, RunPlacement
+from evo_agents.hub.server.runs.models.placement import HubPlaced, RunPlacement
 from evo_agents.hub.server.runs.models.routing import RoutingRecord, RunRouting
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
@@ -124,16 +124,13 @@ class ReadySteps(BaseModel):
     steps: list[StepReadiness] = Field(description="every step of the plan, in plan order")
 
 
-class Dispatch(PlacementFields):
+class Dispatch(HubPlaced):
     plan_id: str = Field(pattern=PLAN_ID)
     steps: list[int | Annotated[str, Field(min_length=1, max_length=STEP_KEY_CHARS)]] = Field(
         min_length=1, max_length=MAX_DISPATCH_STEPS, description="step ids (or orders), one run each"
     )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     mode: Literal[runs.MODES] = "headless"
-    worker_id: int | None = Field(
-        None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours, or one shared with you in the project"
-    )
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
     timeout_min: int = Field(60, ge=5, le=240)
     model: ModelName | None = Field(
@@ -155,19 +152,12 @@ class Dispatch(PlacementFields):
         return self
 
 
-class AuthorRunDispatch(PlacementFields):
+class AuthorRunDispatch(HubPlaced):
     request: str = Field(
         min_length=1,
         max_length=author.MAX_REQUEST_BYTES,
         description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
         "of UTF-8",
-    )
-    worker_id: int | None = Field(
-        None,
-        ge=1,
-        le=MAX_ID,
-        description="pin the run to this worker of yours, or one shared with you in the project; null: a worker its "
-        "labels and tolerations fit takes it",
     )
     plan_id: str | None = Field(
         None,
@@ -186,11 +176,8 @@ class AuthorRunDispatch(PlacementFields):
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
 
 
-class PlanRunDispatch(PlacementFields):
+class PlanRunDispatch(HubPlaced):
     plan_id: str = Field(pattern=PLAN_ID)
-    worker_id: int | None = Field(
-        None, ge=1, le=MAX_ID, description="pin the run to this worker of yours, or one shared with you in the project"
-    )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     model: ModelName | None = Field(
         None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
@@ -212,9 +199,8 @@ class PlanRunDispatch(PlacementFields):
     as_me: bool = Field(False, description=AS_ME_HELP)
 
 
-class Rerun(PlacementFields):
-    """What a rerun may change of the run it reruns; no body keeps everything, and no pool, labels or tolerations
-    keep the run's own selector and tolerations."""
+class Rerun(HubPlaced):
+    """What a rerun may change of the run it reruns; no body keeps everything."""
 
     model_config = ConfigDict(extra="forbid")
 

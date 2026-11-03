@@ -24,7 +24,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, Text, and_, any_, case, column, exists, func, literal, or_, select, true
+from sqlalchemy import BigInteger, Text, and_, case, column, exists, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -283,7 +283,7 @@ def _claim_conditions(
     if left_out:
         conditions.append(("kinds", r.c.kind.not_in(left_out)))
     typed = [kind for kind, runs_it in (("task", task_runs), ("question", question_runs)) if runs_it]
-    typed_clause = or_(r.c.kind.not_in(("task", "question")), and_(r.c.kind.in_(typed), _task_worker(worker_id)))
+    typed_clause = or_(r.c.kind.not_in(("task", "question")), r.c.kind.in_(typed))
     conditions.append(("task_worker", typed_clause))
     if not steady:
         conditions.append(("lost_here", ~lost_here(worker_id)))
@@ -327,18 +327,6 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
         return or_(parts["home"], parts["own"])
     member = and_(~parts["own"], parts["writer"], parts["unit"], parts["not_night"])
     return or_(parts["home"], and_(or_(parts["own"], member), parts["alone"]))
-
-
-def _task_worker(worker_id: int):
-    """Whether worker ``worker_id`` may take the task or question run: its agent type names no worker, or names it among the
-    workers of the run's dispatcher (the type's run_as), never a shared worker of another member by the same name."""
-    w, t, r = tables.workers, tables.project_agent_types, tables.runs
-    own = (w.c.id == worker_id) & (w.c.owner_id == r.c.dispatched_by)
-    name = select(func.lower(w.c.name)).where(own).correlate(r).scalar_subquery()
-    named = exists().where(
-        t.c.id == r.c.agent_type_id, or_(func.cardinality(t.c.workers) == 0, name == any_(t.c.workers))
-    )
-    return or_(agent_placement.pooled_run(), named)  # a run of an agent in pool mode goes to its pool, not the type's
 
 
 class ClaimAbandoned(Exception):
@@ -607,13 +595,11 @@ class Claimer:
         row = self.row
         clause = claim_clause(
             row.name,
-            row.labels,
             self.runtimes,
             row.features,
             self.offered,
             self.environments,
             row.plugins,
-            self.node.pool,
         )
         return [
             ("profile", clause),

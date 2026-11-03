@@ -5,7 +5,7 @@ agent (an agent has one account pool; a pool serves many agents; a writer may do
 mode leases the accounts of its pool alone, never the dispatcher's secret for a model variable, and waits in the queue
 when no account of the pool is usable; dispatching or mentioning an agent in pool mode with no account pool is refused
 with a message that tells an admin to attach one.
-a7: an agent in legacy mode leases as before, and a run of the Curator or a local run is not held by a pool.
+a7: a run of the Curator or a local run is not held by a pool. Step 8 removed the legacy mode, so every agent is in pool mode.
 """
 
 from __future__ import annotations
@@ -32,9 +32,7 @@ from tests.hub.test_chat_runs import created, sent
 from tests.hub.test_credentials_api import PLAN, PROJECT, STEPS, by_name, env_secret, leased, sample
 from tests.hub.test_credentials_api import worker_of as plain_worker
 from tests.hub.test_profile_runs import beat
-from tests.hub.test_runs import report
 
-NEW_AGENTS_PLACEMENT = "pool"  # tests/hub/conftest.py: an agent made here is placed as in a real hub
 app_key, config, client = credentials_api.app_key, credentials_api.config, credentials_api.client
 
 VAR = "CLAUDE_CODE_OAUTH_TOKEN"
@@ -59,7 +57,7 @@ def hub(client, github) -> dict:
         f"/v1/projects/{PROJECT}/agents", json={"handle": "auditor", "name": "Auditor"}, headers=headers["owner"]
     )
     assert made.status_code == 201, made.text
-    assert made.json()["placement"] == "pool" and made.json()["account_pool"] is None
+    assert made.json()["account_pool"] is None and "placement" not in made.json()
     return headers
 
 
@@ -179,7 +177,7 @@ def test_dispatching_or_mentioning_an_agent_in_pool_mode_with_no_account_pool_is
 ):
     response = dispatch(client, hub["owner"])
     assert response.status_code == 422
-    assert "agent @auditor runs in pool mode and has no account pool" in response.json()["message"]
+    assert "agent @auditor has no account pool" in response.json()["message"]
     assert "ask an admin" in response.json()["message"] and "account-pool auditor" in response.json()["message"]
     assert sql(hub_db, select(tables.runs.c.id)) == []
 
@@ -195,23 +193,3 @@ def test_a_mention_of_an_agent_in_pool_mode_with_no_account_pool_is_answered_wit
     (refusal,) = [m["refusal"] for m in mention["mentions"]]
     assert refusal.startswith("@reviewer: ") and "has no account pool" in refusal and "ask an admin" in refusal
     assert sql(hub_db, select(tables.runs.c.id).where(tables.runs.c.kind == "chat")) == []
-
-
-def test_an_agent_in_legacy_mode_leases_as_before_and_needs_no_account_pool(client, hub, hub_db):
-    mine = sample("owner-")
-    env_secret(client, hub["owner"], "dispatchers", VAR, mine)
-    placed = client.put(
-        f"/v1/projects/{PROJECT}/agents/auditor/placement", json={"placement": "legacy"}, headers=hub["owner"]
-    )
-    assert placed.status_code == 200, placed.text
-    worker = plain_worker(client, hub["owner"], "box")
-    beat(client, worker, features=[runs.AGENT_HOME])
-    request = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]], "profile": "auditor", "worker_id": worker["id"]}
-    made = client.post(f"/v1/projects/{PROJECT}/runs", json=request, headers=hub["owner"])
-    assert made.status_code == 201, made.text
-    run_id = made.json()[0]["id"]
-    spec = claim(client, worker)
-    assert spec["id"] == run_id and not spec.get("account_pool")
-    leases = by_name(leased(client, worker, run_id))
-    assert [(lease["name"], lease["value"]) for lease in leases.values()] == [("dispatchers", mine)]
-    assert report(client, worker, run_id, "failed", error="done").status_code == 200

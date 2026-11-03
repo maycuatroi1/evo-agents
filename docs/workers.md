@@ -119,9 +119,8 @@ every worker starts unshared, and the audit row `worker.update` names the change
 - **Dispatch.** A member who holds writer on a project the worker serves may pin a run to it, while its owner holds
   writer there too, and a run they dispatch without a pin may go to it as well as to their own workers. A token pinning
   a run to it still gets 403 when the owner keeps it to runs dispatched from the web (`dispatch_from`). The web's
-  dispatch picker lists a shared worker after the member's own, for an agent in `legacy` mode; the command line no
-  longer pins a run (`hub run dispatch`, `plan`, `author` and `rerun` have no `--worker`), and an agent in `pool` mode
-  runs on its own pool whoever dispatches.
+  dispatch picker no longer lists a worker: the command line does not pin a run either (`hub run dispatch`, `plan`,
+  `author` and `rerun` have no `--worker`), and an agent runs on its own pool whoever dispatches.
 - **Claim.** A claim of a shared worker takes the queued runs of its owner and of every member who holds writer on the
   run's project now, never a run of the night shift's kinds of another member, and only while every run the worker
   holds is of the same member: the agents of two members never run side by side as the daemon's user, so one of them
@@ -276,7 +275,7 @@ node: a clean doctor report is the approval. A worker of no pool is always ready
 dispatcher's pools), `labels`, every one of which the claiming worker must have among its labels and `auto_labels`,
 and `tolerations`, the taints it accepts. The run's `selector` and `tolerations` hold them (`POST .../runs`,
 `.../plan-runs` and `.../author-runs`; `docs/hub.md`; the command line has no flag for them any more, and the hub
-refuses them for an agent in `pool` mode). A worker claims a run when its labels hold the run's whole selector and the
+refuses them for every agent). A worker claims a run when its labels hold the run's whole selector and the
 run tolerates each of the worker's taints, a pool's taints included. A run pinned to a worker by the API skips the taint check but still
 needs every label of its selector. A run with no selector on a worker with no taint is claimed as before, so a daemon
 that knows nothing of pools claims, heartbeats and joins by code unchanged. A rerun that names none of the three keeps
@@ -681,8 +680,7 @@ and always on another worker, the attempt starts a new session in new worktrees,
 An author run (kind `author`, `evo_agents.hub.author`) writes an execution plan from a member's request with the
 create-exec-plan skill. A writer of the project dispatches it with `POST /v1/projects/{p}/author-runs` or
 `evo-agents hub run author REQUEST --project P`: a request of at most 16 KiB of UTF-8 (422 over it), the
-worker it runs on (an agent in `pool` mode: a node of its pool; `worker_id` in the API stays for `legacy` agents and
-must be one of the member's own, 403 otherwise), runtime
+worker it runs on (a node of the agent's pool; the API takes no `worker_id`), runtime
 claude-code (422 for opencode or codex, saying why), an optional model and 1, 2 or 4 hours of agent time (2 by
 default). A reader gets 403. Its repos are the project's harness first, where plans live, then each repo of the
 project the worker has a checkout of; a project registered without its harness gets 409, and so does a worker whose
