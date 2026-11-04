@@ -39,5 +39,28 @@ def test_semantic_json_says_mode_model_availability_and_coverage():
     assert off["mode"] == "off" and not off["model_available"] and off["coverage"] is None
 
 
+class PartStore:
+    reader = None
+
+    def top_audience(self, b):
+        return ["chat:9"]
+
+    def seen(self, b):
+        return {"nodes": 2, "edges": 1, "units": 1, "items": {"chat": 1}, "audience": {"chat"}}
+
+
+def test_a_reader_below_the_build_still_learns_whether_it_embedded_but_not_how_many_rows():
+    from evo_agents.hub.kg_graph import HubSession
+
+    session = type("S", (), {"graph_store": PartStore(), "audience": ["chat:1"], "whole": lambda self, b: False})()
+    vectors = {"model": "m", "mode": "index", "rows": 10, "vectors": 4, "partial": True}
+    summary = {"ready": True, "build_id": 3, "built_at": "t", "content_hash": "h", "stats": {"size": 9}}
+    summary["coverage"] = {"sources": [{"id": "chat", "items": 4}], "warnings": [], "vectors": vectors}
+    graph = HubSession.within(session, summary)
+    assert graph["coverage"]["vectors"] == {"model": "m", "mode": "index"}
+    found = kg_semantic_cli.semantic_json("demo", 3, graph["coverage"]["vectors"])
+    assert found["model_available"] and found["mode"] == "index" and found["rows"] == 0 and found["coverage"] is None
+
+
 def test_the_hub_embeds_for_fifteen_minutes_at_most():
     assert kg_semantic.EMBED_BUDGET_SECONDS == 900.0

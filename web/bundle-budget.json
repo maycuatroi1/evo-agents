@@ -317,8 +317,8 @@
       "reason": "Docs pages of a project (a339ab35): the documents list, a document read with its images, its history and the editor, under the docs plugin's /x/docs. The no-worker toast of a dispatch (queued-run diagnosis): its en and vi title, shared by every page. The decision board's kind srs_adopt (a plan outside the Loop holds SRS use cases) adds its en and vi label to the shared messages, 0.1 to 0.2 kB."
     },
     "/p/[project]/x/docs/documents/[slug]": {
-      "kB": 347.0,
-      "reason": "Docs pages of a project (a339ab35): the documents list, a document read with its images, its history and the editor, under the docs plugin's /x/docs. Agent pools (migrations 0189-0191): the agent's sheet shows its pool, nodes, placement and account pool to an admin, the dispatch, plan-run and author-run dialogs lose the machine picker, and the en and vi messages shared by these pages grow. The decision board's kind srs_adopt (a plan outside the Loop holds SRS use cases) adds its en and vi label to the shared messages, 0.1 to 0.2 kB."
+      "kB": 347.1,
+      "reason": "Docs pages of a project (a339ab35): the documents list, a document read with its images, its history and the editor, under the docs plugin's /x/docs. Agent pools (migrations 0189-0191): the agent's sheet shows its pool, nodes, placement and account pool to an admin, the dispatch, plan-run and author-run dialogs lose the machine picker, and the en and vi messages shared by these pages grow. The decision board's kind srs_adopt (a plan outside the Loop holds SRS use cases) adds its en and vi label to the shared messages, 0.1 to 0.2 kB. One centred column for a document's head, tabs and body (#427) adds 0.1 kB to the document page."
     },
     "/p/[project]/x/docs/documents/[slug]/edit": {
       "kB": 349.8,

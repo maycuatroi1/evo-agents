@@ -21,7 +21,8 @@ continue only for a caller whose audience still holds what the result revealed.
 kg_status names the build's totals and the coverage of each source when the caller's audience holds every audience of
 the build. Otherwise it counts what that audience holds (``Store.seen``); of a source with items that have an audience
 it says only how many of them the caller sees; and it leaves out what the build says of all items at once: the samples,
-issues and errors of its coverage, its size and its audiences. The web's graph pages count the same way
+issues and errors of its coverage, its size and its audiences; of its vectors it keeps the mode, the model and the
+error, not their counts. The web's graph pages count the same way
 (``evo_agents.hub.kg_web``).
 
 ``unknown`` looks node ids and paths up in the same graph, as a session of the caller reads it, for a check that only
@@ -265,7 +266,10 @@ class HubSession(Session):
         stats = {k: v for k, v in (summary.get("stats") or {}).items() if k not in ("size", "top_audience")}
         kept = {k: summary[k] for k in ("ready", "build_id", "built_at", "content_hash")}
         counts = {k: seen[k] for k in ("nodes", "edges", "units")}
+        vectors = coverage.get("vectors")
         coverage = {"sources": sources, "warnings": coverage.get("warnings", [])}
+        if isinstance(vectors, dict):  # whether the build embedded and with what model, not how many rows
+            coverage["vectors"] = {k: vectors[k] for k in ("mode", "model", "error") if k in vectors}
         return {**kept, **counts, "coverage": coverage, "stats": stats}
 
     def counted(self, graph: BuiltGraph) -> BuiltGraph:
