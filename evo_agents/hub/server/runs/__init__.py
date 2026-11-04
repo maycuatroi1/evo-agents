@@ -103,7 +103,8 @@ POST /v1/worker/runs/{id}/state reports a move of a run the worker holds (404 ot
 ``runs.TRANSITIONS`` with the worker as actor (409 otherwise): ``done`` only for approval auto with every verify
 command exited 0, ``review`` only for approval review. A plan run ends ``done`` without verify results, since each of
 its steps was verified when it was reported, and never in review. Reporting the state the run is in already changes
-nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe. A ``failed``
+nothing but the session id, commit, diffstat, verify results and usage given, so a resend is safe; for a run
+that left the held states it changes nothing at all. A ``failed``
 report keeps its ``failure_cause`` (``runs.FAILURE_CAUSES``, an optional field of protocol version 1) as the run's,
 which Run shows; a run of one step claimed carries its step's ``verify``, whose programs the worker's preflight looks
 for before the agent starts. A plan run reports

@@ -53,7 +53,7 @@ from evo_agents.hub.server.agent_types import enabled_type
 from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import Principal, member_principal
 from evo_agents.hub.server.srs import BA, checks, findings, markdown, reviews, store
 from evo_agents.hub.server.srs.auto_review import review_entered
 from evo_agents.hub.server.srs.diff import diff as item_changes
@@ -104,8 +104,7 @@ class Acting:
 
 
 async def _principal(conn: AsyncConnection, user_id: int, config) -> Principal:
-    login = (await conn.execute(select(tables.users.c.login).where(tables.users.c.id == user_id))).scalar_one()
-    return Principal(user_id, login, config is not None and config.is_admin(login), None, MACHINE, "")
+    return await member_principal(conn, user_id, config)
 
 
 async def _access(conn: AsyncConnection, person: Principal, project: str) -> ProjectAccess:

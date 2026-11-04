@@ -6,8 +6,10 @@ seller is on (404 otherwise) and that the hub can sell (503 without EVO_HUB_SELL
 - GET /v1/seller-api/info: the seller's id and key, and the plugins it lists with their price;
 - POST /v1/seller-api/orders: a buying hub orders a listed plugin for a number of months, naming its stable id
   (``hub_`` and 32 hex digits), its address and a contact. The answer is the order's number, ``ORD-YYYY-NNNN``, its
-  secret, which this hub keeps only the SHA-256 of, the total, and how to pay it (``evo_agents.hub.payments``). A hub
-  has at most MAX_OPEN_PER_HUB orders open, and the seller MAX_OPEN in all;
+  secret, which this hub keeps only the SHA-256 of, the total, and how to pay it (``evo_agents.hub.payments``). The
+  address an order came from (``workers.client_address``), not the hub id it names, has at most MAX_OPEN_PER_BUYER
+  orders open, and the seller MAX_OPEN in all, counted before and again under the order lock; an order left open
+  ``seller.ORDER_TTL`` is cancelled;
 - GET /v1/seller-api/orders/{number}: with the secret in X-Evo-Order-Secret, the order's state and, once a seller admin
   marked it paid, its licence;
 - GET /v1/seller-api/bundles/{plugin}[/{version}]: with ``Authorization: License <token>`` and the hub's id in
@@ -39,14 +41,15 @@ from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_store import fetch_bundle
 from evo_agents.hub.server.projects import PRINTABLE
-from evo_agents.hub.server.seller import NOT_SELLING, own_keys, seller_key, selling
+from evo_agents.hub.server.seller import NOT_SELLING, expire_orders, own_keys, seller_key, selling
+from evo_agents.hub.server.workers import client_address
 from evo_agents.plugins import compat
 from evo_agents.plugins import license as lic
 from evo_agents.plugins.manifest import PLUGIN_ID
 
 log = logging.getLogger(__name__)
 
-MAX_OPEN_PER_HUB = 5
+MAX_OPEN_PER_BUYER = 5
 MAX_OPEN = 500
 ORDER_LOCK = 0x5E11E4  # pg_advisory_xact_lock: one order number at a time
 EMAIL = r"^[^@\s\x00-\x1f\x7f]+@[^@\s\x00-\x1f\x7f]+$"
@@ -165,24 +168,33 @@ async def _number(conn: AsyncConnection, year: int) -> str:
     return f"ORD-{year}-{int(held or 0) + 1:04d}"
 
 
+async def _room(conn: AsyncConnection, address: str) -> None:
+    """429 when ``address`` or the seller has as many orders open as it may."""
+    o = tables.market_orders
+    open_orders = select(func.count()).where(o.c.state == "open")
+    if await conn.scalar(open_orders.where(o.c.buyer_address == address)) >= MAX_OPEN_PER_BUYER:
+        raise HTTPException(
+            429, f"{MAX_OPEN_PER_BUYER} orders from this address are open here: pay or cancel one before the next"
+        )
+    if await conn.scalar(open_orders) >= MAX_OPEN:
+        raise HTTPException(429, "this seller has too many orders open; try again later")
+
+
 @router.post("/orders", response_model=OrderPlaced, status_code=201)
 async def place_order(request: Request, body: OrderIn) -> OrderPlaced:
     """Order a listed plugin for ``months`` months; pay it as ``instructions`` say, then a seller admin marks it paid."""
     config = request.app.state.config
     m, o = tables.market_listings, tables.market_orders
+    address = client_address(request)
     async with request.app.state.engine.begin() as conn:
         await _selling(request, conn)
+        await expire_orders(conn)
+        await _room(conn, address)  # before the order lock: a refused order never waits on it
         listing = (await conn.execute(select(m).where(m.c.plugin == body.plugin))).first()
         if listing is None or listing.state != "listed":
             raise HTTPException(404, f"this seller does not sell {body.plugin}")
         number = await _number(conn, datetime.now(UTC).year)
-        open_orders = select(func.count()).where(o.c.state == "open")
-        if await conn.scalar(open_orders.where(o.c.buyer_hub == body.hub)) >= MAX_OPEN_PER_HUB:
-            raise HTTPException(
-                429, f"hub {body.hub} has {MAX_OPEN_PER_HUB} orders open here: pay or cancel one before the next"
-            )
-        if await conn.scalar(open_orders) >= MAX_OPEN:
-            raise HTTPException(429, "this seller has too many orders open; try again later")
+        await _room(conn, address)  # again under the lock, for the orders placed while this one waited
         per_month = payments.usd(listing.usd_per_hub_month)
         total = payments.usd(per_month * body.months)
         payment = payments.provider(config.seller_payment_instructions).create(
@@ -195,6 +207,7 @@ async def place_order(request: Request, body: OrderIn) -> OrderPlaced:
                 listing_id=listing.id,
                 buyer_hub=body.hub,
                 buyer_url=body.hub_url,
+                buyer_address=address,
                 buyer_name=body.contact.name,
                 buyer_email=body.contact.email,
                 months=body.months,
@@ -229,6 +242,7 @@ async def order_state(
     o, m = tables.market_orders, tables.market_listings
     async with request.app.state.engine.begin() as conn:
         await _selling(request, conn)
+        await expire_orders(conn)
         query = select(o, m.c.plugin).join_from(o, m, m.c.id == o.c.listing_id).where(o.c.number == number)
         row = (await conn.execute(query)).first()
     given = hashlib.sha256(secret.encode()).hexdigest()

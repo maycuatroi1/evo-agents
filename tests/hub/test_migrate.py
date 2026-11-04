@@ -5604,3 +5604,24 @@ def test_0201_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id, "fingerprint": "a" * 64}))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0201") :]
+
+
+def test_0202_binds_an_admin_login_to_one_account_and_an_order_to_its_address_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0201")
+    assert "admin_login" not in columns(hub_db, "users")
+    assert "buyer_address" not in columns(hub_db, "market_orders")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0202")
+    u = hub_tables.users
+    assert query(hub_db, select(u.c.admin_login).where(u.c.id == ids["user"])) == [(None,)]  # bound at the hub's start
+    with live.connect(hub_db) as conn:
+        conn.execute(update(u).where(u.c.id == ids["user"]).values(admin_login="octo"))
+        other = one(conn, insert(u).values(login="Mona", github_id=2).returning(u.c.id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(update(u).where(u.c.id == other).values(admin_login="octo"))  # one account a login
+    assert "buyer_address" in columns(hub_db, "market_orders")
+    move_to(hub_db, "0201", down=True)
+    assert "admin_login" not in columns(hub_db, "users")
+    assert "buyer_address" not in columns(hub_db, "market_orders")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0202") :]

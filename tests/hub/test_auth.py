@@ -487,6 +487,30 @@ def test_a_renamed_github_account_keeps_its_row_and_its_grants(client, github, h
     assert logins == [("alice", 999), ("alicia", 401), (ADMIN, 302)]
 
 
+def test_admin_renamed_on_github_stays_a_hub_admin(client, github, hub_db):
+    first = sign_in(client, github, ADMIN, 302)
+    assert first["admin"] is True
+    renamed = sign_in(client, github, "octo-renamed", 302)  # the same GitHub account under its new login
+    assert renamed["admin"] is True
+    for token in (first["token"], renamed["token"]):
+        me = bearer(token)
+        assert client.get("/v1/admin/users", headers=me).status_code == 200
+    users = tables.users
+    assert sql(hub_db, select(users.c.login, users.c.admin_login).where(users.c.github_id == 302)) == [
+        ("octo-renamed", ADMIN.lower())
+    ]
+
+
+def test_admin_login_taken_by_another_account_is_no_hub_admin(client, github, hub_db):
+    admin = sign_in(client, github, ADMIN, 302)
+    sign_in(client, github, "octo-renamed", 302)
+    taker = sign_in(client, github, ADMIN, 777)  # a new account takes the login the admin left
+    assert taker["admin"] is False
+    assert client.get("/v1/admin/users", headers=bearer(taker["token"])).status_code == 403
+    rows = {u["login"]: u for u in client.get("/v1/admin/users", headers=bearer(admin["token"])).json()}
+    assert rows[ADMIN]["admin"] is False and rows["octo-renamed"]["admin"] is True
+
+
 def test_admin_stats_counts_the_rows_of_every_table(client, github, hub_db):
     add_project(hub_db, "demo")
     admin = sign_in(client, github, ADMIN, 302)

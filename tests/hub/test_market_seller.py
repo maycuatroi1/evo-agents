@@ -334,3 +334,33 @@ def test_buying_needs_the_hubs_sealing_key_and_selling_needs_the_sellers_key(hub
         source = add_market(found.buyer)["id"]
         refused = buy(found, source, 1, status=503)
         assert "EVO_HUB_SECRETS_KEY" in str(refused)
+
+
+@needs_pg
+def test_seller_order_expiry_and_the_open_orders_counted_by_address_not_hub_id(hubs):
+    from sqlalchemy import update
+
+    from evo_agents.hub import tables
+    from evo_agents.hub.server import seller, seller_api
+
+    list_for_sale(hubs)
+
+    def order(n: int):
+        body = {"plugin": PLUGIN, "hub": f"hub_{n:032x}", "months": 1, "contact": CONTACT}
+        return hubs.seller.client.post("/v1/seller-api/orders", json=body)
+
+    placed = [order(n) for n in range(seller_api.MAX_OPEN_PER_BUYER)]
+    assert [answer.status_code for answer in placed] == [201] * seller_api.MAX_OPEN_PER_BUYER
+    refused = order(99)  # another hub id from the same address
+    assert refused.status_code == 429 and "from this address" in refused.json()["message"]
+    first = placed[0].json()
+    o = tables.market_orders
+    stale = datetime.now(UTC) - seller.ORDER_TTL - timedelta(minutes=1)
+    live.sql(hubs.seller.db, update(o).where(o.c.number == first["number"]).values(created_at=stale))
+    read = hubs.seller.client.get(
+        f"/v1/seller-api/orders/{first['number']}", headers={"X-Evo-Order-Secret": first["secret"]}
+    )
+    assert read.status_code == 200 and read.json()["state"] == "cancelled"
+    assert order(99).status_code == 201  # the expired order no longer counts
+    orders = call(hubs.seller, "GET", "/v1/seller/orders", params={"state": "open"})["orders"]
+    assert len(orders) == seller_api.MAX_OPEN_PER_BUYER and first["number"] not in {row["number"] for row in orders}

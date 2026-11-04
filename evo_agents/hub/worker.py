@@ -99,10 +99,11 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``); on Monday, for a charter that runs
   probes, the weekly report of their ISO week just ended too, once a week (``evo_agents.hub.server.probe_report``).
-- ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
-  written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
-  hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits for at the next
-  pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``, ``.protection``).
+- ``curator.changes``, every minute, one pass at a time: the Curator's changes move on: their pull requests opened,
+  the Judge's check runs written, the tier 0 ones merged when everything allows it, the others left open for their
+  owner and read again hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits
+  for at the next pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``,
+  ``.protection``).
 - ``hub.merge_queue``, every minute, one pass at a time: the merge queue on GitLab of each project whose autonomy
   policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
   until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
@@ -377,7 +378,7 @@ async def curator_brief(context: JobContext, timestamp: int | None = None) -> di
 
 
 @queue.periodic(cron="* * * * *")
-@queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, queueing_lock=jobs.CURATOR_CHANGES)
+@queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, lock=jobs.CURATOR_CHANGES, queueing_lock=jobs.CURATOR_CHANGES)
 async def curator_changes(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.changes import advance
 

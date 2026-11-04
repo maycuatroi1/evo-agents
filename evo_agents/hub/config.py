@@ -339,8 +339,10 @@ class HubConfig:
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
 
-    def is_admin(self, login: str) -> bool:
-        return login.lower() in self.admins
+    def is_admin(self, login: str | None) -> bool:
+        """Whether ``login`` is listed; pass the login an account answers to as an admin (``security.admin_login``),
+        never the GitHub login it signed in with, which another account can take."""
+        return login is not None and login.lower() in self.admins
 
     def web_login_missing(self) -> list[str]:
         """The variables the web sign-in still needs; empty when it can run."""

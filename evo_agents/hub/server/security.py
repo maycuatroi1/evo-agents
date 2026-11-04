@@ -74,7 +74,7 @@ from typing import Annotated
 
 import psycopg
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import and_, bindparam, exists, func, insert, or_, select, update
+from sqlalchemy import and_, bindparam, case, exists, func, insert, or_, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.responses import Response
@@ -150,6 +150,58 @@ _TOKEN = re.compile(r"ev[hswr]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of b
 WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
 
 
+def admin_login(users=None):
+    """The EVO_HUB_ADMINS login a users row answers to, as a column for ``HubConfig.is_admin``: the one bound to its
+    GitHub account (users.admin_login, ``bind_admin``), which a rename on GitHub keeps, else its own login while no
+    account holds that one bound. A login another account took since never makes its new holder an admin."""
+    users = tables.users if users is None else users
+    bound = tables.users.alias("bound")
+    own = func.lower(users.c.login)
+    taken = exists().where(bound.c.admin_login == own)
+    return func.coalesce(users.c.admin_login, case((taken, None), else_=own))
+
+
+async def bind_admin(conn: AsyncConnection, admins: frozenset[str], user_id: int, login: str) -> str | None:
+    """Bind ``login``, when EVO_HUB_ADMINS lists it, to the account of row ``user_id`` (users.admin_login), unless
+    another account holds it or this one holds a listed login already; the login the row answers to as an admin
+    after (``admin_login``)."""
+    users = tables.users
+    listed = login.lower()
+    if listed in admins:
+        held = select(users.c.admin_login).where(users.c.id == user_id).with_for_update()
+        if (await conn.execute(held)).scalar_one_or_none() not in admins:
+            bound = tables.users.alias("bound")
+            free = ~exists().where(bound.c.admin_login == listed)
+            try:
+                async with conn.begin_nested():
+                    await conn.execute(update(users).values(admin_login=listed).where(users.c.id == user_id, free))
+            except sa_exc.IntegrityError:  # another account bound it at the same moment: it is that one's
+                pass
+    return (await conn.execute(select(admin_login()).where(users.c.id == user_id))).scalar_one_or_none()
+
+
+async def member_principal(conn: AsyncConnection, user_id: int, config) -> Principal:
+    """Member ``user_id`` as the hub sees a request of theirs that carries no token: a hub admin when their account
+    answers to a login of EVO_HUB_ADMINS (``admin_login``), never without the hub's config, which names them."""
+    users = tables.users
+    query = select(users.c.login, admin_login(users).label("admin_login")).where(users.c.id == user_id)
+    row = (await conn.execute(query)).one()
+    admin = config is not None and config.is_admin(row.admin_login)
+    return Principal(user_id, row.login, admin, None, MACHINE, "", admin_login=row.admin_login)
+
+
+async def bind_admins(engine, admins: frozenset[str]) -> None:
+    """At the hub's start, bind each listed login to the account that signed in with it (``bind_admin``), so an admin
+    who signed in before the hub bound logins keeps the role after a rename."""
+    users = tables.users
+    query = select(users.c.id, users.c.login).where(
+        func.lower(users.c.login).in_(sorted(admins)), users.c.github_id.is_not(None)
+    )
+    async with engine.begin() as conn:
+        for row in (await conn.execute(query)).all():
+            await bind_admin(conn, admins, row.id, row.login)
+
+
 def _authenticate():
     """One statement: find a live token of kind ``:token_kind`` with hash ``:digest``, and when it was last written more
     than TOUCH_EVERY ago, push its expiry and mark the user seen. Two requests racing over a stale token write once:
@@ -157,7 +209,7 @@ def _authenticate():
     (AUTHENTICATE): every request runs it, and a statement built per call costs more than its round trip."""
     tokens, users = tables.tokens, tables.users
     found = (
-        select(tokens.c.id, tokens.c.user_id, users.c.login)
+        select(tokens.c.id, tokens.c.user_id, users.c.login, admin_login(users).label("admin_login"))
         .join_from(tokens, users, users.c.id == tokens.c.user_id)
         .where(
             tokens.c.token_hash == bindparam("digest"),
@@ -184,7 +236,7 @@ def _authenticate():
         .returning(users.c.id)
         .cte("seen")
     )
-    return select(found.c.id, found.c.user_id, found.c.login).add_cte(touched, seen)
+    return select(found.c.id, found.c.user_id, found.c.login, found.c.admin_login).add_cte(touched, seen)
 
 
 AUTHENTICATE = _authenticate()
@@ -204,7 +256,14 @@ def _live_run_token(match):
         tables.grants,
     )
     return (
-        select(tokens.c.id, tokens.c.user_id, users.c.login, cl.c.run_id, users.c.run_reach)
+        select(
+            tokens.c.id,
+            tokens.c.user_id,
+            users.c.login,
+            admin_login(users).label("admin_login"),
+            cl.c.run_id,
+            users.c.run_reach,
+        )
         .join_from(tokens, users, users.c.id == tokens.c.user_id)
         .join(cl, cl.c.token_id == tokens.c.id)
         .join(r, r.c.id == cl.c.run_id)
@@ -242,7 +301,8 @@ def _authenticate_run():
         .returning(tokens.c.id)
         .cte("touched")
     )
-    return select(found.c.id, found.c.user_id, found.c.login, found.c.run_id, found.c.run_reach).add_cte(touched)
+    columns = (found.c.id, found.c.user_id, found.c.login, found.c.admin_login, found.c.run_id, found.c.run_reach)
+    return select(*columns).add_cte(touched)
 
 
 AUTHENTICATE_RUN = _authenticate_run()
@@ -281,7 +341,7 @@ class Principal:
 
     user_id: int
     login: str
-    admin: bool  # the login is listed in EVO_HUB_ADMINS
+    admin: bool  # it acts as a hub admin: its account answers to a login of EVO_HUB_ADMINS (admin_login)
     token_id: int
     kind: str  # MACHINE, WORKER or RUN (a Bearer token), or WEB (the session cookie)
     token_hash: str
@@ -290,6 +350,8 @@ class Principal:
     # RUN: the groups of run_access_rules.REACH_GROUPS its owner lets their runs reach (users.run_reach), read with the
     # token; empty for everyone else
     run_reach: frozenset[str] = frozenset()
+    # the EVO_HUB_ADMINS login its account answers to (``admin_login``), whatever ``admin`` says of this credential
+    admin_login: str | None = None
 
     def __repr__(self) -> str:
         run = self.scope.run_id if self.scope is not None else self.run_id
@@ -434,12 +496,14 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
             row = (await conn.execute(AUTHENTICATE, {"digest": digest, "token_kind": kind})).one_or_none()
     if row is None:
         return None
-    token_id, user_id, login, *run = row
-    admin = kind != WORKER and config.is_admin(login)  # a worker acts for its owner on its own routes only
+    token_id, user_id, login, admin_as, *run = row
+    admin = kind != WORKER and config.is_admin(admin_as)  # a worker acts for its owner on its own routes only
     if not run:
-        return Principal(user_id, login, admin, token_id, kind, digest)
+        return Principal(user_id, login, admin, token_id, kind, digest, admin_login=admin_as)
     run_id, reach = run
-    return Principal(user_id, login, admin, token_id, kind, digest, run_id=run_id, run_reach=frozenset(reach))
+    return Principal(
+        user_id, login, admin, token_id, kind, digest, run_id=run_id, run_reach=frozenset(reach), admin_login=admin_as
+    )
 
 
 async def still_live(conn: AsyncConnection, principal: Principal) -> bool:

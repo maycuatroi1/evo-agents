@@ -196,7 +196,7 @@ def audiences(request: Request, user: Principal) -> tuple[str, ...]:
     """The audiences of the global skills ``user`` reads: every one for a hub admin and for the agent of a run whose
     owner is one (the agent is never a hub admin itself, ``Principal.admin``, but reads what its owner reads);
     everyone's alone for anyone else."""
-    if user.admin or (user.scope is not None and request.app.state.config.is_admin(user.login)):
+    if user.admin or (user.scope is not None and request.app.state.config.is_admin(user.admin_login)):
         return AUDIENCES
     return (EVERYONE,)
 
@@ -618,7 +618,7 @@ async def _pool_node(request: Request, conn: AsyncConnection, user: Principal) -
     pool_id = (await conn.execute(query)).scalar_one_or_none()
     if pool_id is None:
         raise HTTPException(403, "the skills of the hub are synced on the nodes of a worker pool alone")
-    return replace(user, admin=request.app.state.config.is_admin(user.login))
+    return replace(user, admin=request.app.state.config.is_admin(user.admin_login))
 
 
 @worker_router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}, **PAGED})

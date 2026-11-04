@@ -212,6 +212,9 @@ evo-agents hub market orders --state open
 evo-agents hub market paid ORD-2026-0001 --invoice INV-0042
 ```
 
+An order nobody pays within 30 days is cancelled, in the name of the listing's owner. One address may have 5 orders
+open at a seller at a time, whatever hub ids it names, and a seller 500 in all; past either the seller answers 429.
+
 Every hour, and at once with Check now on `/admin/market` or `hub market licenses --check`, the buying hub asks its
 sellers about the open orders. It checks a licence it receives offline, with the keys the market's index lists for the
 seller, then downloads the bundle, which the seller serves only for a valid licence of that exact hub, checks its

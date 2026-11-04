@@ -310,8 +310,11 @@ session secret, and the public URL. Until all four are set, its routes answer 50
 working with the client id alone. When the client secret is set, the hub also checks with GitHub that a CLI's token
 was issued to this App, so a personal token or another App's token signs nobody in.
 
-The logins in `EVO_HUB_ADMINS` are hub admins. An admin registers projects and grants roles; a login can be granted
-before its first sign-in, and the grant waits for it:
+The logins in `EVO_HUB_ADMINS` are hub admins. The hub binds each listed login to the GitHub account that first signs
+in with it (`users.admin_login`): that account stays an admin after it renames itself on GitHub, and an account that
+takes the login later is not one. To move a listed login to another account, an operator clears the binding
+(`users.admin_login` set to null) and the new account signs in. An admin registers projects and grants roles; a login
+can be granted before its first sign-in, and the grant waits for it:
 
 ```sh
 evo-agents hub admin grant alice demo --role writer --max-level internal

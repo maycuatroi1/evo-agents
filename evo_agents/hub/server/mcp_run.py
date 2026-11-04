@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import question_runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import HELD_STATES
-from evo_agents.hub.server.security import Principal, RunScope
+from evo_agents.hub.server.security import Principal, RunScope, admin_login
 
 MOUNT = "/mcp"  # where the hub mounts its MCP server (``evo_agents.hub.server.mcp``)
 NOT_HELD = (
@@ -38,6 +38,7 @@ def _held_run(token_id: int, run_id: int):
             runs.c.kind,
             runs.c.dispatched_by,
             users.c.login,
+            admin_login(users).label("admin_login"),
             runs.c.profile_id,
             runs.c.profile_version,
             case((profiles.c.is_default, None), else_=profiles.c.handle).label("agent"),
@@ -75,4 +76,5 @@ async def run_principal(conn: AsyncConnection, user: Principal, run_id: int) -> 
         role, max_level = "reader", question_runs.lowered_level(row.levels, max_level, row.default_label)
     memory = (row.profile_id, row.profile_version, row.agent, row.hop, row.chat_id, row.chat_message_id)
     scope = RunScope(run_id, project, role, max_level, kind, *memory)
-    return replace(user, user_id=row.dispatched_by, login=row.login, admin=False, scope=scope)
+    owner = {"user_id": row.dispatched_by, "login": row.login, "admin_login": row.admin_login}
+    return replace(user, **owner, admin=False, scope=scope)
