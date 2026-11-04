@@ -388,21 +388,26 @@ def fake_evo_agents(bin_dir: Path) -> Path:
     return script
 
 
+def hook_env(env: dict, tmp_path: Path) -> dict:
+    """``env`` as Claude Code gives it to a hook command of the plugin: CLAUDE_PLUGIN_ROOT set, and sh on the PATH
+    after the directories the test put there."""
+    shell = tmp_path / "shell"
+    if not shell.exists():
+        shell.mkdir()
+        (shell / "sh").symlink_to(SH)
+    return {**env, "PATH": f"{env['PATH']}{os.pathsep}{shell}", "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
+
+
 def plugin_hooks() -> dict:
     return json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
 
 
-HOOK_COMMAND = re.compile(
-    r"command -v uvx >/dev/null 2>&1 && uvx --offline --from (evo-ak==\S+) evo-agents (?P<args>[^|{}']+?)"
-    r" \|\| \{ command -v evo-agents >/dev/null 2>&1 && echo '(?P<plugin>evo-\w+): uvx could not run \1, so evo-agents"
-    r" from PATH runs (?P=args)' >&2 && evo-agents (?P=args); \} \|\| echo '(?P=plugin): (?P=args) did not run: uvx"
-    r" could not run \1 and evo-agents from PATH is missing or failed' >&2; true"
-)
+HOOK_COMMAND = re.compile(r'sh "\$\{CLAUDE_PLUGIN_ROOT\}/bin/evo-ak" (?P<args>[\w -]+)')
 
 
 def hook_runs(command: str) -> str:
-    """What a hook command of a plugin runs after ``evo-agents``: the pinned release through ``uvx --offline``, else
-    ``evo-agents`` on the PATH with the same arguments, a line on stderr for either miss, and exit status 0."""
+    """What a hook command of a plugin runs after ``evo-agents``: the plugin's launcher, ``bin/evo-ak``, which runs the
+    release of plugin.json through ``uvx --offline``, else ``evo-agents`` on the PATH, and exits 0 either way."""
     found = HOOK_COMMAND.fullmatch(command)
     assert found, command
     return found["args"]
@@ -448,7 +453,7 @@ def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, 
     commands["LocalTool"] = plugin_hooks()["PostToolUse"][1]["hooks"][0]["command"]
 
     def run(command: str, path: str) -> subprocess.CompletedProcess:
-        env = pg.clean_env(HOME=str(own_home), PATH=path)
+        env = hook_env(pg.clean_env(HOME=str(own_home), PATH=path), tmp_path)
         for variable in HOST_VARIABLES:
             env.pop(variable, None)
         return subprocess.run([SH, "-c", command], input=payload, env=env, capture_output=True, text=True)
