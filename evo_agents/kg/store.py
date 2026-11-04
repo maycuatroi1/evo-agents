@@ -64,6 +64,7 @@ from pathlib import Path
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
+from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -301,6 +302,18 @@ def _schema_version(db: sqlite3.Connection) -> str | None:
     return row[0] if row else None
 
 
+def _tuning_of(project) -> kg_settings.Tuning:
+    """What the project's settings.json tunes search by; a file that cannot be read leaves the defaults (``kg settings``
+    reports it), so search never fails on it."""
+    asked = kg_settings.override_of()
+    if asked is not None:
+        return asked
+    try:
+        return kg_settings.read(project.root)
+    except kg_settings.SettingsError:
+        return kg_settings.DEFAULT
+
+
 class Store:
     def __init__(self, path: Path):
         self.path = path
@@ -327,7 +340,11 @@ class Store:
     def open_existing(cls, project) -> Store | None:
         """The project's store for reading; raises StaleSchema on a file from an older schema."""
         path = project.root / "graph.sqlite"
-        return cls(path) if path.exists() else None
+        if not path.exists():
+            return None
+        store = cls(path)
+        store.tuning = _tuning_of(project)
+        return store
 
     @classmethod
     def open_readonly(cls, project) -> Store | None:
@@ -336,7 +353,9 @@ class Store:
         path = project.root / "graph.sqlite"
         if not path.exists():
             return None
-        return cls.open_file(path)
+        store = cls.open_file(path)
+        store.tuning = _tuning_of(project)
+        return store
 
     @classmethod
     def open_file(cls, path: Path, *, immutable: bool = False) -> Store:
@@ -358,6 +377,7 @@ class Store:
         self.reader: frozenset[str] = frozenset()
         self.asked_clearance: tuple[int, int] | None = None  # the (level, location) of node_asked rows read; None: none
         self._asked: bool | None = None  # whether the file has the asked tables, once looked up
+        self.tuning = kg_settings.DEFAULT  # what the project is tuned by at query time (``evo_agents.kg.settings``)
         self.asked_weight: float | None = None  # the weight of the asked rows to use in place of the file's (an eval)
         self._trigram: bool | None = None  # whether the file has a filled node_tri, once looked up
         self._asked_weight: tuple[float | None] | None = None  # (the weight the file records or None), once read
@@ -1302,7 +1322,7 @@ class Store:
             by_substring = sorted(tri, key=lambda node_id: (tri[node_id], node_id))[:want]
             lists.append((text_search.TRIGRAM_WEIGHT, by_substring))
         if near:
-            lists.append((semantic.SEMANTIC_WEIGHT, sorted(near, key=lambda node_id: (-near[node_id], node_id))))
+            lists.append((self.tuning.semantic_weight, sorted(near, key=lambda node_id: (-near[node_id], node_id))))
         if len(lists) > 1:
             ranked = semantic.fuse(lists, semantic.RRF_K)
         found = [*hits, *(h for h in ranked if h not in hits)]
@@ -1352,7 +1372,7 @@ class Store:
         if fts_query is None or not self.has_trigram():
             return {}
         of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
-        weights = ", ".join(str(w) for w in text_search.WEIGHTS[:4])  # node_id, kind, name, path
+        weights = ", ".join(str(w) for w in self.tuning.bm25[:4])  # node_id, kind, name, path
         try:
             found = self.db.execute(
                 f"SELECT node_id, kind, bm25(node_tri, {weights}) AS score FROM node_tri"
@@ -1614,7 +1634,7 @@ class Store:
         ``node_fts_aud`` are read only for a reader with an audience, and only those within it, each with the score
         ``node_fts`` would give it (``_as_public``)."""
         of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
-        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        weights = ", ".join(str(w) for w in self.tuning.bm25)
         rows = []
         for table in FTS_TABLES if self.reader else FTS_TABLES[:1]:
             seen = " AND aud_seen(aud)" if table == "node_fts_aud" else ""
@@ -1661,7 +1681,7 @@ class Store:
         in ``node_fts``, so no row of an audience the reader lacks weighs in it through the IDF either."""
         if not rows:
             return rows
-        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        weights = ", ".join(str(w) for w in self.tuning.bm25)
         marks = ", ".join("?" for _ in rows)
         held = dict(self.db.execute("SELECT aud, count(*) FROM node_fts_rows GROUP BY aud").fetchall())
         totals = {table: held.get(aud, 0) for aud, table in enumerate(FTS_TABLES)}  # its rows, as _update_fts keeps
@@ -1740,7 +1760,7 @@ class Store:
         """For each node of ``ids`` indexed as passages too (``search.PASSAGE_FROM``), (the lines of its passage that
         matches the words ``whole`` best by BM25, the passage's snippet when the node is one of ``snippets``). A store
         written before passages came holds none, and answers {}."""
-        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        weights = ", ".join(str(w) for w in self.tuning.bm25)
         query = " OR ".join(whole)
         out: dict[str, tuple[str, str | None]] = {}
         for node_id in ids:

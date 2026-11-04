@@ -1,8 +1,8 @@
 """The KG optimize loop (plan kg-retrieval-quality, criterion a7): the gates and the noise of
 ``evo_agents.hub.kg_optimize`` without the database, and on Postgres the run a writer asks for (one in flight a
 project, a second call answering with it), the night's run that holds the night's review and adds the kg_health lens,
-each phase ``kg_optimize.advance`` moves a run through with a measure the test gives, the undo of a run that made the
-holdout worse, the report the owner gets and the morning brief's line, and the asked weight the next build reads."""
+each phase ``kg_optimize.advance`` moves a run through with a measure the test gives, the numbers a run that made the
+holdout worse hands to the next kg_init run (it undoes nothing, changes no mode), the report the owner gets and the morning brief's line, and the asked weight the next build reads."""
 
 from datetime import timedelta
 from functools import partial
@@ -72,7 +72,7 @@ def test_the_weight_moves_only_beyond_the_noise_with_enough_questions_and_labels
     assert model.best_weight(close, 1.0, 25) == {**model.best_weight(close, 1.0, 25), "weight": 1.0, "changed": False}
 
 
-def test_the_report_holds_the_figures_the_decisions_and_the_undo():
+def test_the_report_holds_the_figures_the_decisions_and_the_handover():
     body = {
         "before": {"build_id": 3, "holdout": found(60.0), "review_open": 4, "coverage": {"sources": 2},
                    "sessions": {"click_rate": 0.42, "searches": 50, "new_labels": 21}},
@@ -82,12 +82,13 @@ def test_the_report_holds_the_figures_the_decisions_and_the_undo():
         "decisions": {"numbers": [7, 8], "why": "the review queue's fixes"},
         "pulls": [{"repo": "evo-agents", "pr_url": "https://github.com/o/r/pull/9", "state": "merged"}],
         "regressions": ["hit@5 fell from 60% to 50%, beyond the noise of 4.9 points"],
-        "undone": {"decisions": [7, 8], "reverts": [12], "asked_weight": 1.0, "semantic": "off"},
     }  # fmt: skip
-    text = model.report_text("demo", 4, body, "reverted")
-    assert text.startswith("**KG optimize of demo reverted after a regression: hit@5 60.0% to 50.0%** (KG optimize")
+    text = model.report_text("demo", 4, body, "done")
+    assert text.startswith(
+        "**KG optimize of demo measured, with a regression for the Curator to judge: hit@5 60.0% to 50.0%** (KG optimize"
+    )
     for piece in ("click_rate 0.42", "21 new labels", "Search by meaning: keep", "#7, #8", "pull/9: merged",
-                  "revert proposals #12", "Open review items: 4 before, 1 after", "Jev: off"):  # fmt: skip
+                  "Nothing was undone", "next kg_init run", "Open review items: 4 before, 1 after", "Jev: off"):  # fmt: skip
         assert piece in text, piece
     assert "·" not in text
     assert model.summary("demo", {}, "running") == "KG optimize of demo in flight (running)"
@@ -221,7 +222,7 @@ def test_an_asked_for_run_measures_reviews_applies_measures_again_and_reports(re
     body = row["body"]
     assert body["before"]["holdout"]["hit@5"] == 60.0 and body["before"]["review_open"] == 3
     assert body["before"]["coverage"] == {"sources": 1} and body["before"]["sessions"]["searches"] == 0
-    assert body["semantic"]["decision"] == model.UNAVAILABLE and body["semantic"]["mode"] == "off"
+    assert body["semantic"]["decision"] == model.UNAVAILABLE and body["semantic"]["mode"] == "index"
     r = tables.runs
     agent = row["agent_run_id"]
     ((kind, title, state, budget),) = sql(db, select(r.c.kind, r.c.title, r.c.state, r.c.budget).where(r.c.id == agent))
@@ -252,7 +253,8 @@ def test_an_asked_for_run_measures_reviews_applies_measures_again_and_reports(re
         db, select(n.c.user_id, n.c.notice_kind, n.c.title, n.c.body).where(n.c.notice_kind == "kg_optimize")
     )
     assert (user, notice) == (user_id(db, OWNER), "kg_optimize")
-    assert title == f"KG optimize of {PROJECT} kept: hit@5 60.0% to 61.0%" and text == row["report"]
+    assert title == f"KG optimize of {PROJECT} measured: hit@5 60.0% to 61.0%" and text == row["report"]
+    assert row["body"]["handover"]["after"]["hit@5"] == 61.0 and row["body"]["handover"]["regressions"] == []
     assert row["notification_id"] is not None and "click_rate" in text
 
     async def facts(engine):
@@ -262,7 +264,7 @@ def test_an_asked_for_run_measures_reviews_applies_measures_again_and_reports(re
     shown = client.portal.call(partial(facts, client.app.state.engine))
     assert (shown["id"], shown["state"]) == (run_id, "done")
     line = brief.compose(PROJECT, {**_brief_facts(), "kg_optimize": shown}, "UTC")[1]
-    assert f"KG optimize run #{run_id} (done): KG optimize of {PROJECT} kept" in line
+    assert f"KG optimize run #{run_id} (done): KG optimize of {PROJECT} measured" in line
     assert client.post(OPTIMIZE, headers=owner).status_code == 201  # none in flight: a new one
 
 
@@ -293,7 +295,7 @@ def _brief_facts() -> dict:
 
 
 @needs_pg
-def test_a_worse_holdout_undoes_the_decisions_and_reverts_the_run(review, monkeypatch):
+def test_a_worse_holdout_is_handed_over_and_nothing_is_undone(review, monkeypatch):
     client, db, owner = review.client, review.db, review.headers["owner"]
     configured(review)
     pid = project_id(db)
@@ -310,23 +312,21 @@ def test_a_worse_holdout_undoes_the_decisions_and_reverts_the_run(review, monkey
     o = tables.kg_optimize_runs
     sql(db, update(o).where(o.c.id == run_id).values(asked_weight=0.5))  # as a measure that moved the weight
     later = sql(db, select(func.now() + timedelta(hours=7)))[0][0]
-    assert advanced(review, measure, now=later) == {"reverted": 1}
+    assert advanced(review, measure, now=later) == {"done": 1}
     row = optimize_row(db, run_id)
-    assert row["state"] == "reverted" and row["body"]["regressions"][0].startswith("hit@5 fell from 60% to 40%")
-    assert row["body"]["undone"]["decisions"] == [1, 2] and row["body"]["undone"]["reverts"] == []
-    assert sorted(sql(db, select(d.c.number, d.c.state).where(d.c.project_id == pid))) == [(1, "undone"), (2, "undone")]
-    e = tables.kg_decision_events
-    events = sql(db, select(e.c.action, e.c.origin, e.c.run_id).where(e.c.project_id == pid).order_by(e.c.rev))
-    assert events == [("undo", "kg-optimize", agent), ("undo", "kg-optimize", agent)]
-    assert "Undone: decisions #1, #2" in row["report"]
+    assert row["state"] == "done" and row["body"]["regressions"][0].startswith("hit@5 fell from 60% to 40%")
+    assert "undone" not in row["body"]
+    handed = row["body"]["handover"]
+    assert (handed["before"]["hit@5"], handed["after"]["hit@5"]) == (60.0, 40.0)
+    assert handed["decisions"] == [1, 2] and handed["semantic"]["mode"] == "index"
+    assert sorted(sql(db, select(d.c.number, d.c.state).where(d.c.project_id == pid))) == [(1, "active"), (2, "active")]
+    assert "Nothing was undone" in row["report"] and "Regression: hit@5 fell" in row["report"]
 
     async def weight(engine):
         async with engine.begin() as conn:
             return await kg_asked.asked_weight(conn, pid)
 
-    assert client.portal.call(partial(weight, client.app.state.engine)) is None  # a reverted run's weight is dropped
-    sql(db, update(o).where(o.c.id == run_id).values(state="done"))
-    assert client.portal.call(partial(weight, client.app.state.engine)) == 0.5
+    assert client.portal.call(partial(weight, client.app.state.engine)) == 0.5  # the Curator decides to keep or revert
 
 
 @needs_pg

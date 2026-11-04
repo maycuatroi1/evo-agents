@@ -39,7 +39,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import channel_sink_id, channel_sink_problem, load_schema
-from evo_agents.hub import tables
+from evo_agents.hub import kg_semantic, tables
 from evo_agents.hub.access import CHANNEL_KIND, HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
 from evo_agents.hub.server import audit, invites
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
@@ -479,6 +479,8 @@ async def _create(conn: AsyncConnection, user: Principal, project: str, fields: 
         .returning(projects.c.id)
     )
     project_id = inserted.scalar()
+    if project_id is not None:
+        await kg_semantic.start(conn, project_id)
     if project_id is not None and right is not None:
         await invites.spend_register_right(conn, right, user, project_id, top)
     return project_id

@@ -70,7 +70,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, tables
+from evo_agents.hub import blob_gc, kg_settings, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -891,6 +891,7 @@ async def tool_result(
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
         if graphs and audience is None:
             audience = await reader_audience(conn, user)
+        tuning = await kg_settings.read(conn, access.project_id) if graphs else None
     if not graphs:
         message = (
             f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "
@@ -914,6 +915,7 @@ async def tool_result(
             tool,
             arguments,
             explore,
+            tuning,
         )
     except GraphOutdated as exc:
         await rebuild_outdated(state, access.project_id, project)

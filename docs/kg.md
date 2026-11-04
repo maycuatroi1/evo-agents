@@ -206,6 +206,22 @@ The text is what an agent's model reads, so it is kept short and readable:
   error that lists the tool's arguments. kg_impact reads a path that names no file as an id, and an id that names no
   node and looks like a path as a path.
 
+## The data profile
+
+Every build measures its own corpus, with no model, and keeps the result in the build's coverage (`coverage["profile"]`).
+It holds counts and shapes only, never a value: how many items of each class (code, prose, conversation, structured,
+binary, history), lines and characters, languages and how many files of each have call and inherit edges, the length
+percentiles of items and passages, the natural language of prose (vi, en, other), the shapes that look like identifiers
+(`A9{2}.9{3}` stands for two letters, a dot, three digits), how many strings look like an email, a phone number, a
+national id or a medical code, how many mentions resolved, the share of noise (binary and tiny items), the span of
+history, and each source with its label. The Curator reads it to configure a new graph.
+
+The profile sits outside the content hash, so kg_search, kg_context and the other tools answer the same with or without
+it. `evo-agents kg profile [--project P] [--json]` prints the newest build's; a build made before profiles says to build
+again. On the hub, `evo-agents hub kg profile --project P [--json]` reads it from kg_status; a caller whose audience is
+not whole gets a coverage without it, and the command says so. `evo-agents kg bench profile` sums the profiles of the
+cached bench graphs by repo.
+
 ## Audience
 
 A label (`evo_agents/kg/policy.py`) has, besides a level, a location, an integrity and the projects it names, an
@@ -391,7 +407,7 @@ evo-kg: what the project graph links to the code this search matched (callers, t
   them and the plan steps that name it. Two of each, then a count. A symbol whose definition matched comes first,
   then other symbols, then files, at most four lines after the header; a file whose symbol has a line gets no line of
   its own.
-- Only edges of status `parsed` or `resolved` (never `proposed`) and nodes and edges the sink may see; only ids, no
+- Only edges of status `parsed` or `resolved` (never `proposed` or `extracted`) and nodes and edges the sink may see; only ids, no
   name or text of a source. Nothing to add, an unbound directory, no store, a result past 0.35 s of lookup, `-v`,
   `-L`, `--json`, `--files`, or a `grep` that filters another command's output: no note. Errors go to stderr as one
   line naming their type; the exit status is always 0.
@@ -702,9 +718,9 @@ that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with
 1. **Measure.** The holdout of the project's eval set is asked of the latest build by words and by meaning, the tune
    split at each weight of the asked column (0, 0.5, 1, 2), with the open items of the review queue, the build's
    coverage, and what real sessions got from `kg_search` since the last run (`click_rate`, the new labels).
-2. **Decide on the hub.** Search by meaning goes on only when hit@5 by meaning is at least 5 points above words
-   alone, the tokens per answer file do not rise and the p95 stays under 1 s (criterion a12); it goes back to `index`
-   when an `on` project fails the gate, and a graph without vectors keeps its mode. The weight of the asked column that
+2. **Advise on the hub.** Search by meaning is judged by the gate of criterion a12: hit@5 by meaning at least 5 points
+   above words alone, tokens per answer file not higher, p95 under 1 s. The loop only records the advice. It does not
+   change the mode: the Curator's next kg_init run decides (see "The kg_init run"). The weight of the asked column that
    ranks the tune split best is kept on the run once 30 tune questions and 20 new labels back it; the next build writes
    it into the graph.
 3. **Review run.** The worker on duty gets a review run through the `kg_health` lens: the night's run adds the lens to
@@ -713,13 +729,43 @@ that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with
    stays an open pull request and goes into the report.
 4. **Apply and rebuild.** The fixes of the review queue become decisions through `POST /v1/kg/{project}/review/apply`
    (origin `kg-optimize`, the review run), and a build is queued.
-5. **Measure again, or undo.** Once a newer build succeeded (or 6 hours passed), the holdout is asked again. A hit@5
-   lower than before by more than the eval's noise (two standard errors over the questions asked, at least one point),
-   or tokens per hit higher by more than the same share (at least 5%), undoes the run: its decisions are undone, each
-   change of the review run that merged gets a revert proposal in the owner's Inbox, search by meaning goes back to its
-   mode before and the asked column to its weight before. The run ends `reverted`; otherwise `done`.
+5. **Measure again and hand over.** Once a newer build succeeded (or 6 hours passed), the holdout is asked again. The
+   loop undoes nothing and changes no mode. A hit@5 lower than before by more than the eval's noise (two standard
+   errors over the questions asked, at least one point), or tokens per hit higher by more than the same share (at least
+   5%), is listed as a regression. The run ends `done` with a `handover` in its body: the figures before and after, the
+   regressions, the asked weight now and before, the semantic advice, the decisions and the pull requests. The next
+   kg_init run reads it and decides to keep or to revert.
 
 At the end the owner of the night shift (and whoever asked) gets the report as a notification of kind `kg_optimize`:
-the figures before and after, `click_rate` and the new labels, the semantic decision with its figures, the decisions
-applied and the pull requests merged or reverted. The next morning brief names it. The loop never turns on Jev's
+the figures before and after, `click_rate` and the new labels, the semantic advice with its figures, the decisions
+applied and the pull requests merged. The next morning brief names it. The loop never turns on Jev's
 rerank.
+
+## The kg_init run
+
+A new knowledge graph is configured by the Curator from its own data profile ([The data profile](#the-data-profile)),
+not by a person. A kg_init run is a review run with the lens `kg_init`. It goes to the project's default agent pool under
+the charter's review cost cap (2 USD, 60 turns, 1 hour without a charter), needs no night shift, and is queued
+(`evo_agents/hub/server/kg_init.py`, the table `kg_init_runs`, migration 0197, which also lets a review run exist
+without a schedule when a machine dispatched it):
+
+- at the first successful build of a project with a knowledge config (`first_build`), even a project with no nodes;
+- on `evo-agents hub kg init --project P` (`manual`; `--all` for a hub admin, one run per project that has a config);
+- when the profile moved far from the profile of the last kg_init run (`profile`): a source was added, a language, a
+  natural language or a data type reached 10% of the content lines, or the content lines changed by half or more.
+
+A project that existed before this and has no run gets none until called. One run of a project is in flight at a
+time.
+
+The prompt holds the profile, the build coverage, the strategy list, the starter-set measures by words and by meaning
+and the figures the optimize loop left. It holds no item text above the clearance of the run's sink. The Curator answers
+with one JSON object (strategy, settings, sources, code changes, and a reason with numbers for each part) and records it
+with `--decide FILE`. The hub validates it, sets the strategy and the KG settings in one change of the settings'
+history with the reason and figures, and queues a rebuild when a build key changed. A built-in strategy is set by name.
+A strategy the Curator made keeps its settings and holds its identifiers, ontology and steps in the run as pending.
+Sources, KG code and dependencies go through the proposal flow (`kg_propose`, the Judge, the auto-merge). Nobody waits
+for a person. `--status --json` prints the runs with their decisions and reports.
+
+On a machine, `evo-agents kg init --project P [--questions FILE] [--json]` builds the same input from the local graph
+and writes `kg-init.json` with the SHA-256 digests of the input files. The holdout part of the questions never enters the
+run's input.

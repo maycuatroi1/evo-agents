@@ -1,0 +1,7 @@
+version: 1
+name: code
+description: Source code of one or more repositories. Builds the graph as it is built without a strategy.
+suits: [code]
+knowledge: {}
+settings: {}
+steps: []

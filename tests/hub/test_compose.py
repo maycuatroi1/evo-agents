@@ -310,7 +310,7 @@ def test_dockerfile_installs_the_pinned_then_the_extra_core_plugins_into_the_ven
     build, runtime = instructions[stages[0] : stages[1]], instructions[stages[1] :]
     joined = "\n".join(build)
     pinned = joined.index("deploy/hub/core-plugins.txt /tmp/core-plugins.txt")  # copied into the build stage
-    hub = joined.index("pip install '.[hub-server,graphify]'")
+    hub = joined.index("pip install '.[hub-server,graphify,semantic]'")
     extra = joined.index(f'ARG {EXTRA}=""')
     secret = joined.index(f"RUN --mount=type=secret,id={INDEX_SECRET},required=false")
     check = joined.index("python -I -m evo_agents.plugins.core_install check")

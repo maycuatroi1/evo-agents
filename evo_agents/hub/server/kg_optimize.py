@@ -7,7 +7,8 @@ kg_optimize_runs, which the job curator.collect moves on each minute (``advance`
 - ``measuring``: the holdout of the project's eval set asked of the latest build by words and by meaning, the tune
   split at each weight of the asked column (``evo_agents.hub.kg_optimize``), the open items of the review queue, the
   coverage of the build and what real sessions got from kg_search (kg_query_labels: click_rate, new labels). Then
-  search by meaning is set on or back to index by the gate of criterion a12 (``kg_semantic``), the weight of the asked
+  the gate of criterion a12 says whether search by meaning would be on (advice only: the loop no longer changes the
+  mode, the Curator's kg_init run does), the weight of the asked
   column that ranks the tune split best is kept on the row (``kg_asked`` reads it at the next build), and an asked-for
   run queues its review run (``collect.queue_optimize_review``): the kg_health lens alone, at any hour, under the
   charter's review cost cap. A night's run is the night's review run, which gets the kg_health lens beside the
@@ -16,11 +17,11 @@ kg_optimize_runs, which the job curator.collect moves on each minute (``advance`
   and the Judge checks before the auto-merge.
 - ``after``: the fixes of the review queue are applied as graph decisions through the path of POST
   /v1/kg/{project}/review/apply (origin kg-optimize, the review run), a build is queued, and once one newer than the
-  first measure succeeded (or AFTER_WAIT passed) the graph is measured again. A holdout worse than before beyond the
-  eval's noise undoes the run: its decisions are undone, search by meaning goes back to its mode before, the weight
-  goes back (the run ends ``reverted``, which ``kg_asked`` leaves out), and each change of the review run that merged
-  gets a revert proposal (``outcomes.propose_revert``).
-- At the end, ``done``, ``reverted`` or ``failed``, the owner of the night shift (and whoever asked) gets the report as
+  first measure succeeded (or AFTER_WAIT passed) the graph is measured again. The loop undoes nothing: a holdout worse
+  than before beyond the eval's noise is listed in ``regressions``, and ``handover`` (before and after, the weight and
+  the mode in effect with the values to go back to, the decisions, the pull requests) is what the project's next
+  kg_init run reads (``evo_agents.hub.server.kg_init``): the Curator decides keep or revert.
+- At the end, ``done`` or ``failed`` (``reverted`` is of runs before kg_init), the owner of the night shift (and whoever asked) gets the report as
   a notification (notice kg_optimize), and the next morning brief has it.
 
 The loop never turns on Jev's rerank (criterion a13). One run of a project is in flight at a time: a second call
@@ -48,7 +49,6 @@ from evo_agents.hub import kg_optimize as model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, kg_root, queue_build
-from evo_agents.hub.kg_decisions import TRANSITIONS
 from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
@@ -350,8 +350,7 @@ async def _measuring(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure
         settings = await kg_semantic.read(conn, ctx.project_id)
         gate = model.semantic_gate(graph.get("words"), graph.get("meaning"), settings.mode, graph.get("why_meaning"))
         gate["previous"] = settings.mode
-        if gate["mode"] != settings.mode:
-            await kg_semantic.write(conn, ctx.project_id, semantic.Settings(gate["mode"], settings.model), ctx.owner_id)
+        gate["applied"] = False  # the gate advises; the Curator's kg_init run decides the mode
         asked = model.best_weight(graph.get("tuned") or {}, weight, sessions["new_labels"])
         asked["previous"] = weight
         body = {
@@ -477,74 +476,6 @@ async def _pulls(conn: AsyncConnection, agent_run_id: int | None) -> list[dict]:
     ]
 
 
-async def _undo(conn: AsyncConnection, ctx, body: dict, reason: str) -> list[int]:
-    """Undo the run's decisions still active, as the owner; their numbers."""
-    from evo_agents.hub.server.kg_decisions import _event
-
-    numbers = (body.get("decisions") or {}).get("numbers") or []
-    if not numbers or ctx.owner_id is None:
-        return []
-    d, p, e = tables.kg_decisions, tables.projects, tables.kg_decision_events
-    await conn.execute(select(p.c.id).where(p.c.id == ctx.project_id).with_for_update())
-    rev = await conn.scalar(select(func.coalesce(func.max(e.c.rev), 0)).where(e.c.project_id == ctx.project_id))
-    needs, leaves = TRANSITIONS["undo"]
-    rows = await conn.execute(
-        select(d.c.id, d.c.number).where(d.c.project_id == ctx.project_id, d.c.number.in_(numbers), d.c.state == needs)
-    )
-    access = SimpleNamespace(project_id=ctx.project_id, name=ctx.project)
-    undone = []
-    for row in rows.all():
-        rev += 1
-        await conn.execute(update(d).where(d.c.id == row.id).values(state=leaves))
-        await _event(
-            conn, None, _owner(ctx), access, row, "undo", rev=rev, reason=reason, build_id=None,
-            origin=LOOP, run_id=ctx.agent_run_id, build=False,
-        )  # fmt: skip
-        undone.append(row.number)
-    return undone
-
-
-async def _reverts(conn: AsyncConnection, ctx, body: dict, pulls: list[dict], reason: str) -> list[int]:
-    """Propose reverting each merged change of the review run; the proposals' ids."""
-    from evo_agents.hub.server.outcomes import _owner as owner_of
-    from evo_agents.hub.server.outcomes import propose_revert
-
-    merged = [item["change_id"] for item in pulls if item["state"] == "merged" and item.get("merge_sha")]
-    if not merged:
-        return []
-    c, p, ch = tables.curator_changes, tables.proposals, tables.charters
-    charter = (
-        await conn.scalar(
-            select(ch.c.body).where(ch.c.project_id == ctx.project_id).order_by(ch.c.revision.desc()).limit(1)
-        )
-    ) or {}
-    owner = await owner_of(conn, ctx.project_id)
-    before = (body.get("before") or {}).get("holdout") or {}
-    after = (body.get("after") or {}).get("holdout") or {}
-    found = {
-        "reason": f"the KG optimize run #{ctx.id} made the holdout worse: {reason}",
-        "since": ctx.created_at.isoformat(),
-        "until": (await conn.scalar(select(func.now()))).isoformat(),
-        "metrics": [
-            {
-                "key": f"kg_holdout:{key}",
-                "what": f"holdout {key}",
-                "before": before.get(key),
-                "after": after.get(key),
-                "change": "worse",
-            }
-            for key in ("hit@5", "tokens_per_hit")
-            if before.get(key) is not None and after.get(key) is not None
-        ],  # fmt: skip
-    }
-    ids = []
-    for change_id in merged:
-        change = (await conn.execute(select(c).where(c.c.id == change_id))).one()
-        proposal = (await conn.execute(select(p).where(p.c.id == change.proposal_id))).one()
-        ids.append(await propose_revert(conn, change, proposal, found, {}, charter, owner, ctx.project))
-    return ids
-
-
 async def _after(engine: AsyncEngine, ctx, blobs, data_dir, now: datetime, measure: Measure) -> str:
     body = dict(ctx.body or {})
     b = tables.kg_builds
@@ -570,7 +501,7 @@ async def _after(engine: AsyncEngine, ctx, blobs, data_dir, now: datetime, measu
     if graph.get("why"):
         raise MeasureFailed(graph["why"])
     gate = body.get("semantic") or {}
-    mode = gate.get("mode") or "off"
+    mode = gate.get("previous") or "off"  # the mode in effect: the loop never changes it
     body["after"] = {
         "build_id": graph.get("build_id"),
         "holdout": _in_effect(graph, mode),
@@ -581,27 +512,11 @@ async def _after(engine: AsyncEngine, ctx, blobs, data_dir, now: datetime, measu
     regressed = model.regressions((body.get("before") or {}).get("holdout"), body["after"]["holdout"])
     body["regressions"] = regressed
     async with engine.begin() as conn:
-        pulls = await _pulls(conn, ctx.agent_run_id)
-        state = "done"
-        if regressed:
-            state, reason = "reverted", "; ".join(regressed)
-            undone = {"decisions": await _undo(conn, ctx, body, reason)}
-            undone["reverts"] = await _reverts(conn, ctx, body, pulls, reason)
-            undone["asked_weight"] = (body.get("asked") or {}).get("previous")
-            previous = gate.get("previous")
-            if previous and previous != mode:
-                settings = await kg_semantic.read(conn, ctx.project_id)
-                await kg_semantic.write(conn, ctx.project_id, semantic.Settings(previous, settings.model), ctx.owner_id)
-            undone["semantic"] = previous or mode
-            body["undone"] = undone
-            await _queue_build(conn, ctx)  # the build after the undo
-            for item in pulls:
-                if item["change_id"] and item["state"] == "merged" and undone["reverts"]:
-                    item["state"] = "merged, revert proposed"
-        body["pulls"] = pulls
-        await _set(conn, ctx.id, state=state, body=body, after_build_id=graph.get("build_id"), ended_at=func.now())
-        await _report(conn, ctx, body, state)
-    return state
+        body["pulls"] = await _pulls(conn, ctx.agent_run_id)
+        body["handover"] = model.handover(body)  # the numbers the next kg_init run decides keep or revert from
+        await _set(conn, ctx.id, state="done", body=body, after_build_id=graph.get("build_id"), ended_at=func.now())
+        await _report(conn, ctx, body, "done")
+    return "done"
 
 
 class MeasureFailed(Exception):

@@ -23,6 +23,9 @@ dependencies = ["PyYAML>=6.0", "tzdata>=2024.1"]
 # import-linter: `lint-imports` checks the package boundaries of [tool.importlinter] below (docs/structure.md).
 test = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[server]>=5.1", "import-linter>=2.15"]
 graphify = ["graphifyy==0.9.73"]
+# The entities step of a knowledge graph build (evo_agents.kg.entities): the client of an OpenAI-compatible endpoint. A local
+# command model needs nothing.
+entities = ["openai>=1.40"]
 # Clusters of a knowledge graph's build (evo_agents.kg.clusters). Pinned: a build's content hash holds its clusters.
 clusters = ["graspologic-native==1.3.1"]
 # Search by meaning next to BM25 (evo_agents.kg.semantic): an embedding model run on this machine through ONNX Runtime,
@@ -109,6 +112,7 @@ include = ["evo_agents*"]
 [tool.setuptools.package-data]
 evo_agents = [
     "harness/schemas/*.json",
+    "kg/strategies/*.yaml",  # the built-in KG strategies (evo_agents.kg.strategy)
     "kg/rank_model.txt",  # the learned order of kg_search (evo_agents.kg.rank), at most 5 MB
     "hub/model_catalog.json",
     "hub/migrations/*.py",
@@ -217,6 +221,8 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.curator",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
     "evo_agents.hub.worker -> evo_agents.hub.server.market_install",
     "evo_agents.hub.worker -> evo_agents.hub.server.market_licenses",
     "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
@@ -365,6 +371,9 @@ ignore_imports = [
     "evo_agents.kg.schedule -> evo_agents.hub.**",
     # The MCP proxy finds a worker's home to serve the agent of a run.
     "evo_agents.hub.mcp_proxy -> evo_agents.worker.home",
+    # The curator session commands read the agent's input files and the worker's state error, inside their functions.
+    "evo_agents.hub.curator_session_cli -> evo_agents.worker.home",
+    "evo_agents.hub.curator_session_cli -> evo_agents.worker.agent_input",
     # The CLI contract walks the parser of the whole CLI, inside its functions.
     "evo_agents.hub.contract -> evo_agents.cli",
     # The harness loader validates knowledge.yaml with the graph's policy, protocol and schema.

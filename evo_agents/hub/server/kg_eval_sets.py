@@ -16,7 +16,6 @@ Only the hub's evaluation reads holdout answers, through ``latest_set``.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime
 from typing import Annotated, Literal
@@ -28,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_eval_starter import ANSWER_KEYS, QUESTION_KEYS, set_digest
+from evo_agents.hub.kg_eval_starter import clean as _clean
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -38,8 +39,6 @@ from evo_agents.kg.evaluate import ALL_TYPES, HOLDOUT, QuestionError, QuestionSe
 
 MAX_QUESTIONS = 5000
 MAX_NAME_CHARS = 100
-QUESTION_KEYS = ("id", "question", "type", "project", "repo")  # what a question without its answers keeps
-ANSWER_KEYS = ("files", "nodes")
 
 router = APIRouter(
     prefix="/v1/kg",
@@ -82,16 +81,6 @@ def _parsed(name: str, entries: list[dict]) -> QuestionSet:
         return parse_set(lines)
     except QuestionError as exc:  # line 1 is the header: line n + 1 is question n
         raise HTTPException(422, f"{exc} (line n + 1 is question n)") from None
-
-
-def set_digest(entries: list[dict]) -> str:
-    """A digest of what ``entries`` ask and answer, in their order."""
-    data = [{key: entry.get(key) for key in QUESTION_KEYS + ANSWER_KEYS} for entry in entries]
-    return hashlib.sha256(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
-
-
-def _clean(entries: list[dict]) -> list[dict]:
-    return [{key: entry[key] for key in QUESTION_KEYS + ANSWER_KEYS if entry.get(key) is not None} for entry in entries]
 
 
 def shown(entry: dict, answers: bool) -> dict:

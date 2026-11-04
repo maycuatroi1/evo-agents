@@ -25,7 +25,7 @@ WORKDIR /src
 COPY pyproject.toml README.md LICENSE MANIFEST.in ./
 COPY evo_agents ./evo_agents
 # A wheel, not an editable install: the runtime stage gets the virtualenv and nothing of /src.
-RUN /opt/venv/bin/pip install '.[hub-server,graphify]' \
+RUN /opt/venv/bin/pip install '.[hub-server,graphify,semantic]' \
     && /opt/venv/bin/evo-agents --version
 # pip installs exactly the lines evo_agents.plugins.core_install wrote (--no-deps), each wheel against its hash, and
 # never builds a source distribution. -I keeps /src off the path: the helper is the installed one.
@@ -62,10 +62,12 @@ LABEL org.opencontainers.image.title="evo-agents-hub" \
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    EVO_HUB_DATA_DIR=/cache
+    EVO_HUB_DATA_DIR=/cache \
+    EVO_KG_MODEL_DIR=/models
 RUN groupadd --system --gid 10001 hub \
     && useradd --system --uid 10001 --gid hub --home-dir /home/hub --create-home --shell /usr/sbin/nologin hub \
     && install -d -o hub -g hub -m 0750 /cache \
+    && install -d -o hub -g hub -m 0750 /models \
     && install -d -o root -g root -m 0755 /plugins
 COPY --from=build /opt/venv /opt/venv
 USER hub:hub

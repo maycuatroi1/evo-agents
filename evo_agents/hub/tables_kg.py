@@ -353,8 +353,61 @@ def semantic_settings(metadata: MetaData) -> Table:
     )
 
 
+def kg_settings_tables(metadata: MetaData) -> tuple[Table, Table]:
+    """(kg_settings, kg_settings_changes) (0196), added to ``metadata``: the KG settings of a project that differ from
+    the defaults (``evo_agents.kg.settings``; its semantic mode and model stay in kg_semantic), and every change to
+    them: who made it (a member or the run of an agent), when, why, the figures it cites, the values before and after,
+    and for an undo the change it undid."""
+    name = "kg_settings"
+    settings = Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("overrides", JSONB, nullable=False),
+        Column("updated_by", BigInteger),
+        Column("updated_run_id", BigInteger),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
+        ForeignKeyConstraint(["updated_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_updated_run_id_fkey"),
+        PrimaryKeyConstraint("project_id", name=f"{name}_pkey"),
+    )
+    changes_name = "kg_settings_changes"
+    changes = Table(
+        changes_name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("changed_by", BigInteger),
+        Column("run_id", BigInteger),
+        Column("reason", Text),
+        Column("figures", JSONB),
+        Column("before", JSONB, nullable=False),
+        Column("after", JSONB, nullable=False),
+        Column("undoes", BigInteger),
+        _stamp("changed_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{changes_name}_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["changed_by"], ["users.id"], ondelete="SET NULL", name=f"{changes_name}_changed_by_fkey"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name=f"{changes_name}_run_id_fkey"),
+        ForeignKeyConstraint(
+            ["undoes"], [f"{changes_name}.id"], ondelete="SET NULL", name=f"{changes_name}_undoes_fkey"
+        ),
+        PrimaryKeyConstraint("id", name=f"{changes_name}_pkey"),
+        CheckConstraint(column("kind").in_(SETTINGS_KINDS), name=f"{changes_name}_kind_check"),
+        Index(f"{changes_name}_project_idx", "project_id", "id"),
+    )
+    return settings, changes
+
+
+SETTINGS_KINDS = ("set", "undo")
 OPTIMIZE_ACTIVE = ("measuring", "running", "after")  # the states of a KG optimize run in flight
 OPTIMIZE_STATES = (*OPTIMIZE_ACTIVE, "done", "reverted", "failed")
+INIT_ACTIVE = ("queued", "running")  # the states of a kg_init run in flight
+INIT_STATES = (*INIT_ACTIVE, "done", "failed")
+INIT_VIAS = ("first_build", "profile", "manual")  # what asked for a kg_init run
 
 
 def optimize_runs(metadata: MetaData) -> Table:
@@ -394,6 +447,43 @@ def optimize_runs(metadata: MetaData) -> Table:
     )
     Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(OPTIMIZE_ACTIVE))
     Index(f"{name}_night_key", table.c.project_id, table.c.night, unique=True, postgresql_where=table.c.via == "night")
+    return table
+
+
+def init_runs(metadata: MetaData) -> Table:
+    """kg_init_runs (0197), added to ``metadata``: each kg_init run of a project (``evo_agents.hub.server.kg_init``): the
+    Curator configures the graph from its data profile. What asked for it (``via``: its first build, a profile that
+    changed a lot, a call), the reasons, the build and the profile it was given, the review run of the agent it queued
+    (lens kg_init), what it was shown and decided (``body``), its report. One run a project is in flight at a time."""
+    name = "kg_init_runs"
+    table = Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("via", Text, nullable=False),
+        Column("requested_by", BigInteger),
+        Column("state", Text, nullable=False),
+        Column("why", JSONB, nullable=False),
+        Column("build_id", BigInteger),
+        Column("profile", JSONB),
+        Column("agent_run_id", BigInteger),
+        Column("body", JSONB, nullable=False),
+        Column("report", Text),
+        Column("error", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        _when("ended_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
+        ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        CheckConstraint(column("via").in_(INIT_VIAS), name=f"{name}_via_check"),
+        CheckConstraint(column("state").in_(INIT_STATES), name=f"{name}_state_check"),
+        Index(f"{name}_project_idx", "project_id", "id"),
+        Index(f"{name}_agent_run_idx", "agent_run_id"),
+    )
+    Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(INIT_ACTIVE))
     return table
 
 

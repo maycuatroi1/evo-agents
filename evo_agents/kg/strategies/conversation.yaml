@@ -1,0 +1,13 @@
+version: 1
+name: conversation
+description: Conversations and memories (chat threads, session transcripts, notes written by agents). Short turns, so
+  short passages, and vectors weighted a little more than for code because people paraphrase.
+suits: [conversation]
+knowledge: {}
+settings:
+  passage_from: 1200
+  passage_chars: 700
+  embed_chars: 1500
+  semantic_weight: 0.8
+  semantic_mode: index
+steps: []

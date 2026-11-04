@@ -65,7 +65,7 @@ HANDLE_TTL = 1800
 FULL_LINES = 5  # the results kg_search shows whole; those past them show their id alone (kg_node reads one)
 REPO_POOL = 12  # with a repo, kg_search ranks this many candidates per result asked, since most are of other repos
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
-STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
+STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 HUB_DEGREE = 150
 IMPACT_RELS = (
     "calls",

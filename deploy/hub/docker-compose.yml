@@ -111,6 +111,7 @@ services:
       <<: [*hub-environment, *gateway-environment]
     volumes:
       - api-cache:/cache
+      - models:/models
     expose: ["8080"]
     networks:
       default:
@@ -140,6 +141,7 @@ services:
     environment: *hub-environment
     volumes:
       - worker-cache:/cache
+      - models:/models
     networks:
       default: {}
       platform: {}
@@ -272,6 +274,7 @@ services:
 volumes:
   api-cache:
   worker-cache:
+  models:
   plugins-cache:
   gateway-data:
 

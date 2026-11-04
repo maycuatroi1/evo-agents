@@ -1,0 +1,12 @@
+version: 1
+name: media-metadata
+description: Binary files (images, audio, video, archives) known by their metadata or the text kept beside them
+  (captions, transcripts, sidecar files). The path and the name carry most of the meaning, so they weigh more.
+suits: [binary]
+knowledge: {}
+settings:
+  bm25_name: 8.0
+  bm25_path: 3.0
+  embed_chars: 1200
+  semantic_mode: index
+steps: []

@@ -1,0 +1,17 @@
+version: 1
+name: records
+description: Structured records that a connector reads (tickets, customers, orders, rows), each with a domain kind and
+  identifiers. Short passages, because a record is short, and the identifier shapes people quote.
+suits: [structured]
+knowledge:
+  identifiers:
+    - kind: Ticket
+      pattern: '\b[A-Z]{2,6}-\d{1,6}\b'
+      description: a tracker key such as ABC-123
+settings:
+  passage_from: 1500
+  passage_chars: 800
+  embed_chars: 1500
+  bm25_name: 8.0
+  semantic_mode: index
+steps: []

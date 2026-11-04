@@ -61,10 +61,21 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_semantic, kg_sources, tables
+from evo_agents.hub import (
+    blob_gc,
+    kg_asked,
+    kg_coverage,
+    kg_eval_starter,
+    kg_init_db,
+    kg_semantic,
+    kg_settings,
+    kg_sources,
+    tables,
+)
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
+from evo_agents.kg import settings
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.protocol import sha256 as sha256_of
@@ -313,6 +324,16 @@ def graph_reach(path: Path) -> dict | None:
         graph.close()
 
 
+def put_tuning(root: Path, tuning: settings.Tuning) -> None:
+    """The project's overrides as the settings.json a build reads (none: no file)."""
+    rest = {k: v for k, v in tuning.overrides().items() if k not in settings.SEMANTIC_KEYS}
+    path = root / settings.SETTINGS_FILE
+    if rest:
+        path.write_text(json.dumps(rest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+
+
 def build_in_cache(
     store: BlobStore,
     data_dir: Path,
@@ -322,6 +343,7 @@ def build_in_cache(
     sources: list | None = None,
     learned: kg_asked.Learned | None = None,
     semantic: kg_semantic.semantic.Settings | None = None,
+    tuning: settings.Tuning | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
@@ -329,24 +351,33 @@ def build_in_cache(
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
     build whose graph is the same but whose index is not uploads its file. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when the project's vectors.sqlite
-    lacks them, and the content hash folds in their digest and the mode, the same way. Blocking."""
+    lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
+    overrides are put in its settings.json first, so the build reads them as a local one does. Blocking."""
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
     drop_forgotten(project, ingests)
     kg_sources.keep_sources(project, sources)
     merged = prepare_corpus(store, project, ingests)
+    if tuning is not None:
+        put_tuning(project.root, tuning)
+        semantic = tuning.semantic_settings()
     path, report = build_graph(project)
     asked = kg_asked.write(path, learned) if learned is not None else None
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
+    vector_coverage = None
     if semantic is not None:
         vectors = kg_semantic.index(path, semantic, project.root / kg_semantic.semantic.CACHE_FILE)
         if vectors.error:
             log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
         if vectors.digest is not None:
             content_hash = sha256_of(f"{content_hash}\n{vectors.mode}\n{vectors.digest}")
+        if semantic.indexes:
+            vector_coverage = vectors.coverage(semantic.model)
     sha256 = _sha256(path)
     coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
+    if vector_coverage is not None:
+        coverage["vectors"] = vector_coverage
     return Built(
         path,
         sha256,
@@ -488,7 +519,33 @@ async def record(
             .where(builds.c.id == build_id)
         )
         await keep_source_files(conn, project_id, build_id, built.files)
+        try:  # the Curator configures a new graph from its profile (kg_init); a failure never fails the build
+            async with conn.begin_nested():
+                await kg_init_db.on_build(conn, project_id, build_id, built.coverage)
+        except Exception:
+            log.exception("a kg init run was not queued", extra={"project_id": project_id, "build_id": build_id})
     return artifact
+
+
+async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:
+    """A project with no question set gets version 1 from the commits of its first graph (``kg_eval_starter``). It
+    never fails the build: a question set is a convenience, and the next build tries again."""
+    try:
+        async with engine.connect() as conn:
+            if (
+                await conn.execute(
+                    select(tables.kg_eval_sets.c.version).where(tables.kg_eval_sets.c.project_id == project_id).limit(1)
+                )
+            ).first():
+                return
+            ceiling = await kg_eval_starter.ceiling_of(conn, project_id, project)
+        questions = await asyncio.to_thread(kg_eval_starter.questions_of, built.path, ceiling)
+        async with engine.begin() as conn:
+            made = await kg_eval_starter.start(conn, project_id, project, questions)
+        if made:
+            log.info("kg eval set started", extra={"project": project, "questions": made})
+    except Exception as exc:
+        log.warning("kg eval set not started", extra={"project": project, "error": str(exc)[:300]})
 
 
 async def keep_source_files(conn: AsyncConnection, project_id: int, build_id: int, files: dict | None) -> None:
@@ -573,11 +630,12 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         sources = await kg_sources.read_sources(engine, context.config, project_id, project, found[1])
         async with engine.connect() as conn:
             learned = await kg_asked.read(conn, project_id, project, found[1])
-            semantic = await kg_semantic.read(conn, project_id)
+            tuning = await kg_settings.read(conn, project_id)
         built = await asyncio.to_thread(
-            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, semantic
+            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, None, tuning
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
+        await start_eval_set(engine, project_id, project, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop
         await asyncio.shield(_stopped(engine, digest, len(ingests), build_id, project_id, project, manager))
         log.warning("kg build stopped with the worker", extra={"project": project, "build_id": build_id})

@@ -40,28 +40,25 @@ from pathlib import Path
 from evo_agents.kg import asked, locate, rank
 from evo_agents.kg.bench import graphs
 from evo_agents.kg.bench.tasks import TUNE, Task, load_tasks, repo_split
+from evo_agents.kg.commit_labels import (  # noqa: F401 (the filters are shared with kg eval-questions)
+    BOTS,
+    GENERATED,
+    MAX_FILES,
+    MIN_WORDS,
+    PR_REF,
+    commit_label,
+)
 from evo_agents.kg.evaluate import TUNE as EVAL_TUNE
 from evo_agents.kg.evaluate import load_questions, split_of
 
 TUNED_SETS = ("swe-explore", "contextbench", "mulocbench")  # the sets with a tune part (LocBench has none)
 SEARCH_LIMITS = {"swe-explore": 5}  # kg_search's limit in the bench, which sets how many text matches it reads
 DEFAULT_LIMIT = 10
-MIN_WORDS = 4  # a commit message of fewer words says too little to be a question (chosen on tune: docs/kg-bench.md)
-MAX_FILES = 8  # a commit changing more files than this is a sweep, not one place (chosen on tune)
 PER_GRAPH = 40  # the commits after each graph's own commit taken as labels, the nearest first
 WEIGHTS = {"bench": 1.0, "git": 1.0, "plan": 0.5, "click": 1.0}  # git at 1: chosen on tune (docs/kg-bench.md)
-BOTS = re.compile(r"\[bot\]|dependabot|renovate|pre-commit-ci|github-actions|greenkeeper", re.I)
-GENERATED = re.compile(
-    r"(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|uv\.lock|Pipfile\.lock|Cargo\.lock|go\.sum|"
-    r"composer\.lock|Gemfile\.lock|.*\.min\.(js|css)|.*\.map|.*_pb2\.py|.*\.pb\.go|.*\.snap|CHANGELOG[^/]*|CHANGES[^/]*|"
-    r"NEWS[^/]*|HISTORY[^/]*)$|(^|/)(dist|build|vendor|node_modules|third_party|changelog\.d|newsfragments|"
-    r"changes|doc/whatsnew|docs/release)/",
-    re.I,
-)
 WORKSPACE = re.compile(r"^/workspace/[^/]+/")
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+")
 GRADES = (0.1, 0.3, 0.6)  # the shares of a node's lines that are answer lines past which its grade rises
-PR_REF = re.compile(r"\(#\d+\)|#\d+")
 
 
 @dataclass
@@ -176,21 +173,6 @@ def commits_after(clone: Path, commit: str) -> list[dict]:
         )
     found.reverse()
     return found
-
-
-def commit_label(commit: dict, held: set[str], min_words: int, max_files: int) -> tuple[str, frozenset[str]] | None:
-    """(question, answer files) of a commit, or None when it is no label (see the module)."""
-    if BOTS.search(commit["author"]):
-        return None
-    text = PR_REF.sub(" ", commit["message"])
-    text = "\n".join(line for line in text.splitlines() if not re.match(r"^\s*[\w-]+-by:", line, re.I))
-    if len(re.findall(r"\w+", text)) < min_words:
-        return None
-    changed = [f for f in commit["files"] if not GENERATED.search(f)]
-    if not changed or len(changed) > max_files:
-        return None
-    gold = frozenset(f for f in changed if f in held)
-    return (text.strip(), gold) if gold else None
 
 
 def hunks(clone: Path, commit: str, base: str, files: Iterable[str]) -> tuple[tuple[str, int, int], ...] | None:

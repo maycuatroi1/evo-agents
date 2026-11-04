@@ -179,6 +179,28 @@ The same terms searched in the same repo again make one question, answered by th
 terms, so it stays in its part of the set, tune or holdout, as sessions come and go. The output is sorted by repo and
 question; stderr counts the questions per repo and the searches left out. `--repo NAME=PATH` gives a repo's checkout.
 
+## Questions from commit history
+
+```sh
+evo-agents kg eval-questions --from-commits > commits.jsonl
+evo-agents kg eval-questions --from-commits --min-words 6 --max-files 4 --limit 100
+```
+
+A project with git history is measurable with no session and no plan. A commit's subject and body is the question
+(pull request numbers and `Signed-off-by` style trailers taken out) and the files it changed that the graph holds are
+the answer, as `repo:path`; the type is `commit` and the id `commit-REPO-` and 12 characters of the sha, so a commit
+stays in its part, tune or holdout, whenever the set is made again. The commits are the Commit nodes of the graph's git
+sources, so a graph built from a source with history is all it needs. Left out: commits of a bot, messages of fewer than
+`--min-words` words (4), commits changing more than `--max-files` files (8) once lock files and generated files are
+taken out (the filter `kg rank train` takes its git labels with), merge commits, and commits with no changed file the
+graph holds. An answer is never a commit or a pull request node, so a question cannot find itself. At most `--limit`
+(300) questions, the ones whose ids hash lowest, the same on every call.
+
+On the hub, a project with no question set gets version 1, named `commits`, from the commits of its graph right after
+its first successful build (the hub has no checkout, and needs none). A commit whose label is above the project's
+default label asks nothing, since the set is read at that label. A set a writer pushed, or an earlier one, is never
+replaced: the next version is the writer's.
+
 ## The hub's evaluation
 
 Every 6 hours the hub measures its latest graph of each project (`kg_health`, the `eval` key of a measure). It asks
