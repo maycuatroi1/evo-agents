@@ -114,6 +114,7 @@ def _fixed_zip(data: bytes) -> bytes:
 def xlsx(rng: random.Random) -> bytes | None:
     try:
         import openpyxl
+        from openpyxl.writer.excel import ExcelWriter
     except ImportError:
         return None
     workbook = openpyxl.Workbook()
@@ -128,7 +129,8 @@ def xlsx(rng: random.Random) -> bytes | None:
         crews.append([f"crew-{n + 1}", rng.choice(["dawn", "dusk", "night"])])
     workbook.properties.created = workbook.properties.modified = FIXED_TIME.replace(tzinfo=None)
     out = io.BytesIO()
-    workbook.save(out)
+    # ExcelWriter, not workbook.save: save_workbook sets properties.modified to now, so each second gave other bytes
+    ExcelWriter(workbook, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)).save()
     return _fixed_zip(out.getvalue())
 
 

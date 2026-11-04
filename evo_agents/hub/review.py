@@ -206,6 +206,8 @@ ENVIRONMENT_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
 # those an older daemon or the hub ended. A git that could not ask for a password (run #9) is credentials, and a push
 # the remote refused because it moved on (run #16) is push_conflict, both before checkout, which names any branch.
 RUN_FAILURE_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
+    # first: the agent's summary the error ends with may hold the words of any cause below
+    ("steps_left", re.compile(r"ended its turns with step\(s\) .* of the plan to do", re.I)),
     ("cost_cap", re.compile(r"cost cap", re.I)),
     ("turn_cap", re.compile(r"turns? cap|max(?:imum)? turns", re.I)),
     ("time_cap", re.compile(r"time cap", re.I)),

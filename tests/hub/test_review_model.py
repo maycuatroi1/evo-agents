@@ -325,6 +325,14 @@ def test_the_cause_a_worker_reported_wins_over_the_one_read_in_the_error():
     assert review.environment_cause(RUN_9) == "credentials"
 
 
+def test_steps_left_is_read_before_the_words_of_the_summary_its_error_ends_with():
+    error = (
+        "the agent ended its turns with step(s) 3, 4 of the plan to do and no decision open, 3 times in a row after it "
+        "was sent back to the plan; its summary: the verify timed out on the checkout of the branch"
+    )
+    assert review.run_cause(None, error, "failed") == "steps_left"
+
+
 def test_every_cause_a_worker_sends_is_one_the_figures_name():
     named = {name for name, _ in review.RUN_FAILURE_CAUSES}
     assert set(runs.FAILURE_CAUSES) <= named, set(runs.FAILURE_CAUSES) - named

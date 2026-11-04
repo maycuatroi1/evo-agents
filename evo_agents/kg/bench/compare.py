@@ -386,7 +386,7 @@ def held_out_input(entry: dict, base: Path | str | None = None) -> str | None:
     if base is not None and not path.is_absolute() and (Path(base) / path).is_file():
         digest = hashlib.sha256((Path(base) / path).read_bytes()).hexdigest()
         if digest != str(entry["sha256"]).removeprefix("sha256:"):
-            return f"SHA-256 of {path} differs from the one recorded"
+            return f"SHA-256 of {path.as_posix()} differs from the one recorded"  # the same words on Windows
     return None
 
 
