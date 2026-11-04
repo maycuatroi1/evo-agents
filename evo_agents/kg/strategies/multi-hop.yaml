@@ -1,0 +1,49 @@
+# Prose whose answers join facts from more than one passage (docs/kg-strategies.md, "multi-hop").
+# The keys of `documents`, the entities step with a shared entity ontology, and the walk of kg_search and kg_context.
+# The entities step asks Claude Code (evo-agents kg claude-entities) on the login of the machine or of the hub's
+# agent pool, never an API key. Claude Code sends the text to Anthropic, so the project's knowledge.yaml must declare
+# a policy sink `llm` of kind llm-backend; an item whose label that sink does not clear is not sent, and without the
+# sink every item is refused with a coverage reason.
+version: 1
+name: multi-hop
+description: Prose where an answer joins facts stated in different passages, such as specifications, reports and
+  wiki pages that name the same people, places and things. The keys of documents, entities and relations read by a
+  model (Claude Code with claude-haiku-5-5, through the llm-backend sink llm), one node per entity, entities linked to
+  the code they name, and a Personalized PageRank walk that ranks kg_search and kg_context.
+suits: [prose]
+knowledge:
+  ontology:
+    node_kinds:
+      - Concept       # an idea, term, method or feature the text defines or uses
+      - Actor         # a person or a role the text names
+      - Organization  # a company, team, institution or group
+      - Place         # a country, city, site or address
+      - Event         # something that happened or is planned, with a time
+      - Work          # a product, tool, document, book, film or other made thing
+    relations:
+      - is_a          # an entity to a broader one
+      - has_part      # a whole to a part of it
+      - located_in    # an entity to the place it is in
+      - belongs_to    # an actor or a work to the organization it belongs to
+      - created_by    # a work or an organization to who made or founded it
+      - leads         # an actor to the organization or event it leads
+      - occurred_in   # an event to the place it happened in
+      - causes        # an event or concept to what it brings about
+      - uses          # an actor, work or concept to what it uses
+      - related_to    # any other stated link
+settings:
+  passage_from: 2500
+  passage_chars: 1800
+  embed_chars: 3000
+  semantic_mode: index
+  walk: {}
+  entities:
+    model: claude-haiku-5-5
+    command: [evo-agents, kg, claude-entities]
+    sink: llm
+    node_kinds: [Concept, Actor, Organization, Place, Event, Work]
+    relations: [is_a, has_part, located_in, belongs_to, created_by, leads, occurred_in, causes, uses, related_to]
+    price: {input: 1.0, output: 5.0}
+    max_cost: 5.0
+    synonym_threshold: 0.8
+steps: [entities]

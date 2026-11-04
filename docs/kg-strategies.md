@@ -13,6 +13,7 @@ hub a strategy is the `strategy` key of the project's KG settings.
 | `records` | structured records a connector reads | short passages, name weight 8, a `Ticket` identifier, vectors written |
 | `conversation` | chat threads, transcripts, agent memories | short passages, vectors weighted 0.8, vectors written |
 | `media-metadata` | binary files known by metadata or sidecar text | name weight 8, path weight 3, vectors written |
+| `multi-hop` | prose whose answers join facts from several passages | the keys of `documents`, the entities step on Claude Code, the walk |
 
 The built-in files live in `evo_agents/kg/strategies/`.
 
@@ -118,6 +119,58 @@ the run's login (the lease of the pool's account, never a personal key), and pos
 (`POST /v1/kg/P/entities/answers`, a run's token only). The hub keeps the answers to its requests and queues a build,
 which reads them as answers of the step (`answered_elsewhere`) and memoizes them. A login or a limit stops the command
 at that item: it posts what it has and exits 3, and the next night goes on.
+
+## The multi-hop strategy
+
+`multi-hop` is for prose where an answer joins facts stated in different passages: specifications, reports, plans
+and wiki pages that name the same people, teams, places and things. It holds:
+
+- the keys of `documents` (passages from 2500 characters, passages of 1800, 3000 characters per vector, vectors
+  written);
+- the entities step (`steps: [entities]`) with a shared ontology of its own, added to the project's ontology file on
+  apply: the kinds `Concept`, `Actor`, `Organization`, `Place`, `Event` and `Work`, and the relations `is_a`,
+  `has_part`, `located_in`, `belongs_to`, `created_by`, `leads`, `occurred_in`, `causes`, `uses` and `related_to`;
+- the model: Claude Code (`command: [evo-agents, kg, claude-entities]`) with `claude-haiku-5-5`, on the login, never
+  an API key, through the sink `llm`;
+- the folding of an entity's names into one node, the `refers_to` edges to the code it names and, since vectors are
+  written, the `synonym_of` edges (`synonym_threshold` 0.8);
+- `walk: {}`, the Personalized PageRank walk with its defaults, which ranks kg_search and kg_context.
+
+Use it when the questions people ask need two or more passages ("who leads the team that owns X?"), and the prose
+names the same entities in many items. Keep `documents` for prose read one passage at a time, and `code` for source
+code: the walk and the entities step do nothing for a graph made of symbols.
+
+**The sink.** Claude Code sends each item's text to Anthropic. Before a build, declare the sink in the project's
+knowledge.yaml with the clearance the project accepts:
+
+```yaml
+policy:
+  sinks:
+    - id: llm
+      kind: llm-backend
+      clearance: {level: internal}
+```
+
+Without that sink, or for an item whose label is above its clearance, nothing is sent:
+`coverage["entities"]["refused"]` lists the items and why. To use a sink with another id, copy the file to
+`<harness>/strategies/multi-hop.yaml` and change `settings.entities.sink`.
+
+**What it costs.**
+
+- One model call per prose item the sink clears, on the first build. Each build stops at its ceiling (200 calls,
+  400000 tokens, `max_cost` 5); the rest waits for the next build, which goes on from the memo. An item that has not
+  changed costs nothing again. The cost is the one Claude Code reports, else the tokens priced with `price` (1 per
+  million in, 5 per million out).
+- On the hub, a build defers the items and the nightly review run answers them on the pool's login (see "Claude Code
+  as the model" above), so the entities reach the graph a night after the build that asked for them.
+- The walk calls no model. kg_context walks twice (seeds, then fill), so its p95 rises with the size of the graph;
+  measure it with `kg bench` or `hub kg measure` before keeping the strategy.
+- `apply` names `strategy`, `entities`, the passage keys, `semantic_mode` and `ontology` as needing a new build; the
+  walk is a query key and takes effect at once.
+
+On the hub, `hub kg settings --strategy multi-hop` sets the settings only. Apply the strategy locally first and push
+the knowledge config (`evo-agents hub kg push`), so the hub's ontology holds the kinds and relations and the policy
+holds the sink; a kind the ontology lacks is dropped from the mapping (`coverage["entities"]["rejected_config"]`).
 
 ## Your own strategy
 
