@@ -33,6 +33,16 @@ its text the body and its metadata the props, labelled public as the code graphs
 the in-process connector of the memory sets. A result is counted for the document its id names (a section of a
 document counts for the document), the documents in the order they first come.
 
+Strategy graphs. ``--strategy NAME`` (``GraphConfig``) builds a second graph of the corpus with a kg strategy applied
+as ``kg strategy apply`` would (its build keys, ontology and steps, the entities step included), kept apart from the
+graph without it (its own repo name, ``<set>/corpus-<strategy>-<digest>``). A strategy whose entities mapping names a
+sink gets that sink declared as an ``llm-backend`` that clears public, the level of every item. The query keys of the
+strategy (``walk``) are left out of the graph's settings: a run asks them with ``--settings``. ``--entities FILE``
+sets the ceilings and ``jobs`` of the mapping, which name no graph; a mapping that names no ``items`` reads the
+documents (kind ``document``, which the step's default, the prose kinds, leaves out). A build whose entities step left items for later
+(a ceiling, a rate limit) is not marked built, so the next ``build`` goes on from the memo; the total the model's
+answers cost (``extraction``) is read from the memo, all builds of the graph together.
+
 Scoring is the memory sets' (``memory.session_metrics`` over documents): ``recall_all@k`` is 1 when every answer
 document is among the first k, ``recall_any@k`` when one is, ``ndcg_any@k``; the primary metric is ``recall_all@5``.
 A question's part is ``repo_split`` of ``<set>/<question id>``: tune, holdout, test by the hash as the code sets'.
@@ -47,6 +57,7 @@ import os
 import random
 import re
 import zipfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.kg.bench import datasets, graphs, memory
@@ -63,6 +74,7 @@ from evo_agents.kg.bench.tasks import Task, repo_split
 
 ITEMS_VERSION = "corpus1"  # the shape of the items: a change builds every corpus graph again
 SOURCE_ID = "corpus"
+ITEM_KIND = "document"
 PRIMARY = memory.PRIMARY
 LIMIT = memory.LIMIT
 SEED = 20261104  # of the questions kept and of the customers generator
@@ -460,13 +472,52 @@ def digest(docs: list[dict]) -> str:
     return h.hexdigest()[:10]
 
 
-def stand_in(bench: str, docs: list[dict]) -> Task:
+RUN_KEYS = ("jobs", "max_calls", "max_tokens", "max_cost")  # of an entities mapping: they name no graph
+
+
+@dataclass(frozen=True)
+class GraphConfig:
+    """A corpus graph built with the strategy ``strategy`` applied; ``entities`` holds the keys of RUN_KEYS set on its
+    entities mapping (``--entities``)."""
+
+    strategy: str
+    entities: dict = field(default_factory=dict, hash=False, compare=False)
+
+    def found(self):
+        from evo_agents.kg import strategy as kg_strategy
+
+        try:
+            return kg_strategy.find(self.strategy)
+        except kg_strategy.StrategyError as exc:
+            raise BenchError(f"--strategy {self.strategy}: {exc}") from None
+
+    def digest(self) -> str:
+        """Names what the graph is built with: the strategy's settings but the query keys and RUN_KEYS, its ontology
+        and steps."""
+        from evo_agents.kg import settings as kg_settings
+
+        chosen = self.found()
+        values = {k: v for k, v in chosen.settings.items() if k in kg_settings.BUILD_KEYS | kg_settings.SEMANTIC_KEYS}
+        if isinstance(values.get("entities"), dict):
+            values["entities"] = {k: v for k, v in values["entities"].items() if k not in RUN_KEYS}
+        data = {"settings": values, "ontology": chosen.ontology, "steps": list(chosen.steps)}
+        return hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:8]
+
+
+def check_entities(data: dict) -> dict:
+    unknown = sorted(set(data) - set(RUN_KEYS))
+    if unknown:
+        raise BenchError(f"--entities sets only {', '.join(RUN_KEYS)}, not {', '.join(unknown)}")
+    return data
+
+
+def stand_in(bench: str, docs: list[dict], graph: GraphConfig | None = None) -> Task:
     """The corpus as the Task the graph cache names, sizes and evicts graphs by (``graphs.Layout``)."""
     return Task(
         bench=bench,
         id="corpus",
         key=bench,
-        repo=f"{bench}/corpus",
+        repo=f"{bench}/corpus" + (f"-{graph.found().name}-{graph.digest()}" if graph else ""),
         commit=f"{ITEMS_VERSION}-{digest(docs)}",
         language="document",
         question="",
@@ -480,7 +531,7 @@ def items(docs: list[dict]) -> list[dict]:
         out.append(
             {
                 "id": f"{SOURCE_ID}:doc:{n}",
-                "kind": "document",
+                "kind": ITEM_KIND,
                 "title": d["title"],
                 "rev_time": "2026-01-01T00:00:00Z",
                 "props": d["props"],
@@ -491,7 +542,7 @@ def items(docs: list[dict]) -> list[dict]:
     return out
 
 
-def write_harness(lay: graphs.Layout, task: Task, docs: list[dict]) -> Path:
+def write_harness(lay: graphs.Layout, task: Task, docs: list[dict], graph: GraphConfig | None = None) -> Path:
     root = lay.harness(task)
     root.mkdir(parents=True, exist_ok=True)
     name = lay.name(task)
@@ -515,18 +566,126 @@ def write_harness(lay: graphs.Layout, task: Task, docs: list[dict]) -> Path:
             }
         ],
     }
-    (root / "knowledge.yaml").write_text(json.dumps(knowledge, indent=1) + "\n", encoding="utf-8")
+    if graph is not None:
+        sink = (graph.found().settings.get("entities") or {}).get("sink")
+        if sink:
+            knowledge["policy"]["sinks"].append({"id": sink, "kind": "llm-backend", "clearance": {"level": "public"}})
+    if graph is None:
+        (root / "knowledge.yaml").write_text(json.dumps(knowledge, indent=1) + "\n", encoding="utf-8")
+    else:  # YAML: applying the strategy appends its keys as YAML text
+        import yaml
+
+        (root / "knowledge.yaml").write_text(yaml.safe_dump(knowledge, sort_keys=False), encoding="utf-8")
+        apply_strategy(lay, task, graph)
     return root
 
 
+def apply_strategy(lay: graphs.Layout, task: Task, graph: GraphConfig) -> None:
+    """Apply the strategy to the corpus project, as ``kg strategy apply`` does, then take its query keys out of the
+    project's settings and set the RUN_KEYS of its entities mapping."""
+    from evo_agents.kg import settings as kg_settings
+    from evo_agents.kg import strategy as kg_strategy
+
+    chosen = graph.found()
+    if chosen.origin != "built-in":  # a strategy file: the project finds its steps by name in its strategies
+        mine = lay.harness(task) / kg_strategy.CUSTOM_DIR
+        mine.mkdir(parents=True, exist_ok=True)
+        (mine / f"{chosen.name}.yaml").write_text(Path(chosen.origin).read_text(encoding="utf-8"), encoding="utf-8")
+    with graphs.bench_home(lay.home):
+        project = graphs.project_of(lay, task)
+        try:
+            kg_strategy.apply(chosen, project, reason="kg bench --strategy")
+        except kg_strategy.StrategyError as exc:
+            raise BenchError(f"--strategy {graph.strategy}: {exc}") from None
+        values = kg_settings.read(project.root).overrides()
+        values = {k: v for k, v in values.items() if k in kg_settings.BUILD_KEYS | kg_settings.SEMANTIC_KEYS}
+        if isinstance(values.get("entities"), dict):
+            # the items are of kind document, which the step's default (the prose kinds) leaves out
+            values["entities"] = {"items": [ITEM_KIND], **values["entities"], **graph.entities}
+        kg_settings.write(project.root, kg_settings.of(values), reason="kg bench: the build keys of the strategy")
+
+
 def build_corpus(
-    lay: graphs.Layout, bench: str, docs: list[dict], *, room: graphs.Room = graphs.DEFAULT_ROOM
+    lay: graphs.Layout,
+    bench: str,
+    docs: list[dict],
+    *,
+    room: graphs.Room = graphs.DEFAULT_ROOM,
+    graph: GraphConfig | None = None,
 ) -> graphs.Built:
-    """The one graph of a corpus: reused when built with this extractor and these documents."""
-    task = stand_in(bench, docs)
+    """The graph of a corpus (with ``graph``, the one of that strategy): reused when built with this extractor and
+    these documents."""
+    task = stand_in(bench, docs, graph)
     return memory.build_stand_in(
-        lay, task, lambda: write_harness(lay, task, docs), room=room, keep=frozenset({lay.name(task)})
+        lay,
+        task,
+        lambda: write_harness(lay, task, docs, graph),
+        room=room,
+        keep=frozenset({lay.name(task)}),
+        check=_entities_finished if graph is not None else None,
     )
+
+
+def _entities_finished(report) -> str | None:
+    """Why a build of a strategy graph is not the graph to ask: its entities step left items for a later build."""
+    from evo_agents.kg import entities
+
+    found = report.coverage.get("entities") or {}
+    if not entities.unfinished(report.coverage):
+        return None
+    why = found.get("stopped") or f"{found.get('failed', 0)} item(s) failed"
+    return (
+        f"entities unfinished: {found.get('skipped', 0)} skipped, {found.get('failed', 0)} failed, "
+        f"{found.get('calls', 0)} calls this build ({why}); build again to go on from the memo"
+    )
+
+
+def extraction(lay: graphs.Layout, task: Task, documents: int) -> dict | None:
+    """What the entities step's answers in the graph's memo cost, all builds together: answers, tokens, USD, and USD
+    per 1,000 documents of the corpus. None for a graph without the step."""
+    import gzip
+    import sqlite3
+
+    from evo_agents.kg import settings as kg_settings
+    from evo_agents.kg.build import memo_path
+
+    with graphs.bench_home(lay.home):
+        project = graphs.project_of(lay, task)
+        path = memo_path(project)
+        settings = kg_settings.read(project.root).entities
+    if not settings or not path.is_file():
+        return None
+    answers = tokens_in = tokens_out = 0
+    usd = 0.0
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        for (blob,) in db.execute("SELECT output FROM memo WHERE stage = 'entities'"):
+            usage = (json.loads(gzip.decompress(blob)) or {}).get("usage") or {}
+            answers += 1
+            tokens_in += int(usage.get("input_tokens") or 0)
+            tokens_out += int(usage.get("output_tokens") or 0)
+            if usage.get("cost") is not None:
+                usd += float(usage["cost"])
+            else:
+                usd += _priced(usage, settings.get("price") or {})
+    finally:
+        db.close()
+    return {
+        "model": settings.get("model"),
+        "documents": documents,
+        "answers": answers,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "usd": round(usd, 4),
+        "usd_per_1000_documents": round(usd / documents * 1000, 4) if documents else None,
+        "priced_by": "the cost Claude Code reported, else the mapping's price",
+    }
+
+
+def _priced(usage: dict, price: dict) -> float:
+    """The USD of a call that reported no cost, by the mapping's ``price`` per million tokens."""
+    tin, tout = int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
+    return tin / 1e6 * float(price.get("input", 0)) + tout / 1e6 * float(price.get("output", 0))
 
 
 # -- scoring -------------------------------------------------------------------------------------------------------
@@ -582,14 +741,19 @@ def select(questions: list[dict], bench: str, options: memory.Options) -> tuple[
     }
 
 
-def run_corpus(cache: Path, bench: str, options: memory.Options) -> tuple[dict, list[dict]]:
-    """Build the corpus' graph and ask the selected questions: the set's part of the summary and its task records."""
+def run_corpus(
+    cache: Path, bench: str, options: memory.Options, *, search: str = "graph", graph: GraphConfig | None = None
+) -> tuple[dict, list[dict]]:
+    """Build the corpus' graph (``graph``'s, with one) and ask the selected questions, ranked as ``search`` says
+    (graph or hybrid): the set's part of the summary and its task records."""
+    if search not in ("graph", "hybrid"):
+        raise BenchError(f"{bench} is asked with --search graph or hybrid, not {search}")
     docs, questions = load(cache, bench)
     asked, picked = select(questions, bench, options)
     lay = graphs.layout(cache)
-    task = stand_in(bench, docs)
+    task = stand_in(bench, docs, graph)
     say = options.progress or (lambda line: None)
-    built = build_corpus(lay, bench, docs, room=options.room)
+    built = build_corpus(lay, bench, docs, room=options.room, graph=graph)
     say(f"{bench}: {len(docs)} documents, graph " + ("reused" if built.reused else built.error or f"{built.seconds}s"))
     records: list[dict] = []
     number = {d["key"]: n for n, d in enumerate(docs, 1)}
@@ -599,11 +763,13 @@ def run_corpus(cache: Path, bench: str, options: memory.Options) -> tuple[dict, 
             for q in asked
         ]
     elif asked:
-        from evo_agents.kg.bench.run import session_of
+        from evo_agents.kg.bench.run import _ensure_vectors, session_of
 
+        if search == "hybrid":
+            _ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
         graphs.warm(lay.project_dir(task))
         with graphs.bench_home(lay.home):
-            session = session_of(graphs.project_of(lay, task), "graph")
+            session = session_of(graphs.project_of(lay, task), search)
             for q in asked:
                 nodes, tokens, ms, error = memory.ask(session, q["question"], options.limit)
                 answers = sorted(number[k] for k in q["answers"])
@@ -626,6 +792,8 @@ def run_corpus(cache: Path, bench: str, options: memory.Options) -> tuple[dict, 
         "asked": len(records),
         "sample": picked,
         "documents": len(docs),
+        **({"graph": {"strategy": graph.found().name, "digest": graph.digest(), "repo": task.repo}} if graph else {}),
+        **({"extraction": extraction(lay, task, len(docs))} if graph and not built.error else {}),
         "build": {
             "graphs": 1,
             "built": int(not built.reused and not built.error),
@@ -638,6 +806,6 @@ def run_corpus(cache: Path, bench: str, options: memory.Options) -> tuple[dict, 
     return part, records
 
 
-def build_only(cache: Path, bench: str, options: memory.Options) -> graphs.Built:
+def build_only(cache: Path, bench: str, options: memory.Options, graph: GraphConfig | None = None) -> graphs.Built:
     docs, _ = load(cache, bench)
-    return build_corpus(graphs.layout(cache), bench, docs, room=options.room)
+    return build_corpus(graphs.layout(cache), bench, docs, room=options.room, graph=graph)

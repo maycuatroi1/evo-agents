@@ -4,6 +4,7 @@ import gc
 import json
 import os
 import sqlite3
+import sys
 import time
 from collections import namedtuple
 from pathlib import Path
@@ -979,8 +980,64 @@ def test_corpus_sets_take_the_graph_search_and_a_limit_kg_search_has(tmp_path, m
     assert main([*argv, "--search", "bm25", "--out", str(tmp_path / "x.json")]) == 1
     assert main([*argv, "--limit", "40", "--out", str(tmp_path / "x.json")]) == 1
     err = capsys.readouterr().err
-    assert "--search graph only" in err and "--limit 1 to 25" in err
+    assert "--search graph or hybrid" in err and "--limit 1 to 25" in err
     assert main(["kg", "bench", "fetch", "nosuchset", "--cache", str(cache)]) == 1
+
+
+ENTITY_MODEL = """import json, sys
+req = json.load(sys.stdin)
+open(sys.argv[1], "a").write("call\\n")
+name = req["text"].split()[0]
+print(json.dumps({"nodes": [{"kind": "Place", "name": name, "evidence": name, "conf": 0.9}], "edges": [],
+                  "usage": {"input_tokens": 100, "output_tokens": 10, "cost": 0.25}}))
+"""
+
+
+def test_a_strategy_graph_of_a_corpus_runs_its_entities_step_apart_and_goes_on_after_a_ceiling(
+    tmp_path, monkeypatch, kg_env, capsys
+):
+    cache, mirror, _ = _corpus_mirror(tmp_path, monkeypatch)
+    argv = ["--cache", str(cache)]
+    assert main(["kg", "bench", "fetch", "musique", *argv, "--from", str(mirror)]) == 0
+    script, log = tmp_path / "model.py", tmp_path / "calls.log"
+    script.write_text(ENTITY_MODEL)
+    chosen = tmp_path / "places.yaml"
+    mapping = {"model": "fake-1", "command": [sys.executable, str(script), str(log)], "node_kinds": ["Place"]}
+    chosen.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "name": "places",
+                "knowledge": {"ontology": {"node_kinds": ["Place"]}},
+                "settings": {"walk": {}, "entities": mapping},
+                "steps": ["entities"],
+            }
+        )
+    )
+    ceiling = tmp_path / "ceiling.json"
+    ceiling.write_text(json.dumps({"max_calls": 1, "jobs": 2}))
+    strategy = ["--strategy", str(chosen), "--entities", str(ceiling)]
+    assert main(["kg", "bench", "build", "musique", *argv, *strategy]) == 1
+    assert "entities unfinished" in capsys.readouterr().out and len(log.read_text().splitlines()) == 1
+    ceiling.write_text(json.dumps({"max_calls": 50, "jobs": 2}))
+    assert main(["kg", "bench", "build", "musique", *argv, *strategy]) == 0
+    assert len(log.read_text().splitlines()) == 3, "the second build goes on from the memo"
+
+    out = tmp_path / "places.json"
+    assert main(["kg", "bench", "run", "musique", *argv, *strategy, "--out", str(out)]) == 0
+    capsys.readouterr()
+    summary = compare.load_summary(out)
+    part = summary["benches"]["musique"]
+    assert part["build"]["reused"] == 1 and part["graph"]["strategy"] == "places"
+    assert part["extraction"]["answers"] == 3 and part["extraction"]["usd"] == 0.75
+    assert part["extraction"]["usd_per_1000_documents"] == 250.0
+    assert summary["cost"]["usd"] == 0.75 and summary["settings"]["graph"]["strategy"] == "places"
+    plain = tmp_path / "plain.json"
+    assert main(["kg", "bench", "run", "musique", *argv, "--out", str(plain)]) == 0
+    assert compare.load_summary(plain)["benches"]["musique"]["build"]["built"] == 1, "the graph without the step"
+    assert len(log.read_text().splitlines()) == 3
+    assert main(["kg", "bench", "build", "medical", *argv, "--entities", str(ceiling)]) == 1
+    assert "--entities goes with --strategy" in capsys.readouterr().err
 
 
 # -- the Curator on a set ------------------------------------------------------------------------------------------

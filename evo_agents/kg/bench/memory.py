@@ -454,8 +454,11 @@ def build_stand_in(
     *,
     room: graphs.Room = graphs.DEFAULT_ROOM,
     keep: frozenset[str] = frozenset(),
+    check=None,
 ) -> graphs.Built:
-    """``build_case`` for any graph of a harness with an items file: ``write()`` makes the harness of ``task``."""
+    """``build_case`` for any graph of a harness with an items file: ``write()`` makes the harness of ``task``.
+    ``check(report)``, when given, says why a build that succeeded is still not the graph to mark built (None: it
+    is)."""
     if lay.built(task):
         with contextlib.suppress(OSError):
             os.utime(lay.project_dir(task) / graphs.MARKER)
@@ -477,6 +480,9 @@ def build_stand_in(
             report = build_project(project)
             if not report.ok:
                 return graphs.Built(task, False, time.monotonic() - start, f"build: {'; '.join(report.errors[:2])}")
+            unfinished = check(report) if check is not None else None
+            if unfinished:
+                return graphs.Built(task, False, time.monotonic() - start, unfinished)
     except BenchError as exc:
         return graphs.Built(task, False, time.monotonic() - start, str(exc))
     except Exception as exc:  # a build that crashes fails its case, not the set's whole run

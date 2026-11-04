@@ -19,7 +19,9 @@ What it does for each item of the kinds the mapping chooses (the prose kinds whe
 - the answer is memoized by the item's content digest, the model and the mapping, so an unchanged item costs nothing;
 - calls, tokens and cost are counted per build, and the step stops at the ceiling (``max_calls``, ``max_tokens``,
   ``max_cost``), leaves the rest to a later build (``coverage["entities"]["skipped"]``) and the next build continues
-  from the memo.
+  from the memo. With ``jobs`` above 1, that many calls run at once (``_prefetch``): each answer is memoized and
+  committed as it comes, so a build that is killed keeps what it was told, and the ceiling may be passed by the calls
+  already running when the token or cost ceiling is reached (at most ``jobs - 1``).
 
 A model is one of: ``command``, an argv run on this machine that reads one JSON object on stdin
 (``{"text", "node_kinds", "relations", "model"}``) and writes one on stdout
@@ -81,8 +83,9 @@ FIELDS = {
     "price",  # {"input": cost per million tokens in, "output": per million out}, for a model that reports no cost
     "max_chars",  # characters of an item sent
     "synonym_threshold",  # the cosine from which two entities are synonyms, when the graph has vectors (entity_links)
+    "jobs",  # calls at once (default 1); not part of what is memoized
 }
-_INTS = ("max_calls", "max_tokens", "max_chars")
+_INTS = ("max_calls", "max_tokens", "max_chars", "jobs")
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:/-]{0,79}$")
 
 
@@ -460,6 +463,7 @@ def run(
     inbox = inbox or {}
     halted: list[str] = []  # why a command asked to stop: no item after it is sent
     answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
+    todo = []  # (rec, label, text, inputs, key) of every item that is sent or read from the memo
     for rec in records:
         r = rec.record
         if (r["kind"] not in wanted) if wanted else (class_of(r["kind"]) != "prose"):
@@ -485,7 +489,12 @@ def run(
             "config": digest,
         }
 
-        key = memo_key("entities", VERSION, inputs)
+        todo.append((rec, label, text, inputs, memo_key("entities", VERSION, inputs)))
+    jobs = int(config.get("jobs", 1))
+    ready: dict[str, dict | EntitiesError] = {}
+    if jobs > 1 and not offline and not defer:
+        ready = _prefetch(config, todo, memo, inbox, spend, halted, allowed_kinds, allowed_rels, jobs)
+    for rec, label, text, inputs, key in todo:
 
         def task(text=text, key=key, item=rec.item_id):
             if offline:
@@ -522,8 +531,15 @@ def run(
             return cleaned
 
         before = memo.misses["entities"]
+        fresh = key in ready  # answered (and memoized) by _prefetch: a call of this build, not a cache hit
         try:
-            cleaned, _ = memo.run("entities", VERSION, inputs, task, commit=True)
+            if fresh:
+                found = ready[key]
+                if isinstance(found, EntitiesError):
+                    raise found
+                cleaned = found
+            else:
+                cleaned, _ = memo.run("entities", VERSION, inputs, task, commit=True)
         except BudgetStop as stop:
             memo.misses["entities"] = before
             cov["skipped"] += 1
@@ -543,7 +559,7 @@ def run(
             if len(cov["errors"]) < REFUSED_SAMPLES:
                 cov["errors"].append({"item": rec.item_id, "error": str(exc)[:200]})
             continue
-        if memo.misses["entities"] == before:
+        if memo.misses["entities"] == before and not fresh:
             cov["cache_hits"] += 1
         has_doc = any(f["t"] == "node" and f["id"] == rec.item_id for f in first.get(rec.item_id, []))
         answers.append((rec.item_id, item_unit(rec.item_id), has_doc, cleaned, _rank(label)))
@@ -558,6 +574,53 @@ def run(
         cost=round(spend.cost, 6),
     )
     return out, cov
+
+
+def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs) -> dict:
+    """Ask the model ``jobs`` items at a time for the items of ``todo`` the memo and the inbox lack, in their order;
+    each answer is memoized and committed as it comes. Returns the answer, or the EntitiesError, by memo key. It stops
+    sending at the ceiling of ``spend`` and at the first ModelStop (appended to ``halted``); the items it did not send
+    are left to the step's loop, which skips them the same way."""
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+    have = {row[0] for row in memo.db.execute("SELECT key FROM memo WHERE stage = 'entities'")}
+    pending = iter([t for t in todo if t[4] not in have and not isinstance(inbox.get(t[4]), dict)])
+    out: dict = {}
+    running: dict = {}
+
+    def take(future) -> None:
+        _rec, _label, _text, inputs, key = running.pop(future)
+        try:
+            answer = future.result()
+        except ModelStop as stop:
+            halted.append(str(stop))
+            return
+        except EntitiesError as exc:
+            out[key] = exc
+            return
+        usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
+        spend.add(usage)
+        cleaned = _clean(answer, set(kinds), set(rels))
+        cleaned["usage"] = usage
+        memo.run("entities", VERSION, inputs, lambda: cleaned)
+        memo.commit()
+        out[key] = cleaned
+
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        while True:
+            while len(running) < jobs and not halted and not spend.exhausted():
+                if spend.calls + len(running) >= spend.max_calls:  # the calls running count against max_calls
+                    break
+                item = next(pending, None)
+                if item is None:
+                    break
+                running[pool.submit(call_model, config, item[2], kinds, rels)] = item
+            if not running:
+                break
+            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in done:
+                take(future)
+    return out
 
 
 def _rank(label) -> tuple:
