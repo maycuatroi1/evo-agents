@@ -411,13 +411,16 @@ test("model accounts are a card per provider and service credentials their own t
   await expect(variables.locator("li").filter({ hasText: "lark-id" }).getByTestId("account-state")).toHaveAttribute("data-state", "ready");
   expect(await overflow(page)).toBe(0);
 
-  // A reload keeps the tab; the arrow keys move between tabs and back to Providers drops it from the URL.
+  // A reload keeps the tab; the arrow keys move between tabs and back to Providers drops it from the URL. The tab
+  // shows selected in the server's HTML, before the page hydrates and its keys do anything: again until they did.
   await page.reload();
   await expect(main(page).getByTestId("accounts-tab-services")).toHaveAttribute("aria-selected", "true");
-  await main(page).getByTestId("accounts-tab-services").focus();
-  await page.keyboard.press("ArrowLeft");
-  await page.keyboard.press("ArrowLeft");
-  await expect(main(page).getByTestId("accounts-tab-providers")).toHaveAttribute("aria-selected", "true");
+  await expect(async () => {
+    await main(page).getByTestId("accounts-tab-services").focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(main(page).getByTestId("accounts-tab-providers")).toHaveAttribute("aria-selected", "true", { timeout: 1_000 });
+  }).toPass();
   await expect(page).not.toHaveURL(/tab=/);
 });
 
