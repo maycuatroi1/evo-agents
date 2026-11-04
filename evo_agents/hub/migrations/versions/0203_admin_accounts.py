@@ -1,7 +1,7 @@
 """Hub admins by GitHub account, and where a market order came from.
 
-Revision ID: 0202
-Revises: 0201
+Revision ID: 0203
+Revises: 0202
 Create Date: 2026-11-04
 
 users gains ``admin_login`` (plan code-quality-upgrade, step 2): the login of EVO_HUB_ADMINS bound to the account the
@@ -18,8 +18,8 @@ Going back drops both columns and their indexes: the admins are by login again, 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0202"
-down_revision = "0201"
+revision = "0203"
+down_revision = "0202"
 branch_labels = None
 depends_on = None
 

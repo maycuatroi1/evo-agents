@@ -8,16 +8,18 @@ is the worker's.
 A kg job of project P is deferred with ``defer_kg``: lock and queueing lock both ``kg:P``. The lock makes the jobs
 holding it run one after the other; the queueing lock keeps at most one of them waiting, and deferring another while
 one waits is a no-op. procrastinate's queueing lock alone still lets several run at once, and its lock alone lets
-any number wait. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
+any number wait. Kg jobs go to the queue KG_QUEUE, which workers of their own take (``hub worker --queue kg``), so a
+long build never holds back the periodic jobs of the queue ``default``, and builds of two projects run at once. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
 waits already leaves the caller's transaction usable.
 
 The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_agents.hub.db``): procrastinate, whose
 only async connector is psycopg's, gets the psycopg connection under it through ``driver``, and the savepoint is the
 engine's ``begin_nested()``. This is the one place the hub hands out that psycopg connection.
 
-The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, every other job to
-procrastinate's default queue. The worker runs a worker of its own on ``LEASE``, so a long build or plugin job on the
-default queue never holds them back; ``queue_of`` names a task's queue, and ``JobQueue.defer`` uses it.
+The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, kg builds to KG_QUEUE,
+every other job to DEFAULT_QUEUE. A worker that takes the default queue runs a worker of its own on ``LEASE``, so a
+long plugin job on the default queue never holds them back; ``queue_of`` names a task's queue, and ``JobQueue.defer``
+uses it unless the caller names one.
 """
 
 from __future__ import annotations
@@ -29,6 +31,9 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.db import driver
+
+DEFAULT_QUEUE = "default"  # every job but the kg ones: periodic, short, on their own worker
+KG_QUEUE = "kg"  # the kg jobs of defer_kg: knowledge graph builds, on workers of their own
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -75,14 +80,15 @@ MARKET_SIGNALS = "hub.market_signals"  # daily: a seller's active licences and t
 REAP_POOL_NODES = "hub.reap_pool_nodes"  # hourly: pool nodes offline past their pool's reap_after_days revoked
 
 
-DEFAULT_QUEUE = "default"  # procrastinate's own
 LEASE = "lease"  # the short jobs that must run every minute whatever else runs
 LEASE_JOBS = frozenset({RECOVER_RUNS, DELIVER_NOTIFICATIONS})
 
 
 def queue_of(task: str) -> str:
     """The queue the jobs of ``task`` go to."""
-    return LEASE if task in LEASE_JOBS else DEFAULT_QUEUE
+    if task in LEASE_JOBS:
+        return LEASE
+    return KG_QUEUE if task == KG_BUILD else DEFAULT_QUEUE
 
 
 def kg_lock(project: str) -> str:
@@ -127,6 +133,7 @@ class JobQueue:
         *,
         lock: str | None = None,
         queueing_lock: str | None = None,
+        queue: str | None = None,
         connection: AsyncConnection | None = None,
         **kwargs,
     ) -> int | None:
@@ -135,7 +142,11 @@ class JobQueue:
         connection's transaction and exists only if it commits."""
         if connection is None:
             deferrer = configure_task(
-                name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock, queue=queue_of(task)
+                name=task,
+                job_manager=self._manager,
+                lock=lock,
+                queueing_lock=queueing_lock,
+                queue=queue or queue_of(task),
             )
             try:
                 return await deferrer.defer_async(**kwargs)
@@ -146,7 +157,7 @@ class JobQueue:
             job_manager=self._manager,
             lock=lock,
             queueing_lock=queueing_lock,
-            queue=queue_of(task),
+            queue=queue or queue_of(task),
             connection=await driver(connection),
         )
         # The refusal is an error in Postgres, which would abort the caller's whole transaction without the
@@ -160,7 +171,8 @@ class JobQueue:
     async def defer_kg(
         self, task: str, project: str, /, *, connection: AsyncConnection | None = None, **kwargs
     ) -> int | None:
-        """``defer`` with lock and queueing lock ``kg:<project>``: one kg job of the project runs at a time, and at
-        most one waits. ``project`` is positional only, so the job's own arguments may hold a ``project`` too."""
+        """``defer`` on KG_QUEUE with lock and queueing lock ``kg:<project>``: one kg job of the project runs at a
+        time, and at most one waits. ``project`` is positional only, so the job's own arguments may hold a ``project``
+        too."""
         key = kg_lock(project)
-        return await self.defer(task, lock=key, queueing_lock=key, connection=connection, **kwargs)
+        return await self.defer(task, lock=key, queueing_lock=key, queue=KG_QUEUE, connection=connection, **kwargs)

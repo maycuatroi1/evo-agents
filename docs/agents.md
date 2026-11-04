@@ -17,6 +17,7 @@ For agents working in a project that uses evo-agents. Installation for people is
 ## Knowledge graph tools and hooks
 
 ```sh
+uv tool install evo-ak                                 # the CLI the plugin runs
 claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
 claude plugin install evo-kg@evo-agents
 ```
@@ -63,14 +64,12 @@ Hooks:
   add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](kg.md) says how it places a
   matched line.
 
-The plugin needs [uv](https://docs.astral.sh/uv/) or `evo-agents` on `PATH`, and a POSIX `sh` (on Windows, Git for
-Windows' `sh` on `PATH`). It pins the release it runs, the version in its `plugin.json`. The server's `.mcp.json` runs
-`sh -c`: `uvx --from evo-ak==<version> evo-agents --version` first, which downloads and caches that version on first
-start, then the server itself from uv's cache. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so
-they never wait on the network. When uvx cannot run that release (uvx missing, the version not in uv's cache yet, or
-never published: the plugins follow `main`, and a release reaches PyPI only once its tag's CI passes), the server and
-each hook run `evo-agents` from the PATH with the same arguments and say so in one line on stderr. With no
-`evo-agents` there either, the server exits 1 and a hook exits 0, each with a line on stderr saying it did not run.
+The plugin runs the `evo-agents` CLI from the `PATH` (`uv tool install evo-ak`; [getting started](getting-started.md)
+has the extras and the nightly builds), so it follows whatever release the machine installed and names none itself:
+`.mcp.json` starts `evo-agents kg serve --sink claude-code@anthropic`, and each hook runs `evo-agents kg hook ... ||
+true`. A hook never fails, blocks or holds the session: with `evo-agents` missing, or an older one that refuses the
+subcommand, the shell's or the CLI's line goes to stderr and the hook exits 0. With no `evo-agents`, the server does
+not start.
 The server is marked `alwaysLoad`, so Claude Code loads its seven tools with the session instead of deferring them
 behind ToolSearch: a session's first search no longer waits a turn for the tool to be loaded. The evo-hub server's
 many tools stay deferred.

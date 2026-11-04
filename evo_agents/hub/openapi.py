@@ -18,15 +18,26 @@ log = logging.getLogger("evo_agents.hub")
 
 # Never connected to: the app's lifespan does not run while the document is built.
 PLACEHOLDER_DSN = "postgresql://openapi.invalid/evo_hub"
+# Python 3.13 renamed two HTTP status phrases FastAPI copies into the document: back to the names of 3.11 and 3.12, so
+# a schema.d.ts generated on any supported Python is the one CI generates (PRs #418 and #420 had flipped them by hand).
+PHRASES = {"Unprocessable Content": "Unprocessable Entity", "Content Too Large": "Request Entity Too Large"}
+
+
+def _old_phrases(node):
+    if isinstance(node, dict):
+        return {key: _old_phrases(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_old_phrases(value) for value in node]
+    return PHRASES.get(node, node) if isinstance(node, str) else node
 
 
 def document() -> dict:
-    """The OpenAPI document of the hub API as a dict."""
+    """The OpenAPI document of the hub API as a dict, the same on every supported Python."""
     from evo_agents.hub.config import HubConfig
     from evo_agents.hub.server.app import create_app
 
     config = HubConfig(dsn=PLACEHOLDER_DSN, data_dir=Path(tempfile.gettempdir()) / "evo-hub-openapi")
-    return create_app(config).openapi()
+    return _old_phrases(create_app(config).openapi())
 
 
 def render(spec: dict) -> str:

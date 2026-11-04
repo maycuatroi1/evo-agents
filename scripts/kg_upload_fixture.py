@@ -114,6 +114,7 @@ def _fixed_zip(data: bytes) -> bytes:
 def xlsx(rng: random.Random) -> bytes | None:
     try:
         import openpyxl
+        from openpyxl.writer.excel import ExcelWriter
     except ImportError:
         return None
     workbook = openpyxl.Workbook()
@@ -128,7 +129,8 @@ def xlsx(rng: random.Random) -> bytes | None:
         crews.append([f"crew-{n + 1}", rng.choice(["dawn", "dusk", "night"])])
     workbook.properties.created = workbook.properties.modified = FIXED_TIME.replace(tzinfo=None)
     out = io.BytesIO()
-    workbook.save(out)
+    # ExcelWriter, not workbook.save: save_workbook sets properties.modified to now, so each second gave other bytes
+    ExcelWriter(workbook, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)).save()
     return _fixed_zip(out.getvalue())
 
 
@@ -213,10 +215,19 @@ def without_utf8_flag(data: bytes, name: str) -> bytes:
     return bytes(out)
 
 
-def write(out_dir: Path, seed: int = 7, fmt: str = "zip") -> Path:
-    """Write the archive of ``seed`` into ``out_dir``, as a zip or a tgz; its path."""
+def padding(seed: int, mib: int) -> dict[str, bytes]:
+    """``mib`` MiB of random recordings from ``seed``, in files of at most 16 MiB: binary assets that make the archive
+    as large as a trial upload needs."""
+    rng = random.Random(seed)
+    sizes = [16] * (mib // 16) + ([mib % 16] if mib % 16 else [])
+    return {f"media/recording-{n + 1:03d}.bin": rng.randbytes(size << 20) for n, size in enumerate(sizes)}
+
+
+def write(out_dir: Path, seed: int = 7, fmt: str = "zip", pad_mib: int = 0) -> Path:
+    """Write the archive of ``seed`` into ``out_dir``, as a zip or a tgz, with ``pad_mib`` MiB of binary padding; its
+    path."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    found = files(seed)
+    found = files(seed) | padding(seed, pad_mib)
     if fmt == "zip":
         path = out_dir / "northwind-handbook.zip"
         path.write_bytes(without_utf8_flag(_zip(found), VIETNAMESE_FLAGLESS))
@@ -236,8 +247,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--format", choices=["zip", "tgz"], default="zip")
+    parser.add_argument("--pad-mib", type=int, default=0, help="MiB of random binary files to add (a large trial)")
     args = parser.parse_args(argv)
-    print(write(args.out_dir, args.seed, args.format))
+    print(write(args.out_dir, args.seed, args.format, args.pad_mib))
     return 0
 
 

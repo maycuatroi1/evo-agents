@@ -651,7 +651,7 @@ const PAGES: Entry[] = [
       const kg = await sharedKg();
       await grantOn(kg.project, me.login, "reader", "customer");
       await open(page, buildsPath(kg.project));
-      await expect(page.getByTestId("kg-latest-build")).toBeVisible();
+      await expect(page.getByTestId("kg-graph-in-use")).toBeVisible();
       // the commit each source read: a link out with its own name, a copy button, a badge for docs behind main
       await expect(page.getByTestId("kg-commits").getByTestId("source-commit")).toHaveCount(2);
       await expect(page.getByTestId("kg-commits").getByTestId("source-behind")).toBeVisible();

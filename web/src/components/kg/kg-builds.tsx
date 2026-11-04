@@ -21,14 +21,20 @@ import {
 } from "@/lib/kg/queries";
 import type { KgBuilds } from "@/lib/kg/types";
 
-import { BuildHistory, BuildQueue, LatestBuild, NoBuilds } from "./build-status";
+import { BuildHistory, latestSucceeded, NoBuilds } from "./build-status";
 import { KgHeader } from "./kg-header";
 import { OptimizeButton } from "./optimize-button";
-import { StatusTiles } from "./status-tiles";
 import { useNow } from "./use-now";
 
 // The graph's shape loads on demand, with its own read (GET /v1/kg/{project}/shape).
 const Shape = dynamic(() => import("./graph-shape").then((module) => module.GraphShapeSection));
+
+// The banner, the figures and the Graph in use card load on demand too, rendered on the server all the same:
+// imported statically, the MetricStrip, the banner and the card's facts put the route over its budget in
+// bundle-budget.json.
+const BuildActivity = dynamic(() => import("./build-activity").then((module) => module.BuildActivity));
+const BuildFigures = dynamic(() => import("./build-figures").then((module) => module.BuildFigures));
+const GraphInUse = dynamic(() => import("./graph-in-use").then((module) => module.GraphInUse));
 
 // The Commits read card loads on demand (next/dynamic): imported statically, its code sat in a chunk that both pages
 // of the graph, this one and the node page, load first, and put each over its budget in bundle-budget.json.
@@ -41,24 +47,16 @@ export type KgBuildsErrors = {
   failed?: ApiErrorInfo | null;
 };
 
-function TilesSkeleton() {
+function OverviewSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {Array.from({ length: 4 }, (_, i) => (
-        <Skeleton key={i} className="h-24 w-full rounded-md" />
-      ))}
-    </div>
+    <>
+      <Skeleton className="h-[78px] w-full rounded-md" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-48 w-full rounded-md" />
+        <Skeleton className="h-48 w-full rounded-md" />
+      </div>
+    </>
   );
-}
-
-/**
- * The commit each git source of the graph read, from the graph summary the status tiles read too. A graph whose
- * sources read no commit never fetches the card's chunk.
- */
-function Commits({ project, error }: { project: string; error: ApiErrorInfo | null }) {
-  const graph = useHubQuery(kgGraphQuery(browserApi, project), error);
-  const sources = graph.status === "success" ? (graph.data.sources ?? []) : [];
-  return sources.length > 0 ? <SourceCommits sources={sources} /> : null;
 }
 
 /** The history's filter in the URL (`?builds=failed`), changed through the History API like the lists' filters. */
@@ -87,17 +85,26 @@ function FailedHistory({ project, now, initialError }: { project: string; now: n
   );
 }
 
-/** The build history under its head, with All and Failed; the admin overview links to Failed by its anchor. */
-function History({ project, data, now, failedError }: { project: string; data: KgBuilds; now: number | null; failedError: ApiErrorInfo | null }) {
+/**
+ * The build history under its head, with All and Failed; the admin overview links to Failed by its anchor. A build is
+ * queued by a push, never from the web, and the line under the head says so.
+ */
+function History({ project, data, failedError }: { project: string; data: KgBuilds; failedError: ApiErrorInfo | null }) {
   const t = useTranslations("kg.history");
   const tBuilds = useTranslations("kg.builds");
+  const now = useNow(buildsActive(data));
   const [filter, setFilter] = useBuildFilter();
   return (
-    <section aria-labelledby={BUILD_HISTORY_ID} className="flex flex-col gap-2" data-testid="kg-history" data-filter={filter}>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <h3 id={BUILD_HISTORY_ID} className="scroll-mt-20 text-[15px] leading-[22px] font-semibold">
-          {tBuilds("history")}
-        </h3>
+    <section aria-labelledby={BUILD_HISTORY_ID} className="flex flex-col gap-3" data-testid="kg-history" data-filter={filter}>
+      <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2 id={BUILD_HISTORY_ID} className="scroll-mt-20 text-[15px] leading-[22px] font-semibold">
+            {tBuilds("history")}
+          </h2>
+          <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground">
+            {tBuilds.rich("description", { code: (chunks) => <code className="font-mono text-xs">{chunks}</code> })}
+          </p>
+        </div>
         <Segmented
           label={t("filter")}
           value={filter}
@@ -117,47 +124,29 @@ function History({ project, data, now, failedError }: { project: string; data: K
   );
 }
 
-function Builds({ project, data, failedError }: { project: string; data: KgBuilds; failedError: ApiErrorInfo | null }) {
-  const t = useTranslations("kg.builds");
+/**
+ * The top of the page: a banner only while a build runs or waits or when the newest one failed, the graph and its
+ * builds in figures, then the graph the pages read beside the commits its sources read.
+ */
+function Overview({ project, data, graphError }: { project: string; data: KgBuilds; graphError: ApiErrorInfo | null }) {
   const now = useNow(buildsActive(data));
-  const [latest] = data.builds;
+  const graph = useHubQuery(kgGraphQuery(browserApi, project), graphError);
+  const sources = graph.status === "success" ? (graph.data.sources ?? []) : [];
   return (
-    <section aria-labelledby="kg-builds-title" className="flex flex-col gap-4" data-testid="kg-builds">
-      <div className="flex flex-col gap-1">
-        <h2 id="kg-builds-title" className="text-[15px] leading-[22px] font-semibold">
-          {t("title")}
-        </h2>
-        <p className="max-w-3xl text-sm text-pretty text-muted-foreground">
-          {t.rich("description", { code: (chunks) => <code className="font-mono text-xs">{chunks}</code> })}
-        </p>
+    <>
+      <BuildActivity builds={data.builds} now={now} />
+      <BuildFigures builds={data.builds} visible={graph.status === "success" ? graph.data.graph : null} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <GraphInUse graph={latestSucceeded(data.builds)} className={sources.length > 0 ? undefined : "lg:col-span-2"} />
+        {sources.length > 0 ? <SourceCommits sources={sources} /> : null}
       </div>
-      {latest ? (
-        <>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
-            <LatestBuild build={latest} now={now} />
-            <BuildQueue data={data} now={now} />
-          </div>
-          <History project={project} data={data} now={now} failedError={failedError} />
-        </>
-      ) : (
-        <>
-          <NoBuilds />
-          {data.jobs.length > 0 ? <BuildQueue data={data} now={now} /> : null}
-        </>
-      )}
-    </section>
+    </>
   );
 }
 
-function Status({ project, data, graphError }: { project: string; data: KgBuilds; graphError: ApiErrorInfo | null }) {
-  const now = useNow(buildsActive(data));
-  const graph = useHubQuery(kgGraphQuery(browserApi, project), graphError);
-  return <StatusTiles data={data} now={now} visible={graph.status === "success" ? graph.data.graph : null} />;
-}
-
 /**
- * /p/{project}/kg/builds: the graph's status, the commits its sources read, the graph's shape and the builds, under the
- * knowledge graph's tabs. Read-only.
+ * /p/{project}/kg/builds: what the builds are doing when it needs a word, the graph in figures, the graph in use and
+ * the commits its sources read, the build history, then the graph's shape, under the knowledge graph's tabs. Read-only.
  */
 export function KgBuildsPage({ project, errors }: { project: string; errors: KgBuildsErrors }) {
   const tStates = useTranslations("states");
@@ -184,13 +173,19 @@ export function KgBuildsPage({ project, errors }: { project: string; errors: KgB
   return (
     <>
       {header}
-      <QueryView state={builds} loading={<TilesSkeleton />}>
-        {(data) => <Status project={project} data={data} graphError={errors.graph} />}
-      </QueryView>
-      <Commits project={project} error={errors.graph} />
-      <Shape project={project} />
-      <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
-        {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}
+      <QueryView state={builds} loading={<OverviewSkeleton />}>
+        {(data) =>
+          data.builds.length === 0 ? (
+            <NoBuilds />
+          ) : (
+            <>
+              <Overview project={project} data={data} graphError={errors.graph} />
+              <History project={project} data={data} failedError={errors.failed ?? null} />
+              {/* No graph, no shape: the section waits for the first build that succeeds. */}
+              {latestSucceeded(data.builds) ? <Shape project={project} /> : null}
+            </>
+          )
+        }
       </QueryView>
     </>
   );
@@ -204,10 +199,8 @@ export function KgBuildsSkeleton() {
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-7 w-64" />
       </div>
-      <TilesSkeleton />
-      <Skeleton className="h-40 w-full rounded-md" />
+      <OverviewSkeleton />
       <TableSkeleton rows={4} />
     </div>
   );
 }
-

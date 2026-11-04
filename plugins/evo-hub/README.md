@@ -6,20 +6,19 @@ harness's plan copies in step with the hub. A session of a hub project also show
 `local`, with its log, its questions and the files it made. Everything the plugin sends is read and written with
 this machine's sign-in (`evo-agents hub login --url URL`); not signed in, it sends nothing.
 
-Install it from the marketplace of this repository:
+Install the CLI, then the plugin from the marketplace of this repository:
 
 ```sh
+uv tool install evo-ak
 claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
 claude plugin install evo-hub@evo-agents
 ```
 
-The MCP server (`.mcp.json`) runs `uvx --from evo-ak==<version> evo-agents hub mcp ...` through `sh -c`, after a
-`--version` call that downloads and caches that release. The hooks run `uvx --offline --from evo-ak==<version>
-evo-agents hub hook ...` (`hooks/hooks.json`), the evo-ak release the plugin names, from uv's cache. When uvx cannot run
-it (the plugin updated itself in an open session whose MCP server has not cached the new release, or the release never
-reached PyPI), the server and the hooks run `evo-agents hub ...` from the PATH, the same package, and say so in one line
-on stderr; with no `evo-agents` there either, their stderr line says they did not run. Every hook exits 0 within its
-deadline, whatever the hub does. `docs/hub.md` (Local runs, Outputs of runs, Memories) has the whole of it.
+The MCP server (`.mcp.json`) and the hooks (`hooks/hooks.json`) run `evo-agents hub ...` from the PATH, the release
+the machine installed; the plugin names no version but its own in `.claude-plugin/plugin.json`. Each hook is
+`evo-agents hub hook ... || true`: with `evo-agents` missing, or an older one that refuses the subcommand, its line
+goes to stderr and the hook exits 0, so it never fails or blocks the session. Every hook exits 0 within its deadline,
+whatever the hub does. `docs/hub.md` (Local runs, Outputs of runs, Memories) has the whole of it.
 
 ## Hooks
 

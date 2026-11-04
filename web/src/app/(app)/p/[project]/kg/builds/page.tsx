@@ -21,8 +21,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * /p/{project}/kg/builds?builds=: the graph's status, the commits its sources read, its shape and the build history
- * (`builds=failed` for the failed builds only), prefetched with the visitor's cookie.
+ * /p/{project}/kg/builds?builds=: the builds in flight or the one that failed, the graph in figures, the graph in use
+ * and the commits its sources read, the build history (`builds=failed` for the failed builds only) and the graph's
+ * shape, prefetched with the visitor's cookie.
  */
 export default async function KgBuildsRoute({ params, searchParams }: Props) {
   const project = decodeURIComponent((await params).project);

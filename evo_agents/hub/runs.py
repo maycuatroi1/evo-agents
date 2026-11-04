@@ -208,6 +208,9 @@ CLONES_CHECKOUTS = "clones_checkouts"
 # hub hands a run with a class below auto (evo_agents.hub.autonomy_levels.restricted) to no other, on claude-code only
 AUTONOMY = "autonomy"
 AUTONOMY_RUNTIME = "claude-code"
+# a daemon whose review run works with no repo: the KG init of a project that has none, one fed by uploads alone
+# (evo_agents.hub.server.kg_init); the hub queues it only on such a worker and hands it to no other
+REPOLESS_REVIEW = "repoless_review"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
 # a daemon that installed Chromium (`evo-agents worker browser install`) and starts it for a run dispatched with
 # browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
@@ -248,6 +251,7 @@ WORKER_FEATURES = (
     DOCTOR_REPORT,
     BROWSER_INSTALL,
     SKILL_SYNC,
+    REPOLESS_REVIEW,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>

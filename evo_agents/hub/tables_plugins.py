@@ -50,7 +50,7 @@ plugins.builtin (0147) marks canvas, srs and tasks: features of the hub that it 
 store. A project has them on through its features (``evo_agents.hub.feature_rule``), not through project_plugins;
 retired_project_plugins keeps the rows project_plugins held of them, for going back below 0147.
 
-plugin_cron (0203) holds at most one row (id 1): the last minute whose plugin jobs hub.plugin_jobs queued
+plugin_cron (0204) holds at most one row (id 1): the last minute whose plugin jobs hub.plugin_jobs queued
 (``evo_agents.hub.plugin_jobs.fire``), so a pass that comes late catches up the minutes since, each once.
 
 ``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``),

@@ -939,6 +939,7 @@ async def recover_runs(
 
     await run_waits.wake_waits(engine, batch)  # first, so a wait that came wakes before its run is parked or expires
     await park_waiting(engine, batch, decision_wait, ended)
+    await run_waits.resume_answered(engine, batch)  # a run parked in the pass its wait woke, the answer untaken
     await expire_parked(engine, batch, parked_for, ended)
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 

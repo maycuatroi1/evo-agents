@@ -5608,13 +5608,31 @@ def test_0201_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0201") :]
 
 
-def test_0202_binds_an_admin_login_to_one_account_and_an_order_to_its_address_and_going_back_drops_both(hub_db):
+def test_0202_lets_a_review_run_name_no_repo_and_going_back_deletes_those(hub_db):
     move_to(hub_db, "0201")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    bare = {"kind": "review", "request": None, "repos": null(), "title": "KG init of demo"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(_author_run(ids, **bare))
+    move_to(hub_db, "0202")
+    with live.connect(hub_db) as conn:
+        one(conn, _author_run(ids, **bare))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(_author_run(ids, kind="step", repos=[{"repo": "harness", "branch": "main"}]))
+    move_to(hub_db, "0201", down=True)
+    review = hub_tables.runs.c.kind == "review"
+    assert query(hub_db, select(func.count()).select_from(hub_tables.runs).where(review)) == [(0,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0202") :]
+
+
+def test_0203_binds_an_admin_login_to_one_account_and_an_order_to_its_address_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0202")
     assert "admin_login" not in columns(hub_db, "users")
     assert "buyer_address" not in columns(hub_db, "market_orders")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    move_to(hub_db, "0202")
+    move_to(hub_db, "0203")
     u = hub_tables.users
     assert query(hub_db, select(u.c.admin_login).where(u.c.id == ids["user"])) == [(None,)]  # bound at the hub's start
     with live.connect(hub_db) as conn:
@@ -5623,25 +5641,25 @@ def test_0202_binds_an_admin_login_to_one_account_and_an_order_to_its_address_an
     with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
         conn.execute(update(u).where(u.c.id == other).values(admin_login="octo"))  # one account a login
     assert "buyer_address" in columns(hub_db, "market_orders")
-    move_to(hub_db, "0201", down=True)
+    move_to(hub_db, "0202", down=True)
     assert "admin_login" not in columns(hub_db, "users")
     assert "buyer_address" not in columns(hub_db, "market_orders")
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0202") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0203") :]
 
 
-def test_0203_keeps_the_last_minute_of_plugin_jobs_in_one_row_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0202")
-    assert "plugin_cron" not in tables(hub_db)
+def test_0204_keeps_the_last_minute_of_plugin_jobs_in_one_row_and_going_back_drops_it(hub_db):
     move_to(hub_db, "0203")
+    assert "plugin_cron" not in tables(hub_db)
+    move_to(hub_db, "0204")
     cron = hub_tables.plugin_cron
     at = datetime(2026, 11, 4, 9, 30, tzinfo=UTC)
     live.sql(hub_db, insert(cron).values(fired_through=at))
     assert query(hub_db, select(cron.c.id, cron.c.fired_through)) == [(1, at)]
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(cron).values(id=2, fired_through=at))  # one row
-    move_to(hub_db, "0202", down=True)
+    move_to(hub_db, "0203", down=True)
     assert "plugin_cron" not in tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0203") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0204") :]
 
 
 @pytest.mark.parametrize(
@@ -5654,7 +5672,7 @@ def test_0203_keeps_the_last_minute_of_plugin_jobs_in_one_row_and_going_back_dro
 def test_migration_lock_timeout_and_statement_timeout_bound_a_revision_blocked_behind_a_lock(
     hub_db, monkeypatch, limits, error
 ):
-    move_to(hub_db, "0202")
+    move_to(hub_db, "0203")
     monkeypatch.setattr(hub_migrate, "REVISION_TIMEOUTS", limits)
     with live.engine(hub_db).connect() as holder:  # a long transaction holding the row every revision updates
         holder.execute(select(ALEMBIC_VERSION.c.version_num).with_for_update())
@@ -5664,6 +5682,6 @@ def test_migration_lock_timeout_and_statement_timeout_bound_a_revision_blocked_b
         assert isinstance(raised.value.orig, error)
         assert time.monotonic() - started < 15  # instead of waiting for the holder as long as it holds
         holder.rollback()
-    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0202",)]  # the revision rolled back
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0203",)]  # the revision rolled back
     assert "plugin_cron" not in tables(hub_db)
     assert hub_migrate.migrate(hub_db.dsn).after == (HEAD,)  # once the holder is gone it goes through

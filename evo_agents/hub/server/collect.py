@@ -573,14 +573,25 @@ async def _review_repos(conn: AsyncConnection, project_id: int, project: str, wo
     return [{"repo": name, "branch": None} for (name,) in names]
 
 
-async def _review_place(conn: AsyncConnection, due, duty: Duty, runtime: str) -> tuple[list[dict], list[str]]:
+async def _review_place(
+    conn: AsyncConnection, due, duty: Duty, runtime: str, *, repoless: bool = False
+) -> tuple[list[dict], list[str]]:
     """The repos of the review run and what keeps it from a worker on duty: the repos of the first one that fits it,
-    else the problems of the first one (``dispatch.unfit``), none fitting."""
+    else the problems of the first one (``dispatch.unfit``), none fitting. With ``repoless`` (a KG init), a project
+    that has no repo at all, one fed by uploads alone, is reviewed with none by a daemon that says it runs such a
+    review (``runs.REPOLESS_REVIEW``)."""
+    pr = tables.project_repos
+    bare = repoless and await conn.scalar(select(func.count()).where(pr.c.project_id == due.project_id)) == 0
     found = []
     for worker in duty.nodes:
         repos = await _review_repos(conn, due.project_id, due.project, worker)
         problems = unfit(worker, due.project, "review", [entry["repo"] for entry in repos], runtime)
-        if not repos:
+        if bare and runs.REPOLESS_REVIEW not in worker.features:
+            problems.append(
+                f"project {due.project} has no repo, and its daemon (evo-agents "
+                f"{worker.agent_version or 'of an unknown version'}) runs no review with no repo: update it"
+            )
+        elif not repos and not bare:
             problems.append(f"it has no checkout of a repo of project {due.project}")
         if not problems:
             return repos, []

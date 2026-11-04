@@ -1,7 +1,7 @@
 """The last minute the plugins' jobs were queued for.
 
-Revision ID: 0203
-Revises: 0202
+Revision ID: 0204
+Revises: 0203
 Create Date: 2026-11-04
 
 plugin_cron holds at most one row (id 1, plan code-quality-upgrade, step 3): the minute through which hub.plugin_jobs
@@ -15,8 +15,8 @@ Going back drops the table: hub.plugin_jobs queues the jobs of its own minute al
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0203"
-down_revision = "0202"
+revision = "0204"
+down_revision = "0203"
 branch_labels = None
 depends_on = None
 

@@ -24,9 +24,12 @@ test.describe("knowledge graph screenshots", () => {
       const status = await kgProject(admin, "kg-status");
       await queueBuild(status.project, status.writer, true);
       await queueBuild(status.project, status.writer, false);
+      const broken = await kgProject(admin, "kg-broken");
+      await queueBuild(broken.project, broken.writer, true);
       const reviewer = newAccount("kg-reviewer");
       await admin.grant(kg.project, reviewer.login, "writer", "customer");
       await admin.grant(status.project, reviewer.login, "reader", "internal");
+      await admin.grant(broken.project, reviewer.login, "reader", "internal");
       await signInAs(reviewer);
 
       await open(page, kgPath(kg.project));
@@ -41,11 +44,15 @@ test.describe("knowledge graph screenshots", () => {
       await explorerReady(page, "node");
       await shot("explorer-node", false);
       await open(page, buildsPath(kg.project));
-      await expect(page.getByTestId("kg-latest-build")).toBeVisible();
+      await expect(page.getByTestId("kg-graph-in-use")).toBeVisible();
+      await expect(page.getByTestId("kg-shape-table")).toBeVisible();
       await shot("builds");
       await open(page, buildsPath(status.project));
-      await expect(page.getByTestId("queue-job")).toBeVisible();
+      await expect(page.getByTestId("kg-activity")).toBeVisible();
       await shot("status-queued-failed");
+      await open(page, buildsPath(broken.project));
+      await expect(page.getByTestId("kg-activity")).toHaveAttribute("data-status", "failed");
+      await shot("status-failed");
       await open(page, nodePath(kg.project, SHARED_NODE));
       await graphReady(page);
       await shot("node");
@@ -61,6 +68,9 @@ test.describe("knowledge graph screenshots", () => {
       await open(page, nodePath(kg.project, SHARED_NODE));
       await expect(page.getByTestId("kg-neighbours")).toBeVisible();
       await shot("node-mobile");
+      await open(page, buildsPath(kg.project));
+      await expect(page.getByTestId("kg-shape-table")).toBeVisible();
+      await shot("builds-mobile");
     });
   }
 });
