@@ -128,6 +128,7 @@ class FakeHub:
         # carries; None: the key left out
         self.browser_install: dict | None = None
         self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
+        self.claims_open = 0  # long polls of /v1/worker/claim not answered yet, a stopped daemon's last one among them
         self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
@@ -836,15 +837,19 @@ class FakeHub:
     async def _claim(self, request: web.Request) -> web.Response:
         body = await request.json()
         deadline = asyncio.get_running_loop().time() + min(float(body.get("wait_s") or 0), 1.0)
-        while not self.queue:
-            self._queued.clear()
-            left = deadline - asyncio.get_running_loop().time()
-            if left <= 0:
-                return web.json_response({"run": None})
-            try:
-                await asyncio.wait_for(self._queued.wait(), left)
-            except TimeoutError:
-                pass
+        self.claims_open += 1
+        try:
+            while not self.queue:
+                self._queued.clear()
+                left = deadline - asyncio.get_running_loop().time()
+                if left <= 0:
+                    return web.json_response({"run": None})
+                try:
+                    await asyncio.wait_for(self._queued.wait(), left)
+                except TimeoutError:
+                    pass
+        finally:
+            self.claims_open -= 1
         run_id = self.queue.pop(0)
         self._move(run_id, "leased")
         return web.json_response({"run": self.runs[run_id]["spec"]})
