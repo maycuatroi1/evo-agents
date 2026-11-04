@@ -22,6 +22,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 from fastapi import HTTPException
 from sqlalchemy import BigInteger, Text, and_, case, column, exists, func, literal, or_, select, true
@@ -240,7 +241,7 @@ def _claim_conditions(
     them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included. What the run's agent
     profile, its browser, the gateway, the agent pools and the worker's labels and taints ask of the worker is
-    ``Claimer.gates``."""
+    ``_gates``."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -487,7 +488,7 @@ async def _claim_once(
             claimer.environments,
             claimer.served,
         )
-        query = _claimable(claimer.conditions())
+        query = claim_query(claimer.shape())
         waiting = await overlap.blocked(conn, list(served))
         if waiting:  # a step run whose files another run of its plan is editing waits in the queue
             query = query.where(tables.runs.c.id.not_in(waiting))
@@ -591,53 +592,115 @@ class Claimer:
         )
         return [key for failed, key in checks if failed]
 
-    def conditions(self) -> list[tuple[str, object]]:
-        """Every condition on a queued run for the worker to take it now, each with its key: on a drained worker, that
-        the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``gates``."""
+    def shape(self) -> ClaimShape:
+        """What its ``conditions`` are built from."""
         row = self.row
-        drained = [("draining", resumes_here(row.id))] if row.drained_at is not None else []
-        kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
-        said = {kind: kind in kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
-        said |= {kind: kind in kinds for kind in ("task", "question", "release", "browser")}
-        conditions = _claim_conditions(
-            row.id,
-            row.owner_id,
-            list(self.served),
-            self.runtimes,
-            self.pairs,
-            offered=tuple(self.offered),
-            plan_runs=runs.takes_plan_runs(row.agent_version),
+        return ClaimShape(
+            worker_id=row.id,
+            owner_id=row.owner_id,
+            name=row.name,
+            drained=row.drained_at is not None,
+            agent_version=row.agent_version,
             web_only=row.dispatch_from == "web",
-            **{f"{kind}_runs": runs_it for kind, runs_it in said.items()},
-            step_sessions=runs.SESSION_PER_STEP in features,
+            run_kinds=tuple(row.run_kinds or ()),
+            features=tuple(row.features or ()),
+            plugins=tuple(row.plugins or ()),
+            shared=row.shared,
+            served=tuple(self.served),
+            runtimes=tuple(self.runtimes),
+            offered=tuple(self.offered),
+            pairs=tuple(tuple(pair) for pair in self.pairs),
+            environments=tuple(self.environments),
             clones=self.clones,
             steady=self.steady,
-            shared=row.shared,
+            node=self.node,
         )
-        return drained + conditions + self.gates()
 
-    def gates(self) -> list[tuple[str, object]]:
-        """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes),
-        its browser, the model gateway, a judge of merge requests, the agent pools, the account pools and the worker's
-        labels and taints ask of the worker, each by its key."""
-        row = self.row
-        clause = claim_clause(
-            row.name,
-            self.runtimes,
-            row.features,
-            self.offered,
-            self.environments,
-            row.plugins,
-        )
-        return [
-            ("profile", clause),
-            ("browser", browsers.claim_gate(row.id, row.features)),
-            ("gateway", gateway_accounts.claim_gate(row.agent_version)),
-            ("merge_judge", merge_judge_gate(row.features)),
-            ("agent_pool", agent_placement.claim_gate(row.id)),
-            ("pool_accounts", pool_accounts.claim_gate()),
-            ("placement", or_(agent_placement.home_run(row.id), self.node.gate(row.id))),
-        ]
+    def conditions(self) -> list[tuple[str, object]]:
+        """Every condition on a queued run for the worker to take it now, each with its key (``_conditions``)."""
+        return list(_conditions(self.shape()))
+
+
+@dataclass(frozen=True)
+class ClaimShape:
+    """What the conditions of a worker's claim are built from (``Claimer.shape``), hashable: the claim query of a worker
+    whose shape has not changed since its last claim is reused (``_conditions``, ``claim_query``), as building it anew
+    took every look of every waiting claim milliseconds of the api's one event loop. Each condition is SQL, so what
+    the database holds is read when the query runs, never cached."""
+
+    worker_id: int
+    owner_id: int
+    name: str
+    drained: bool
+    agent_version: str | None
+    web_only: bool
+    run_kinds: tuple[str, ...]
+    features: tuple[str, ...]
+    plugins: tuple[str, ...]
+    shared: bool
+    served: tuple[int, ...]
+    runtimes: tuple[str, ...]
+    offered: tuple[str, ...]
+    pairs: tuple[tuple[int, str], ...]
+    environments: tuple[str, ...]
+    clones: bool
+    steady: bool
+    node: worker_placement.Placement
+
+
+@lru_cache(maxsize=512)
+def _conditions(at: ClaimShape) -> tuple[tuple[str, object], ...]:
+    """Every condition on a queued run for the worker of ``at`` to take it now, each with its key: on a drained worker,
+    that the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``_gates``."""
+    drained = [("draining", resumes_here(at.worker_id))] if at.drained else []
+    said = {kind: kind in at.run_kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
+    said |= {kind: kind in at.run_kinds for kind in ("task", "question", "release", "browser")}
+    conditions = _claim_conditions(
+        at.worker_id,
+        at.owner_id,
+        list(at.served),
+        list(at.runtimes),
+        list(at.pairs),
+        offered=at.offered,
+        plan_runs=runs.takes_plan_runs(at.agent_version),
+        web_only=at.web_only,
+        **{f"{kind}_runs": runs_it for kind, runs_it in said.items()},
+        step_sessions=runs.SESSION_PER_STEP in at.features,
+        clones=at.clones,
+        steady=at.steady,
+        shared=at.shared,
+    )
+    return tuple(drained + conditions + _gates(at))
+
+
+def _gates(at: ClaimShape) -> list[tuple[str, object]]:
+    """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes), its
+    browser, the model gateway, a judge of merge requests, the agent pools, the account pools and the worker's labels
+    and taints ask of the worker of ``at``, each by its key."""
+    clause = claim_clause(
+        at.name,
+        list(at.runtimes),
+        at.features,
+        list(at.offered),
+        list(at.environments),
+        at.plugins,
+    )
+    return [
+        ("profile", clause),
+        ("browser", browsers.claim_gate(at.worker_id, at.features)),
+        ("gateway", gateway_accounts.claim_gate(at.agent_version)),
+        ("merge_judge", merge_judge_gate(at.features)),
+        ("agent_pool", agent_placement.claim_gate(at.worker_id)),
+        ("pool_accounts", pool_accounts.claim_gate()),
+        ("placement", or_(agent_placement.home_run(at.worker_id), at.node.gate(at.worker_id))),
+    ]
+
+
+@lru_cache(maxsize=512)
+def claim_query(at: ClaimShape):
+    """``_claimable`` of the conditions of ``at``, built once per shape; reusing the statement also keeps its cache
+    key, so SQLAlchemy compiles it once."""
+    return _claimable(list(_conditions(at)))
 
 
 def merge_judge_gate(features):
