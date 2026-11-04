@@ -116,6 +116,7 @@ class Run:
         self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()
+        self.spool_failed = 0  # events the spool could not write (OSError: a full disk)
         home = daemon.home
         home.run_dir(self.id).mkdir(mode=0o700, parents=True, exist_ok=True)
         self.log_path = home.run_dir(self.id) / "events.jsonl"
@@ -148,7 +149,13 @@ class Run:
         for listen in self.listeners:
             listen(kind, body)
         body = credentials.scrub(body)
-        seq = self.spool.append(kind, body, at)
+        try:
+            seq = self.spool.append(kind, body, at)
+        except OSError as exc:  # a full disk: the event is lost, and the run, its reports and its teardown go on
+            seq = None
+            if not self.spool_failed:
+                log.error("an event of the run could not be spooled", extra={"run_id": self.id, "error": str(exc)})
+            self.spool_failed += 1
         if seq is not None:
             self.sender.poke()
         if self.log_bytes < LOG_LIMIT:
@@ -318,21 +325,21 @@ class Run:
 
     async def _wind_down(self, sender: asyncio.Task) -> None:
         """The run is over here: it ended, was parked, or the daemon stops. Its leases go back, its events go to the
-        hub, and its worktrees leave the plan's branches."""
+        hub, and its worktrees leave the plan's branches. Each part is done whatever the one before it raised (a full
+        disk raises OSError in many of them): the leases go back, finished_at is written and the branches are let go."""
         for task in list(self._background):
             task.cancel()
-        await self.agent.terminal.close_web()
-        try:  # its Chromium ends writing its profile, then goes with runs/<run>/browser
-            await self.agent.close_browser()
-        except Exception:
-            log.exception("the run's browser was not closed", extra={"run_id": self.id})
-        await self.outputs.close(
-            0 if self.daemon.hard_stop.is_set() else CLOSE_GRACE
-        )  # its text redacted with the leases
-        try:
-            await self.credentials.release(stop=self.daemon.hard_stop)
-        except Exception:
-            log.exception("the run's leases were not given back", extra={"run_id": self.id})
+        await self._part("the run's web terminal was not closed", self.agent.terminal.close_web)
+        # its Chromium ends writing its profile, then goes with runs/<run>/browser
+        await self._part("the run's browser was not closed", self.agent.close_browser)
+        await self._part(  # its text redacted with the leases
+            "the run's outputs were not closed",
+            functools.partial(self.outputs.close, 0 if self.daemon.hard_stop.is_set() else CLOSE_GRACE),
+        )
+        await self._part(
+            "the run's leases were not given back",
+            functools.partial(self.credentials.release, stop=self.daemon.hard_stop),
+        )
         self.sender.close()
         if not self.daemon.hard_stop.is_set():
             with contextlib.suppress(asyncio.TimeoutError):
@@ -342,7 +349,8 @@ class Run:
             with contextlib.suppress(asyncio.CancelledError):
                 await sender
         if self.sender.settled:
-            self.spool.remove()
+            with contextlib.suppress(OSError):
+                self.spool.remove()
         # A verify job of `worker step` that still runs goes with the run (verify_jobs).
         with contextlib.suppress(OSError):
             await asyncio.to_thread(verify_jobs.stop_all, self.daemon.home.run_dir(self.id) / verify_jobs.JOBS_DIR)
@@ -354,4 +362,11 @@ class Run:
         self.record["state"] = self.state
         with contextlib.suppress(OSError):
             self.daemon.home.save_run(self.record)
-        await self.kind.release_branch()
+        await self._part("the run's branches were not let go", self.kind.release_branch)
+
+    async def _part(self, failed: str, part) -> None:
+        """Await ``part()`` of the teardown; what it raises is logged as ``failed`` and the teardown goes on."""
+        try:
+            await part()
+        except Exception:
+            log.exception(failed, extra={"run_id": self.id})

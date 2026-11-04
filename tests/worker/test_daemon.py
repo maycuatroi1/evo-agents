@@ -258,6 +258,22 @@ class Stack:
 
         wait_until(seen, f"{text!r} in the daemon's log", timeout, self.daemon_output)
 
+    def wait_heartbeats(self, count: int) -> None:
+        """Wait until the hub has ``count`` more heartbeats of the worker than it has now."""
+        worker_id = json.loads((self.state / "config.json").read_text(encoding="utf-8"))["worker_id"]
+
+        def last() -> str | None:
+            return self.client.get(f"/v1/workers/{worker_id}", headers=self.owner).json()["last_heartbeat_at"]
+
+        seen = [last()]
+
+        def beat() -> bool:
+            if (now := last()) != seen[-1]:
+                seen.append(now)
+            return len(seen) > count
+
+        wait_until(beat, f"{count} heartbeats of the worker", explain=self.daemon_output)
+
     def stop_daemon(self, proc: subprocess.Popen, timeout: float = 60) -> int:
         if proc.poll() is None:
             proc.send_signal(signal.SIGTERM)
@@ -560,7 +576,7 @@ def test_the_daemon_refuses_to_push_main_or_a_detached_head(make_stack):
     finished_cleanly(stack, proc)
 
 
-def test_events_wait_in_the_spool_while_the_hub_is_down_and_reach_it_in_seq_order(make_stack):
+def test_waits_for_event_events_wait_in_the_spool_while_the_hub_is_down_and_reach_it_in_seq_order(make_stack):
     stack = make_stack()
     reached, go = stack.tmp / "reached", stack.tmp / "go"
     stack.scenarios(
@@ -601,7 +617,7 @@ def test_events_wait_in_the_spool_while_the_hub_is_down_and_reach_it_in_seq_orde
         explain=stack.daemon_output,
     )
     stack.wait_log("events not sent; they wait in the spool", proc)
-    time.sleep(2)  # the agent ends and the daemon runs the verify command while the hub is away
+    stack.wait_log('"state": "verifying"', proc)  # the agent ended; the daemon tells the hub, which is away
     assert proc.poll() is None, "the run goes on without the hub"
     stack.server.start()
 
@@ -614,7 +630,7 @@ def test_events_wait_in_the_spool_while_the_hub_is_down_and_reach_it_in_seq_orde
     finished_cleanly(stack, proc)
 
 
-def test_sigterm_stops_the_claims_and_lets_the_held_run_end(make_stack):
+def test_waits_for_event_sigterm_stops_the_claims_and_lets_the_held_run_end(make_stack):
     stack = make_stack()
     started, go = stack.tmp / "started", stack.tmp / "go"
     stack.scenarios(
@@ -635,7 +651,7 @@ def test_sigterm_stops_the_claims_and_lets_the_held_run_end(make_stack):
     proc.send_signal(signal.SIGTERM)
     stack.wait_log("stopping: no new claims", proc)
     second = stack.dispatch([4])[0]["id"]
-    time.sleep(2.5)  # heartbeats go on; a claim would have taken the run by now
+    stack.wait_heartbeats(2)  # heartbeats go on; a claim would have taken the run by now
     assert stack.run(second)["state"] == "queued"
     assert proc.poll() is None, "the daemon waits for the run it holds"
     go.touch()
