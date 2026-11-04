@@ -11391,6 +11391,14 @@
         },
         {
           "flags": [
+            "--strategy"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--undo"
           ],
           "value": null,

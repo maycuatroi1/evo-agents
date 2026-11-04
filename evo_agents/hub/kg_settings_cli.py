@@ -39,6 +39,12 @@ def _figures(text: str | None) -> dict | None:
     return found
 
 
+def kg_strategy_error():
+    from evo_agents.kg import strategy
+
+    return strategy.StrategyError
+
+
 def settings_json(project: str, found: dict) -> dict:
     """What ``--json`` prints, from the hub's answer."""
     return {
@@ -57,12 +63,19 @@ def cmd_settings(args) -> int:
     try:
         if args.undo:
             found = hub.call("POST", f"{base}/undo", {"reason": args.reason})
-        elif args.set:
-            body = {"values": _values(args.set), "reason": args.reason, "figures": _figures(args.figures)}
+        elif args.set or args.strategy:
+            values = {}
+            if args.strategy:  # the strategy's settings and its name: the hub keeps the strategy as a key
+                from evo_agents.kg import strategy as kg_strategy
+
+                chosen = kg_strategy.find(args.strategy)
+                values = {**chosen.settings, "strategy": chosen.name}
+            values.update(_values(args.set or []))
+            body = {"values": values, "reason": args.reason, "figures": _figures(args.figures)}
             found = hub.call("PUT", base, body)
         else:
             found = hub.call("GET", base)
-    except (kg_settings.SettingsError, ValueError) as exc:
+    except (kg_settings.SettingsError, ValueError, kg_strategy_error()) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     out = settings_json(args.project, found)
@@ -118,6 +131,10 @@ def register(ksub) -> None:
     )
     parser.add_argument("--project", required=True, help="project name on the hub")
     parser.add_argument("--set", action="append", metavar="KEY=VALUE", help="a key and its new value; repeatable")
+    parser.add_argument(
+        "--strategy",
+        help="set a strategy: its name (built-in) or file, with the settings it carries (docs/kg-strategies.md)",
+    )
     parser.add_argument("--undo", action="store_true", help="put back the newest change that is not undone")
     parser.add_argument("--reason", help="why, kept with the change")
     parser.add_argument("--figures", help="a json object of the numbers the change rests on")

@@ -166,6 +166,66 @@ def cmd_settings(args) -> int:
     return 0
 
 
+def cmd_strategy(args) -> int:
+    """List the strategies, show one, or apply one (``--dry-run`` says what it would change)."""
+    from evo_agents.kg import strategy as kg_strategy
+    from evo_agents.kg.cli import _print_json, _project
+
+    project = None
+    if args.action == "apply" or args.project:
+        project = _project(args)
+    else:  # list and show work anywhere; a project the cwd belongs to adds its own strategies
+        from evo_agents.kg.project import ProjectError, resolve_project
+
+        try:
+            project = resolve_project(None)
+        except ProjectError:
+            pass
+    root = project.harness.root if project is not None else None
+    try:
+        if args.action == "list":
+            found = kg_strategy.available(root)
+            if args.json:
+                _print_json([s.to_json() for s in found.values()])
+            else:
+                print(kg_strategy.render_list(found))
+            return 0
+        if not args.target:
+            raise kg_strategy.StrategyError(f"{args.action} needs a strategy name or file")
+        chosen = kg_strategy.find(args.target, root)
+        if args.action == "show":
+            if args.json:
+                _print_json(chosen.to_json())
+            else:
+                print(f"{chosen.name} ({chosen.origin}): {chosen.description}")
+                print(yaml_dump(chosen.to_json()))
+            return 0
+        found = kg_strategy.plan(chosen, project) if args.dry_run else kg_strategy.apply(chosen, project)
+    except kg_strategy.StrategyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    out = {**found.to_json(), "applied": not args.dry_run}
+    if args.json:
+        _print_json(out)
+        return 1 if found.problems else 0
+    for problem in found.problems:
+        print(f"cannot apply: {problem}")
+    verb = "would change" if args.dry_run else "changed"
+    for key, (was, now) in found.changed.items():
+        print(f"{verb} {key}: {was} -> {now}")
+    if out["adds_identifiers"] or out["adds_ontology"]:
+        print(f"{verb} knowledge: identifiers {out['adds_identifiers']}, ontology {out['adds_ontology']}")
+    if found.needs_rebuild:
+        print(f"takes effect with the next build: {', '.join(found.needs_rebuild)}")
+    return 1 if found.problems else 0
+
+
+def yaml_dump(data) -> str:
+    import yaml
+
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True).rstrip()
+
+
 def _figures(text: str | None) -> dict | None:
     if not text:
         return None
@@ -573,3 +633,11 @@ def register(ksub, with_project) -> None:
     st.add_argument("--figures", help="json object of the figures that justify the change, kept with it")
     st.add_argument("--undo", action="store_true", help="put back what the last change replaced")
     st.set_defaults(func=cmd_settings)
+
+    sg = with_project(
+        ksub.add_parser("strategy", help="list, show or apply a KG strategy for a kind of data (docs/kg-strategies.md)")
+    )
+    sg.add_argument("action", choices=["list", "show", "apply"])
+    sg.add_argument("target", nargs="?", help="a strategy name, or a strategy file (apply, show)")
+    sg.add_argument("--dry-run", action="store_true", help="apply: say what would change and change nothing")
+    sg.set_defaults(func=cmd_strategy)

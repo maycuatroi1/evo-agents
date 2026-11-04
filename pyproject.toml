@@ -109,6 +109,7 @@ include = ["evo_agents*"]
 [tool.setuptools.package-data]
 evo_agents = [
     "harness/schemas/*.json",
+    "kg/strategies/*.yaml",  # the built-in KG strategies (evo_agents.kg.strategy)
     "kg/rank_model.txt",  # the learned order of kg_search (evo_agents.kg.rank), at most 5 MB
     "hub/model_catalog.json",
     "hub/migrations/*.py",
