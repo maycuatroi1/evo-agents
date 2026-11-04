@@ -551,7 +551,24 @@ and a summary holds ids and scores, never text.
 - **Parts.** A question falls in `tune`, `holdout` or `test` by the SHA-256 of `<set>/<question id>`, with the shares of
   the code sets (a half, a quarter, a quarter). `test` is sealed as before. `--sample N` samples the questions
   asked, not the corpus.
-- **Search.** The corpus and memory sets take `--search graph` only, and `--limit` 1 to 25.
+- **Search.** The memory sets take `--search graph` only; the corpus sets take `--search graph` or `--search hybrid`
+  (hybrid embeds the graph first, with the backend `EVO_KG_EMBEDDINGS` names). `--limit` is 1 to 25.
+- **Strategy graphs.** `--strategy NAME` builds a corpus set's graph with a strategy (`evo-agents kg strategy`), such
+  as `multi-hop`, apart from the plain graph: the graph's name carries the strategy and a digest of its build and
+  semantic settings. Its entities step reads the `document` items through the strategy's sink, which the bench
+  harness clears for public text. `--entities FILE` is a JSON object of run keys only (`jobs`, `max_calls`,
+  `max_tokens`, `max_cost`) that replaces the strategy's ceilings. A build that left items for later fails with
+  "entities unfinished" and writes no marker; the same command goes on from the memo. The strategy's query
+  settings (such as `walk`) are not kept: pass them with `--settings`, so one entity graph serves arms with and
+  without them. The part of a summary carries `graph` (strategy, digest, repo) and `extraction` (model calls,
+  tokens, cost and `usd_per_1000_documents`, summed from the memo).
+
+```sh
+evo-agents kg bench build musique --strategy multi-hop --entities entities.json   # again until it passes
+evo-agents kg bench run musique --strategy multi-hop --entities entities.json --out entities-run.json
+echo '{"walk": {}}' > walk.json
+evo-agents kg bench run musique --strategy multi-hop --entities entities.json --settings walk.json --out multihop.json
+```
 
 The code sets are untouched: `kg bench` without a set name still runs the four.
 

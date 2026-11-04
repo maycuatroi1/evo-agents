@@ -65,6 +65,7 @@ settings:
     relations: [depends_on]
     items: [markdown]          # record kinds read; the prose kinds when absent
     max_cost: 2.0              # ceilings of one build: max_calls, max_tokens, max_cost
+    jobs: 1                    # calls at once (default 1)
 ```
 
 - A model is local (`command`, or a `url` on this machine) or reached through `sink`, a policy sink of kind `llm-backend`
@@ -83,6 +84,9 @@ settings:
 - Results are memoized by the item's content digest, the model and the mapping. Each build records calls, tokens and cost
   in `coverage["entities"]` and stops at its ceiling (defaults: 200 calls, 400000 tokens, cost 5). The items left over
   are in `skipped`, the build is not skipped as unchanged, and the next build continues from the memo.
+- `jobs` sets how many calls run at once (default 1). Each answer is memoized as it comes, so a build cut short
+  by a rate limit goes on from the memo. With more than one call at once, the token or cost ceiling can be passed
+  by at most `jobs - 1` calls; `max_calls` counts calls still running.
 - Verifying a build reads the memo only and never calls a model.
 
 ### Claude Code as the model
