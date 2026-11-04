@@ -361,6 +361,7 @@ REVIEW_WORDS = {
     "possible_duplicate": "groups of nodes of the knowledge graph that may be duplicates",
     "ambiguous_match": "mentions and links of the knowledge graph that matched one of several nodes by name",
     "bulk_noise": "groups of images, generated files and repeated plan steps in the knowledge graph",
+    "conflicting_claim": "pairs of claims two documents of the knowledge graph state differently",
 }
 
 

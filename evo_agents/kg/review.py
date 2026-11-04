@@ -1,5 +1,5 @@
-"""The review queue of a build: what in a project's knowledge graph a person should look at, computed by six rules over
-a build that has clusters (``evo_agents.kg.clusters``), with no model.
+"""The review queue of a build: what in a project's knowledge graph a person should look at, computed by seven rules
+over a build that has clusters (``evo_agents.kg.clusters``), with no model.
 
 - ``dangling_mention``: an item (a document, a plan) mentions code the graph does not hold, the dangling mentions its
   source's coverage counts (``evo_agents.kg.pipeline.link``);
@@ -9,7 +9,12 @@ a build that has clusters (``evo_agents.kg.clusters``), with no model.
 - ``ambiguous_match``: an item with mentions whose name matched several nodes, or a path edge resolved to one of
   several files with that path;
 - ``bulk_noise``: images, generated files and plan steps whose name repeats across plans, BULK or more of a kind in
-  one place.
+  one place;
+- ``conflicting_claim``: two ``extracted`` edges (``evo_agents.kg.entities``) with one subject and one relation and
+  two objects, stated by two different documents, each with conf CLAIM_CONF or more. The item is about the pair: its
+  evidence is the subject, both objects and one source document of each edge, all required, and ``detail.claims``
+  holds both edges. The relations the entity step adds itself (CLAIM_SKIP: ``mentions``, ``refers_to``,
+  ``synonym_of``) state no claim. A subject and relation with many objects open at most CLAIM_PAIRS items.
 
 An item holds its rule, the ids of the nodes it is about (``evidence``), the level-1 cluster its first node counts in,
 with the level-1 cluster of each of its nodes, the action it suggests and what it found (``detail``: a count, samples).
@@ -42,7 +47,8 @@ reason}`` as the hub takes one (``evo_agents.hub.kg_decisions``), proposed only 
   to it;
 - ``possible_duplicate``: merge the nodes of one label, unless two are files at different paths;
 - ``bulk_noise``: deprecate each node of it;
-- ``cluster_without_knowledge``: no decision; ``detail.report`` says the item is for a person to read, in a report.
+- ``cluster_without_knowledge``: no decision; ``detail.report`` says the item is for a person to read, in a report;
+- ``conflicting_claim``: no decision; which claim holds is for a person to say.
 """
 
 from __future__ import annotations
@@ -64,6 +70,7 @@ RULES = (
     "possible_duplicate",
     "ambiguous_match",
     "bulk_noise",
+    "conflicting_claim",
 )
 ACTIONS = {
     "dangling_mention": "fix_mention",
@@ -72,6 +79,7 @@ ACTIONS = {
     "possible_duplicate": "merge",
     "ambiguous_match": "disambiguate",
     "bulk_noise": "exclude",
+    "conflicting_claim": "check_claims",
 }
 KNOWLEDGE_KINDS = frozenset({"Document", "Plan", "Problem", "Claim"})
 CODE_KINDS = frozenset({"File", "Symbol"})
@@ -92,6 +100,10 @@ ARCHIVE = re.compile(r"(^|/)(archive|archived|attic|deprecated|legacy|old|obsole
 PARENT_DOCS = ("readme", "index", "instructions", "skill", "agents")  # a directory's document names, as stems
 DOC_LEVELS = 2  # an unmentioned document looks this many directories up for its parent document
 FIX_REL = "mentions"  # what a fix links an item to its target by
+CLAIM_STATUS = "extracted"  # the status of what a model stated (``evo_agents.kg.entities.STATUS``)
+CLAIM_CONF = 0.6  # the least conf of an edge of a conflicting claim: the conf the entity step gives a relation
+CLAIM_SKIP = frozenset({"mentions", "refers_to", "synonym_of"})  # relations of the entity step that state no claim
+CLAIM_PAIRS = 20  # items one subject and relation open at most
 
 Visible = Callable[[tuple], bool]
 
@@ -472,7 +484,85 @@ def compute(graph: Graph) -> list[dict]:
                 required=0,
                 fix=exclude(order, why),
             )
+    # 7: two documents that state different objects of one subject and relation
+    for (src, rel), objects in sorted(_claims(graph, deprecated).items()):
+        for a, b, docs in _pairs(objects):
+            claims = [_claim(graph, objects[x][0], src, rel, x, doc) for x, doc in ((a, docs[0]), (b, docs[1]))]
+            add(
+                "conflicting_claim",
+                f"{src}\x1f{rel}\x1f{a}\x1f{b}",
+                [src, a, b, *docs],
+                {"rel": rel, "claims": claims},
+                required=5,
+                least=5,
+            )
     return [items[fp] for fp in sorted(items)]
+
+
+def _sources(graph: Graph, eid: str, e: dict) -> set[str]:
+    """The items (documents) that stated edge ``eid``: those of its derivations' units, else its ``props.item``."""
+    found = {
+        graph.units[u]["item_id"]
+        for d in graph.derivations.get(eid) or []
+        for u in d["units"]
+        if u in graph.units and graph.units[u].get("item_id")
+    }
+    item = (e.get("props") or {}).get("item")
+    return found or ({item} if item else set())
+
+
+def _claims(graph: Graph, deprecated: set[str]) -> dict[tuple[str, str], dict[str, tuple[str, set[str]]]]:
+    """(subject, relation) -> object -> (edge id, the documents that stated it), for the extracted edges that state a
+    claim with conf CLAIM_CONF or more, between nodes and by documents no decision deprecated."""
+    out: dict[tuple[str, str], dict[str, tuple[str, set[str]]]] = defaultdict(dict)
+    for eid, e in graph.edges.items():
+        if e["status"] != CLAIM_STATUS or e["rel"] in CLAIM_SKIP or e["rel"] in STRUCTURAL or _deprecated(e):
+            continue
+        if (e.get("conf") or 0) < CLAIM_CONF or e["src"] == e["dst"]:
+            continue
+        if (
+            e["src"] in deprecated
+            or e["dst"] in deprecated
+            or e["src"] not in graph.nodes
+            or e["dst"] not in graph.nodes
+        ):
+            continue
+        docs = {d for d in _sources(graph, eid, e) if d in graph.nodes and d not in deprecated}
+        if docs:
+            out[(e["src"], e["rel"])][e["dst"]] = (eid, docs)
+    return out
+
+
+def _pairs(objects: dict[str, tuple[str, set[str]]]) -> list[tuple[str, str, tuple[str, str]]]:
+    """The pairs of objects (by id order) two different documents stated, with one document of each, at most
+    CLAIM_PAIRS: the pairs of the objects most documents stated first."""
+    order = sorted(objects, key=lambda o: (-len(objects[o][1]), o))
+    out = []
+    for i, x in enumerate(order):
+        for y in order[i + 1 :]:
+            a, b = min(x, y), max(x, y)
+            docs = _two_sources(objects[a][1], objects[b][1])
+            if docs is not None:
+                out.append((a, b, docs))
+                if len(out) == CLAIM_PAIRS:
+                    return out
+    return out
+
+
+def _two_sources(a: set[str], b: set[str]) -> tuple[str, str] | None:
+    """One document of each side, two different ones, the first by order; None when both sides are one document."""
+    for x in sorted(a):
+        rest = sorted(b - {x})
+        if rest:
+            return x, rest[0]
+    return None
+
+
+def _claim(graph: Graph, eid: str, src: str, rel: str, dst: str, doc: str) -> dict:
+    """One edge of a conflicting claim, with the words the model quoted when they are of ``doc``."""
+    props = graph.edges[eid].get("props") or {}
+    quote = props.get("evidence") if props.get("item") == doc and isinstance(props.get("evidence"), str) else None
+    return {"edge": eid, "src": src, "rel": rel, "dst": dst, "item": doc, **({"evidence": quote} if quote else {})}
 
 
 def counts(items: list[dict]) -> dict[str, int]:

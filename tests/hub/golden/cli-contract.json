@@ -11313,7 +11313,8 @@
             "cluster_without_knowledge",
             "possible_duplicate",
             "ambiguous_match",
-            "bulk_noise"
+            "bulk_noise",
+            "conflicting_claim"
           ]
         },
         {
@@ -33773,7 +33774,8 @@
                       "cluster_without_knowledge",
                       "possible_duplicate",
                       "ambiguous_match",
-                      "bulk_noise"
+                      "bulk_noise",
+                      "conflicting_claim"
                     ],
                     "type": "string"
                   },
@@ -100704,7 +100706,8 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },
@@ -100771,7 +100774,8 @@
                       "cluster_without_knowledge",
                       "possible_duplicate",
                       "ambiguous_match",
-                      "bulk_noise"
+                      "bulk_noise",
+                      "conflicting_claim"
                     ]
                   },
                   "type": "array"
@@ -148470,7 +148474,8 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },
@@ -148787,14 +148792,15 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },
             "action": {
               "type": "string",
               "title": "Action",
-              "description": "what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude"
+              "description": "what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate, exclude or check_claims"
             },
             "cluster": {
               "anyOf": [
@@ -148832,7 +148838,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Detail",
-              "description": "what the rule found: count, and per rule mentions, samples, path, kind, where"
+              "description": "what the rule found: count, and per rule mentions, samples, path, kind, where, rel, claims"
             },
             "weight": {
               "type": "integer",
@@ -149490,7 +149496,8 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },

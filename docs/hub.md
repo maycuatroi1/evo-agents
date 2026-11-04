@@ -2823,7 +2823,7 @@ answer that names a build gives its nodes and edges as null (`GET /v1/kg/{projec
 those totals count messages most members may not read.
 
 **Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
-a review queue by six rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,
+a review queue by seven rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,
 Decisions). Every read goes through the reader's view of the graph: sizes, kinds, link weights and labels are recounted
 over what the reader can see, a cluster with no visible member is absent, and a review item or a decision that names a
 hidden node is not listed. A graph without clusters answers an empty list with the reason.
