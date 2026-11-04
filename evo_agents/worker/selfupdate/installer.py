@@ -21,6 +21,13 @@ neither:
    be put back is the old version installed again from its source: ``@<commit>`` for an install from git,
    ``==<version>`` for one from PyPI. When that fails too, the copy, if whole, is kept for a person.
 
+uv runs with a cache of the updates' own (``UV_CACHE_DIR``), and whatever an update ends in, that cache then drops what
+it holds of evo-ak: ``uv cache clean evo-ak`` the wheel built of each commit, and the ``git-v*`` buckets the checkout of
+each commit, which no uv command but a whole ``uv cache clean`` removes. The dependencies stay for the next update. In
+the user's cache these piled up at every move of nightly, about 100 MB a commit: in two weeks they took 27 GB of a
+worker's disk, which filled, and its updates failed (2026-11-04). ``uv cache clean evo-ak`` is not for the user's
+cache, where it would drop the ``evo-ak==X`` the plugins' hooks start with ``uvx --offline``.
+
 The daemons of the install claim nothing meanwhile (``peers``), so no run's code changes under it.
 """
 
@@ -52,6 +59,7 @@ from evo_agents.worker.selfupdate.install import (
 LOOKUP_TIMEOUT = 30.0
 INSTALL_TIMEOUT = 1200.0  # one uv tool install, from git, with its dependencies
 PROBE_TIMEOUT = 120.0
+CLEAN_TIMEOUT = 300.0  # uv cache clean of the updates' cache
 API_URL = "https://api.github.com/repos/maycuatroi1/evo-agents/git/ref/tags/" + TAG
 PROBE = "import evo_agents.cli, evo_agents.worker.daemon"
 TAIL = 600  # characters of a command's output an error keeps
@@ -163,6 +171,7 @@ class Installer:
         env: Mapping[str, str],
         *,
         backup_dir: Path | None = None,
+        cache_dir: Path | None = None,
         runner=run_command,
         install_timeout: float = INSTALL_TIMEOUT,
         probe_timeout: float = PROBE_TIMEOUT,
@@ -171,6 +180,7 @@ class Installer:
         self.uv = uv
         self.staging = Path(staging)
         self.backup_dir = Path(backup_dir) if backup_dir is not None else self.staging.with_name("backup")
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else self.staging.with_name("uv-cache")
         self.env = {key: value for key, value in env.items() if key not in DROPPED}
         self.runner = runner
         self.install_timeout = install_timeout
@@ -190,8 +200,20 @@ class Installer:
     async def _uv_install(self, tool_dir: Path, bin_dir: Path, requirement: str) -> Done:
         argv = [self.uv, "tool", "install", "--force", "--reinstall-package", PACKAGE, "--refresh-package", PACKAGE]
         argv += ["--python", str(self.install.python), "--no-progress", requirement]
-        env = {**self.env, "UV_TOOL_DIR": str(tool_dir), "UV_TOOL_BIN_DIR": str(bin_dir), "NO_COLOR": "1"}
+        env = {**self.env, "UV_TOOL_DIR": str(tool_dir), "UV_TOOL_BIN_DIR": str(bin_dir), **self._cache_env()}
         return await self.runner(argv, env=env, timeout=self.install_timeout)
+
+    def _cache_env(self) -> dict[str, str]:
+        return {"UV_CACHE_DIR": str(self.cache_dir), "NO_COLOR": "1"}
+
+    async def _trim_cache(self) -> None:
+        """Drop the builds and checkouts of evo-ak from the updates' cache; a failure leaves them for the next update."""
+        if not self.cache_dir.is_dir():
+            return
+        argv = [self.uv, "cache", "clean", "--no-progress", PACKAGE]
+        await self.runner(argv, env={**self.env, **self._cache_env()}, timeout=CLEAN_TIMEOUT)
+        for bucket in self.cache_dir.glob("git-v*"):
+            await asyncio.to_thread(shutil.rmtree, bucket, ignore_errors=True)
 
     async def check(self, prefix: Path, entrypoint: Path) -> tuple[str | None, Identity]:
         """Whether the install at ``prefix`` starts: what failed (None when it did), and what it holds."""
@@ -225,6 +247,12 @@ class Installer:
         if backup.kept(self.backup_dir) is not None:
             why = f"the copy of the install that an earlier update could not put back is kept at {self.backup_dir}"
             return Outcome(False, error=f"{why}; it waits for a person to put it back or remove it", broken=True)
+        try:
+            return await self._update(latest)
+        finally:
+            await self._trim_cache()
+
+    async def _update(self, latest: Callable[[], Awaitable[str]]) -> Outcome:
         problem, staged = await self._stage()
         if problem:
             return Outcome(False, error=problem)

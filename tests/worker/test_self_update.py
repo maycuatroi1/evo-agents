@@ -6,7 +6,8 @@ and the ``uv`` of ``tests.worker.fake_uv``, without Postgres.
   one install.
 - The update: staged first, then over the install, each started and its commit checked; a failure leaves the install
   as it was, or puts its copy back, with a uv that updates an environment in place (0.6.13) and with one that deletes
-  and builds it again (0.12.24); when the copy cannot go back, the old version is installed again.
+  and builds it again (0.12.24); when the copy cannot go back, the old version is installed again. uv runs with a
+  cache of the updates' own, which keeps no build or checkout of evo-ak once an update ends.
 - The daemon: an idle, unlocked daemon under a service manager installs nightly and exits ``EXIT_UPDATED``; a locked
   one, one that has not heard the lock, one run by hand or one that holds a run does not; a failed update is reported
   and tried again later while runs go on; a hub that answers 426 gets an update first when the lock kept in
@@ -89,10 +90,14 @@ class Fake:
         base = {key: value for key, value in os.environ.items() if not key.startswith("EVO_")}
         return {**base, "FAKE_UV_SCENARIO": str(self.scenario), "FAKE_UV_LOG": str(self.log)}
 
-    def calls(self) -> list[dict]:
+    def all_calls(self) -> list[dict]:
         if not self.log.exists():
             return []
         return [json.loads(line) for line in self.log.read_text(encoding="utf-8").splitlines()]
+
+    def calls(self) -> list[dict]:
+        """The ``uv tool install`` calls."""
+        return [call for call in self.all_calls() if call["argv"][:2] == ["tool", "install"]]
 
     def install(self):
         return read_install(self.prefix, PYTHON)
@@ -559,6 +564,21 @@ def test_an_update_that_cannot_put_anything_back_keeps_the_copy_and_stops_updati
     assert not again.ok and again.broken and f"kept at {kept}" in again.error
     assert len(fake.calls()) == calls, "no update goes over the copy kept for a person"
     assert (kept / "env" / "uv-receipt.toml").is_file()
+
+
+@pytest.mark.parametrize("step", ["ok", "broken"])
+def test_an_update_uses_a_uv_cache_of_its_own_that_keeps_no_build_or_checkout_of_evo_ak(fake, step):
+    fake.steps(["ok", step])
+    cache = fake.tmp / "uv-cache"
+    for commit in (OLD, NEWER):  # left by the updates of earlier days
+        (cache / "git-v0" / "checkouts" / "0a1b2c3d" / commit[:7]).mkdir(parents=True)
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
+    assert outcome.ok is (step == "ok") and fake.install().commit == (NEW if step == "ok" else OLD)
+    assert {call["cache_dir"] for call in fake.all_calls()} == {str(cache)}, "never the user's cache"
+    assert fake.all_calls()[-1]["argv"] == ["cache", "clean", "--no-progress", "evo-ak"]
+    assert not list(cache.glob("git-v*")), "no checkout of any commit"
+    assert not (cache / "sdists-v9" / "git").exists(), "no wheel built of any commit"
+    assert (cache / "archive-v0" / "dependency").is_dir(), "the dependencies stay for the next update"
 
 
 def test_an_install_that_cannot_be_copied_is_not_updated(any_uv):
