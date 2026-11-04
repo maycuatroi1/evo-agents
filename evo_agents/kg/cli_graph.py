@@ -248,12 +248,49 @@ def cmd_session_questions(args) -> int:
     return 0
 
 
+def cmd_commit_questions(args) -> int:
+    """``kg eval-questions --from-commits``: the starter set out of the commits the local graph holds."""
+    from evo_agents.kg import commit_labels, eval_commits
+    from evo_agents.kg.cli import _project
+    from evo_agents.kg.store import StaleSchema, Store
+
+    project = _project(args)
+    try:
+        store = Store.open_readonly(project)
+    except StaleSchema as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if store is None or store.latest_ready() is None:
+        print(f"error: project {project.name} has no graph yet: run evo-agents kg build", file=sys.stderr)
+        return 1
+    try:
+        found = eval_commits.commit_questions(
+            store,
+            min_words=args.min_words,
+            max_files=args.max_files or commit_labels.MAX_FILES,
+            limit=args.limit,
+        )
+    finally:
+        store.close()
+    for question in found.questions:
+        sys.stdout.write(json.dumps(question, ensure_ascii=False) + "\n")
+    print(
+        f"{len(found.questions)} question(s) from {found.commits} commit(s) of {project.name}",
+        file=sys.stderr,
+    )
+    for why, count in sorted(found.left_out.items()):
+        print(f"  left out {count}: {why}", file=sys.stderr)
+    return 0 if found.questions else 1
+
+
 def cmd_eval_questions(args) -> int:
     if args.from_sessions:
         return cmd_session_questions(args)
+    if args.from_commits:
+        return cmd_commit_questions(args)
     from evo_agents.hub.client import Hub, HubError, load_credentials
     from evo_agents.hub.kg_eval import plan_questions
-    from evo_agents.kg.evaluate import project_checkouts
+    from evo_agents.kg.evaluate import DEFAULT_MAX_FILES, project_checkouts
     from evo_agents.kg.project import ProjectError, resolve_project
 
     try:
@@ -275,7 +312,7 @@ def cmd_eval_questions(args) -> int:
             project_checkouts(args.project, overrides),
             plans=args.plan or (),
             text=args.text,
-            max_files=args.max_files,
+            max_files=args.max_files or DEFAULT_MAX_FILES,
         )
     except HubError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -376,8 +413,8 @@ def _register_eval(ksub, with_project) -> None:
     build.add_argument(
         "--max-files",
         type=_bounded(1, 1000),
-        default=ev.DEFAULT_MAX_FILES,
-        help=f"leave out a step whose commits change more files (default {ev.DEFAULT_MAX_FILES})",
+        help=f"leave out a step (default {ev.DEFAULT_MAX_FILES}) or, with --from-commits, a commit (default 8) that"
+        " changes more files",
     )
     build.add_argument(
         "--repo", action="append", metavar="NAME=PATH", help="checkout of repo NAME (default: the harness's)"
@@ -386,6 +423,24 @@ def _register_eval(ksub, with_project) -> None:
         "--from-sessions",
         action="store_true",
         help="questions from the code searches in the Claude Code transcripts of the harness, not from the plans",
+    )
+    build.add_argument(
+        "--from-commits",
+        action="store_true",
+        help="questions from the commits of the graph's git history: a commit's message asks, the files it changed"
+        " that the graph holds answer; needs no session and no plan",
+    )
+    build.add_argument(
+        "--min-words",
+        type=_bounded(1, 100),
+        default=4,
+        help="with --from-commits: leave out a commit whose message has fewer words (default 4)",
+    )
+    build.add_argument(
+        "--limit",
+        type=_bounded(1, 5000),
+        default=300,
+        help="with --from-commits: most questions (default 300, the same ones every time)",
     )
     build.add_argument(
         "--days",

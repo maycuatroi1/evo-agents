@@ -61,7 +61,7 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_semantic, kg_sources, tables
+from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_eval_starter, kg_semantic, kg_sources, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
@@ -491,6 +491,27 @@ async def record(
     return artifact
 
 
+async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:
+    """A project with no question set gets version 1 from the commits of its first graph (``kg_eval_starter``). It
+    never fails the build: a question set is a convenience, and the next build tries again."""
+    try:
+        async with engine.connect() as conn:
+            if (
+                await conn.execute(
+                    select(tables.kg_eval_sets.c.version).where(tables.kg_eval_sets.c.project_id == project_id).limit(1)
+                )
+            ).first():
+                return
+            ceiling = await kg_eval_starter.ceiling_of(conn, project_id, project)
+        questions = await asyncio.to_thread(kg_eval_starter.questions_of, built.path, ceiling)
+        async with engine.begin() as conn:
+            made = await kg_eval_starter.start(conn, project_id, project, questions)
+        if made:
+            log.info("kg eval set started", extra={"project": project, "questions": made})
+    except Exception as exc:
+        log.warning("kg eval set not started", extra={"project": project, "error": str(exc)[:300]})
+
+
 async def keep_source_files(conn: AsyncConnection, project_id: int, build_id: int, files: dict | None) -> None:
     """Make kg_source_files the files of each git source of build ``build_id`` (``kg_coverage.source_files``): a row
     each, and none for a source the build no longer has. Nothing when the build says nothing of them."""
@@ -578,6 +599,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, semantic
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
+        await start_eval_set(engine, project_id, project, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop
         await asyncio.shield(_stopped(engine, digest, len(ingests), build_id, project_id, project, manager))
         log.warning("kg build stopped with the worker", extra={"project": project, "build_id": build_id})
