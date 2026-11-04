@@ -84,6 +84,41 @@ settings:
   are in `skipped`, the build is not skipped as unchanged, and the next build continues from the memo.
 - Verifying a build reads the memo only and never calls a model.
 
+### Claude Code as the model
+
+`command: [evo-agents, kg, claude-entities]` asks Claude Code (`evo_agents/kg/claude_code.py`), run headless with the
+model the mapping names, such as `claude-haiku-5-5`, with no tool, no MCP server and no session kept. Claude Code
+sends the text to Anthropic, so the mapping must name an `llm-backend` sink, and each item goes only when that sink
+clears its label:
+
+```yaml
+settings:
+  entities:
+    model: claude-haiku-5-5
+    command: [evo-agents, kg, claude-entities]
+    sink: llm                  # a policy sink of kind llm-backend
+    node_kinds: [Concept]
+    price: {input: 1.0, output: 5.0}   # per million tokens, when Claude Code reports no cost
+```
+
+- The call runs on the login of the machine (`claude login`). `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are taken
+  out of its environment, so it never runs on an API key. Coverage counts the tokens in (cache reads and writes
+  included) and out, and the cost Claude Code reports, else the tokens priced with `price`. No value of the
+  environment is printed: an error that quotes a token shows `[masked]`.
+- A login missing or refused, or a usage or rate limit, stops the step at that item (`coverage["entities"]["stopped"]`
+  says why). The rest is `skipped` and the next build continues from the memo.
+- `EVO_KG_CLAUDE` names the `claude` executable when it is not on `PATH`.
+
+On the hub, the build container has no `claude`. A hub build calls nothing: it defers each item its memo lacks
+(`coverage["entities"]["deferred"]`) and keeps those requests, with the text the sink cleared, as a blob the hub holds
+(`entity_requests` in the build's coverage, `evo_agents/hub/kg_entity_relay.py`). The prompt of the project's nightly
+review run, which runs on the project's default agent pool, then asks it to run `evo-agents hub kg entities --project
+P`. That command reads the requests (`GET /v1/kg/P/entities/requests`, the writer role), asks Claude Code for each on
+the run's login (the lease of the pool's account, never a personal key), and posts the answers in batches
+(`POST /v1/kg/P/entities/answers`, a run's token only). The hub keeps the answers to its requests and queues a build,
+which reads them as answers of the step (`answered_elsewhere`) and memoizes them. A login or a limit stops the command
+at that item: it posts what it has and exits 3, and the next night goes on.
+
 ## Your own strategy
 
 Put a file of the same format in `<harness>/strategies/NAME.yaml`. It can point at the connectors, the ontology and the

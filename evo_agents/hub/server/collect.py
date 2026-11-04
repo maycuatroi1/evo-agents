@@ -70,7 +70,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, facet_job, kg_init_db, kg_labels, review, runs, tables
+from evo_agents.hub import curator, facet_job, kg_entity_relay, kg_init_db, kg_labels, review, runs, tables
 from evo_agents.hub import kg_optimize as optimize_model
 from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
@@ -810,7 +810,8 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         lenses = ["kg_health"]
     elif optimized is not None:
         lenses = kg_optimize.with_lens(list(lenses), SimpleNamespace(state="running"))
-    return review.build_review_prompt(
+    entities = await kg_entity_relay.latest_requests(conn, row.project_id)
+    prompt = review.build_review_prompt(
         view.project,
         row.schedule_night,
         lenses,
@@ -824,6 +825,9 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         assignments=assignments,
         optimize=None if optimized is None else optimize_model.prompt_lines(optimized.id, optimized.body or {}),
     )
+    if entities is not None and entities[2] > 0:  # the entities step's items that only a run with claude answers
+        prompt += kg_entity_relay.prompt_line(view.project, entities[2])
+    return prompt
 
 
 async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, lens: str) -> bool:
