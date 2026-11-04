@@ -137,7 +137,7 @@ for (const width of WIDTHS) {
     await grantOn(kg.project, me.login, "reader", "internal");
     await noSidewaysScroll(page, [width], [
       { path: `${kgPath(kg.project)}?q=runbook`, ready: shown("kg-results") },
-      { path: buildsPath(kg.project), ready: shown("kg-latest-build") },
+      { path: buildsPath(kg.project), ready: shown("kg-graph-in-use") },
       { path: nodePath(kg.project, SHARED_NODE), ready: shown("kg-neighbours") },
     ]);
   });

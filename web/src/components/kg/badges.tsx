@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type DurationParts, durationParts } from "@/lib/kg/format";
 import { kindStyle, SHAPE_POINTS, type Tone } from "@/lib/kg/graph";
-import type { BuildStatus, KgJob, NodeLabel } from "@/lib/kg/types";
+import type { BuildStatus, NodeLabel } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
 
 /** Each state as an icon and a word, so colour is never the only signal. */
@@ -36,21 +36,6 @@ export function BuildStatusBadge({ status }: { status: BuildStatus }) {
     <Badge variant={variant} data-status={status} data-testid="build-status">
       <Icon aria-hidden="true" className={cn(status === "running" && "motion-safe:animate-spin")} />
       {t(status)}
-    </Badge>
-  );
-}
-
-export function JobStatusBadge({ status }: { status: KgJob["status"] }) {
-  const t = useTranslations("kg.queue");
-  return status === "doing" ? (
-    <Badge variant="info" data-status="doing">
-      <LoaderCircle aria-hidden="true" className="motion-safe:animate-spin" />
-      {t("doing")}
-    </Badge>
-  ) : (
-    <Badge variant="secondary" data-status="todo">
-      <Clock aria-hidden="true" />
-      {t("todo")}
     </Badge>
   );
 }
@@ -112,19 +97,25 @@ export function KindBadge({ kind }: { kind: string }) {
 }
 
 /** A duration in words, from `kg.duration`. */
-export function Duration({ ms }: { ms: number | null }) {
+/** A duration in words ("4 min 32 s"), for a figure that takes a string. */
+export function useDurationText() {
   const t = useTranslations("kg.duration");
-  if (ms === null) return <span className="text-muted-foreground">-</span>;
-  const parts: DurationParts = durationParts(ms);
-  const text =
-    parts.unit === "underSecond"
+  return (ms: number) => {
+    const parts: DurationParts = durationParts(ms);
+    return parts.unit === "underSecond"
       ? t("underSecond")
       : parts.unit === "seconds"
         ? t("seconds", { seconds: parts.seconds })
         : parts.unit === "minutes"
           ? t("minutes", { minutes: parts.minutes, seconds: parts.seconds })
           : t("hours", { hours: parts.hours, minutes: parts.minutes });
-  return <span className="tabular-nums">{text}</span>;
+  };
+}
+
+export function Duration({ ms }: { ms: number | null }) {
+  const text = useDurationText();
+  if (ms === null) return <span className="text-muted-foreground">-</span>;
+  return <span className="tabular-nums">{text(ms)}</span>;
 }
 
 /**

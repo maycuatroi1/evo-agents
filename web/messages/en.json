@@ -1994,58 +1994,49 @@
       "minutes": "{minutes} min {seconds} s",
       "hours": "{hours} h {minutes} min"
     },
-    "tiles": {
-      "graph": "Graph in use",
+    "activity": {
+      "label": "What the builds are doing",
       "build": "Build #{id}",
-      "noGraph": "None yet",
-      "noGraphDetail": "No build has succeeded yet",
-      "size": "Size",
-      "nodes": "{count, plural, one {# node} other {# nodes}}",
-      "edges": "{count, plural, one {# edge} other {# edges}}",
-      "contentHash": "Content hash",
-      "hashDetail": "The same inputs give the same hash",
-      "copyHash": "Copy the content hash",
-      "queue": "Queue",
-      "queueEmpty": "No jobs",
-      "queueCounts": "{waiting} waiting, {running} running",
-      "refreshing": "Refreshes every 5 seconds",
-      "visibleEdges": "{count, plural, one {# edge} other {# edges}}, of what you can read"
-    },
-    "latest": {
-      "title": "Build #{id}",
       "requestedBy": "Requested by {login}",
       "byPush": "Queued by a push",
-      "errorTitle": "Build error",
-      "queued": "Queued at",
-      "wait": "Waited",
-      "started": "Started at",
-      "run": "Ran for",
-      "finished": "Finished at",
-      "runs": "Pushed runs",
-      "size": "Nodes and edges",
-      "sizeValue": "{nodes} nodes, {edges} edges",
+      "running": "Running for {run}, after {wait} in the queue.",
+      "queued": "Waiting for a build worker for {wait}.",
+      "moreWaiting": "{count, plural, one {# more build waits} other {# more builds wait}} after it.",
+      "failedAt": "Failed",
+      "stillReads": "The pages still read build #{id}.",
+      "noGraphYet": "The project has no graph until a build succeeds."
+    },
+    "figures": {
+      "label": "The graph and its builds in figures",
+      "nodes": "Nodes",
+      "edges": "Edges",
+      "readable": "of what you can read",
+      "succeeded": "Builds succeeded",
+      "ofFinished": "of {count}",
+      "failed": "{count, plural, =0 {none failed} other {# failed}}",
+      "noneFinished": "No build has finished yet",
+      "buildTime": "Build time",
+      "median": "{count, plural, one {the one successful build} other {median of # successful builds}}",
+      "noRuns": "No build has succeeded yet",
+      "series": "Run time of the latest successful builds, oldest first, in minutes: {values}"
+    },
+    "graphInUse": {
+      "title": "Graph in use",
+      "build": "Build #{id}",
+      "finished": "finished",
+      "none": "None yet: the pages read a graph once a build succeeds.",
       "contentHash": "Content hash",
-      "copyHash": "Copy the build's content hash",
-      "noHash": "None: the build has not succeeded",
+      "copyHash": "Copy the content hash",
       "artifact": "Artifact",
-      "artifactSize": "{size, number} bytes",
+      "time": "Time",
+      "ran": "Ran {run}, after {wait} in the queue",
+      "runs": "Pushed runs",
       "config": "Config"
     },
     "artifact": {
       "own": "Uploaded by this build",
       "reused": "Reused from build #{id}",
       "pruned": "Deleted"
-    },
-    "queue": {
-      "title": "Queue",
-      "description": "The project's build jobs waiting or running. A project runs one build at a time and keeps at most one waiting.",
-      "empty": "No job is waiting or running.",
-      "todo": "Waiting",
-      "doing": "Running",
-      "job": "Job #{id}",
-      "forBuild": "build #{id}",
-      "since": "queued",
-      "waited": "waited"
     },
     "history": {
       "caption": "The project's latest builds",
@@ -2063,11 +2054,10 @@
       "edges": "Edges",
       "hash": "Content hash",
       "artifact": "Artifact",
-      "error": "Error"
+      "count": "{value, number}"
     },
     "builds": {
-      "title": "Builds",
-      "description": "The hub rebuilds the graph after every push. This page is read-only: builds are queued by <code>evo-agents hub kg push</code>, and the web has no button for it.",
+      "description": "The hub rebuilds the graph after every push (<code>evo-agents hub kg push</code>); the web never queues a build.",
       "history": "Build history",
       "emptyTitle": "No builds yet",
       "emptyDescription": "The first build is queued when a member with the writer role pushes with <code>evo-agents hub kg push</code>.",
@@ -2205,7 +2195,9 @@
         "count": "Edges"
       },
       "empty": "No edge you can read in this graph.",
-      "caption": "{count, plural, one {# combination of kinds and edge type} other {# combinations of kinds and edge type}}"
+      "caption": "{count, plural, one {# combination of kinds and edge type} other {# combinations of kinds and edge type}}",
+      "showAll": "Show all {count}",
+      "showFewer": "Show fewer"
     },
     "map": {
       "title": "Map of clusters",
