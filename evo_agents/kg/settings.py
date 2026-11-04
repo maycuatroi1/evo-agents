@@ -1,13 +1,14 @@
 """What a project's knowledge graph is tuned by, in one place: the semantic mode and model, the weight of the ranking by
 meaning in the fusion, the BM25 weights of the name, path and body columns, the length from which a body is also indexed
 as passages and the length of a passage, the characters of a row that are embedded, and the name of the strategy the
-project uses (``evo_agents.kg.strategies``).
+project uses (``evo_agents.kg.strategies``), the entities step's mapping, and the walk that ranks kg_search and
+kg_context by Personalized PageRank (``walk``, ``evo_agents.kg.ppr``; off unless set).
 
 A project that set nothing gets the constants the code has always used, so it ranks as before. ``Tuning`` holds the
 values in effect; a settings file holds only what differs from the default. Two kinds of key:
 
-- query keys (``semantic_weight``, ``bm25_name``, ``bm25_path``, ``bm25_body``, ``semantic_mode`` between index and on)
-  change how ``kg_search`` reads a graph that exists: they take effect at once and can be measured on the newest build;
+- query keys (``semantic_weight``, ``bm25_name``, ``bm25_path``, ``bm25_body``, ``walk``, ``semantic_mode`` between
+  index and on) change how ``kg_search`` reads a graph that exists: they take effect at once and can be measured on the newest build;
 - build keys (``passage_from``, ``passage_chars``, ``embed_chars``, ``semantic_model``, ``strategy``, and
   ``semantic_mode`` to or from off) change what a build writes: they take effect with the next build, and measuring one
   needs that build (``rebuild_keys``).
@@ -45,6 +46,9 @@ class Tuning:
     strategy: str | None = None
     entities: dict | None = (
         None  # the entities step's mapping (evo_agents.kg.entities); runs only under a strategy that enables it
+    )
+    walk: dict | None = (
+        None  # the Personalized PageRank walk of kg_search and kg_context (evo_agents.kg.ppr); None: off
     )
 
     @property
@@ -94,6 +98,13 @@ def _check(key: str, value):
         try:
             return entities.check(value)
         except entities.EntitiesError as exc:
+            raise SettingsError(str(exc)) from None
+    if key == "walk":
+        from evo_agents.kg import ppr
+
+        try:
+            return ppr.check(value)
+        except ppr.WalkError as exc:
             raise SettingsError(str(exc)) from None
     if key == "strategy":
         import re

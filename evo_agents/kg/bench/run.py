@@ -332,9 +332,10 @@ def _ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> A
 
 def ranking_digest() -> str:
     """Digest of the code that ranks and serves a search (not of the graph's extractor): a change of it asks again."""
-    from evo_agents.kg import asked, locate, rank, search, semantic, serve, store, text
+    from evo_agents.kg import asked, locate, ppr, rank, search, semantic, serve, store, text
 
-    parts = [Path(m.__file__).read_bytes() for m in (asked, locate, rank, search, semantic, serve, store, text)]
+    modules = (asked, locate, ppr, rank, search, semantic, serve, store, text)
+    parts = [Path(m.__file__).read_bytes() for m in modules]
     # the learned order: on or off, and which model (a run with it on never reuses the answers of one without)
     parts.append(json.dumps(rank.state(), sort_keys=True).encode())
     return hashlib.sha256(b"\0".join(parts)).hexdigest()[:12]
