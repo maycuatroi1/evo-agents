@@ -31,7 +31,7 @@ from sqlalchemy import extract, func, insert, literal, select, update
 from evo_agents.harness import plan_digest
 from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, tables
 from evo_agents.hub.config import ConfigError, load_config
-from evo_agents.hub.server import run_state
+from evo_agents.hub.server import run_state, worker_placement
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import claims as run_claims
 from evo_agents.hub.worker import queue
@@ -594,6 +594,22 @@ def test_a_new_claim_of_one_worker_leaves_a_waiting_claim_of_another_asleep(clie
     assert claim(client, waiting) is None  # a newer claim of its own worker still ends it
     thread.join(10)
     assert answer["run"] is None and len(looks) == before + 3
+
+
+def test_the_claim_query_of_a_worker_whose_shape_did_not_change_is_built_once():
+    row = SimpleNamespace(
+        id=7, owner_id=1, name="mac-mini", slots=2, runtimes={}, checkouts=["evo/app"], drained_at=None,
+        revoked_at=None, agent_version="0.56.0", dispatch_from=None, run_kinds=["chat"], features=[], plugins=[],
+        shared=False,
+    )  # fmt: skip
+    node = worker_placement.Placement(labels=("os:linux",), taints=(), auto=(), unready=None)
+    seen = dict(row=row, node=node, holding=0, runtimes=["claude-code"], offered=[], served={1: "evo"})
+    first = run_claims.Claimer(**seen, pairs=[(1, "app")], clones=False, steady=True, environments=[])
+    again = run_claims.Claimer(**seen | {"holding": 1}, pairs=[(1, "app")], clones=False, steady=True, environments=[])
+    unsteady = run_claims.Claimer(**seen, pairs=[(1, "app")], clones=False, steady=False, environments=[])
+    assert run_claims.claim_query(first.shape()) is run_claims.claim_query(again.shape())
+    assert "lost_here" not in dict(first.conditions()) and "lost_here" in dict(unsteady.conditions())
+    assert run_claims.claim_query(unsteady.shape()) is not run_claims.claim_query(first.shape())
 
 
 # Heartbeat and the owner's cancel
