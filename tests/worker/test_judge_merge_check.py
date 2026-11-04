@@ -7,12 +7,22 @@ needs a rebase. The repos are local ones and the hub is the fake of ``tests.work
 
 from __future__ import annotations
 
+import os
+
 from tests.worker.test_curator_runs import TEST_FILE, change_branch
 from tests.worker.test_judge_hardening import judge_inputs, judged
 from tests.worker.test_plan_runs import git, machine  # noqa: F401 (machine is a fixture)
 
 PULL = {"change_id": None, "forge": "github", "pr_url": "https://github.com/northwind/alpha/pull/7"}
 CHECK = {**PULL, "merge_result": True}
+# A uv that logs its arguments outside the worktree and, for sync, makes .venv/bin/venv-tool.
+FAKE_UV = """#!/bin/sh
+echo "$*" >> {log}
+if [ "$1" = sync ]; then
+  mkdir -p .venv/bin && printf '#!/bin/sh\\necho from-the-venv\\n' > .venv/bin/venv-tool && chmod +x .venv/bin/venv-tool
+fi
+"""
+PYPROJECT = '[project]\nname = "alpha"\nversion = "0"\n\n[tool.evo-agents.worker]\nvenv = true\nextras = ["test"]\n'
 
 
 def base_moved(machine, files: dict[str, str]) -> str:  # noqa: F811
@@ -68,3 +78,31 @@ def test_github_merge_check_a_conflict_with_the_base_posts_its_paths_and_runs_no
     assert sent["conflicts"] == ["tests/test_wait.py"] and sent["verdict"] is None
     assert sent["head_sha"] == head and "needs a rebase" in sent["reasons"]
     assert not ran.exists(), "no check runs on a head that needs a rebase"
+
+
+def test_github_merge_check_runs_each_check_in_the_python_environment_the_repo_asks_for(machine):  # noqa: F811
+    """Run #1579 ran the plan's verify with the machine's python and ruff, older than the change's own. A repo whose
+    pyproject asks for an environment of its worktree gets it before each check, made as code of the change, with its
+    bin directory first on the check's PATH; the restore between checks removes it, so each check makes it again."""
+    tools = machine.tmp / "machine-bin"
+    tools.mkdir()
+    log = machine.tmp / "uv.log"
+    (tools / "uv").write_text(FAKE_UV.format(log=log), encoding="utf-8")
+    (tools / "venv-tool").write_text("#!/bin/sh\necho from-the-machine\n", encoding="utf-8")
+    for program in ("uv", "venv-tool"):
+        (tools / program).chmod(0o755)
+    machine.env["PATH"] = f"{tools}{os.pathsep}{machine.env['PATH']}"
+    head = change_branch(machine, {"pyproject.toml": PYPROJECT, "tests/test_wait.py": TEST_FILE})
+    from_venv = "venv-tool | grep -q from-the-venv"
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, [from_venv], [from_venv, "test -x .venv/bin/venv-tool"]), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
+        claim=CHECK,
+    )
+    (sent,) = found["hub"].verdicts
+    assert [item["exit_code"] for item in sent["verify"]] == [0, 0], "the venv's tool came first on PATH"
+    assert [item["exit_code"] for item in sent["hidden"]] == [0]
+    syncs = [line for line in log.read_text(encoding="utf-8").splitlines() if line.startswith("sync")]
+    assert syncs == ["sync --frozen --extra test"] * 3, "made again before each check, as the restore removed it"

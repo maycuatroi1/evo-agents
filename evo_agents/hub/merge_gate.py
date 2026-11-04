@@ -681,6 +681,15 @@ def verify_of(plan: Mapping | None, repo: str) -> list[str]:
     return judge.verify_commands({"steps": steps_of(plan, repo)}) if plan else []
 
 
+def done_verify_of(plan: Mapping | None, repo: str) -> list[str]:
+    """The verify of each step of the plan in ``repo`` that is done: what the merge check of a pull request a plan run
+    opened runs, since the pull request carries the work of those steps. A step not done yet is not the pull
+    request's to prove: the step that merges and deploys reads, in its verify, what the merge does (run #1579 failed
+    on one), and ``evo-agents worker step`` runs its verify when the agent reports it done."""
+    steps = [step for step in steps_of(plan, repo) if step.get("status") == "done"] if plan else []
+    return judge.verify_commands({"steps": steps})
+
+
 # What a person reads
 
 
