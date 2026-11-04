@@ -132,7 +132,7 @@ def classify(
     for words in simple_commands(command):
         name = _base(words[0])
         if name in SHELLS and depth < 3:
-            script = _shell_script(words)
+            script = shell_script(words)
             if script is not None:
                 hits += classify(
                     script, worktree, own_repos=own_repos, default_branches=default_branches, depth=depth + 1
@@ -144,7 +144,7 @@ def classify(
     return [hit for hit in hits if not (hit.klass in seen or seen.add(hit.klass))]
 
 
-def _shell_script(words: list[str]) -> str | None:
+def shell_script(words: list[str]) -> str | None:
     for index, word in enumerate(words[1:], 1):
         if word.startswith("-") and "c" in word.lstrip("-") and not word.startswith("--"):
             return words[index + 1] if index + 1 < len(words) else None
@@ -227,7 +227,7 @@ def _rm(words: list[str], worktree) -> list[Hit]:
     return []
 
 
-def _option(words: list[str], *names: str) -> str | None:
+def option_of(words: list[str], *names: str) -> str | None:
     for index, word in enumerate(words):
         for name in names:
             if word == name and index + 1 < len(words):
@@ -256,7 +256,7 @@ def _forge(words: list[str], own_repos: Collection[str]) -> list[Hit]:
     if rest[:2] == ["release", "create"]:
         return [Hit("K6", _what(words))]
     if rest[:2] in (["issue", "create"], ["pr", "create"], ["mr", "create"]):
-        repo = _option(rest, "--repo", "-R")
+        repo = option_of(rest, "--repo", "-R")
         if repo is not None and repo_slug(repo) not in {slug.lower() for slug in own_repos}:
             return [Hit("K10", _what(words))]
     return []

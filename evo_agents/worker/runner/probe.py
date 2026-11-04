@@ -49,7 +49,7 @@ from evo_agents.worker.runner import replay_files as files
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
-from evo_agents.worker.runner.replay import HARNESS_COMMIT, SKILLS, ArmFigures, Refused, ReplayRun, _cost
+from evo_agents.worker.runner.replay import HARNESS_COMMIT, SKILLS, ArmFigures, Refused, ReplayRun, usage_cost
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -336,7 +336,7 @@ class ProbeRun(ReplayRun):
             "index": index,
             "passed": code == 0,
             "exit_code": code,
-            "cost_usd": _cost(usage),
+            "cost_usd": usage_cost(usage),
             "turns": figures.turns,
             "duration_ms": duration_ms,
             "runtime": run.runtime,

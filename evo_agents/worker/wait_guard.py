@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
-from evo_agents.worker.command_classes import SHELLS, _shell_script, simple_commands
+from evo_agents.worker.command_classes import SHELLS, shell_script, simple_commands
 
 SLEEP_LIMIT = 120  # seconds one sleep may last before it is a wait
 LOOP_SLEEP = 5  # seconds a sleep inside a loop may last before the loop is a poll
@@ -109,7 +109,7 @@ def waiting(command: str, depth: int = 0) -> str | None:
             continue
         name = PurePosixPath(words[0]).name
         if name in SHELLS and depth < 3:
-            script = _shell_script(words)
+            script = shell_script(words)
             found = waiting(script, depth + 1) if script else None
             if found:
                 return found
