@@ -1,0 +1,29 @@
+#!/bin/sh
+# The hooks of this plugin run `evo-agents ARGS` through this file, at the evo-ak release the plugin names: the version
+# in .claude-plugin/plugin.json, so hooks.json carries the arguments of evo-agents alone and no version.
+#
+# It runs the release from uv's cache (uvx --offline), so a hook never waits on the network. When uvx cannot run it
+# (uvx missing, the release not cached yet, or never published: the plugins follow main, and a release reaches PyPI
+# only once its tag's CI passes), evo-agents from the PATH runs with the same arguments and stdin, and one line on
+# stderr says so. It exits 0 whatever happens, so a hook never fails the session.
+#
+# .mcp.json does not call it: Codex starts a plugin's MCP server with no plugin directory (no ${CLAUDE_PLUGIN_ROOT} in
+# its args, no variable, the session's cwd), so the server's command there names the release itself.
+
+# Shell builtins only: a hook runs at every tool call, and must run with whatever PATH it gets.
+plugin= version=
+while IFS= read -r line || [ -n "$line" ]; do
+  case $line in
+    *'"name":'*) [ -n "$plugin" ] || { plugin=${line#*: \"}; plugin=${plugin%%\"*}; } ;;
+    *'"version":'*) version=${line#*: \"}; version=${version%%\"*} ;;
+  esac
+done <"${0%/*}/../.claude-plugin/plugin.json"
+pin="evo-ak==$version"
+
+command -v uvx >/dev/null 2>&1 && uvx --offline --from "$pin" evo-agents "$@" && exit 0
+if command -v evo-agents >/dev/null 2>&1; then
+  echo "$plugin: uvx could not run $pin, so evo-agents from PATH runs $*" >&2
+  evo-agents "$@" && exit 0
+fi
+echo "$plugin: $* did not run: uvx could not run $pin and evo-agents from PATH is missing or failed" >&2
+exit 0

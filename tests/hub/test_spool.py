@@ -446,7 +446,7 @@ def test_nothing_is_pruned_when_nothing_is_spooled(own_home, monkeypatch, capsys
 
 def test_the_plugin_command_spools_through_uvx_and_exits_0_without_it(own_home, tmp_path):
     from tests.hub import pg
-    from tests.hub.test_hooks import SH, fake_evo_agents, fake_uvx, hook_runs, plugin_hooks
+    from tests.hub.test_hooks import SH, fake_evo_agents, fake_uvx, hook_env, hook_runs, plugin_hooks
 
     group = plugin_hooks()["PostToolUse"][0]  # the second group is the local-tool hook: tests/hub/test_local_sync.py
     assert group["matcher"] == "Bash|Read|Grep|WebFetch|mcp__.*"
@@ -456,7 +456,7 @@ def test_the_plugin_command_spools_through_uvx_and_exits_0_without_it(own_home, 
     data = json.dumps(payload("Bash", bash_response(long_text())))
 
     def run(path: str) -> subprocess.CompletedProcess:
-        env = pg.clean_env(HOME=str(own_home), PATH=path)
+        env = hook_env(pg.clean_env(HOME=str(own_home), PATH=path), tmp_path)
         for variable in VARIABLES:
             env.pop(variable, None)
         return subprocess.run([SH, "-c", hook["command"]], input=data, env=env, capture_output=True, text=True)

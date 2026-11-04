@@ -84,7 +84,8 @@ CONTEXT_SOURCES = ("always_loaded", "mcp_instructions", "skills", "hooks")
 SKILLS_AGAIN = "skills_again"  # of ``skills``: a whole list that came while the context already held one
 SKILL_BODIES = "skill_bodies"  # the text of the skills loaded into the context, on demand rather than fixed
 FACET_SOURCES = (*CONTEXT_SOURCES, SKILLS_AGAIN, SKILL_BODIES)  # the keys of a facet's ``sources``
-VERSION_NUMBER = re.compile(r"(?<=[=@v])\d+(?:\.\d+)+")
+# After `/` too: a plugin's hook runs from its versioned cache directory (.../plugins/cache/<m>/<plugin>/X.Y.Z/bin/evo-ak)
+VERSION_NUMBER = re.compile(r"(?<=[=@v/])\d+(?:\.\d+)+")
 HOME = re.compile(r"(?:/Users|/home)/[^/\s]+/")
 NODE_FILE = re.compile(r"^[^:\s]+:file:([^#]+)")
 NODE_SYMBOL = re.compile(r"^symbol:[^:\s]+:(.+?)::")
