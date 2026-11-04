@@ -146,10 +146,10 @@ def test_post_tool_counts_what_a_truncated_result_reveals(tmp_path, kg_env, monk
     counted = card["content"][0]["_meta"][sessions.READ_META]["results_read"]
     assert record["level"] == "customer" and record["results_read"] == counted > 0  # counted before the cut
 
-    status = session.call("kg_status", {})  # reveals no element: nothing to record
-    assert "label" not in status["structuredContent"]
+    status = session.call("kg_status", {})  # the sources and the build it describes raise the label, as reads do
+    assert status["structuredContent"]["label"]["level"] == "customer"
     assert post(monkeypatch, capsys, as_claude_code_sends("kg_status", status, sid))[0] == 0
-    assert sessions.read_session(sid) == record
+    assert sessions.read_session(sid)["level"] == record["level"]
 
 
 def test_post_tool_unknown_level_ranks_highest(kg_env, monkeypatch, capsys, unbound):

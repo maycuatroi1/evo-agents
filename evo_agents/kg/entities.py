@@ -87,7 +87,11 @@ _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:/-]{0,79}$")
 
 
 class EntitiesError(ValueError):
-    pass
+    """A call that failed, or an answer that does not read; ``usage`` is what the call reported it used, when it did."""
+
+    def __init__(self, message: str, usage: dict | None = None):
+        super().__init__(message)
+        self.usage = usage
 
 
 class BudgetStop(Exception):
@@ -175,6 +179,12 @@ def enabled(tuning, harness_root=None) -> dict | None:
 
 
 def slug(name: str) -> str:
+    """The key ``entity_links`` folds a name to: accents and đ folded, so "Lê Văn Tâm" and "Lý Văn Tâm" differ."""
+    return links.key(name)
+
+
+def _old_slug(name: str) -> str:
+    """The slug edges of answers memoized before ``slug`` folded accents were written with."""
     return SLUG.sub("-", name.lower()).strip("-")[:80]
 
 
@@ -217,6 +227,12 @@ class Spend:
             self.cost += float(usage["cost"])
         else:
             self.cost += tin / 1e6 * float(self.price.get("input", 0)) + tout / 1e6 * float(self.price.get("output", 0))
+
+
+def estimate(text: str, node_kinds: list[str], relations: list[str]) -> dict:
+    """The usage of a call that reported none, such as one that failed or timed out: the prompt's tokens in (4
+    characters a token), none out."""
+    return {"input_tokens": -(-len(_prompt(text, node_kinds, relations)) // 4), "output_tokens": 0}
 
 
 # -- the models ---------------------------------------------------------------------------------------------------
@@ -295,13 +311,19 @@ def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: lis
         )
     except Exception as exc:  # the library's errors differ by version: a failed call is a failed call
         raise EntitiesError(f"the model endpoint failed: {type(exc).__name__}: {exc}") from None
-    data = _parse_answer(got.choices[0].message.content or "")
     usage = getattr(got, "usage", None)
+    used = None
     if usage is not None:
-        data["usage"] = {
+        used = {
             "input_tokens": getattr(usage, "prompt_tokens", 0),
             "output_tokens": getattr(usage, "completion_tokens", 0),
         }
+    try:
+        data = _parse_answer(got.choices[0].message.content or "")
+    except EntitiesError as exc:
+        raise EntitiesError(str(exc), used) from None
+    if used is not None:
+        data["usage"] = used
     return data
 
 
@@ -490,6 +512,9 @@ def run(
             except ModelStop as stop:
                 halted.append(str(stop))
                 raise BudgetStop("halted") from None
+            except EntitiesError as exc:  # a failed call, a timeout or JSON that does not read was paid all the same
+                spend.add(exc.usage if isinstance(exc.usage, dict) else estimate(text, allowed_kinds, allowed_rels))
+                raise
             usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
             spend.add(usage)
             cleaned = _clean(answer, set(allowed_kinds), set(allowed_rels))
@@ -498,7 +523,7 @@ def run(
 
         before = memo.misses["entities"]
         try:
-            cleaned, _ = memo.run("entities", VERSION, inputs, task)
+            cleaned, _ = memo.run("entities", VERSION, inputs, task, commit=True)
         except BudgetStop as stop:
             memo.misses["entities"] = before
             cov["skipped"] += 1
@@ -580,6 +605,8 @@ def _assemble(config, answers, first, out, cov, project, memo, semantic_settings
             facts.append(node(nid, n["kind"], groups.name[nid], [unit], props=props, status=STATUS, conf=n["conf"]))
             if has_doc:
                 facts.append(edge(item, "mentions", nid, [unit], props=props, status=STATUS, conf=n["conf"]))
+        for n in cleaned["nodes"]:  # the edges of an answer memoized before ``slug`` folded accents
+            old_ids.setdefault(f"entity:{n['kind']}:{_old_slug(n['name'])}", groups.id_of(n["kind"], n["name"]))
         for e in cleaned["edges"]:
             src, dst = old_ids.get(e["src"]), old_ids.get(e["dst"])
             if src is None or dst is None or src == dst:

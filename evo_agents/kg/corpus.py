@@ -145,6 +145,7 @@ class Corpus:
             os.chmod(self.root, 0o700)
         self.db_path = self.root / "corpus.sqlite"
         self.db = self._open(self.db_path)
+        self.read_digest: str | None = None  # the state digest of the items ``read_state`` read last
 
     @staticmethod
     def _open(path: Path) -> sqlite3.Connection:
@@ -285,6 +286,13 @@ class Corpus:
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
         return [self._row(r) for r in self.db.execute(query + " ORDER BY item_id", params)]
+
+    def read_state(self) -> list[ItemRecord]:
+        """The live items, as ``items`` gives them, read in one statement with the state digest of what it read: a build
+        records ``read_digest``, the state it was made of, not the state a sync left after it."""
+        rows = self.db.execute("SELECT item_id, source, deleted, k_run, record FROM items ORDER BY item_id").fetchall()
+        self.read_digest = sha256(canonical_json([[r[0], r[2], json.loads(r[4])] for r in rows]))
+        return [self._row(r) for r in rows if not r[2]]
 
     def sources(self) -> list[str]:
         """The sources that hold at least one live item, by id."""
