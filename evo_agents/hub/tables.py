@@ -146,7 +146,11 @@ projects = Table(
     Column("harness_path", Text),
     Column("self_managed", Boolean, nullable=False, server_default=false()),  # 0170
     Column("trusted_owners", ARRAY(Text), nullable=False, server_default="{}"),  # 0170
+    Column("archived_at", DateTime(timezone=True)),  # 0198
+    Column("archived_by", BigInteger),  # 0198
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="projects_created_by_fkey"),
+    ForeignKeyConstraint(["archived_by"], ["users.id"], ondelete="RESTRICT", name="projects_archived_by_fkey"),
+    CheckConstraint(column("archived_at").is_(None) == column("archived_by").is_(None), name="projects_archived_check"),
     PrimaryKeyConstraint("id", name="projects_pkey"),
     UniqueConstraint("name", name="projects_name_key"),
 )

@@ -30,6 +30,10 @@ GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"
 PROJECT_UPDATE = "project.update"
+# An admin of the project or a hub admin archived it or made it live again (evo_agents.hub.server.project_archive); the
+# target is the project.
+PROJECT_ARCHIVE = "project.archive"
+PROJECT_UNARCHIVE = "project.unarchive"
 # An invite link (evo_agents.hub.server.invites) was made, accepted or revoked; the target names the link and what it
 # gives, "invite:<id> kind=<kind> [project=<p> role=<r> max_level=<l>] [for=<login>]", never its token. A join link's
 # rows are in its project.

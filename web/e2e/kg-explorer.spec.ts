@@ -1,3 +1,5 @@
+import { LABEL_RESTYLE } from "../src/components/kg/explorer-layout";
+
 import { expect, test } from "./support/fixtures";
 import { newAccount } from "./support/hub";
 import { CONTRACT, explorerLabels, explorerReady, grantOn, kgPath, open, SHARED_NODE, sharedKg } from "./support/kg";
@@ -60,12 +62,16 @@ test.describe("knowledge graph explorer", () => {
     const drawn = Number(await canvas.getAttribute("data-nodes"));
     expect(drawn).toBeGreaterThan(1);
     await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
-    // Labels keep their size on screen when zoomed in, and still never cover each other.
+    // Labels keep their size on screen when zoomed in, a whole pixel size of the stylesheet, and still never cover each
+    // other. The view restyles them only once the zoom moved past LABEL_RESTYLE, so before a zoom the smallest may read
+    // up to that share off its size (10.8 for 11); after a zoom this large it reads its size.
     const before = await explorerLabels(page);
-    expect(before.smallest).toBeGreaterThanOrEqual(10);
+    const size = Math.round(before.smallest);
+    expect(size).toBeGreaterThanOrEqual(10);
+    expect(Math.abs(before.smallest - size)).toBeLessThanOrEqual(size * LABEL_RESTYLE + 0.05); // the helper rounds to 0.1
     await page.getByRole("button", { name: "Phóng to" }).click();
     await page.getByRole("button", { name: "Phóng to" }).click();
-    await expect.poll(async () => (await explorerLabels(page)).smallest).toBe(before.smallest);
+    await expect.poll(async () => (await explorerLabels(page)).smallest).toBe(size);
     await expect.poll(() => explorerLabels(page)).toMatchObject({ overlapping: 0 });
 
     // A relation selects its node; expanding it adds its own neighbours.

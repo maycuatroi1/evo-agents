@@ -1,0 +1,73 @@
+{
+ "bench": "memoryagentbench",
+ "candidates": [
+  {
+   "kind": "default",
+   "n": 151,
+   "name": "default",
+   "primary": 0.7152,
+   "se": 0.0368,
+   "search": "graph",
+   "settings": {}
+  },
+  {
+   "kind": "strategy",
+   "n": 151,
+   "name": "strategy-conversation",
+   "primary": 0.7152,
+   "se": 0.0368,
+   "search": "graph",
+   "settings": {
+    "semantic_weight": 0.8
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 151,
+   "name": "strategy-media-metadata",
+   "primary": 0.7152,
+   "se": 0.0368,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0,
+    "bm25_path": 3.0
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 151,
+   "name": "strategy-records",
+   "primary": 0.7152,
+   "se": 0.0368,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 151,
+   "name": "weights-body-heavy",
+   "primary": 0.7152,
+   "se": 0.0368,
+   "search": "graph",
+   "settings": {
+    "bm25_body": 4.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 151,
+   "name": "weights-name-light",
+   "primary": 0.7152,
+   "se": 0.0368,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 2.0,
+    "bm25_path": 1.0
+   }
+  }
+ ],
+ "metric": "recall_all@5",
+ "part": "tune"
+}

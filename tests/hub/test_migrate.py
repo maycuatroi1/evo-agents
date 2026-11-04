@@ -5486,3 +5486,54 @@ def test_0197_keeps_the_kg_init_runs_one_in_flight_a_project_and_the_lens_going_
     assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "review")) == [(0,)]
     assert query(hub_db, select(func.count()).select_from(t.proposals).where(t.proposals.c.lens == "kg_init")) == [(0,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0197") :]
+
+
+def test_0198_archives_a_project_with_who_did_it_and_going_back_makes_every_project_live(hub_db):
+    move_to(hub_db, "0197")
+    assert not {"archived_at", "archived_by"} & columns(hub_db, "projects")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0198")
+    p = hub_tables.projects
+    assert query(hub_db, select(p.c.archived_at, p.c.archived_by)) == [(None, None)], "no project is archived"
+    with live.connect(hub_db) as conn:
+        conn.execute(update(p).values(archived_at=func.now(), archived_by=ids["user"]))
+    for half in ({"archived_by": None}, {"archived_at": None}):
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(update(p).values(half))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(update(p).values(archived_by=ids["user"] + 1000))
+    move_to(hub_db, "0197", down=True)
+    assert not {"archived_at", "archived_by"} & columns(hub_db, "projects")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0198") :]
+
+
+def test_0199_lets_a_dismissal_name_conflicting_claim_and_going_back_deletes_those(hub_db):
+    move_to(hub_db, "0198")
+    d = hub_tables.kg_review_dismissals
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        row = {
+            "project_id": ids["project"],
+            "fingerprint": "r:0123456789abcdef",
+            "rule": "possible_duplicate",
+            "reason": "two names of one thing, on purpose",
+            "dismissed_by": ids["user"],
+        }
+        conn.execute(insert(d).values(row))
+    claim = {**row, "fingerprint": "r:fedcba9876543210", "rule": "conflicting_claim", "reason": "both hold"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(d).values(claim))
+    move_to(hub_db, "0199")
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(d).values(claim))
+        for bad in (
+            {**claim, "fingerprint": "r:1", "rule": "whatever"},
+            {**claim, "fingerprint": "r:2", "reason": " "},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(d).values(bad))
+    assert query(hub_db, select(d.c.rule).order_by(d.c.rule)) == [("conflicting_claim",), ("possible_duplicate",)]
+    move_to(hub_db, "0198", down=True)
+    assert query(hub_db, select(d.c.rule)) == [("possible_duplicate",)], "the other dismissals stay"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0199") :]

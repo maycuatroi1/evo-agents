@@ -241,8 +241,8 @@ def cmd_strategy(args) -> int:
     for problem in found.problems:
         print(f"cannot apply: {problem}")
     verb = "would change" if args.dry_run else "changed"
-    for key, (was, now) in found.changed.items():
-        print(f"{verb} {key}: {was} -> {now}")
+    for key, change in found.changed.items():
+        print(f"{verb} {key}: {change['from']} -> {change['to']}")
     if out["adds_identifiers"] or out["adds_ontology"]:
         print(f"{verb} knowledge: identifiers {out['adds_identifiers']}, ontology {out['adds_ontology']}")
     if found.needs_rebuild:

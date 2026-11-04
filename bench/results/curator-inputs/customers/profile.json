@@ -1,0 +1,81 @@
+{
+ "chars": 394130,
+ "classes": {
+  "other": {
+   "chars": 394130,
+   "item_share": 1.0,
+   "items": 1500,
+   "lines": 9001,
+   "share": 1.0
+  }
+ },
+ "content_items": 1500,
+ "edges": 1500,
+ "graphs": 1,
+ "history": {
+  "commits": 0,
+  "pull_requests": 0
+ },
+ "identifier_candidates": [],
+ "items": 1500,
+ "languages": {},
+ "length": {
+  "max": 348,
+  "nodes_with_passages": 0,
+  "p50": 262,
+  "p90": 314,
+  "p99": 330,
+  "passages": 0
+ },
+ "lines": 9001,
+ "mentions": {
+  "dangling": 0,
+  "mentions": 0,
+  "resolved": 0,
+  "resolved_ratio": 0.0
+ },
+ "natural_language": {
+  "chars": {},
+  "share": {}
+ },
+ "nodes": {
+  "File": 1500,
+  "Source": 1
+ },
+ "noise": {
+  "binary": 0,
+  "ratio": 0.0,
+  "tiny": 0
+ },
+ "sensitive": {
+  "email": {
+   "items": 0,
+   "strings": 0
+  },
+  "medical_code": {
+   "items": 0,
+   "strings": 0
+  },
+  "national_id": {
+   "items": 0,
+   "strings": 0
+  },
+  "phone": {
+   "items": 0,
+   "strings": 0
+  }
+ },
+ "sources": [
+  {
+   "chars": 394130,
+   "id": "corpus",
+   "items": 1500,
+   "label": {
+    "level": "public",
+    "location": "any"
+   },
+   "lines": 9001
+  }
+ ],
+ "version": "1"
+}

@@ -1,0 +1,120 @@
+[
+ {
+  "description": "Source code of one or more repositories. Builds the graph as it is built without a strategy.",
+  "knowledge": {
+   "identifiers": [],
+   "ontology": {}
+  },
+  "name": "code",
+  "origin": "built-in",
+  "requires": {
+   "connectors": [],
+   "extras": []
+  },
+  "settings": {},
+  "steps": [],
+  "suits": [
+   "code"
+  ]
+ },
+ {
+  "description": "Conversations and memories (chat threads, session transcripts, notes written by agents). Short turns, so short passages, and vectors weighted a little more than for code because people paraphrase.",
+  "knowledge": {
+   "identifiers": [],
+   "ontology": {}
+  },
+  "name": "conversation",
+  "origin": "built-in",
+  "requires": {
+   "connectors": [],
+   "extras": []
+  },
+  "settings": {
+   "embed_chars": 1500,
+   "passage_chars": 700,
+   "passage_from": 1200,
+   "semantic_mode": "index",
+   "semantic_weight": 0.8
+  },
+  "steps": [],
+  "suits": [
+   "conversation"
+  ]
+ },
+ {
+  "description": "Long prose, such as manuals, specifications, reports and notes. Longer passages, vectors written, and the text a vector reads kept long enough for a paragraph.",
+  "knowledge": {
+   "identifiers": [],
+   "ontology": {}
+  },
+  "name": "documents",
+  "origin": "built-in",
+  "requires": {
+   "connectors": [],
+   "extras": []
+  },
+  "settings": {
+   "embed_chars": 3000,
+   "passage_chars": 1800,
+   "passage_from": 2500,
+   "semantic_mode": "index"
+  },
+  "steps": [],
+  "suits": [
+   "prose"
+  ]
+ },
+ {
+  "description": "Binary files (images, audio, video, archives) known by their metadata or the text kept beside them (captions, transcripts, sidecar files). The path and the name carry most of the meaning, so they weigh more.",
+  "knowledge": {
+   "identifiers": [],
+   "ontology": {}
+  },
+  "name": "media-metadata",
+  "origin": "built-in",
+  "requires": {
+   "connectors": [],
+   "extras": []
+  },
+  "settings": {
+   "bm25_name": 8.0,
+   "bm25_path": 3.0,
+   "embed_chars": 1200,
+   "semantic_mode": "index"
+  },
+  "steps": [],
+  "suits": [
+   "binary"
+  ]
+ },
+ {
+  "description": "Structured records that a connector reads (tickets, customers, orders, rows), each with a domain kind and identifiers. Short passages, because a record is short, and the identifier shapes people quote.",
+  "knowledge": {
+   "identifiers": [
+    {
+     "description": "a tracker key such as ABC-123",
+     "kind": "Ticket",
+     "pattern": "\\b[A-Z]{2,6}-\\d{1,6}\\b"
+    }
+   ],
+   "ontology": {}
+  },
+  "name": "records",
+  "origin": "built-in",
+  "requires": {
+   "connectors": [],
+   "extras": []
+  },
+  "settings": {
+   "bm25_name": 8.0,
+   "embed_chars": 1500,
+   "passage_chars": 800,
+   "passage_from": 1500,
+   "semantic_mode": "index"
+  },
+  "steps": [],
+  "suits": [
+   "structured"
+  ]
+ }
+]

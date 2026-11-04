@@ -100,7 +100,7 @@ export function PeoplePicker({
           autoComplete="off"
           spellCheck={false}
           placeholder={t("searchPlaceholder")}
-          aria-controls={`${id}-list`}
+          aria-controls={people.isPending ? undefined : `${id}-list`} // the list is a skeleton until the people load
           aria-describedby={describedBy}
           className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-hidden placeholder:text-fg-subtle md:text-sm [&::-webkit-search-cancel-button]:hidden"
           data-testid="people-search"

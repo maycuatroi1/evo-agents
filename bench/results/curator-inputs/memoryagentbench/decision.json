@@ -1,0 +1,178 @@
+{
+ "format": "evo-kg-bench-curator/1",
+ "bench": "memoryagentbench",
+ "at": "2026-11-04T09:39:05Z",
+ "inputs": [
+  {
+   "name": "profile.json",
+   "path": "curator-inputs/memoryagentbench/profile.json",
+   "sha256": "6cfb78bfbec1a4e8d253db4b348e6b68ab37caef7890648ea4eb4e3453b581a6",
+   "part": "none"
+  },
+  {
+   "name": "prompt.md",
+   "path": "curator-inputs/memoryagentbench/prompt.md",
+   "sha256": "503617686275263271c496decb1a88439b1ccd3bb91e4cd98dbe5b6353998321",
+   "part": "none"
+  },
+  {
+   "name": "skill-kg-init.md",
+   "path": "curator-inputs/memoryagentbench/skill-kg-init.md",
+   "sha256": "221268dbbc723dad09a9fc5911b6de2514bbbc6b0f865a87d15770a5a92645dc",
+   "part": "none"
+  },
+  {
+   "name": "skill-lenses-kg-init.md",
+   "path": "curator-inputs/memoryagentbench/skill-lenses-kg-init.md",
+   "sha256": "fe59e38ef1a7ee77280dbc1d2fc5f023d7e22233329d77f1a0d7f639bb277e4f",
+   "part": "none"
+  },
+  {
+   "name": "strategies.json",
+   "path": "curator-inputs/memoryagentbench/strategies.json",
+   "sha256": "3940c9c6298a407c5e7eac254bd3f63d34f8359cf2701b66d76f26b36c8b4918",
+   "part": "none"
+  },
+  {
+   "name": "tune-scores.json",
+   "path": "curator-inputs/memoryagentbench/tune-scores.json",
+   "sha256": "6b73dc8e70a0ba1f4dce3857ecc01248181378ee811c750fb4329fe1692ce154",
+   "part": "tune"
+  }
+ ],
+ "profile_graphs": 5,
+ "tune": {
+  "bench": "memoryagentbench",
+  "metric": "recall_all@5",
+  "part": "tune",
+  "candidates": [
+   {
+    "name": "default",
+    "kind": "default",
+    "search": "graph",
+    "settings": {},
+    "n": 151,
+    "primary": 0.7152,
+    "se": 0.0368
+   },
+   {
+    "name": "strategy-conversation",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "semantic_weight": 0.8
+    },
+    "n": 151,
+    "primary": 0.7152,
+    "se": 0.0368
+   },
+   {
+    "name": "strategy-media-metadata",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 8.0,
+     "bm25_path": 3.0
+    },
+    "n": 151,
+    "primary": 0.7152,
+    "se": 0.0368
+   },
+   {
+    "name": "strategy-records",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 8.0
+    },
+    "n": 151,
+    "primary": 0.7152,
+    "se": 0.0368
+   },
+   {
+    "name": "weights-body-heavy",
+    "kind": "weights",
+    "search": "graph",
+    "settings": {
+     "bm25_body": 4.0
+    },
+    "n": 151,
+    "primary": 0.7152,
+    "se": 0.0368
+   },
+   {
+    "name": "weights-name-light",
+    "kind": "weights",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 2.0,
+     "bm25_path": 1.0
+    },
+    "n": 151,
+    "primary": 0.7152,
+    "se": 0.0368
+   }
+  ]
+ },
+ "answers": [
+  "```json\n{\"strategy\":{\"use\":\"conversation\"},\"settings\":{},\"reasons\":[{\"about\":\"strategy\",\"why\":\"The profile is 100% conversation by items and chars (ChatMessage 6440, Chat 555, ChatThread 555), so the conversation strategy is the one that fits the data. On the tune split every candidate scored the same as the default, so the figures give no reason to prefer a different strategy. I name the strategy for the data type only and apply none of its settings.\",\"figures\":{\"conversation_share_items\":1.0,\"tune_default\":0.7152,\"tune_strategy_conversation\":0.7152,\"tune_se\":0.0368,\"tune_n\":151}},{\"about\":\"settings\",\"why\":\"No query key moved the tune figure: all six runs gave 0.7152, with se 0.0368 on n=151. A difference under two standard errors is noise, so the defaults stay. I set no build keys either. Passage lengths are p50 589, p90 2794 and p99 3575 chars. The graph has no vectors, so semantic_weight and semantic_mode cannot be tested here.\",\"figures\":{\"tune_default\":0.7152,\"tune_weights_body_heavy\":0.7152,\"tune_weights_name_light\":0.7152,\"tune_se\":0.0368,\"length_p50\":589,\"length_p90\":2794,\"length_p99\":3575}}]}\n```\n"
+ ],
+ "cost_usd": 0.0,
+ "decision": {
+  "reasons": [
+   {
+    "about": "strategy",
+    "why": "The profile is 100% conversation by items and chars (ChatMessage 6440, Chat 555, ChatThread 555), so the conversation strategy is the one that fits the data. On the tune split every candidate scored the same as the default, so the figures give no reason to prefer a different strategy. I name the strategy for the data type only and apply none of its settings.",
+    "figures": {
+     "conversation_share_items": 1.0,
+     "tune_default": 0.7152,
+     "tune_strategy_conversation": 0.7152,
+     "tune_se": 0.0368,
+     "tune_n": 151
+    }
+   },
+   {
+    "about": "settings",
+    "why": "No query key moved the tune figure: all six runs gave 0.7152, with se 0.0368 on n=151. A difference under two standard errors is noise, so the defaults stay. I set no build keys either. Passage lengths are p50 589, p90 2794 and p99 3575 chars. The graph has no vectors, so semantic_weight and semantic_mode cannot be tested here.",
+    "figures": {
+     "tune_default": 0.7152,
+     "tune_weights_body_heavy": 0.7152,
+     "tune_weights_name_light": 0.7152,
+     "tune_se": 0.0368,
+     "length_p50": 589,
+     "length_p90": 2794,
+     "length_p99": 3575
+    }
+   }
+  ],
+  "strategy": {
+   "use": "conversation"
+  },
+  "settings": {}
+ },
+ "config": {
+  "strategy": {
+   "name": "conversation",
+   "self_made": false,
+   "origin": "built-in",
+   "steps": []
+  },
+  "settings": {
+   "passage_from": 1200,
+   "passage_chars": 700,
+   "embed_chars": 1500,
+   "semantic_weight": 0.8,
+   "semantic_mode": "index"
+  },
+  "applied": {
+   "semantic_weight": 0.8
+  },
+  "unapplied": {
+   "semantic_mode": "index",
+   "passage_from": 1200,
+   "passage_chars": 700,
+   "embed_chars": 1500
+  }
+ },
+ "error": null
+}

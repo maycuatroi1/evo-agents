@@ -40,6 +40,11 @@ methods no call edge reaches), and the files each git source holds in it, path a
 source, replaced by each build), which the measure of the graph's health compares with the default branches
 (``evo_agents.hub.server.kg_health``).
 
+An entities step that runs Claude Code calls nothing here, since the container has no ``claude``: the build defers
+the items its memo lacks, keeps their requests as a blob the hub made (kind kg-entity-requests, named in the coverage),
+and reads the answers a run of the project's agent pool posted (kind kg-entity-answers) as the step's inbox
+(``evo_agents.hub.kg_entity_relay``).
+
 The cache can be deleted at any time: the next build fetches everything again and gets the same content hash.
 """
 
@@ -65,6 +70,7 @@ from evo_agents.hub import (
     blob_gc,
     kg_asked,
     kg_coverage,
+    kg_entity_relay,
     kg_eval_starter,
     kg_init_db,
     kg_semantic,
@@ -136,6 +142,7 @@ class Built:
     skipped: bool = False  # the cache's graph was current: nothing was built
     coverage: dict | None = None  # what kg_builds.coverage keeps (``kg_coverage.build_coverage``)
     files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
+    requests: tuple | None = None  # the deferred entity requests: path, sha256, size, count (``kg_entity_relay``)
 
 
 @dataclass(frozen=True)
@@ -283,11 +290,14 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def build_graph(project: Project) -> tuple[Path, object]:
+def build_graph(
+    project: Project, *, entity_inbox: dict | None = None, entity_outbox: list | None = None
+) -> tuple[Path, object]:
     """Build ``project`` into a fresh store and make it its graph.sqlite: one file, out of WAL mode. The path and the
     build report; BuildFailure when the build reports errors. When the graph.sqlite of the cache was built from the
     corpus state and the inputs ``project`` has now (``evo_agents.kg.build.unchanged``), nothing is built: that file
-    and the report of its build, ``skipped``."""
+    and the report of its build, ``skipped``. ``entity_inbox`` and ``entity_outbox`` go to the entities step
+    (``evo_agents.kg.entities.run``)."""
     from evo_agents.kg.build import build_project, unchanged
     from evo_agents.kg.store import Store
 
@@ -297,7 +307,7 @@ def build_graph(project: Project) -> tuple[Path, object]:
         return target, current
     stage = Store.staging(target)
     try:
-        report = build_project(project, store=stage)
+        report = build_project(project, store=stage, entity_outbox=entity_outbox, entity_inbox=entity_inbox)
         if not report.ok:
             shown = "; ".join(report.errors[:5])
             raise BuildFailure(f"the build reported {len(report.errors)} error(s): {shown}")
@@ -344,6 +354,7 @@ def build_in_cache(
     learned: kg_asked.Learned | None = None,
     semantic: kg_semantic.semantic.Settings | None = None,
     tuning: settings.Tuning | None = None,
+    answers: list[str] | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
@@ -352,7 +363,9 @@ def build_in_cache(
     build whose graph is the same but whose index is not uploads its file. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when the project's vectors.sqlite
     lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
-    overrides are put in its settings.json first, so the build reads them as a local one does. Blocking."""
+    overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
+    of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
+    for ``record`` to keep (``kg_entity_relay``). Blocking."""
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
@@ -362,7 +375,10 @@ def build_in_cache(
     if tuning is not None:
         put_tuning(project.root, tuning)
         semantic = tuning.semantic_settings()
-    path, report = build_graph(project)
+    inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
+    outbox: list[dict] = []
+    path, report = build_graph(project, entity_inbox=inbox, entity_outbox=outbox)
+    requests = kg_entity_relay.write_requests(project.root, outbox) if not report.skipped else None
     asked = kg_asked.write(path, learned) if learned is not None else None
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
     vector_coverage = None
@@ -378,6 +394,8 @@ def build_in_cache(
     coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
     if vector_coverage is not None:
         coverage["vectors"] = vector_coverage
+    if requests is not None:
+        coverage["entity_requests"] = {"sha256": requests[1], "count": requests[3]}
     return Built(
         path,
         sha256,
@@ -390,6 +408,7 @@ def build_in_cache(
         report.skipped,
         coverage,
         kg_coverage.source_files(project),
+        requests,
     )
 
 
@@ -481,6 +500,8 @@ async def record(
     latest = await _reusable(engine, store, project_id, built)
     if latest is None:
         await asyncio.to_thread(store.put_file, built.sha256, built.path)
+    if built.requests is not None:
+        await asyncio.to_thread(store.put_file, built.requests[1], built.requests[0])
     async with engine.begin() as conn:
         await blob_gc.lock_shared(conn)
         if latest is not None and (await conn.execute(_latest_artifact(project_id))).one_or_none() == latest:
@@ -518,6 +539,9 @@ async def record(
             )
             .where(builds.c.id == build_id)
         )
+        if built.requests is not None:
+            path, sha, size, _ = built.requests
+            await kg_entity_relay.hold(conn, store, project_id, sha, path, size, kg_entity_relay.REQUESTS_KIND, None)
         await keep_source_files(conn, project_id, build_id, built.files)
         try:  # the Curator configures a new graph from its profile (kg_init); a failure never fails the build
             async with conn.begin_nested():
@@ -619,6 +643,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             .order_by(run_id)
         )
         ingests = [Ingest(**row._mapping) for row in rows]
+        answers = await kg_entity_relay.answer_hashes(conn, project_id)
     digest = found[0] if found else None
     log.info("kg build started", extra={"project": project, "build_id": build_id, "job_id": job_id})
     try:
@@ -632,7 +657,17 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             learned = await kg_asked.read(conn, project_id, project, found[1])
             tuning = await kg_settings.read(conn, project_id)
         built = await asyncio.to_thread(
-            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, None, tuning
+            build_in_cache,
+            context.blobs,
+            context.data_dir,
+            project,
+            config,
+            ingests,
+            sources,
+            learned,
+            None,
+            tuning,
+            answers,
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)
@@ -680,8 +715,13 @@ async def queue_build(
     job_queue: JobQueue, conn: AsyncConnection, project_id: int, project: str, requested_by: int | None
 ) -> tuple[int | None, bool]:
     """Queue a build of ``project`` in ``conn``'s transaction: (its build id, True), or (the waiting build's id,
-    False) when one waits already. The waiting job's row stays locked until the transaction ends, and the worker
-    takes jobs with SKIP LOCKED, so it cannot start that build before the caller's rows are visible to it."""
+    False) when one waits already, or (None, False) when the project is archived (``server.project_archive``), whose
+    graph is not built again. The waiting job's row stays locked until the transaction ends, and the worker takes jobs
+    with SKIP LOCKED, so it cannot start that build before the caller's rows are visible to it."""
+    p = tables.projects
+    if await conn.scalar(select(p.c.archived_at).where(p.c.id == project_id)) is not None:
+        log.info("kg build not queued: the project is archived", extra={"project": project})
+        return None, False
     key = kg_lock(project)
     builds, jobs = tables.kg_builds, procrastinate_jobs
     for _ in range(QUEUE_ATTEMPTS):

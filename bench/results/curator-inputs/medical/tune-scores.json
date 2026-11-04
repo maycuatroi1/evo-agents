@@ -1,0 +1,73 @@
+{
+ "bench": "medical",
+ "candidates": [
+  {
+   "kind": "default",
+   "n": 503,
+   "name": "default",
+   "primary": 0.9881,
+   "se": 0.0048,
+   "search": "graph",
+   "settings": {}
+  },
+  {
+   "kind": "strategy",
+   "n": 503,
+   "name": "strategy-conversation",
+   "primary": 0.9881,
+   "se": 0.0048,
+   "search": "graph",
+   "settings": {
+    "semantic_weight": 0.8
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 503,
+   "name": "strategy-media-metadata",
+   "primary": 0.9881,
+   "se": 0.0048,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0,
+    "bm25_path": 3.0
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 503,
+   "name": "strategy-records",
+   "primary": 0.9881,
+   "se": 0.0048,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 503,
+   "name": "weights-body-heavy",
+   "primary": 0.9881,
+   "se": 0.0048,
+   "search": "graph",
+   "settings": {
+    "bm25_body": 4.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 503,
+   "name": "weights-name-light",
+   "primary": 0.9881,
+   "se": 0.0048,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 2.0,
+    "bm25_path": 1.0
+   }
+  }
+ ],
+ "metric": "recall_all@5",
+ "part": "tune"
+}

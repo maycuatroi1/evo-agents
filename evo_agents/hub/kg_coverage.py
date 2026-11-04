@@ -10,7 +10,9 @@ A build's coverage (``kg_builds.coverage``) holds, for each source of the build,
 those resolved, stayed ambiguous or dangled, with their shares, and for a git source the commit it read
 (``evo_agents.kg.freshness``: the same field ``kg status`` shows); the same over every source; the dangling edges; the
 Python functions and methods outside tests that no call edge reaches (``evo_agents.kg.health.call_reach``); and whether
-the build was skipped because nothing had changed.
+the build was skipped because nothing had changed. When the build ran the entities step, the counts of that step
+(ENTITY_COUNTS, with its model, sink and why it stopped), never an item's text; ``kg_build`` adds the hash and count of
+the requests it deferred to a run that has Claude Code (``entity_requests``, ``evo_agents.hub.kg_entity_relay``).
 
 A git source's files are the live items ``<source>:file:<path>`` of the build's corpus with their revision, the blob
 SHA (``evo_agents.kg.connectors.git``), at most MAX_FILES of them. Compared with the tree of the default branch, as far
@@ -38,6 +40,20 @@ MENTION_KEYS = ("mentions", "resolved", "ambiguous", "dangling")
 RETRIEVAL_KEYS = ("calls", "lookups", "empty", "searches", "fallbacks", "edited", "in_results", "in_top")
 LABEL_KEYS = ("chains", "grep_after", "queries", "clicked")  # of the facets' kg since FACET_VERSION 3
 READ_KEYS = ("commit", "ref", "base", "behind")
+ENTITY_COUNTS = (
+    "calls",
+    "cache_hits",
+    "skipped",
+    "failed",
+    "refused_count",
+    "deferred",
+    "answered_elsewhere",
+    "nodes",
+    "edges",
+    "rejected",
+    "tokens_in",
+    "tokens_out",
+)
 
 
 def _int(value) -> int:
@@ -91,6 +107,16 @@ def build_coverage(coverage: Mapping | None, reach: Mapping | None, *, skipped: 
     }
     if isinstance(coverage.get("profile"), Mapping):  # the data profile (``evo_agents.kg.profile``): kg_init reads it
         found["profile"] = dict(coverage["profile"])
+    entities = coverage.get("entities")
+    if isinstance(entities, Mapping) and entities.get("enabled"):
+        cost = entities.get("cost")
+        found["entities"] = {
+            **{key: _int(entities.get(key)) for key in ENTITY_COUNTS},
+            "model": entities.get("model") if isinstance(entities.get("model"), str) else None,
+            "sink": entities.get("sink") if isinstance(entities.get("sink"), str) else None,
+            "cost": round(float(cost), 6) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else 0.0,
+            "stopped": str(entities["stopped"])[:300] if entities.get("stopped") else None,
+        }
     return found
 
 
@@ -335,6 +361,7 @@ REVIEW_WORDS = {
     "possible_duplicate": "groups of nodes of the knowledge graph that may be duplicates",
     "ambiguous_match": "mentions and links of the knowledge graph that matched one of several nodes by name",
     "bulk_noise": "groups of images, generated files and repeated plan steps in the knowledge graph",
+    "conflicting_claim": "pairs of claims two documents of the knowledge graph state differently",
 }
 
 

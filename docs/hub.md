@@ -94,7 +94,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | invite links | `POST` and `GET /v1/admin/invites`, `POST /v1/admin/invites/{id}/revoke`, for hub admins; `POST /v1/invites/accept`, for any member signed in; `POST /v1/invites/preview`, public, for the link's page (section Signing in, Invite links) |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
 | autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy.md`); `GET`/`PUT /v1/autonomy/run-reach`: what a person's runs that run as them reach (`docs/credentials.md`) |
-| projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
+| projects | `GET /v1/projects` (`?archived=true` for the archived ones too), `GET` and `PUT /v1/projects/{project}`, `POST .../archive` and `.../unarchive` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`; `?agent=` for an agent's), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience`, `POST .../restore` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle`; `PUT /v1/skills/global/{name}/audience`, for hub admins |
@@ -453,6 +453,23 @@ Memories add one rule on top: `project` and `reference` memories go to every mem
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
 only their owner sees them. A memory whose label names an audience goes only to a reader whose audience holds it
 (Memories, skills and knowledge graphs, Audience of memories).
+
+### An archived project
+
+A project its people no longer work on can be archived: `evo-agents hub project archive demo`, by an admin of the
+project or a hub admin, never the agent of a run. Its active runs are cancelled first: archiving refuses (409, naming
+them) while a run other than a local one is queued, held, in review or parked. An archived project keeps everything it
+holds, and members read it as before, but the hub starts nothing for it:
+
+- no new run of any kind, a dispatch, a mention of one of its agents in a chat, the Curator's night shift, the Loop or
+  a release (409, a refusal the chat and the Loop answer with words), and no local run of a Claude Code session;
+- no kg push (`POST /v1/kg/{project}/runs`, 409) and no build, neither one a member asks for (409) nor one the hub
+  would queue itself after a plugin's change, a stalled build or a graph of an older schema;
+- no night shift, no Loop tick and no plugin job: the schedulers leave the project out.
+
+`hub project list` leaves archived projects out; `--archived` lists them too, with when they were archived.
+`hub project unarchive demo` makes it live again, and its night shift, Loop and plugins' jobs go on as they are set.
+Each change is audited as `project.archive` or `project.unarchive`; archiving an archived project changes nothing.
 
 ## The org chart
 
@@ -2806,7 +2823,7 @@ answer that names a build gives its nodes and edges as null (`GET /v1/kg/{projec
 those totals count messages most members may not read.
 
 **Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
-a review queue by six rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,
+a review queue by seven rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,
 Decisions). Every read goes through the reader's view of the graph: sizes, kinds, link weights and labels are recounted
 over what the reader can see, a cluster with no visible member is absent, and a review item or a decision that names a
 hidden node is not listed. A graph without clusters answers an empty list with the reason.

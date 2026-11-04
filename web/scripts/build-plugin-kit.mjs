@@ -20,7 +20,7 @@ export const KIT_CSS = path.join(KIT_DIR, "evo-ui.css");
 
 // The tokens of @theme a page needs; the --color-* there only map Tailwind's names onto the ones of :root.
 const THEME_TOKENS = /^--(font|radius|shadow|transition-duration|ease)-/;
-// The web loads IBM Plex through next/font as these variables; a plugin's page names the family and brings no file.
+// The web loads IBM Plex as these variables (src/app/fonts/plex.css); a plugin's page names the family and brings no file.
 const FONT_VARIABLES = { "var(--font-plex-sans)": '"IBM Plex Sans"', "var(--font-plex-mono)": '"IBM Plex Mono"' };
 
 function stripComments(css) {
