@@ -295,6 +295,33 @@ def test_a_path_with_spaces_and_a_capitals_document_at_a_repo_root_link_when_the
     assert not step.samples.get("dangling")  # a spaced or root name that is no file is not counted as missing
 
 
+def test_a_path_whose_directories_hold_spaces_links_its_longest_tail_that_is_a_file():
+    paths = {
+        "h": [
+            "research_notes/Browser cho agent/literature.md",
+            "research_notes/Vòng tự vận hành/literature.md",
+            "reports/A B.md",
+            "docs/hub.md",
+        ]
+    }
+    records = [
+        {"id": f"{r}:file:{p}", "kind": "markdown", "props": {"path": p, "repo": r}}
+        for r, ps in paths.items()
+        for p in ps
+    ]
+    index = build_index({r["id"]: map_item(r, r["id"].split(":")[0], True) for r in records}, [])
+    doc = Linker(index, "h:file:reports/x.md", "h", "reports/x.md")
+    doc.scan(
+        "h:file:reports/x.md",
+        "u",
+        "Căn cứ ở `research_notes/Browser cho agent/literature.md`; khảo sát ở research_notes/Vòng tự vận hành/literature.md, "
+        "xem docs/hub.md và research_notes/Vòng tự vận hành/literature.md; reports/A B.md và research_notes/Không có/x.md.",
+    )
+    linked = [e["dst"] for e in doc.edges.values() if e["src"] == "h:file:reports/x.md"]
+    assert set(linked) == {f"h:file:{p}" for p in paths["h"]}  # docs/hub.md before a spaced path still links
+    assert not doc.samples.get("dangling") and not doc.samples.get("ambiguous")  # no `agent/literature.md` tail
+
+
 def unseen_index() -> dict:
     """Repo ``a`` read with its history, ``b`` read, ``cli`` declared in harness.yaml and read by no source."""
     paths = {

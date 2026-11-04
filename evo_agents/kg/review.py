@@ -2,10 +2,13 @@
 over a build that has clusters (``evo_agents.kg.clusters``), with no model.
 
 - ``dangling_mention``: an item (a document, a plan) mentions code the graph does not hold, the dangling mentions its
-  source's coverage counts (``evo_agents.kg.pipeline.link``);
+  source's coverage counts (``evo_agents.kg.pipeline.link``). A dated item (a commit, a pull request, a chat message,
+  a plan or document under ``completed/`` or an archive directory) wrote of the tree as it was and nobody edits it, so
+  its dangling or ambiguous mentions open an item only when a fix links them (DATED_KINDS);
 - ``unmentioned_document``: a Document no other node mentions or links to, its own sections aside;
 - ``cluster_without_knowledge``: a level-1 cluster with code (File, Symbol) and no Document, Plan, Problem or Claim;
-- ``possible_duplicate``: nodes of one kind whose normalised names are the same and whose ids differ;
+- ``possible_duplicate``: nodes of one kind whose normalised names are the same and whose ids differ, unless they are
+  each repo's own file at one path (``AGENTS.md`` of two repos);
 - ``ambiguous_match``: an item with mentions whose name matched several nodes, or a path edge resolved to one of
   several files with that path;
 - ``bulk_noise``: images, generated files and plan steps whose name repeats across plans, BULK or more of a kind in
@@ -60,6 +63,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 
 from evo_agents.kg.clusters import IMAGE_SUFFIXES, STRUCTURAL
+from evo_agents.kg.pipeline.link import DATED_DIR
 from evo_agents.kg.protocol import sha256
 from evo_agents.kg.store import Graph
 
@@ -87,6 +91,7 @@ CODE_KINDS = frozenset({"File", "Symbol"})
 UNIQUE_SKIP = frozenset(
     {"Symbol", "Section", "File", "Directory", "Source", "Repo", "Commit", "ChatMessage", "PlanStep", "PullRequest"}
 )
+DATED_KINDS = frozenset({"Commit", "PullRequest", "ChatMessage"})  # items that wrote of the tree as it was
 BULK = 3  # nodes of one kind of noise in one place that make an item
 EVIDENCE = 50  # node ids an item keeps; ``detail.count`` says how many there were
 SAMPLES = 5
@@ -125,6 +130,12 @@ def _path(node: dict) -> str:
 
 def _deprecated(x: dict) -> bool:
     return bool((x.get("props") or {}).get("deprecated"))
+
+
+def _dated(node: dict) -> bool:
+    """Whether an item wrote of the tree as it was then: a commit, a pull request, a chat message, a plan or document
+    under ``completed/`` or an archive directory (``evo_agents.kg.pipeline.link.DATED_DIR``)."""
+    return node["kind"] in DATED_KINDS or bool(DATED_DIR.search(_path(node)))
 
 
 FILE_SUFFIX = re.compile(
@@ -371,6 +382,8 @@ def compute(graph: Graph) -> list[dict]:
             if len(links) >= count or fixed:
                 continue  # decisions linked it
             fix = [d for d in fix if (d["rel"], d["dst"]) not in links]
+            if not fix and _dated(nodes[item_id]):
+                continue  # history nobody edits, and no link to take
             add(rule, item_id, [item_id], {"mentions": count, "samples": every[:SAMPLES]}, fix=fix)
 
     # 5: path edges resolved to one of several files with that path
@@ -426,6 +439,9 @@ def compute(graph: Graph) -> list[dict]:
         if n["kind"] not in UNIQUE_SKIP and len(key) >= 3 and nid not in deprecated:
             named[(n["kind"], key)].append(nid)
     for (kind, key), ids in sorted(named.items()):
+        paths = [_path(nodes[i]) for i in ids]
+        if all(paths) and len(set(paths)) == 1:
+            continue  # each repo's own file at one path (AGENTS.md, CLAUDE.md), not one thing twice
         if len(ids) >= 2:
             order = ranked(ids)
             add(

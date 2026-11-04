@@ -12,8 +12,8 @@ its repo (a top-level Python package, a tsconfig ``baseUrl`` or ``paths`` target
 ``evo_agents/hub/server/runs.py``), then of other repos, and last as the tail of one path of the project (its own
 repo first, then the files a commit or pull request changed). A path written from a root (``/master-plan/x.md``, as a
 docs bundle links from its ``docs/``) is read as the tail of one file of the document's own repo. A path whose
-directory no repo holds is outside the project, like a URL, and is not counted. A path whose file name holds spaces
-(``reports/Backend cho agent.md``) and a document at a repo's root named in capitals (``CLUSTER.md``, of the plan step's repo, then of the item's) link only
+directory no repo holds is outside the project, like a URL, and is not counted. A path whose file or directory names
+hold spaces (``reports/Backend cho agent.md``, ``research_notes/Browser cho agent/literature.md``) and a document at a repo's root named in capitals (``CLUSTER.md``, of the plan step's repo, then of the item's) link only
 when they are files of the project, and are not counted otherwise. A plain lower-case word in backticks (```name```) is prose, not a symbol;
 a short name several symbols share goes to the one nearest the document: its repo, the files a commit changed,
 the directories it shares with the document, the topic its file name gives, and outside tests for a text that is
@@ -74,7 +74,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "18"
+LINK_VERSION = "19"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -86,6 +86,14 @@ PATH = re.compile(r"(?<![\w/.:@-])((?:[\w.-]+/)+[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,5
 SPACED_PATH = re.compile(
     r"(?<![\w/.:@-])((?:[\w.-]+/)+[\w.-][^\n/`'\"()\[\]<>|*]{0,150}?\.[A-Za-z][A-Za-z0-9]{0,5})(?![\w/])"
 )
+# A path whose directories hold spaces (`research_notes/Browser cho agent/literature.md`): the first segment has none,
+# so prose before it stays out; it ends at the first file name it can, and may start at an earlier path, so its
+# tails are tried too (SPACED_START).
+SPACED_DIR_PATH = re.compile(
+    r"(?<![\w/.:@-])([\w.-]+/(?:[^\n/`'\"()\[\]<>|*]{1,150}/)+?[\w.-][^\n/`'\"()\[\]<>|*]{0,150}?\.[A-Za-z][A-Za-z0-9]{0,5})"
+    r"(?![\w/])"
+)
+SPACED_START = re.compile(r"(?<![\w/.:@-])[\w.-]+/")
 # A document at a repo's root named in capitals (CLUSTER.md, AGENTS.md): one of the step's or the item's repo.
 ROOT_DOC = re.compile(r"(?<![\w/.:@-])([A-Z][A-Z0-9_-]*\.md)(?![\w/])")
 DOI = re.compile(r"(?<![\w/.])10\.\d{4,9}/[^\s)\]>,;]+")
@@ -1048,7 +1056,7 @@ class Linker:
         step_repo = repo  # the loop over REPO_PATH reuses the name
 
         def claim(m) -> bool:
-            a, b = m.span()
+            a, b = m if isinstance(m, tuple) else m.span()
             if any(a < y and x < b for x, y in taken):
                 return False
             taken.append((a, b))
@@ -1132,6 +1140,21 @@ class Linker:
             if target and claim(m):
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), status, "path", field)
+
+        for m in SPACED_DIR_PATH.finditer(text):
+            whole = m.group(1)
+            for start in SPACED_START.finditer(whole):  # the longest tail that is a file of the project
+                path = whole[start.start() :]
+                if " " not in posixpath.dirname(path):
+                    break  # the passes above and below read it
+                target, status = self.path_target(path, repo) if repo else (None, "dangling")
+                if target is None:
+                    target, status = self.path_target(path, None)
+                if target:
+                    if claim((m.start(1) + start.start(), m.end(1))):
+                        self._count("resolved")
+                        self._link(src, target, unit, m.start(1) + start.start(), status, "path", field)
+                    break
 
         for m in REPO_PATH.finditer(text):
             repo, path = m.group(1), m.group(2)
