@@ -341,3 +341,15 @@ def test_compose_passes_the_library_variables_to_api_and_worker_and_semantic_sti
     assert all(default_of(name, data[BLOCK][name]) == "" for name in LIBRARY_VARIABLES), "unset: the local model"
     source = Path(semantic.__file__).read_text()
     assert semantic.BACKEND_ENV == "EVO_KG_EMBEDDINGS" and '"OPENROUTER_API_KEY"' in source
+
+
+def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_the_worker():
+    data = compose()
+    services = data["services"]
+    worker, kg = services["worker"], services["worker-kg"]
+    assert worker["command"][-2:] == ["--queue", "default"] and kg["command"][-2:] == ["--queue", "kg"]
+    assert kg["command"][:-2] == worker["command"][:-2], "the same worker, another queue"
+    assert kg["environment"] == data[BLOCK] and kg["volumes"] == worker["volumes"], "the same environment and cache"
+    assert kg["deploy"]["replicas"] == 2
+    for key in ("image", "build", "cpus", "mem_limit", "healthcheck", "stop_grace_period", "depends_on", "networks"):
+        assert kg[key] == worker[key], key

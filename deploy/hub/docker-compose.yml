@@ -141,7 +141,7 @@ services:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
     build: *hub-build
-    command: ["evo-agents", "hub", "worker", "--data-dir", "/cache"]
+    command: ["evo-agents", "hub", "worker", "--data-dir", "/cache", "--queue", "default"]
     restart: unless-stopped
     environment: *hub-environment
     volumes:
@@ -150,7 +150,7 @@ services:
     networks:
       default: {}
       platform: {}
-    # Knowledge graph builds are heavy; these limits keep them from starving the other services on the machine.
+    # These limits keep the worker's jobs from starving the other services on the machine.
     cpus: ${EVO_HUB_WORKER_CPUS:-2}
     mem_limit: ${EVO_HUB_WORKER_MEMORY:-4g}
     # The worker serves no HTTP, so the image's healthcheck does not apply; it exits non-zero when it loses Postgres
@@ -158,6 +158,34 @@ services:
     healthcheck:
       disable: true
     # The worker gives running jobs 25 s after SIGTERM before aborting them.
+    stop_grace_period: 40s
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Knowledge graph builds, the queue kg alone (evo_agents.hub.jobs.KG_QUEUE): a long build never holds back the merge
+  # queue, notifications or schedules of the worker above, and the two replicas build two projects at once, each one
+  # build at a time (a project's builds wait for each other under its lock). The same image, environment, cache and
+  # limits as the worker, since a build reads and writes the cache the worker's other jobs read.
+  worker-kg:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    build: *hub-build
+    command: ["evo-agents", "hub", "worker", "--data-dir", "/cache", "--queue", "kg"]
+    restart: unless-stopped
+    environment: *hub-environment
+    volumes:
+      - worker-cache:/cache
+      - models:/models
+    networks:
+      default: {}
+      platform: {}
+    deploy:
+      replicas: 2
+    cpus: ${EVO_HUB_WORKER_CPUS:-2}
+    mem_limit: ${EVO_HUB_WORKER_MEMORY:-4g}
+    healthcheck:
+      disable: true
     stop_grace_period: 40s
     depends_on:
       api:
