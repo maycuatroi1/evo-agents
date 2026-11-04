@@ -65,8 +65,13 @@ def fake_claude(tmp_path, monkeypatch):
     where = tmp_path / "claude-bin"
     where.mkdir()
     script = where / "claude"
-    script.write_text(FAKE_CLAUDE.format(python=sys.executable))
-    script.chmod(0o755)
+    if sys.platform == "win32":  # Windows runs no shebang: a .cmd runs the script with this Python
+        (where / "claude.py").write_text(FAKE_CLAUDE.format(python=sys.executable), encoding="utf-8")
+        script = where / "claude.cmd"
+        script.write_text(f'@"{sys.executable}" "%~dp0claude.py" %*\n')
+    else:
+        script.write_text(FAKE_CLAUDE.format(python=sys.executable), encoding="utf-8")
+        script.chmod(0o755)
     (where / "mode").write_text("ok")
     monkeypatch.setenv(claude_code.BINARY_ENV, str(script))
     monkeypatch.setenv("ANTHROPIC_API_KEY", API_KEY)
