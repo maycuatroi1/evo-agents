@@ -78,8 +78,8 @@ primary seat in the org chart ended, on every project (``org_expiry.take_back``)
 The hub gives leases back itself (``end_leases``) when a run leaves the held states (``run_state.move_run``: it ends,
 waits in review, or is parked) and when a worker is revoked (``workers.end_worker``, every lease of the worker). Those
 rows are marked revoked in the transaction of the move, and their GitHub tokens revoked at GitHub by ``revoke_tokens``
-once it commits: by the route that made the move, and on every pass of the reaper (``run_state.recover_runs``), which
-also takes the tokens GitHub failed to answer for. ``drop_expired`` (from the daily ``run_state.prune_run_events``)
+once it commits: by the route that made the move, and on every pass of the reaper (``run_reaper.recover_runs``), which
+also takes the tokens GitHub failed to answer for. ``drop_expired`` (from the daily ``run_reaper.prune_run_events``)
 drops the sealed values of tokens past their end, which GitHub no longer takes. No log line, audit row or error holds a
 value.
 """
@@ -143,7 +143,7 @@ from evo_agents.hub.server.share_leases import Refusal, end_unlent, note_refusal
 
 if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
-    from evo_agents.hub.server.changes import CuratorPolicy
+    from evo_agents.hub.server.change_views import CuratorPolicy
 
 log = logging.getLogger(__name__)
 
@@ -397,7 +397,9 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
     ended = await ended_refusal(conn, row.dispatched_by, row.owner, what=f"leasing run {run_id}", lock=lock)
     if ended is not None:
         raise HTTPException(403, ended)
-    from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes that import this one
+    from evo_agents.hub.server.change_views import (
+        curator_policy,
+    )  # it reads runs through the routes that import this one
 
     return _Run(
         curator=await curator_policy(conn, row.project_id, row.kind, row.plan_id),
@@ -806,12 +808,9 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                     seen = {secret.id for secret in survey.secrets}
                     left = [ended[i] for i in sorted(rejected) if i in ended and i not in seen]  # ended since
                     await fail_over_relogin(conn, survey.run, [*survey.secrets, *left], rejected)
-                leases = await _lease_secrets(conn, survey, worker_id, sealer)
-                leases += await _lease_tokens(conn, survey, worker_id, sealer, made)
-                leases += await gateway_leases.record(conn, gateway, survey.run, worker_id, sealer)
-                await _note_uncovered(conn, run_id, survey, leases, reasons)
-                hub, token_id = await run_access.lease(conn, survey.run, worker_id, sealer, root)
-                leases += hub
+                leases, token_id = await _lease_all(
+                    conn, run_id, survey, worker_id, sealer, made, gateway, reasons, root
+                )
             target = _lease_target(survey.run, leases, survey.leased) + (gateway.audit_text() if gateway else "")
             target += "" if token_id is None else f" run-access=token:{token_id}"
             await audit.record(
@@ -827,6 +826,25 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
         await _revoke_made(app, made)
         await gateway_leases.undo(request.app, gateway)
         raise
+    response.headers.update(NO_STORE)
+    return _credentials(run_id, worker_id, survey, leases)
+
+
+async def _lease_all(
+    conn: AsyncConnection, run_id: int, survey: _Survey, worker_id: int, sealer: Sealer, made, gateway, reasons, root
+):
+    """Record the leases of the run: its secrets, its GitHub tokens, its gateway token and its token of the hub;
+    returns them with the id of that token of the hub, None when the run does not run as its owner."""
+    leases = await _lease_secrets(conn, survey, worker_id, sealer)
+    leases += await _lease_tokens(conn, survey, worker_id, sealer, made)
+    leases += await gateway_leases.record(conn, gateway, survey.run, worker_id, sealer)
+    await _note_uncovered(conn, run_id, survey, leases, reasons)
+    hub, token_id = await run_access.lease(conn, survey.run, worker_id, sealer, root)
+    return leases + hub, token_id
+
+
+def _credentials(run_id: int, worker_id: int, survey: _Survey, leases: list[Lease]) -> Credentials:
+    """What the worker gets, logged without the values."""
     missing = [
         MissingOrigin(repo=repo, origin=survey.origins[repo], reason=survey.missing[repo])
         for repo in survey.origins
@@ -841,7 +859,6 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
         "missing": len(missing),
     }
     log.info("credentials leased", extra=extra)
-    response.headers.update(NO_STORE)
     repos = [
         RunRepoSource(
             repo=repo,

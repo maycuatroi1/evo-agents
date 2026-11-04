@@ -50,11 +50,31 @@ from __future__ import annotations
 import json
 import re
 from datetime import date
+from typing import Literal, get_args
 
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, OUTPUTS_RULE, RESULT_DIR, RESULT_FILE, clip
 from evo_agents.hub.tiers import CHANGE_KINDS, REJECTED_DAYS, normalize_path
 
 # lens: what the Reviewer looks for through it, in the order the nights take them.
+Lens = Literal[
+    "tool_errors",
+    "environment",
+    "corrections",
+    "failed_runs",
+    "runtime",
+    "tech_debt",
+    "code_health",
+    "docs_drift",
+    "harness",
+    "skills_memory",
+    "cost",
+    "security",
+    "product_goals",
+    "product",
+    "kg_health",
+    "kg_init",
+    "kg_questions",
+]  # the keys of LENSES, as a type
 LENSES: dict[str, str] = {
     "tool_errors": "tools and commands that fail often, in sessions and in runs: the failures that repeat, and of "
     "each program the wrong calls (usage_errors) apart from what the environment broke (env_errors)",
@@ -97,15 +117,22 @@ LENSES: dict[str, str] = {
 ON_DEMAND_LENSES = ("kg_init", "kg_questions")  # the lenses a run asks for, left out of the nights' turns
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
-SEVERITIES = ("low", "medium", "high")
-PROPOSAL_STATES = ("open", "accepted", "rejected", "deferred", "dropped")
-ANSWERS = ("accept", "reject", "defer")  # what the owner does with an open or deferred proposal
+Severity = Literal["low", "medium", "high"]
+SEVERITIES: tuple[str, ...] = get_args(Severity)
+ProposalState = Literal["open", "accepted", "rejected", "deferred", "dropped"]
+PROPOSAL_STATES: tuple[str, ...] = get_args(ProposalState)
+Answer = Literal["accept", "reject", "defer"]
+ANSWERS: tuple[str, ...] = get_args(Answer)  # what the owner does with an open or deferred proposal
 ANSWERED = {"accept": "accepted", "reject": "rejected", "defer": "deferred"}
 DEFER_DAYS = (1, 90)  # the fewest and most days a proposal is deferred
 DEFAULT_DEFER_DAYS = 7
 
-EVIDENCE_KINDS = ("session", "transcript", "run", "code", "memory")
-DIGEST_FIELDS = ("user_turns", "commands", "repeated_commands", "errors", "files_edited", "tools", "bash", "skills")
+EvidenceKind = Literal["session", "transcript", "run", "code", "memory"]
+EVIDENCE_KINDS: tuple[str, ...] = get_args(EvidenceKind)
+DigestField = Literal[
+    "user_turns", "commands", "repeated_commands", "errors", "files_edited", "tools", "bash", "skills"
+]
+DIGEST_FIELDS: tuple[str, ...] = get_args(DigestField)
 MAX_TITLE_CHARS = 200
 MAX_BODY_BYTES = 16 * 1024  # the markdown of a finding, or the summary of a proposal
 MAX_EVIDENCE = 50  # evidence items of one finding or proposal

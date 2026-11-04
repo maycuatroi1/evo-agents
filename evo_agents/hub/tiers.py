@@ -54,11 +54,36 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import Literal
 
 REJECTED_DAYS = 30  # a proposal like one rejected this recently is dropped
 EVIDENCE_FACTOR = 2  # unless its evidence is this many times the rejected one's
 
 # kind: (tier, what it covers). The owner's report of the Curator's design names these classes of change.
+ChangeKind = Literal[
+    "docs",
+    "memory",
+    "test_add",
+    "kg_source",
+    "fix",
+    "refactor",
+    "lint",
+    "skill",
+    "cli",
+    "release_prep",
+    "revert",
+    "feature",
+    "api_change",
+    "schema_change",
+    "global_config",
+    "dependency_major",
+    "operation",
+    "test_loosen",
+    "verify_change",
+    "ci_change",
+    "credentials",
+    "curator_rules",
+]  # the keys of CHANGE_KINDS, as a type
 CHANGE_KINDS: dict[str, tuple[int, str]] = {
     "docs": (0, "documentation or figures that drifted from the code, such as a version or a path in CLUSTER.md"),
     "memory": (0, "memories on the hub: merging duplicates, marking ones that contradict each other"),

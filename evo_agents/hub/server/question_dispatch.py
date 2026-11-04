@@ -14,7 +14,7 @@ keeps the question in agent_questions and audits ``<plugin>.ask`` in the project
 ``question_prompt`` is the prompt of a question run at its claim; ``keep_answer`` keeps the answer of the worker's
 report of done (``runs.service.reports``); ``question_run_ended`` stores the outcome and the event agent.answer for the
 type's plugin when the run ends (``run_state.record_move``), the clearance checked again; ``expire_queued`` fails a
-question run no worker claimed in QUEUE_SECONDS (``run_state.recover_runs``).
+question run no worker claimed in QUEUE_SECONDS (``run_reaper.recover_runs``).
 """
 
 from __future__ import annotations

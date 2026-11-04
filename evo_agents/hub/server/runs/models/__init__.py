@@ -1,36 +1,74 @@
 """The run API's shapes and limits: request and response models, the path and query types of its routes, and the
 refusals and messages they share. The lowest layer of ``evo_agents.hub.server.runs``: it imports neither the routes
 nor the service (lint-imports, contract hub-runs-layers), and the modules around the run API import their models and
-limits from here, those of ``run_parts`` too."""
+limits from here, those of ``run_parts`` too. The models live in the modules of this package, by what they describe;
+this module names the ones its importers use."""
 
-from __future__ import annotations
+from pydantic import BaseModel, Field, create_model
 
-import json
-from datetime import date, datetime
-from typing import Annotated, Any, Literal
-
-from fastapi import Path
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
-
-from evo_agents.hub import author, profiles, proofs, question_runs, runs
-from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
-from evo_agents.hub.plans import PLAN_ID
-from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.runs.models import browser as browser_help
-from evo_agents.hub.server.runs.models.attachment_parts import Attachment
-from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, BrowserInstallRequest, BrowserReport
-from evo_agents.hub.server.runs.models.placement import HubPlaced, RunPlacement
-from evo_agents.hub.server.runs.models.routing import RoutingRecord, RunRouting
+from evo_agents.hub import runs
+from evo_agents.hub.server.runs.models.browser import BrowserInstallRequest
+from evo_agents.hub.server.runs.models.dispatch import (
+    AccessChange,
+    ActiveRun,
+    AuthorRunDispatch,
+    Dispatch,
+    OverlapWait,
+    PlanProgress,
+    PlanRunDispatch,
+    ReadySteps,
+    Rerun,
+    Run,
+    SteadyWait,
+    StepReadiness,
+)
+from evo_agents.hub.server.runs.models.heartbeat import (
+    HeartbeatAnswer,
+    HeartbeatRequest,
+    KgDuty,
+    KgSyncReport,
+    NightlyRead,
+    RunControl,
+    SelfUpdateReport,
+    UpdateNowRequest,
+    WorkerSettings,
+    available,
+)
+from evo_agents.hub.server.runs.models.limits import (
+    LINE,
+    MAX_ID,
+    MAX_LIST,
+    MAX_OFFSET,
+    MAX_STATS_DAYS,
+    MIN_STATS_DAYS,
+    NOT_HELD,
+    OBJECT_NAME,
+    REFUSALS,
+    STATS_DAYS,
+    STEP_KEY_CHARS,
+    AccountName,
+    ModelName,
+    RunId,
+    StepKey,
+)
+from evo_agents.hub.server.runs.models.reports import (
+    AuthoredPlan,
+    RunDay,
+    RunFigures,
+    RunStats,
+    StateReport,
+    StepProof,
+    StepReport,
+    StepWritten,
+    VerifyResult,
+)
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     LostAttempt,
     PlanCopy,
     PluginRuntime,
     ReleaseSpec,
-    RunAutonomy,
     RunBudget,
-    RunCard,
     RunEnvironment,
     RunOrigin,
     RunPack,
@@ -38,1069 +76,9 @@ from evo_agents.hub.server.runs.models.run_parts import (
     RunRepo,
     RunSkill,
 )
-from evo_agents.plugins.config import MAX_LAYER_BYTES
-from evo_agents.plugins.manifest import PLUGIN_ID
+from evo_agents.hub.server.runs.models.spec import Claim, ClaimRequest, CuratorSpec, RunSpec
 
-MAX_ID = 2**63 - 1  # bigint
-MAX_DISPATCH_STEPS = 50
-MAX_HEARTBEAT_RUNS = 64
-MAX_REPORT_BYTES = 64 * 1024  # runtimes and checkouts of a heartbeat, or the usage of a state report, as JSON
-LINE = r"^[^\x00-\x1f\x7f]+$"
-OBJECT_NAME = r"^([0-9a-f]{40}|[0-9a-f]{64})$"
-CHECKOUT_KEY = r"^[a-z0-9][a-z0-9-]{0,99}/[^\x00-\x1f\x7f/][^\x00-\x1f\x7f]{0,199}$"  # <project>/<repo>
-STEP_KEY_CHARS = 200
-REQUESTED_RUNTIMES = ("any", *runs.RUNTIMES)
-NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled or taken by another attempt"
-STEP_REPORT_STATUSES = ("in_progress", "done", "pending")  # what a plan run's worker reports of a step
-RUN_KIND = r"^[a-z][a-z0-9_]{0,31}$"  # a kind of run a heartbeat names, known to this hub or not
-MAX_RUN_KINDS = 20
-MAX_SELF_UPDATE_REASON = runs.SELF_UPDATE_REASON_CHARS  # characters of self_update.reason in a heartbeat
-MAX_SELF_UPDATE_ERROR = runs.SELF_UPDATE_ERROR_CHARS  # characters of self_update.error in a heartbeat
-MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
-
-RunId = Annotated[int, Path(ge=1, le=MAX_ID)]
-# Any runtime's name, any included: one of the core's or a plugin's <plugin>/<name>. A dispatch takes one registered in
-# its project (``service.plugin_runtimes``), else 422.
-RuntimeName = Annotated[str, Field(pattern=runs.RUNTIME_NAME, max_length=127)]
-RUNTIME_HELP = (
-    "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or "
-    "<plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is "
-    "422"
-)
-ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, pattern=LINE)]
-REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
-StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
-AccountName = Annotated[str, Field(max_length=MAX_SECRET_NAME_CHARS, pattern=f"^{SECRET_NAME.pattern}$")]
-ProfileHandle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
-PROFILE_HELP = (
-    "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub "
-    "refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
-)
-PluginKey = Annotated[str, Field(pattern=PLUGIN_ID)]
-PLUGIN_CONFIG_HELP = (
-    "the run's own layer of the config of plugins enabled on the project, above the agent profile's: plugin name to "
-    "the plain values it sets, checked against the plugin's schema; no secret (422). Null: none"
-)
-ACCOUNT_HELP = (
-    "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its "
-    "variable and keeps it, with no failover to another account; null: the account is picked by the rules of the "
-    "caller's policy for the project"
-)
-AS_ME_HELP = (
-    "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are "
-    "one, but never your secrets, tokens or workers, through a token of the run's own that ends with the run "
-    "(evo_agents.hub.server.run_access); a run's own token may not ask it"
-)
-
-MAX_LIST = 200
-MAX_OFFSET = 100_000
-STATS_DAYS = 30  # the days GET .../runs/stats covers without ?days, today in UTC the last of them
-MIN_STATS_DAYS, MAX_STATS_DAYS = 7, 90
-
-
-class ActiveRun(BaseModel):
-    id: int
-    state: Literal[runs.ACTIVE_STATES]
-    dispatched_by: str
-
-
-class StepReadiness(BaseModel):
-    key: str = Field(description="the step's id, else its order, else its position, as plans name steps")
-    title: str | None
-    repo: str | None = Field(description="the repo its run would check out, as the plan's repos name it")
-    status: str | None = Field(description="as the plan holds it; pending when the step has none")
-    ready: bool = Field(description="whether a dispatch of it now would be taken")
-    reason: str | None = Field(description="why it is not ready, in words to show next to it")
-    active_run: ActiveRun | None
-
-
-class ReadySteps(BaseModel):
-    project: str
-    plan_id: str
-    revision: int
-    plan_run: ActiveRun | None = Field(
-        None, description="the plan's active plan run: while there is one, no step of the plan is dispatched"
-    )
-    steps: list[StepReadiness] = Field(description="every step of the plan, in plan order")
-
-
-class Dispatch(HubPlaced):
-    plan_id: str = Field(pattern=PLAN_ID)
-    steps: list[int | Annotated[str, Field(min_length=1, max_length=STEP_KEY_CHARS)]] = Field(
-        min_length=1, max_length=MAX_DISPATCH_STEPS, description="step ids (or orders), one run each"
-    )
-    runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
-    mode: Literal[runs.MODES] = "headless"
-    approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
-    timeout_min: int = Field(60, ge=5, le=240)
-    model: ModelName | None = Field(
-        None,
-        description="the model each run uses, as its runtime names it (opencode: provider/model); null: the "
-        "runtime's own choice",
-    )
-    account: AccountName | None = Field(None, description=ACCOUNT_HELP)
-    profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
-    plugin_config: dict[PluginKey, dict[str, Any]] | None = Field(None, max_length=50, description=PLUGIN_CONFIG_HELP)
-    browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
-    identities: list[browser_help.IdentityName] = browser_help.identities_field()
-    as_me: bool = Field(False, description=AS_ME_HELP)
-
-    @model_validator(mode="after")
-    def _bounded_plugin_config(self) -> Dispatch:
-        if self.plugin_config and _json_bytes(self.plugin_config) > MAX_LAYER_BYTES:
-            raise ValueError(f"plugin_config is at most {MAX_LAYER_BYTES // 1024} KiB as JSON")
-        return self
-
-
-class AuthorRunDispatch(HubPlaced):
-    request: str = Field(
-        min_length=1,
-        max_length=author.MAX_REQUEST_BYTES,
-        description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
-        "of UTF-8",
-    )
-    plan_id: str | None = Field(
-        None,
-        pattern=PLAN_ID,
-        description="the plan the run revises, one you can read; null: the run writes a new plan",
-    )
-    runtime: Literal[REQUESTED_RUNTIMES] = Field(
-        "claude-code",
-        description="claude-code, the one runtime an author run takes (any means it); another one is 422",
-    )
-    model: ModelName | None = Field(None, description="the model to use, as Claude Code names it; null: its own choice")
-    timeout_h: Literal[author.AUTHOR_TIMEOUT_CHOICES] = Field(
-        author.DEFAULT_TIMEOUT_H, description="hours of agent time the run may take"
-    )
-    account: AccountName | None = Field(None, description=ACCOUNT_HELP)
-    profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
-
-
-class PlanRunDispatch(HubPlaced):
-    plan_id: str = Field(pattern=PLAN_ID)
-    runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
-    model: ModelName | None = Field(
-        None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
-    )
-    mode: Literal[runs.MODES] = "headless"
-    timeout_h: Literal[runs.PLAN_TIMEOUT_CHOICES] = Field(
-        4, description="hours of agent time the run may take; waiting for a decision and parked do not count"
-    )
-    session_per_step: bool = Field(
-        False,
-        description="true: the worker starts a new agent session for each step, whose prompt is the step's with the "
-        "handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; "
-        "false: one session does every step",
-    )
-    account: AccountName | None = Field(None, description=ACCOUNT_HELP)
-    profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
-    browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
-    identities: list[browser_help.IdentityName] = browser_help.identities_field()
-    as_me: bool = Field(False, description=AS_ME_HELP)
-
-
-class Rerun(HubPlaced):
-    """What a rerun may change of the run it reruns; no body keeps everything."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    account: AccountName | None = Field(
-        None,
-        description="one of the caller's env secrets bound to the project, by name: the rerun takes it, with no "
-        "failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick",
-    )
-    account_by_rule: bool = Field(
-        False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
-    )
-    browser: bool | None = Field(None, description=browser_help.RERUN_HELP)
-    as_me: bool | None = Field(None, description=AS_ME_HELP + "; null keeps the choice of the run rerun")
-
-    @model_validator(mode="after")
-    def _one_choice(self) -> Rerun:
-        if self.account is not None and self.account_by_rule:
-            raise ValueError("name an account or ask for one by rule, not both")
-        return self
-
-
-class AccessChange(BaseModel):
-    """What PUT /v1/projects/{p}/runs/{id}/access changes of a run of the caller's."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    as_me: bool = Field(
-        description=AS_ME_HELP + "; false: it stops, and its token ends at once, as a run that never ran as you"
-    )
-
-
-class OverlapWait(BaseModel):
-    """The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
-    in its what or note, so the hub leaves the run in the queue until they end."""
-
-    run_ids: list[int] = Field(description="the running step runs it waits for, the oldest first")
-    paths: list[str] = Field(description="the files they edited that the step names, at most 10")
-
-
-class SteadyWait(BaseModel):
-    """The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only
-    once it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,
-    runs.STEADY_GAP_SECONDS)."""
-
-    worker_id: int
-    worker: str = Field(description="that worker's name")
-    steady_at: datetime | None = Field(
-        description="when the worker becomes steady if its heartbeats go on as now; null while it sends none"
-    )
-
-
-class PlanProgress(BaseModel):
-    """How far a plan run's plan has come, as the plan holds it now."""
-
-    done: int = Field(description="steps with status done")
-    total: int = Field(description="steps of the plan")
-    percent: int = Field(description="done of total, rounded down; 0 for a plan without steps")
-    current_step: str | None = Field(
-        description="the step in progress, else the first not done: its title, else its key; null once all are done"
-    )
-    current_status: str | None = Field(description="that step's status as the plan holds it")
-
-
-class Run(RunPlacement):
-    id: int
-    kind: Literal[runs.SHOWN_KINDS] = Field(
-        description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
-        "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge "
-        "request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it "
-        "writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of "
-        "the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no "
-        "worker runs and the hub only watches"
-    )
-    project: str
-    plan_id: str = Field(
-        description="the plan it works on; empty for a run on none: a review run, an author run of a new plan, a "
-        "judge run of the merge queue"
-    )
-    step_key: str | None = Field(description="null for a plan run")
-    title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
-    plan_revision: int | None = Field(
-        description="the plan revision the run was dispatched from; null for a run on no plan"
-    )
-    dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
-    dispatched_via: Literal[DISPATCHED_VIA] | None = Field(
-        description="the credential it was dispatched with: web, a web session; machine, a token (the command line, "
-        "an agent); schedule, the night shift of the project's charter, for its owner; release, the project's "
-        "release schedule, for its owner; null for a run dispatched before 0.5.0"
-    )
-    worker_id: int | None = Field(description="the worker that claimed it")
-    worker: str | None = Field(description="that worker's name")
-    pinned_worker_id: int | None
-    requested_runtime: str = Field(description="as the dispatch asked: any, a runtime of the core or a plugin's")
-    runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
-    model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
-    model_used: str | None = Field(
-        None, description="the model its runtime ran it on, as its worker reported it; null until then, or not said"
-    )
-    routing: RoutingRecord | None = Field(
-        None, description="what the routing by difficulty did; null for a run it did not rate"
-    )
-    mode: Literal[runs.MODES]
-    approval: Literal[runs.APPROVALS]
-    timeout_min: int
-    run_seconds: int = Field(description="the agent time the run has used of its timeout, as the hub last counted it")
-    attempt: int
-    max_attempts: int
-    parent_run_id: int | None = Field(description="the run this one retries or reruns")
-    resume_of_run_id: int | None = Field(description="the parked plan run this one goes on from, in its session")
-    state: Literal[runs.SHOWN_STATES] = Field(
-        description="idle and ended are a local run's alone: the turn ended and the person has the word; the session "
-        "is over, or went silent for a day"
-    )
-    lease_expires_at: datetime | None
-    session_id: str | None
-    repo: str | None = Field(description="null for a plan run, which has repos")
-    branch: str | None
-    repos: list[RunRepo] | None = Field(description="a plan run's repos; null for a run of one step")
-    commit_sha: str | None
-    diffstat: dict | None
-    verify: list | None
-    evidence: str | None
-    usage: dict | None
-    plan_progress: PlanProgress | None = Field(
-        None, description="a plan run's plan progress, set in a list of runs; null for any other run"
-    )
-    budget: RunBudget | None = Field(None, description="the caps of a run the night shift queued; null for any other")
-    error: str | None
-    log_sha256: str | None = Field(description="the blob of kind run-log its worker uploaded")
-    diff_sha256: str | None = Field(description="the blob of kind run-diff: GET .../runs/{id}/diff")
-    last_seq: int = Field(description="the seq of the run's latest event; 0 before the first")
-    cancel_requested_at: datetime | None
-    takeover_requested_at: datetime | None = Field(description="the owner asked to drive the agent in a terminal")
-    handback_requested_at: datetime | None = Field(description="the owner asked to let the agent go on headless")
-    queued_at: datetime
-    leased_at: datetime | None
-    started_at: datetime | None
-    waiting_since: datetime | None = Field(
-        description="when the agent's turn ended with a decision open, while waiting"
-    )
-    parked_at: datetime | None = Field(description="when the run was parked, for want of an answer")
-    finished_at: datetime | None
-    request: str | None = Field(None, description="the member's request of an author run; null for any other kind")
-    finish_requested_at: datetime | None = Field(
-        None, description="when the owner ended the chat of an author run its worker holds; null otherwise"
-    )
-    steady_wait: SteadyWait | None = Field(
-        None,
-        description="a queued attempt after a run lost on a worker that is not steady yet: that worker takes it only "
-        "once it is; another worker may take it now unless it is pinned to that one. Null otherwise",
-    )
-    overlap_wait: OverlapWait | None = Field(
-        None,
-        description="a queued step run that waits for another run of the same plan and repo, which has edited files "
-        "the step names; null otherwise",
-    )
-    warning: str | None = Field(
-        None,
-        description="set on the answer of a dispatch alone: no worker could take the run as it queued, why, and the "
-        "command that fixes it (`evo-agents hub run candidates` says more); null otherwise",
-    )
-    failure_cause: str | None = Field(
-        None,
-        description="why the run failed, as its worker reported it: origin, credentials or missing_tool when its "
-        "preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of "
-        "runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run "
-        "from before schema 0024",
-    )
-    session_per_step: bool = Field(
-        False,
-        description="a plan run whose worker starts a new agent session for each step; its usage lists the sessions "
-        "(usage.sessions). False for any other run",
-    )
-    browser: bool = Field(False, description=browser_help.RUN_HELP)
-    browser_identities: list[int] = Field([], description=browser_help.RUN_IDENTITIES_HELP)
-    profile: str | None = Field(
-        None, description="the handle of the agent profile the run went under; null for a run from before schema 0030"
-    )
-    profile_id: int | None = Field(None, description="that profile's id, which its handle names for good")
-    profile_version: int | None = Field(None, description="the version of the profile whose rules apply to the run")
-    environment: str | None = Field(
-        None,
-        description="the environment of a plugin, <plugin>/<name>, its claim picked from the environment axis of its "
-        "profile, a container its agent runs in; null for a run on the worker's host, and before a claim",
-    )
-    chat_id: int | None = Field(None, description="a chat run's group chat; null for any other run")
-    chat_message_id: int | None = Field(
-        None, description="the message of the chat that started a chat run: the mention, or the reply that woke it"
-    )
-    hop: int | None = Field(
-        None,
-        description="a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most "
-        "3); null for any other run",
-    )
-    session_run_id: int | None = Field(
-        None,
-        description="a chat run's session: the id of its first run, which its branch chat/<id> names (the run's own id "
-        "for the first); null for any other run",
-    )
-    session_turn: int | None = Field(
-        None,
-        description="a chat run's turn in its session: 1 for its first run, one more for each after it; null for any "
-        "other run",
-    )
-    session_turns: int | None = Field(None, description="the runs of a chat run's session so far; null for another run")
-    session_title: str | None = Field(
-        None,
-        description="the title of a chat run's session, its first run's, which the pull requests of its branch take; "
-        "each run after it is titled by the message that woke it. Null for any other run",
-    )
-    machine: str | None = Field(None, description="a local run's machine, as its hub login names it; null otherwise")
-    cwd: str | None = Field(None, description="the directory a local run's session works in; null otherwise")
-    claude_email: str | None = Field(
-        None, description="the Claude account that ran a local run's session, or unknown; null for any other run"
-    )
-    claude_profile: str | None = Field(None, description="the claude-profiles profile of a local run, when it was read")
-    last_activity_at: datetime | None = Field(
-        None, description="the last time a local run's session said anything; null for any other run"
-    )
-    principal: str | None = Field(
-        None,
-        description="the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null "
-        "for a local run and one queued before the hub knew principals",
-    )
-    autonomy: RunAutonomy | None = Field(None, description="the autonomy it acts under; null where principal is")
-    as_owner: bool = Field(
-        False,
-        description="its owner lets its agent call the hub's API as them, secrets, tokens and workers aside, through a "
-        "token of the run's own while a worker holds it (PUT .../runs/{id}/access changes it)",
-    )
-    as_owner_since: datetime | None = Field(
-        None,
-        description="when its owner let it run as them: at dispatch, or later through PUT .../access or the answer to "
-        "a credential request; the run that resumes a parked run, and the next attempt of a lost one, keep the time of "
-        "the run before it. Null while it does not run as its owner",
-    )
-
-
-class ClaimRequest(BaseModel):
-    wait_s: float = Field(
-        runs.CLAIM_WAIT_SECONDS, ge=0, le=runs.CLAIM_WAIT_SECONDS, description="how long to wait for a run"
-    )
-
-
-class ReplayTask(BaseModel):
-    """The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its
-    base commit (null until a replay of it read it from its commits)."""
-
-    id: int
-    plan_id: str
-    step_key: str
-    repo: str
-    title: str | None
-    what: str
-    verify: list[str] = Field(description="the step's verify, one shell line: the worker runs it on each arm's work")
-    commits: list[str] = Field(description="the commits the step made, as its evidence or a run of it named them")
-    base_sha: str | None = Field(description="the first parent of the oldest of its commits; null: the worker finds it")
-
-
-class ReplaySpec(BaseModel):
-    """What the worker of a replay run is told besides the change's branch and head: the replay, its task, and the
-    change's repo, whose harness files the two arms run with."""
-
-    replay_id: int
-    task: ReplayTask
-    repo: str = Field(description="the change's repo")
-
-
-class ProbeSpec(BaseModel):
-    """What the worker of a probe run is told (``evo_agents.hub.server.probe_runs``): the probe, the change whose rule
-    its arms put on and take off, and the sessions of each arm."""
-
-    probe_run_id: int
-    probe_id: int
-    repo: str = Field(description="the repo of the probe's task")
-    base_sha: str | None = Field(description="the task's base commit; null: the default branch's tip at made_at")
-    made_at: datetime = Field(description="when the probe was made")
-    task: str = Field(description="the only text the agent of a session is given")
-    verify: str = Field(description="one shell line the worker runs on each session's work; never shown the agent")
-    k: int = Field(description="the sessions of each arm")
-    week: date = Field(description="the Monday of the ISO week the run measures")
-    change_repo: str = Field(description="the repo of the change, which holds its rule; a plugin's probe: its repo")
-    merge_sha: str | None = Field(description="the change's merge commit; null: its head against the default branch")
-    plugin: str | None = Field(None, description="(plugin probe) the core plugin whose rule the arms put on and off")
-    ref: str | None = Field(None, description="(plugin probe) the key of the plugin's rule")
-    arms: dict[str, dict[str, str]] | None = Field(None, description="(plugin probe) on and off: path to text")
-
-
-class HistorySpec(BaseModel):
-    """What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's
-    history in batches."""
-
-    batch_items: int = Field(description="items one batch reads at most")
-    batch_chars: int = Field(description="characters of excerpts one batch reads at most")
-    batch_turns: int = Field(description="turns of the agent on one batch")
-    naming_share: float = Field(description="the share of the run's caps kept for naming the clusters")
-
-
-class CuratorSpec(BaseModel):
-    """What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
-    charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
-    change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
-    head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
-    key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
-    (``evo_agents.hub.server.probe_runs``)."""
-
-    role: Literal["reviewer", "builder", "judge", "replay", "history", "probe"]
-    protected_paths: list[str] = Field(default_factory=list, description="globs of the charter, repo:glob for one repo")
-    change_id: int | None = None
-    branch: str | None = Field(None, description="curator/..., the one branch a Builder pushes")
-    forge: Literal["github", "gitlab"] | None = Field(None, description="gitlab: the push opens the merge request")
-    base_branch: str | None = Field(None, description="the default branch the pull request goes into, when known")
-    head_sha: str | None = Field(None, description="a Judge's commit to judge; null: the branch's tip")
-    pr_url: str | None = None
-    merge_result: bool = Field(
-        False,
-        description="a Judge of a merge check: merge the current base into the head in a scratch worktree and run the "
-        "checks there; a conflict fails it with needs a rebase",
-    )
-    judge_key: str | None = Field(
-        None,
-        description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
-        "it in memory alone, never in a file, an environment or a log line",
-    )
-    replay: ReplaySpec | None = Field(None, description="a replay run's replay and task; null for any other run")
-    replay_key: str | None = Field(
-        None,
-        description="a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge "
-        "run's",
-    )
-    history: HistorySpec | None = Field(None, description="a history run's batches; null for any other run")
-    history_key: str | None = Field(
-        None,
-        description="a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); "
-        "the daemon keeps it as a judge run's",
-    )
-    probe: ProbeSpec | None = Field(None, description="a probe run's probe and change; null for any other run")
-    probe_key: str | None = Field(
-        None,
-        description="a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's",
-    )
-
-
-class RunSpec(BaseModel):
-    id: int
-    kind: Literal[runs.RUN_KINDS]
-    project: str
-    plan_id: str = Field(description="empty for a review run")
-    step_key: str | None = Field(description="null for a plan run")
-    title: str | None
-    plan_revision: int | None = Field(
-        description="the plan revision the run was dispatched from; null for a review run"
-    )
-    attempt: int
-    max_attempts: int
-    parent_run_id: int | None
-    resume_of_run_id: int | None = Field(
-        None, description="the parked plan run this one goes on from: reuse its worktrees and resume its session"
-    )
-    session_id: str | None = Field(None, description="the agent session to resume; null for a new one")
-    lost_attempt: LostAttempt | None = Field(
-        None,
-        description="a plan run's attempt before this one, which the hub lost on this same worker (it stopped "
-        "extending the lease), on the same runtime: the worker goes on in its agent's session and worktrees when it "
-        "still has both, else starts as for any other attempt; null for any other run",
-    )
-    runtime: str = Field(description="a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration")
-    model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
-    routing: RunRouting | None = Field(
-        None,
-        description="while the project's policy has routing on, for a run that names no model: the scorer that rates "
-        "its difficulty on the worker before the agent starts, and the model of each difficulty; null otherwise",
-    )
-    mode: Literal[runs.MODES]
-    approval: Literal[runs.APPROVALS]
-    timeout_min: int
-    repo: str | None = Field(description="null for a plan run")
-    branch: str | None
-    repos: list[RunRepo] | None = Field(
-        description="a plan run's or a review run's repos, each with a checkout on this worker"
-    )
-    lease_expires_at: datetime
-    prompt: str
-    plan: PlanCopy | None = Field(
-        description=f"a plan run's plan at the hub's current revision, for {runs.PLAN_FILE}; null for a run of one step"
-    )
-    budget: ClaimedBudget | None = Field(None, description="the caps of a run the night shift queued; null otherwise")
-    curator: CuratorSpec | None = Field(
-        None, description="a run of the Curator: its role and what its worker checks; null for any other run"
-    )
-    skills: list[RunSkill] = Field(
-        default_factory=list,
-        description=f"the skills the worker writes under {author.SKILLS_DIR} of the run's directory for its agent: an "
-        "author run's create-exec-plan; empty for any other run",
-    )
-    verify: list[str] | None = Field(
-        None,
-        description="the verify of the step of a run of one step, as the plan it was dispatched from has it: the "
-        "worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other "
-        "kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)",
-    )
-    criteria: list[str] | None = Field(
-        None,
-        exclude_if=lambda value: value is None,
-        description="the ids of the criteria of the plan's acceptance that the step of a run of one step names: its "
-        "result file proves each (proofs.RESULT_KEY), or the run fails; absent for any other kind, and for a step "
-        "that names none",
-    )
-    session_per_step: bool = Field(
-        False,
-        description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
-        "and the handoff of the plan; false: one session does every step, with the prompt above",
-    )
-    keep_going: int = Field(
-        0,
-        ge=0,
-        exclude_if=lambda value: not value,
-        description="a plan run: the turns in a row its worker sends the agent back to the plan, in its session, when "
-        "a turn ends with steps to do and no decision open, before the run pushes and fails with steps_left; a turn "
-        "after which fewer steps are left starts the count again. Absent (0): such a turn ends the run done",
-    )
-    browser: bool = Field(False, description=browser_help.SPEC_HELP, exclude_if=browser_help.no_browser)
-    browser_identities: list[int] = Field(
-        [], description=browser_help.SPEC_IDENTITIES_HELP, exclude_if=browser_help.no_identities
-    )
-    profile: RunProfile | None = Field(
-        None, description="the agent profile the run went under; null for a run from before schema 0030"
-    )
-    own_home: bool = Field(
-        False,
-        description="true for a run under a profile that is not its project's default: the agent of a claude-code "
-        "run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
-    )
-    account_pool: bool = Field(
-        False,
-        description="true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's "
-        "account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none "
-        "of the owner's",
-        exclude_if=lambda value: not value,
-    )
-    owner_setup: bool = Field(
-        False,
-        description="true for a run of its project's default agent in pool mode: the agent of a claude-code run keeps "
-        "the owner's Claude Code setup (CLAUDE.md, settings, skills, agents, commands, plugins) in its config dir of "
-        "its own, never the owner's login",
-        exclude_if=lambda value: not value,
-    )
-    origin: RunOrigin | None = Field(
-        None,
-        description="the person who dispatched the run, whom the worker names as co-author of the commits of a chat "
-        "run and of a run under a profile that is not its project's default; null from a hub that does not send it",
-    )
-    plugin_runtime: PluginRuntime | None = Field(
-        None,
-        description="for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the "
-        "worker runs through its adapter of ACP; null for a runtime of the core",
-    )
-    environment: RunEnvironment | None = Field(
-        None,
-        description="the environment of a plugin the claim picked from the run's profile, at the plugin's version "
-        "installed now, which the worker's container provider runs the agent in; null: the worker's host",
-    )
-    packs: list[RunPack] = Field(
-        default_factory=list,
-        description="the agent packs the run's profile attaches, in its order, each at the version it pins, which the "
-        "worker builds into the run's directory for its runtime; empty for a profile that attaches none",
-    )
-    release: ReleaseSpec | None = Field(
-        None, description="a release run's cycle, mode and start commit; null for any other run"
-    )
-    autonomy: RunCard | None = Field(
-        None, description="the autonomy card its prompt opens with; null for a run without a snapshot of autonomy"
-    )
-    attachments: list[Attachment] = Field(
-        default_factory=list,
-        description="a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET "
-        "/v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run",
-    )
-    chat_message_id: int | None = Field(
-        None,
-        description="a chat run's: the chat message that opened it, whose files the worker saves under "
-        ".evo-run/inbox/chat-<id>/; null for any other run",
-    )
-
-
-class Claim(BaseModel):
-    run: RunSpec | None = Field(description="null when the wait ended without a run; claim again")
-
-
-def _json_bytes(value) -> int:
-    return len(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode())
-
-
-class RuntimeReport(BaseModel):
-    """One runtime as the daemon found it on the machine."""
-
-    available: bool = Field(description="whether runs may use it; false with a reason when it is installed but not")
-    version: str | None = Field(None, min_length=1, max_length=100, pattern=LINE)
-    reason: str | None = Field(None, min_length=1, max_length=500, pattern=LINE, description="why it is unavailable")
-    models: list[ModelName] | None = Field(
-        None,
-        max_length=runs.MAX_RUNTIME_MODELS,
-        description="the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none",
-    )
-
-
-class CheckoutReport(BaseModel):
-    """One checkout of a project's repo on the machine, which the daemon makes worktrees from."""
-
-    path: str = Field(min_length=1, max_length=1024, pattern=LINE)
-    branch: str | None = Field(None, min_length=1, max_length=255, pattern=LINE, description="checked out there")
-
-
-class UpdateNowReport(BaseModel):
-    """Where the daemon stands with its owner's Update now (update_now of the heartbeat answer)."""
-
-    requested_at: datetime = Field(description="the request it is about: requested_at of the answer's update_now")
-    ended: str | None = Field(
-        None,
-        pattern=RUN_KIND,
-        description="null while the daemon carries it out; failed, the install failed (self_update.error says how); "
-        "impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with "
-        "either, and with a value it does not know ends nothing",
-    )
-
-
-class SelfUpdateReport(BaseModel):
-    """What the daemon last found of updating itself to the tag nightly of evo-agents."""
-
-    state: str = Field(
-        pattern=RUN_KIND,
-        description="current, it runs the commit nightly points to; waiting, nightly points to another one and it "
-        "waits until every daemon of its install is idle; updating, it is installing that commit and restarts on it; "
-        "locked, its owner locked the worker's version; unsupported, it cannot update itself (reason says why). A "
-        "state this hub does not know is kept as named (runs.SELF_UPDATE_STATES)",
-    )
-    reason: str | None = Field(
-        None, min_length=1, max_length=MAX_SELF_UPDATE_REASON, description="why, with unsupported above all"
-    )
-    nightly_commit: str | None = Field(
-        None, pattern=OBJECT_NAME, description="the commit nightly pointed to when the daemon last read it"
-    )
-    checked_at: datetime | None = Field(None, description="when the daemon last read where nightly points")
-    error: str | None = Field(
-        None,
-        min_length=1,
-        max_length=MAX_SELF_UPDATE_ERROR,
-        description="the last attempt that failed: reading the tag, installing, or the new install not starting",
-    )
-    error_at: datetime | None = Field(None, description="when that attempt failed")
-    update_now: UpdateNowReport | None = Field(
-        None,
-        description="for a daemon that says update_now in its features, where it stands with the owner's Update now "
-        "the answer carried; null when it carries none",
-    )
-
-
-KG_PROJECT = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project's name, as evo_agents.hub.server.admin.PROJECT_NAME
-KgSyncError = Annotated[str, Field(min_length=1, max_length=runs.KG_SYNC_ERROR_CHARS)]
-
-
-class KgSyncSource(BaseModel):
-    """What the daemon last did for one git source of a project whose night shift it is on duty for."""
-
-    source: str = Field(min_length=1, max_length=200, pattern=LINE, description="the source's id in knowledge.yaml")
-    status: str = Field(
-        pattern=RUN_KIND,
-        description="ok, the source was read, or found at the commit it read last, and every run of it is on the hub; "
-        "failed, reading it, merging the hub's runs of it or pushing went wrong (error says how); skipped, the worker "
-        "does not read it (error says why). A status this hub does not know is kept as named (runs.KG_SYNC_STATES)",
-    )
-    error: KgSyncError | None = None
-    ref: str | None = Field(None, min_length=1, max_length=255, pattern=LINE, description="the ref it reads")
-    commit: str | None = Field(None, pattern=OBJECT_NAME, description="the commit its last ok read read")
-    behind: int | None = Field(
-        None, ge=0, description="commits of the remote's default branch that commit lacked when it was read"
-    )
-    checked_at: datetime | None = Field(None, description="when the daemon last looked at the source")
-    read_at: datetime | None = Field(None, description="when the commit it holds was last read")
-    pushed_at: datetime | None = Field(None, description="when it last pushed a run of the source")
-    pulled: int = Field(0, ge=0, description="runs of other machines the last look merged from the hub")
-    pushed: int = Field(0, ge=0, description="runs the last look pushed")
-
-
-class KgSyncProject(BaseModel):
-    """What the daemon last did for one project whose night shift it is on duty for."""
-
-    project: str = Field(pattern=KG_PROJECT)
-    checked_at: datetime = Field(description="when the daemon last looked at the project")
-    error: KgSyncError | None = Field(
-        None,
-        description="what stopped the look before any source: no checkout of the harness here, a knowledge.yaml that "
-        "does not load, or a hub that refused the push",
-    )
-    sources: list[KgSyncSource] = Field(default_factory=list, max_length=runs.MAX_KG_SYNC_SOURCES)
-
-
-class KgSyncReport(BaseModel):
-    """What a daemon of feature kg_sync last did to keep the graphs of the projects it is on duty for fresh."""
-
-    projects: list[KgSyncProject] = Field(default_factory=list, max_length=runs.MAX_KG_SYNC_PROJECTS)
-
-
-class KgDuty(BaseModel):
-    """A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it."""
-
-    project: str
-    received_at: datetime | None = Field(
-        description="when the hub last took a run of the project's graph, from any machine: a daemon that saw an "
-        "earlier time merges the hub's runs and looks at the project's sources again; null when it holds none"
-    )
-
-
-class HeartbeatRequest(BaseModel):
-    runtimes: dict[RuntimeName, RuntimeReport] = Field(
-        default_factory=dict,
-        description='the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}, and '
-        "those of the plugins its owner accepted that the hub sent it (plugin_runtimes of the answer), as "
-        "<plugin>/<name>",
-    )
-    checkouts: dict[Annotated[str, Field(pattern=CHECKOUT_KEY)], CheckoutReport] = Field(
-        default_factory=dict,
-        max_length=500,
-        description='keyed <project>/<repo>: {"evo-agents/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}',
-    )
-    free_slots: int = Field(ge=0, le=runs.MAX_SLOTS)
-    runs: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
-        default_factory=list, max_length=MAX_HEARTBEAT_RUNS, description="the runs the worker holds"
-    )
-    agent_version: str | None = Field(None, min_length=1, max_length=100, pattern=LINE)
-    run_kinds: list[Annotated[str, Field(pattern=RUN_KIND)]] | None = Field(
-        None,
-        max_length=MAX_RUN_KINDS,
-        description="the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does "
-        "not know is left out",
-    )
-    features: list[Annotated[str, Field(pattern=RUN_KIND)]] | None = Field(
-        None,
-        max_length=MAX_RUN_KINDS,
-        description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
-        "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; "
-        "agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the "
-        "agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run "
-        "whose agent runs in a container of a plugin's environment. One that says none "
-        "takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is "
-        "left out",
-    )
-    agent_commit: str | None = Field(
-        None,
-        pattern=OBJECT_NAME,
-        description="the commit of evo-agents the daemon's install was built from; none for an install that names "
-        "no commit (PyPI, a local checkout) and from an older daemon. Each heartbeat sets what the hub shows",
-    )
-    self_update: SelfUpdateReport | None = Field(
-        None,
-        description="what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the "
-        "hub shows, so a daemon sends it every time once it has one",
-    )
-    kg_sync: KgSyncReport | None = Field(
-        None,
-        description="for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each "
-        "heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off",
-    )
-    browser: BrowserReport | None = Field(None, description=browser_help.REPORT_HELP)
-    browser_install: BrowserInstallReport | None = Field(None, description=browser_help.INSTALL_REPORT_HELP)
-
-    def stored(self) -> tuple[dict, dict]:
-        """runtimes and checkouts as workers keeps them and GET /v1/workers/{id} shows them: every key present."""
-        return (
-            {name: report.model_dump() for name, report in self.runtimes.items()},
-            {key: report.model_dump() for key, report in self.checkouts.items()},
-        )
-
-    @model_validator(mode="after")
-    def _bounded(self):
-        runtimes, checkouts = self.stored()
-        if _json_bytes(runtimes) + _json_bytes(checkouts) > MAX_REPORT_BYTES:
-            raise ValueError(f"runtimes and checkouts take at most {MAX_REPORT_BYTES} bytes of JSON")
-        return self
-
-
-def available(report) -> bool:
-    """Whether a stored runtime may take runs: an object with available true (or without the key, as a version
-    alone), true, or a version string."""
-    if isinstance(report, dict):
-        return report.get("available", True) is True
-    return report is True or (isinstance(report, str) and bool(report))
-
-
-class RunControl(BaseModel):
-    id: int
-    held: bool = Field(description="false for a run the worker no longer holds; stop it")
-    state: Literal[runs.RUN_STATES] | None = Field(description="null for a run that is not this worker's")
-    lease_expires_at: datetime | None
-    cancel: bool
-    takeover: bool = Field(False, description="the owner asked to drive the agent in a terminal: report interactive")
-    handback: bool = Field(False, description="the owner asked to let the agent go on headless: report running")
-    terminal_open: bool = Field(
-        False,
-        description="a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run "
-        "is interactive",
-    )
-    park: bool = Field(
-        False,
-        description="the run is parked (it waited too long for an answer), or done because a new run resumes it: stop "
-        "the agent at the end of its turn, keep the session and the worktrees, free the slot",
-    )
-    finish: bool = Field(
-        False,
-        description="the owner ended the chat of this author run: once the agent's turn is over, end the run done",
-    )
-    inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
-    decisions: int = Field(0, description="decisions of the run still open, waiting for the owner's answer")
-
-
-class WorkerSettings(BaseModel):
-    slots: int = Field(ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
-    name: str
-    labels: list[str]
-    plugins: list[str] = Field(
-        default_factory=list,
-        description="the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none",
-    )
-    version_locked: bool = Field(
-        description="its owner locked its version: the daemon stays on the evo-agents it runs and does not update "
-        "itself; a hub before 0048 sends none, and a daemon that got none does not update itself either"
-    )
-    projects: list[str] = Field(
-        default_factory=list,
-        description="the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends "
-        "none, and a daemon that got none keeps those of its config",
-    )
-    guard: str = Field(
-        "",
-        description="the digest of the hub's guard policy (GET /v1/guard/policy), empty when it guards nothing: the "
-        "daemon fetches the policy when the digest differs from the one it holds; a hub before 0192 sends none",
-    )
-
-
-class NightlyRead(BaseModel):
-    """Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly)."""
-
-    commit: str = Field(pattern=OBJECT_NAME)
-    read_at: datetime = Field(description="when the hub read it; the hub reads it once a minute")
-
-
-class UpdateNowRequest(BaseModel):
-    """An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends."""
-
-    requested_at: datetime = Field(description="when it was asked for; it names the request in self_update.update_now")
-
-
-def _absent(value) -> bool:
-    return value is None
-
-
-class HeartbeatAnswer(BaseModel):
-    drain: bool = Field(description="claim no new run; finish the ones held")
-    runs: list[RunControl]
-    settings: WorkerSettings = Field(
-        description="the worker's settings as the hub holds them, which its owner may change (PATCH "
-        "/v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none"
-    )
-    plugin_runtimes: list[PluginRuntime] = Field(
-        default_factory=list,
-        description="for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a "
-        "project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise",
-    )
-    kg_sync: list[KgDuty] = Field(
-        default_factory=list,
-        description="for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph "
-        "is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise",
-    )
-    nightly: NightlyRead | None = Field(
-        None,
-        exclude_if=_absent,
-        description="the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it "
-        "instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065",
-    )
-    update_now: UpdateNowRequest | None = Field(
-        None,
-        exclude_if=_absent,
-        description="the owner asked the daemon to update itself now: claim no new run, let the held ones end, update "
-        "to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now",
-    )
-    browser_install: BrowserInstallRequest | None = Field(
-        None, exclude_if=_absent, description=browser_help.INSTALL_REQUEST_HELP
-    )
-
-
-class VerifyResult(BaseModel):
-    command: str = Field(min_length=1, max_length=2000)
-    exit_code: int
-    duration_ms: int | None = Field(None, ge=0)
-
-
-class Diffstat(BaseModel):
-    files: int = Field(ge=0)
-    insertions: int = Field(ge=0)
-    deletions: int = Field(ge=0)
-
-
-class StepProof(BaseModel):
-    """The proof of one criterion a step names (``evo_agents.hub.proofs``)."""
-
-    id: str = Field(pattern=r"^a\d+$", max_length=20, description="the criterion's id in the plan's acceptance")
-    kind: Literal[proofs.KINDS] = Field(description="test (path::name), command, or n/a")
-    locator: str | None = Field(
-        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="the test or the command"
-    )
-    reason: str | None = Field(
-        None, min_length=1, max_length=proofs.MAX_PROOF_CHARS, pattern=LINE, description="with n/a: why"
-    )
-
-    @model_validator(mode="after")
-    def _kind_has_its_key(self):
-        if self.kind == proofs.NA and not self.reason:
-            raise ValueError(f"the proof of {self.id} is n/a, which comes with a reason")
-        if self.kind != proofs.NA and not self.locator:
-            raise ValueError(f"the proof of {self.id} is a {self.kind}, which comes with its locator")
-        return self
-
-
-class StateReport(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    state: Literal[runs.RUN_STATES] = Field(description="the state the run moves to")
-    from_state: Literal[runs.RUN_STATES] | None = Field(
-        None, alias="from", description="the state the worker believes the run is in; 409 when it is in another"
-    )
-    session_id: str | None = Field(None, min_length=1, max_length=200, pattern=LINE)
-    commit_sha: str | None = Field(None, pattern=OBJECT_NAME)
-    diffstat: Diffstat | None = None
-    verify: list[VerifyResult] | None = Field(None, max_length=50, description="each verify command the daemon ran")
-    usage: dict | None = None
-    error: str | None = Field(None, min_length=1, max_length=2000)
-    failure_cause: str | None = Field(
-        None,
-        pattern=runs.FAILURE_CAUSE,
-        description="with failed: why, one of runs.FAILURE_CAUSES (a newer worker's own names are kept too); kept with "
-        "the run as its failure_cause, and ignored with any other state",
-    )
-    summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
-    model_used: ModelName | None = Field(None, description="the model the run's runtime runs it on")
-    routing: RoutingRecord | None = Field(None, description="what the routing by difficulty did, for a run it rated")
-    proofs: list[StepProof] | None = Field(
-        None,
-        max_length=proofs.MAX_PROOFS,
-        description="with done or review of a run of one step: the proof of each criterion it names, which the "
-        "step keeps once done",
-    )
-    answer: str | None = Field(
-        None,
-        min_length=1,
-        max_length=question_runs.MAX_ANSWER_CHARS,
-        description="with done of a question run, and only then (422 otherwise): the agent's answer, which goes to "
-        "the core plugin that asked",
-    )
-
-    @model_validator(mode="after")
-    def _bounded(self):
-        if self.usage is not None and _json_bytes(self.usage) > MAX_REPORT_BYTES:
-            raise ValueError(f"usage takes at most {MAX_REPORT_BYTES} bytes of JSON")
-        return self
-
-
-class StepReport(BaseModel):
-    """What a plan run's worker reports of one step of the plan."""
-
-    status: Literal[STEP_REPORT_STATUSES] = Field(
-        description="in_progress when the agent starts the step, done once verified, pending to hand it back"
-    )
-    repo: str | None = Field(
-        None, min_length=1, max_length=STEP_KEY_CHARS, pattern=LINE, description="the run's repo the step was done in"
-    )
-    evidence: str | None = Field(
-        None, min_length=1, max_length=MAX_STEP_EVIDENCE_CHARS, description="what the agent did and how it checked it"
-    )
-    verify: list[VerifyResult] | None = Field(
-        None, max_length=50, description="each verify command the worker ran again; done needs one, every one exit 0"
-    )
-    commit_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the repo's commit the step ends on")
-    proofs: list[StepProof] | None = Field(
-        None,
-        max_length=proofs.MAX_PROOFS,
-        description="with done: one proof for each criterion of the plan's acceptance the step names, which the step "
-        "keeps; 422 when one is missing or names another criterion. Absent from an older worker's report",
-    )
-
-
-class StepWritten(BaseModel):
-    run_id: int
-    plan_id: str
-    step_key: str
-    status: str | None = Field(description="the step's status as the plan holds it after the report")
-    revision: int = Field(description="the plan's revision after the report")
-    written: bool = Field(description="whether the report wrote a revision; false for a resend that changed nothing")
-
-
-# Listing runs and their stats
+# Listing runs: its counts are a model made of the states a run may be shown in
 
 StateCounts = create_model(
     "StateCounts",
@@ -1119,54 +97,70 @@ class RunList(BaseModel):
     offset: int
 
 
-class RunFigures(BaseModel):
-    """The runs that ended in a span of UTC days, of the plans the caller may read."""
-
-    done: int = Field(description="runs that ended done")
-    failed: int = Field(description="runs that ended failed")
-    lost: int = Field(description="runs whose worker stopped extending the lease")
-    cancelled: int = Field(description="runs that ended cancelled, queued or not")
-    p50_seconds: float | None = Field(
-        description="the median time the runs that ended ran, from started (else leased) to finished, as the runs "
-        "pages count it; null when none of them started"
-    )
-    p90_seconds: float | None = Field(description="the 90th percentile of that time; null when none of them started")
-    input_tokens: int = Field(
-        description="input tokens not read from the cache, added up from the runs' usage as the run page's usage "
-        "card reads it"
-    )
-    output_tokens: int = Field(description="output tokens, reasoning left out")
-    cache_read_tokens: int = Field(description="input tokens read from the cache")
-    reasoning_tokens: int = Field(description="reasoning (thinking) tokens")
-    runs_with_usage: int = Field(
-        description="the runs whose usage the hub could read: a run without usage, or with usage of no shape the "
-        "card knows (Claude Code, Codex, opencode), adds no token"
-    )
-
-
-class RunDay(RunFigures):
-    day: date = Field(description="a day in UTC")
-
-
-class RunStats(BaseModel):
-    project: str
-    days: int = Field(description="the days counted, today in UTC the last")
-    first_day: date = Field(description="the oldest day counted, in UTC")
-    last_day: date = Field(description="today in UTC")
-    by_day: list[RunDay] = Field(
-        description="every day counted, the oldest first: a day without a run has zeros and null percentiles"
-    )
-    total: RunFigures = Field(
-        description="the whole span: its counts and tokens are by_day's added up, its percentiles over every run"
-    )
-
-
-# A plan run's plan
-
-
-class AuthoredPlan(BaseModel):
-    body: dict[str, Any] = Field(description="the plan as its YAML file reads; a hub key in it is ignored")
-    if_revision: int | None = Field(
-        None, ge=0, description="the revision being replaced; leave it out, or 0, to create the plan"
-    )
-    label: dict | None = Field(None, description="{level, location, integrity}; default: the project's, or the held")
+__all__ = [
+    "AccessChange",
+    "AccountName",
+    "ActiveRun",
+    "AuthorRunDispatch",
+    "AuthoredPlan",
+    "BrowserInstallRequest",
+    "Claim",
+    "ClaimRequest",
+    "ClaimedBudget",
+    "CuratorSpec",
+    "Dispatch",
+    "HeartbeatAnswer",
+    "HeartbeatRequest",
+    "KgDuty",
+    "KgSyncReport",
+    "LINE",
+    "LostAttempt",
+    "MAX_ID",
+    "MAX_LIST",
+    "MAX_OFFSET",
+    "MAX_STATS_DAYS",
+    "MIN_STATS_DAYS",
+    "ModelName",
+    "NOT_HELD",
+    "NightlyRead",
+    "OBJECT_NAME",
+    "OverlapWait",
+    "PlanCopy",
+    "PlanProgress",
+    "PlanRunDispatch",
+    "PluginRuntime",
+    "REFUSALS",
+    "ReadySteps",
+    "ReleaseSpec",
+    "Rerun",
+    "Run",
+    "RunBudget",
+    "RunControl",
+    "RunDay",
+    "RunEnvironment",
+    "RunFigures",
+    "RunId",
+    "RunList",
+    "RunOrigin",
+    "RunPack",
+    "RunProfile",
+    "RunRepo",
+    "RunSkill",
+    "RunSpec",
+    "RunStats",
+    "STATS_DAYS",
+    "STEP_KEY_CHARS",
+    "SelfUpdateReport",
+    "StateCounts",
+    "StateReport",
+    "SteadyWait",
+    "StepKey",
+    "StepProof",
+    "StepReadiness",
+    "StepReport",
+    "StepWritten",
+    "UpdateNowRequest",
+    "VerifyResult",
+    "WorkerSettings",
+    "available",
+]

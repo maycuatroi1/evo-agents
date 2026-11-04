@@ -76,15 +76,14 @@ from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
-from sqlalchemy import BigInteger, and_, case, false, func, insert, literal, or_, select, true, update
+from sqlalchemy import and_, case, false, func, insert, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncConnection
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.sql import Select
 
 from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, runs, tables
 from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals, run_access_rules
+from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals
+from evo_agents.hub.server import decision_resume as resume
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.decision_models import AnswerIn as AnswerIn
@@ -100,12 +99,12 @@ from evo_agents.hub.server.output_store import link_decision
 from evo_agents.hub.server.output_views import by_decision as outputs_by_decision
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import write_user_message
-from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
+from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.controls import web_only_steering
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
-from evo_agents.hub.server.runs.service.views import lock_plan, sees_unplanned, visible_plans
+from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
 from evo_agents.hub.server.sealing import Sealer
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -590,69 +589,6 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
 # Answering
 
 
-class _OverridingSystemValue(Select):
-    """The SELECT of an INSERT ... SELECT that gives a value for runs.id, which is GENERATED ALWAYS AS IDENTITY:
-    Postgres takes one only after OVERRIDING SYSTEM VALUE, which SQLAlchemy has no construct for, so this select
-    renders it in front of itself. Only ``_resume`` needs it: it reserves the new run's id with nextval first, so the
-    parked run can end done "resumed as #N" before runs_active_plan_key lets the new plan run of its plan in."""
-
-    inherit_cache = True
-
-
-@compiles(_OverridingSystemValue)
-def _overriding_system_value(element, compiler, **kw):
-    return "OVERRIDING SYSTEM VALUE " + compiler.visit_select(element, **kw)
-
-
-def _resume_run(new_id: int, parked_id: int):
-    """The run that resumes parked run ``parked_id`` (a plan run or an author run, ``runs.RESUME_KINDS``), with id
-    ``new_id``, of its kind: pinned to its worker, in its session, with the agent time it used and the credential it
-    was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is gone; none for
-    an author run that has put no plan); a run the night shift queued keeps its schedule, night and caps, an author
-    run its request, a plan run its session per step, and every run its agent profile and version, and whether it runs
-    as its owner (``run_access``), with a token of its own."""
-    r, pl = tables.runs, tables.plans
-    source = _OverridingSystemValue(
-        literal(new_id, BigInteger).label("id"),
-        r.c.kind,
-        r.c.project_id,
-        r.c.plan_id,
-        r.c.title,
-        func.coalesce(pl.c.revision, r.c.plan_revision).label("plan_revision"),
-        r.c.dispatched_by,
-        r.c.dispatched_via,
-        r.c.worker_id.label("pinned_worker_id"),
-        r.c.runtime.label("requested_runtime"),
-        r.c.runtime,
-        r.c.model,
-        r.c.mode,
-        r.c.approval,
-        r.c.timeout_s,
-        r.c.max_attempts,
-        r.c.repos,
-        r.c.id.label("resume_of_run_id"),
-        r.c.run_seconds,
-        r.c.session_id,
-        r.c.schedule_id,
-        r.c.schedule_night,
-        r.c.budget,
-        r.c.request,
-        r.c.session_per_step,
-        r.c.browser,
-        r.c.browser_identities,
-        r.c.profile_id,
-        r.c.profile_version,
-        r.c.principal_id,
-        r.c.autonomy,
-        r.c.as_owner,
-        r.c.as_owner_since,
-    )
-    source = source.select_from(
-        r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
-    ).where(r.c.id == parked_id)
-    return insert(r).from_select([column.name for column in source.selected_columns], source)
-
-
 def answer_message(decision_id: int, category: str, question: str, option: dict | None, text: str | None) -> str:
     """The inbox message that hands the owner's answer to the agent: the decision it answers, the option chosen and
     the owner's own words, within MAX_MESSAGE_BYTES."""
@@ -676,81 +612,7 @@ async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decisi
     """Queue the run that resumes parked run ``parked_id``, in the caller's transaction under the plan's lock, as
     ``user`` answered decision ``decision_id`` with the inbox message ``text``; the new run's id (``resume_parked``)."""
     why = f"as {user.login} answered decision #{decision_id}"
-    return await resume_parked(conn, user, parked_id, why, woken_by=text)
-
-
-async def resume_parked(
-    conn: AsyncConnection, user: Principal | None, parked_id: int, why: str, *, woken_by: str | None = None
-) -> int:
-    """Queue the run that resumes parked run ``parked_id``, whose row the caller holds locked (for a plan run, under
-    the plan's lock), and end the parked one done; the new run's id. ``why`` ends the new run's first event, such as
-    "as owner answered decision #3". The parked run's decisions still open go to the new run, and for an author run,
-    the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
-    parked, which its agent reads in the new run's first turn. ``woken_by``, the answer or the message that resumes
-    it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title.
-    ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``). A request that
-    carries a run's token resumes none (``run_access_rules.refuse_new_run``)."""
-    run_access_rules.refuse_new_run()
-    token_id = None if user is None else user.token_id
-    kind = (await conn.execute(select(tables.runs.c.kind).where(tables.runs.c.id == parked_id))).scalar_one()
-    if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
-        from evo_agents.hub.server.chat_runs import go_on_parked  # it queues runs through the routes that import this
-
-        return await go_on_parked(conn, parked_id, why, woken_by=woken_by, token_id=token_id)
-    reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
-    new_id = (await conn.execute(reserved)).scalar_one()
-    # The parked run leaves the active states first: a plan has one active plan run at a time.
-    await move_run(
-        conn,
-        parked_id,
-        "parked",
-        "done",
-        "owner" if user is not None else "reaper",
-        reason=f"resumed as #{new_id}",
-        token_id=token_id,
-        decisions=None,
-    )
-    await conn.execute(_resume_run(new_id, parked_id))
-    d, i = tables.decisions, tables.run_inbox
-    await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
-    if kind == "author":
-        undelivered = (i.c.run_id == parked_id, i.c.delivered_at.is_(None))
-        await conn.execute(update(i).values(run_id=new_id).where(*undelivered))
-    shown = f"resumes run #{parked_id} in its session, {why}"
-    await write_event(conn, new_id, {"text": shown, "resume_of_run_id": parked_id})
-    await notify_queued(conn, new_id)
-    return new_id
-
-
-async def lock_run_of(conn: AsyncConnection, project_id: int, plan_id: str | None, decision_id: int):
-    """Lock the run decision ``decision_id`` belongs to, and the decision's plan for one with a plan; (run id, its
-    state, its kind). A decision of a plan is answered under the plan's dispatch lock, which its run's moves to another
-    run (a resume) take too; one without a plan, under its run's row lock, which a resume holds: when the decision
-    moved to another run before the lock, the lock is taken again on that run."""
-    if plan_id is not None:
-        await lock_plan(conn, project_id, plan_id)
-    d, r = tables.decisions, tables.runs
-    of_decision = select(d.c.run_id).where(d.c.id == decision_id)
-    run_id = (await conn.execute(of_decision)).scalar_one()
-    while True:
-        locked = select(r.c.state, r.c.kind).where(r.c.id == run_id).with_for_update()
-        run_state, kind = (await conn.execute(locked)).one()
-        now = (await conn.execute(of_decision)).scalar_one()
-        if now == run_id:
-            return run_id, run_state, kind
-        run_id = now
-
-
-async def _resumes(conn: AsyncConnection, run_id: int, run_state: str, kind: str) -> bool:
-    """Whether the answer just recorded resumes run ``run_id``: a parked plan run at its first answer, a parked
-    author run or a parked chat run once none of its decisions is open."""
-    if run_state != "parked":
-        return False
-    if kind not in ("author", "chat"):
-        return True
-    d = tables.decisions
-    still_open = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
-    return (await conn.execute(still_open)).scalar_one() == 0
+    return await resume.resume_parked(conn, user, parked_id, why, woken_by=text)
 
 
 @dataclass(frozen=True)
@@ -760,6 +622,87 @@ class Answered:
     decision: Decision
     run_id: int
     inbox_run: int
+
+
+async def _asked_of(conn: AsyncConnection, user: Principal, access: ProjectAccess, decision_id: int):
+    """The plan and step key of decision ``decision_id``, once ``user`` may answer it: its run's owner, or one it was
+    escalated to (403 for anyone else, and for a run's token)."""
+    if user.acts_for_run is not None:  # a run's token acts as the owner, but answers no decision (run_access)
+        raise HTTPException(
+            403,
+            f"decision {decision_id} is a question to a member, and a run's token (evr_...) answers no decision of any "
+            "run: the owner answers with their own sign-in",
+        )
+    d, r, u = tables.decisions, tables.runs, tables.users
+    query = (
+        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
+        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == asked_person()))
+        .where(d.c.id == decision_id, d.c.project_id == access.project_id)
+    )
+    found = (await conn.execute(query)).one()
+    if found.id != user.user_id and user.user_id not in await principals.escalated_to(conn, decision_id):
+        who = "who dispatched its run" if found.id == found.dispatched_by else "whom it is asked of"
+        raise HTTPException(403, f"only {found.login}, {who}, may answer decision {decision_id}")
+    return found.plan_id, found.step_key
+
+
+def _chosen(decision_id: int, options: list[dict], key: str | None) -> dict | None:
+    """The option of ``options`` with ``key``, None for no key; 422 for a key the decision lacks."""
+    if key is None:
+        return None
+    chosen = next((option for option in options if option["key"] == key), None)
+    if chosen is None:
+        keys = ", ".join(option["key"] for option in options)
+        raise HTTPException(422, f"decision {decision_id} has no option {key!r}; its options are {keys}")
+    return chosen
+
+
+def _takes_answer(decision_id: int, run_id: int, run_state: str, kind: str) -> None:
+    """409 unless the run of the decision can take an answer: a local run that has not ended, or a run that is parked
+    or holds messages."""
+    if kind == "local":  # the session takes the answer at its next turn, whatever it does now, but not once it is over
+        if run_state == "ended":
+            raise HTTPException(
+                409, f"run {run_id} of decision {decision_id} is a local run that ended: no session can take an answer"
+            )
+    elif run_state != "parked" and run_state not in runs.MESSAGE_STATES:
+        raise HTTPException(409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer")
+
+
+async def _record_answer(
+    conn: AsyncConnection, user: Principal, decision_id: int, option: str | None, words: str | None
+) -> None:
+    """Mark the decision answered with ``option`` and ``words``, and its notification to ``user`` read."""
+    d, n = tables.decisions, tables.notifications
+    await conn.execute(
+        update(d)
+        .values(
+            state="answered", answer_option=option, answer_text=words, answered_by=user.user_id, answered_at=func.now()
+        )
+        .where(d.c.id == decision_id)
+    )
+    await conn.execute(
+        update(n)
+        .values(read_at=func.now())
+        .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
+    )
+
+
+async def _go_on_local(conn: AsyncConnection, run_id: int) -> None:
+    """A local session that waited for answers goes on once none of its decisions is open."""
+    d, r = tables.decisions, tables.runs
+    still_open = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
+    if (await conn.execute(still_open)).scalar_one() == 0:
+        await conn.execute(update(r).values(state="running", waiting_since=None).where(r.c.id == run_id))
+
+
+async def _to_inbox(conn: AsyncConnection, user: Principal, run_id: int, decision_id: int, text: str) -> None:
+    """Leave the answer ``text`` in the inbox of run ``run_id``, with its ``user_message`` event."""
+    i = tables.run_inbox
+    left = insert(i).values(run_id=run_id, sent_by=user.user_id, body=text, decision_id=decision_id).returning(i.c.id)
+    message_id = (await conn.execute(left)).scalar_one()
+    event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
+    await write_user_message(conn, run_id, event)
 
 
 async def answer_decision(
@@ -778,27 +721,12 @@ async def answer_decision(
     ``sealer``. The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer
     through it; it raises the HTTPException the route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
-    if user.acts_for_run is not None:  # a run's token acts as the owner, but answers no decision (run_access)
-        raise HTTPException(
-            403,
-            f"decision {decision_id} is a question to a member, and a run's token (evr_...) answers no decision of any "
-            "run: the owner answers with their own sign-in",
-        )
-    d, r, u = tables.decisions, tables.runs, tables.users
-    query = (
-        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
-        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == asked_person()))
-        .where(d.c.id == decision_id, d.c.project_id == access.project_id)
-    )
-    found = (await conn.execute(query)).one()
-    plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.id, found.login
-    if owner_id != user.user_id and user.user_id not in await principals.escalated_to(conn, decision_id):
-        who = "who dispatched its run" if owner_id == found.dispatched_by else "whom it is asked of"
-        raise HTTPException(403, f"only {owner}, {who}, may answer decision {decision_id}")
+    plan_id, key = await _asked_of(conn, user, access, decision_id)
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
-    run_id, run_state, kind = await lock_run_of(conn, access.project_id, plan_id, decision_id)
+    run_id, run_state, kind = await resume.lock_run_of(conn, access.project_id, plan_id, decision_id)
+    d = tables.decisions
     locked = select(d.c.state, d.c.category, d.c.question, d.c.options, d.c.credential_request)
     state, category, question, options, request = (
         await conn.execute(locked.where(d.c.id == decision_id).with_for_update())
@@ -806,21 +734,10 @@ async def answer_decision(
     if state != "open":
         raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
     asked = credential_answers.checked(decision_id, request, body)
-    chosen = None
-    if asked.option is not None:
-        chosen = next((option for option in options if option["key"] == asked.option), None)
-        if chosen is None:
-            keys = ", ".join(option["key"] for option in options)
-            raise HTTPException(422, f"decision {decision_id} has no option {asked.option!r}; its options are {keys}")
+    chosen = _chosen(decision_id, options, asked.option)
     if category in runs.HUB_DECISION_CATEGORIES:
         return await _answer_hub(conn, user, project, decision_id, run_id, category, chosen, body, via)
-    if kind == "local":  # the session takes the answer at its next turn, whatever it does now, but not once it is over
-        if run_state == "ended":
-            raise HTTPException(
-                409, f"run {run_id} of decision {decision_id} is a local run that ended: no session can take an answer"
-            )
-    elif run_state != "parked" and run_state not in runs.MESSAGE_STATES:
-        raise HTTPException(409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer")
+    _takes_answer(decision_id, run_id, run_state, kind)
     await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
     if chosen is not None and chosen.get("waits") is True:
         target = answer_target(project, plan_id, key, decision_id, run_id, body.option, kind) + " held"
@@ -829,37 +746,13 @@ async def answer_decision(
     if credential_answers.acts(request, asked):  # before a resume, which copies what the run may do
         given = await credential_answers.give(conn, user, sealer, access, project, decision_id, run_id, request, asked)
         words = credential_answers.with_sentence(body.text, given)
-    await conn.execute(
-        update(d)
-        .values(
-            state="answered",
-            answer_option=asked.option,
-            answer_text=words,
-            answered_by=user.user_id,
-            answered_at=func.now(),
-        )
-        .where(d.c.id == decision_id)
-    )
-    n = tables.notifications
-    await conn.execute(
-        update(n)
-        .values(read_at=func.now())
-        .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
-    )
+    await _record_answer(conn, user, decision_id, asked.option, words)
     if kind == "local" and run_state == "waiting":  # the session waited for this: it goes on once none is open
-        still_open = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
-        if (await conn.execute(still_open)).scalar_one() == 0:
-            await conn.execute(update(r).values(state="running", waiting_since=None).where(r.c.id == run_id))
-    resumes = await _resumes(conn, run_id, run_state, kind)
+        await _go_on_local(conn, run_id)
+    resumes = await resume.resumes(conn, run_id, run_state, kind)
     text = answer_message(decision_id, category, question, chosen, words)
     inbox_run = await _resume(conn, user, run_id, decision_id, text) if resumes else run_id
-    i = tables.run_inbox
-    left = (
-        insert(i).values(run_id=inbox_run, sent_by=user.user_id, body=text, decision_id=decision_id).returning(i.c.id)
-    )
-    message_id = (await conn.execute(left)).scalar_one()
-    event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
-    await write_user_message(conn, inbox_run, event)
+    await _to_inbox(conn, user, inbox_run, decision_id, text)
     target = answer_target(project, plan_id, key, decision_id, run_id, asked.option, kind)
     if inbox_run != run_id:
         target += f" resumed as run:{inbox_run}"

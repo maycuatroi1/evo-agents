@@ -217,7 +217,7 @@ async def _queue_agent(
 ) -> int | None:
     """Queue the review run of ``ctx`` through ``lens`` (kg_init, or kg_questions for the run that writes its starter
     questions first); its id, or None with why in ``body["notes"]``."""
-    from evo_agents.hub.server.collect import _review_place
+    from evo_agents.hub.server.collect import review_place
     from evo_agents.hub.server.night_duty import on_duty
     from evo_agents.hub.server.run_state import notify_queued, write_event
     from evo_agents.hub.server.runs.service.dispatch import insert_run
@@ -238,7 +238,7 @@ async def _queue_agent(
         body.setdefault("notes", []).append(f"no review run: {why}")
         return None
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    repos, problems = await _review_place(conn, due, duty, runtime, repoless=True)
+    repos, problems = await review_place(conn, due, duty, runtime, repoless=True)
     if problems:
         body.setdefault("notes", []).append("no review run: " + "; ".join(problems))
         return None

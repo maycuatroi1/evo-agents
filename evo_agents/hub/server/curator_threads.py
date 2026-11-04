@@ -55,12 +55,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, judge, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import autonomy_gates, changes, chat_agents, merge_gate, triage
-from evo_agents.hub.server.changes import Change
+from evo_agents.hub.server.change_views import Change, change_view, change_with_origin
 from evo_agents.hub.server.chat_runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.proposals import Proposal, ProposalAnswer, answer_proposal_as, planned_tiers_of
+from evo_agents.hub.server.proposal_models import Proposal, ProposalAnswer
+from evo_agents.hub.server.proposal_reads import answer_proposal_as
+from evo_agents.hub.server.proposals import planned_tiers_of
 from evo_agents.hub.server.protection import github_target
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -461,7 +463,7 @@ def _not_left(change) -> str | None:
 
 
 async def _left_change(conn: AsyncConnection, frame: Frame, change_id: int):
-    change = await changes.change_with_origin(conn, frame.agent.project_id, change_id)
+    change = await change_with_origin(conn, frame.agent.project_id, change_id)
     if change is None:
         raise HTTPException(404, f"no change #{change_id} of the Curator in project {frame.project}")
     if change.proposal_id != frame.proposal_id:
@@ -494,7 +496,7 @@ async def _merge_now(
     """Merge ``change`` once the gates let it, under a lock on it: (why not, or None; the Decision: line; the change).
     A refusal commits what the gate K5 wrote (its ask, its audit row and its ledger line)."""
     async with engine.begin() as conn:
-        locked = await changes.change_with_origin(conn, frame.agent.project_id, change.id, lock=True)
+        locked = await change_with_origin(conn, frame.agent.project_id, change.id, lock=True)
         moved = locked is None or _not_left(locked) is not None or locked.head_sha != change.head_sha
         if moved:
             return f"change #{change.id} moved while the hub read GitHub: run the command again", 0, None
@@ -511,7 +513,7 @@ async def _merge_now(
         handle = f"@{frame.agent.profile.handle}"
         by = changes.MergedBy(handle, frame.chat_run_id, frame.owner.user_id, frame.owner.login)
         await changes.record_merge(conn, change, merged, read, act, by)
-        view = await changes.change_view(conn, change.id)
+        view = await change_view(conn, change.id)
         message_id = await _said(conn, frame, merge_line(view, frame.owner.login))
     return None, message_id, view
 

@@ -145,7 +145,7 @@ DEFAULT_KG_KEEP_ARTIFACTS = 3
 MAX_KG_KEEP_ARTIFACTS = 1000
 DEFAULT_KG_UPLOAD_MAX_BYTES = 20 * 1024**3
 MAX_KG_UPLOAD_MAX_BYTES = 600 * 1024**3  # 10,000 parts of 64 MiB, the most one multipart upload has (kg_uploads)
-# Days the events of a finished run stay (evo_agents.hub.server.run_state.prune_run_events).
+# Days the events of a finished run stay (evo_agents.hub.server.run_reaper.prune_run_events).
 DEFAULT_RUN_LOG_DAYS = 30
 MAX_RUN_LOG_DAYS = 3650
 # Days an audit row stays (evo_agents.hub.worker.prune_audit).

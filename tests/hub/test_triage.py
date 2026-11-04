@@ -319,7 +319,7 @@ def stale_pass(client) -> int:
 
 
 def reaper_pass(client) -> dict:
-    from evo_agents.hub.server.run_state import recover_runs
+    from evo_agents.hub.server.run_reaper import recover_runs
 
     return client.portal.call(recover_runs, client.app.state.engine)
 

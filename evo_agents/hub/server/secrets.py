@@ -493,7 +493,7 @@ async def provider_holds(conn: AsyncConnection, owner_id: int, name: str) -> boo
     return (await conn.execute(held)).first() is not None
 
 
-def _upsert(owner_id: int, name: str, **values):
+def upsert_secret(owner_id: int, name: str, **values):
     """Insert the live secret ``name`` of ``owner_id``, or replace the one there is, whole; RETURNING its id and
     whether it was inserted: xmax is 0 on a row this statement inserted, and the updating transaction's id on a row it
     replaced."""
@@ -561,7 +561,7 @@ async def put_secret(
             raise HTTPException(
                 409, f"you keep {MAX_SECRETS_PER_OWNER} secrets already: delete one before adding another"
             )
-        statement = _upsert(
+        statement = upsert_secret(
             user.user_id,
             name,
             kind=body.kind,

@@ -223,7 +223,7 @@ async def identity_worker(conn: AsyncConnection, user: Principal, access: Projec
     return found.id
 
 
-def _may_create(access: ProjectAccess, owner: str) -> None:
+def may_create(access: ProjectAccess, owner: str) -> None:
     needed = "writer" if owner == "member" else "admin"
     if not has_role(access.role, needed):
         held = access.role or "no grant"
@@ -336,7 +336,7 @@ async def create_browser_identity(
     check_create(body)
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _may_create(access, body.owner)
+        may_create(access, body.owner)
         worker_id = await identity_worker(conn, user, access, body.worker)
         identity_id = await insert_identity(conn, user, access, body, worker_id)
         created = (await conn.execute(identity_listing(access.project_id).where(b.c.id == identity_id))).one()

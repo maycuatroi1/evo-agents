@@ -32,9 +32,9 @@ from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSessi
 from evo_agents.hub.server import audit, kg_eval_sets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import GRAPHS_TRIED, _member, _read_sink, built_graphs
+from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs, member, read_sink
 from evo_agents.hub.server.kg_audience import reader_audience
-from evo_agents.hub.server.kg_web import _reader
+from evo_agents.hub.server.kg_web import require_reader
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg import settings as kg_settings
@@ -82,7 +82,7 @@ class UndoBody(BaseModel):
 
 
 async def _may_change(conn, user, access) -> None:
-    _reader(access)
+    require_reader(access)
     if not has_role(access.role, "writer"):
         raise HTTPException(403, f"changing the KG settings of project {access.name} needs the writer role on it")
     run = user.acts_for_run
@@ -129,7 +129,7 @@ async def get_settings(request: Request, project: ProjectName, user: CurrentUser
     """What the project's search and build are tuned with, and the newest changes."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        require_reader(access)
         return await _out(conn, access.project_id, access.role, needs_rebuild=[])
 
 
@@ -246,7 +246,7 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
     state = request.app.state
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _member(access)
+        member(access)
         current = await store.read(conn, access.project_id)
         try:
             wanted = kg_settings.of(body.values, current)
@@ -272,7 +272,7 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
             state.blobs,
             project,
             access,
-            _read_sink(access, "cli"),
+            read_sink(access, "cli"),
             audience,
             graphs,
             found_set,

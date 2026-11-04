@@ -6,8 +6,8 @@ outcome of a merged change and the revert it proposes.
 (``tests/hub/test_curator_ledger.py`` reads the hub's code for one). The hub adds a line when a review run records a
 proposal (``proposal_recorded``: ``proposed``, or ``dropped`` as a repeat of a rejected one, with the figures that set
 it off, ``trigger_for``), when an admin answers it (``proposal_answered``), when its draft becomes the Curator's plan or
-cannot (``change_recorded``), and at each move of its change (``change_moved``, from ``changes._set``): built by its
-Builder, its pull request opened, judged (by the Judge, or by the hub's own detector of score hacking), merged (by the
+cannot (``change_recorded``), and at each move of its change (``change_moved``, from ``change_views.set_change``): built by
+its Builder, its pull request opened, judged (by the Judge, or by the hub's own detector of score hacking), merged (by the
 hub, by the agent of the proposal's thread for its owner, or by hand), left open for its owner with why, or closed; a Builder that ends otherwise adds ``build_failed``
 (``build_failed``). The hub's merge of a change whose replays won keeps their verdict under ``details.replay`` and,
 when it releases a global skill, the skill under ``details.release``; ``evo_agents.hub.server.skill_release`` adds the
@@ -529,11 +529,12 @@ async def show_ledger(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Ledger:
     """The ledger of a proposal: what happened to it, line by line, oldest first."""
-    from evo_agents.hub.server.proposals import _reader, readable_proposal  # it writes lines through this module
+    from evo_agents.hub.server.proposal_reads import readable_proposal  # it writes lines through this module
+    from evo_agents.hub.server.proposals import require_reader
 
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        require_reader(access)
         await readable_proposal(conn, access, proposal_id, sink, user)
         rows = (await conn.execute(_lines(proposal_id))).all()
         due = await outcome_due_at(conn, proposal_id, access.project_id)

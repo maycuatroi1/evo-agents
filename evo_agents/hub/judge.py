@@ -57,6 +57,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field, replace
+from typing import Literal, get_args
 from urllib.parse import urlsplit
 
 from evo_agents.hub import proofs, tiers
@@ -68,7 +69,7 @@ from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 from evo_agents.hub.verify_words import programs as programs  # its home before evo_agents.hub.verify_words
 from evo_agents.hub.verify_words import verify_paths, verify_runners
 
-CHANGE_STATES = (
+ChangeState = Literal[
     "planned",  # the plan is on the hub: the night shift may queue its Builder
     "pr_pending",  # the Builder ended with every step done: the hub opens the pull request
     "judge_pending",  # the pull request (or merge request) is open: the night shift queues its judge run
@@ -77,11 +78,18 @@ CHANGE_STATES = (
     "merged",  # the hub merged it
     "open",  # left open for its owner, with the reason
     "closed",  # its pull request was closed without a merge
-)
+]
+CHANGE_STATES: tuple[str, ...] = get_args(ChangeState)
 ACTIVE_CHANGE_STATES = ("pr_pending", "judge_pending", "judging", "judged")  # what the job still moves on
 PLANNED_TIERS = (0, 1, 2)  # the tiers whose accepted proposals become the Curator's plans unless the charter says
-PLANNABLE_TIERS = (0, 1, 2, 3)  # what a charter's planned_tiers may name: tier 3 only when its owner adds it
-FORGES = ("github", "gitlab")  # where a Curator change goes: a pull request, or a merge request (never merged)
+PlannableTier = Literal[0, 1, 2, 3]
+PLANNABLE_TIERS: tuple[int, ...] = get_args(
+    PlannableTier
+)  # what a charter's planned_tiers may name: tier 3 only when its owner adds it
+Forge = Literal["github", "gitlab"]
+FORGES: tuple[str, ...] = get_args(
+    Forge
+)  # where a Curator change goes: a pull request, or a merge request (never merged)
 BRANCH_PREFIX = "curator/"
 CURATOR_PLAN_PREFIX = "curator-"  # the ids of the Curator's plans, which the hub alone makes
 SLUG_CHARS = 48
@@ -89,7 +97,8 @@ MAX_PLAN_ID_CHARS = 100
 JUDGE_CHECK_NAME = "evo-agents Judge"  # the check run the hub writes on a pull request
 JUDGE_ATTEMPTS = 3  # judge runs of one change that end without a verdict before it is left open
 JUDGE_KEY_HEADER = "X-Evo-Judge-Key"  # a judge run's own credential, which its claim hands the daemon alone
-VERDICTS = ("pass", "fail")
+Verdict = Literal["pass", "fail"]
+VERDICTS: tuple[str, ...] = get_args(Verdict)
 MAX_REASONS_CHARS = 8000
 MAX_VERDICT_MESSAGE = 64 * 1024  # the end of the Judge's last message read for its verdict
 MAX_VERDICT_TRIES = 200  # opening braces tried, from the end, for the JSON object that ends it
@@ -108,6 +117,24 @@ SKIP_CI = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+SignKind = Literal[
+    "assert_removed",
+    "test_removed",
+    "skip_added",
+    "threshold_changed",
+    "verify_changed",
+    "ci_changed",
+    "lint_config_changed",
+    "lint_suppressed",
+    "eq_overridden",
+    "exit_in_test",
+    "protected_path",
+    "diff_unreadable",
+    "expected_changed",
+    "golden_changed",
+    "assert_caught",
+    "instruction_weakened",
+]  # the keys of SIGN_KINDS, as a type
 SIGN_KINDS: dict[str, str] = {
     "assert_removed": "an assertion of a test removed",
     "test_removed": "a test removed",

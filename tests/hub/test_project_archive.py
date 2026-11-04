@@ -19,7 +19,7 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import cli_client, kg_build, loop_jobs, plugin_jobs, tables
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.server import autonomy_hold, project_archive
-from evo_agents.hub.server.curator import _due
+from evo_agents.hub.server.curator_shift import due_schedules
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import ADMIN, sql
 from tests.hub.test_autonomy_level_runs import on_db, user_id
@@ -147,7 +147,7 @@ def test_project_archive_leaves_it_out_of_the_night_shift_the_loop_and_the_plugi
 
     def schedulers():
         async def read(conn):
-            due = [row.project for row in await conn.execute(_due(None))]
+            due = [row.project for row in await conn.execute(due_schedules(None))]
             loop = await loop_jobs.is_on(conn, pid)
             plugins = [row.project for row in await conn.execute(plugin_jobs._live())]
             return due, loop, plugins

@@ -61,7 +61,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server.curator import CuratorOverview, curator_overview
+from evo_agents.hub.server.curator import curator_overview
+from evo_agents.hub.server.curator_models import CuratorOverview
 from evo_agents.hub.server.decisions import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts

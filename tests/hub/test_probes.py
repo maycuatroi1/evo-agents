@@ -25,7 +25,7 @@ from sqlalchemy import func, select, update
 from evo_agents.hub import tables
 from evo_agents.hub.probe_cli import PROBE_KEYS
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.curator import CharterBody
+from evo_agents.hub.server.curator_models import CharterBody
 from evo_agents.hub.server.probes import PROBE as ACTION
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql

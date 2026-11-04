@@ -25,7 +25,7 @@ from evo_agents.hub.server import project_archive
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import REFUSALS, _queue, _writer
+from evo_agents.hub.server.kg import REFUSALS, queue, writer
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -82,7 +82,7 @@ async def entity_requests(request: Request, project: ProjectName, user: CurrentU
     """The items the latest succeeded build deferred to a run that has Claude Code."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _writer(access, "reading the entity requests of")
+        writer(access, "reading the entity requests of")
     build_id, rows = await _requests(request, access.project_id)
     return EntityRequests(build_id=build_id, requests=[EntityRequest(**row) for row in rows])
 
@@ -98,7 +98,7 @@ async def entity_answers(request: Request, project: ProjectName, body: EntityAns
         )
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _writer(access, "answering the entity requests of")
+        writer(access, "answering the entity requests of")
     try:
         answers = relay.clean_answers(body.answers)
     except relay.RelayError as exc:
@@ -121,7 +121,7 @@ async def entity_answers(request: Request, project: ProjectName, body: EntityAns
             async with request.app.state.engine.begin() as conn:
                 await relay.hold(conn, store, access.project_id, sha, path, len(data), relay.ANSWERS_KIND, user.user_id)
                 await project_archive.refuse_archived(conn, access.project_id, "its graph is not built again")
-                _, queued = await _queue(request, conn, access.project_id, project, user.user_id)
+                _, queued = await queue(request, conn, access.project_id, project, user.user_id)
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None
     log.info(

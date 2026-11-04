@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal, get_args
 from urllib.parse import urlsplit
 
 SECRET_KINDS = ("env", "git", "forge")  # a variable of the agent's environment, what git asks for, or the hub's own
@@ -120,7 +121,8 @@ _SCP_ORIGIN = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 # project's charter acting for its owner (schedule, schema 0012, evo_agents.hub.curator), or its release schedule
 # (release, schema 0067, evo_agents.hub.releases).
 DISPATCH_FROM = ("any", "web")
-DISPATCHED_VIA = ("machine", "web", "schedule", "release")
+DispatchedVia = Literal["machine", "web", "schedule", "release"]
+DISPATCHED_VIA: tuple[str, ...] = get_args(DispatchedVia)
 
 
 def dispatch_credential(credential_kind: str) -> str:

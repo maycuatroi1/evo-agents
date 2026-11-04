@@ -1041,8 +1041,8 @@ def test_a_host_or_origin_outside_the_allow_list_is_refused_and_malformed_header
     too_large = hub.client.post("/mcp", content=b" " * (4 * 1024 * 1024 + 1), headers=huge)
     assert too_large.status_code == 413 and too_large.json()["error"] == "too_large"
 
-    from evo_agents.hub.server.mcp import allowed as host_allowed
-    from evo_agents.hub.server.mcp import transport_security
+    from evo_agents.hub.server.mcp_gate import allowed as host_allowed
+    from evo_agents.hub.server.mcp_gate import transport_security
 
     security = transport_security(hub.app.state.config)
     assert host_allowed("hub.test", security.allowed_hosts) and not host_allowed("evil.test", security.allowed_hosts)

@@ -218,7 +218,7 @@ async def _goal_review(conn: AsyncConnection, project_id: int, project: str, loc
 
 async def curator_briefs(conn: AsyncConnection, project_id: int) -> bool:
     """Whether the project's Curator sends a morning brief, which then carries the Loop's part: a night_shift
-    schedule, a charter, and the feature curator on (``curator._due``)."""
+    schedule, a charter, and the feature curator on (``curator_shift.due_schedules``)."""
     s, c = tables.schedules, tables.charters
     charter = exists(select(c.c.project_id).where(c.c.project_id == project_id))
     query = select(s.c.id).where(

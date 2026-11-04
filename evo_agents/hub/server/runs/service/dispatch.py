@@ -412,7 +412,7 @@ async def queue_run(
 
 async def refuse_curator_plan(conn: AsyncConnection, access: ProjectAccess, plan_id: str) -> None:
     """409 for a plan the Curator made: the night shift alone runs it (``changes.refuse_manual_dispatch``)."""
-    from evo_agents.hub.server.changes import refuse_manual_dispatch  # it queues runs through this package
+    from evo_agents.hub.server.change_views import refuse_manual_dispatch  # it queues runs through this package
 
     await refuse_manual_dispatch(conn, access.project_id, plan_id)
 
@@ -680,7 +680,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         revision = None
         if body.plan_id is not None:
             held = await plan_routes._visible(conn, access, body.plan_id, None)
-            from evo_agents.hub.server.changes import refuse_manual_dispatch  # it queues runs through this package
+            from evo_agents.hub.server.change_views import refuse_manual_dispatch  # it queues runs through this package
 
             await refuse_manual_dispatch(conn, access.project_id, body.plan_id)
             revision = held.revision

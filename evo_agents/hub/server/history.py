@@ -9,7 +9,7 @@ owner may read or a review run. An item waits while it has no facet of the model
 content as it is now (``llm_fingerprint`` is its facet's fingerprint), unless its last attempt failed and its
 ``llm_retry_at`` has not come.
 
-The night shift (``curator._fire``) queues, right after the night's review run and before anything else, the night's
+The night shift (``curator_shift._fire``) queues, right after the night's review run and before anything else, the night's
 history run (``queue_history``): one a night, once the night's review run was queued, while an item waits or a group of
 facets has no name yet, with a cap of its own (``history.budget_usd`` of the charter, under the next run's caps; none
 at 0), on the reviewer's runtime with the charter's ``history.model``, else the cheapest model the worker on duty

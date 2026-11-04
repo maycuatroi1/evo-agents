@@ -2,7 +2,7 @@
 runtime and model of the charter (``evo_agents.hub.probes`` holds their shape, ``evo_agents.hub.server.probes`` the
 probes themselves).
 
-The night shift (``curator._fire``) queues a probe run last, inside its window, once the night has no plan to run
+The night shift (``curator_shift._fire``) queues a probe run last, inside its window, once the night has no plan to run
 (``queue_probe``): for a charter with ``probes.budget_usd``, the pairs of an active probe of a merged change (with its
 plan), or of a core plugin's rule (no change and no plan: ``source`` plugin), and a model of ``probes.models`` that this week (the ISO week of the night, its Monday in the charter's time zone)
 has not measured yet, the one measured longest ago first (never measured before all), on a pair whose repos and runtime
@@ -136,7 +136,7 @@ def _key_digest(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def _models(body: dict) -> list[tuple[str, str | None]]:
+def probe_models(body: dict) -> list[tuple[str, str | None]]:
     """The runtimes and models of the charter's probes: ``probes.models``, else the builder's."""
     found = [
         (item.get("runtime") or curator.DEFAULT_RUNTIME, item.get("model"))
@@ -299,7 +299,7 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
         return None
     week = probes.week_of(gate.night)
     k = int(settings.get("k") or probes.DEFAULT_K)
-    pairs = await _pairs(conn, due.project_id, week, _models(due.body))
+    pairs = await _pairs(conn, due.project_id, week, probe_models(due.body))
     if not pairs:
         return None
     spent = await week_cost(conn, due.id, week)

@@ -59,6 +59,8 @@ again, gets a thread in the project's triage chat whose agent answers it for the
 (``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
+The routes that read findings and proposals and answer a proposal live in ``evo_agents.hub.server.proposal_reads``,
+the models in ``evo_agents.hub.server.proposal_models``.
 
 A proposal may carry a probe (``evo_agents.hub.server.probes``): a task in a repo it changes, from a base commit, and a
 one-line verify that exits 0 when an agent given the task does not repeat the mistake. One whose evidence cites an entry
@@ -72,15 +74,14 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from types import SimpleNamespace
-from typing import Annotated, Literal
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, insert, null, select, update
+from fastapi import APIRouter, Header, HTTPException, Query, Request
+from pydantic import Field
+from sqlalchemy import func, insert, null, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
@@ -89,7 +90,6 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import (
-    audit,
     change_tiers,
     earlier,
     facet_figures,
@@ -102,14 +102,21 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
-from evo_agents.hub.server.changes import Change, change_view
+from evo_agents.hub.server.change_views import Change
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg_audience import person_audience
-from evo_agents.hub.server.memory_audience import Reader, label_reaches
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.proposal_models import (
+    EvidenceIn,
+    Finding,
+    FindingIn,
+    NightFiguresView,
+    Proposal,
+    ProposalIn,
+)
 from evo_agents.hub.server.review_inbox import proposal_link, review_ended  # noqa: F401 (imported from here)
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.runs.models import LINE, MAX_ID, NOT_HELD, OBJECT_NAME, RunId
+from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser, Principal
@@ -117,247 +124,12 @@ from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
 
-PROPOSAL = "curator.proposal"  # the owner answered: "<project> proposal:<id> run:<id> answer=<accept|reject|defer>"
-MAX_LIST = 200
-MAX_OFFSET = 100_000
 SHOWN_PROBLEMS = 5
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
-READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
-
-Title = Annotated[str, Field(min_length=1, max_length=review.MAX_TITLE_CHARS, pattern=LINE)]
-RepoName = Annotated[str, Field(pattern=review.REPO_NAME)]
-ItemId = Annotated[int, Path(ge=1, le=MAX_ID)]
-
-
-# Models
-
-
-class EvidenceIn(BaseModel):
-    """One piece of evidence, as ``review.parse_evidence`` reads it from the command line."""
-
-    kind: Literal[review.EVIDENCE_KINDS]
-    session_id: str | None = Field(None, pattern=review.SESSION_ID, description="session, transcript: the session")
-    file: str | None = Field(None, pattern=review.TRANSCRIPT_FILE, max_length=512, description="transcript: its file")
-    field: Literal[review.DIGEST_FIELDS] | None = Field(None, description="session: the list of the digest")
-    index: int | None = Field(None, ge=0, le=10_000, description="session: the entry of that list, from 0")
-    run_id: int | None = Field(None, ge=1, le=MAX_ID, description="run: the run")
-    seq: int | None = Field(None, ge=1, le=2**31 - 1, description="run: the seq of its event")
-    repo: RepoName | None = Field(None, description="code: a repo of the project")
-    path: str | None = Field(None, min_length=1, max_length=tiers.MAX_PATH_CHARS, description="code: within the repo")
-    line: int | None = Field(None, ge=1, le=review.MAX_LINE, description="code, transcript: the line")
-    commit: str | None = Field(None, pattern=OBJECT_NAME, description="code: the commit the worktree was at")
-    memory_id: int | None = Field(None, ge=1, le=MAX_ID, description="memory: a memory of the project")
-    revision: int | None = Field(None, ge=1, le=review.MAX_REVISION, description="memory: one of its revisions")
-
-    @model_validator(mode="after")
-    def _complete(self):
-        needed = {"session": ("session_id",), "transcript": ("session_id", "line"), "run": ("run_id", "seq")}
-        needed = {**needed, "code": ("repo", "path"), "memory": ("memory_id", "revision")}[self.kind]
-        if self.kind == "transcript":
-            self.file = self.file or review.MAIN_FILE
-        missing = [name for name in needed if getattr(self, name) is None]
-        if missing:
-            raise ValueError(f"{self.kind} evidence needs {', '.join(missing)}")
-        if (self.field is None) != (self.index is None):
-            raise ValueError("a digest's entry is named by field and index together")
-        if self.path is not None:
-            found = tiers.normalize_path(self.path)
-            if found is None:
-                raise ValueError(f"{self.path!r} is not a path within a repo")
-            self.path = found
-        return self
-
-    def stored(self) -> dict:
-        return {key: value for key, value in self.model_dump().items() if value is not None}
-
-
-class FindingIn(BaseModel):
-    lens: Literal[tuple(review.LENSES)]
-    severity: Literal[review.SEVERITIES] = "medium"
-    title: Title
-    body: str | None = Field(None, min_length=1, max_length=review.MAX_BODY_BYTES, description="markdown, 16 KiB")
-    evidence: list[EvidenceIn] = Field(min_length=1, max_length=review.MAX_EVIDENCE)
-    fix_of: int | None = Field(
-        None,
-        ge=1,
-        le=MAX_ID,
-        description="the merged change whose probe recurred two weekly reports in a row that the prompt asked this run "
-        "to fix: why this run proposes no fix of its rule; the hub adds the probe results as evidence",
-    )
-
-    @model_validator(mode="after")
-    def _bounded(self):
-        if self.body is not None and len(self.body.encode()) > review.MAX_BODY_BYTES:
-            raise ValueError(f"a finding's body is at most {review.MAX_BODY_BYTES} bytes of UTF-8")
-        return self
-
-
-class Finding(BaseModel):
-    id: int
-    project: str
-    run_id: int = Field(description="the review run that recorded it")
-    lens: str
-    severity: Literal[review.SEVERITIES]
-    title: str
-    body: str | None
-    evidence: list[dict] = Field(description="each piece as the hub resolved it, with how (resolved)")
-    created_at: datetime
-    fix_of: int | None = Field(None, description="the change it says why this run proposed no fix of")
-
-
-class FindingList(BaseModel):
-    findings: list[Finding] = Field(description="newest first")
-    total: int
-    limit: int
-    offset: int
-
-
-class PathIn(BaseModel):
-    repo: RepoName
-    path: str = Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)
-
-    @model_validator(mode="after")
-    def _normal(self):
-        found = tiers.normalize_path(self.path)
-        if found is None:
-            raise ValueError(f"{self.path!r} is not a path within a repo")
-        self.path = found
-        return self
-
-
-class ProposalIn(BaseModel):
-    lens: Literal[tuple(review.LENSES)]
-    kind: Literal[tuple(tiers.CHANGE_KINDS)] = Field(description="the kind of change, which gives its first tier")
-    title: Title
-    summary: str | None = Field(None, min_length=1, max_length=review.MAX_BODY_BYTES, description="markdown, 16 KiB")
-    paths: list[PathIn] = Field(default_factory=list, max_length=tiers.MAX_PATHS, description="what it would edit")
-    finding_ids: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
-        default_factory=list, max_length=review.MAX_FINDING_IDS, description="findings of the project it rests on"
-    )
-    evidence: list[EvidenceIn] = Field(default_factory=list, max_length=review.MAX_EVIDENCE)
-    plan: dict | None = Field(None, description="the draft plan: plan.schema.json, in outcome steps; none to promote")
-    promotion: memory_promotion.PromotionIn | None = Field(None, description="kind memory: in place of a plan")
-    probe: stored_probes.ProbeIn | None = Field(
-        None,
-        description="a task and a verify that say whether an agent repeats the mistake; required when the evidence "
-        "cites a correction and the paths include a file a probe arm can place",
-    )
-    fix_of: int | None = Field(
-        None,
-        ge=1,
-        le=MAX_ID,
-        description="the merged change whose probe recurred two weekly reports in a row that the prompt asked this run "
-        "to fix; at least tier 1, and the hub adds the probe results as evidence",
-    )
-
-    @model_validator(mode="after")
-    def _supported(self):
-        if not self.finding_ids and not self.evidence and self.fix_of is None:
-            raise ValueError(
-                "a proposal rests on findings, evidence of its own, or both: give at least one (a fix proposal, "
-                "fix_of, rests on the probe results the hub adds)"
-            )
-        if (self.plan is None) == (self.promotion is None) or (self.promotion and self.kind != "memory"):
-            raise ValueError("a proposal carries a draft plan, or in its place a promotion when its kind is memory")
-        if self.summary is not None and len(self.summary.encode()) > review.MAX_BODY_BYTES:
-            raise ValueError(f"a proposal's summary is at most {review.MAX_BODY_BYTES} bytes of UTF-8")
-        self.finding_ids = list(dict.fromkeys(self.finding_ids))
-        return self
-
-
-class RepoPath(BaseModel):
-    repo: str
-    path: str
-
-
-class ProposalSummary(BaseModel):
-    id: int
-    project: str
-    run_id: int = Field(description="the review run that proposed it")
-    lens: str
-    kind: str
-    title: str
-    tier: int = Field(ge=0, le=3, description="as the hub's tier rules computed it")
-    state: Literal[review.PROPOSAL_STATES]
-    evidence_count: int = Field(description="the pieces of evidence it rests on, its findings' included")
-    duplicate_of: int | None = Field(description="the rejected proposal a dropped one repeats")
-    answered_by: str | None
-    answered_at: datetime | None
-    deferred_until: datetime | None
-    inbox_at: datetime | None = Field(
-        description="when it became an Inbox item of the owner; tier 2 only, and a revert the hub proposes"
-    )
-    created_at: datetime
-    revert_of: int | None = Field(
-        None, description="the proposal whose merged change it reverts: the hub proposed it once its figures got worse"
-    )
-    fix_of: int | None = Field(
-        None, description="the merged change whose rule it fixes: its probe recurred two weekly reports in a row"
-    )
-
-
-class Proposal(ProposalSummary):
-    summary: str | None
-    paths: list[RepoPath]
-    impacted: list[RepoPath] | None = Field(description="what the paths reach in the knowledge graph; null without one")
-    tier_reasons: list[str] = Field(description="why it has its tier, rule by rule")
-    finding_ids: list[int]
-    evidence: list[dict] = Field(description="its own evidence, as the hub resolved it")
-    plan: dict = Field(description="the draft plan; empty for a promotion")
-    promotion: dict | None = Field(None, description="kind memory: what it promotes, and the shared memory it wrote")
-    note: str | None = Field(description="the owner's note with the answer")
-    change: Change | None = Field(
-        None,
-        description="what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it "
-        "waits; null before, for tier 3, and when the caller may not read its plan",
-    )
-    probe: stored_probes.Probe | None = Field(
-        None, description="its active probe, if any; its verify is null unless the caller is an admin of the project"
-    )
-
-
-class ProposalCounts(BaseModel):
-    """How many proposals each value of a filter would list, the other filters applied: every state, tier and lens
-    named, with 0 where none is."""
-
-    state: dict[str, int]
-    tier: dict[str, int] = Field(description='by tier, "0" to "3"')
-    lens: dict[str, int]
-
-
-class ProposalList(BaseModel):
-    proposals: list[ProposalSummary] = Field(description="newest first")
-    total: int
-    limit: int
-    offset: int
-    counts: ProposalCounts | None = Field(None, description="for the list's filters: what each of their values holds")
-
-
-class ProposalAnswer(BaseModel):
-    action: Literal[review.ANSWERS]
-    note: str | None = Field(None, min_length=1, max_length=review.MAX_NOTE_CHARS, pattern=LINE)
-    defer_days: int | None = Field(
-        None, ge=review.DEFER_DAYS[0], le=review.DEFER_DAYS[1], description="with defer; 7 by default"
-    )
-
-    @model_validator(mode="after")
-    def _days(self):
-        if self.defer_days is not None and self.action != "defer":
-            raise ValueError("defer_days goes with the action defer")
-        return self
-
-
-class NightFiguresView(BaseModel):
-    project: str
-    night: date
-    since: datetime
-    until: datetime
-    run_id: int | None = Field(description="the review run queued on them, if any")
-    figures: dict = Field(description="the figures, as curator.collect counted them")
-    created_at: datetime
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
+READ_REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404)}
 
 
 # The run and its owner
@@ -452,7 +224,7 @@ def _refused(where: str, why: str) -> HTTPException:
     return HTTPException(422, f"{where}: {why}; nothing was recorded")
 
 
-async def _project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
+async def project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
     pr = tables.project_repos
     return set((await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id))).scalars())
 
@@ -482,7 +254,7 @@ async def resolve(
     """Each piece of ``items`` as the hub found it, with ``resolved`` saying how; 422 for the first it cannot find."""
     r = tables.runs
     plans = await visible_plans(conn, access, None)
-    repos = await _project_repos(conn, run.project_id)
+    repos = await project_repos(conn, run.project_id)
     code = [f"{item.repo}:{item.path}" for item in items if item.kind == "code"]
     graph = await graph_view(request, run.owner, access, sorted(set(code))) if code else None
     found = []
@@ -522,7 +294,7 @@ async def resolve(
 # Findings
 
 
-def _findings():
+def findings_query():
     f = tables.findings
     return select(
         f.c.id,
@@ -538,7 +310,7 @@ def _findings():
     )
 
 
-def _finding(project: str, row) -> Finding:
+def finding_view(project: str, row) -> Finding:
     data = {key: value for key, value in row._mapping.items() if key != "label"}
     return Finding(project=project, **data)
 
@@ -597,9 +369,9 @@ async def _record_finding(request: Request, body: FindingIn, held) -> Finding:
             run_id,
             {"text": f"finding #{finding_id} ({body.lens}, {body.severity}): {body.title}", "finding": finding_id},
         )
-        row = (await conn.execute(_findings().where(f.c.id == finding_id))).one()
+        row = (await conn.execute(findings_query().where(f.c.id == finding_id))).one()
     log.info("finding recorded", extra={"run_id": run_id, "finding_id": finding_id, "lens": body.lens})
-    return _finding(run.project, row)
+    return finding_view(run.project, row)
 
 
 # Proposals
@@ -694,7 +466,7 @@ async def _rejected_like(conn: AsyncConnection, project_id: int, fingerprint: st
     return (await conn.execute(query)).one_or_none()
 
 
-def _proposals():
+def proposals_query():
     p, u = tables.proposals, tables.users.alias("answerer")
     return select(
         p.c.id,
@@ -726,7 +498,9 @@ def _proposals():
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
-def _proposal(project: str, row, change: Change | None = None, probe: stored_probes.Probe | None = None) -> Proposal:
+def proposal_view(
+    project: str, row, change: Change | None = None, probe: stored_probes.Probe | None = None
+) -> Proposal:
     data = {key: value for key, value in row._mapping.items() if key != "label"}
     data["finding_ids"] = list(data["finding_ids"] or [])
     return Proposal(project=project, change=change, probe=probe, **data)
@@ -768,11 +542,6 @@ async def _fix_assigned(conn: AsyncConnection, run: _ReviewRun, access: ProjectA
     return found
 
 
-def _summary(project: str, row) -> ProposalSummary:
-    data = {key: row._mapping[key] for key in ProposalSummary.model_fields if key != "project"}
-    return ProposalSummary(project=project, **data)
-
-
 @worker_router.post("/runs/{run_id}/proposals", status_code=201, response_model=Proposal, responses=REFUSALS)
 async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, user: CurrentUser) -> Proposal:
     """Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
@@ -808,7 +577,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
             raise HTTPException(
                 409, f"run {run_id} recorded {review.MAX_PROPOSALS} proposals already, the most a run may"
             )
-        repos = await _project_repos(conn, run.project_id)
+        repos = await project_repos(conn, run.project_id)
         unknown = sorted({item.repo for item in body.paths} - repos)
         if unknown:
             raise _refused("paths", f"project {run.project} has no repo {', '.join(unknown)}")
@@ -883,243 +652,21 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
         from evo_agents.hub.server.curator_threads import on_open  # it answers through this module
 
         await on_open(conn, proposal_id)
-        row = (await conn.execute(_proposals().where(p.c.id == proposal_id))).one()
+        row = (await conn.execute(proposals_query().where(p.c.id == proposal_id))).one()
         probe = await stored_probes.of_proposal(conn, run.project, proposal_id, shown=False)
     log.info(
         "proposal recorded",
         extra={"run_id": run_id, "proposal_id": proposal_id, "tier": tier.tier, "dropped": dropped},
     )
-    return _proposal(run.project, row, probe=probe)
+    return proposal_view(run.project, row, probe=probe)
 
 
 # Reading
 
 
-def _reader(access: ProjectAccess) -> None:
+def require_reader(access: ProjectAccess) -> None:
     if access.role is None:
         raise HTTPException(403, f"reading the Curator of project {access.name} needs a grant on it")
-
-
-@router.get("/{project}/curator/findings", response_model=FindingList, responses=READ_REFUSALS)
-async def list_findings(
-    request: Request,
-    project: ProjectName,
-    user: CurrentUser,
-    run_id: Annotated[int | None, Query(ge=1, le=MAX_ID, description="of this review run")] = None,
-    lens: Annotated[Literal[tuple(review.LENSES)] | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
-    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
-) -> FindingList:
-    """The findings of the project's review runs the caller may read, newest first."""
-    f = tables.findings
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        _reader(access)
-        query = _findings().where(f.c.project_id == access.project_id)
-        if run_id is not None:
-            query = query.where(f.c.run_id == run_id)
-        if lens is not None:
-            query = query.where(f.c.lens == lens)
-        rows = (await conn.execute(query.order_by(f.c.id.desc()).limit(MAX_OFFSET))).all()
-    through = plan_routes._sink(access, sink)
-    visible = [_finding(access.name, row) for row in rows if access.visible(row.label, through)]
-    return FindingList(findings=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset)
-
-
-@router.get("/{project}/curator/findings/{finding_id}", response_model=Finding, responses=READ_REFUSALS)
-async def show_finding(
-    request: Request,
-    project: ProjectName,
-    finding_id: ItemId,
-    user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
-) -> Finding:
-    f = tables.findings
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        _reader(access)
-        query = _findings().where(f.c.project_id == access.project_id, f.c.id == finding_id)
-        row = (await conn.execute(query)).one_or_none()
-    if row is None or not access.visible(row.label, plan_routes._sink(access, sink)):
-        raise HTTPException(404, f"project {project} has no finding {finding_id}")
-    return _finding(access.name, row)
-
-
-@router.get("/{project}/curator/proposals", response_model=ProposalList, responses=READ_REFUSALS)
-async def list_proposals(
-    request: Request,
-    project: ProjectName,
-    user: CurrentUser,
-    state: Annotated[list[Literal[review.PROPOSAL_STATES]], Query(description="any of these; repeat it")] = [],  # noqa: B006
-    tier: Annotated[list[Annotated[int, Field(ge=0, le=3)]], Query(description="any of these tiers; repeat it")] = [],  # noqa: B006
-    lens: Annotated[Literal[tuple(review.LENSES)] | None, Query()] = None,
-    run_id: Annotated[int | None, Query(ge=1, le=MAX_ID, description="of this review run")] = None,
-    limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
-    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
-) -> ProposalList:
-    """The proposals of the project's review runs the caller may read, newest first."""
-    p = tables.proposals
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        _reader(access)
-        query = _proposals().where(p.c.project_id == access.project_id)
-        if run_id is not None:
-            query = query.where(p.c.run_id == run_id)
-        rows = (await conn.execute(query.order_by(p.c.id.desc()).limit(MAX_OFFSET))).all()
-        through, reader = plan_routes._sink(access, sink), Reader(conn, user)
-        readable = [row for row in rows if await label_reaches(reader, access, row.label, through)]
-    states, tiers_asked = set(state), set(tier)
-
-    def kept(row, but: str | None = None) -> bool:
-        return (
-            (but == "state" or not states or row.state in states)
-            and (but == "tier" or not tiers_asked or row.tier in tiers_asked)
-            and (but == "lens" or lens is None or row.lens == lens)
-        )
-
-    def counted(facet: str, values) -> dict[str, int]:
-        found = Counter(str(getattr(row, facet)) for row in readable if kept(row, facet))
-        return {str(value): found.get(str(value), 0) for value in values}
-
-    counts = ProposalCounts(
-        state=counted("state", review.PROPOSAL_STATES),
-        tier=counted("tier", range(4)),
-        lens=counted("lens", review.LENSES),
-    )
-    visible = [_summary(access.name, row) for row in readable if kept(row)]
-    return ProposalList(
-        proposals=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset, counts=counts
-    )
-
-
-async def readable_proposal(
-    conn, access: ProjectAccess, proposal_id: int, sink: str | None, user: Principal, *, lock: bool = False
-):
-    """Proposal ``proposal_id`` of the project, its row locked with ``lock``, when its label reaches ``user`` through
-    ``sink`` (else the project's hub sink), its audience included; 404 otherwise."""
-    p = tables.proposals
-    query = _proposals().where(p.c.project_id == access.project_id, p.c.id == proposal_id)
-    if lock:
-        query = query.with_for_update(of=p)
-    row = (await conn.execute(query)).one_or_none()
-    if row is None or not await label_reaches(Reader(conn, user), access, row.label, plan_routes._sink(access, sink)):
-        raise HTTPException(404, f"project {access.name} has no proposal {proposal_id}")
-    return row
-
-
-async def _change_of(conn, access: ProjectAccess, proposal_id: int, sink: str | None) -> Change | None:
-    """The change accepting proposal ``proposal_id`` made, when the caller may read its plan through ``sink`` (as GET
-    .../curator/changes shows it); None without one."""
-    c = tables.curator_changes
-    query = select(c.c.id, c.c.plan_id).where(c.c.project_id == access.project_id, c.c.proposal_id == proposal_id)
-    found = (await conn.execute(query)).one_or_none()
-    if found is None or (found.plan_id is not None and found.plan_id not in await visible_plans(conn, access, sink)):
-        return None
-    return await change_view(conn, found.id)
-
-
-@router.get("/{project}/curator/proposals/{proposal_id}", response_model=Proposal, responses=READ_REFUSALS)
-async def show_proposal(
-    request: Request,
-    project: ProjectName,
-    proposal_id: ItemId,
-    user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
-) -> Proposal:
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        _reader(access)
-        row = await readable_proposal(conn, access, proposal_id, sink, user)
-        change = await _change_of(conn, access, proposal_id, sink)
-        shown = stored_probes.verify_shown(access, user)
-        probe = await stored_probes.of_proposal(conn, access.name, proposal_id, shown=shown)
-    return _proposal(access.name, row, change, probe)
-
-
-async def answer_proposal_as(
-    conn: AsyncConnection,
-    user: Principal,
-    project: str,
-    proposal_id: int,
-    body: ProposalAnswer,
-    *,
-    via: str | None = None,
-    agent: tuple[str, int] | None = None,
-) -> Proposal:
-    """Accept, reject or defer proposal ``proposal_id`` of ``project`` as ``user``, an admin of it, in the caller's
-    transaction, and read its notifications. The answer route, the Telegram channel (``via="telegram"``, which the
-    audit row names) and the project's agent for ``user`` (``agent``: its handle and chat run, ``curator_threads``)
-    answer through it; it raises the HTTPException the route answers with."""
-    if agent is not None:
-        via = f"@{agent[0]} in chat run {agent[1]}"
-    p, n = tables.proposals, tables.notifications
-    access = await project_access(conn, user, project)
-    _reader(access)
-    if not has_role(access.role, "admin"):
-        raise HTTPException(
-            403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
-        )
-    row = await readable_proposal(conn, access, proposal_id, None, user, lock=True)
-    if row.state not in ("open", "deferred"):
-        raise HTTPException(409, f"proposal {proposal_id} is {row.state}: only an open or deferred one is answered")
-    state = review.ANSWERED[body.action]
-    days = body.defer_days or review.DEFAULT_DEFER_DAYS
-    values = {
-        "state": state,
-        "answered_by": user.user_id,
-        "answered_at": func.now(),
-        "note": body.note,
-        "deferred_until": func.now() + timedelta(days=days) if body.action == "defer" else None,
-    }
-    await conn.execute(update(p).values(**values).where(p.c.id == proposal_id))
-    await ledger_lines.proposal_answered(
-        conn,
-        project_id=access.project_id,
-        proposal_id=proposal_id,
-        user_id=user.user_id,
-        login=user.login,
-        action=body.action,
-        note=body.note,
-        days=days if body.action == "defer" else None,
-        via=via,
-        agent=None if agent is None else f"@{agent[0]}",
-        chat_run_id=None if agent is None else agent[1],
-    )
-    if body.action == "accept" and row.promotion is not None:
-        await memory_promotion.promote(conn, access, user, proposal_id, row.promotion)
-    elif body.action == "accept" and row.tier in await planned_tiers_of(conn, access.project_id):
-        from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
-
-        await plan_from_proposal(conn, access, user, row)
-    await conn.execute(
-        update(n).values(read_at=func.now()).where(n.c.proposal_id == proposal_id, n.c.read_at.is_(None))
-    )
-    target = f"{access.name} proposal:{proposal_id} run:{row.run_id} answer={body.action}"
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=PROPOSAL,
-        target=target if via is None else f"{target} via={via}",
-        project_id=access.project_id,
-    )
-    row = await readable_proposal(conn, access, proposal_id, None, user)
-    shown = stored_probes.verify_shown(access, user)
-    probe = await stored_probes.of_proposal(conn, access.name, proposal_id, shown=shown)
-    return _proposal(access.name, row, await _change_of(conn, access, proposal_id, None), probe)
-
-
-@router.post("/{project}/curator/proposals/{proposal_id}/answer", response_model=Proposal, responses=REFUSALS)
-async def answer_proposal(
-    request: Request, project: ProjectName, proposal_id: ItemId, body: ProposalAnswer, user: CurrentUser
-) -> Proposal:
-    """Accept, reject or defer a proposal; the admins of the project alone may."""
-    async with request.app.state.engine.begin() as conn:
-        answered = await answer_proposal_as(conn, user, project, proposal_id, body)
-    log.info("proposal answered", extra={"proposal_id": proposal_id, "action": body.action, "login": user.login})
-    return answered
 
 
 @router.get("/{project}/curator/figures", response_model=NightFiguresView, responses=READ_REFUSALS)
@@ -1134,7 +681,7 @@ async def show_figures(
     cf = tables.curator_figures
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        require_reader(access)
         query = select(cf.c.night, cf.c.since, cf.c.until, cf.c.run_id, cf.c.figures, cf.c.created_at).where(
             cf.c.project_id == access.project_id
         )

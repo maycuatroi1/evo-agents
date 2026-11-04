@@ -573,7 +573,7 @@ async def _review_repos(conn: AsyncConnection, project_id: int, project: str, wo
     return [{"repo": name, "branch": None} for (name,) in names]
 
 
-async def _review_place(
+async def review_place(
     conn: AsyncConnection, due, duty: Duty, runtime: str, *, repoless: bool = False
 ) -> tuple[list[dict], list[str]]:
     """The repos of the review run and what keeps it from a worker on duty: the repos of the first one that fits it,
@@ -628,7 +628,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate, *, hold: bool = F
             return None
     charter, duty = due.body, gate.duty
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    repos, problems = await _review_place(conn, due, duty, runtime)
+    repos, problems = await review_place(conn, due, duty, runtime)
     budget = _review_budget(charter, gate.budget)
     if problems or budget is None:
         why = "; ".join(problems) or "the night has too little money left"
@@ -696,7 +696,7 @@ async def queue_optimize_review(conn: AsyncConnection, due, gate: Gate, optimize
     beside the night's runs, under the charter's review cost cap; (its id, ""), or (None, why)."""
     charter, duty = due.body, gate.duty
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    repos, problems = await _review_place(conn, due, duty, runtime)
+    repos, problems = await review_place(conn, due, duty, runtime)
     budget = _review_budget(charter, gate.budget)
     if problems or budget is None:
         return None, "; ".join(problems) or "the night has too little money left"
@@ -892,7 +892,7 @@ async def collect(
     (the database's now when None); how many schedules ended in each outcome, and how many deferred proposals opened
     again. With ``data_dir``, the worker's cache (the job's), the graphs of the projects that are due are measured
     first (``kg_health.measure``, with ``github_app`` and ``blobs``), and ``graphs`` says how many."""
-    from evo_agents.hub.server.curator import _due, gate_of  # it imports this module
+    from evo_agents.hub.server.curator_shift import due_schedules, gate_of  # it imports this module
 
     measured = None
     if data_dir is not None:
@@ -916,7 +916,7 @@ async def collect(
             log.exception("moving the kg_init runs on failed")
             initiated = {"failed": 1}
     async with engine.begin() as conn:
-        due = (await conn.execute(_due(now))).all()
+        due = (await conn.execute(due_schedules(now))).all()
         reopened = await reopen_deferred(conn)
     outcomes: Counter = Counter()
     for row in due:

@@ -75,7 +75,7 @@ takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatch
 on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the first of
 runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, dispatched from a web session when the
 worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots;
-a drained worker still takes a run pinned to it that resumes one it held (``claims.resumes_here``), whose session and
+a drained worker still takes a run pinned to it that resumes one it held (``claim_rules.resumes_here``), whose session and
 worktrees no other worker has, and nothing else. The
 next attempt of a run lost on the worker is passed over until the worker is steady (``steady``: heartbeats for
 runs.STEADY_SECONDS, none runs.STEADY_GAP_SECONDS late), so a machine that slept does not take the run again at once;

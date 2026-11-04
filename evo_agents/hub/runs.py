@@ -73,6 +73,7 @@ import math
 import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
+from typing import Literal, get_args
 
 from evo_agents.hub.autonomy_card import DECISION_CATEGORIES as DECISION_CATEGORIES
 from evo_agents.hub.autonomy_card import DECISION_CATEGORY_TEXT as DECISION_CATEGORY_TEXT
@@ -149,7 +150,7 @@ KEEP_GOING_TURNS = 3
 # the identity's Chromium with no agent (``hub.browser_login``); the weekly probe of a change of the Curator, k sessions
 # with its rule on and k with it off (``hub.probes``). A session on a member's own machine, which no worker
 # runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
-RUN_KINDS = (
+RunKind = Literal[
     "step",
     "plan",
     "review",
@@ -163,9 +164,11 @@ RUN_KINDS = (
     "release",
     "question",
     "browser",
-)
+]
+RUN_KINDS: tuple[str, ...] = get_args(RunKind)
 LOCAL_KIND = "local"
-SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
+ShownKind = Literal[RunKind, "local"]
+SHOWN_KINDS: tuple[str, ...] = get_args(ShownKind)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 # the kinds only the night shift queues, and the Builder
 CURATOR_KINDS = ("review", "judge", "replay", "history", "probe")
@@ -254,7 +257,8 @@ WORKER_FEATURES = (
     REPOLESS_REVIEW,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
-RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
+Runtime = Literal["claude-code", "opencode", "codex"]
+RUNTIMES: tuple[str, ...] = get_args(Runtime)  # the runtimes of the core; a plugin's is <plugin>/<name>
 # A runtime's name, any included: one of RUNTIMES, or a plugin's <plugin>/<name> (evo_agents.plugins.runtimes). The hub
 # takes a run of a runtime registered in its project (evo_agents.hub.server.runs.service.plugin_runtimes), not every
 # name of this shape; schema 0039 holds runs to it.
@@ -262,8 +266,10 @@ RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
-MODES = ("headless", "interactive")
-APPROVALS = ("auto", "review")
+Mode = Literal["headless", "interactive"]
+MODES: tuple[str, ...] = get_args(Mode)
+Approval = Literal["auto", "review"]
+APPROVALS: tuple[str, ...] = get_args(Approval)
 # What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal, park or end
 # an author run's chat (finish), how many inbox messages and open decisions it has; for the worker, whether to drain.
 CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish", "inbox", "decisions", "drain")
@@ -276,12 +282,19 @@ RESUME_KINDS = ("plan", "author", "chat")  # the kinds of run that wait for thei
 # the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id); a chat run that
 # waits for nothing ends done with its turn, and its next turn is a new run too (``evo_agents.hub.chat_runs``)
 SESSION_KINDS = RESUME_KINDS
-PLAN_TIMEOUT_CHOICES = (2, 4, 8, 24)  # hours of agent time a plan run may take; waiting and parked do not count
+PlanTimeout = Literal[2, 4, 8, 24]
+PLAN_TIMEOUT_CHOICES: tuple[int, ...] = get_args(
+    PlanTimeout
+)  # hours of agent time a plan run may take; waiting and parked do not count
 
-HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a worker holds the run, extends its lease
-ACTIVE_STATES = ("queued", *HELD_STATES, "review", "parked")  # at most one run of a step, or plan run of a plan
-TERMINAL_STATES = ("done", "failed", "lost", "cancelled")
-RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
+HeldState = Literal["leased", "running", "interactive", "verifying", "waiting"]
+HELD_STATES: tuple[str, ...] = get_args(HeldState)  # a worker holds the run, extends its lease
+ActiveState = Literal["queued", HeldState, "review", "parked"]
+ACTIVE_STATES: tuple[str, ...] = get_args(ActiveState)  # at most one run of a step, or plan run of a plan
+TerminalState = Literal["done", "failed", "lost", "cancelled"]
+TERMINAL_STATES: tuple[str, ...] = get_args(TerminalState)
+RunState = Literal[ActiveState, TerminalState]
+RUN_STATES: tuple[str, ...] = get_args(RunState)
 # A ``local`` run (``evo_agents.hub.server.local_runs``) is a Claude Code session on a member's machine, which the
 # hub only watches: no worker holds it, so it has no lease, no slot and no attempts, and the moves above are not its
 # own. Its state is the session's: running (a turn is under way), waiting (the agent asked a decision and waits for
@@ -290,8 +303,10 @@ RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
 # ``running`` and ``waiting`` are states of RUN_STATES; idle and ended are only a local run's, and ended is final
 # until the session registers again.
 LOCAL_STATES = ("running", "waiting", "idle", "ended")
-LOCAL_ONLY_STATES = ("idle", "ended")
-SHOWN_STATES = RUN_STATES + LOCAL_ONLY_STATES  # every state a run may be shown in, local runs included
+LocalOnlyState = Literal["idle", "ended"]
+LOCAL_ONLY_STATES: tuple[str, ...] = get_args(LocalOnlyState)
+ShownState = Literal[RunState, LocalOnlyState]
+SHOWN_STATES: tuple[str, ...] = get_args(ShownState)  # every state a run may be shown in, local runs included
 LOCAL_SILENT_SECONDS = 24 * 3600  # a local run that sent nothing for this long is ended; the session may register again
 MAX_LOCAL_FIELD = 500  # a local run's machine, cwd and account, one line each
 # The time a run spends in these counts toward its timeout; waiting for an answer, parked, queued and review do not.

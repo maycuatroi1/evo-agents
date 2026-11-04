@@ -19,7 +19,7 @@ if not pg.DSN:
 from sqlalchemy import column, create_engine, func, insert, select, table
 
 from evo_agents.hub import facets, kg_asked, kg_labels, tables
-from evo_agents.hub.server.curator import _owner_access
+from evo_agents.hub.server.curator_shift import owner_access
 from evo_agents.hub.server.kg_labels import visible_labels
 from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import HOLDOUT, split_of
@@ -80,7 +80,7 @@ def stored_labels(db) -> list[dict]:
 def read_through(hub, sink: str) -> list[dict]:
     async def read():
         async with hub.client.app.state.engine.connect() as conn:
-            access = await _owner_access(conn, user_of(hub.db, OWNER), OWNER, PROJECT)
+            access = await owner_access(conn, user_of(hub.db, OWNER), OWNER, PROJECT)
             return await visible_labels(conn, access, sink)
 
     return hub.client.portal.call(read)

@@ -35,7 +35,7 @@ from evo_agents.hub.server import audit, credential_resolver
 from evo_agents.hub.server.account_oauth import drop_tokens
 from evo_agents.hub.server.decision_models import AnswerIn
 from evo_agents.hub.server.sealing import Sealer, secret_aad
-from evo_agents.hub.server.secrets import NO_KEY, _upsert, audit_target, bind_secret, live_secrets
+from evo_agents.hub.server.secrets import NO_KEY, audit_target, bind_secret, live_secrets, upsert_secret
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ async def keep_value(
             )
         name, environment, bind = proposed, None if held is None else held.environment, True
     sealed = sealer.seal(value, secret_aad(user.user_id, name, KIND))
-    statement = _upsert(
+    statement = upsert_secret(
         user.user_id,
         name,
         kind=KIND,

@@ -2,7 +2,7 @@
 ``evo_agents.hub.replay`` holds the model and ``evo_agents.hub.replay_suite`` the job that builds each project's suite
 of replay tasks.
 
-The night shift (``curator._fire``) queues, after a judge run that waits and the Builder of a planned change, the replay
+The night shift (``curator_shift._fire``) queues, after a judge run that waits and the Builder of a planned change, the replay
 run of the oldest change of the Curator that waits for one (``queue_replay``): a change built (its Builder ran, its
 branch is on origin), not merged or closed (``replay.REPLAY_STATES``) and not failed by the Judge (``passed`` false),
 whose proposal is of kind skill or names a skill, an AGENTS.md or a CLAUDE.md (``replay.harness_path``), with no run of

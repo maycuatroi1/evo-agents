@@ -16,6 +16,8 @@ still stop it."""
 
 from __future__ import annotations
 
+import typing
+
 import pytest
 
 from evo_agents.hub import judge
@@ -882,3 +884,7 @@ def test_diff_index_line_and_file_headers_of_a_real_git_diff_are_not_changed_lin
     assert files["new.py"].removed == []
     assert files["gone.py"].status == "removed" and files["gone.py"].removed == [(1, "x = 1")]
     assert files["gone.py"].added == []
+
+
+def test_a_sign_kind_is_a_key_of_the_sign_texts():
+    assert typing.get_args(judge.SignKind) == tuple(judge.SIGN_KINDS)
