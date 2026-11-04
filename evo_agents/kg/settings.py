@@ -43,6 +43,9 @@ class Tuning:
     passage_chars: int = text_search.PASSAGE_CHARS
     embed_chars: int = semantic.EMBED_CHARS
     strategy: str | None = None
+    entities: dict | None = (
+        None  # the entities step's mapping (evo_agents.kg.entities); runs only under a strategy that enables it
+    )
 
     @property
     def bm25(self) -> tuple[float, float, float, float, float]:
@@ -62,7 +65,7 @@ class Tuning:
 
 
 DEFAULT = Tuning()
-BUILD_KEYS = frozenset({"passage_from", "passage_chars", "embed_chars", "semantic_model", "strategy"})
+BUILD_KEYS = frozenset({"passage_from", "passage_chars", "embed_chars", "semantic_model", "strategy", "entities"})
 SEMANTIC_KEYS = frozenset({"semantic_mode", "semantic_model"})  # kept where semantic mode and model always were
 KEYS = tuple(f.name for f in fields(Tuning))
 _FLOATS = {"semantic_weight": (0.0, 20.0), "bm25_name": (0.0, 50.0), "bm25_path": (0.0, 50.0), "bm25_body": (0.0, 50.0)}
@@ -85,6 +88,13 @@ def _check(key: str, value):
         if not isinstance(value, str) or not value.strip():
             raise SettingsError("semantic_model must be a model name")
         return value.strip()
+    if key == "entities":
+        from evo_agents.kg import entities
+
+        try:
+            return entities.check(value)
+        except entities.EntitiesError as exc:
+            raise SettingsError(str(exc)) from None
     if key == "strategy":
         import re
 

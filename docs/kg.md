@@ -407,7 +407,7 @@ evo-kg: what the project graph links to the code this search matched (callers, t
   them and the plan steps that name it. Two of each, then a count. A symbol whose definition matched comes first,
   then other symbols, then files, at most four lines after the header; a file whose symbol has a line gets no line of
   its own.
-- Only edges of status `parsed` or `resolved` (never `proposed`) and nodes and edges the sink may see; only ids, no
+- Only edges of status `parsed` or `resolved` (never `proposed` or `extracted`) and nodes and edges the sink may see; only ids, no
   name or text of a source. Nothing to add, an unbound directory, no store, a result past 0.35 s of lookup, `-v`,
   `-L`, `--json`, `--files`, or a `grep` that filters another command's output: no note. Errors go to stderr as one
   line naming their type; the exit status is always 0.

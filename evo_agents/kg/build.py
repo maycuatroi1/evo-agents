@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.kg import audit
+from evo_agents.kg import audit, entities
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
@@ -55,14 +55,14 @@ from evo_agents.kg.policy import Label, Policy, any_of, join_all
 from evo_agents.kg.profile import PROFILE_VERSION, build_profile, item_stats
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.schema import known_kinds
+from evo_agents.kg.schema import known_kinds, known_relations
 from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
 from evo_agents.kg.store import Clusters, Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
 from evo_agents.kg.text import split_passages
 
-STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
+STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config", "commit", "pr"}
 DEFINITION_SAMPLES = 15
@@ -147,7 +147,12 @@ class _UnionFind:
             self.parent[hi] = lo
 
 
-def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, dict, list[str], list[str]]:
+def run_pipeline(
+    project: Project, corpus: Corpus, memo: Memo, *, entity_memo: Memo | None = None, offline: bool = False
+) -> tuple[Graph, dict, list[str], list[str]]:
+    """The facts of the corpus, the graph made of them and its coverage. ``entity_memo`` is where the entities step
+    (``kg.entities``) keeps what its model said (the build's memo by default); ``offline`` makes that step read it
+    without calling the model: how a build is verified."""
     policy: Policy = project.policy
     try:
         ontology = project.ontology
@@ -226,6 +231,26 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
 
     index = build_index(first, identifiers)
     second = link_items(records, structure_out, index, memo, corpus, body)
+    tuning = tuning_of(project)
+    extracted: dict[str, list[dict]] = {}
+    entities_coverage = None
+    if tuning.entities:
+        config = entities.enabled(tuning, getattr(getattr(project, "harness", None), "root", None))
+        if config is None:
+            entities_coverage = entities.not_enabled(tuning)
+        else:
+            extracted, entities_coverage = entities.run(
+                config,
+                project,
+                records,
+                body,
+                entity_memo or memo,
+                unit_labels,
+                first,
+                kinds,
+                known_relations(ontology) if ontology is not None else None,
+                offline=offline,
+            )
 
     # Assembly.
     nodes: dict[str, dict] = {}
@@ -242,7 +267,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     item_mentions: dict[str, dict] = {}  # item id -> its dangling and ambiguous mentions, for the review queue
     for rec in records:
         stats[rec.source]["items"] += 1
-        for f in first[rec.item_id] + second[rec.item_id]:
+        for f in first[rec.item_id] + second[rec.item_id] + extracted.get(rec.item_id, []):
             t = f["t"]
             if t == "node" and kinds is not None and f["kind"] not in kinds:
                 if (rec.item_id, f["kind"]) not in rejected:
@@ -387,6 +412,8 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             if entry["code"]["warning"]:
                 coverage["warnings"].append(f"source {sid}: {entry['code']['warning']}")
         coverage["sources"].append(entry)
+    if entities_coverage is not None:
+        coverage["entities"] = entities_coverage
     coverage["profile"] = build_profile(graph, item_rows(records, memo, body), coverage, policy)
     return graph, coverage, errors, issues
 
@@ -646,7 +673,7 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
         "clusters": kg_clusters.inputs(),
     }
     tuning = tuning_of(project).overrides()
-    chosen = {k: v for k, v in tuning.items() if k in ("passage_from", "passage_chars", "strategy")}
+    chosen = {k: v for k, v in tuning.items() if k in ("passage_from", "passage_chars", "strategy", "entities")}
     if chosen:  # only a project that set them: every other project keeps the digest it had
         parts["tuning"] = chosen
     return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
@@ -672,6 +699,8 @@ def unchanged(project: Project) -> BuildReport | None:
         b = store.latest_ready()
         row = store.build_row(b) if b is not None else None
         if row is None or row["state_digest"] != state or row["stats"].get("inputs") != inputs:
+            return None
+        if entities.unfinished(row["coverage"]):  # items left for a later build: this build goes on with them
             return None
         size = row["stats"].get("size") or store.counts(b)
     finally:
@@ -848,7 +877,9 @@ def verify_build(
         store = Store(tmp / "graph.sqlite")
         memo = Memo(None) if cold else Memo(memo_path(project))
         corpus = project.corpus()
-        graph, coverage, errors, _ = run_pipeline(project, corpus, memo)
+        graph, coverage, errors, _ = run_pipeline(
+            project, corpus, memo, entity_memo=Memo(memo_path(project)) if cold else None, offline=True
+        )
         if errors:
             return {"match": False, "errors": errors[:10]}
         add_curation(graph, coverage)

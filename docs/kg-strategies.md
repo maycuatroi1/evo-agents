@@ -43,6 +43,40 @@ A file with an unknown key, an invalid identifier pattern, a value out of range 
 
 A strategy never adds, removes or relabels a source. Labels stay what the project's policy says.
 
+## The entities step
+
+`steps: [entities]` turns on an optional build step that reads prose with a model and states the entities and relations
+it says. Nothing runs without it: a project whose strategy does not list the step never calls a model, even when its
+settings hold an `entities` mapping (coverage then says so).
+
+The mapping sits in `settings.entities` of the strategy file:
+
+```yaml
+steps: [entities]
+knowledge:
+  ontology:
+    node_kinds: [Concept]
+settings:
+  entities:
+    model: my-model            # the name kept as the evidence of what it stated
+    command: [my-model-cli]    # a local model: JSON on stdin, JSON on stdout
+    node_kinds: [Concept]      # all in the ontology
+    relations: [depends_on]
+    items: [markdown]          # record kinds read; the prose kinds when absent
+    max_cost: 2.0              # ceilings of one build: max_calls, max_tokens, max_cost
+```
+
+- A model is local (`command`, or a `url` on this machine) or reached through `sink`, a policy sink of kind `llm-backend`
+  (with `url`, which needs `pip install 'evo-agents[entities]'`; `key_env` names the variable that holds the key). An
+  item whose label the sink does not clear is not sent: `coverage["entities"]["refused"]` lists the items and why.
+- What the model states is cut to the node kinds and relations the mapping lists and the ontology holds. Each node
+  and edge has the status `extracted`, below `resolved` in rank and left out of impact, and carries the model's name. An
+  edge `mentions` joins the document to each entity.
+- Results are memoized by the item's content digest, the model and the mapping. Each build records calls, tokens and cost
+  in `coverage["entities"]` and stops at its ceiling (defaults: 200 calls, 400000 tokens, cost 5). The items left over
+  are in `skipped`, the build is not skipped as unchanged, and the next build continues from the memo.
+- Verifying a build reads the memo only and never calls a model.
+
 ## Your own strategy
 
 Put a file of the same format in `<harness>/strategies/NAME.yaml`. It can point at the connectors, the ontology and the
