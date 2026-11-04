@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -10,23 +9,12 @@ import { brandingCss } from "@/lib/hub-settings";
 import { serverBranding } from "@/lib/hub-settings-server";
 import { mobileHint } from "@/lib/mobile-hint";
 
-import "./globals.css";
-
 // IBM Plex for the interface (Sans) and for data, logs and the terminal (Mono). Both carry the Vietnamese subset, so
-// the Vietnamese people write in plans, evidence and memories renders in the same faces as the English around it.
-const sans = IBM_Plex_Sans({
-  subsets: ["latin", "latin-ext", "vietnamese"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-sans",
-  display: "swap",
-});
-
-const mono = IBM_Plex_Mono({
-  subsets: ["latin", "latin-ext", "vietnamese"],
-  weight: ["400", "500"],
-  variable: "--font-plex-mono",
-  display: "swap",
-});
+// the Vietnamese people write in plans, evidence and memories renders in the same faces as the English around it. The
+// files are in the repository (scripts/fonts.mjs), so a build never fetches them; plex.css sets --font-plex-sans and
+// --font-plex-mono, which globals.css reads.
+import "./fonts/plex.css";
+import "./globals.css";
 
 /**
  * The title and the favicon follow the hub's branding when it sets a name or a favicon (GET /v1/branding); without
@@ -62,7 +50,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const nonce = requestHeaders.get("x-nonce") ?? undefined; // set by src/proxy.ts for every page
   const colors = brandingCss(branding?.colors); // the branding's colours over the tokens; none without branding
   return (
-    <html lang={locale} className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>{colors ? <style data-testid="hub-branding">{colors}</style> : null}</head>
       <body className="min-h-svh">
         <NextIntlClientProvider>
