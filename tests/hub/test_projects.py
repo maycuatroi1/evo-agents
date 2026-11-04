@@ -681,7 +681,7 @@ def test_a_channel_sink_is_stored_at_register_and_listed_by_project_list_json(
             return client.request(method, path, headers=who["member"]).json()
 
     monkeypatch.setattr(cli_client, "_signed_in", lambda: (Hub(), None))
-    assert cli_client.cmd_project_list(type("Args", (), {"json": True})()) == 0
+    assert cli_client.cmd_project_list(type("Args", (), {"json": True, "archived": False})()) == 0
     (listed,) = json.loads(capsys.readouterr().out)
     assert [s for s in listed["sinks"] if s["kind"] == "channel"] == [TELEGRAM_SINK]
 

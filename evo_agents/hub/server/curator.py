@@ -1020,8 +1020,8 @@ async def resume(request: Request, project: ProjectName, user: CurrentUser) -> C
 
 
 def _due(now: datetime | None):
-    """Each night_shift schedule of a project the Curator is on for, with its project, its owner's login, the newest
-    revision of its charter, and the local time in the charter's zone at ``now`` (the database's now when None)."""
+    """Each night_shift schedule of a live project the Curator is on for, with its project, its owner's login, the
+    newest revision of its charter, and the local time in the charter's zone at ``now`` (the database's now when None)."""
     s, c, p, u = tables.schedules, tables.charters, tables.projects, tables.users
     newest = (
         select(c.c.project_id, func.max(c.c.revision).label("revision")).group_by(c.c.project_id).subquery("newest")
@@ -1042,7 +1042,11 @@ def _due(now: datetime | None):
         .join(u, u.c.id == s.c.owner_id)
         .join(newest, newest.c.project_id == s.c.project_id)
         .join(c, and_(c.c.project_id == newest.c.project_id, c.c.revision == newest.c.revision))
-        .where(s.c.kind == NIGHT_SHIFT, hub_settings.feature_on("curator", s.c.project_id))
+        .where(
+            s.c.kind == NIGHT_SHIFT,
+            p.c.archived_at.is_(None),  # an archived project has no night shift (project_archive)
+            hub_settings.feature_on("curator", s.c.project_id),
+        )
         .order_by(s.c.id)
     )
 
