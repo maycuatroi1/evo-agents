@@ -444,7 +444,18 @@ def build_case(
 ) -> graphs.Built:
     """The graph of a case: reused when built with this extractor and ITEMS_VERSION, else built once ``make_room``
     made room for it (``graphs.build_graph`` for a memory case). DiskFull goes up to the caller."""
-    task = stand_in(case)
+    return build_stand_in(lay, stand_in(case), lambda: write_harness(lay, case), room=room, keep=keep)
+
+
+def build_stand_in(
+    lay: graphs.Layout,
+    task: Task,
+    write,
+    *,
+    room: graphs.Room = graphs.DEFAULT_ROOM,
+    keep: frozenset[str] = frozenset(),
+) -> graphs.Built:
+    """``build_case`` for any graph of a harness with an items file: ``write()`` makes the harness of ``task``."""
     if lay.built(task):
         with contextlib.suppress(OSError):
             os.utime(lay.project_dir(task) / graphs.MARKER)
@@ -455,7 +466,7 @@ def build_case(
     graphs.make_room(lay, task, room, keep | {lay.name(task)})
     start = time.monotonic()
     try:
-        write_harness(lay, case)
+        write()
         with graphs.bench_home(lay.home):
             project = graphs.project_of(lay, task)
             runs = sync_project(project)
