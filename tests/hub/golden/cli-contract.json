@@ -11261,6 +11261,50 @@
         ]
       }
     },
+    "hub kg semantic": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--sink"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "build_id",
+          "mode",
+          "model",
+          "model_available",
+          "rows",
+          "vectors",
+          "coverage",
+          "partial",
+          "error"
+        ]
+      }
+    },
     "hub login": {
       "positionals": [],
       "options": [

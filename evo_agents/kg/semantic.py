@@ -33,6 +33,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -396,13 +397,25 @@ class Indexed:
     embedded: int = 0
     digest: str | None = None
     error: str | None = None
+    total: int = 0  # the rows with a body; ``rows`` is less when the time budget stopped the embedding
+
+    @property
+    def partial(self) -> bool:
+        return self.total > self.rows
+
+    def coverage(self, model: str) -> dict:
+        """What a build's coverage keeps of the vectors: the model, the mode, the rows with a body, the rows that hold a
+        vector (the rest wait for the next build, which finds the embedded ones in the cache)."""
+        found = {"model": model, "mode": self.mode, "rows": self.total, "vectors": self.rows, "partial": self.partial}
+        return {**found, "error": self.error[:200]} if self.error else found
 
     def line(self) -> str:
         if self.error:
             return f"semantic {self.mode}: no vectors written, search stays by words: {self.error}"
         if self.mode == "off":
             return "semantic off: no vectors"
-        return f"semantic {self.mode}: {self.rows} rows with a vector, {self.embedded} embedded now"
+        more = f", {self.total - self.rows} left for the next build" if self.partial else ""
+        return f"semantic {self.mode}: {self.rows} rows with a vector, {self.embedded} embedded now{more}"
 
 
 def has_vectors(db: sqlite3.Connection) -> bool:
@@ -425,10 +438,12 @@ def index(
     download: bool = True,
     progress: Callable[[int, int], None] | None = None,
     forget: bool = True,
+    budget: float | None = None,
 ) -> Indexed:
     """Make the graph in ``db`` hold the vectors ``settings`` asks for: none when off (the tables go), else one per
     full-text row with a body, embedded only when ``cache_path`` lacks it. A model that cannot be loaded leaves the
-    graph without vectors, as off, and says why. ``forget`` False keeps the vectors of the cache that no row of this
+    graph without vectors, as off, and says why. ``budget`` is the seconds the embedding may take: past it the rows
+    left stay without a vector, the graph holds the rest, and the next build goes on from the cache. ``forget`` False keeps the vectors of the cache that no row of this
     graph has, for a cache shared by the snapshots of one repo."""
     if not settings.indexes:
         drop(db)
@@ -440,7 +455,7 @@ def index(
     if held_info is not None and held_info.digest == digest:  # the graph holds these vectors already
         db.execute("UPDATE node_vec_meta SET value = ? WHERE key = 'mode'", (settings.mode,))
         db.commit()
-        return Indexed(settings.mode, len(rows), 0, digest)
+        return Indexed(settings.mode, len(rows), 0, digest, total=len(rows))
     cache = Cache(cache_path) if cache_path is not None else None
     try:
         np = _numpy()
@@ -450,7 +465,10 @@ def index(
         model = embedder(settings.model, download=download) if todo else None
         dim = model.dim if model else None
         done = 0
+        started = time.monotonic()
         for start in range(0, len(todo), BATCH * 8):  # by length, so a batch pads little; kept as it goes
+            if budget is not None and time.monotonic() - started >= budget:
+                break
             part = todo[start : start + BATCH * 8]
             vectors = model.embed([t for _, t in part])
             fresh = [(d, np.asarray(v, dtype=np.float16).tobytes()) for (d, _), v in zip(part, vectors, strict=True)]
@@ -470,6 +488,11 @@ def index(
             cache.close()
     if dim is None:  # every vector came from the cache
         dim = KNOWN_MODELS.get(settings.model, {}).get("dim") or (len(next(iter(held.values()))) // 2 if held else 0)
+    total = len(rows)
+    if len(held) < len(set(digests)):  # the budget ran out: the rows without a vector wait
+        kept = [(r, d) for r, d in zip(rows, digests, strict=True) if d in held]
+        rows, digests = [r for r, _ in kept], [d for _, d in kept]
+        digest = sha256(canonical_json([settings.model, [[r[0], d] for r, d in zip(rows, digests, strict=True)]]))
     drop(db)
     db.executescript(VEC_SCHEMA)
     db.executemany(
@@ -479,7 +502,7 @@ def index(
     meta = {"model": settings.model, "dim": str(dim), "mode": settings.mode, "digest": digest}
     db.executemany("INSERT INTO node_vec_meta VALUES (?, ?)", sorted(meta.items()))
     db.commit()
-    return Indexed(settings.mode, len(rows), len(todo), digest)
+    return Indexed(settings.mode, len(rows), done, digest, total=total)
 
 
 def index_file(

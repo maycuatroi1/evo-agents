@@ -15,6 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.kg import semantic
 
+DEFAULT_NEW_MODE = "index"  # a project registered now: vectors written, search by words until the holdout says on
+
+
+async def start(conn: AsyncConnection, project_id: int) -> None:
+    """Give a new project its row at mode index; a project that has a row keeps it (the owner's choice stands)."""
+    t = tables.kg_semantic
+    values = {"mode": DEFAULT_NEW_MODE, "model": semantic.DEFAULT_MODEL}
+    await conn.execute(
+        pg_insert(t).values(project_id=project_id, **values).on_conflict_do_nothing(index_elements=[t.c.project_id])
+    )
+
 
 async def read(conn: AsyncConnection, project_id: int) -> semantic.Settings:
     t = tables.kg_semantic
@@ -32,7 +43,19 @@ async def write(
     await conn.execute(statement.on_conflict_do_update(index_elements=[t.c.project_id], set_=values))
 
 
+EMBED_BUDGET_SECONDS = 900.0  # a build embeds for 15 minutes at most; the rows left wait for the next build
+
+
 def index(path: Path, settings: semantic.Settings, cache: Path) -> semantic.Indexed:
-    """The vectors ``settings`` asks for, in the graph at ``path``; embedded only when ``cache`` lacks them. Blocking:
-    the first build of a project embeds every row with a body."""
-    return semantic.index_file(path, settings, cache, leave_wal=True)
+    """The vectors ``settings`` asks for, in the graph at ``path``; embedded only when ``cache`` lacks them, for at
+    most EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). Blocking."""
+    return semantic.index_file(path, settings, cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+
+
+def model_available(model: str) -> bool:
+    """Whether this process can load ``model`` without a download: what a search needs."""
+    try:
+        semantic.embedder(model)
+    except semantic.SemanticUnavailable:
+        return False
+    return True

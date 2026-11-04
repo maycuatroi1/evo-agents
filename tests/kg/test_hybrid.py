@@ -276,3 +276,25 @@ def test_openrouter_backend_is_opt_in_unit_length_and_keeps_a_ledger(tmp_path, m
     with pytest.raises(semantic.SemanticUnavailable, match="OPENROUTER_API_KEY"):
         semantic.embedder("BAAI/bge-m3")
     semantic.forget_models()
+
+
+def test_a_spent_budget_leaves_the_rest_for_the_next_build(tmp_path, kg_env, words):
+    project = with_garage(tmp_path, kg_env)
+    sync_build(project)
+    path = project.root / "graph.sqlite"
+    settings = semantic.Settings("index", FAKE)
+    none = semantic.index_file(path, settings, budget=0.0)
+    assert none.total > 0 and none.rows == 0 and none.embedded == 0 and none.partial
+    assert none.coverage(FAKE) == {
+        "model": FAKE,
+        "mode": "index",
+        "rows": none.total,
+        "vectors": 0,
+        "partial": True,
+    }
+    full = semantic.index_file(path, settings)  # no budget: the same graph, every row
+    assert full.rows == full.total == none.total and not full.partial and full.embedded > 0
+    assert full.digest != none.digest
+    words.texts = 0
+    again = semantic.index_file(path, settings, budget=0.0)  # everything held: nothing left to stop
+    assert again.rows == again.total and again.embedded == 0 and words.texts == 0

@@ -339,14 +339,19 @@ def build_in_cache(
     path, report = build_graph(project)
     asked = kg_asked.write(path, learned) if learned is not None else None
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
+    vector_coverage = None
     if semantic is not None:
         vectors = kg_semantic.index(path, semantic, project.root / kg_semantic.semantic.CACHE_FILE)
         if vectors.error:
             log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
         if vectors.digest is not None:
             content_hash = sha256_of(f"{content_hash}\n{vectors.mode}\n{vectors.digest}")
+        if semantic.indexes:
+            vector_coverage = vectors.coverage(semantic.model)
     sha256 = _sha256(path)
     coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
+    if vector_coverage is not None:
+        coverage["vectors"] = vector_coverage
     return Built(
         path,
         sha256,
