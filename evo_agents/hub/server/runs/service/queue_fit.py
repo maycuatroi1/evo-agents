@@ -247,6 +247,8 @@ def _condition_reason(key: str, row, run, profile, home) -> tuple[str, bool]:
             f"its daemon (evo-agents {version}) does not say it judges merge requests: update it and restart it",
             False,
         )
+    if key == "repoless_review":
+        return f"its daemon (evo-agents {version}) runs no review with no repo: update it and restart it", False
     if key == "agent_pool":
         if home is not None:
             return f"is not a node of pool {home.pool}, where the runs of @{home.handle} go", False

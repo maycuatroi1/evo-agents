@@ -624,10 +624,20 @@ class Claimer:
             ("browser", browsers.claim_gate(row.id, row.features)),
             ("gateway", gateway_accounts.claim_gate(row.agent_version)),
             ("merge_judge", merge_judge_gate(row.features)),
+            ("repoless_review", repoless_review_gate(row.features)),
             ("agent_pool", agent_placement.claim_gate(row.id)),
             ("pool_accounts", pool_accounts.claim_gate()),
             ("placement", or_(agent_placement.home_run(row.id), self.node.gate(row.id))),
         ]
+
+
+def repoless_review_gate(features):
+    """The condition a queued run meets for a worker whose daemon says ``features``: a review run with no repo (the KG
+    init of a project fed by uploads alone) goes only to a daemon that says it runs one (``runs.REPOLESS_REVIEW``)."""
+    if runs.REPOLESS_REVIEW in (features or ()):
+        return true()
+    r = tables.runs
+    return or_(r.c.kind != "review", func.coalesce(func.jsonb_array_length(r.c.repos), 0) > 0)
 
 
 def merge_judge_gate(features):

@@ -39,7 +39,7 @@ from typing import Annotated, Literal
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import func, null, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -238,7 +238,7 @@ async def _queue_agent(
         body.setdefault("notes", []).append(f"no review run: {why}")
         return None
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    repos, problems = await _review_place(conn, due, duty, runtime)
+    repos, problems = await _review_place(conn, due, duty, runtime, repoless=True)
     if problems:
         body.setdefault("notes", []).append("no review run: " + "; ".join(problems))
         return None
@@ -263,7 +263,7 @@ async def _queue_agent(
         "mode": "headless",
         "approval": "auto",
         "timeout_s": caps["max_seconds"] + curator.BUDGET_GRACE_SECONDS,
-        "repos": repos,
+        "repos": repos or null(),  # SQL NULL: a project fed by uploads alone has no repo (schema 0202)
         "budget": caps,
     }
     try:

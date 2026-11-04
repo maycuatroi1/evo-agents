@@ -5604,3 +5604,21 @@ def test_0201_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id, "fingerprint": "a" * 64}))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0201") :]
+
+
+def test_0202_lets_a_review_run_name_no_repo_and_going_back_deletes_those(hub_db):
+    move_to(hub_db, "0201")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    bare = {"kind": "review", "request": None, "repos": null(), "title": "KG init of demo"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(_author_run(ids, **bare))
+    move_to(hub_db, "0202")
+    with live.connect(hub_db) as conn:
+        one(conn, _author_run(ids, **bare))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(_author_run(ids, kind="step", repos=[{"repo": "harness", "branch": "main"}]))
+    move_to(hub_db, "0201", down=True)
+    review = hub_tables.runs.c.kind == "review"
+    assert query(hub_db, select(func.count()).select_from(hub_tables.runs).where(review)) == [(0,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0202") :]
