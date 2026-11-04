@@ -122,6 +122,7 @@ class Embedder:
 
     name: str
     dim: int
+    chunk = BATCH * 8  # texts ``index`` hands one ``embed`` call, kept to the cache after each
 
     def embed(self, texts: Sequence[str]) -> list:
         raise NotImplementedError
@@ -191,6 +192,8 @@ class OpenRouterEmbedder(Embedder):
     opt-in with EVO_KG_EMBEDDINGS=openrouter, for a host with no CPU time or GPU for the local model. Texts leave the
     machine, so it is not the default. Every call adds its tokens and cost to ``spend_ledger`` and stops at
     OPENROUTER_MAX_USD."""
+
+    chunk = OPENROUTER_BATCH * OPENROUTER_THREADS  # one call fills every request in flight
 
     def __init__(self, name: str):
         if name not in OPENROUTER_MODELS:
@@ -467,12 +470,13 @@ def index(
         todo = sorted(texts.items(), key=lambda x: (len(x[1]), x[0]))
         model = embedder(settings.model, download=download) if todo else None
         dim = model.dim if model else None
+        step = getattr(model, "chunk", BATCH * 8)
         done = 0
         started = time.monotonic()
-        for start in range(0, len(todo), BATCH * 8):  # by length, so a batch pads little; kept as it goes
+        for start in range(0, len(todo), step):  # by length, so a batch pads little; kept as it goes
             if budget is not None and time.monotonic() - started >= budget:
                 break
-            part = todo[start : start + BATCH * 8]
+            part = todo[start : start + step]
             vectors = model.embed([t for _, t in part])
             fresh = [(d, np.asarray(v, dtype=np.float16).tobytes()) for (d, _), v in zip(part, vectors, strict=True)]
             held.update(fresh)

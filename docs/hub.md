@@ -3490,7 +3490,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 `evo-agents hub worker --data-dir /cache --concurrency 2` runs two jobs at a time (default 1). On SIGTERM it takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
-memory, so the compose file caps the worker with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. The worker
+memory, so the compose file caps the worker with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
+`EVO_KG_EMBEDDINGS=openrouter` the embedding of a build goes to OpenRouter and takes none of those CPUs. The worker
 refuses to start without a blob store, since builds read from it and write to it.
 
 ## Data access
@@ -3642,6 +3643,7 @@ environment, never in a committed file.
 | `EVO_HUB_GATEWAY_SECRET` | api, gateway | the root secret of the model gateway, at least 32 random characters: the `gateway` service derives OmniRoute's secrets and dashboard password from it and the api signs in with the same password; unset, the gateway is off and the hub runs without it (section Model gateway). The worker does not get it |
 | `EVO_HUB_GATEWAY_URL` | api | where the api reaches the gateway; empty is `http://evo-agents-hub-gateway:20128`, the service on its own network |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
+| `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |

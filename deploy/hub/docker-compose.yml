@@ -73,6 +73,10 @@ x-hub-environment: &hub-environment
   EVO_HUB_SELLER_SIGNAL_PROJECT: ${EVO_HUB_SELLER_SIGNAL_PROJECT:-}
   EVO_HUB_PLUGIN_HOST_URL: ${EVO_HUB_PLUGIN_HOST_URL:-}
   EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
+  # Read by evo_agents.kg.semantic, not config.py: "openrouter" embeds the graphs' rows through OpenRouter's API with
+  # OPENROUTER_API_KEY instead of the local BAAI/bge-m3 on the worker's CPUs; empty keeps the local model.
+  EVO_KG_EMBEDDINGS: ${EVO_KG_EMBEDDINGS:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
 
 # The model gateway's variables (evo_agents/hub/config.py): the api alone takes them beside x-hub-environment, since
 # only the api calls the gateway. Without EVO_HUB_GATEWAY_SECRET the gateway is off.
