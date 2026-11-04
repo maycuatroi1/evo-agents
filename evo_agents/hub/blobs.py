@@ -609,6 +609,20 @@ class BlobStore:
             "upload_part", Params=params, ExpiresIn=int(UPLOAD_TTL.total_seconds())
         )
 
+    def upload_part(self, key: str, multipart_id: str, number: int, body: BinaryIO, size: int) -> bool:
+        """Send ``size`` bytes of ``body`` as part ``number`` of the multipart upload, as the hub's web relays a part
+        a browser sent it; False when the multipart upload is gone."""
+        response = self._call(
+            "UploadPart",
+            "upload_part",
+            Key=key,
+            UploadId=multipart_id,
+            PartNumber=number,
+            Body=body,
+            ContentLength=size,
+        )
+        return response is not None
+
     def list_parts(self, key: str, multipart_id: str) -> dict[int, tuple[int, str]] | None:
         """{part number: (size, ETag)} of the parts the store has; None when the multipart upload does not exist."""
         parts: dict[int, tuple[int, str]] = {}

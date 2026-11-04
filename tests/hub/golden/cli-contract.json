@@ -35616,6 +35616,147 @@
           }
         }
       },
+      "/v1/kg/{project}/uploads/{upload_id}/parts/{number}": {
+        "put": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Send Part",
+          "description": "Relay part ``number`` of an upload in flight to the blob store, for a client that cannot reach the store.",
+          "operationId": "send_part_v1_kg__project__uploads__upload_id__parts__number__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "upload_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the upload, as `hub kg uploads` lists it",
+                "title": "Upload Id"
+              },
+              "description": "the upload, as `hub kg uploads` lists it"
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 10000,
+                "minimum": 1,
+                "description": "the part, numbered from 1",
+                "title": "Number"
+              },
+              "description": "the part, numbered from 1"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgPartSent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the part's bytes, exactly the size the upload gives it",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/eval-set": {
         "put": {
           "tags": [
@@ -122880,6 +123021,24 @@
             "aliases"
           ],
           "title": "KgNode"
+        },
+        "KgPartSent": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "size"
+          ],
+          "title": "KgPartSent"
         },
         "KgPartUrl": {
           "properties": {
