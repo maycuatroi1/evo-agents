@@ -166,6 +166,36 @@ def cmd_settings(args) -> int:
     return 0
 
 
+def cmd_init(args) -> int:
+    """The kg_init run on this machine: the Curator configures the project's graph from its data profile."""
+    from evo_agents.kg import init_local
+    from evo_agents.kg.cli import _print_json, _project
+
+    project = _project(args)
+    try:
+        record = init_local.run(project, questions=Path(args.questions).expanduser() if args.questions else None)
+    except (init_local.InitError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        _print_json(record)
+    else:
+        print(
+            f"kg init {project.name}: {record['questions']['count']} tune questions from {record['questions']['source']}"
+        )
+        for item in record["inputs"]:
+            print(f"  input {item['name']}  {item['sha256']}")
+        if record["error"]:
+            print(f"  not applied: {record['error']}")
+        else:
+            print(f"  applied: {', '.join(record['applied']) or 'nothing'}")
+            build = record["build"]
+            if build:
+                print(f"  build: {'ok' if build['ok'] else 'failed'}")
+        print(f"  record: {project.root / init_local.FILE}")
+    return 1 if record["error"] else 0
+
+
 def cmd_strategy(args) -> int:
     """List the strategies, show one, or apply one (``--dry-run`` says what it would change)."""
     from evo_agents.kg import strategy as kg_strategy
@@ -633,6 +663,16 @@ def register(ksub, with_project) -> None:
     st.add_argument("--figures", help="json object of the figures that justify the change, kept with it")
     st.add_argument("--undo", action="store_true", help="put back what the last change replaced")
     st.set_defaults(func=cmd_settings)
+
+    ini = with_project(
+        ksub.add_parser("init", help="the Curator configures the project's graph from its data profile (docs/kg.md)")
+    )
+    ini.add_argument(
+        "--questions",
+        metavar="FILE",
+        help="question set: its tune part measures the choices; the holdout is never read",
+    )
+    ini.set_defaults(func=cmd_init)
 
     sg = with_project(
         ksub.add_parser("strategy", help="list, show or apply a KG strategy for a kind of data (docs/kg-strategies.md)")

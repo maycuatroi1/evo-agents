@@ -82,13 +82,16 @@ def build_coverage(coverage: Mapping | None, reach: Mapping | None, *, skipped: 
             row["read"] = {key: read.get(key) for key in READ_KEYS}
         sources.append(row)
     totals = {key: sum(row[key] for row in sources) for key in MENTION_KEYS}
-    return {
+    found = {
         "sources": sources,
         **_mentions(totals),
         "dangling_edges": _int(coverage.get("dangling_edges")),
         "python": dict(reach) if isinstance(reach, Mapping) else None,
         "skipped": bool(skipped),
     }
+    if isinstance(coverage.get("profile"), Mapping):  # the data profile (``evo_agents.kg.profile``): kg_init reads it
+        found["profile"] = dict(coverage["profile"])
+    return found
 
 
 def source_files(project) -> dict[str, dict]:

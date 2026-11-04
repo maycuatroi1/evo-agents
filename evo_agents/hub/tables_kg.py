@@ -405,6 +405,9 @@ def kg_settings_tables(metadata: MetaData) -> tuple[Table, Table]:
 SETTINGS_KINDS = ("set", "undo")
 OPTIMIZE_ACTIVE = ("measuring", "running", "after")  # the states of a KG optimize run in flight
 OPTIMIZE_STATES = (*OPTIMIZE_ACTIVE, "done", "reverted", "failed")
+INIT_ACTIVE = ("queued", "running")  # the states of a kg_init run in flight
+INIT_STATES = (*INIT_ACTIVE, "done", "failed")
+INIT_VIAS = ("first_build", "profile", "manual")  # what asked for a kg_init run
 
 
 def optimize_runs(metadata: MetaData) -> Table:
@@ -444,6 +447,43 @@ def optimize_runs(metadata: MetaData) -> Table:
     )
     Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(OPTIMIZE_ACTIVE))
     Index(f"{name}_night_key", table.c.project_id, table.c.night, unique=True, postgresql_where=table.c.via == "night")
+    return table
+
+
+def init_runs(metadata: MetaData) -> Table:
+    """kg_init_runs (0197), added to ``metadata``: each kg_init run of a project (``evo_agents.hub.server.kg_init``): the
+    Curator configures the graph from its data profile. What asked for it (``via``: its first build, a profile that
+    changed a lot, a call), the reasons, the build and the profile it was given, the review run of the agent it queued
+    (lens kg_init), what it was shown and decided (``body``), its report. One run a project is in flight at a time."""
+    name = "kg_init_runs"
+    table = Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("via", Text, nullable=False),
+        Column("requested_by", BigInteger),
+        Column("state", Text, nullable=False),
+        Column("why", JSONB, nullable=False),
+        Column("build_id", BigInteger),
+        Column("profile", JSONB),
+        Column("agent_run_id", BigInteger),
+        Column("body", JSONB, nullable=False),
+        Column("report", Text),
+        Column("error", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        _when("ended_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
+        ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        CheckConstraint(column("via").in_(INIT_VIAS), name=f"{name}_via_check"),
+        CheckConstraint(column("state").in_(INIT_STATES), name=f"{name}_state_check"),
+        Index(f"{name}_project_idx", "project_id", "id"),
+        Index(f"{name}_agent_run_idx", "agent_run_id"),
+    )
+    Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(INIT_ACTIVE))
     return table
 
 

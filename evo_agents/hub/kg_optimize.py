@@ -5,7 +5,7 @@ tune split, and the report the owner gets at the end of a run.
 
 A measure (``Measure``) is the holdout eval of one build asked twice, by words (BM25, the asked column at the weight in
 effect) and by words and meaning fused (None without vectors or the model), with the tune split asked at each
-candidate weight of the asked column. The noise of hit@5 is two standard errors of a proportion over the questions
+candidate weight of the asked column. The loop only measures and hands the numbers on (``handover``). The noise of hit@5 is two standard errors of a proportion over the questions
 asked, at least NOISE_FLOOR_POINTS; the noise of the tokens per hit is the same share of their value, at least
 TOKEN_NOISE_FLOOR: an eval of a few dozen questions moves by more than a point between two builds of the same sources.
 """
@@ -150,14 +150,16 @@ def summary(project: str, body: Mapping, state: str) -> str:
     """The first line of the report: what the run came to."""
     before = (body.get("before") or {}).get("holdout")
     after = (body.get("after") or {}).get("holdout")
-    if state == "reverted":
+    if state == "reverted":  # a run of before kg_init, which undid its changes itself
         ended = "reverted after a regression"
     elif state == "failed":
         ended = "failed"
     elif state in ("measuring", "running", "after"):
         ended = f"in flight ({state})"
+    elif body.get("regressions"):
+        ended = "measured, with a regression for the Curator to judge"
     else:
-        ended = "kept"
+        ended = "measured"
     hits = ""
     if before and after:
         hits = f": hit@5 {before.get('hit@5')}% to {after.get('hit@5')}%"
@@ -207,18 +209,33 @@ def report_text(project: str, run_id: int, body: Mapping, state: str) -> str:
     regressed = body.get("regressions") or []
     if regressed:
         lines.append("- Regression: " + "; ".join(regressed) + ".")
-        undone = body.get("undone") or {}
-        lines.append(
-            f"- Undone: decisions {', '.join(f'#{n}' for n in undone.get('decisions') or []) or 'none'}; "
-            f"revert proposals {', '.join(f'#{n}' for n in undone.get('reverts') or []) or 'none'}; "
-            f"asked weight back to {undone.get('asked_weight', 'the previous one')}; "
-            f"search by meaning back to {undone.get('semantic', 'its previous mode')}."
-        )
+    lines.append(
+        "- Nothing was undone: the figures go to the next kg_init run of the project, which decides to keep or to "
+        "revert (the previous asked weight was "
+        f"{asked.get('previous', 'not recorded')}; search by meaning is {gate.get('previous', 'unchanged')})."
+    )
     notes = body.get("notes") or []
     if notes:
         lines.append("- Notes: " + "; ".join(str(note) for note in notes) + ".")
     lines.append("- Rerank by Jev: off; the loop never turns it on.")
     return "\n".join(lines)
+
+
+def handover(body: Mapping) -> dict:
+    """What the loop hands the next kg_init run: the holdout's figures before and after, what regressed, what the loop
+    left in effect and the values to go back to, the decisions it applied and the pull requests of its review run. The
+    loop undoes nothing; the Curator decides keep or revert from these numbers."""
+    before, after = body.get("before") or {}, body.get("after") or {}
+    asked, gate = body.get("asked") or {}, body.get("semantic") or {}
+    return {
+        "before": before.get("holdout"),
+        "after": after.get("holdout"),
+        "regressions": list(body.get("regressions") or []),
+        "asked_weight": {"now": asked.get("weight"), "previous": asked.get("previous")},
+        "semantic": {"mode": gate.get("previous"), "advice": gate.get("mode"), "reason": gate.get("reason")},
+        "decisions": (body.get("decisions") or {}).get("numbers") or [],
+        "pulls": [item.get("pr_url") or item.get("branch") for item in body.get("pulls") or []],
+    }
 
 
 def prompt_lines(run_id: int, body: Mapping) -> list[str]:
@@ -231,8 +248,8 @@ def prompt_lines(run_id: int, body: Mapping) -> list[str]:
         "",
         f"# KG optimize run #{run_id}",
         "The hub measured the project's knowledge graph before this run; after it ends, the hub applies the fixes of "
-        "the review queue as graph decisions (origin kg-optimize), rebuilds the graph and measures again, undoing "
-        "what made the holdout worse.",
+        "the review queue as graph decisions (origin kg-optimize), rebuilds the graph and measures again. It undoes "
+        "nothing and changes no mode of search by meaning: the next kg_init run gets both measures and decides.",
         f"- Holdout before (build {before.get('build_id')}): {_figure_text(before.get('holdout'))}.",
         f"- Open review items: {before.get('review_open')}; real sessions: {before.get('sessions')}.",
         f"- Search by meaning: {gate.get('decision')}: {gate.get('reason')}.",

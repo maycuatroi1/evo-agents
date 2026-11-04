@@ -6,8 +6,9 @@ one too, and the two rankings are fused. The model runs on the machine that buil
 member's machine, never through a third party's API unless the API backend below is turned on. Code is `evo_agents/kg/semantic.py`.
 
 It is off by default, and a project turns it on only when its own question set says it helps. The hub's KG optimize
-loop turns it on for a project only when the holdout part of its set gives hit@5 at least 5 points above the search
-by words, tokens per answer file no higher, and a hub p95 under one second. On the evo-agents questions (830, all
+loop measures the gate (the holdout part of its set gives hit@5 at least 5 points above the search by words, tokens
+per answer file no higher, and a hub p95 under one second) and hands the advice to the Curator's kg_init run, which
+sets the mode. On the evo-agents questions (830, all
 repos of the harness, graph of 20,462 rows with a body) it does not clear that bar, so it stays off there:
 
 | Split | Search | hit@5 | tokens per answer file | p95 ms (local, 8 cores) |
@@ -42,7 +43,7 @@ evo-agents kg semantic --project demo --mode on               # the next build k
 ```
 
 On the hub the mode is the project's row of `kg_semantic` (migration 0181), off without one; the build reads it
-(`evo_agents/hub/kg_semantic.py`). No HTTP route sets it yet: the KG optimize loop writes it. A project registered
+(`evo_agents/hub/kg_semantic.py`). The Curator's kg_init run writes it with the KG settings (`semantic_mode`); the optimize loop no longer does. A project registered
 on the hub gets its row at `index` from the start (a project that has a row keeps it), so its first build writes the
 vectors and search stays by words until the holdout says `on`. A build embeds for 15 minutes at most; the rows left have
 no vector, the build's coverage says so (`coverage.vectors`: model, mode, rows, vectors, partial), and the next build goes

@@ -70,7 +70,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, facet_job, kg_labels, review, runs, tables
+from evo_agents.hub import curator, facet_job, kg_init_db, kg_labels, review, runs, tables
 from evo_agents.hub import kg_optimize as optimize_model
 from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
@@ -79,6 +79,7 @@ from evo_agents.hub.server import (
     curator_threads,
     facet_figures,
     kg_health,
+    kg_init,
     kg_optimize,
     memory_promotion,
     product_figures,
@@ -774,6 +775,20 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
     ).one()
+    initiated = await kg_init_db.of_agent_run(conn, view.id)
+    if initiated is not None:  # the review run of a kg_init run: no night, its own lens and prompt
+        earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, ["kg_init"])
+        return review.build_review_prompt(
+            view.project,
+            None,
+            ["kg_init"],
+            [repo.model_dump() for repo in view.repos or []],
+            {},
+            [],
+            earlier=earlier,
+            playbook=playbook,
+            optimize=["", (initiated.body or {}).get("prompt") or ""],
+        )
     figures = (await conn.execute(_night_row(row.project_id, row.schedule_night))).one_or_none()
     charter = (
         await conn.execute(
@@ -867,6 +882,13 @@ async def collect(
         except Exception:  # the night shift goes on without moving its KG optimize runs
             log.exception("moving the KG optimize runs on failed")
             optimized = {"failed": 1}
+    initiated = None
+    if data_dir is not None:
+        try:
+            initiated = await kg_init.advance(engine, blobs=blobs, data_dir=data_dir)
+        except Exception:  # the night shift goes on without moving its kg_init runs
+            log.exception("moving the kg_init runs on failed")
+            initiated = {"failed": 1}
     async with engine.begin() as conn:
         due = (await conn.execute(_due(now))).all()
         reopened = await reopen_deferred(conn)
@@ -885,4 +907,6 @@ async def collect(
     found = {**dict(sorted(outcomes.items())), "reopened": reopened}
     if optimized:
         found["kg_optimize"] = optimized
+    if initiated:
+        found["kg_init"] = initiated
     return found if measured is None else {**found, "graphs": measured}

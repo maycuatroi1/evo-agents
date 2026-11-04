@@ -87,7 +87,11 @@ LENSES: dict[str, str] = {
     "ambiguous, dangling; Python methods no call edge reaches; builds that changed nothing), and what agents got from "
     "it: kg lookups that came back empty, searches that fell back to grep, edited files kg did not rank in its top 5, "
     "and the retrieval eval's score",
+    "kg_init": "how a project's knowledge graph is configured: its data profile, what its build covered, the "
+    "strategies, and what the starter questions score; the strategy, KG settings and sources that fit the data. "
+    "Asked for by a kg_init run (evo_agents.hub.server.kg_init), never a night's turn",
 }
+ON_DEMAND_LENSES = ("kg_init",)  # the lenses a run asks for, left out of the nights' turns
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
 SEVERITIES = ("low", "medium", "high")
@@ -246,7 +250,7 @@ class EvidenceProblem(ValueError):
 def lenses_for(night: date, count: int = LENSES_PER_NIGHT) -> list[str]:
     """The ``count`` lenses of ``night``, in LENSES' order from the night's turn: consecutive nights take the next
     ones, so each lens comes round every len(LENSES) / count nights."""
-    names = list(LENSES)
+    names = [name for name in LENSES if name not in ON_DEMAND_LENSES]
     count = max(1, min(int(count), len(names)))
     start = (night.toordinal() * count) % len(names)
     return [names[(start + offset) % len(names)] for offset in range(count)]

@@ -5653,7 +5653,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -5777,7 +5778,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -5901,7 +5903,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -6403,7 +6406,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -6983,7 +6987,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -7259,7 +7264,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -10855,6 +10861,115 @@
           "builds"
         ],
         "schema": "KgHealthView"
+      }
+    },
+    "hub kg init": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--decide"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "via",
+          "state",
+          "why",
+          "build_id",
+          "agent_run_id",
+          "summary",
+          "decisions",
+          "notes",
+          "report",
+          "error",
+          "created_at",
+          "updated_at",
+          "ended_at"
+        ],
+        "schema": "InitRun",
+        "with": {
+          "--status": {
+            "kind": "object",
+            "keys": [
+              "active",
+              "runs"
+            ],
+            "schema": "InitRuns"
+          },
+          "--all": {
+            "kind": "object",
+            "keys": [
+              "started",
+              "skipped"
+            ],
+            "schema": "InitAll"
+          },
+          "--decide": {
+            "kind": "object",
+            "keys": [
+              "run",
+              "applied"
+            ],
+            "schema": "DecisionOut"
+          }
+        }
       }
     },
     "hub kg measure": {
@@ -25097,7 +25212,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -25299,7 +25415,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         }
       ],
@@ -25474,7 +25591,8 @@
             "security",
             "product_goals",
             "product",
-            "kg_health"
+            "kg_health",
+            "kg_init"
           ]
         },
         {
@@ -34456,6 +34574,321 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/init": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Start Init",
+          "description": "Ask for a kg_init run of the project now: 201 with the new run, or 200 with the run in flight.",
+          "operationId": "start_init_v1_kg__project__init_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InitRun"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "200": {
+              "description": "a run is in flight already: that run",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InitRun"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Init",
+          "description": "The project's kg_init runs, newest first, with the one in flight, its decisions and its report.",
+          "operationId": "list_init_v1_kg__project__init_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "description": "the newest runs listed",
+                "default": 10,
+                "title": "Limit"
+              },
+              "description": "the newest runs listed"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InitRuns"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/init/{run_id}/decision": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Decide Init",
+          "description": "Record the Curator's decision of a kg_init run: validated, then applied (the strategy and settings, with the\nreasons and figures kept in the settings' history, a rebuild queued when needed).",
+          "operationId": "decide_init_v1_kg__project__init__run_id__decision_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DecisionOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/admin/kg-init": {
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Start Init All",
+          "description": "Queue a kg_init run for every project with a knowledge config (an admin's).",
+          "operationId": "start_init_all_v1_admin_kg_init_post",
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/InitAll"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
                   }
                 }
               }
@@ -44559,7 +44992,8 @@
                       "security",
                       "product_goals",
                       "product",
-                      "kg_health"
+                      "kg_health",
+                      "kg_init"
                     ],
                     "type": "string"
                   },
@@ -44837,7 +45271,8 @@
                       "security",
                       "product_goals",
                       "product",
-                      "kg_health"
+                      "kg_health",
+                      "kg_init"
                     ],
                     "type": "string"
                   },
@@ -52674,7 +53109,8 @@
                       "security",
                       "product_goals",
                       "product",
-                      "kg_health"
+                      "kg_health",
+                      "kg_init"
                     ],
                     "type": "string"
                   },
@@ -52833,7 +53269,8 @@
                       "security",
                       "product_goals",
                       "product",
-                      "kg_health"
+                      "kg_health",
+                      "kg_init"
                     ],
                     "type": "string"
                   },
@@ -111633,6 +112070,21 @@
           "title": "DecisionBoard",
           "description": "Everything of a project that waits for a person, the three gates first, the oldest first in each group."
         },
+        "DecisionBody": {
+          "properties": {
+            "decision": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Decision",
+              "description": "the decision: strategy, settings, sources, code_changes and reasons"
+            }
+          },
+          "type": "object",
+          "required": [
+            "decision"
+          ],
+          "title": "DecisionBody"
+        },
         "DecisionList": {
           "properties": {
             "decisions": {
@@ -111706,6 +112158,26 @@
             "recommended"
           ],
           "title": "DecisionOption"
+        },
+        "DecisionOut": {
+          "properties": {
+            "run": {
+              "type": "integer",
+              "title": "Run"
+            },
+            "applied": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Applied",
+              "description": "what each part of the decision did"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run",
+            "applied"
+          ],
+          "title": "DecisionOut"
         },
         "DiffLink": {
           "properties": {
@@ -115521,7 +115993,8 @@
                 "security",
                 "product_goals",
                 "product",
-                "kg_health"
+                "kg_health",
+                "kg_init"
               ],
               "title": "Lens"
             },
@@ -118622,6 +119095,202 @@
             "created_at"
           ],
           "title": "InboxMessage"
+        },
+        "InitAll": {
+          "properties": {
+            "started": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Started",
+              "description": "the projects a run was queued for"
+            },
+            "skipped": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Skipped",
+              "description": "the projects left out, with why"
+            }
+          },
+          "type": "object",
+          "required": [
+            "started",
+            "skipped"
+          ],
+          "title": "InitAll"
+        },
+        "InitRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "first_build",
+                "profile",
+                "manual"
+              ],
+              "title": "Via"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "done",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "why": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Why",
+              "description": "what asked for the run"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id"
+            },
+            "agent_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Run Id",
+              "description": "the review run (lens kg_init) of the agent that decides"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "decisions": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Decisions",
+              "description": "what the Curator decided and what was applied; empty until it decided"
+            },
+            "notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Notes"
+            },
+            "report": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report",
+              "description": "the report, markdown; null until the run ends"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "via",
+            "state",
+            "why",
+            "build_id",
+            "agent_run_id",
+            "summary",
+            "decisions",
+            "notes",
+            "report",
+            "error",
+            "created_at",
+            "updated_at",
+            "ended_at"
+          ],
+          "title": "InitRun"
+        },
+        "InitRuns": {
+          "properties": {
+            "active": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/InitRun"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/InitRun"
+              },
+              "type": "array",
+              "title": "Runs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "active",
+            "runs"
+          ],
+          "title": "InitRuns"
         },
         "Intake": {
           "properties": {
@@ -134303,7 +134972,8 @@
                     "security",
                     "product_goals",
                     "product",
-                    "kg_health"
+                    "kg_health",
+                    "kg_init"
                   ]
                 },
                 {
@@ -142487,7 +143157,8 @@
                 "security",
                 "product_goals",
                 "product",
-                "kg_health"
+                "kg_health",
+                "kg_init"
               ],
               "title": "Lens"
             },
@@ -147754,7 +148425,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 15.0,
+              "maximum": 16.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",
@@ -153642,7 +154313,8 @@
                 "security",
                 "product_goals",
                 "product",
-                "kg_health"
+                "kg_health",
+                "kg_init"
               ],
               "title": "Lens"
             },
@@ -153736,7 +154408,8 @@
                 "security",
                 "product_goals",
                 "product",
-                "kg_health"
+                "kg_health",
+                "kg_init"
               ],
               "title": "Lens"
             },

@@ -3702,3 +3702,13 @@ Take a backup first when the release notes mention a migration.
 `agent`), `POST .../{id}/default` sets the default identity of an agent profile, and `POST .../{id}/login` queues a login
 session. A worker's owner signs one in without a run through `POST /v1/worker/browser-identities/login` and
 `PUT /v1/worker/browser-identities/{id}/profile`. See [docs/browser.md](browser.md).
+
+## KG init runs
+
+`evo-agents hub kg init --project P` asks the Curator to configure the project's knowledge graph from its data profile
+(`--all` for a hub admin, `--status [--json]` for the runs, `--decide FILE --run N` for the Curator's own decision).
+The routes are `POST /v1/kg/{project}/init` (201 for a new run, 200 for the one in flight, writer role), `GET` on the
+same path, `POST /v1/kg/{project}/init/{run}/decision` and, for an admin, `POST /v1/admin/kg-init`. A run is also queued
+at the first successful build of a project with a knowledge config and when the profile moved far from the last run's.
+It is a review run with lens `kg_init` on the default agent pool, under the charter's review cost cap. See
+[docs/kg.md](kg.md), "The kg_init run".

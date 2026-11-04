@@ -976,7 +976,7 @@ def test_the_review_columns_of_0014_hold_together(review):
     with pytest.raises(psycopg.errors.CheckViolation):  # a review run works on no plan
         set_run(db, run_id, plan_id="fleet", plan_revision=1)
     with pytest.raises(psycopg.errors.CheckViolation):  # it belongs to a schedule
-        set_run(db, run_id, schedule_id=None, schedule_night=None, dispatched_via="machine")
+        set_run(db, run_id, schedule_id=None, schedule_night=None, dispatched_via="web")
     with pytest.raises(psycopg.errors.CheckViolation):
         set_run(db, run_id, repos=None)
     p = tables.proposals

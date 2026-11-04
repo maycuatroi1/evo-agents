@@ -61,7 +61,17 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_eval_starter, kg_semantic, kg_settings, kg_sources, tables
+from evo_agents.hub import (
+    blob_gc,
+    kg_asked,
+    kg_coverage,
+    kg_eval_starter,
+    kg_init_db,
+    kg_semantic,
+    kg_settings,
+    kg_sources,
+    tables,
+)
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
@@ -509,6 +519,11 @@ async def record(
             .where(builds.c.id == build_id)
         )
         await keep_source_files(conn, project_id, build_id, built.files)
+        try:  # the Curator configures a new graph from its profile (kg_init); a failure never fails the build
+            async with conn.begin_nested():
+                await kg_init_db.on_build(conn, project_id, build_id, built.coverage)
+        except Exception:
+            log.exception("a kg init run was not queued", extra={"project_id": project_id, "build_id": build_id})
     return artifact
 
 
