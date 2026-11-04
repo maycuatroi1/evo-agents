@@ -1,13 +1,12 @@
-"""Each plugin pins the package it runs: plugin.json and .mcp.json of evo-kg and evo-hub carry
-``evo_agents.__version__``, so a release tag ships plugins that start the version they were built with, and
-scripts/bump_version.py moves them with evo_agents/__init__.py in one go. hooks.json names no version: every hook
-runs the plugin's launcher, bin/evo-ak, with the arguments of evo-agents, and the launcher reads plugin.json. Nothing else names the release: the
-marketplace entries leave the version to plugin.json, whose version wins over an entry's; web/package.json has none,
-since images.yml tags the hub-web image from the git tag; and the README, deploy/hub/.env.example and docs/hub.md say
-what the version is instead of naming one, so a release does not have to edit them."""
+"""The release is named in three places: evo_agents/__init__.py and the plugin.json of evo-kg and evo-hub, which
+carry ``evo_agents.__version__`` and which scripts/bump_version.py moves in one go. The plugins pin no package: their
+MCP servers and hooks run ``evo-agents`` from the PATH, the CLI the machine installed, so .mcp.json and hooks.json name
+no version. Nothing else names the release: the marketplace entries leave the version to plugin.json, whose version
+wins over an entry's; web/package.json has none, since images.yml tags the hub-web image from the git tag; and the
+README, deploy/hub/.env.example and docs/hub.md say what the version is instead of naming one, so a release does not
+have to edit them."""
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -26,7 +25,6 @@ BUMP = ROOT / "scripts" / "bump_version.py"
 PIN = re.compile(r"evo-ak==([\w.+!-]+)")
 RELEASE = re.compile(r"\b\d+\.\d+\.\d+\b")
 SINK = "claude-code@anthropic"
-LAUNCHER = 'sh "${CLAUDE_PLUGIN_ROOT}/bin/evo-ak" '
 # Per plugin: the MCP server's command after `evo-agents`, the hook command after `evo-agents`, and how many hooks.
 EXPECTED = {
     "evo-kg": (["kg", "serve", "--sink", SINK], "kg hook ", 5),
@@ -58,13 +56,12 @@ def test_the_marketplace_lists_every_plugin_and_nothing_else():
         assert "version" not in entry, entry["name"]
 
 
-def mcp_launcher(name: str) -> tuple[str, list[str]]:
-    """The script of a plugin's MCP server, `sh -c SCRIPT <plugin> evo-ak==<version> <command>`, and what follows it."""
+def mcp_server(name: str) -> list[str]:
+    """What a plugin's MCP server runs after ``evo-agents``, the CLI on the PATH."""
     servers = load(PLUGINS / name / ".mcp.json")["mcpServers"]
-    assert list(servers) == [name] and servers[name]["command"] == "sh"
-    flag, script, *args = servers[name]["args"]
-    assert flag == "-c" and set(servers[name]) - {"alwaysLoad"} == {"command", "args"}
-    return script, args
+    assert list(servers) == [name] and set(servers[name]) - {"alwaysLoad"} == {"command", "args"}
+    assert servers[name]["command"] == "evo-agents"
+    return servers[name]["args"]
 
 
 def test_only_the_kg_tools_load_upfront():
@@ -75,126 +72,22 @@ def test_only_the_kg_tools_load_upfront():
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_mcp_server_runs_the_package_version_through_uvx_or_evo_agents_from_the_path(name):
-    script, args = mcp_launcher(name)
-    assert args == [name, f"evo-ak=={__version__}", *EXPECTED[name][0]]
-    # One script for both plugins; Claude Code expands ${VAR} in .mcp.json, so the script names its variables bare.
-    assert script == mcp_launcher(NAMES[0])[0] and "${" not in script
-
-
-SERVER_INPUT = '{"jsonrpc": "2.0", "id": 1, "method": "initialize"}\n'
-
-
-def fake_tool(path: Path, body: str) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
-    path.chmod(0o755)
-    return str(path.parent)
-
-
-def hook(name: str, args: list[str], home: Path, *directories: str, root: Path = PLUGINS):
-    """The plugin's launcher as a hook runs it, `sh <plugin>/bin/evo-ak ARGS` with `{}` on stdin, with only
-    ``directories`` on the PATH."""
-    return subprocess.run(
-        [shutil.which("sh") or "/bin/sh", str(root / name / "bin" / "evo-ak"), *args], input="{}", capture_output=True,
-        env={"PATH": os.pathsep.join(directories), "HOME": str(home)}, text=True, timeout=30,
-    )  # fmt: skip
-
-
-@pytest.mark.skipif(os.name == "nt", reason="the launcher and its fakes are POSIX sh")
-@pytest.mark.parametrize("name", NAMES)
-def test_mcp_server_falls_back_to_evo_agents_on_the_path_when_uvx_cannot_run_the_release(name, tmp_path):
-    script, args = mcp_launcher(name)
-    command = " ".join(EXPECTED[name][0])
-    cat, log = shutil.which("cat"), tmp_path / "uvx.log"
-    # The check reads stdin as a server would: the launcher must keep the client's first message for the server.
-    working = fake_tool(
-        tmp_path / "working" / "uvx",
-        f'echo "$*" >> "{log}"\ncase " $* " in *" --version "*) "{cat}" >/dev/null; echo "evo-agents x"; exit 0;; esac\n'
-        f'echo "uvx $*"; exec "{cat}"',
-    )
-    unpublished = fake_tool(tmp_path / "unpublished" / "uvx", "echo 'uvx: no version of evo-ak' >&2; exit 1")
-    path = fake_tool(tmp_path / "path" / "evo-agents", f'echo "evo-agents $*"; exec "{cat}"')
-    empty = str(tmp_path / "empty")
-
-    def run(*directories: str) -> subprocess.CompletedProcess:
-        env = {"PATH": os.pathsep.join(directories), "HOME": str(tmp_path)}
-        return subprocess.run(
-            [shutil.which("sh") or "/bin/sh", "-c", script, *args], input=SERVER_INPUT, env=env, capture_output=True,
-            text=True, timeout=30,
-        )  # fmt: skip
-
-    served = run(working, path)
-    assert (served.returncode, served.stderr) == (0, "")
-    assert served.stdout == f"uvx --offline --from evo-ak=={__version__} evo-agents {command}\n{SERVER_INPUT}"
-    # The first start downloads and caches the release before the server runs from the cache
-    assert log.read_text(encoding="utf-8").splitlines() == [
-        f"--from evo-ak=={__version__} evo-agents --version",
-        f"--offline --from evo-ak=={__version__} evo-agents {command}",
-    ]
-    fallback = f"{name}: uvx could not run evo-ak=={__version__}, so evo-agents from PATH runs {command}"
-    for uvx in (unpublished, empty):  # the release never reached PyPI, or no uvx at all
-        ran = run(uvx, path)
-        assert (ran.returncode, ran.stdout) == (0, f"evo-agents {command}\n{SERVER_INPUT}")
-        assert ran.stderr.splitlines()[-1] == fallback
-        missing = run(uvx)
-        assert (missing.returncode, missing.stdout) == (1, "")
-        assert missing.stderr.splitlines()[-1] == (
-            f"{name}: {command} did not start: uvx could not run evo-ak=={__version__} and evo-agents is not on the PATH"
-        )
-
-
-@pytest.mark.parametrize("name", NAMES)
-def test_every_hook_runs_the_launcher_with_the_arguments_of_evo_agents_alone(name):
+def test_mcp_server_and_hooks_run_evo_agents_from_the_path(name):
+    assert mcp_server(name) == EXPECTED[name][0]
     _, command, count = EXPECTED[name]
     commands = hook_commands(name)
     assert len(commands) == count
     for line in commands:
-        assert line.startswith(LAUNCHER + command) and re.fullmatch(r"[\w -]+", line.removeprefix(LAUNCHER)), line
-    # One launcher for both plugins: it takes the name and the version from the plugin.json beside it.
-    assert (PLUGINS / name / "bin" / "evo-ak").read_bytes() == (PLUGINS / NAMES[0] / "bin" / "evo-ak").read_bytes()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="the launcher and its fakes are POSIX sh")
-@pytest.mark.parametrize("name", NAMES)
-def test_a_hook_runs_the_release_from_the_cache_else_evo_agents_on_the_path_and_never_fails(name, tmp_path):
-    args = (EXPECTED[name][1] + "stop").split()
-    command = " ".join(args)
-    cat, log = shutil.which("cat"), tmp_path / "uvx.log"
-    working = fake_tool(tmp_path / "working" / "uvx", f'echo "$*" >> "{log}"\necho "uvx $*"; exec "{cat}"')
-    failing = fake_tool(tmp_path / "failing" / "uvx", "echo 'uvx: not in the cache' >&2; exit 2")
-    path = fake_tool(tmp_path / "path" / "evo-agents", f'echo "evo-agents $*"; exec "{cat}"')
-    broken = fake_tool(tmp_path / "broken" / "evo-agents", "exit 3")
-    empty = str(tmp_path / "empty")
-
-    ran = hook(name, args, tmp_path, working, path)  # the release from uv's cache, never the network
-    assert (ran.returncode, ran.stderr) == (0, "")
-    assert ran.stdout == f"uvx --offline --from evo-ak=={__version__} evo-agents {command}\n{{}}"
-    assert log.read_text(encoding="utf-8").splitlines() == [
-        f"--offline --from evo-ak=={__version__} evo-agents {command}"
-    ]
-    fallback = f"{name}: uvx could not run evo-ak=={__version__}, so evo-agents from PATH runs {command}"
-    missing = f"{name}: {command} did not run: uvx could not run evo-ak=={__version__} and evo-agents from PATH is"
-    for uvx in (failing, empty):  # the release is not cached or never reached PyPI, or no uvx at all
-        ran = hook(name, args, tmp_path, uvx, path)
-        assert (ran.returncode, ran.stdout, ran.stderr.splitlines()[-1]) == (0, f"evo-agents {command}\n{{}}", fallback)
-        for directories in ((uvx,), (uvx, broken)):
-            ran = hook(name, args, tmp_path, *directories)
-            assert (ran.returncode, ran.stdout) == (0, "")
-            assert ran.stderr.splitlines()[-1] == f"{missing} missing or failed"
+        # The exit status is dropped: an evo-agents that is missing, or older and refuses the subcommand with
+        # argparse's 2, which would block a PreToolUse or Stop hook (tests/hub/test_hooks.py runs it).
+        assert re.fullmatch(rf"evo-agents {command}[\w -]+ \|\| true", line), line
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_no_other_version_is_pinned_in_the_plugin(name):
-    pins = PIN.findall((PLUGINS / name / ".mcp.json").read_text(encoding="utf-8"))
-    assert pins and set(pins) == {__version__}
-    for path in (PLUGINS / name / "hooks" / "hooks.json", PLUGINS / name / "bin" / "evo-ak"):
-        text = path.read_text(encoding="utf-8")
-        assert PIN.findall(text) == [] and __version__ not in text, path
+def test_no_file_of_the_plugin_pins_a_release(name):
     for path in (PLUGINS / name).rglob("*"):
         if path.is_file() and "results" not in path.relative_to(PLUGINS / name).parts:
-            pins = PIN.findall(path.read_text(encoding="utf-8", errors="replace"))
-            assert set(pins) <= {__version__}, path
+            assert PIN.findall(path.read_text(encoding="utf-8", errors="replace")) == [], path
 
 
 def test_the_readme_pins_no_version():
@@ -245,13 +138,12 @@ def test_bump_moves_the_package_and_every_plugin_to_the_new_version(tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[-1] == f"{__version__} -> 98.7.6"
     assert '__version__ = "98.7.6"\n' in (root / "evo_agents" / "__init__.py").read_text(encoding="utf-8")
+    assert [line.split(":")[0] for line in result.stdout.splitlines()[:-1]] == [
+        "evo_agents/__init__.py",
+        *(f"plugins/{name}/.claude-plugin/plugin.json" for name in NAMES),
+    ]
     for name in NAMES:
         assert load(root / "plugins" / name / ".claude-plugin" / "plugin.json")["version"] == "98.7.6"
-        assert set(PIN.findall((root / "plugins" / name / ".mcp.json").read_text(encoding="utf-8"))) == {"98.7.6"}
-        if os.name != "nt":  # the launcher reads the new version, so every hook runs it
-            uvx = fake_tool(tmp_path / "bin" / "uvx", 'echo "uvx $*"')
-            ran = hook(name, ["kg", "hook", "stop"], tmp_path, uvx, root=root / "plugins")
-            assert ran.stdout == "uvx --offline --from evo-ak==98.7.6 evo-agents kg hook stop\n"
 
 
 @pytest.mark.parametrize("version", ["0.12", "v0.12.0", "0.12.0rc1", __version__])

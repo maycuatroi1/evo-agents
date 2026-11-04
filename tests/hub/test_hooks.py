@@ -26,7 +26,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from evo_agents import __version__
 from evo_agents.cli import main
 from evo_agents.harness import plan_digest, validate_harness
 from evo_agents.hub import client as hub_client
@@ -366,48 +365,29 @@ def test_in_a_worker_run_session_start_exports_no_plan_and_stop_pushes_no_memory
 # The plugin's hooks.json, run as Claude Code runs it
 
 
-def fake_uvx(bin_dir: Path, exit_code: int | None = None) -> Path:
-    """``uvx`` that runs this checkout's evo_agents with the arguments after ``evo-agents``, or fails."""
+def fake_evo_agents(bin_dir: Path, exit_code: int | None = None) -> Path:
+    """``evo-agents`` on the PATH, as ``uv tool install`` leaves it, running this checkout's evo_agents, or failing."""
     bin_dir.mkdir(parents=True, exist_ok=True)
-    script = bin_dir / "uvx"
+    script = bin_dir / "evo-agents"
     if exit_code is None:
-        body = f'while [ "$1" != "evo-agents" ]; do shift; done\nshift\nexec "{sys.executable}" -m evo_agents "$@"\n'
-    else:
-        body = f"echo 'uvx: something broke' >&2\nexit {exit_code}\n"
+        body = f'exec "{sys.executable}" -m evo_agents "$@"\n'
+    else:  # 2 as argparse exits for a subcommand an older release lacks; a PreToolUse or Stop hook would block on it
+        body = f"echo 'evo-agents: something broke' >&2\nexit {exit_code}\n"
     script.write_text("#!/bin/sh\n" + body, encoding="utf-8")
     script.chmod(0o755)
     return script
-
-
-def fake_evo_agents(bin_dir: Path) -> Path:
-    """``evo-agents`` on the PATH, as ``uv tool install`` leaves it, running this checkout's evo_agents."""
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    script = bin_dir / "evo-agents"
-    script.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m evo_agents "$@"\n', encoding="utf-8")
-    script.chmod(0o755)
-    return script
-
-
-def hook_env(env: dict, tmp_path: Path) -> dict:
-    """``env`` as Claude Code gives it to a hook command of the plugin: CLAUDE_PLUGIN_ROOT set, and sh on the PATH
-    after the directories the test put there."""
-    shell = tmp_path / "shell"
-    if not shell.exists():
-        shell.mkdir()
-        (shell / "sh").symlink_to(SH)
-    return {**env, "PATH": f"{env['PATH']}{os.pathsep}{shell}", "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
 
 
 def plugin_hooks() -> dict:
     return json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
 
 
-HOOK_COMMAND = re.compile(r'sh "\$\{CLAUDE_PLUGIN_ROOT\}/bin/evo-ak" (?P<args>[\w -]+)')
+HOOK_COMMAND = re.compile(r"evo-agents (?P<args>[\w -]+) \|\| true")
 
 
 def hook_runs(command: str) -> str:
-    """What a hook command of a plugin runs after ``evo-agents``: the plugin's launcher, ``bin/evo-ak``, which runs the
-    release of plugin.json through ``uvx --offline``, else ``evo-agents`` on the PATH, and exits 0 either way."""
+    """What a hook command of a plugin runs after ``evo-agents``: the CLI on the PATH, its exit status dropped, so a
+    missing or failing evo-agents never fails, blocks or holds the session."""
     found = HOOK_COMMAND.fullmatch(command)
     assert found, command
     return found["args"]
@@ -430,7 +410,7 @@ def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget
     for group, name in ((start, "session-start"), (stop, "stop"), (end, "session-end")):
         (hook,) = group["hooks"]
         assert hook["type"] == "command" and hook_runs(hook["command"]) == f"hub hook {name}"
-        assert hook["timeout"] >= hooks.BUDGETS[name] + 5  # uvx and the interpreter start inside Claude Code's limit
+        assert hook["timeout"] >= hooks.BUDGETS[name] + 5  # the interpreter starts inside Claude Code's limit
     assert hooks.REQUEST_TIMEOUT < min(hooks.BUDGETS.values())
     # SessionEnd pushes the digest, then reports the local run ended within what is left
     assert hooks.BUDGETS["session-end"] >= hooks.REQUEST_TIMEOUT + local_sync.LIMITS["session-end"][1]
@@ -447,28 +427,24 @@ def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget
     )
 
 
-def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, tmp_path):
+def test_the_hook_commands_exit_0_with_evo_agents_missing_failing_or_working(own_home, tmp_path):
     payload = json.dumps({"session_id": "s1", "cwd": str(own_home), "hook_event_name": "SessionStart"})
     commands = {name: group[0]["hooks"][0]["command"] for name, group in plugin_hooks().items()}
     commands["LocalTool"] = plugin_hooks()["PostToolUse"][1]["hooks"][0]["command"]
 
     def run(command: str, path: str) -> subprocess.CompletedProcess:
-        env = hook_env(pg.clean_env(HOME=str(own_home), PATH=path), tmp_path)
+        env = pg.clean_env(HOME=str(own_home), PATH=path)
         for variable in HOST_VARIABLES:
             env.pop(variable, None)
         return subprocess.run([SH, "-c", command], input=payload, env=env, capture_output=True, text=True)
 
-    failing = str(fake_uvx(tmp_path / "failing", exit_code=2).parent)
+    failing = str(fake_evo_agents(tmp_path / "failing", exit_code=2).parent)
     for command in commands.values():
-        args = hook_runs(command)
         missing = run(command, str(tmp_path / "empty"))
-        assert (missing.returncode, missing.stdout) == (0, "")
-        assert missing.stderr.splitlines()[-1].startswith(f"evo-hub: {args} did not run: uvx could not run evo-ak==")
+        assert (missing.returncode, missing.stdout) == (0, "") and "evo-agents" in missing.stderr
         broken = run(command, failing)
-        assert (broken.returncode, broken.stdout) == (0, "")
-        lines = broken.stderr.splitlines()
-        assert lines[0] == "uvx: something broke" and lines[-1].startswith(f"evo-hub: {args} did not run: ")
-    working = str(fake_uvx(tmp_path / "working").parent)
+        assert (broken.returncode, broken.stdout, broken.stderr) == (0, "", "evo-agents: something broke\n")
+    working = str(fake_evo_agents(tmp_path / "working").parent)
     started = run(commands["SessionStart"], working)
     assert started.returncode == 0 and "not signed in" in context_of(started.stdout)["context"]
     stopped = run(commands["Stop"], working)
@@ -476,17 +452,6 @@ def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, 
     for name in ("UserPromptSubmit", "LocalTool", "SessionEnd"):  # not signed in: nothing sent, nothing said
         ended = run(commands[name], working)
         assert (ended.returncode, ended.stdout, ended.stderr) == (0, "", "")
-    # The release the plugin pins is not in uv's cache (or uvx is missing): evo-agents on the PATH runs the hook.
-    path = str(fake_evo_agents(tmp_path / "path").parent)
-    for uvx in (failing, str(tmp_path / "empty")):
-        started = run(commands["SessionStart"], f"{uvx}{os.pathsep}{path}")
-        assert started.returncode == 0 and "not signed in" in context_of(started.stdout)["context"]
-        assert started.stderr.splitlines()[-1] == (
-            f"evo-hub: uvx could not run evo-ak=={__version__}, so evo-agents from PATH runs hub hook session-start"
-        )
-        stopped = run(commands["Stop"], f"{uvx}{os.pathsep}{path}")
-        assert (stopped.returncode, stopped.stdout) == (0, "")
-        assert "did not run" not in stopped.stderr and stopped.stderr.splitlines()[-1].endswith(" runs hub hook stop")
 
 
 # Plan copies the export leaves alone

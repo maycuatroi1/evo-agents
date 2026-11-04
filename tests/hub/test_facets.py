@@ -336,8 +336,6 @@ def test_the_paths_of_a_kg_result_and_the_name_of_a_kg_tool():
     assert facets.kg_op(KG) == "kg_search" and facets.kg_op("mcp__evo-hub__kg_impact") == "kg_impact"
     assert facets.kg_op("evo-kg/kg_context") == "kg_context" and facets.kg_op("Bash") is None
     assert facets.hook_command("uvx --from evo-ak==0.22.1 x  /home/bob/y") == "uvx --from evo-ak==N x ~/y"
-    expanded = 'sh "/Users/bob/.claude/plugins/cache/evo-agents/evo-hub/0.56.3/bin/evo-ak" hub hook stop'
-    assert facets.hook_command(expanded) == 'sh "~/.claude/plugins/cache/evo-agents/evo-hub/N/bin/evo-ak" hub hook stop'
 
 
 SEARCH_TEXT = """2 result(s) for 'claim a job' in project demo (build 7)
