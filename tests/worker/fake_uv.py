@@ -16,8 +16,12 @@ It writes what uv writes of a tool install of evo-ak (``uv-receipt.toml``, the d
 ``broken`` installs a version whose python and command exit 1; ``wipe`` deletes the environment and exits 1 (uv 0.6.13
 asked for another interpreter, then a failed build). With ``recreates`` each call deletes the environment and the
 command before its step, so ``fail`` leaves nothing either, and ``ok`` builds a new environment, without whatever else
-lay in the old one. Each call is appended to ``$FAKE_UV_LOG`` as one JSON line: its arguments, UV_TOOL_DIR and
-UV_TOOL_BIN_DIR.
+lay in the old one. Each call is appended to ``$FAKE_UV_LOG`` as one JSON line: its arguments, UV_TOOL_DIR,
+UV_TOOL_BIN_DIR and UV_CACHE_DIR.
+
+In ``$UV_CACHE_DIR`` an install from git leaves what uv leaves there: the checkout of the commit
+(``git-v0/checkouts``), the wheel built of it (``sdists-v9/git``) and a dependency (``archive-v0/dependency``).
+``cache clean evo-ak`` removes the wheel built and, as uv does, not the checkout.
 """
 
 from __future__ import annotations
@@ -106,10 +110,24 @@ def _next_step(scenario_path: Path) -> tuple[dict, str]:
     return scenario, step
 
 
+def _cache_install(cache: Path, commit: str) -> None:
+    for entry in (f"git-v0/checkouts/0a1b2c3d/{commit[:7]}", f"sdists-v9/git/4e5f6a7b/{commit[:16]}"):
+        (cache / entry).mkdir(parents=True, exist_ok=True)
+        (cache / entry / "pyproject.toml").write_text('[project]\nname = "evo-ak"\n', encoding="utf-8")
+    (cache / "archive-v0" / "dependency").mkdir(parents=True, exist_ok=True)
+
+
 def main(argv: list[str]) -> int:
-    tool_dir, bin_dir = Path(os.environ["UV_TOOL_DIR"]), Path(os.environ["UV_TOOL_BIN_DIR"])
-    with open(os.environ["FAKE_UV_LOG"], "a", encoding="utf-8") as log:
-        log.write(json.dumps({"argv": argv, "tool_dir": str(tool_dir), "bin_dir": str(bin_dir)}) + "\n")
+    env = os.environ
+    cache = Path(env["UV_CACHE_DIR"]) if env.get("UV_CACHE_DIR") else None
+    with open(env["FAKE_UV_LOG"], "a", encoding="utf-8") as log:
+        record = {"argv": argv, "tool_dir": env.get("UV_TOOL_DIR"), "bin_dir": env.get("UV_TOOL_BIN_DIR")}
+        log.write(json.dumps({**record, "cache_dir": str(cache) if cache else None}) + "\n")
+    if argv[:2] == ["cache", "clean"] and argv[-1] == "evo-ak":
+        if cache:
+            shutil.rmtree(cache / "sdists-v9" / "git", ignore_errors=True)
+        return 0
+    tool_dir, bin_dir = Path(env["UV_TOOL_DIR"]), Path(env["UV_TOOL_BIN_DIR"])
     if argv[:2] != ["tool", "install"] or "--python" not in argv:
         print(f"fake uv: unexpected arguments {argv}", file=sys.stderr)
         return 2
@@ -135,6 +153,8 @@ def main(argv: list[str]) -> int:
         revision = git.group("rev")
         commit = scenario["nightly"] if revision == "nightly" else revision
         version = scenario.get("version", "0.23.0") if revision == "nightly" else scenario.get("old_version", "0.22.0")
+        if cache:
+            _cache_install(cache, commit)
         write_install(
             tool_dir, bin_dir, version=version, commit=commit, extras=extras, revision=revision, starts=step != "broken"
         )

@@ -11,6 +11,7 @@ gate.lock             the updater holds it exclusive from the moment it waits fo
                       claims nothing while it is closed
 staging/              where the updater installs the new version first
 backup/               a copy of the install while the updater installs over it (``backup``)
+uv-cache/             the uv cache of the updates, without the builds and checkouts of evo-ak once one ends
 ```
 
 A daemon takes busy.lock shared before each claim, then looks at the gate; the updater closes the gate, then waits
@@ -67,6 +68,10 @@ class Peers:
     @property
     def backup(self) -> Path:
         return self.root / "backup"
+
+    @property
+    def uv_cache(self) -> Path:
+        return self.root / "uv-cache"
 
     def _open(self, name: str) -> int:
         self.root.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)

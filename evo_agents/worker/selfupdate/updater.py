@@ -145,7 +145,9 @@ class SelfUpdate:
             install,
             supervision=detect(env),
             peers=peers,
-            installer=Installer(install, uv, peers.staging, env, backup_dir=peers.backup) if uv else None,
+            installer=Installer(install, uv, peers.staging, env, backup_dir=peers.backup, cache_dir=peers.uv_cache)
+            if uv
+            else None,
             lookup=functools.partial(nightly_commit, env),
             off=(env.get(OFF_VARIABLE) or "").strip().lower() in OFF_VALUES,
         )
