@@ -572,6 +572,30 @@ def test_a_newer_claim_of_the_same_worker_ends_the_older_one(client, hub):
     assert answer["run"] is None and answer["elapsed"] < 10
 
 
+def test_a_new_claim_of_one_worker_leaves_a_waiting_claim_of_another_asleep(client, hub, monkeypatch):
+    monkeypatch.setattr(run_claims, "CLAIM_POLL_SECONDS", 60.0)  # only a wake-up makes the waiting claim look again
+    waiting, other = add_worker(client, hub["owner"], "mac-mini"), add_worker(client, hub["owner"], "mini")
+    looks = []
+    try_claim = run_claims._try_claim
+
+    async def counted(*args, **kwargs):
+        looks.append(1)
+        return await try_claim(*args, **kwargs)
+
+    monkeypatch.setattr(run_claims, "_try_claim", counted)
+    answer = {}
+    thread = threading.Thread(target=lambda: answer.update(run=claim(client, waiting, wait=20)))
+    thread.start()
+    time.sleep(1.5)  # the claim looks, and again once the LISTEN is up
+    before = len(looks)
+    assert claim(client, other) is None and claim(client, other) is None
+    time.sleep(0.5)
+    assert len(looks) == before + 2, "each claim of the other worker looked once, and the waiting claim slept on"
+    assert claim(client, waiting) is None  # a newer claim of its own worker still ends it
+    thread.join(10)
+    assert answer["run"] is None and len(looks) == before + 3
+
+
 # Heartbeat and the owner's cancel
 
 

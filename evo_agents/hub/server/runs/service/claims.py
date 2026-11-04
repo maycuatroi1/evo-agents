@@ -85,9 +85,9 @@ WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role,
 
 class RunWakeups:
     """The claims waiting in this api process, woken by RUNS_CHANNEL on the process's one LISTEN (``listen``),
-    opened by the first claim or stream. A notification, or a newer claim of the same worker, wakes every waiting
-    claim, which then looks at the queue again; a claim also looks every CLAIM_POLL_SECONDS, so it never depends on
-    the connection being up."""
+    opened by the first claim or stream. A notification wakes every waiting claim, which then looks at the queue
+    again; a newer claim of a worker wakes only the older claim of that worker, which ends; a claim also looks every
+    CLAIM_POLL_SECONDS, so it never depends on the connection being up."""
 
     def __init__(self, listener: Listener):
         self._listener = listener
@@ -95,6 +95,7 @@ class RunWakeups:
         self._event = asyncio.Event()  # set by the next wake-up, then replaced
         self.generation = 0  # counts wake-ups; a claim waits only while it has not changed
         self._tickets: dict[int, int] = {}  # worker id: the number of its newest claim
+        self._ends: dict[int, asyncio.Event] = {}  # worker id: set when a newer claim of it ends the waiting one
 
     def start(self) -> None:
         self._listener.start()
@@ -104,20 +105,28 @@ class RunWakeups:
         self._event.set()
         self._event = asyncio.Event()
 
-    async def wait(self, seen: int, timeout: float) -> None:
-        """Return once something woke the claims after generation ``seen``, or after ``timeout`` seconds."""
-        if self.generation != seen:
+    async def wait(self, seen: int, timeout: float, worker_id: int, number: int) -> None:
+        """Return once something woke the claims after generation ``seen``, a newer claim of ``worker_id`` ended
+        claim ``number``, or after ``timeout`` seconds."""
+        if self.generation != seen or not self.current(worker_id, number):
             return
+        woken = asyncio.ensure_future(self._event.wait())
+        ended = asyncio.ensure_future(self._ends[worker_id].wait())
         try:
-            await asyncio.wait_for(self._event.wait(), timeout)
-        except TimeoutError:
-            pass
+            await asyncio.wait((woken, ended), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            woken.cancel()
+            ended.cancel()
 
     async def ticket(self, worker_id: int) -> int:
-        """The number of a new claim of ``worker_id``, which makes any older one of it end without a run."""
+        """The number of a new claim of ``worker_id``, which makes any older one of it end without a run. Only that
+        claim wakes: waking every claim here made each new claim of any worker run the claim query of every other."""
         number = self._tickets.get(worker_id, 0) + 1
         self._tickets[worker_id] = number
-        self.wake()
+        older = self._ends.get(worker_id)
+        if older is not None:
+            older.set()
+        self._ends[worker_id] = asyncio.Event()
         return number
 
     def current(self, worker_id: int, number: int) -> bool:
@@ -126,6 +135,7 @@ class RunWakeups:
     def done(self, worker_id: int, number: int) -> None:
         if self._tickets.get(worker_id) == number:
             del self._tickets[worker_id]
+            del self._ends[worker_id]
 
 
 def worker_columns(w=None) -> list:
@@ -1013,6 +1023,8 @@ async def wait_for_run(
             # Hung up already: a run leased now would wait out its lease with nobody to run it.
             if await is_disconnected():
                 return Claim(run=None)
+            if not wakeups.current(worker_id, number):  # a newer claim of the worker ended this one
+                return Claim(run=None)
             seen = wakeups.generation
             try:
                 spec = await _try_claim(engine, user, lease, is_disconnected, blobs)
@@ -1025,6 +1037,6 @@ async def wait_for_run(
             remaining = deadline - loop.time()
             if remaining <= 0 or not wakeups.current(worker_id, number):
                 return Claim(run=None)
-            await wakeups.wait(seen, min(remaining, CLAIM_POLL_SECONDS))
+            await wakeups.wait(seen, min(remaining, CLAIM_POLL_SECONDS), worker_id, number)
     finally:
         wakeups.done(worker_id, number)
