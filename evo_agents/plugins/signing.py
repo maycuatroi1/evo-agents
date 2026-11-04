@@ -9,8 +9,8 @@ A bundle is signed by its publisher; the signature travels beside it as a JSON o
   one of the publisher's keys (``sign_ed25519``), for hubs that cannot reach Sigstore.
 
 The operator lists the publishers it trusts in EVO_HUB_PLUGIN_PUBLISHERS, comma-separated entries
-``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (the workflow whose runs may sign) or ``ID=ed25519:KEY`` (the
-public key, 32 bytes in base64); one id may have several entries, several workflows or keys being rotated
+``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (the workflow whose runs may sign, with ``@BRANCH`` after it
+when the repo's default branch is not main) or ``ID=ed25519:KEY`` (the public key, 32 bytes in base64); one id may have several entries, several workflows or keys being rotated
 (``parse_publishers``). A manifest names its publisher by id.
 
 ``verify`` checks the envelope against the bundle's bytes and the trusted publishers, in this order, and raises
@@ -24,7 +24,9 @@ the bundle.
 Sigstore bundles are checked by ``SigstoreVerifier`` with sigstore-python against Sigstore's public-good trust
 root, fetched over TUF and cached; the certificate's issuer must be GitHub Actions' and one of its identities (the
 workflow ref, ``https://github.com/OWNER/REPO/.github/workflows/FILE.yml@refs/...``) must be a run of one of the
-publisher's workflows, the repository ignoring case, the workflow's path exactly. Ed25519 needs ``cryptography``.
+publisher's workflows, the repository ignoring case, the workflow's path exactly, at a tag (``refs/tags/``) or on the
+repo's default branch: a run on any other branch or on a pull request is refused, naming its ref. Ed25519 needs
+``cryptography``.
 Both are imported only when a signature is checked, so the module loads on a core install.
 """
 
@@ -49,7 +51,10 @@ PUBLISHERS_VARIABLE = "EVO_HUB_PLUGIN_PUBLISHERS"
 PUBLISHER_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 _ENTRY = re.compile(r"([a-z0-9][a-z0-9-]{0,62})=(sigstore|ed25519):(\S+)")
-_WORKFLOW = re.compile(r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/(\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml)")
+_WORKFLOW = re.compile(
+    r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/(\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml)(?:@([A-Za-z0-9_][A-Za-z0-9_./-]*))?"
+)
+DEFAULT_BRANCH = "main"  # the default branch of a publisher's repo, unless its entry names another with @BRANCH
 _ISSUER_OIDS = (("1.3.6.1.4.1.57264.1.8", True), ("1.3.6.1.4.1.57264.1.1", False))  # Fulcio's, DER-encoded or raw
 ED25519_KEY_BYTES = 32
 ED25519_SIGNATURE_BYTES = 64
@@ -69,24 +74,38 @@ class SignatureUnavailable(RuntimeError):
 
 @dataclass(frozen=True)
 class SigstoreIdentity:
-    """A GitHub Actions workflow whose runs may sign: ``owner/name`` and ``.github/workflows/<file>``."""
+    """A GitHub Actions workflow whose runs may sign: ``owner/name``, ``.github/workflows/<file>`` and the repo's
+    default branch."""
 
     repository: str
     workflow: str
+    branch: str = DEFAULT_BRANCH
 
-    def signed(self, identity: str) -> bool:
-        """Whether ``identity``, of a Fulcio certificate, is a run of this workflow at any ref:
+    def ref_of(self, identity: str) -> str | None:
+        """The ref ``identity``, of a Fulcio certificate, ran at when it is a run of this workflow:
         ``https://github.com/OWNER/REPO/.github/workflows/FILE.yml@refs/...``, the repository ignoring case as GitHub
-        does, the workflow's path exactly."""
+        does, the workflow's path exactly; None for a run of any other."""
         head = f"{GITHUB}/"
         if not identity.startswith(head):
-            return False
+            return None
         rest = identity[len(head) :]
         size = len(self.repository)
-        return rest[:size].lower() == self.repository.lower() and rest[size:].startswith(f"/{self.workflow}@")
+        if rest[:size].lower() != self.repository.lower() or not rest[size:].startswith(f"/{self.workflow}@"):
+            return None
+        return rest[size + len(self.workflow) + 2 :]
+
+    def trusts_ref(self, ref: str) -> bool:
+        """Whether a run at ``ref`` may sign: a tag, or the default branch."""
+        return (ref.startswith("refs/tags/") and len(ref) > len("refs/tags/")) or ref == f"refs/heads/{self.branch}"
+
+    def signed(self, identity: str) -> bool:
+        """Whether ``identity`` is a run of this workflow at a tag or on the default branch."""
+        ref = self.ref_of(identity)
+        return ref is not None and self.trusts_ref(ref)
 
     def __str__(self) -> str:
-        return f"{self.repository}/{self.workflow}"
+        at = "" if self.branch == DEFAULT_BRANCH else f"@{self.branch}"
+        return f"{self.repository}/{self.workflow}{at}"
 
 
 @dataclass(frozen=True)
@@ -163,7 +182,8 @@ def parse_publishers(text: str | None) -> tuple[Publisher, ...]:
             workflow = _WORKFLOW.fullmatch(value)
             if workflow is None:
                 raise ValueError(f"{entry!r}: a workflow is OWNER/REPO/.github/workflows/FILE.yml, not {value!r}")
-            current = replace(current, sigstore=(*current.sigstore, SigstoreIdentity(workflow[1], workflow[2])))
+            identity = SigstoreIdentity(workflow[1], workflow[2], workflow[3] or DEFAULT_BRANCH)
+            current = replace(current, sigstore=(*current.sigstore, identity))
         else:
             current = replace(current, ed25519=(*current.ed25519, _public_key(value)))
         found[publisher_id] = current
@@ -299,10 +319,19 @@ def _verify_sigstore(data: bytes, bundle: dict, publisher: Publisher, check: Sig
             f"the Sigstore certificate is of an identity of {claims.issuer or 'no issuer'}, not of a GitHub Actions "
             "workflow",
         )
+    other_refs = []
     for identity in publisher.sigstore:
         for signer in claims.identities:
-            if identity.signed(signer):
+            ref = identity.ref_of(signer)
+            if ref is not None and identity.trusts_ref(ref):
                 return Verified(publisher.id, "sigstore", signer)
+            if ref is not None:
+                other_refs.append(f"{ref} (only a tag, refs/tags/..., or refs/heads/{identity.branch} may sign)")
+    if other_refs:
+        raise SignatureError(
+            "untrusted",
+            f"signed by a run of a workflow of publisher {publisher.id} at {', '.join(other_refs)}",
+        )
     workflows = ", ".join(str(identity) for identity in publisher.sigstore)
     raise SignatureError(
         "untrusted",

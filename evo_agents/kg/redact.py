@@ -6,7 +6,8 @@ alone what an earlier one replaced:
 1. a private key in PEM, the whole block from its BEGIN line to its END line, when it holds at least
    ``PEM_MIN_BODY`` characters of base64: ``[redacted:pem]``;
 2. a key in the format of a provider (``evo_agents.secret_patterns.PROVIDER_KEYS``, shared with the hub): Anthropic
-   and OpenAI keys, AWS access key ids, Slack tokens, Google API keys, GitHub tokens and hub tokens, such as
+   and OpenAI keys, AWS access key ids, Slack tokens, Google API keys and OAuth tokens, Stripe live keys, GitLab,
+   Hugging Face and npm tokens, GitHub tokens and hub tokens, such as
    ``[redacted:github_token]``;
 3. the password of a URI: ``postgres://app:[redacted:uri_password]@db:5432/app``;
 4. the literal value of a variable or key whose name ends with the word password, passwd, passphrase, secret, token,
@@ -18,8 +19,8 @@ What is not a secret stays, since the patterns favour precision over recall:
 - a reference to a secret: ``${VAR}``, ``$VAR``, ``{{ secrets.X }}``, ``%(name)s``, ``os.environ[...]``,
   ``process.env.X``;
 - an empty value, a placeholder (``xxx``, ``***``, ``...``, ``<your-token>``, ``changeme``, ``example``, a value
-  with ``test``, ``fake`` or ``dummy`` in it, one character repeated) and the start of a value the code concatenates
-  (``"sk-ant-" + ...``);
+  with ``test``, ``fake`` or ``dummy`` in it, one character repeated) and a literal the code concatenates to more
+  (``"sk-ant-" + ...``); a value that only ends with ``-``, ``_`` or ``.`` is still a secret;
 - words that describe a secret: a label with spaces, a type name, a path, a URL, a number, a value that itself says
   password, secret, token or key;
 - in code, anything but a quoted literal, since what follows ``=`` unquoted is an expression; config files, shell
@@ -29,7 +30,10 @@ What is not a secret stays, since the patterns favour precision over recall:
   equal to a word of the name (``POSTGRES_PASSWORD: postgres``, a well-known default); a URI password the same way,
   and equal to its user name (``guest:guest``);
 - a well-known default (``admin``, ``root``, ``guest``, ``minioadmin``);
-- a provider key without a digit and a letter in it, or shorter than its format (``MIN_PROVIDER_LENGTH``).
+- a provider key without a digit and a letter in it (or, for one of letters only, both cases), shorter than its
+  format (``MIN_PROVIDER_LENGTH``), or whose body after the prefix is an obvious placeholder
+  (``PROVIDER_PLACEHOLDER``: one character repeated, ``your``, ``example``, ``<...>``); the body of a real key is
+  random, so a word such as ``key``, ``test`` or ``fake`` in it does not keep it.
 
 The rest of the text is kept as it is, so the file's structure still enters the graph. The counts by kind let the
 sync's audit line say what went, never the values.
@@ -94,6 +98,12 @@ NOT_SECRET = (
         re.I,
     ),
 )
+# A placeholder in the body of a provider key, after its prefix: the body of a real one is random, so only what no
+# random body holds counts, never a word such as key or test that one may hold by chance.
+PROVIDER_PLACEHOLDER = re.compile(r"^(.)\1+$|(.)\2{5,}|your|example|placeholder|change[_-]?me|redacted|\.{3}|<|>", re.I)
+_MIXED_CASE = re.compile(r"[a-z].*[A-Z]|[A-Z].*[a-z]")
+# What follows a literal the code concatenates to more: "sk-ant-" + rest
+_CONCATENATED = re.compile(r"[ \t]*(?:\+|\.\.|\|\||~|\.(?=[ \t$]))")
 _PLAIN = re.compile(r"_*[A-Za-z]+(?:[_.-][A-Za-z]+)*_*")
 _UPPER_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 _SEPARATORS = re.compile(r"[_.-]")
@@ -126,7 +136,7 @@ def is_literal_secret(value: str, *, plain_ok: bool = False) -> bool:
     """Whether ``value``, given to a name that says it holds a secret, is the secret itself rather than a reference
     to it, a placeholder, or words that describe it. ``plain_ok``: a plain word counts, as under ``DB_PASSWORD`` in a
     config file."""
-    if not value or value.startswith(MARKER_PREFIX) or any(c.isspace() for c in value) or value[-1] in "-_.":
+    if not value or value.startswith(MARKER_PREFIX) or any(c.isspace() for c in value):
         return False
     if any(pattern.search(value) for pattern in NOT_SECRET):
         return False
@@ -160,10 +170,10 @@ def _provider_key(match: re.Match, kind: str, found: Counter) -> str:
     value = match[0]
     if len(value) < MIN_PROVIDER_LENGTH.get(kind, MIN_PROVIDER_LENGTH_DEFAULT):
         return value
-    if not (re.search(r"[0-9]", value) and re.search(r"[A-Za-z]", value)):
+    body = value[len(match.groupdict().get("head") or "") :]
+    if not (re.search(r"[0-9]", value) and re.search(r"[A-Za-z]", value)) and not _MIXED_CASE.search(body):
         return value
-    head = match.groupdict().get("head") or ""
-    if any(pattern.search(value[len(head) :]) for pattern in NOT_SECRET[1:3]):
+    if PROVIDER_PLACEHOLDER.search(body):
         return value
     found[kind] += 1
     return MARKER.format(kind)
@@ -182,6 +192,8 @@ def _named(match: re.Match, style: str, found: Counter) -> str:
     if not quoted and style == "code":
         return match[0]
     value = match["quoted"] if quoted else match["bare"]
+    if quoted and _CONCATENATED.match(match.string, match.end()):
+        return match[0]
     name = match["name"].rsplit(".", 1)[-1]
     words = _SEPARATORS.split(name.lower())
     plain_ok = style == "config" and bool(_UPPER_NAME.fullmatch(name)) and value.lower() not in words

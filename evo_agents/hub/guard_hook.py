@@ -108,11 +108,11 @@ def check_command(policy: Policy, command: str, cwd: str) -> str | None:
     if url is None:
         return None
     texts = [command, *_files(command, where)]
-    if pushing:
-        words = pushing["rest"].split()
-        remote = next((w for w in words if not w.startswith("-")), None)
-        texts.append(guard_check.outgoing(where, _push_source(pushing["rest"]), remote=remote))
     try:
+        if pushing:
+            words = pushing["rest"].split()
+            remote = next((w for w in words if not w.startswith("-")), None)
+            texts.append(guard_check.outgoing(where, _push_source(pushing["rest"]), remote=remote))
         guard_check.check_text(policy, "\n".join(texts), f"this command (it writes to {url})")
     except guard_check.Refused as exc:
         return str(exc)

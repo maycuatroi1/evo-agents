@@ -1477,8 +1477,10 @@ workflow rather than a person (`docs/hub.md`, section Plugins). A workflow that 
 ```
 
 The operator's entry for that publisher names the workflow, `acme=sigstore:acme/my-plugin/.github/workflows/ci.yml`,
-which the workflow reads as `${GITHUB_WORKFLOW_REF%%@*}`. The hub accepts a signature from any ref of that workflow,
-so signing on the default branch alone is the workflow's own rule. Keyless signing writes the certificate to
+which the workflow reads as `${GITHUB_WORKFLOW_REF%%@*}`. The hub accepts a signature only from a run of that
+workflow at a tag (`refs/tags/...`) or on the repo's default branch, `main` unless the entry names another after the
+workflow (`acme=sigstore:acme/my-plugin/.github/workflows/ci.yml@trunk`); a run on any other branch or a pull request
+is refused with its ref in the reason. Keyless signing writes the certificate to
 Sigstore's public transparency log (Rekor): the repository's name, the workflow's path, the ref, the commit and the
 run become public there, even for a private repository. A publisher that must keep those private signs with an
 Ed25519 key instead (`plugin keygen`, `plugin sign`), and the operator trusts `acme=ed25519:<public key>`.
