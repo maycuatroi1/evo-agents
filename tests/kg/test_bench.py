@@ -1,7 +1,9 @@
 """`kg bench`: four small sets made here, three small repos made here, nothing downloaded (docs/kg-bench.md)."""
 
+import gc
 import json
 import os
+import sqlite3
 import time
 from collections import namedtuple
 from pathlib import Path
@@ -349,6 +351,47 @@ def test_one_pass_asks_each_search_on_the_same_graphs_and_prunes_them(bench, tmp
     lay = graphs.layout(cache)
     assert not any(lay.home.glob("acme__*")) and not any((cache / "repos").glob("*.git"))
     assert not any((lay.base / "memo").glob("*.sqlite"))
+
+
+def _open_under(root: Path) -> list[str]:
+    """The files under ``root`` that an open SQLite connection holds."""
+    held = []
+    for conn in (o for o in gc.get_objects() if isinstance(o, sqlite3.Connection)):
+        try:
+            rows = conn.execute("PRAGMA database_list").fetchall()
+        except sqlite3.ProgrammingError:  # closed
+            continue
+        held += [r[2] for r in rows if r[2] and Path(r[2]).resolve().is_relative_to(root.resolve())]
+    return held
+
+
+def test_prune_finds_no_connection_open_on_what_it_deletes(bench, tmp_path, monkeypatch):
+    # A connection left open waits for the cycle collector, and Windows cannot delete a file one holds: --prune then
+    # left graphs behind (the v0.54.8 and v0.54.9 tag CI).
+    cache, mirror, git_url, _ = bench
+    assert main(["kg", "bench", "fetch", "--cache", str(cache), "--from", str(mirror)]) == 0
+    held = []
+    prune_graph, prune_repo = graphs.prune_graph, graphs.prune_repo
+
+    def graph(lay, task):
+        held.extend(_open_under(lay.project_dir(task)) + _open_under(lay.harness(task)))
+        prune_graph(lay, task)
+
+    def repo(lay, name):
+        held.extend(_open_under(lay.clone(name)) + _open_under(lay.base / "memo"))
+        prune_repo(lay, name)
+
+    monkeypatch.setattr(graphs, "prune_graph", graph)
+    monkeypatch.setattr(graphs, "prune_repo", repo)
+    argv = ["kg", "bench", "run", "--cache", str(cache), "--git-url", git_url, "--search", "graph", "--search", "plain"]
+    outs = ["--out", str(tmp_path / "graph.json"), "--out", str(tmp_path / "plain.json")]
+    gc.collect()
+    gc.disable()
+    try:
+        assert main([*argv, *outs, "--prune", "--reserve-gb", "0"]) == 0
+    finally:
+        gc.enable()
+    assert held == []
 
 
 def test_a_run_goes_on_from_the_repos_a_dead_run_finished(bench, tmp_path):

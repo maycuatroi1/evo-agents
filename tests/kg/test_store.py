@@ -568,6 +568,32 @@ def test_a_read_only_store_lets_its_file_go_once_dropped(tmp_path, kg_env):
         gc.enable()
 
 
+def test_a_search_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
+    # A connection's statement cache refers back to it, so one left open waits for the cycle collector; Windows
+    # cannot delete a graph a connection holds (kg bench run --prune left it behind).
+    project = make_project(tmp_path, kg_env)
+    sync_build(project)
+    store = (project.root / "graph.sqlite").resolve()
+    gc.collect()
+    gc.disable()
+    try:
+        for plain in (False, True):
+            session = Session(project, "cli")
+            session.plain = plain
+            assert "isError" not in session.call("kg_search", {"query": "widget", "limit": 5})
+            held = []
+            for conn in (o for o in gc.get_objects() if isinstance(o, sqlite3.Connection)):
+                try:
+                    path = conn.execute("PRAGMA database_list").fetchone()[2]
+                except sqlite3.ProgrammingError:  # closed
+                    continue
+                if Path(path).resolve() == store:
+                    held.append(path)
+            assert held == [], plain
+    finally:
+        gc.enable()
+
+
 def test_a_store_of_schema_2_is_rebuilt_by_the_next_build_and_refused_by_readers(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     first = sync_build(project)
