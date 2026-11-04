@@ -337,16 +337,21 @@ def claude_call_refusal(profile: Profile, name: str, tool_input) -> str | None:
     return None
 
 
-def claude_hooks(profile: Profile | None, autonomy=None, floor=None) -> dict | None:
+def claude_hooks(profile: Profile | None, autonomy=None, floor=None, waits=None) -> dict | None:
     """The ``hooks`` of the session: a PreToolUse hook that refuses what ``claude_call_refusal`` refuses, and beside it
-    the hook of autonomy of a run with a snapshot, ``autonomy`` (``autonomy_hook.Gate``, ``RunContext.autonomy``), and
-    the file floor of the run, ``floor`` (``autonomy_hook.Floor``, ``RunContext.floor``), first; None when the profile
-    limits no tool, skill or model and the run has neither."""
+    the hook of autonomy of a run with a snapshot, ``autonomy`` (``autonomy_hook.Gate``, ``RunContext.autonomy``), the
+    hook of waits of a plan run, ``waits`` (``wait_guard.WaitGuard``, ``RunContext.waits``), and the file floor of the
+    run, ``floor`` (``autonomy_hook.Floor``, ``RunContext.floor``), first; None when the profile limits no tool, skill
+    or model and the run has none of them."""
     hooks = []
     if floor is not None:
         from evo_agents.worker.autonomy_hook import claude_floor_hook
 
         hooks.append(claude_floor_hook(floor))
+    if waits is not None:
+        from evo_agents.worker.wait_guard import claude_wait_hook
+
+        hooks.append(claude_wait_hook(waits))
     if autonomy is not None:
         from evo_agents.worker.autonomy_hook import claude_hook
 

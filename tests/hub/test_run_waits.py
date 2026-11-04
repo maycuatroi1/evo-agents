@@ -245,6 +245,22 @@ def test_a_parked_run_resumes_by_the_reaper_when_its_wait_wakes_and_stays_parked
     assert message["decision_id"] == wait["id"]
 
 
+def test_the_wait_for_something_elsewhere_the_prompt_names_parks_the_run_and_resumes_it_on_its_worker(
+    client, hub, hub_db
+):
+    """Run #1537 waited hours for CI, PyPI and hub builds inside its session, holding its slot; the prompt
+    (``runs.WAIT_RULE``) and the worker's hook of waits (``wait_guard.REFUSAL``) send such a wait to ``evo-agents worker
+    wait --until +15m``, which wakes later than the hold, so the reaper parks the run at once."""
+    assert "--until +15m" in runs.WAIT_RULE and timedelta(minutes=15).total_seconds() > runs.DECISION_WAIT_SECONDS
+    worker, run, wait = a_waiting_run(client, hub, until=soon(0.25))
+    recover(client)
+    assert run_view(client, hub["owner"], run["id"])["state"] == "parked"
+    came(hub_db, wait["id"])
+    recover(client)
+    new = run_view(client, hub["owner"], decision(client, hub["owner"], wait["id"])["answer_run_id"])
+    assert (new["state"], new["resume_of_run_id"], new["pinned_worker_id"]) == ("queued", run["id"], worker["id"])
+
+
 def test_a_run_with_a_question_open_beside_its_wait_keeps_its_slot_the_minutes_any_run_does(client, hub, hub_db):
     worker, run = started(client, hub)
     moved(client, worker, run["id"], "running", session_id=SESSION)

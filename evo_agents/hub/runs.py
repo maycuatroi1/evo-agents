@@ -498,7 +498,7 @@ EVIDENCE_BYTES = 1536  # the evidence of one step this one depends on
 DEPENDENCIES_BYTES = 5 * 1024  # all of it
 LIST_TITLE_BYTES = 120  # the title of a step in a plan run's list of steps
 LIST_DEPENDS_BYTES = 120  # and its depends_on
-STEP_LIST_BYTES = 14 * 1024  # the whole list; the steps past it are counted, and the plan file has them
+STEP_LIST_BYTES = 13 * 1024  # the whole list; the steps past it are counted, and the plan file has them
 REPOS_BYTES = 3 * 1024  # a plan run's repos with their branches and worktrees
 
 
@@ -938,6 +938,11 @@ WAIT_RULE = (
     "as it is done. Give --until, --on or both. The hub wakes this session with a message naming "
     "the wait when the first of them comes. An option of a decision that only means not yet goes with `--wait-option "
     "KEY` of `evo-agents worker ask`: choosing it leaves the decision open, and you hear nothing until a real answer."
+    "\n- Something elsewhere that takes more than a few minutes (the CI of a commit, a pull request or a tag, a package "
+    "on an index, a build or a run on the hub, a deploy) is waited for the same way: `evo-agents worker wait --reason "
+    f"TEXT --until +15m --step {{step}}`, then end your turn; when it wakes, look once and wait again if it has not "
+    "come. Never wait for it in this session (no Monitor, no loop that sleeps, no long sleep, no `gh run watch`): the "
+    "session holds the worker's slot while it waits, and only a wait parks the run."
 )
 
 

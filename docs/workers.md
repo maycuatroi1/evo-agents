@@ -1047,6 +1047,18 @@ when the time or the event comes (`docs/notifications.md`, A wait). A step of an
 with `evo-agents worker ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until
 another answer.
 
+Something elsewhere that takes more than a few minutes (the CI of a commit, a pull request or a tag, a package on an
+index, a build or a run on the hub, a deploy) is waited for the same way, with `evo-agents worker wait --until +15m`,
+and looked at once each time the wait wakes. A wait inside the session parks nothing: Claude Code keeps the session open
+while a command the agent started in the background runs, up to the run's time cap, and run #1537 of evo-agents held a
+worker slot for more than seven hours that way, with Monitor watches of a tag's CI, PyPI and builds of the knowledge
+graph, loops that slept and a `sleep 590`. So a claude-code plan run gets a PreToolUse hook of waits
+(`evo_agents.worker.wait_guard`) that refuses Monitor, a Bash command that sleeps 2 minutes or more at once, a loop that
+sleeps 5 seconds or more, and `gh run watch`, `gh pr checks --watch`, `watch` and `evo-agents hub run logs --follow`,
+in the foreground or the background, with words that name `evo-agents worker wait`; each refusal is a `system` event of
+the run (its `wait` body). Tests and builds on the machine still run in the background. The hook reads commands, so a
+poll kept in a script gets past it; the plan run's prompt and its system note say the same.
+
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
 of `docs/notifications.md`.
