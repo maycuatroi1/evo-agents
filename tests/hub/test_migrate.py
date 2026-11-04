@@ -166,6 +166,7 @@ TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
 TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 TABLES |= {"kg_init_runs"}  # migration 0197
+TABLES |= {"kg_uploads"}  # migration 0200
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -256,8 +257,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_twenty_one_tables(hub_db):
-    assert len(TABLES) == 221  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_twenty_two_tables(hub_db):
+    assert len(TABLES) == 222  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5537,3 +5538,69 @@ def test_0199_lets_a_dismissal_name_conflicting_claim_and_going_back_deletes_tho
     move_to(hub_db, "0198", down=True)
     assert query(hub_db, select(d.c.rule)) == [("possible_duplicate",)], "the other dismissals stay"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0199") :]
+
+
+def test_0200_records_archive_uploads_one_in_flight_per_archive_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0199")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0200")
+    u = hub_tables.kg_uploads
+    row = {
+        "project_id": ids["project"],
+        "source": "docs",
+        "label": {"level": "internal"},
+        "name": "docs.zip",
+        "size": 10,
+        "sha256": "a" * 64,
+        "part_size": 5,
+        "state": "uploading",
+        "created_by": ids["user"],
+    }
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(u).values({**row, "object_key": "kg-archives/one"}))
+    assert query(hub_db, select(u.c.state, u.c.report, u.c.build_id)) == [("uploading", {}, None)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(insert(u).values({**row, "object_key": "kg-archives/two"}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(u).values({**row, "state": "lost", "object_key": "kg-archives/three"}))
+    with live.connect(hub_db) as conn:
+        conn.execute(update(u).values(state="extracting"))
+        conn.execute(insert(u).values({**row, "object_key": "kg-archives/four"}))  # the first is no longer in flight
+    move_to(hub_db, "0199", down=True)
+    assert "kg_uploads" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0200") :]
+
+
+def test_0201_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0200")
+    assert "questions_run_id" not in columns(hub_db, "kg_init_runs")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+    move_to(hub_db, "0201")
+    t = hub_tables
+    init = {"project_id": ids["project"], "via": "manual", "state": "queued", "why": ["asked"], "body": {}}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.kg_init_runs).values({**init, "questions_run_id": run_id}))
+    assert query(hub_db, select(t.kg_init_runs.c.questions_run_id)) == [(run_id,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(update(t.kg_init_runs).values(questions_run_id=run_id + 1000))
+    label = {"level": "internal"}
+    proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "kg_questions", "kind": "docs"}
+    proposal |= {"title": "Ask about the guide", "paths": [], "tier": 1, "tier_reasons": ["docs"]}
+    proposal |= {"evidence": [], "evidence_count": 1, "draft": {}, "fingerprint": "f" * 64, "label": label}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.proposals).values(proposal))  # the lens is taken
+        conn.execute(t.runs.delete().where(t.runs.c.id == run_id))
+    assert query(hub_db, select(t.kg_init_runs.c.questions_run_id)) == [(None,)]  # the run gone: SET NULL
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(ids))
+        conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id}))
+    move_to(hub_db, "0200", down=True)
+    assert "questions_run_id" not in columns(hub_db, "kg_init_runs")
+    lens = t.proposals.c.lens == "kg_questions"
+    assert query(hub_db, select(func.count()).select_from(t.proposals).where(lens)) == [(0,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id, "fingerprint": "a" * 64}))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0201") :]

@@ -12,6 +12,11 @@ Keys in the bucket:
 - ``uploads/<upload_id>.sealed``: the hub's own copy of an upload, made when it is committed. The hub hashes the
   sealed copy and copies that one to the blob key, so a client that PUTs again while its URL still works cannot
   slip other bytes in between the check and the copy.
+- ``kg-archives/<upload_id>``: an archive a writer uploads as a source of a project's graph (``hub kg upload``,
+  ``evo_agents.hub.server.kg_uploads``), too large for one PUT behind a proxy that caps a request's body. The client
+  sends it as an S3 multipart upload, one presigned URL per part of PART_SIZE; the store keeps the parts it has, so a
+  client that was cut off asks which ones and sends only the others. A multipart upload not completed after
+  STALE_AFTER is aborted by the cleanup job (``evo_agents.hub.kg_upload_prune``).
 
 R2 keeps no SHA-256 of a whole object (only CRC64NVME), so the hub reads every upload back to hash it, streaming it
 in CHUNK pieces rather than holding it whole. Whatever is under ``uploads/`` after STALE_AFTER is removed by the
@@ -106,6 +111,10 @@ PARALLEL = 16  # objects the worker fetches at once for one build (kg_build)
 DEFAULT_CONCURRENCY = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once, every commit together
 MAX_CONCURRENCY = MAX_BLOB_CONCURRENCY
 DELETE_BATCH = 1000  # the most keys DeleteObjects takes
+ARCHIVE_PREFIX = "kg-archives/"
+ITEMS_SUFFIX = ".items.jsonl.gz"  # the items an archive gave, next to it (``items_key``)
+PART_SIZE = 64 * MiB  # one part of an archive's multipart upload, below the 100 MB a proxy such as Cloudflare takes
+MAX_PARTS = 10_000  # the most parts S3 takes in one multipart upload
 
 
 class BlobStoreUnavailable(RuntimeError):
@@ -140,6 +149,15 @@ def sealed_key(upload_id: str) -> str:
     return upload_key(upload_id) + SEALED_SUFFIX
 
 
+def archive_key(upload_id: str) -> str:
+    return ARCHIVE_PREFIX + str(uuid.UUID(upload_id))
+
+
+def items_key(object_key: str) -> str:
+    """Where the items read from the archive at ``object_key`` are kept: gzipped JSON Lines next to it."""
+    return object_key + ITEMS_SUFFIX
+
+
 def new_upload_id() -> str:
     return str(uuid.uuid4())
 
@@ -153,10 +171,10 @@ def _error_code(exc: Exception) -> str:
 
 
 def _missing(exc: ClientError) -> bool:
-    """A 404 about the object; a missing bucket is a configuration problem, not a missing object."""
+    """A 404 about the object or multipart upload; a missing bucket is a configuration problem, not a missing object."""
     code = exc.response.get("Error", {}).get("Code")
     status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-    return code in ("NoSuchKey", "NotFound", "404") or (status == 404 and code != "NoSuchBucket")
+    return code in ("NoSuchKey", "NoSuchUpload", "NotFound", "404") or (status == 404 and code != "NoSuchBucket")
 
 
 def _unavailable(operation: str, exc: Exception) -> BlobStoreUnavailable:
@@ -450,6 +468,15 @@ class BlobStore:
             raise BlobStoreUnavailable(f"blob {sha256} does not have its {size} bytes after it was written")
         return True
 
+    def put_object(self, key: str, path: Path) -> None:
+        """Store the file at ``path`` at ``key``, a key of the hub's own outside ``blobs/`` (the items an upload's
+        archive gave, ``items_key``), replacing what is there."""
+        size = path.stat().st_size
+        with open(path, "rb") as handle:
+            self._call("PutObject", "put_object", Key=key, Body=handle, ContentLength=size)
+        if self.size(key) != size:
+            raise BlobStoreUnavailable(f"object {key} does not have its {size} bytes after it was written")
+
     def copy(self, source: str, target: str) -> bool:
         """Copy ``source`` to ``target`` inside the bucket; False when ``source`` does not exist."""
         source_ref = {"Bucket": self.bucket, "Key": source}
@@ -559,3 +586,81 @@ class BlobStore:
             raise _unavailable("ListObjectsV2", exc) from None
         self.delete(stale)
         return len(stale)
+
+    # Multipart uploads: an archive of a graph source, sent in parts
+
+    def create_multipart(self, key: str) -> str:
+        """Start a multipart upload to ``key``; its upload id in the store."""
+        response = self._call("CreateMultipartUpload", "create_multipart_upload", Key=key)
+        if response is None:
+            raise BlobStoreUnavailable("the blob store did not start a multipart upload")
+        return str(response["UploadId"])
+
+    def presign_part(self, key: str, multipart_id: str, number: int, size: int) -> str:
+        """A PUT of exactly ``size`` bytes as part ``number`` of the multipart upload, working for UPLOAD_TTL."""
+        params = {
+            "Bucket": self.bucket,
+            "Key": key,
+            "UploadId": multipart_id,
+            "PartNumber": number,
+            "ContentLength": size,
+        }
+        return self._signer.generate_presigned_url(
+            "upload_part", Params=params, ExpiresIn=int(UPLOAD_TTL.total_seconds())
+        )
+
+    def upload_part(self, key: str, multipart_id: str, number: int, body: BinaryIO, size: int) -> bool:
+        """Send ``size`` bytes of ``body`` as part ``number`` of the multipart upload, as the hub's web relays a part
+        a browser sent it; False when the multipart upload is gone."""
+        response = self._call(
+            "UploadPart",
+            "upload_part",
+            Key=key,
+            UploadId=multipart_id,
+            PartNumber=number,
+            Body=body,
+            ContentLength=size,
+        )
+        return response is not None
+
+    def list_parts(self, key: str, multipart_id: str) -> dict[int, tuple[int, str]] | None:
+        """{part number: (size, ETag)} of the parts the store has; None when the multipart upload does not exist."""
+        parts: dict[int, tuple[int, str]] = {}
+        marker = 0
+        while True:
+            response = self._call(
+                "ListParts", "list_parts", Key=key, UploadId=multipart_id, PartNumberMarker=marker, MaxParts=1000
+            )
+            if response is None:
+                return None
+            for part in response.get("Parts", []):
+                parts[int(part["PartNumber"])] = (int(part["Size"]), str(part["ETag"]))
+            if not response.get("IsTruncated"):
+                return parts
+            marker = int(response["NextPartNumberMarker"])
+
+    def complete_multipart(self, key: str, multipart_id: str, parts: Mapping[int, str]) -> bool:
+        """Join the parts ({number: ETag}) into the object at ``key``; False when the multipart upload is gone."""
+        listed = [{"PartNumber": number, "ETag": parts[number]} for number in sorted(parts)]
+        response = self._call(
+            "CompleteMultipartUpload",
+            "complete_multipart_upload",
+            Key=key,
+            UploadId=multipart_id,
+            MultipartUpload={"Parts": listed},
+        )
+        return response is not None
+
+    def abort_multipart(self, key: str, multipart_id: str) -> None:
+        """Abort the multipart upload and drop its parts; one that is gone already is not an error."""
+        self._call("AbortMultipartUpload", "abort_multipart_upload", Key=key, UploadId=multipart_id)
+
+    def list_multipart(self, prefix: str = ARCHIVE_PREFIX) -> list[tuple[str, str, datetime]]:
+        """(key, multipart id, when it started) of every multipart upload in progress under ``prefix``."""
+        found = []
+        try:
+            for page in self._s3.get_paginator("list_multipart_uploads").paginate(Bucket=self.bucket, Prefix=prefix):
+                found += [(item["Key"], item["UploadId"], item["Initiated"]) for item in page.get("Uploads", [])]
+        except (ClientError, BotoCoreError) as exc:
+            raise _unavailable("ListMultipartUploads", exc) from None
+        return found

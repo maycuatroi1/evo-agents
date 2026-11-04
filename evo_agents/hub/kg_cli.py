@@ -283,10 +283,12 @@ def forget_json(project: str, found: list[dict]) -> dict:
 
 
 def forget_line(project: str, found: dict) -> str:
-    runs = found["ingested"] + found["pending"]
-    if not runs:
+    runs, uploads = found["ingested"] + found["pending"], found.get("uploads", 0)
+    if not runs and not uploads:
         return f"the hub holds no run of source {found['source']} of project {project}; nothing changed"
     line = f"took {runs} run(s) of source {found['source']} off project {project}"
+    if uploads:
+        line += f"; deleted {uploads} uploaded archive(s) of it"
     if found["logs"]:
         line += f"; {found['logs']} log(s) leave the blob store with the next prune"
     build = found.get("build")
@@ -566,11 +568,12 @@ def register_kg(hsub) -> None:
 
     kg_init_cli.register(ksub)
 
-    from evo_agents.hub import kg_profile_cli, kg_semantic_cli, kg_settings_cli
+    from evo_agents.hub import kg_profile_cli, kg_semantic_cli, kg_settings_cli, kg_upload_cli
 
     kg_profile_cli.register(ksub)
     kg_semantic_cli.register(ksub)
     kg_settings_cli.register(ksub)
+    kg_upload_cli.register(ksub)
 
     from evo_agents.hub import kg_entities_cli
 

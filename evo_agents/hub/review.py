@@ -90,8 +90,11 @@ LENSES: dict[str, str] = {
     "kg_init": "how a project's knowledge graph is configured: its data profile, what its build covered, the "
     "strategies, and what the starter questions score; the strategy, KG settings and sources that fit the data. "
     "Asked for by a kg_init run (evo_agents.hub.server.kg_init), never a night's turn",
+    "kg_questions": "the starter questions of a project whose data has no commit history: read its documents through "
+    "the kg_* tools and write retrieval questions each answered by a file or a node of the graph. Asked for by a "
+    "kg_init run before it measures (evo_agents.hub.server.kg_questions), never a night's turn",
 }
-ON_DEMAND_LENSES = ("kg_init",)  # the lenses a run asks for, left out of the nights' turns
+ON_DEMAND_LENSES = ("kg_init", "kg_questions")  # the lenses a run asks for, left out of the nights' turns
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
 SEVERITIES = ("low", "medium", "high")

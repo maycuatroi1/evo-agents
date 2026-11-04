@@ -23,6 +23,9 @@ ConfigErrors too when set without the four.
 EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
 (``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
 artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
+EVO_HUB_KG_UPLOAD_MAX_BYTES is the largest archive a writer may upload as a source of a project's graph (``hub kg
+upload``, ``evo_agents.hub.server.kg_uploads``): 20 GiB by default, at most MAX_KG_UPLOAD_MAX_BYTES, which the parts of
+one multipart upload can carry.
 EVO_HUB_RUN_LOG_DAYS is how many days the events of a finished run are kept before the daily hub.prune_run_events
 deletes them (``evo_agents.hub.server.run_state``). EVO_HUB_AUDIT_DAYS is how many days an audit row is kept before
 the daily hub.prune_audit deletes it (``evo_agents.hub.worker``): 365 by default, from 30 to 3650, so a month of the
@@ -140,6 +143,8 @@ MAX_BLOB_CONCURRENCY = 256
 # The retention of built graphs (evo_agents.hub.kg_prune): the artifacts of each project's newest graphs that stay.
 DEFAULT_KG_KEEP_ARTIFACTS = 3
 MAX_KG_KEEP_ARTIFACTS = 1000
+DEFAULT_KG_UPLOAD_MAX_BYTES = 20 * 1024**3
+MAX_KG_UPLOAD_MAX_BYTES = 600 * 1024**3  # 10,000 parts of 64 MiB, the most one multipart upload has (kg_uploads)
 # Days the events of a finished run stay (evo_agents.hub.server.run_state.prune_run_events).
 DEFAULT_RUN_LOG_DAYS = 30
 MAX_RUN_LOG_DAYS = 3650
@@ -293,6 +298,7 @@ class HubConfig:
     s3_addressing_style: str = "path"  # path: <endpoint>/<bucket>/<key>; virtual: <bucket>.<endpoint host>/<key>
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
+    kg_upload_max_bytes: int = DEFAULT_KG_UPLOAD_MAX_BYTES  # the largest archive `hub kg upload` takes
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
     audit_days: int = DEFAULT_AUDIT_DAYS  # days an audit row is kept
     transcript_days: int = DEFAULT_TRANSCRIPT_DAYS  # days a transcript is kept after its last part came
@@ -423,6 +429,14 @@ def _blob_concurrency(env: Mapping[str, str]) -> int:
     value = _number(env, name, DEFAULT_BLOB_CONCURRENCY, minimum=1)
     if value > MAX_BLOB_CONCURRENCY:
         raise ConfigError(name, f"{name} must be at most {MAX_BLOB_CONCURRENCY}, got {value}")
+    return value
+
+
+def _kg_upload_max_bytes(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_KG_UPLOAD_MAX_BYTES"
+    value = _number(env, name, DEFAULT_KG_UPLOAD_MAX_BYTES, minimum=1)
+    if value > MAX_KG_UPLOAD_MAX_BYTES:
+        raise ConfigError(name, f"{name} must be at most {MAX_KG_UPLOAD_MAX_BYTES}, got {value}")
     return value
 
 
@@ -931,6 +945,7 @@ def load_config(
         github_timeout=_number(env, "EVO_HUB_GITHUB_TIMEOUT", DEFAULT_GITHUB_TIMEOUT, kind=float, minimum=0.1),
         blob_concurrency=_blob_concurrency(env),
         kg_keep_artifacts=_kg_keep_artifacts(env),
+        kg_upload_max_bytes=_kg_upload_max_bytes(env),
         run_log_days=_run_log_days(env),
         audit_days=_audit_days(env),
         transcript_days=_transcript_days(env),

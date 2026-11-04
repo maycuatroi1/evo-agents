@@ -5,6 +5,7 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 import { MAX_ATTACHMENT_BYTES } from "./src/lib/attachments";
+import { UPLOAD_PART_BYTES } from "./src/lib/kg/upload-limits";
 import { STATIC_SECURITY_HEADERS } from "./src/lib/security";
 
 const webDir = path.dirname(fileURLToPath(import.meta.url));
@@ -35,8 +36,9 @@ const nextConfig: NextConfig = {
   pageExtensions: fixtures ? ["fixture.tsx", ...PAGE_EXTENSIONS] : PAGE_EXTENSIONS,
   agentRules: false, // `next dev` would otherwise write AGENTS.md and CLAUDE.md into web/
   // The web hands a request's body on to the /v1 rewrite after buffering it, and cuts it at 10 MB by default: a file
-  // attached to a message goes up to the hub's limit (50 MiB) and a little over, so the hub's own 413 says why.
-  experimental: { proxyClientMaxBodySize: MAX_ATTACHMENT_BYTES + 1024 * 1024 },
+  // attached to a message goes up to the hub's limit (50 MiB), and a part of an uploaded archive to the hub's part
+  // size (64 MiB, `blobs.PART_SIZE`), each a little over, so the hub's own 413 says why.
+  experimental: { proxyClientMaxBodySize: Math.max(MAX_ATTACHMENT_BYTES, UPLOAD_PART_BYTES) + 1024 * 1024 },
   async headers() {
     return [{ source: "/:path*", headers: [...STATIC_SECURITY_HEADERS] }];
   },

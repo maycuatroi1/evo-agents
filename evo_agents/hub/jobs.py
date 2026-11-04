@@ -46,6 +46,7 @@ CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figure
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
 MERGE_QUEUE = "hub.merge_queue"  # every minute: the merge requests of the merge queue on GitLab opened and gated
+EXTRACT_UPLOADS = "hub.extract_uploads"  # every minute: each archive uploaded to a graph read into its source's items
 CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged changes counted again, outcome_days on
 REPLAY_SUITE = "curator.replay_suite"  # hourly: each charter's suite of replay tasks, from the plans' steps done
 PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once

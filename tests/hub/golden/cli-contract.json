@@ -5654,7 +5654,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -5779,7 +5780,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -5904,7 +5906,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -6407,7 +6410,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -6988,7 +6992,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -7265,7 +7270,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -10949,6 +10955,14 @@
         },
         {
           "flags": [
+            "--questions"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--run"
           ],
           "value": "integer",
@@ -10974,6 +10988,7 @@
           "why",
           "build_id",
           "agent_run_id",
+          "questions",
           "summary",
           "decisions",
           "notes",
@@ -11008,6 +11023,18 @@
               "applied"
             ],
             "schema": "DecisionOut"
+          },
+          "--questions": {
+            "kind": "object",
+            "keys": [
+              "run",
+              "set",
+              "version",
+              "questions",
+              "holdout",
+              "classes"
+            ],
+            "schema": "QuestionsOut"
           }
         }
       }
@@ -11595,6 +11622,122 @@
           "needs_rebuild",
           "changes"
         ]
+      }
+    },
+    "hub kg upload": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--new-project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "source",
+          "name",
+          "state",
+          "size",
+          "label",
+          "sender",
+          "created_at",
+          "uploaded_at",
+          "ended_at",
+          "files",
+          "skipped",
+          "assets",
+          "paths",
+          "build_id",
+          "build_status",
+          "error",
+          "replaced_by",
+          "sent",
+          "kept"
+        ],
+        "schema": "KgUpload"
+      }
+    },
+    "hub kg uploads": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "uploads"
+        ],
+        "schema": "KgUploadList"
       }
     },
     "hub login": {
@@ -25346,7 +25489,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -25549,7 +25693,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         }
       ],
@@ -25725,7 +25870,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -35036,6 +35182,617 @@
                   "schema": {
                     "$ref": "#/components/schemas/ErrorBody"
                   }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/uploads": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Start Upload",
+          "description": "Start an archive's upload, or resume the one in flight for the same archive: every check before any byte.",
+          "operationId": "start_upload_v1_kg__project__uploads_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgUploadAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgUploadStarted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Uploads",
+          "description": "The project's uploads the caller's grant sees, newest first.",
+          "operationId": "list_uploads_v1_kg__project__uploads_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgUploadList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/uploads/{upload_id}/parts": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Part Urls",
+          "description": "A presigned PUT for each part asked for, of exactly its size.",
+          "operationId": "part_urls_v1_kg__project__uploads__upload_id__parts_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "upload_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the upload, as `hub kg uploads` lists it",
+                "title": "Upload Id"
+              },
+              "description": "the upload, as `hub kg uploads` lists it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgPartsAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgPartUrls"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/uploads/{upload_id}/complete": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Complete Upload",
+          "description": "Join the parts once the store holds each at its size; the upload is then ``extracting``.",
+          "operationId": "complete_upload_v1_kg__project__uploads__upload_id__complete_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "upload_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the upload, as `hub kg uploads` lists it",
+                "title": "Upload Id"
+              },
+              "description": "the upload, as `hub kg uploads` lists it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgUpload"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/uploads/{upload_id}/parts/{number}": {
+        "put": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Send Part",
+          "description": "Relay part ``number`` of an upload in flight to the blob store, for a client that cannot reach the store.",
+          "operationId": "send_part_v1_kg__project__uploads__upload_id__parts__number__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "upload_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the upload, as `hub kg uploads` lists it",
+                "title": "Upload Id"
+              },
+              "description": "the upload, as `hub kg uploads` lists it"
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 10000,
+                "minimum": 1,
+                "description": "the part, numbered from 1",
+                "title": "Number"
+              },
+              "description": "the part, numbered from 1"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgPartSent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the part's bytes, exactly the size the upload gives it",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -45337,7 +46094,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -45616,7 +46374,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -53454,7 +54213,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -53614,7 +54374,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -97726,6 +98487,109 @@
             }
           }
         }
+      },
+      "/v1/kg/{project}/init/{run_id}/questions": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Put Questions",
+          "description": "Send the starter questions of a kg_init run: kept as the next version of the project's eval set when every\nanswer is a file or a node of the graph the agents' sink reads, and they are enough and cover its data.",
+          "operationId": "put_questions_v1_kg__project__init__run_id__questions_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionsBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/QuestionsOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -116629,7 +117493,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -119878,6 +120743,19 @@
                 }
               ],
               "title": "Ended At"
+            },
+            "questions": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Questions",
+              "description": "the run that wrote the starter questions first (lens kg_questions): state, why, agent_run_id, what the agents' sink reads, the target, the eval set version it made; null before the run looked"
             }
           },
           "type": "object",
@@ -122507,6 +123385,81 @@
           ],
           "title": "KgNode"
         },
+        "KgPartSent": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "size"
+          ],
+          "title": "KgPartSent"
+        },
+        "KgPartUrl": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "size",
+            "url"
+          ],
+          "title": "KgPartUrl"
+        },
+        "KgPartUrls": {
+          "properties": {
+            "parts": {
+              "items": {
+                "$ref": "#/components/schemas/KgPartUrl"
+              },
+              "type": "array",
+              "title": "Parts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "parts"
+          ],
+          "title": "KgPartUrls"
+        },
+        "KgPartsAsk": {
+          "properties": {
+            "numbers": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Numbers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "numbers"
+          ],
+          "title": "KgPartsAsk"
+        },
         "KgPruned": {
           "properties": {
             "dry_run": {
@@ -122740,6 +123693,335 @@
           ],
           "title": "KgSyncSource",
           "description": "What the daemon last did for one git source of a project whose night shift it is on duty for."
+        },
+        "KgUpload": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label"
+            },
+            "sender": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sender"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "uploaded_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uploaded At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "files": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Files",
+              "description": "files read from the archive; None until it is read"
+            },
+            "skipped": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Skipped",
+              "description": "files left out, counted by reason"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id"
+            },
+            "build_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Status"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "assets": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Assets",
+              "description": "files kept by path and size only, by reason"
+            },
+            "paths": {
+              "items": {
+                "$ref": "#/components/schemas/KgUploadPath"
+              },
+              "type": "array",
+              "title": "Paths",
+              "description": "the first files skipped or kept as assets; only for a grant that sees the label"
+            },
+            "replaced_by": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Replaced By",
+              "description": "the upload of the same source that replaced this one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "name",
+            "state",
+            "size",
+            "label",
+            "sender",
+            "created_at",
+            "uploaded_at",
+            "ended_at",
+            "files",
+            "skipped",
+            "build_id",
+            "build_status",
+            "error"
+          ],
+          "title": "KgUpload"
+        },
+        "KgUploadAsk": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f/\\\\]+$",
+              "title": "Name",
+              "description": "the file's name"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "Size",
+              "description": "bytes"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "hex SHA-256 of the whole archive"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f/]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "the source the archive becomes; from its name without one"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "a level of the project; its default label without one"
+            },
+            "new_project": {
+              "type": "boolean",
+              "title": "New Project",
+              "description": "create the project, with no harness, before the upload (``kg_upload_project``); 409 if it exists",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "size",
+            "sha256"
+          ],
+          "title": "KgUploadAsk"
+        },
+        "KgUploadList": {
+          "properties": {
+            "uploads": {
+              "items": {
+                "$ref": "#/components/schemas/KgUpload"
+              },
+              "type": "array",
+              "title": "Uploads"
+            }
+          },
+          "type": "object",
+          "required": [
+            "uploads"
+          ],
+          "title": "KgUploadList"
+        },
+        "KgUploadPath": {
+          "properties": {
+            "path": {
+              "type": "string",
+              "title": "Path"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "path",
+            "reason"
+          ],
+          "title": "KgUploadPath"
+        },
+        "KgUploadStarted": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "part_size": {
+              "type": "integer",
+              "title": "Part Size"
+            },
+            "parts": {
+              "type": "integer",
+              "title": "Parts",
+              "description": "how many parts the archive is sent in"
+            },
+            "done": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Done",
+              "description": "the parts the store already holds, which the client does not send again"
+            },
+            "resumed": {
+              "type": "boolean",
+              "title": "Resumed",
+              "description": "an upload of the same archive was in flight and continues"
+            },
+            "max_size": {
+              "type": "integer",
+              "title": "Max Size",
+              "description": "the largest archive this hub takes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "state",
+            "size",
+            "part_size",
+            "parts",
+            "done",
+            "resumed",
+            "max_size"
+          ],
+          "title": "KgUploadStarted"
         },
         "KindCount": {
           "properties": {
@@ -135608,7 +136890,8 @@
                     "product_goals",
                     "product",
                     "kg_health",
-                    "kg_init"
+                    "kg_init",
+                    "kg_questions"
                   ]
                 },
                 {
@@ -143818,7 +145101,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -149112,7 +150396,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 16.0,
+              "maximum": 17.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",
@@ -155002,7 +156286,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -155097,7 +156382,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -156920,6 +158206,12 @@
               "type": "boolean",
               "title": "Declared",
               "description": "whether the knowledge config on the hub still declares the source: a machine holding its runs then pushes them again"
+            },
+            "uploads": {
+              "type": "integer",
+              "title": "Uploads",
+              "description": "uploaded archives of the source deleted, with their items",
+              "default": 0
             }
           },
           "type": "object",
@@ -167853,6 +169145,71 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
+        },
+        "QuestionsBody": {
+          "properties": {
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "maxItems": 2000,
+              "minItems": 1,
+              "title": "Questions",
+              "description": "the questions: each {question, files and/or nodes}, an id optional"
+            }
+          },
+          "type": "object",
+          "required": [
+            "questions"
+          ],
+          "title": "QuestionsBody"
+        },
+        "QuestionsOut": {
+          "properties": {
+            "run": {
+              "type": "integer",
+              "title": "Run",
+              "description": "the kg_init run"
+            },
+            "set": {
+              "type": "string",
+              "title": "Set"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the project's eval set the questions are"
+            },
+            "questions": {
+              "type": "integer",
+              "title": "Questions"
+            },
+            "holdout": {
+              "type": "integer",
+              "title": "Holdout",
+              "description": "the questions in the holdout part, which the kg_init run does not see"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "questions by the class of data their answers are of"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run",
+            "set",
+            "version",
+            "questions",
+            "holdout",
+            "classes"
+          ],
+          "title": "QuestionsOut"
         }
       }
     }

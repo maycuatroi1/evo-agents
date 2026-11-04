@@ -205,6 +205,7 @@
   "nav": {
     "label": "Điều hướng chính",
     "home": "Trang chủ",
+    "newProject": "Dự án mới từ dữ liệu",
     "hub": "Hub",
     "project": "Dự án",
     "overview": "Tổng quan",
@@ -601,7 +602,8 @@
       "count": "{count, plural, other {# dự án}}",
       "open": "Mở dự án {name}",
       "curator": "Curator: {state}",
-      "proposals": "{count} đề xuất chờ"
+      "proposals": "{count} đề xuất chờ",
+      "newFromData": "Dự án mới từ dữ liệu"
     },
     "empty": {
       "title": "Bạn chưa được cấp dự án nào",
@@ -609,7 +611,8 @@
       "adminDescription": "Bạn quản trị hub nhưng chưa có vai trò trong dự án nào. Tự cấp cho mình ở trang Quản trị, rồi tải lại trang này. Để mời người khác, hãy tạo link mời cho họ.",
       "admin": "Mở trang Quản trị",
       "copyLogin": "Sao chép tên đăng nhập",
-      "invites": "Tạo link mời"
+      "invites": "Tạo link mời",
+      "newFromData": "Dự án mới từ dữ liệu"
     },
     "authorWaiting": {
       "title": "Đang chờ bạn trả lời",
@@ -1864,7 +1867,8 @@
       "label": "Các trang của đồ thị tri thức",
       "explore": "Khám phá",
       "builds": "Build",
-      "review": "Hàng đợi rà duyệt"
+      "review": "Hàng đợi rà duyệt",
+      "upload": "Tải dữ liệu lên"
     },
     "explorer": {
       "canvasRole": "đồ thị",
@@ -7292,7 +7296,8 @@
       "product_goals": "Mục tiêu sản phẩm",
       "product": "Sản phẩm",
       "kg_health": "Sức khoẻ graph",
-      "kg_init": "Cấu hình graph"
+      "kg_init": "Cấu hình graph",
+      "kg_questions": "Câu hỏi khởi đầu"
     },
     "kinds": {
       "docs": "Tài liệu",
@@ -11852,6 +11857,117 @@
         "paidOut": "Đã đánh dấu phần của {publisher} tháng {month} là đã trả",
         "payoutFailed": "Không đánh dấu được phần của {publisher} là đã trả"
       }
+    }
+  },
+  "kgUpload": {
+    "title": "Tải dữ liệu lên",
+    "intro": "Gửi một tệp nén chứa tài liệu vào knowledge graph của dự án này. Hub đọc nó thành một nguồn riêng rồi dựng lại graph.",
+    "drop": {
+      "title": "Thả tệp nén vào đây",
+      "hint": "Tệp .zip, .tar, .tar.gz hoặc .tgz. Tài liệu, bảng tính và văn bản bên trong trở thành mục của graph.",
+      "choose": "Chọn tệp",
+      "input": "Tệp nén để tải lên",
+      "over": "Thả tệp nén để chọn",
+      "notArchive": "{name} không phải tệp nén mà hub đọc được. Hãy chọn tệp .zip, .tar, .tar.gz hoặc .tgz.",
+      "oneFile": "Mỗi lần chỉ thả một tệp nén.",
+      "empty": "{name} rỗng.",
+      "change": "Chọn tệp khác"
+    },
+    "form": {
+      "source": "Tên nguồn",
+      "sourceHint": "Graph giữ các mục của tệp nén dưới upload.{source}. Tải lên lại với cùng tên sẽ thay thế chúng.",
+      "sourceHintEmpty": "Để trống thì nguồn mang tên của tệp nén. Tải lên lại với cùng tên sẽ thay thế các mục của nó.",
+      "label": "Nhãn",
+      "labelHint": "Mọi mục từ tệp nén mang nhãn này. Danh sách dừng ở nhãn cao nhất mà sink hub của dự án được phép.",
+      "start": "Tải lên",
+      "resume": "Tiếp tục tải lên",
+      "resumeHint": "Trình duyệt này đã bắt đầu tải tệp này trước đó. Chỉ những phần hub còn thiếu được gửi."
+    },
+    "levels": {
+      "notWriter": "Bạn đọc được graph của dự án này nhưng không thêm vào được. Admin dự án có thể cấp cho bạn quyền writer.",
+      "noHubSink": "Dự án này không có sink hub nên hub không giữ được tệp nén tải lên. Admin dự án có thể thêm một sink vào cấu hình knowledge của dự án."
+    },
+    "progress": {
+      "hashing": "Đang kiểm tra tệp: {read} trên {size}",
+      "hashingLabel": "Đã kiểm tra tệp",
+      "starting": "Đang bắt đầu tải lên",
+      "sending": "Đang gửi: {sent} trên {size}",
+      "sendingLabel": "Đã gửi tệp nén",
+      "resumed": "{count, plural, other {# phần đã có trên hub và không gửi lại.}}",
+      "parts": "Các phần",
+      "part": "Phần {number}",
+      "partValue": "Phần {number}: {percent}%",
+      "completing": "Đang ghép các phần",
+      "done": "{name} đã lên hub. Hub sẽ đọc nó; báo cáo hiện ở mục Lượt tải lên.",
+      "another": "Tải tệp khác",
+      "cancel": "Dừng tải lên",
+      "cancelled": "Đã dừng tải {name}. Các phần đã gửi được giữ trên hub một ngày: chọn lại đúng tệp đó để tiếp tục.",
+      "failed": "Việc tải {name} đã dừng",
+      "retry": "Thử lại"
+    },
+    "pending": {
+      "title": "{count, plural, other {# lượt tải lên chưa xong}}",
+      "body": "Chọn lại đúng tệp đó để tiếp tục. Các phần đã gửi được giữ trên hub một ngày.",
+      "forget": "Bỏ qua {name}"
+    },
+    "reports": {
+      "title": "Lượt tải lên",
+      "emptyTitle": "Chưa có tệp nén nào được tải lên",
+      "emptyDescription": "Các tệp nén tải lên dự án này, và những gì hub đọc được từ mỗi tệp, hiện ở đây.",
+      "label": "Nhãn {level}",
+      "by": "Gửi bởi {login}",
+      "state": {
+        "uploading": "Đang tải lên",
+        "extracting": "Đang đọc",
+        "failed": "Thất bại"
+      },
+      "build": {
+        "queued": "Build đang chờ",
+        "running": "Đang build",
+        "failed": "Build thất bại"
+      },
+      "files": "Tệp đọc được",
+      "skipped": "Bỏ qua",
+      "assets": "Giữ lại không có chữ",
+      "none": "Không có",
+      "reasonCount": "{reason}: {count}",
+      "paths": "{count, plural, other {Xem # tệp bị bỏ qua}}",
+      "replaced": "Đã được thay bằng một lượt tải lên sau của nguồn này",
+      "buildLink": "Build #{id}",
+      "initLink": "Lượt cấu hình graph #{id}",
+      "questionsLink": "Lượt câu hỏi khởi đầu #{id}",
+      "error": "Hub không đọc được tệp nén này"
+    },
+    "reasons": {
+      "duplicate": "Trùng lặp",
+      "too_many_entries": "Vượt giới hạn số mục",
+      "total_size": "Vượt giới hạn dung lượng",
+      "depth": "Lồng quá sâu",
+      "corrupt": "Hỏng",
+      "symlink": "Liên kết tượng trưng",
+      "link": "Liên kết cứng",
+      "device": "Tệp thiết bị",
+      "encrypted": "Đã mã hoá",
+      "ratio": "Nén quá mức",
+      "unsafe_path": "Đường dẫn không an toàn",
+      "binary": "Tệp nhị phân",
+      "unreadable": "Không đọc được",
+      "no_text_layer": "Không có lớp chữ",
+      "timeout": "Quá thời gian",
+      "too_large": "Quá lớn"
+    },
+    "newProject": {
+      "title": "Dự án mới từ dữ liệu",
+      "intro": "Tạo dự án từ một tệp nén chứa tài liệu. Hub tạo dự án, đọc tệp nén vào knowledge graph của nó rồi dựng graph.",
+      "name": "Tên dự án",
+      "nameHint": "Chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số.",
+      "nameInvalid": "Dùng chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số, tối đa 100 ký tự.",
+      "labelHint": "Mọi mục từ tệp nén mang nhãn này. Sink hub của dự án mới được phép nhãn này.",
+      "create": "Tạo dự án và tải lên",
+      "done": "Đã tạo dự án {name} và tệp nén đã lên hub.",
+      "open": "Mở các lượt tải lên của dự án",
+      "forbidden": "Tạo dự án cần admin hub, hoặc một quyền đăng ký bạn chưa dùng.",
+      "taken": "Đã có dự án tên {name}. Hãy chọn tên khác."
     }
   }
 }

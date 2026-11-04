@@ -1,5 +1,7 @@
 import { type APIRequestContext, expect, type Page } from "@playwright/test";
 
+import type { components } from "../../src/lib/api/schema";
+
 import { STACK_URL } from "./env";
 import { type Account, HubAdmin, LEVELS, newAccount, registration, type Role, uniqueName } from "./hub";
 
@@ -86,6 +88,20 @@ export async function changeKg(project: string, writer: Account, extra: string):
 /** Queue a build of `project` as `writer`; with `run`, the stack runs it at once. */
 export function queueBuild(project: string, writer: Account, run: boolean): Promise<Build> {
   return stack<Build>("/kg/build", { project, login: writer.login, id: writer.id, run });
+}
+
+export type KgUploadRow = components["schemas"]["KgUpload"];
+
+/**
+ * One pass of the worker's read of uploaded archives in the stack, then the build each read upload of `project`
+ * queued; the uploads as `account` lists them.
+ */
+export function extractUploads(project: string, account: Account): Promise<{ uploads: KgUploadRow[] }> {
+  return stack("/kg/extract", { project, login: account.login, id: account.id });
+}
+
+export function uploadPath(project: string): string {
+  return `/p/${project}/kg/upload`;
 }
 
 let shared: Promise<KgProject> | null = null;

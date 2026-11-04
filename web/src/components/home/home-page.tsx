@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { FolderGit2, Link2, Shield } from "lucide-react";
+import { FolderGit2, FolderPlus, Link2, Shield } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { NEW_PROJECT_HREF } from "@/lib/kg/routes";
 import { type Today, todayQuery } from "@/lib/notification-queries";
 import { overviewQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,7 @@ import { TodayCard } from "./today-card";
 
 /**
  * A member without a grant: who grants roles or sends invite links, and the login to send them; a hub admin goes to
- * Administration, or makes invite links for others.
+ * Administration, or makes invite links for others. Either may make a project from data, if the hub lets them.
  */
 function NoGrants() {
   const t = useTranslations("home.empty");
@@ -61,6 +62,12 @@ function NoGrants() {
       ) : login ? (
         <Identifier value={login} copy copyLabel={t("copyLogin")} testId="home-login" />
       ) : null}
+      <Button asChild variant="outline">
+        <Link href={NEW_PROJECT_HREF} data-testid="home-new-project">
+          <FolderPlus aria-hidden="true" />
+          {t("newFromData")}
+        </Link>
+      </Button>
     </EmptyState>
   );
 }

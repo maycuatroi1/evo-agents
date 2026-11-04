@@ -134,6 +134,7 @@ function useCrumbs(): Crumb[] {
     return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? chatTitle ?? itemLabel(item) }];
   }
   if (hub) return [{ label: t(hub.label) }];
+  if (parts[0] === "projects" && parts[1] === "new") return [{ label: t("home"), href: "/" }, { label: t("newProject") }];
   return [{ label: t("home") }];
 }
 

@@ -4,7 +4,9 @@ curator.collect moves it on each minute (``advance``):
 
 - ``queued``: asked for by the first successful build of a project with a knowledge config, by a profile that changed a
   lot since the last run's (``evo_agents.hub.kg_init_db.on_build``), or by a call (POST /v1/kg/{project}/init,
-  ``evo-agents hub kg init --project P``; POST /v1/admin/kg-init for every project, an admin's). The hub measures the
+  ``evo-agents hub kg init --project P``; POST /v1/admin/kg-init for every project, an admin's). A project with no eval
+  set, or only its commits' set with under 30 questions, first gets a review run with lens kg_questions that writes the
+  starter questions, waited for until it ends or for two hours (``evo_agents.hub.server.kg_questions``). The hub measures the
   starter questions (the tune split of the project's eval set, by words and by meaning when the graph has vectors),
   writes the prompt (the profile, the build's coverage, the strategies, the measures, the optimize loop's last figures)
   and queues a review run with lens kg_init on the project's default agent pool, under the charter's review cost cap
@@ -46,7 +48,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, kg_root, queue_build
 from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
-from evo_agents.hub.server import audit, kg_eval_sets, kg_health
+from evo_agents.hub.server import audit, kg_eval_sets, kg_health, kg_questions
 from evo_agents.hub.server.admin import ProjectName, admin
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs
@@ -210,8 +212,11 @@ def _coverage_text(coverage) -> dict:
     }
 
 
-async def _queue_agent(conn: AsyncConnection, ctx, body: dict, measures: dict) -> int | None:
-    """Queue the review run of ``ctx``; its id, or None with why in ``body["notes"]``."""
+async def _queue_agent(
+    conn: AsyncConnection, ctx, body: dict, measures: dict | None, lens: str = "kg_init"
+) -> int | None:
+    """Queue the review run of ``ctx`` through ``lens`` (kg_init, or kg_questions for the run that writes its starter
+    questions first); its id, or None with why in ``body["notes"]``."""
     from evo_agents.hub.server.collect import _review_place
     from evo_agents.hub.server.night_duty import on_duty
     from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -245,7 +250,7 @@ async def _queue_agent(conn: AsyncConnection, ctx, body: dict, measures: dict) -
         "kind": "review",
         "project_id": ctx.project_id,
         "plan_id": None,
-        "title": f"KG init of {ctx.project}",
+        "title": f"KG init of {ctx.project}" if lens == "kg_init" else f"KG starter questions of {ctx.project}",
         "plan_revision": None,
         "dispatched_by": who[0],
         "dispatched_via": "machine",
@@ -271,24 +276,25 @@ async def _queue_agent(conn: AsyncConnection, ctx, body: dict, measures: dict) -
         raise
     text = (
         f"Queued for KG init run #{ctx.id} of project {ctx.project}, {kg_init.CALLED.format(who=who[1])}: lens "
-        f"kg_init; cost cap {curator.money(caps['max_usd'])}, {caps['max_turns']} turns, "
+        f"{lens}; cost cap {curator.money(caps['max_usd'])}, {caps['max_turns']} turns, "
         f"{caps['max_seconds'] // 60} minutes of agent time."
     )
-    await write_event(conn, run_id, {"text": text, "init_run_id": ctx.id, "lenses": ["kg_init"], **caps})
+    await write_event(conn, run_id, {"text": text, "init_run_id": ctx.id, "lenses": [lens], **caps})
     await notify_queued(conn, run_id)
     await audit.record(
         conn,
         actor_id=who[0],
         token_id=None,
         action=KG_INIT,
-        target=f"{ctx.project} run:{run_id} init={ctx.id}",
+        target=f"{ctx.project} run:{run_id} init={ctx.id}" + ("" if lens == "kg_init" else f" lens={lens}"),
         project_id=ctx.project_id,
     )
     return run_id
 
 
-async def _queued(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure, now: datetime) -> str:
-    """A run not yet given to an agent: measure, write the prompt, queue the review run."""
+async def _queued(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure, now: datetime, count=None) -> str:
+    """A run not yet given to an agent: wait for the run that writes its starter questions when the project needs one
+    (``kg_questions.phase``), measure, write the prompt, queue the review run."""
     async with engine.begin() as conn:
         latest = await _latest_build(conn, ctx.project_id)
     if latest is None:
@@ -298,7 +304,6 @@ async def _queued(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure, n
         raise InitFailed("the latest build holds no data profile: build the project again")
     body = dict(ctx.body or {})
     if body.get("measures") is None:
-        asker = None
         async with engine.begin() as conn:
             asker = await _asker(conn, ctx)
         row = SimpleNamespace(
@@ -307,6 +312,19 @@ async def _queued(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure, n
             owner_id=asker[0] if asker else None,
             owner=asker[1] if asker else None,
         )
+        waits, body = await kg_questions.phase(
+            engine,
+            ctx,
+            body,
+            row if asker else None,
+            now,
+            blobs=blobs,
+            data_dir=data_dir,
+            count=count,
+            queue=_queue_agent,
+        )
+        if waits:
+            return "questions"
         found = await measure(engine, row, blobs, data_dir) if asker else {"why": "no admin to read the graph as"}
         if found.get("why"):
             body["measures"] = {}
@@ -371,9 +389,16 @@ class InitFailed(Exception):
 
 
 async def advance(
-    engine: AsyncEngine, *, blobs=None, data_dir=None, now: datetime | None = None, measure: Measure | None = None
+    engine: AsyncEngine,
+    *,
+    blobs=None,
+    data_dir=None,
+    now: datetime | None = None,
+    measure: Measure | None = None,
+    count: kg_questions.Count | None = None,
 ) -> dict:
-    """Move each kg_init run in flight one phase on (see the module), each on its own; how many did what."""
+    """Move each kg_init run in flight one phase on (see the module), each on its own; how many did what. ``measure``
+    and ``count`` stand for the reads of the graph (the starter measure, what the questions run's sink reads)."""
     measure = measure or measure_starter
     t = tables.kg_init_runs
     async with engine.begin() as conn:
@@ -383,7 +408,7 @@ async def advance(
     for ctx in rows:
         try:
             if ctx.state == "queued":
-                word = await _queued(engine, ctx, blobs, data_dir, measure, moment)
+                word = await _queued(engine, ctx, blobs, data_dir, measure, moment, count)
             else:
                 word = await _running(engine, ctx)
         except InitFailed as exc:
@@ -533,6 +558,11 @@ class InitRun(BaseModel):
     why: list[str] = Field(description="what asked for the run")
     build_id: int | None
     agent_run_id: int | None = Field(description="the review run (lens kg_init) of the agent that decides")
+    questions: dict | None = Field(
+        default=None,
+        description="the run that wrote the starter questions first (lens kg_questions): state, why, agent_run_id, "
+        "what the agents' sink reads, the target, the eval set version it made; null before the run looked",
+    )
     summary: str
     decisions: dict = Field(description="what the Curator decided and what was applied; empty until it decided")
     notes: list[str]
@@ -572,6 +602,7 @@ def _shown(row, project: str) -> InitRun:
         why=list(row.why or []),
         build_id=row.build_id,
         agent_run_id=row.agent_run_id,
+        questions=kg_questions.shown(body),
         summary=kg_init.summary(project, row.state, body),
         decisions={"decision": body.get("decision") or {}, "applied": body.get("applied") or {}},
         notes=[str(n) for n in body.get("notes") or []],

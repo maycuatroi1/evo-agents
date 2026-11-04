@@ -2877,6 +2877,83 @@ evo-agents hub kg forget-source --project demo --source old-repo  # asks first a
 evo-agents kg sync --push                                         # then: knowledge.yaml without old-repo
 ```
 
+**Uploading an archive.** A writer sends a `.zip`, `.tar`, `.tar.gz` or `.tgz` as a source of the project's graph with
+`evo-agents hub kg upload FILE --project demo [--source NAME] [--label L]`; each upload is a row of `kg_uploads`
+(migration 0200). Without `--source` the source is the
+file's name without its suffix; without `--label` the archive takes the project's default label. The archive can be up
+to `EVO_HUB_KG_UPLOAD_MAX_BYTES` (20 GiB by default). From the CLI the bytes never pass through the API. `POST
+/v1/kg/{project}/uploads` checks the writer role, the size (413 over the limit) and the label against what the hub sink
+clears (422 above it, as for `kg sync --push`) before any part leaves the machine. It then starts an S3 multipart upload
+under `kg-archives/` in the blob store. The CLI asks for presigned PUTs a few parts at a time (`POST
+.../uploads/{id}/parts`), each part 64 MiB, below the 100 MB Cloudflare takes, and sends four parts at once. `POST
+.../uploads/{id}/complete` joins the parts once the store holds each one and moves the upload to `extracting` (audit
+row `kg.upload`). It answers 409 naming the missing count otherwise. Run again after an interruption, the command
+resumes the same upload (same project, sender, SHA-256 and source): the hub says which parts the store holds and only
+the others are sent. `evo-agents hub kg uploads --project demo [--json]` lists the uploads the caller's grant sees
+(`GET .../uploads`): state (`uploading`, `extracting`, `extracted`, `failed`), size, files read, files skipped by reason,
+and the build that followed. An upload still `uploading` and untouched for 24 hours is marked `failed` by the hourly
+`hub.cleanup_uploads`, which also aborts its multipart upload and drops its parts (`evo_agents/hub/kg_upload_prune.py`).
+
+```sh
+evo-agents hub kg upload ./lumen-handbook.zip --project demo --label internal
+evo-agents hub kg uploads --project demo
+```
+
+**Uploading from the web.** The project's knowledge graph has an Upload data tab (`/p/{project}/kg/upload`). A writer
+drops or chooses one archive; the page computes its SHA-256 in the browser, slice by slice, and starts the upload with
+the same `POST /v1/kg/{project}/uploads`. The label picker offers only the project's levels up to what its hub sink
+clears. The page cannot PUT to the blob store, since its connect-src is `'self'`, so it sends each part to the hub's
+own origin: `PUT /v1/kg/{project}/uploads/{id}/parts/{number}` with the part's bytes as the body
+(`evo_agents/hub/server/kg_upload_relay.py`). Only the upload's sender may send a part, while the upload is
+`uploading`, and each part must have exactly its size (422 otherwise, 413 past it). The hub streams the body to a
+temporary file and hands it to the store as that part of the multipart upload. The page sends three parts at once,
+tries each up to three times, and shows each part's progress. It keeps a record of the upload (the file's name, size,
+last change, hash, source and label, never its bytes) in the browser's local storage for a day. After a reload the
+page lists the uploads left unfinished, and the same file chosen again resumes the upload: only the parts the store
+lacks are sent. Under the form, each upload's report shows the files read, the files skipped and kept without text by
+reason, and links to its build and to the kg_init run after it. The Next.js proxy takes a request body up to 65 MiB
+(`proxyClientMaxBodySize` in `web/next.config.ts`), which fits one part. "New project from data" (`/projects/new`,
+linked from Home) does the same with `new_project: true`.
+
+**A new project from an upload.** `evo-agents hub kg upload FILE --new-project P [--label L]` creates project P with no
+harness and uploads into it, in the transaction of `POST /v1/kg/{project}/uploads` with `new_project: true`
+(`evo_agents/hub/server/kg_upload_project.py`); the web's "New project from data" uses the same route. P gets the
+default ladder (`public`, `internal`, `customer`, `secret`, location `any`), `L` as its default label (`internal`
+without `--label`), a hub sink `evo-hub` that clears `L`, a Claude Code sink `claude-code@anthropic` that clears only
+`internal`, so an agent reads data labelled above that only after an admin raised the clearance on purpose (by
+registering the project from a harness), and a minimal knowledge config with that ladder and those sinks and no source
+of its own. The build that follows the upload's extraction is its first, which queues a kg_init run (`first_build`).
+Creating P takes what registering a project takes: a hub admin, or a member holding an unused register right of an
+invite link, which is spent. The creator becomes its admin at the top level (audit row `project.register`). A name the
+hub holds already is refused with 409 and nothing changes; an interrupted upload continues with `--project P`.
+
+```sh
+evo-agents hub kg upload ./lumen-records.zip --new-project lumen-records --label customer
+```
+
+**Reading an uploaded archive.** Every minute the worker job `hub.extract_uploads` reads each upload in `extracting`,
+oldest first (`evo_agents/hub/kg_upload_extract.py`). It fetches the archive into a temporary file under the hub's data
+directory and fails the upload when its size or SHA-256 is not the one sent. It then walks the archive entry by entry
+without unpacking it (`evo_agents/kg/archive.py`). Names are read as UTF-8 or, in a zip without the UTF-8 flag, as
+cp437, and normalized to NFC. An entry is skipped, and counted by reason, when its path is unsafe (`unsafe_path`), it is
+a link or a device (`symlink`, `link`, `device`), it is encrypted (`encrypted`), it is over 1 MiB and 100 times its
+compressed size (`ratio`), it repeats a path (`duplicate`) or it cannot be read (`corrupt`). An archive inside the
+archive is read too, two levels deep (`depth`). The whole read stops at 200,000 entries (`too_many_entries`) or 100 GiB
+unpacked (`total_size`). Each file becomes kg/1 items of the source `upload.<name>`, the name in lowercase
+(`evo_agents/kg/extract_office.py`): PDF, Word, PowerPoint, Excel and HTML files through markitdown (kinds `pdf`,
+`docx`, `pptx`, `xlsx`, `html`, each Excel sheet a `table`), CSV and TSV files as `table`, JSON arrays of objects as
+`json` with one `record` per object, and Markdown and text as a git source gives them, long text split into passages.
+A file with no text to read is kept as an `asset` by path and size only, counted by reason: `no_text_layer` (a scanned
+PDF), `too_large` (over 64 MiB), `binary`, `timeout` and `unreadable`. markitdown comes with the `ingest` extra, which
+the hub image installs; without it documents are `unreadable` assets. The items are stored next to the archive, the
+upload becomes `extracted` with its report and a build is queued. A new upload of the same source replaces the
+snapshot: the older upload's report names the one that replaced it, its archive and items leave the blob store, and a
+file the new archive lacks leaves the graph with the next build. The items carry the upload's label, kg_status names
+each upload source with its label and latest upload, and a config pushed later keeps the source.
+`evo-agents hub kg forget-source --project demo --source upload.<name>` (or the name the archive was sent with) deletes
+its uploads, archives and items. The report lists the first paths skipped or kept as assets only to members whose
+grant sees the upload's label; the log holds upload ids, counts and reasons, never a path.
+
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
 graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is
@@ -3537,6 +3614,7 @@ environment, never in a committed file.
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
+| `EVO_HUB_KG_UPLOAD_MAX_BYTES` | api | the largest archive (`.zip`, `.tar`, `.tar.gz`, `.tgz`) a writer may upload as a graph source with `evo-agents hub kg upload`, in bytes; default `21474836480` (20 GiB), at most 600 GiB |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
 | `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |

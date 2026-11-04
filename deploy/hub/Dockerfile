@@ -25,7 +25,7 @@ WORKDIR /src
 COPY pyproject.toml README.md LICENSE MANIFEST.in ./
 COPY evo_agents ./evo_agents
 # A wheel, not an editable install: the runtime stage gets the virtualenv and nothing of /src.
-RUN /opt/venv/bin/pip install '.[hub-server,graphify,semantic]' \
+RUN /opt/venv/bin/pip install '.[hub-server,graphify,semantic,ingest]' \
     && /opt/venv/bin/evo-agents --version
 # pip installs exactly the lines evo_agents.plugins.core_install wrote (--no-deps), each wheel against its hash, and
 # never builds a source distribution. -I keeps /src off the path: the helper is the installed one.

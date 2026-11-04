@@ -445,6 +445,35 @@ def put_presigned(url: str, path: Path, timeout: float = TIMEOUT) -> None:
         raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
 
 
+class _Slice:
+    """``size`` bytes of an open file from ``offset``, read as a file: what http.client streams as a request body."""
+
+    def __init__(self, handle, offset: int, size: int):
+        handle.seek(offset)
+        self._handle, self._left = handle, size
+
+    def read(self, amount: int = -1) -> bytes:
+        amount = self._left if amount is None or amount < 0 else min(amount, self._left)
+        chunk = self._handle.read(amount) if amount else b""
+        self._left -= len(chunk)
+        return chunk
+
+
+def put_presigned_part(url: str, path: Path, offset: int, size: int, timeout: float = TIMEOUT) -> None:
+    """PUT ``size`` bytes of the file at ``path`` from ``offset``, a part of a multipart upload, to a presigned URL the
+    hub handed out, streamed rather than held whole. The URL is a credential until it expires: an error names its host
+    only."""
+    headers = {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": str(size),
+        "User-Agent": f"evo-agents/{__version__}",
+    }
+    with open(path, "rb") as handle:
+        status, _ = _send("PUT", url, headers, _Slice(handle, offset, size), timeout)
+    if not 200 <= status < 300:
+        raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
+
+
 def get_presigned(url: str, path: Path, size: int, timeout: float = TIMEOUT) -> str:
     """GET a presigned URL the hub handed out into the file at ``path``, which must come to exactly ``size`` bytes;
     return the hex SHA-256 of what was written. A longer or shorter answer, or any status but 200, is a HubError and
