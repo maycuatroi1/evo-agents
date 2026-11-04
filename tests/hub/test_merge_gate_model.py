@@ -149,6 +149,10 @@ def test_merge_gate_a_plan_opens_its_merge_request_once_its_steps_in_the_repo_ar
     lone = {"repos": [{"repo": "billing", "branch": "b"}], "steps": [{"id": 1, "status": "done"}]}
     assert merge_gate.plan_ready(lone, "billing", "dev") is True  # a step of a plan of one repo names none
     assert merge_gate.verify_of(PLAN, "billing") == ["pytest -q"]
+    assert merge_gate.verify_of(PLAN, "web") == ["pnpm test"], "hack signs read the verify of every step"
+    assert merge_gate.done_verify_of(PLAN, "billing") == ["pytest -q"]
+    assert merge_gate.done_verify_of(PLAN, "web") == [], "a merge check runs no verify of a step not done yet"
+    assert merge_gate.done_verify_of(None, "web") == []
 
 
 def test_merge_gate_a_run_before_the_repo_went_auto_opens_nothing():

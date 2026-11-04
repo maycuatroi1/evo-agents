@@ -33,11 +33,13 @@ committing and pushing nothing.
 
 from __future__ import annotations
 
+import shlex
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import judge, knowledge_diff, merge_gate, runs, security_pass
-from evo_agents.worker import gitops, untrusted
+from evo_agents.worker import gitops, untrusted, venvs
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner import access, judge_knowledge, origin, verify
@@ -78,6 +80,8 @@ class JudgeRun:
         self.findings: list[dict] = []  # what it found wrong
         self.prior: dict[str, dict] = {}  # its marks of the findings of earlier rounds
         self.usage: dict | None = None  # the Judge's turns and the security pass's, added up
+        self.wanted: venvs.Wanted | None = None  # the Python environment the change's repo asks of its worktree
+        self.uv: str | None = None  # the uv that makes it
 
     async def steps(self) -> None:
         run, change = self.run, self.run.curator or {}
@@ -120,6 +124,7 @@ class JudgeRun:
             return
         workspace = self.directory.workspaces[name]
         files, signs = await self.read_diff(workspace, name, protected, verify_commands)
+        self.environment(name, workspace.worktree)
         results = await self.run_hidden(workspace.worktree, hidden)
         hidden.clear()  # the commands go: only their exit codes stay
         inputs.clear()
@@ -375,11 +380,49 @@ class JudgeRun:
         except gitops.GitError as exc:
             raise RunFailed(f"the worktree {cwd} could not be put back at {commit[:12]}: {exc}") from None
 
+    def environment(self, name: str, worktree: Path) -> None:
+        """Read what Python environment the change's repo asks of its worktree (``venvs.wanted``, at the commit the
+        checks run at), and the uv that makes it on the PATH of the checks; none when it asks for none, its settings
+        do not read, or uv is not there, each noted: the checks then run with the PATH alone, as before."""
+        run = self.run
+        try:
+            wanted = venvs.wanted(worktree)
+        except ValueError as exc:
+            run.note(f"{name}: {exc}; the checks run without a Python environment of the worktree.")
+            return
+        if wanted is None:
+            return
+        uv = shutil.which("uv", path=self.run_path())
+        if uv is None:
+            run.note(
+                f"{name} asks for a Python environment of its worktree and uv is not on PATH: the checks run without it."
+            )
+            return
+        self.wanted, self.uv = wanted, uv
+        run.note(
+            f"{name} asks for a Python environment of its worktree: before each check, `uv sync --frozen` makes it as "
+            "code of the change, and its bin directory goes first on the check's PATH.",
+            repo=name,
+        )
+
     async def run_untrusted(self, command: str, cwd: Path) -> tuple[int, str]:
         """(exit code, the end of its output) of ``command``, code of the change the worker does not trust, in the
-        worktree put back at the commit judged, or for a merge check its merge with the base (``verify.run_untrusted``)."""
+        worktree put back at the commit judged, or for a merge check its merge with the base (``verify.run_untrusted``).
+        When the repo asks for a Python environment of its worktree (``environment``), its commands run first, as code
+        of the change too, and ``command`` runs with its bin directory first on the PATH, as a plan run's verify does:
+        the change's own pinned tools, not the machine's (run #1579 judged with a stale ruff and CLI). The restore
+        before the next command removes it with the rest of what a command left."""
         await self.restore(cwd, self.tested)
-        return await verify.run_untrusted(self.run, command, cwd)
+        if self.wanted is None or self.uv is None:
+            return await verify.run_untrusted(self.run, command, cwd)
+        env = {"PATH": venvs.front(self.run_path(), [str(venvs.bin_dir(cwd))])}
+        for making in self.wanted.commands(self.uv):
+            code, output = await verify.run_untrusted(
+                self.run, shlex.join(making), cwd, extra_env=env, without=venvs.FOREIGN
+            )
+            if code != 0:
+                return code, f"`{venvs.shown(making)}` exited {code} before the command ran:\n{output}"
+        return await verify.run_untrusted(self.run, command, cwd, extra_env=env, without=venvs.FOREIGN)
 
     async def run_checks(self, cwd: Path, commands: list[str]) -> list[dict]:
         """Run each verify command of the plan in the worktree, as code the worker does not trust: each one's exit
