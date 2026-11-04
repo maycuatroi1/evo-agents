@@ -148,11 +148,19 @@ class _UnionFind:
 
 
 def run_pipeline(
-    project: Project, corpus: Corpus, memo: Memo, *, entity_memo: Memo | None = None, offline: bool = False
+    project: Project,
+    corpus: Corpus,
+    memo: Memo,
+    *,
+    entity_memo: Memo | None = None,
+    offline: bool = False,
+    entity_outbox: list | None = None,
+    entity_inbox: dict | None = None,
 ) -> tuple[Graph, dict, list[str], list[str]]:
     """The facts of the corpus, the graph made of them and its coverage. ``entity_memo`` is where the entities step
     (``kg.entities``) keeps what its model said (the build's memo by default); ``offline`` makes that step read it
-    without calling the model: how a build is verified."""
+    without calling the model: how a build is verified. ``entity_outbox`` and ``entity_inbox`` are the step's
+    ``outbox`` and ``inbox``: the requests it defers on a machine without ``claude``, the answers given elsewhere."""
     policy: Policy = project.policy
     try:
         ontology = project.ontology
@@ -251,6 +259,8 @@ def run_pipeline(
                 known_relations(ontology) if ontology is not None else None,
                 offline=offline,
                 semantic_settings=_semantic_of(tuning),
+                outbox=entity_outbox,
+                inbox=entity_inbox,
             )
 
     # Assembly.
@@ -604,12 +614,15 @@ def build_project(
     verify: bool = False,
     cold: bool = False,
     force: bool = False,
+    entity_outbox: list | None = None,
+    entity_inbox: dict | None = None,
 ) -> BuildReport:
     """Build the project's graph and append one line to its audit log, whether the build succeeds, fails or
     raises. ``verify`` rebuilds into a temporary store, which adds no line of its own: the outcome is this
     build's ``verified``. A build into the project's own store is skipped, unless ``force``, when its latest build
     was made of the same corpus state with the same inputs (``unchanged``): the report names that build, with
-    ``skipped`` set, and the audit log gets no line, since nothing was built."""
+    ``skipped`` set, and the audit log gets no line, since nothing was built. ``entity_outbox`` and ``entity_inbox``
+    go to the entities step (``run_pipeline``)."""
     if store is None and not force:
         report = unchanged(project)
         if report is not None:
@@ -622,7 +635,7 @@ def build_project(
     report = BuildReport(project.name, ok=False)
     crashed = None
     try:
-        warm = _build(project, report, store, memo)
+        warm = _build(project, report, store, memo, entity_outbox, entity_inbox)
         if verify and report.ok:
             report.verify = verify_build(project, report.content_hash, cold=cold, warm=warm)
             report.ok = report.verify["match"]
@@ -725,7 +738,14 @@ def unchanged(project: Project) -> BuildReport | None:
     return report
 
 
-def _build(project: Project, report: BuildReport, store: Store | None, memo: Memo | None) -> Clusters | None:
+def _build(
+    project: Project,
+    report: BuildReport,
+    store: Store | None,
+    memo: Memo | None,
+    entity_outbox: list | None = None,
+    entity_inbox: dict | None = None,
+) -> Clusters | None:
     """Build into ``store`` (the project's graph.sqlite when None); the clusters the build started from."""
     started = time.monotonic()
     corpus = project.corpus()
@@ -735,7 +755,9 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         path.parent.mkdir(parents=True, exist_ok=True)
         memo = Memo(path)
     try:
-        graph, coverage, errors, issues = run_pipeline(project, corpus, memo)
+        graph, coverage, errors, issues = run_pipeline(
+            project, corpus, memo, entity_outbox=entity_outbox, entity_inbox=entity_inbox
+        )
         add_reads(coverage, corpus)
         memo.commit()
         report.memo = memo.stats()

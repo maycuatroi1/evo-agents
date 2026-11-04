@@ -26,7 +26,15 @@ A model is one of: ``command``, an argv run on this machine that reads one JSON 
 (``{"nodes": [{"kind", "name", "evidence", "conf"}], "edges": [{"src", "rel", "dst", "evidence"}], "usage":
 {"input_tokens", "output_tokens", "cost"}}``); or ``url``, an OpenAI-compatible endpoint, reached with the ``openai``
 library of the optional extra ``entities`` (``key_env`` names the variable that holds the key, never the key).
-Verification of a build never calls a model: it reads the memo only.
+A command that exits STOP_EXIT (a login refused, a limit reached) stops the step at that item: the rest is skipped and
+waits for a later build. Verification of a build never calls a model: it reads the memo only.
+
+The command ``evo-agents kg claude-entities`` (``evo_agents.kg.claude_code``) asks Claude Code with the subscription
+login. It sends the text off the machine, so its mapping must name an ``llm-backend`` sink, and it is not local. On a
+machine without ``claude`` (the hub's build container) the step calls nothing: each item its memo lacks is deferred,
+counted in ``coverage["entities"]["deferred"]`` and, when the build gives an ``outbox``, put there as a request
+``{"key", "item", "text", "node_kinds", "relations", "model"}``; a build given an ``inbox`` (key: the answer of a run
+that had ``claude``) takes the answer from it instead of calling, and memoizes it as its own.
 """
 
 from __future__ import annotations
@@ -39,7 +47,9 @@ import subprocess
 from collections import defaultdict
 from urllib.parse import urlparse
 
+from evo_agents.kg import claude_code
 from evo_agents.kg import entity_links as links
+from evo_agents.kg.memo import memo_key
 from evo_agents.kg.protocol import canonical_json, sha256
 
 VERSION = "1"
@@ -54,6 +64,7 @@ REFUSED_SAMPLES = 20
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 SLUG = re.compile(r"[^a-z0-9]+")
 MAX_ALIASES = 10
+STOP_EXIT = claude_code.STOP_EXIT  # a command's exit status that stops the step at the item
 
 FIELDS = {
     "items",  # record kinds read; the prose kinds when absent
@@ -83,6 +94,11 @@ class BudgetStop(Exception):
     """Raised inside a memoized task before the call that would pass the ceiling: nothing is cached for it."""
 
 
+class ModelStop(EntitiesError):
+    """The model command exited STOP_EXIT: its login was refused or a limit was reached. No later item is sent in this
+    build."""
+
+
 def check(value):
     """``value`` as the ``entities`` setting holds it, or EntitiesError saying what is wrong. None or {} turns it off."""
     if value is None or value == {}:
@@ -108,6 +124,11 @@ def check(value):
             raise EntitiesError("entities.command must be an argv list")
     if "command" in out and "url" in out:
         raise EntitiesError("entities names a command or a url, not both")
+    if "command" in out and claude_code.uses(out["command"]) and "sink" not in out:
+        raise EntitiesError(
+            "entities.command runs Claude Code, which sends the text to Anthropic: name the llm-backend sink in "
+            "entities.sink"
+        )
     if "url" in out:
         url = out["url"]
         if not isinstance(url, str) or urlparse(url).scheme not in ("http", "https") or not urlparse(url).hostname:
@@ -240,6 +261,13 @@ def call_command(config: dict, text: str, node_kinds: list[str], relations: list
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise EntitiesError(f"the model command failed: {type(exc).__name__}: {exc}") from None
+    if done.returncode == STOP_EXIT:
+        try:
+            said = json.loads(done.stdout or "{}")
+        except ValueError:
+            said = {}
+        why = said.get("error") if isinstance(said, dict) else None
+        raise ModelStop(str(why or done.stderr.strip() or "the model command asked to stop")[:200])
     if done.returncode != 0:
         raise EntitiesError(f"the model command exited {done.returncode}: {done.stderr.strip()[:200]}")
     return _parse_answer(done.stdout)
@@ -350,12 +378,15 @@ def run(
     *,
     offline=False,
     semantic_settings=None,
+    outbox=None,
+    inbox=None,
 ):
     """Run the step: ``(facts per item id, coverage)``. ``config`` is the mapping of ``enabled``; ``body(rec)`` the text
     of an item; ``first`` the facts the item's map stage gave (the document node an edge starts from, the code an
     entity may name); ``kinds`` and ``relations_known`` what the ontology holds (None: everything). ``offline`` reads
     the memo and calls nothing. ``semantic_settings`` are the project's (``kg.semantic``): with vectors, near entities
-    get synonym edges (``entity_links``)."""
+    get synonym edges (``entity_links``). ``outbox``, a list, gets the requests of the items deferred on a machine
+    without ``claude``; ``inbox`` maps a request's key to the answer a run that had ``claude`` gave."""
     from evo_agents.kg.pipeline.stages import item_unit
     from evo_agents.kg.profile import class_of
 
@@ -365,7 +396,8 @@ def run(
         "enabled": True,
         "model": config["model"],
         "sink": config.get("sink"),
-        "local": "command" in config or urlparse(config.get("url") or "").hostname in LOCAL_HOSTS,
+        "local": ("command" in config and not claude_code.uses(config["command"]))
+        or urlparse(config.get("url") or "").hostname in LOCAL_HOSTS,
         "calls": 0,
         "cache_hits": 0,
         "tokens_in": 0,
@@ -380,6 +412,8 @@ def run(
         "edges": 0,
         "rejected": 0,
         "offline": offline,
+        "deferred": 0,
+        "answered_elsewhere": 0,
     }
     allowed_kinds = [k for k in config["node_kinds"] if kinds is None or k in kinds]
     allowed_rels = [r for r in config.get("relations") or [] if relations_known is None or r in relations_known]
@@ -400,6 +434,9 @@ def run(
     spend = Spend(config)
     digest = config_digest(config, allowed_kinds, allowed_rels)
     max_chars = config.get("max_chars", DEFAULT_MAX_CHARS)
+    defer = "command" in config and claude_code.uses(config["command"]) and not claude_code.available()
+    inbox = inbox or {}
+    halted: list[str] = []  # why a command asked to stop: no item after it is sent
     answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
     for rec in records:
         r = rec.record
@@ -426,13 +463,33 @@ def run(
             "config": digest,
         }
 
-        def task(text=text):
+        key = memo_key("entities", VERSION, inputs)
+
+        def task(text=text, key=key, item=rec.item_id):
             if offline:
                 raise BudgetStop("offline")
+            given = inbox.get(key)
+            if isinstance(given, dict):
+                cov["answered_elsewhere"] += 1
+                cleaned = _clean(given, set(allowed_kinds), set(allowed_rels))
+                cleaned["usage"] = given.get("usage") if isinstance(given.get("usage"), dict) else {}
+                return cleaned
+            if halted:
+                raise BudgetStop("halted")
+            if defer:
+                cov["deferred"] += 1
+                if outbox is not None:
+                    request = {"text": text, "node_kinds": allowed_kinds, "relations": allowed_rels}
+                    outbox.append({"key": key, "item": item, **request, "model": config["model"]})
+                raise BudgetStop("deferred")
             why = spend.exhausted()
             if why:
                 raise BudgetStop(why)
-            answer = call_model(config, text, allowed_kinds, allowed_rels)
+            try:
+                answer = call_model(config, text, allowed_kinds, allowed_rels)
+            except ModelStop as stop:
+                halted.append(str(stop))
+                raise BudgetStop("halted") from None
             usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
             spend.add(usage)
             cleaned = _clean(answer, set(allowed_kinds), set(allowed_rels))
@@ -445,7 +502,13 @@ def run(
         except BudgetStop as stop:
             memo.misses["entities"] = before
             cov["skipped"] += 1
-            if str(stop) != "offline":
+            if str(stop) == "halted":
+                cov["stopped"] = f"the model stopped the step ({halted[0]}); the rest waits for a later build"
+            elif str(stop) == "deferred":
+                cov["stopped"] = (
+                    f"claude is not installed on this machine: {cov['deferred']} item(s) wait for a run that has it"
+                )
+            elif str(stop) != "offline":
                 cov["stopped"] = f"the ceiling of this build was reached ({stop}); the rest waits for a later build"
             continue
         except EntitiesError as exc:
