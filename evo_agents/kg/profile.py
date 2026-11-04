@@ -28,7 +28,7 @@ MIN_SHAPE_COUNT = 5  # a shape is a candidate identifier from this many occurren
 SHORT = 20  # an item with fewer non-space characters than this is noise
 
 CODE_KINDS = {"code", "markup"}
-PROSE_KINDS = {"markdown", "text", "docx", "doc", "html", "wiki", "page", "pdf"}
+PROSE_KINDS = {"markdown", "text", "docx", "doc", "html", "wiki", "page", "pdf", "pptx", "xlsx"}
 CONVERSATION_KINDS = {"chat", "thread", "message", "conversation", "memory", "email"}
 STRUCTURED_KINDS = {"config", "yaml", "manifest", "contracts", "plan", "ticket", "record", "table", "row", "json"}
 HISTORY_KINDS = {"commit", "pr"}

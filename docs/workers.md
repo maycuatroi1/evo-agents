@@ -2576,7 +2576,16 @@ as a verify that fails does.
    them, so the cleanup of that run leaves them alone), adds a worktree for a repo the plan has gained, and starts
    the agent in the same session on a prompt naming the new run and carrying the owner's answer. Without the parked
    run's directory, it makes new worktrees from the branches on origin; without a session, it starts a new one.
-5. A turn that ends with nothing to wait for ends the agent. The daemon reports `verifying`, reads the agent's summary
+5. A turn that ends with nothing to wait for while the plan, as the hub holds it, still has steps to do (pending or
+   `in_progress`, their `depends_on` done; a blocked or descoped step is not one) sends the agent back to them in its
+   session with a prompt naming them, which also tells it that a tool call refused or cancelled without a hook's
+   reason was not its owner's answer. The claim's `keep_going` (3 from this hub, `runs.KEEP_GOING_TURNS`) caps those
+   turns in a row; a turn after which fewer steps are left starts the count again. An agent that still leaves steps
+   to do makes the run push as below and fail with `steps_left`, its summary in the error, so its triage takes it up,
+   never `done` with the plan unfinished (run #1575 ended so). With a session per step, the step's own session is
+   sent back to it the same way. A claim without `keep_going`, a run in the terminal UI, or one its owner asked to
+   finish ends as before.
+6. A turn that ends with nothing to wait for ends the agent. The daemon reports `verifying`, reads the agent's summary
    from `.evo-run/result.json` (a missing file is noted, not a failure), and in each repo commits what is left as
    `run #N: <plan title>`, leaving out and naming what a run's commit leaves out, and pushes the plan's branch when
    origin lacks its commits; it runs no verify command, since `evo-agents worker step` ran each step's. A push into a
@@ -3160,6 +3169,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `branch_mismatch` | the worktree is on another branch than the run's: the worker compares full refs (`refs/heads/<branch>`), so a tag with the branch's name is no mismatch, and the error names both refs |
 | `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 | `account_auth` | the agent's account failed to authenticate (the API refused its token, a 401) and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
+| `steps_left` | a plan run's agent kept ending its turn with steps of the plan to do and no decision open after the worker sent it back to them `keep_going` times in a row; the run pushed what it did first, and the error carries the agent's summary |
 
 Every run of kind step, plan, author or chat that ends `failed` carries a `failure_cause`: the worker's when it sent
 one; otherwise (the agent's own error, an older daemon, a failure the hub ended: a revoked worker, a lost lease on the
@@ -3328,7 +3338,14 @@ decides whether to reinstall its own install, and it does when all of these hold
 - **nightly points to another commit** than the one the install was built from, which the daemon reads from
   `direct_url.json` of evo-ak's dist-info.
 - **Every daemon of the install is idle and may update**: none holds a run or agents a previous daemon left, none is
-  locked, and none is run by hand or otherwise unable to update (see Daemons that share an install, below).
+  locked, and none is run by hand or otherwise unable to update (see Daemons that share an install, below). A run
+  counts from its claim until it is over on the worker: leased, running, verifying, and `waiting` for its owner's
+  answer, which keeps its slot and its lease until the reaper parks it (`DECISION_WAIT_SECONDS`, 10 minutes). A parked
+  run counts for nothing: once the hub parks it, the daemon stops its agent at the end of the turn, records it
+  `parked` with its session and directory in the worker's state, and lets it go, so the turn after that may update.
+  The run that resumes it is a new claim, which the updated daemon takes and goes on in the same session and
+  worktrees (`Conversation.adopt`). A waiting run therefore holds the install back until the reaper's next pass after
+  those 10 minutes, and as long as the hub's job worker runs no pass, the daemon keeps waiting with it.
 - **It is not turned off on the machine**: `EVO_WORKER_SELF_UPDATE` is not `off`, `0`, `false` or `no`.
 
 **Where nightly points.** The hub reads the tag every minute (`hub.read_nightly`) and each heartbeat answer carries

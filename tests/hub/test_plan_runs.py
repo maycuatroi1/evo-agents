@@ -490,6 +490,7 @@ def test_a_plan_run_with_a_session_per_step_goes_only_to_a_daemon_that_says_it_r
     assert solo["session_per_step"] is False, "one session unless the dispatch asks for one a step"
     spec = claim(client, old)
     assert spec["id"] == solo["id"] and spec["session_per_step"] is False
+    assert spec["keep_going"] == runs.KEEP_GOING_TURNS, "a plan run's agent goes back to steps it left to do"
     spec = claim(client, new)
     assert spec["id"] == run["id"] and spec["session_per_step"] is True
     body = held_plan(client, hub["owner"])["body"]

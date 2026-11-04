@@ -25,7 +25,8 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
   ``blobs`` rows of their logs, records the logs nothing else refers to for deletion (the next prune deletes the
   objects), writes an audit row ``kg.forget`` and queues a build. The blobs the runs refer to stay the project's, as
   those of superseded runs do. A source the config still declares comes back with the next push of a machine that
-  holds its runs.
+  holds its runs. The uploads of an uploaded archive's source (``evo_agents.hub.kg_upload_sources``) go too, with
+  their archives and items.
 
 Building: POST /v1/kg/{project}/builds (writer) queues a build; GET /v1/kg/{project}/builds lists the builds, newest
 first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build whose
@@ -70,7 +71,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_settings, tables
+from evo_agents.hub import blob_gc, kg_settings, kg_upload_sources, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -228,6 +229,7 @@ class SourceForgotten(Queued):
         description="whether the knowledge config on the hub still declares the source: a machine holding its runs "
         "then pushes them again"
     )
+    uploads: int = Field(0, description="uploaded archives of the source deleted, with their items")
 
 
 class ToolCall(BaseModel):
@@ -796,21 +798,26 @@ async def forget_source(request: Request, project: ProjectName, source: SourceId
         declared = source in _declared(knowledge or {})
         await blob_gc.lock_exclusive(conn)
         ingested, pending, logs = await _drop_source(conn, access.project_id, source)
+        uploads = await kg_upload_sources.forget(conn, access.project_id, source)
         build, queued = None, False
-        if ingested or pending:
+        if ingested or pending or uploads.uploads:
             await audit.record(
                 conn,
                 actor_id=user.user_id,
                 token_id=user.token_id,
                 action=audit.KG_FORGET,
-                target=f"{project} source={source} runs={ingested + pending}",
+                target=f"{project} source={source} runs={ingested + pending}"
+                + (f" uploads={uploads.uploads}" if uploads.uploads else ""),
                 project_id=access.project_id,
             )
             build_id, queued = await _queue(request, conn, access.project_id, project, user.user_id)
             build = (await _builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
+    if uploads.keys or uploads.multiparts:
+        await asyncio.to_thread(kg_upload_sources.release, blob_store(request), uploads)
     log.info(
         "kg source forgotten",
-        extra={"project": project, "login": user.login, "runs": ingested + pending, "logs": logs, "queued": queued},
+        extra={"project": project, "login": user.login, "runs": ingested + pending, "logs": logs, "queued": queued}
+        | {"uploads": uploads.uploads},
     )
     return SourceForgotten(
         source=source,
@@ -820,6 +827,7 @@ async def forget_source(request: Request, project: ProjectName, source: SourceId
         declared=declared,
         build=build,
         queued=queued,
+        uploads=uploads.uploads,
     )
 
 
@@ -842,6 +850,7 @@ async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> li
             builds.c.nodes,
             builds.c.edges,
             builds.c.finished_at,
+            builds.c.coverage["vectors"].label("vectors"),
         )
         .where(
             builds.c.project_id == project_id,

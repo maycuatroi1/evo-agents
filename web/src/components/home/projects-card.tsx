@@ -10,12 +10,16 @@ import { roleLabelKey } from "@/components/shell/role-badge";
 import { STATUS_LOOKS, TONE_TEXT, useStatusText } from "@/components/status/status-badge";
 import { cn, initials } from "@/lib/utils";
 
+import { NEW_PROJECT_HREF } from "@/lib/kg/routes";
+
 import type { OverviewProject } from "./model";
-import { CountPill, HomeCard } from "./parts";
+import { CARD_LINK, CountPill, HomeCard } from "./parts";
 
 /**
  * Home's Projects card: each project of the visitor's grants, their role, its active plans and repos, its open
  * decisions, and where its Curator stands: running, on duty, idle or paused, and the proposals that wait for an answer.
+ * Its action, New project from data, makes a project from an uploaded archive; the hub says there whether the visitor
+ * may create one (a hub admin, or an unused register right).
  */
 
 /** The Curator of a project in one line: its state's icon and word, then what waits, each a link to its page. */
@@ -93,7 +97,16 @@ function ProjectRow({ project }: { project: OverviewProject }) {
 export function Projects({ projects }: { projects: OverviewProject[] }) {
   const t = useTranslations("home.projects");
   return (
-    <HomeCard title={t("title")} count={{ value: projects.length, tone: "neutral", words: t("count", { count: projects.length }) }} testId="home-projects">
+    <HomeCard
+      title={t("title")}
+      count={{ value: projects.length, tone: "neutral", words: t("count", { count: projects.length }) }}
+      action={
+        <Link href={NEW_PROJECT_HREF} className={CARD_LINK} data-testid="home-new-project">
+          {t("newFromData")}
+        </Link>
+      }
+      testId="home-projects"
+    >
       <ul>
         {projects.map((project) => (
           <ProjectRow key={project.name} project={project} />

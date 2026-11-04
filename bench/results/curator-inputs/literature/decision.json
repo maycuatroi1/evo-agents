@@ -1,0 +1,164 @@
+{
+ "format": "evo-kg-bench-curator/1",
+ "bench": "literature",
+ "at": "2026-11-04T09:39:08Z",
+ "inputs": [
+  {
+   "name": "profile.json",
+   "path": "curator-inputs/literature/profile.json",
+   "sha256": "05dabbd6b7e08578a4388f3162f465adbdafaefd03cb42b13ea6815c5945efa2",
+   "part": "none"
+  },
+  {
+   "name": "prompt.md",
+   "path": "curator-inputs/literature/prompt.md",
+   "sha256": "43fb5cbaa9ff2175972a20635447a04e0451d68dc0b6942d26fb50f99b07491a",
+   "part": "none"
+  },
+  {
+   "name": "skill-kg-init.md",
+   "path": "curator-inputs/literature/skill-kg-init.md",
+   "sha256": "221268dbbc723dad09a9fc5911b6de2514bbbc6b0f865a87d15770a5a92645dc",
+   "part": "none"
+  },
+  {
+   "name": "skill-lenses-kg-init.md",
+   "path": "curator-inputs/literature/skill-lenses-kg-init.md",
+   "sha256": "fe59e38ef1a7ee77280dbc1d2fc5f023d7e22233329d77f1a0d7f639bb277e4f",
+   "part": "none"
+  },
+  {
+   "name": "strategies.json",
+   "path": "curator-inputs/literature/strategies.json",
+   "sha256": "3940c9c6298a407c5e7eac254bd3f63d34f8359cf2701b66d76f26b36c8b4918",
+   "part": "none"
+  },
+  {
+   "name": "tune-scores.json",
+   "path": "curator-inputs/literature/tune-scores.json",
+   "sha256": "411d615366fffa4c12aed6df18db0fff4448650df1b3c2fa2fe642f0fa4384fe",
+   "part": "tune"
+  }
+ ],
+ "profile_graphs": 1,
+ "tune": {
+  "bench": "literature",
+  "metric": "recall_all@5",
+  "part": "tune",
+  "candidates": [
+   {
+    "name": "default",
+    "kind": "default",
+    "search": "graph",
+    "settings": {},
+    "n": 502,
+    "primary": 0.9024,
+    "se": 0.0133
+   },
+   {
+    "name": "strategy-conversation",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "semantic_weight": 0.8
+    },
+    "n": 502,
+    "primary": 0.9024,
+    "se": 0.0133
+   },
+   {
+    "name": "strategy-media-metadata",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 8.0,
+     "bm25_path": 3.0
+    },
+    "n": 502,
+    "primary": 0.9024,
+    "se": 0.0133
+   },
+   {
+    "name": "strategy-records",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 8.0
+    },
+    "n": 502,
+    "primary": 0.9024,
+    "se": 0.0133
+   },
+   {
+    "name": "weights-body-heavy",
+    "kind": "weights",
+    "search": "graph",
+    "settings": {
+     "bm25_body": 4.0
+    },
+    "n": 502,
+    "primary": 0.8924,
+    "se": 0.0138
+   },
+   {
+    "name": "weights-name-light",
+    "kind": "weights",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 2.0,
+     "bm25_path": 1.0
+    },
+    "n": 502,
+    "primary": 0.9024,
+    "se": 0.0133
+   }
+  ]
+ },
+ "answers": [
+  "```json\n{\"reasons\":[{\"about\":\"strategy\",\"why\":\"The profile puts 100% of items and chars in the 'other' class, with no code, no prose class and no binary, no commits or pull requests, no resolved mentions, and 1572 File nodes. No built-in strategy has a profile class that matches it. Every strategy candidate scored the same as the default, 0.9024 against 0.9024 (n 502, se 0.0133). That is under two standard errors, so it is noise. I am not creating a strategy or turning on the entities step, because the figures show no gain and the entities step costs money. I keep the default graph, which is the 'code' strategy and sets nothing.\",\"figures\":{\"tune_default\":0.9024,\"tune_records\":0.9024,\"tune_media_metadata\":0.9024,\"tune_conversation\":0.9024,\"se\":0.0133,\"n\":502}},{\"about\":\"settings\",\"why\":\"I leave all settings at their defaults. The name-light weights match the default at 0.9024. The body-heavy weights (bm25_body 4) score lower at 0.8924, a drop of 0.01 that is under one standard error. No query key shows a gain, so the simpler default stays. Build keys and semantic_mode stay unchanged. This graph has no vectors, and the tune figures do not support adding any.\",\"figures\":{\"tune_default\":0.9024,\"tune_body_heavy\":0.8924,\"tune_name_light\":0.9024,\"se\":0.0133,\"p99_chars\":5736}}],\"strategy\":{\"use\":\"code\"},\"settings\":{}}\n```\n"
+ ],
+ "cost_usd": 0.0,
+ "decision": {
+  "settings": {},
+  "strategy": {
+   "use": "code"
+  },
+  "reasons": [
+   {
+    "about": "strategy",
+    "why": "The profile puts 100% of items and chars in the 'other' class, with no code, no prose class and no binary, no commits or pull requests, no resolved mentions, and 1572 File nodes. No built-in strategy has a profile class that matches it. Every strategy candidate scored the same as the default, 0.9024 against 0.9024 (n 502, se 0.0133). That is under two standard errors, so it is noise. I am not creating a strategy or turning on the entities step, because the figures show no gain and the entities step costs money. I keep the default graph, which is the 'code' strategy and sets nothing.",
+    "figures": {
+     "tune_default": 0.9024,
+     "tune_records": 0.9024,
+     "tune_media_metadata": 0.9024,
+     "tune_conversation": 0.9024,
+     "se": 0.0133,
+     "n": 502
+    }
+   },
+   {
+    "about": "settings",
+    "why": "I leave all settings at their defaults. The name-light weights match the default at 0.9024. The body-heavy weights (bm25_body 4) score lower at 0.8924, a drop of 0.01 that is under one standard error. No query key shows a gain, so the simpler default stays. Build keys and semantic_mode stay unchanged. This graph has no vectors, and the tune figures do not support adding any.",
+    "figures": {
+     "tune_default": 0.9024,
+     "tune_body_heavy": 0.8924,
+     "tune_name_light": 0.9024,
+     "se": 0.0133,
+     "p99_chars": 5736
+    }
+   }
+  ]
+ },
+ "config": {
+  "strategy": {
+   "name": "code",
+   "self_made": false,
+   "origin": "built-in",
+   "steps": []
+  },
+  "settings": {},
+  "applied": {},
+  "unapplied": {}
+ },
+ "error": null
+}

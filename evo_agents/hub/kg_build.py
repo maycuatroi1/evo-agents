@@ -76,6 +76,7 @@ from evo_agents.hub import (
     kg_semantic,
     kg_settings,
     kg_sources,
+    kg_upload_sources,
     tables,
 )
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
@@ -355,6 +356,7 @@ def build_in_cache(
     semantic: kg_semantic.semantic.Settings | None = None,
     tuning: settings.Tuning | None = None,
     answers: list[str] | None = None,
+    uploads: list[kg_upload_sources.Held] | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
@@ -365,8 +367,10 @@ def build_in_cache(
     lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
-    for ``record`` to keep (``kg_entity_relay``). Blocking."""
-    sources = sources or []
+    for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
+    items are fetched and held as a plugin's (``kg_upload_sources``). Blocking."""
+    uploads = uploads or []
+    sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
     drop_forgotten(project, ingests)
@@ -392,6 +396,7 @@ def build_in_cache(
             vector_coverage = vectors.coverage(semantic.model)
     sha256 = _sha256(path)
     coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
+    kg_upload_sources.annotate(coverage, uploads)
     if vector_coverage is not None:
         coverage["vectors"] = vector_coverage
     if requests is not None:
@@ -656,6 +661,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         async with engine.connect() as conn:
             learned = await kg_asked.read(conn, project_id, project, found[1])
             tuning = await kg_settings.read(conn, project_id)
+            uploads = await kg_upload_sources.latest(conn, project_id)
         built = await asyncio.to_thread(
             build_in_cache,
             context.blobs,
@@ -668,6 +674,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             None,
             tuning,
             answers,
+            uploads,
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)

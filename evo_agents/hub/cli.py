@@ -116,7 +116,12 @@ def cmd_worker(args) -> int:
         return _missing_extra(exc, args)
     init_sentry(config)
     return worker.main(
-        config, args.concurrency, release_pass=release_pass, loop_tick=loop_tick, memory_upkeep=memory_upkeep
+        config,
+        args.concurrency,
+        queues=args.queues,
+        release_pass=release_pass,
+        loop_tick=loop_tick,
+        memory_upkeep=memory_upkeep,
     )
 
 
@@ -415,6 +420,14 @@ def register(sub) -> None:
         "(default: $EVO_HUB_DATA_DIR or ~/.evo/hub-server/cache)",
     )
     worker.add_argument("--concurrency", type=_positive, default=1, help="jobs run at the same time (default: 1)")
+    worker.add_argument(
+        "--queue",
+        action="append",
+        dest="queues",
+        choices=["default", "kg"],
+        help="take the jobs of this queue alone, again for another: default (periodic and short jobs) or kg "
+        "(knowledge graph builds); without it, every queue",
+    )
     worker.set_defaults(func=cmd_worker)
 
     migrate = hsub.add_parser("migrate", help="bring the hub database to this release's schema, then exit")

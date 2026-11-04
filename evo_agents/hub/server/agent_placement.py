@@ -195,9 +195,14 @@ async def _notify_admins(conn: AsyncConnection, home: Home) -> None:
 # The claim
 
 
+# Aliases, since the claim reads both tables; built once, as an alias of the wide workers table cost each claim a third
+# of its time.
+_NODE, _HOME = tables.workers.alias("node"), tables.worker_pools.alias("home")
+
+
 def _agent_of(worker_id: int):
     """The agent whose pool worker ``worker_id`` is a node of; NULL for any other worker (a scalar subquery)."""
-    w, wp = tables.workers.alias("node"), tables.worker_pools.alias("home")  # aliases: the claim reads both tables
+    w, wp = _NODE, _HOME
     return select(wp.c.agent_id).join_from(w, wp, wp.c.id == w.c.pool_id).where(w.c.id == worker_id).scalar_subquery()
 
 

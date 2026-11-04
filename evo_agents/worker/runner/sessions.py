@@ -10,6 +10,8 @@ each step not done yet a new agent session, in the order depends_on allows, rath
 2. The agent reports the step with ``evo-agents worker step`` as in a plan run in one session. A decision it asks is
    waited for and answered in the session of the step, the hub may park the run there, and a takeover drives that
    session (``conversation``, ``agent``).
+   A session whose turn ends with its step still to do and nothing to wait for goes on with STEP_KEEP_GOING_PROMPT
+   (``Conversation.keep_going``) before the run moves on.
 3. After the session the daemon takes the step's summary from ``.evo-run/result.json`` (and removes the file, so the
    next session starts without it) and reads the plan again. A step left not done ends the sessions there, as a plan
    run's agent that cannot go on ends it; then the run pushes and ends as a plan run in one session does, its summary
@@ -60,6 +62,15 @@ STEP_RESUME_PROMPT = (
     "{key} and the same worktrees; EVO_RUN_ID names the new run, and the commands of `evo-agents worker` use it. Go on "
     "with step {key} from where you stopped: read the plan as the hub holds it now with `evo-agents worker plan` "
     "first. The steps after it get sessions of their own."
+)
+# And when its turn ended with the step still to do and nothing to wait for (``Conversation.keep_going``).
+STEP_KEEP_GOING_PROMPT = (
+    "Your turn ended with no decision of yours open while {steps} is still to do, and a turn that ends so ends the "
+    "run before its plan is done. Nobody reads a question you write in a message. A tool call that came back refused "
+    'or cancelled without the reason of a hook (such as "The user doesn\'t want to take this action right now") was '
+    "not refused by your owner: run it again, or reach the same end another way. Go on with the step now: read the "
+    "plan as the hub holds it with `evo-agents worker plan` first. Ask your owner only with `evo-agents worker ask`, "
+    "and wait for a time or an event of the hub with `evo-agents worker wait`."
 )
 
 
@@ -273,6 +284,7 @@ class StepSessions:
         run.note(f"Step {key} {how} of {run.runtime}.", step=key)
         try:
             await conversation.turns(cls, prompt, session_id)
+            await conversation.keep_going(cls, lambda: self.step_to_go(key), STEP_KEEP_GOING_PROMPT)
         finally:  # parked, failed or stopped too: the record names the session and what it used
             self.close(entry, conversation.usages[first:])
         summary = self.take_summary()
@@ -302,6 +314,16 @@ class StepSessions:
         with contextlib.suppress(OSError):
             path.unlink()
         return summary_of(data)
+
+    async def step_to_go(self, key: str) -> list[str] | None:
+        """[``key``] while step ``key`` of the plan as the hub holds it now is pending or in_progress, else none;
+        None when the plan was not read."""
+        try:
+            body, _ = await self.read_plan()
+        except RunFailed as exc:
+            self.run.note(f"The plan was not read again after the agent's turn: {exc}")
+            return None
+        return [key] if status_in(body, key) in ("pending", "in_progress") else []
 
     async def read_plan(self) -> tuple[dict, int | None]:
         """The plan as the hub holds it now and its revision, read again with the backoff while the hub does not

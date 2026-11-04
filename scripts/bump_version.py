@@ -16,14 +16,10 @@ def current_version(root: Path) -> str:
 
 
 def targets(root: Path) -> list[tuple[Path, str]]:
+    # The plugins run evo-agents from the PATH, so plugin.json is the one file of a plugin that names the release.
     found = [(SOURCE, '__version__ = "')]
     for plugin in sorted(path for path in (root / "plugins").iterdir() if path.is_dir()):
-        base = plugin.relative_to(root)
-        found += [
-            (base / ".claude-plugin" / "plugin.json", '"version": "'),
-            (base / ".mcp.json", "evo-ak=="),
-            (base / "hooks" / "hooks.json", "evo-ak=="),
-        ]
+        found.append((plugin.relative_to(root) / ".claude-plugin" / "plugin.json", '"version": "'))
     return found
 
 

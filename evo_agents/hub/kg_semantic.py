@@ -43,7 +43,7 @@ async def write(
     await conn.execute(statement.on_conflict_do_update(index_elements=[t.c.project_id], set_=values))
 
 
-EMBED_BUDGET_SECONDS = 900.0  # a build embeds for 15 minutes at most; the rows left wait for the next build
+EMBED_BUDGET_SECONDS = 300.0  # a build embeds for 5 minutes at most, so it frees its worker; the rest wait for the next
 
 
 def index(path: Path, settings: semantic.Settings, cache: Path) -> semantic.Indexed:

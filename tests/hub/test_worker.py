@@ -280,6 +280,21 @@ def test_jobs_the_api_deferred_are_run_to_completion_by_the_worker(hub_db, tmp_p
     assert (tmp_path / "worker-cache").is_dir()
 
 
+def test_a_worker_of_the_queue_kg_takes_the_kg_jobs_and_leaves_the_others(hub_db, tmp_path, s3):
+    migrate(hub_db.dsn)
+
+    async def defer(job_queue, pool):
+        return await job_queue.defer(jobs.PING, note="default"), await job_queue.defer_kg(jobs.PING, "alpha")
+
+    plain, kg = asyncio.run(with_queue(hub_db, defer))
+    with running_worker(hub_db, tmp_path, s3, "--queue", "kg") as worker:
+        wait_for(lambda: job(hub_db, kg)["status"] == "succeeded", what="the kg job")
+        assert job(hub_db, plain)["status"] == "todo"
+        assert worker.stop() == 0, worker.log()
+    (starting,) = [line for line in pg.log_lines(worker.log()) if line["msg"] == "worker starting"]
+    assert starting["queues"] == [jobs.KG_QUEUE]
+
+
 def test_sigterm_lets_the_running_job_finish_before_the_worker_exits(hub_db, tmp_path, s3):
     migrate(hub_db.dsn)
     job_id = asyncio.run(with_queue(hub_db, lambda job_queue, pool: job_queue.defer(jobs.PING, seconds=3)))
@@ -332,7 +347,10 @@ def test_kg_jobs_of_one_project_take_its_lock_and_queue_at_most_one(hub_db):
     }
     assert job(hub_db, other)["lock"] == job(hub_db, other)["queueing_lock"] == "kg:beta"
     assert query(hub_db, select(func.count()).select_from(procrastinate_jobs)) == [(2,)]
+    queues = table("procrastinate_jobs", column("queue_name"))
+    assert query(hub_db, select(queues.c.queue_name).distinct()) == [(jobs.KG_QUEUE,)]
     assert jobs.kg_lock("alpha") == "kg:alpha"
+    assert queue.tasks[jobs.KG_BUILD].queue == jobs.KG_QUEUE and queue.tasks[jobs.PING].queue == jobs.DEFAULT_QUEUE
 
 
 def test_the_cleanup_and_the_pruning_are_periodic_and_queue_at_most_one():

@@ -1,22 +1,22 @@
 "use client";
 
-import { Archive, CircleAlert, Network, Recycle, TriangleAlert } from "lucide-react";
+import { Archive, Network, Recycle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo } from "react";
 
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
+import { Ago } from "@/components/data/ago";
+import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { EmptyState } from "@/components/states/states";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildDurations, shortHash } from "@/lib/kg/format";
-import type { KgBuild, KgBuilds } from "@/lib/kg/types";
+import type { KgBuild } from "@/lib/kg/types";
 
-import { BuildStatusBadge, CopyButton, Duration, JobStatusBadge, When } from "./badges";
+import { BuildStatusBadge, Duration, When } from "./badges";
 
 /**
  * The build side of the knowledge graph page, from GET /v1/kg/{project}/builds (kg_builds and the procrastinate
- * queue): the graph the pages read, the latest build with its times and error, the jobs still queued, and the
- * history. Read-only: builds are queued by pushes (`evo-agents hub kg push`), never from the web.
+ * queue): the history and what the other parts share (build-activity.tsx shows the build in flight or the one that
+ * just failed, graph-in-use.tsx the graph the pages read). Read-only:
+ * builds are queued by pushes (`evo-agents hub kg push`), never from the web.
  *
  * A build's artifact is its graph file in the blob store. A build whose content did not change points at the artifact
  * of an earlier one (`artifact_reused_from`), and the hub's retention deletes the artifacts of older graphs
@@ -63,155 +63,6 @@ export function ArtifactNote({ build, now }: { build: KgBuild; now: number | nul
   );
 }
 
-function Mono({ children, title }: { children: ReactNode; title?: string }) {
-  return (
-    <span className="font-mono text-xs [overflow-wrap:anywhere]" title={title}>
-      {children}
-    </span>
-  );
-}
-
-/** Every field of the newest build, its error included. */
-export function LatestBuild({ build, now }: { build: KgBuild; now: number | null }) {
-  const t = useTranslations("kg.latest");
-  const { wait, run } = buildDurations(build, now);
-  return (
-    <Card data-testid="kg-latest-build" data-build-id={build.id} data-status={build.status}>
-      <CardHeader>
-        <CardTitle>
-          <h3 className="flex flex-wrap items-center gap-2">
-            {t("title", { id: build.id })}
-            <BuildStatusBadge status={build.status} />
-          </h3>
-        </CardTitle>
-        <CardDescription>{build.requested_by ? t("requestedBy", { login: build.requested_by }) : t("byPush")}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {build.status === "failed" && build.error ? (
-          <Alert variant="destructive" data-testid="build-error">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{t("errorTitle")}</AlertTitle>
-            <AlertDescription className="font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {build.error}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-          <dt className="text-muted-foreground">{t("queued")}</dt>
-          <dd>
-            <When iso={build.queued_at} />
-          </dd>
-          <dt className="text-muted-foreground">{t("wait")}</dt>
-          <dd data-testid="build-wait">
-            <Duration ms={wait} />
-          </dd>
-          <dt className="text-muted-foreground">{t("started")}</dt>
-          <dd>
-            <When iso={build.started_at} />
-          </dd>
-          <dt className="text-muted-foreground">{t("run")}</dt>
-          <dd data-testid="build-run">
-            <Duration ms={run} />
-          </dd>
-          <dt className="text-muted-foreground">{t("finished")}</dt>
-          <dd>
-            <When iso={build.finished_at} />
-          </dd>
-          <dt className="text-muted-foreground">{t("runs")}</dt>
-          <dd className="tabular-nums">{build.runs ?? "-"}</dd>
-          <dt className="text-muted-foreground">{t("size")}</dt>
-          <dd className="tabular-nums">
-            {build.nodes !== null && build.edges !== null
-              ? t("sizeValue", { nodes: build.nodes, edges: build.edges })
-              : "-"}
-          </dd>
-          <dt className="text-muted-foreground">{t("contentHash")}</dt>
-          <dd className="flex min-w-0 items-start gap-1">
-            {build.content_hash ? (
-              <>
-                <span data-testid="latest-content-hash">
-                  <Mono>{build.content_hash}</Mono>
-                </span>
-                <CopyButton value={build.content_hash} label={t("copyHash")} />
-              </>
-            ) : (
-              <span className="text-muted-foreground">{t("noHash")}</span>
-            )}
-          </dd>
-          <dt className="text-muted-foreground">{t("artifact")}</dt>
-          <dd className="flex min-w-0 flex-col gap-0.5">
-            <ArtifactNote build={build} now={now} />
-            {build.artifact_sha256 ? (
-              <span className="text-xs text-muted-foreground">
-                <Mono title={build.artifact_sha256}>{shortHash(build.artifact_sha256)}</Mono>
-                {build.artifact_size !== null ? <> ({t("artifactSize", { size: build.artifact_size })})</> : null}
-              </span>
-            ) : null}
-          </dd>
-          <dt className="text-muted-foreground">{t("config")}</dt>
-          <dd>{build.config_digest ? <Mono title={build.config_digest}>{shortHash(build.config_digest)}</Mono> : "-"}</dd>
-        </dl>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** The project's build jobs still in the queue: waiting (todo) or running (doing). */
-export function BuildQueue({ data, now }: { data: KgBuilds; now: number | null }) {
-  const t = useTranslations("kg.queue");
-  const builds = new Map(data.builds.map((build) => [build.id, build]));
-  return (
-    <Card data-testid="kg-queue">
-      <CardHeader>
-        <CardTitle>
-          <h3>{t("title")}</h3>
-        </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {data.jobs.length === 0 ? (
-          <p className="text-sm text-muted-foreground" data-testid="queue-empty">
-            {t("empty")}
-          </p>
-        ) : (
-          <ul className="flex flex-col divide-y rounded-md border" aria-label={t("title")}>
-            {data.jobs.map((job) => {
-              const build = job.build_id !== null ? builds.get(job.build_id) : undefined;
-              const { wait } = build ? buildDurations(build, now) : { wait: null };
-              return (
-                <li
-                  key={job.job_id}
-                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5 text-sm"
-                  data-testid="queue-job"
-                  data-status={job.status}
-                >
-                  <span className="flex items-center gap-2">
-                    <JobStatusBadge status={job.status} />
-                    <span className="font-medium tabular-nums">{t("job", { id: job.job_id })}</span>
-                    {job.build_id !== null ? (
-                      <span className="text-muted-foreground tabular-nums">{t("forBuild", { id: job.build_id })}</span>
-                    ) : null}
-                  </span>
-                  {build ? (
-                    <span className="text-xs text-muted-foreground">
-                      {t("since")} <When iso={build.queued_at} />
-                      {job.status === "todo" && wait !== null ? (
-                        <>
-                          , {t("waited")} <Duration ms={wait} />
-                        </>
-                      ) : null}
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 const NARROW = {
   wait: "hidden md:table-cell",
   run: "hidden sm:table-cell",
@@ -235,13 +86,23 @@ export function BuildHistory({
   empty?: ReactNode;
 }) {
   const t = useTranslations("kg.history");
+  // Builds of a graph that holds chats hide their totals: the columns go when no row has a figure for them.
+  const sized = builds.some((build) => build.nodes !== null || build.edges !== null);
   const columns = useMemo(() => {
     const helper = dataTableColumns<KgBuild>();
     return helper.columns([
       helper.accessor("id", {
         header: () => t("build"),
         sortFn: "basic",
-        cell: (info) => <span className="font-medium tabular-nums">#{info.getValue()}</span>,
+        meta: { primary: true },
+        cell: (info) => {
+          const { error } = info.row.original;
+          return (
+            <CellMain sub={error ?? undefined} subTitle={error ?? undefined} danger={Boolean(error)} subTestId="build-error-line">
+              <span className="tabular-nums">#{info.getValue()}</span>
+            </CellMain>
+          );
+        },
       }),
       helper.accessor("status", {
         header: () => t("status"),
@@ -252,32 +113,40 @@ export function BuildHistory({
         id: "queued",
         header: () => t("queued"),
         sortFn: "datetime",
-        cell: (info) => <When iso={info.row.original.queued_at} />,
+        cell: (info) => <Ago value={info.row.original.queued_at} never="-" />,
       }),
       helper.accessor((row) => buildDurations(row, now).wait ?? -1, {
         id: "wait",
         header: () => t("wait"),
         sortFn: "basic",
+        meta: { numeric: true },
         cell: (info) => <Duration ms={buildDurations(info.row.original, now).wait} />,
       }),
       helper.accessor((row) => buildDurations(row, now).run ?? -1, {
         id: "run",
         header: () => t("run"),
         sortFn: "basic",
+        meta: { numeric: true },
         cell: (info) => <Duration ms={buildDurations(info.row.original, now).run} />,
       }),
-      helper.accessor((row) => row.nodes ?? -1, {
-        id: "nodes",
-        header: () => t("nodes"),
-        sortFn: "basic",
-        cell: (info) => <span className="tabular-nums">{info.row.original.nodes ?? "-"}</span>,
-      }),
-      helper.accessor((row) => row.edges ?? -1, {
-        id: "edges",
-        header: () => t("edges"),
-        sortFn: "basic",
-        cell: (info) => <span className="tabular-nums">{info.row.original.edges ?? "-"}</span>,
-      }),
+      ...(sized
+        ? [
+            helper.accessor((row) => row.nodes ?? -1, {
+              id: "nodes",
+              header: () => t("nodes"),
+              sortFn: "basic",
+              meta: { numeric: true },
+              cell: (info) => <Count value={info.row.original.nodes} />,
+            }),
+            helper.accessor((row) => row.edges ?? -1, {
+              id: "edges",
+              header: () => t("edges"),
+              sortFn: "basic",
+              meta: { numeric: true },
+              cell: (info) => <Count value={info.row.original.edges} />,
+            }),
+          ]
+        : []),
       helper.accessor((row) => row.content_hash ?? "", {
         id: "hash",
         header: () => t("hash"),
@@ -294,24 +163,8 @@ export function BuildHistory({
         sortFn: "text",
         cell: (info) => <ArtifactNote build={info.row.original} now={now} />,
       }),
-      helper.accessor((row) => row.error ?? "", {
-        id: "error",
-        header: () => t("error"),
-        enableSorting: false,
-        cell: (info) =>
-          info.getValue() ? (
-            <span className="flex max-w-xs items-start gap-1.5 text-xs whitespace-normal text-danger">
-              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              <span className="line-clamp-2 [overflow-wrap:anywhere]" title={info.getValue()}>
-                {info.getValue()}
-              </span>
-            </span>
-          ) : (
-            <span className="text-muted-foreground">-</span>
-          ),
-      }),
     ]);
-  }, [t, now]);
+  }, [t, now, sized]);
   return (
     <DataTable
       data={builds}
@@ -324,6 +177,11 @@ export function BuildHistory({
       testId="kg-build-history"
     />
   );
+}
+
+function Count({ value }: { value: number | null }) {
+  const t = useTranslations("kg.history");
+  return value === null ? <span className="text-muted-foreground">-</span> : <>{t("count", { value })}</>;
 }
 
 export function NoBuilds() {

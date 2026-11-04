@@ -43,6 +43,12 @@ NOT_PASSED = {
     "EVO_HUB_TELEGRAM_API_URL": "tests point the hub at a fake Bot API; production uses the default",
 }
 
+# Passed to api and worker though config.py does not read them: the libraries the hub runs read them themselves.
+LIBRARY_VARIABLES = {
+    "EVO_KG_EMBEDDINGS": "evo_agents.kg.semantic: openrouter embeds the graphs' rows through OpenRouter, not on the CPUs",
+    "OPENROUTER_API_KEY": "evo_agents.kg.semantic: the key of that backend",
+}
+
 
 class Recording(dict):
     """An environment that remembers every name looked up in it."""
@@ -134,7 +140,7 @@ def test_compose_passes_every_variable_the_hub_config_reads():
 
 def test_compose_passes_only_what_the_hub_config_reads_and_not_passed_stays_true():
     read, in_compose = read_by_config(), passed_by_compose()
-    stale = sorted(set(in_compose) - read)
+    stale = sorted(set(in_compose) - read - LIBRARY_VARIABLES.keys())
     assert not stale, (
         f"{COMPOSE.relative_to(ROOT)} passes {', '.join(stale)}, which {CONFIG.relative_to(ROOT)} no longer reads: "
         f"remove the line from {BLOCK} and from {ENV_EXAMPLE.relative_to(ROOT)}"
@@ -310,7 +316,7 @@ def test_dockerfile_installs_the_pinned_then_the_extra_core_plugins_into_the_ven
     build, runtime = instructions[stages[0] : stages[1]], instructions[stages[1] :]
     joined = "\n".join(build)
     pinned = joined.index("deploy/hub/core-plugins.txt /tmp/core-plugins.txt")  # copied into the build stage
-    hub = joined.index("pip install '.[hub-server,graphify,semantic]'")
+    hub = joined.index("pip install '.[hub-server,graphify,semantic,ingest]'")
     extra = joined.index(f'ARG {EXTRA}=""')
     secret = joined.index(f"RUN --mount=type=secret,id={INDEX_SECRET},required=false")
     check = joined.index("python -I -m evo_agents.plugins.core_install check")
@@ -325,3 +331,25 @@ def test_dockerfile_installs_the_pinned_then_the_extra_core_plugins_into_the_ven
     assert EXTRA not in later and "secret" not in later, "the runtime stage gets neither the argument nor the secret"
     assert [line for line in runtime if line.startswith("COPY")] == ["COPY --from=build /opt/venv /opt/venv"]
     assert "!deploy/hub/core-plugins.txt" in DOCKERIGNORE.read_text().splitlines()
+
+
+def test_compose_passes_the_library_variables_to_api_and_worker_and_semantic_still_reads_them():
+    from evo_agents.kg import semantic
+
+    data = compose()
+    assert LIBRARY_VARIABLES.keys() <= set(data[BLOCK])
+    assert all(default_of(name, data[BLOCK][name]) == "" for name in LIBRARY_VARIABLES), "unset: the local model"
+    source = Path(semantic.__file__).read_text()
+    assert semantic.BACKEND_ENV == "EVO_KG_EMBEDDINGS" and '"OPENROUTER_API_KEY"' in source
+
+
+def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_the_worker():
+    data = compose()
+    services = data["services"]
+    worker, kg = services["worker"], services["worker-kg"]
+    assert worker["command"][-2:] == ["--queue", "default"] and kg["command"][-2:] == ["--queue", "kg"]
+    assert kg["command"][:-2] == worker["command"][:-2], "the same worker, another queue"
+    assert kg["environment"] == data[BLOCK] and kg["volumes"] == worker["volumes"], "the same environment and cache"
+    assert kg["deploy"]["replicas"] == 2
+    for key in ("image", "build", "cpus", "mem_limit", "healthcheck", "stop_grace_period", "depends_on", "networks"):
+        assert kg[key] == worker[key], key

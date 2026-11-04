@@ -71,6 +71,9 @@ HUB_RELATIONS = {
 ITEM_KIND_TO_NODE = {
     "markdown": "Document",
     "docx": "Document",
+    "pdf": "Document",
+    "pptx": "Document",
+    "xlsx": "Document",
     "doc": "Document",
     "text": "Document",
     "html": "Document",

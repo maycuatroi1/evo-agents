@@ -28,6 +28,14 @@ async def of_agent_run(conn: AsyncConnection, run_id: int):
     return (await conn.execute(select(t).where(t.c.agent_run_id == run_id).order_by(t.c.id.desc()).limit(1))).first()
 
 
+async def of_questions_run(conn: AsyncConnection, run_id: int):
+    """The kg_init run whose starter questions review run ``run_id`` (lens kg_questions) writes, None when none is."""
+    t = tables.kg_init_runs
+    return (
+        await conn.execute(select(t).where(t.c.questions_run_id == run_id).order_by(t.c.id.desc()).limit(1))
+    ).first()
+
+
 async def last_profile(conn: AsyncConnection, project_id: int) -> Mapping | None:
     """The profile the project's newest kg_init run was given; None when it never had a run."""
     t = tables.kg_init_runs

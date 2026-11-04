@@ -710,10 +710,16 @@ Shared pieces built on them:
   foot links Diagnostics (`/admin/diagnostics`, the Overview tab still selected): the rows of every table
   (`GET /v1/admin/stats`) in one DataCard, the name in mono, the area of the hub it belongs to (by prefix, so a table a
   later revision adds lands in one), the rows in tabular figures and the totals at its foot, a list under 768 px. The
-  pure parts are `admin/overview-model.ts`. The knowledge graph's Builds tab (`/p/{project}/kg/builds`) has its build
-  history with All and Failed (the kit's segmented control, `?builds=failed` through the History API; `/kg?builds=`
-  of old links redirects there); Failed reads the project's latest failed builds on their own, so a failure older
-  than the latest builds still shows.
+  pure parts are `admin/overview-model.ts`. The knowledge graph's Builds tab (`/p/{project}/kg/builds`) reads top
+  down by what a person comes for: a banner only when the builds need a word (the build running or waiting for a
+  worker, how long and who queued it, how many wait after it; or the newest build when it failed, in `danger`, with
+  its error and the build the pages still read), then the MetricStrip (nodes and edges of the graph in use, the
+  latest builds that succeeded, in `attention` when most failed, and the median run of a successful build with its
+  sparkline), then the Graph in use card (content hash, artifact, time, pushed runs, config) beside Commits read, then
+  the build history with All and Failed (the kit's segmented control, `?builds=failed` through the History API;
+  `/kg?builds=` of old links redirects there; a failed build's error is the second line of its Build cell), and last
+  the graph's shape, its 10 largest combinations with a bar against the largest and Show all for the rest. Failed
+  reads the project's latest failed builds on their own, so a failure older than the latest builds still shows.
 - `components/kg/kg-explorer.tsx` and the `explorer-*` files beside it: the knowledge graph explorer,
   `/p/{project}/kg`, where the sidebar's Knowledge graph lands, so a person sees the graph at once. Under the page
   head (the h1, Read-only, then the tabs Explore, Builds and Review queue of `kg-header.tsx`) one bordered frame fills

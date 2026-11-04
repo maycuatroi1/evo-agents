@@ -7,6 +7,9 @@ and the worker's build of it, run inside ``hub_stack.py`` so a test sees a built
   fixture, so seeding the same project again with another key pushes a run that changes the graph.
 - POST /kg/build {project, login, id, run}: queue a build as that member (POST /v1/kg/{project}/builds); with
   ``run``, run it now. A project whose knowledge config was never pushed fails with the worker's own error.
+- POST /kg/extract {project, login, id}: one pass of the worker's job ``hub.extract_uploads`` (every upload waiting in
+  extracting is read into its source's items), then the build each read upload of ``project`` queued, run. The answer
+  is GET /v1/kg/{project}/uploads as that member sees it.
 
 A build runs as the worker's job does, through ``evo_agents.hub.kg_build.run_build`` against the stack's database
 and blob store, and its procrastinate job is then marked done, the way the worker finishes one. Nothing else takes
@@ -54,6 +57,13 @@ class KgSeeder:
             build = hub.call("POST", f"/v1/kg/{project}/builds")["build"]
             if not body.get("run"):
                 return build
+        elif path == "/kg/extract":
+            asyncio.run(self._extract())
+            for upload in hub.call("GET", f"/v1/kg/{project}/uploads")["uploads"]:
+                if upload["build_id"] is not None and upload["build_status"] == "queued":
+                    build = hub.call("GET", f"/v1/kg/{project}/builds/{upload['build_id']}")
+                    asyncio.run(self._run(project, int(build["id"]), build.get("job_id")))
+            return hub.call("GET", f"/v1/kg/{project}/uploads")
         else:
             raise KeyError(path)
         return self.finish(project, hub, build)
@@ -65,14 +75,10 @@ class KgSeeder:
         asyncio.run(self._run(project, int(build["id"]), build.get("job_id")))
         return hub.call("GET", f"/v1/kg/{project}/builds/{build['id']}")
 
-    async def _run(self, project: str, build_id: int, job_id: int | None) -> None:
-        from evo_agents.hub.blobs import BlobStore
+    def config(self):
         from evo_agents.hub.config import HubConfig
-        from evo_agents.hub.db import open_pool
-        from evo_agents.hub.kg_build import run_build
-        from evo_agents.hub.worker import HubContext
 
-        config = HubConfig(
+        return HubConfig(
             dsn=self.dsn,
             data_dir=self.work_dir / "worker",
             pool_min_size=1,
@@ -80,6 +86,33 @@ class KgSeeder:
             pool_timeout=10.0,
             **self.s3,
         )
+
+    async def _extract(self) -> None:
+        """One pass of ``hub.extract_uploads`` as the worker runs it, its builds queued through procrastinate."""
+        from evo_agents.hub.blobs import BlobStore
+        from evo_agents.hub.kg_upload_extract import extract_pending
+        from evo_agents.hub.worker import HubContext, connector, queue
+
+        config = self.config()
+        store = BlobStore.from_config(config)
+        try:
+            with queue.replace_connector(connector(config, 1)):
+                await queue.open_async()
+                try:
+                    context = HubContext(config, queue.connector.pool, store, config.data_dir)
+                    await extract_pending(context, queue.job_manager)
+                finally:
+                    await queue.close_async()
+        finally:
+            store.close()
+
+    async def _run(self, project: str, build_id: int, job_id: int | None) -> None:
+        from evo_agents.hub.blobs import BlobStore
+        from evo_agents.hub.db import open_pool
+        from evo_agents.hub.kg_build import run_build
+        from evo_agents.hub.worker import HubContext
+
+        config = self.config()
         store = BlobStore.from_config(config)
         pool = await open_pool(config)
         try:

@@ -10,8 +10,10 @@ and it removes the uploads nobody committed. ``--data-dir`` is its cache, which 
 Jobs (names in ``evo_agents.hub.jobs``):
 
 - ``hub.ping``: waits a few seconds and returns; deferring it shows that a worker takes jobs.
-- ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER, and
-  the attachments no message took within ``attachments.STALE_AFTER`` (``attachment_prune.remove_stale``).
+- ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER, the
+  archive uploads (``hub kg upload``) untouched for as long, failed and their parts dropped
+  (``evo_agents.hub.kg_upload_prune``), and the attachments no message took within
+  ``attachments.STALE_AFTER`` (``attachment_prune.remove_stale``).
 - ``hub.expire_seats``, hourly: the org seats past their end date or that of a cohort holding them are ended, audited
   with the hub as actor, and the leases still out of the runs of every person whose primary seat ended are taken back
   and their GitHub tokens revoked (``evo_agents.hub.server.org_expiry``).
@@ -105,6 +107,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
   until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
   (``evo_agents.hub.server.merge_gate``, ``.merge_judge``).
+- ``hub.extract_uploads``, every minute, one pass at a time: each archive uploaded with ``hub kg upload`` read into the
+  items of its source, the uploads of the source it replaces released, and a build queued
+  (``evo_agents.hub.kg_upload_extract``).
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
@@ -228,11 +233,13 @@ async def prune_audit(engine: AsyncEngine, days: int) -> dict:
 @queue.periodic(cron="17 * * * *")
 @queue.task(name=jobs.CLEANUP_UPLOADS, pass_context=True, queueing_lock=jobs.CLEANUP_UPLOADS)
 async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub import kg_upload_prune
     from evo_agents.hub.attachment_prune import remove_stale
 
     found = hub(context)
     removed = await remove_stale_uploads(found.blobs, found.engine)
-    return {**removed, **await remove_stale(found.engine, found.blobs)}
+    archives = await kg_upload_prune.remove_stale(found.blobs, found.engine, datetime.now(UTC))
+    return {**removed, **archives, **await remove_stale(found.engine, found.blobs)}
 
 
 @queue.periodic(cron="5 * * * *")
@@ -293,7 +300,7 @@ async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> 
     return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
-@queue.task(name=jobs.KG_BUILD, pass_context=True)
+@queue.task(name=jobs.KG_BUILD, queue=jobs.KG_QUEUE, pass_context=True)
 async def kg_build(context: JobContext, project: str, build_id: int | None = None) -> dict:
     from evo_agents.hub.kg_build import run_build
 
@@ -394,6 +401,14 @@ async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict
     merged = await merge_ancestry.settle(found.engine, getattr(found, "github_app", None))
     checks = {**checks, **{f"checks_{key}": value for key, value in merged.items()}}
     return {**outcomes, **checks} if checks else outcomes
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.EXTRACT_UPLOADS, pass_context=True, lock=jobs.EXTRACT_UPLOADS, queueing_lock=jobs.EXTRACT_UPLOADS)
+async def extract_uploads(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.kg_upload_extract import extract_pending
+
+    return await extract_pending(hub(context), context.app.job_manager)
 
 
 @queue.periodic(cron="*/10 * * * *")
@@ -640,9 +655,17 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None) -> int:
-    """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
+async def run(
+    config: HubConfig,
+    concurrency: int = 1,
+    *,
+    queues: list[str] | None = None,
+    release_pass=None,
+    loop_tick=None,
+    memory_upkeep=None,
+) -> int:
+    """Migrate, then run jobs of ``queues`` (None: every queue) until a signal stops the worker. The exit status: 0
+    when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
     (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
@@ -669,6 +692,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
             "db": target,
             "data_dir": str(config.data_dir),
             "concurrency": concurrency,
+            "queues": queues or "all",
             "bucket": store.bucket,
             "worker": name,
         },
@@ -705,6 +729,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
                 signalled = await work(
                     name=name,
                     concurrency=concurrency,
+                    queues=queues,
                     shutdown_graceful_timeout=SHUTDOWN_GRACE,
                     listen_notify=True,
                     additional_context={"hub": context},
@@ -724,8 +749,16 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None) -> int:
+def main(
+    config: HubConfig,
+    concurrency: int = 1,
+    *,
+    queues: list[str] | None = None,
+    release_pass=None,
+    loop_tick=None,
+    memory_upkeep=None,
+) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
     passes = {"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
-    return asyncio.run(run(config, concurrency, **passes))
+    return asyncio.run(run(config, concurrency, queues=queues, **passes))

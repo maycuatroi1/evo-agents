@@ -8,7 +8,8 @@ is the worker's.
 A kg job of project P is deferred with ``defer_kg``: lock and queueing lock both ``kg:P``. The lock makes the jobs
 holding it run one after the other; the queueing lock keeps at most one of them waiting, and deferring another while
 one waits is a no-op. procrastinate's queueing lock alone still lets several run at once, and its lock alone lets
-any number wait. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
+any number wait. Kg jobs go to the queue KG_QUEUE, which workers of their own take (``hub worker --queue kg``), so a
+long build never holds back the periodic jobs of the queue ``default``, and builds of two projects run at once. A job deferred on the caller's connection runs inside a savepoint, so a defer refused because one
 waits already leaves the caller's transaction usable.
 
 The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_agents.hub.db``): procrastinate, whose
@@ -25,6 +26,9 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.db import driver
+
+DEFAULT_QUEUE = "default"  # every job but the kg ones: periodic, short, on their own worker
+KG_QUEUE = "kg"  # the kg jobs of defer_kg: knowledge graph builds, on workers of their own
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -46,6 +50,7 @@ CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figure
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
 MERGE_QUEUE = "hub.merge_queue"  # every minute: the merge requests of the merge queue on GitLab opened and gated
+EXTRACT_UPLOADS = "hub.extract_uploads"  # every minute: each archive uploaded to a graph read into its source's items
 CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged changes counted again, outcome_days on
 REPLAY_SUITE = "curator.replay_suite"  # hourly: each charter's suite of replay tasks, from the plans' steps done
 PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once
@@ -112,6 +117,7 @@ class JobQueue:
         *,
         lock: str | None = None,
         queueing_lock: str | None = None,
+        queue: str = DEFAULT_QUEUE,
         connection: AsyncConnection | None = None,
         **kwargs,
     ) -> int | None:
@@ -119,7 +125,9 @@ class JobQueue:
         ``queueing_lock`` waits already, which counts as queued. With ``connection``, the job is queued in that
         connection's transaction and exists only if it commits."""
         if connection is None:
-            deferrer = configure_task(name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock)
+            deferrer = configure_task(
+                name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock, queue=queue
+            )
             try:
                 return await deferrer.defer_async(**kwargs)
             except exceptions.AlreadyEnqueued:
@@ -129,6 +137,7 @@ class JobQueue:
             job_manager=self._manager,
             lock=lock,
             queueing_lock=queueing_lock,
+            queue=queue,
             connection=await driver(connection),
         )
         # The refusal is an error in Postgres, which would abort the caller's whole transaction without the
@@ -142,7 +151,8 @@ class JobQueue:
     async def defer_kg(
         self, task: str, project: str, /, *, connection: AsyncConnection | None = None, **kwargs
     ) -> int | None:
-        """``defer`` with lock and queueing lock ``kg:<project>``: one kg job of the project runs at a time, and at
-        most one waits. ``project`` is positional only, so the job's own arguments may hold a ``project`` too."""
+        """``defer`` on KG_QUEUE with lock and queueing lock ``kg:<project>``: one kg job of the project runs at a
+        time, and at most one waits. ``project`` is positional only, so the job's own arguments may hold a ``project``
+        too."""
         key = kg_lock(project)
-        return await self.defer(task, lock=key, queueing_lock=key, connection=connection, **kwargs)
+        return await self.defer(task, lock=key, queueing_lock=key, queue=KG_QUEUE, connection=connection, **kwargs)

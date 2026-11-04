@@ -1,0 +1,202 @@
+{
+ "chars": 14435329,
+ "classes": {
+  "other": {
+   "chars": 14435329,
+   "item_share": 1.0,
+   "items": 3829,
+   "lines": 73091,
+   "share": 1.0
+  }
+ },
+ "content_items": 3829,
+ "edges": 3829,
+ "graphs": 1,
+ "history": {
+  "commits": 0,
+  "pull_requests": 0
+ },
+ "identifier_candidates": [
+  {
+   "count": 6556,
+   "items": 1573,
+   "pattern": "\\b\\d{4}[a-z]\\b",
+   "shape": "9{4}a"
+  },
+  {
+   "count": 2375,
+   "items": 1004,
+   "pattern": "\\b\\d{2}[a-z]{2}\\b",
+   "shape": "9{2}a{2}"
+  },
+  {
+   "count": 652,
+   "items": 317,
+   "pattern": "\\b\\d[a-z]{2}\\b",
+   "shape": "9a{2}"
+  },
+  {
+   "count": 563,
+   "items": 406,
+   "pattern": "\\b[a-z]{3}\\-\\d{4}[a-z]\\b",
+   "shape": "a{3}-9{4}a"
+  },
+  {
+   "count": 288,
+   "items": 196,
+   "pattern": "\\b\\d{2}[a-z]\\b",
+   "shape": "9{2}a"
+  },
+  {
+   "count": 240,
+   "items": 185,
+   "pattern": "\\b\\d{2}[a-z]{2}\\-[a-z]{7}\\b",
+   "shape": "9{2}a{2}-a{7}"
+  },
+  {
+   "count": 134,
+   "items": 67,
+   "pattern": "\\b[A-Z]{2}\\-\\d{3}\\b",
+   "shape": "A{2}-9{3}"
+  },
+  {
+   "count": 123,
+   "items": 53,
+   "pattern": "\\b[A-Z]\\d{2}\\b",
+   "shape": "A9{2}"
+  },
+  {
+   "count": 121,
+   "items": 110,
+   "pattern": "\\b\\d{4}\\.[A-Z][a-z]\\b",
+   "shape": "9{4}.Aa"
+  },
+  {
+   "count": 120,
+   "items": 89,
+   "pattern": "\\b\\d{2}\\-[a-z]{4}\\b",
+   "shape": "9{2}-a{4}"
+  },
+  {
+   "count": 117,
+   "items": 73,
+   "pattern": "\\b\\d\\-[a-z]{4}\\b",
+   "shape": "9-a{4}"
+  },
+  {
+   "count": 112,
+   "items": 101,
+   "pattern": "\\b[a-z]{3}\\-\\d{2}[a-z]{2}\\b",
+   "shape": "a{3}-9{2}a{2}"
+  },
+  {
+   "count": 108,
+   "items": 81,
+   "pattern": "\\b[A-Z]{2}\\d\\b",
+   "shape": "A{2}9"
+  },
+  {
+   "count": 69,
+   "items": 44,
+   "pattern": "\\b\\d{2}\\-[a-z]{6}\\b",
+   "shape": "9{2}-a{6}"
+  },
+  {
+   "count": 61,
+   "items": 61,
+   "pattern": "\\b\\d{4}\\.[A-Z][a-z]{2}\\b",
+   "shape": "9{4}.Aa{2}"
+  },
+  {
+   "count": 59,
+   "items": 23,
+   "pattern": "\\b\\d[A-Z]{2}\\b",
+   "shape": "9A{2}"
+  },
+  {
+   "count": 59,
+   "items": 32,
+   "pattern": "\\b\\d{2}\\-[a-z]{3}\\b",
+   "shape": "9{2}-a{3}"
+  },
+  {
+   "count": 56,
+   "items": 35,
+   "pattern": "\\b\\d\\-[a-z]{6}\\b",
+   "shape": "9-a{6}"
+  },
+  {
+   "count": 48,
+   "items": 42,
+   "pattern": "\\b[a-z]{4}\\-\\d{4}[a-z]\\b",
+   "shape": "a{4}-9{4}a"
+  },
+  {
+   "count": 46,
+   "items": 26,
+   "pattern": "\\b[A-Z]{2}\\-\\d{2}\\b",
+   "shape": "A{2}-9{2}"
+  }
+ ],
+ "items": 3829,
+ "languages": {},
+ "length": {
+  "max": 5999,
+  "nodes_with_passages": 1956,
+  "p50": 4146,
+  "p90": 5998,
+  "p99": 5999,
+  "passages": 9903
+ },
+ "lines": 73091,
+ "mentions": {
+  "dangling": 0,
+  "mentions": 0,
+  "resolved": 0,
+  "resolved_ratio": 0.0
+ },
+ "natural_language": {
+  "chars": {},
+  "share": {}
+ },
+ "nodes": {
+  "File": 3829,
+  "Source": 1
+ },
+ "noise": {
+  "binary": 0,
+  "ratio": 0.0,
+  "tiny": 0
+ },
+ "sensitive": {
+  "email": {
+   "items": 0,
+   "strings": 0
+  },
+  "medical_code": {
+   "items": 2,
+   "strings": 3
+  },
+  "national_id": {
+   "items": 2,
+   "strings": 2
+  },
+  "phone": {
+   "items": 258,
+   "strings": 587
+  }
+ },
+ "sources": [
+  {
+   "chars": 14435329,
+   "id": "corpus",
+   "items": 3829,
+   "label": {
+    "level": "public",
+    "location": "any"
+   },
+   "lines": 73091
+  }
+ ],
+ "version": "1"
+}

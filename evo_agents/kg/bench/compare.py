@@ -13,21 +13,39 @@ in ``--split``; a summary with a ``test`` part fails without ``--sealed``. The t
 required set (``benches.SET.parts.SPLIT``): ``abstain`` (share of questions without an answer the method abstained
 on) for ``--abstain-min``, ``false_abstain`` (share of answerable ones it abstained on) for ``--false-abstain-max``,
 ``precision`` (mean line precision) for ``--precision-min``; ``--arms`` reads the summary's ``arms`` and
-``--cost-max`` its ``cost.usd``. A key the summary lacks fails the check that reads it. A summary of one part only
+``--cost-max`` its ``cost.usd``. ``--curator-agrees N`` reads the summary's ``curator`` block (see below). A key the
+summary lacks fails the check that reads it. A summary of one part only
 (``kg links eval``) names it as its ``split``, which the checks read when ``--split`` is not given.
+
+Curator block (``bench/results/curator.json``, ``curator-base.json``). A bench summary whose top-level ``benches`` and
+``tasks`` are those of the config the Curator chose, plus ``curator.benches.SET`` with:
+
+- ``chosen``: ``candidate`` (the name of its entry in ``candidates``), ``strategy`` (``name``, ``self_made``),
+  ``settings`` (as decided), ``applied`` (the query keys the bench asked under) and ``unapplied`` (build keys a bench
+  run cannot apply: the graphs were built with the defaults);
+- ``inputs``: every file the Curator run read, each ``name``, ``path`` (relative to the file), ``sha256`` and ``part``
+  (``none`` or ``tune``);
+- ``candidates``: at least four configs besides the Curator's, each ``name``, ``kind``, ``search``, ``settings`` and
+  ``parts.SPLIT`` with ``n``, ``primary`` and ``tasks`` ([{"id", "v", "tokens"}], the primary metric per task).
+
+``--curator-agrees N`` fails unless N of the required sets have the Curator's config within SE_GATE standard errors of
+the best candidate (the paired bootstrap of best minus Curator on the tasks every candidate ran), and fails when an input
+is a file of holdout or test (by its ``part``, a path that names either, or a SHA-256 that differs from the file).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import random
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.kg.bench.datasets import BenchError
 from evo_agents.kg.bench.run import FORMAT
-from evo_agents.kg.bench.tasks import TEST
+from evo_agents.kg.bench.tasks import HOLDOUT, TEST
 from evo_agents.kg.evaluate import p95
 
 BOOTSTRAP = 2000
@@ -308,6 +326,8 @@ def check(
     precision_min: float | None = None,
     arms: list[str] | None = None,
     cost_max: float | None = None,
+    curator_agrees: int | None = None,
+    base: Path | str | None = None,
 ) -> list[tuple[str, bool, str]]:
     """The checks ``show`` was asked for (see the module), each (name, passed, detail)."""
     checks: list[tuple[str, bool, str]] = []
@@ -339,4 +359,113 @@ def check(
     if cost_max is not None:
         cost = (summary.get("cost") or {}).get("usd")
         checks.append(("cost-max", cost is not None and cost <= cost_max, f"cost {cost} USD, at most {cost_max:g}"))
+    if curator_agrees is not None:
+        checks += curator_checks(summary, require or [], split, curator_agrees, base)
     return checks
+
+
+# -- the Curator's choice ------------------------------------------------------------------------------------------
+
+CURATOR_MIN_CANDIDATES = 4
+HELD_OUT = (HOLDOUT, TEST)
+_HELD_OUT_WORD = re.compile(r"(?<![a-z])(holdout|test)(?![a-z])", re.IGNORECASE)
+
+
+def held_out_input(entry: dict, base: Path | str | None = None) -> str | None:
+    """Why the input file ``entry`` of a Curator run is one the run must not read (or None): its part is holdout or
+    test, its name or path says so, or its SHA-256 is not that of the file it names."""
+    if entry.get("part") in HELD_OUT:
+        return f"part {entry['part']}"
+    for key in ("name", "path"):
+        found = _HELD_OUT_WORD.search(str(entry.get(key) or ""))
+        if found:
+            return f"{key} {entry[key]!r} names {found.group(1).lower()}"
+    if not re.fullmatch(r"(sha256:)?[0-9a-f]{64}", str(entry.get("sha256") or "")):
+        return "no SHA-256"
+    path = Path(str(entry.get("path") or ""))
+    if base is not None and not path.is_absolute() and (Path(base) / path).is_file():
+        digest = hashlib.sha256((Path(base) / path).read_bytes()).hexdigest()
+        if digest != str(entry["sha256"]).removeprefix("sha256:"):
+            return f"SHA-256 of {path.as_posix()} differs from the one recorded"  # the same words on Windows
+    return None
+
+
+def _tasks_of(candidate: dict, split: str) -> dict[str, float]:
+    part = (candidate.get("parts") or {}).get(split) or {}
+    return {t["id"]: t["v"] for t in part.get("tasks", []) if isinstance(t, dict) and t.get("v") is not None}
+
+
+def agreement(entry: dict, split: str) -> dict:
+    """How far the Curator's config of one set is from the best candidate on ``split``: the tasks every candidate ran
+    are paired, ``gap`` is best minus Curator (mean), ``se`` the standard error of that paired difference."""
+    candidates = entry.get("candidates") or []
+    chosen = (entry.get("chosen") or {}).get("candidate")
+    named = {c.get("name"): c for c in candidates}
+    if chosen not in named:
+        return {"ok": False, "why": f"chosen candidate {chosen!r} is not among the candidates"}
+    series = {name: _tasks_of(c, split) for name, c in named.items()}
+    ids = sorted(set.intersection(*(set(v) for v in series.values())))
+    if not ids:
+        return {"ok": False, "why": f"no task in {split} that every candidate ran"}
+    means = {name: sum(v[i] for i in ids) / len(ids) for name, v in series.items()}
+    best = max(means, key=lambda n: (means[n], n == chosen))
+    diffs = [series[best][i] - series[chosen][i] for i in ids]
+    gap, se, _, _ = bootstrap(diffs)
+    return {
+        "ok": gap <= SE_GATE * se + 1e-12,
+        "n": len(ids),
+        "best": best,
+        "best_primary": round(means[best], 4),
+        "chosen": chosen,
+        "chosen_primary": round(means[chosen], 4),
+        "gap": round(gap, 4),
+        "se": round(se, 4),
+    }
+
+
+def curator_checks(
+    summary: dict, require: list[str], split: str | None, need: int, base: Path | str | None = None
+) -> list[tuple[str, bool, str]]:
+    """The checks of ``--curator-agrees`` (see the module)."""
+    out: list[tuple[str, bool, str]] = []
+    block = (summary.get("curator") or {}).get("benches") or {}
+    split = split or (summary.get("curator") or {}).get("split") or HOLDOUT
+    names = require or list(block)
+    agreeing = []
+    for bench in names:
+        entry = block.get(bench)
+        if not entry:
+            out.append(("curator-agrees", False, f"{bench}: no Curator block"))
+            continue
+        bad = [f"{e.get('name')}: {why}" for e in entry.get("inputs") or [] if (why := held_out_input(e, base))]
+        if not entry.get("inputs"):
+            bad.append("no input list")
+        out.append(
+            ("curator-inputs", not bad, f"{bench}: " + ("; ".join(bad) if bad else "no input of holdout or test"))
+        )
+        chosen = (entry.get("chosen") or {}).get("candidate")
+        extra = [c for c in entry.get("candidates") or [] if c.get("name") != chosen]
+        out.append(
+            (
+                "curator-candidates",
+                len(extra) >= CURATOR_MIN_CANDIDATES,
+                f"{bench}: {len(extra)} candidates besides the Curator's, at least {CURATOR_MIN_CANDIDATES}",
+            )
+        )
+        found = agreement(entry, split)
+        if "why" in found:
+            out.append(("curator-set", False, f"{bench}: {found['why']}"))
+            continue
+        if found["ok"]:
+            agreeing.append(bench)
+        out.append(
+            (
+                "curator-set",
+                True,  # informational: only the count in curator-agrees decides
+                f"{bench}: {'within' if found['ok'] else 'outside'} {SE_GATE:g} SE: Curator {found['chosen_primary']} ({found['chosen']}), best {found['best_primary']} "
+                f"({found['best']}), gap {found['gap']:+.4f}, SE {found['se']:.4f}, n {found['n']}",
+            )
+        )
+    detail = f"{len(agreeing)} of {len(names)} within {SE_GATE:g} SE of the best ({', '.join(agreeing) or 'none'})"
+    out.append(("curator-agrees", len(agreeing) >= need, f"{detail}, {need} needed"))
+    return out

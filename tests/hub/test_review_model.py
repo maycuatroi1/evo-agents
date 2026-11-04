@@ -154,7 +154,7 @@ def test_review_lenses_take_the_lens_product_in_turn_with_the_others_and_show_it
     names = list(review.LENSES)
     assert review.PRODUCT == "product" and names.index("product") == names.index("product_goals") + 1
     assert (
-        names[-2:] == ["kg_health", "kg_init"]
+        names[-3:] == ["kg_health", "kg_init", "kg_questions"]
         and "product" in review.FIGURE_KEYS
         and review.LENS_FIGURES["product"] == "product"
     )
@@ -323,6 +323,14 @@ def test_the_cause_a_worker_reported_wins_over_the_one_read_in_the_error():
     assert review.run_cause(None, None, "lost") == "lease_lost"
     assert review.run_cause(None, "something else", "failed") == "other"
     assert review.environment_cause(RUN_9) == "credentials"
+
+
+def test_steps_left_is_read_before_the_words_of_the_summary_its_error_ends_with():
+    error = (
+        "the agent ended its turns with step(s) 3, 4 of the plan to do and no decision open, 3 times in a row after it "
+        "was sent back to the plan; its summary: the verify timed out on the checkout of the branch"
+    )
+    assert review.run_cause(None, error, "failed") == "steps_left"
 
 
 def test_every_cause_a_worker_sends_is_one_the_figures_name():

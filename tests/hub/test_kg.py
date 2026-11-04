@@ -1223,6 +1223,35 @@ def test_hub_tools_give_the_local_server_s_answers(hub, tmp_path):
     )
 
 
+def test_kg_status_reports_the_vectors_the_hub_recorded_of_a_build_that_embedded(hub, tmp_path, monkeypatch):
+    from evo_agents.hub import kg_semantic_cli
+    from evo_agents.kg import semantic
+    from tests.kg.test_hybrid import FAKE, Words
+
+    semantic.forget_models()
+    monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
+    project_id = query(hub.db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    query(
+        hub.db,
+        update(tables.kg_semantic)
+        .values(mode="index", model=FAKE)
+        .where(tables.kg_semantic.c.project_id == project_id),
+    )
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    recorded = query(
+        hub.db, select(tables.kg_builds.c.coverage["vectors"]).where(tables.kg_builds.c.status == "succeeded")
+    )
+    assert recorded and recorded[-1][0]["vectors"] > 0  # the build embedded, and only kg_builds says so
+    vectors = tool_ok(hub, "kg_status")["structuredContent"]["graph"]["coverage"]["vectors"]
+    assert vectors == recorded[-1][0] and vectors["model"] == FAKE and not vectors.get("error")
+    found = kg_semantic_cli.semantic_json(PROJECT, 1, vectors)
+    assert found["model_available"] and found["mode"] == "index" and found["vectors"] == vectors["vectors"]
+    semantic.forget_models()
+
+
 def test_tools_of_a_project_without_a_build_say_how_to_get_one(hub):
     result = call_tool(hub, "kg_search", {"query": "x"}).json()
     assert result["isError"] and "has no graph on the hub yet" in result["content"][0]["text"]

@@ -278,6 +278,16 @@ def test_openrouter_backend_is_opt_in_unit_length_and_keeps_a_ledger(tmp_path, m
     semantic.forget_models()
 
 
+def test_each_embed_call_gets_the_models_chunk_so_the_api_backend_fills_its_requests_in_flight(tmp_path, kg_env, words):
+    assert semantic.OpenRouterEmbedder.chunk == semantic.OPENROUTER_BATCH * semantic.OPENROUTER_THREADS
+    assert semantic.Embedder.chunk == semantic.BATCH * 8
+    project = with_garage(tmp_path, kg_env)
+    sync_build(project)
+    words.chunk, words.calls, words.texts = 2, 0, 0
+    found = semantic.index_file(project.root / "graph.sqlite", semantic.Settings("index", FAKE))
+    assert found.embedded == words.texts > 2 and words.calls == -(-words.texts // 2)
+
+
 def test_a_spent_budget_leaves_the_rest_for_the_next_build(tmp_path, kg_env, words):
     project = with_garage(tmp_path, kg_env)
     sync_build(project)

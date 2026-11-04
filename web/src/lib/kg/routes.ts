@@ -8,7 +8,8 @@ import type { Hops, ReviewRule } from "./types";
 /**
  * The knowledge graph's pages: `/p/{project}/kg` (the explorer: `?cluster=` or `?node=` for its scope, `?q=&kind=` for
  * its search), `/p/{project}/kg/builds` (status, commits read, shape and builds), `/p/{project}/kg/node?id=` (one node),
- * `/p/{project}/kg/cluster?id=` (one cluster) and `/p/{project}/kg/review` (the review queue).
+ * `/p/{project}/kg/cluster?id=` (one cluster), `/p/{project}/kg/review` (the review queue) and `/p/{project}/kg/upload`
+ * (Upload data); `/projects/new` makes a project from an archive.
  */
 export const KG_SEGMENT = "kg";
 
@@ -31,6 +32,19 @@ export function explorerHref(project: string, scope: Scope): Route {
 export function buildsHref(project: string, failed = false): Route {
   const base = `${projectHref(project, KG_SEGMENT)}/builds`;
   return (failed ? `${base}?builds=failed#${BUILD_HISTORY_ANCHOR}` : base) as Route;
+}
+
+/** The Upload data page: an archive sent as a source of the graph, and the reports of the uploads before it. */
+export function uploadHref(project: string): Route {
+  return `${projectHref(project, KG_SEGMENT)}/upload` as Route;
+}
+
+/** New project from data: a project made by the hub from the archive uploaded into it. */
+export const NEW_PROJECT_HREF = "/projects/new" as Route;
+
+/** A run's page (`runs/queries.runHref`, which this feature does not import): the kg_init run of an upload's build. */
+export function initRunHref(project: string, id: number): Route {
+  return projectHref(project, `runs/${id}`);
 }
 
 /** The anchor of the build history on the builds page (`BUILD_HISTORY_ID` of ./queries). */
