@@ -12,6 +12,10 @@ What it does for each item of the kinds the mapping chooses (the prose kinds whe
 - the model's answer is cut down to the node kinds and relations the mapping lists and the ontology holds; what it
   invented outside them is counted, not stored. Each node and edge gets the status ``extracted`` (never ``parsed``) and
   carries the model's name as evidence, and an edge ``mentions`` joins the document to each entity;
+- the answers of all items are read together (``evo_agents.kg.entity_links``): names of one entity are one node, an
+  entity that names exactly one Symbol or File gets an edge ``refers_to`` to it, and, when the graph has vectors, two
+  near entities of one kind an edge ``synonym_of``; coverage counts the names ``merged``, the ``synonyms``, the
+  ``code_links`` and the names ``code_ambiguous``;
 - the answer is memoized by the item's content digest, the model and the mapping, so an unchanged item costs nothing;
 - calls, tokens and cost are counted per build, and the step stops at the ceiling (``max_calls``, ``max_tokens``,
   ``max_cost``), leaves the rest to a later build (``coverage["entities"]["skipped"]``) and the next build continues
@@ -32,8 +36,10 @@ import json
 import os
 import re
 import subprocess
+from collections import defaultdict
 from urllib.parse import urlparse
 
+from evo_agents.kg import entity_links as links
 from evo_agents.kg.protocol import canonical_json, sha256
 
 VERSION = "1"
@@ -47,6 +53,7 @@ COMMAND_TIMEOUT = 300
 REFUSED_SAMPLES = 20
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 SLUG = re.compile(r"[^a-z0-9]+")
+MAX_ALIASES = 10
 
 FIELDS = {
     "items",  # record kinds read; the prose kinds when absent
@@ -62,6 +69,7 @@ FIELDS = {
     "max_cost",
     "price",  # {"input": cost per million tokens in, "output": per million out}, for a model that reports no cost
     "max_chars",  # characters of an item sent
+    "synonym_threshold",  # the cosine from which two entities are synonyms, when the graph has vectors (entity_links)
 }
 _INTS = ("max_calls", "max_tokens", "max_chars")
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:/-]{0,79}$")
@@ -129,6 +137,10 @@ def check(value):
             or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 for v in p.values())
         ):
             raise EntitiesError("entities.price must be {input, output}: cost per million tokens")
+    if "synonym_threshold" in out:
+        t = out["synonym_threshold"]
+        if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0 < t <= 1:
+            raise EntitiesError("entities.synonym_threshold must be a cosine above 0 and at most 1")
     return out
 
 
@@ -210,7 +222,8 @@ def _prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
         f"Relations you may use: {', '.join(relations) or 'none'}.\n"
         'Answer with one JSON object: {"nodes": [{"kind", "name", "evidence", "conf"}], '
         '"edges": [{"src", "rel", "dst", "evidence"}]}, where src and dst are names of your nodes, evidence is a short '
-        "quote of the text and conf is between 0 and 1. Leave out what the text does not say.\n\nTEXT:\n" + text
+        'quote of the text and conf is between 0 and 1. A node may add "aliases": the other names the text gives it. '
+        "Leave out what the text does not say.\n\nTEXT:\n" + text
     )
 
 
@@ -274,33 +287,42 @@ def call_model(config: dict, text: str, node_kinds: list[str], relations: list[s
 
 
 def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
-    """What of a model's answer is within the kinds and relations allowed: nodes and edges, with the counts dropped."""
+    """What of a model's answer is within the kinds and relations allowed: nodes and edges, with the counts dropped.
+    Names one item gives twice, folded as ``entity_links.key`` folds them, are one node; an edge may name a node by
+    one of its aliases."""
     nodes, seen, dropped = [], {}, 0
     for n in answer.get("nodes") or []:
         name = n.get("name") if isinstance(n, dict) else None
         kind = n.get("kind") if isinstance(n, dict) else None
-        if not isinstance(name, str) or not name.strip() or kind not in node_kinds or not slug(name):
+        if not isinstance(name, str) or not name.strip() or kind not in node_kinds or not links.key(name):
             dropped += 1
             continue
         name = name.strip()[:200]
-        key = (kind, slug(name))
+        key = (kind, links.key(name))
         if key in seen:
             continue
         try:
             conf = min(max(float(n.get("conf", DEFAULT_CONF)), 0.0), 1.0)
         except (TypeError, ValueError):
             conf = DEFAULT_CONF
+        raw = n.get("aliases") if isinstance(n.get("aliases"), list) else []
+        aliases = sorted(
+            {a.strip()[:200] for a in raw if isinstance(a, str) and links.key(a) and links.key(a) != key[1]}
+        )[:MAX_ALIASES]
         seen[key] = {"kind": kind, "name": name, "conf": conf, "evidence": str(n.get("evidence") or "")[:200]}
+        if aliases:
+            seen[key]["aliases"] = aliases
         nodes.append(seen[key])
     by_name = {}
     for n in nodes:
-        by_name.setdefault(slug(n["name"]), n)
+        for name in (n["name"], *n.get("aliases", ())):
+            by_name.setdefault(links.key(name), n)
     edges = []
     for e in answer.get("edges") or []:
         if not isinstance(e, dict) or e.get("rel") not in relations:
             dropped += 1
             continue
-        src, dst = by_name.get(slug(str(e.get("src") or ""))), by_name.get(slug(str(e.get("dst") or "")))
+        src, dst = by_name.get(links.key(str(e.get("src") or ""))), by_name.get(links.key(str(e.get("dst") or "")))
         if src is None or dst is None or src is dst:
             dropped += 1
             continue
@@ -315,11 +337,26 @@ def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
     return {"nodes": nodes, "edges": edges, "dropped": dropped}
 
 
-def run(config, project, records, body, memo, unit_labels, first, kinds, relations_known, *, offline=False):
+def run(
+    config,
+    project,
+    records,
+    body,
+    memo,
+    unit_labels,
+    first,
+    kinds,
+    relations_known,
+    *,
+    offline=False,
+    semantic_settings=None,
+):
     """Run the step: ``(facts per item id, coverage)``. ``config`` is the mapping of ``enabled``; ``body(rec)`` the text
-    of an item; ``first`` the facts the item's map stage gave (the document node an edge starts from); ``kinds`` and
-    ``relations_known`` what the ontology holds (None: everything). ``offline`` reads the memo and calls nothing."""
-    from evo_agents.kg.pipeline.stages import edge, item_unit, node
+    of an item; ``first`` the facts the item's map stage gave (the document node an edge starts from, the code an
+    entity may name); ``kinds`` and ``relations_known`` what the ontology holds (None: everything). ``offline`` reads
+    the memo and calls nothing. ``semantic_settings`` are the project's (``kg.semantic``): with vectors, near entities
+    get synonym edges (``entity_links``)."""
+    from evo_agents.kg.pipeline.stages import item_unit
     from evo_agents.kg.profile import class_of
 
     policy = project.policy
@@ -363,6 +400,7 @@ def run(config, project, records, body, memo, unit_labels, first, kinds, relatio
     spend = Spend(config)
     digest = config_digest(config, allowed_kinds, allowed_rels)
     max_chars = config.get("max_chars", DEFAULT_MAX_CHARS)
+    answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
     for rec in records:
         r = rec.record
         if (r["kind"] not in wanted) if wanted else (class_of(r["kind"]) != "prose"):
@@ -419,51 +457,12 @@ def run(config, project, records, body, memo, unit_labels, first, kinds, relatio
             continue
         if memo.misses["entities"] == before:
             cov["cache_hits"] += 1
-        unit = item_unit(rec.item_id)
-        facts: list[dict] = []
         has_doc = any(f["t"] == "node" and f["id"] == rec.item_id for f in first.get(rec.item_id, []))
-        evidence = {"model": config["model"], "item": rec.item_id}
-        for n in cleaned["nodes"]:
-            nid = entity_id(n["kind"], n["name"])
-            facts.append(
-                node(
-                    nid,
-                    n["kind"],
-                    n["name"],
-                    [unit],
-                    props={**evidence, "evidence": n["evidence"]},
-                    status=STATUS,
-                    conf=n["conf"],
-                )
-            )
-            if has_doc:
-                facts.append(
-                    edge(
-                        rec.item_id,
-                        "mentions",
-                        nid,
-                        [unit],
-                        props={**evidence, "evidence": n["evidence"]},
-                        status=STATUS,
-                        conf=n["conf"],
-                    )
-                )
-        for e in cleaned["edges"]:
-            facts.append(
-                edge(
-                    e["src"],
-                    e["rel"],
-                    e["dst"],
-                    [unit],
-                    props={**evidence, "evidence": e["evidence"]},
-                    status=STATUS,
-                    conf=DEFAULT_CONF,
-                )
-            )
+        answers.append((rec.item_id, item_unit(rec.item_id), has_doc, cleaned, _rank(label)))
         cov["nodes"] += len(cleaned["nodes"])
         cov["edges"] += len(cleaned["edges"])
         cov["rejected"] += cleaned["dropped"]
-        out[rec.item_id] = facts
+    _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline)
     cov.update(
         calls=spend.calls,
         tokens_in=spend.tokens_in,
@@ -471,6 +470,76 @@ def run(config, project, records, body, memo, unit_labels, first, kinds, relatio
         cost=round(spend.cost, 6),
     )
     return out, cov
+
+
+def _rank(label) -> tuple:
+    """How public a label is, lower more: what picks the name of a node several items state (``entity_links``)."""
+    return (label.level, label.location, len(label.audience))
+
+
+def _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline) -> None:
+    """The facts of every item's answer, its entities folded into one node each, joined to code and to synonyms."""
+    from evo_agents.kg.pipeline.stages import edge, node
+
+    stated = [
+        links.Stated(n["kind"], n["name"], tuple(n.get("aliases") or ()), n["conf"], item, rank)
+        for item, _, _, cleaned, rank in answers
+        for n in cleaned["nodes"]
+    ]
+    groups = links.group(stated)
+    index, code_names = links.code_index(first)
+    code: dict[str, tuple[str, float, str]] = {}  # entity id -> (code id, conf, the name that found it)
+    ambiguous = 0
+    for nid in sorted(groups.name):
+        target, name, unclear = links.code_link(groups.names[nid], index)
+        ambiguous += unclear
+        if target is not None:
+            exact = name.strip().strip("`").removesuffix("()") in (code_names.get(target), target)
+            code[nid] = (target, round(groups.conf[nid] * (1.0 if exact else links.CASE_CONF), 4), name)
+    threshold = config.get("synonym_threshold", links.DEFAULT_SYNONYM_THRESHOLD)
+    cache = project.root / links.VECTOR_CACHE if getattr(project, "root", None) is not None else None
+    pairs, status = links.synonyms(groups, semantic_settings, memo, cache, threshold, offline=offline)
+    near: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
+    for a, b, cos in pairs:
+        near[a].append((a, b, cos))
+        near[b].append((a, b, cos))
+    model = config["model"]
+    for item, unit, has_doc, cleaned, _ in answers:
+        evidence = {"model": model, "item": item}
+        facts: list[dict] = []
+        old_ids: dict[str, str] = {}
+        own: list[str] = []
+        for n in cleaned["nodes"]:
+            nid = groups.id_of(n["kind"], n["name"])
+            old_ids.setdefault(entity_id(n["kind"], n["name"]), nid)
+            own.append(nid)
+            props = {**evidence, "evidence": n["evidence"]}
+            facts.append(node(nid, n["kind"], groups.name[nid], [unit], props=props, status=STATUS, conf=n["conf"]))
+            if has_doc:
+                facts.append(edge(item, "mentions", nid, [unit], props=props, status=STATUS, conf=n["conf"]))
+        for e in cleaned["edges"]:
+            src, dst = old_ids.get(e["src"]), old_ids.get(e["dst"])
+            if src is None or dst is None or src == dst:
+                continue
+            props = {**evidence, "evidence": e["evidence"]}
+            facts.append(edge(src, e["rel"], dst, [unit], props=props, status=STATUS, conf=DEFAULT_CONF))
+        for nid in dict.fromkeys(own):
+            if nid in code:
+                target, conf, name = code[nid]
+                props = {**evidence, "name": name}
+                facts.append(edge(nid, links.CODE_REL, target, [unit], props=props, status=STATUS, conf=conf))
+            for a, b, cos in near.get(nid, ()):
+                props = {"model": semantic_settings.model, "cosine": cos}
+                facts.append(edge(a, links.SYNONYM_REL, b, [unit], props=props, status=STATUS, conf=cos))
+        out[item] = facts
+    cov.update(
+        distinct=len(groups.name),
+        merged=groups.merged,
+        synonyms=len(pairs),
+        synonym_status=status,
+        code_links=len(code),
+        code_ambiguous=ambiguous,
+    )
 
 
 def unfinished(coverage: dict) -> bool:

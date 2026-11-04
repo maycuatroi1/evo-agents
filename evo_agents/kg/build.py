@@ -250,6 +250,7 @@ def run_pipeline(
                 kinds,
                 known_relations(ontology) if ontology is not None else None,
                 offline=offline,
+                semantic_settings=_semantic_of(tuning),
             )
 
     # Assembly.
@@ -635,6 +636,14 @@ def build_project(
     return report
 
 
+def _semantic_of(tuning):
+    """The project's semantic settings (``kg.semantic``), None when they do not read."""
+    try:
+        return tuning.semantic_settings()
+    except ValueError:
+        return None
+
+
 def _vectors(project: Project, report: BuildReport) -> None:
     """Make the project's graph hold the vectors its ``semantic.json`` asks for (``evo_agents.kg.semantic``), outside
     the build's content hash; a model that cannot be loaded is a warning, and the graph searches by words."""
@@ -676,6 +685,9 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
     chosen = {k: v for k, v in tuning.items() if k in ("passage_from", "passage_chars", "strategy", "entities")}
     if chosen:  # only a project that set them: every other project keeps the digest it had
         parts["tuning"] = chosen
+    if "entities" in chosen:  # whether the graph has vectors decides the synonym edges of its entities
+        found = _semantic_of(tuning_of(project))
+        parts["entity_synonyms"] = [found.model] if found is not None and found.indexes else None
     return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
 
 

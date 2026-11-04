@@ -72,6 +72,13 @@ settings:
 - What the model states is cut to the node kinds and relations the mapping lists and the ontology holds. Each node
   and edge has the status `extracted`, below `resolved` in rank and left out of impact, and carries the model's name. An
   edge `mentions` joins the document to each entity.
+- The answers of all items are read together (`evo_agents/kg/entity_links.py`). Names of one kind that differ only in
+  case, accents, spaces, punctuation or number, or that the model gave as `aliases` of each other, are one node; it
+  takes the name of the most public item that stated it. An entity whose name or alias names exactly one Symbol or File
+  (looked up as `locate` looks names up) gets an edge `refers_to` to it; a name that names more is not linked. When
+  the graph has vectors (semantic `index` or `on`), two entities of one kind whose names have a cosine of at least
+  `synonym_threshold` (default 0.8) get an edge `synonym_of`. Both edges are `extracted`, so impact never follows them.
+  Coverage counts `merged`, `code_links`, `code_ambiguous` and `synonyms`.
 - Results are memoized by the item's content digest, the model and the mapping. Each build records calls, tokens and cost
   in `coverage["entities"]` and stops at its ceiling (defaults: 200 calls, 400000 tokens, cost 5). The items left over
   are in `skipped`, the build is not skipped as unchanged, and the next build continues from the memo.
