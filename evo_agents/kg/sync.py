@@ -406,10 +406,13 @@ def sync_project(
     corpus = project.corpus()
     wanted = sources or [s["id"] for s in project.sources()]
     results = []
-    for source_id in wanted:
-        if accept:
-            accept_removals(project, source_id, corpus)
-        results.append(sync_source(project, source_id, corpus=corpus, **kwargs))
+    try:
+        for source_id in wanted:
+            if accept:
+                accept_removals(project, source_id, corpus)
+            results.append(sync_source(project, source_id, corpus=corpus, **kwargs))
+    finally:
+        corpus.close()  # a connection left open waits for the cycle collector, and holds the file on Windows
     return results
 
 

@@ -132,6 +132,9 @@ class Session:
         self.semantic: bool | None = None
         self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
         self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (kg.filebm25)
+        # the stores the current call opened, closed when it answers: since Python 3.11 a connection left open waits
+        # for the cycle collector (its statement cache refers back to it), and Windows cannot delete a file one holds
+        self._opened: list[Store] | None = None
         # kg_search orders files by the learned model (evo_agents.kg.rank): None as the setting says, True or False always
         self.rank: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
@@ -188,6 +191,8 @@ class Session:
             store = Store.open_readonly(self.project)
         except StaleSchema as exc:
             raise ToolError(str(exc)) from None
+        if store is not None and self._opened is not None:
+            self._opened.append(store)
         b = store.latest_ready() if store else None
         if b is None:
             raise ToolError(f"project {self.project.name!r} has no graph yet: run `evo-agents kg sync --build`")
@@ -200,6 +205,7 @@ class Session:
             return _error(self.error)
         self.read = None
         self.sees_all = False
+        self._opened = []
         try:
             handler = getattr(self, f"tool_{name}", None)
             if handler is None:
@@ -213,6 +219,10 @@ class Session:
             return _error(str(exc))
         except (TypeError, ValueError) as exc:
             return _error(f"bad arguments for {name}: {exc}")
+        finally:
+            for store in self._opened:
+                store.close()
+            self._opened = None
         return self._envelope(text, data)
 
     def _envelope(self, text: str, data: dict) -> dict:
