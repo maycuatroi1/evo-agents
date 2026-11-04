@@ -191,15 +191,19 @@ def _nested(walk: _Walk, entry: Entry, depth: int) -> Iterator[Entry]:
     if not _take(walk, entry.path, 0):
         return
     walk.entries -= 1  # an archive opened counts by its files, not itself
-    with tempfile.NamedTemporaryFile(dir=walk.spool, suffix=archive_kind(entry.path)) as spooled:
+    # closed before it is read again by name: Windows cannot open a NamedTemporaryFile a second time while it is open
+    handle, name = tempfile.mkstemp(dir=walk.spool, suffix=archive_kind(entry.path))
+    spooled = Path(name)
+    try:
         try:
-            with entry.open() as source:
-                shutil.copyfileobj(source, spooled, SPOOL_CHUNK)
-            spooled.flush()
+            with open(handle, "wb") as out, entry.open() as source:
+                shutil.copyfileobj(source, out, SPOOL_CHUNK)
         except (OSError, zipfile.BadZipFile, tarfile.TarError, EOFError):
             walk.skip("corrupt", entry.path)
             return
-        yield from _archive(walk, Path(spooled.name), entry.path, depth)
+        yield from _archive(walk, spooled, entry.path, depth)
+    finally:
+        spooled.unlink(missing_ok=True)
 
 
 def _zip_entries(walk: _Walk, path: Path, prefix: str) -> Iterator[tuple[Entry, bool]]:
