@@ -76,3 +76,17 @@ def test_kg_profile_prints_it_and_says_when_there_is_none(tmp_path, kg_env, caps
 def test_kg_bench_profile_says_so_on_an_empty_cache(tmp_path, capsys):
     assert main(["kg", "bench", "profile", "--cache", str(tmp_path / "cache"), "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == {"repos": {}}
+
+
+def test_the_kinds_of_an_uploaded_archive_fall_in_their_classes():
+    classes = {kind: kg_profile.class_of(kind) for kind in ("pdf", "docx", "xlsx", "pptx", "html", "table", "record")}
+    assert classes == {
+        "pdf": "prose",
+        "docx": "prose",
+        "xlsx": "prose",
+        "pptx": "prose",
+        "html": "prose",
+        "table": "structured",
+        "record": "structured",
+    }
+    assert kg_profile.class_of("asset") == "binary"

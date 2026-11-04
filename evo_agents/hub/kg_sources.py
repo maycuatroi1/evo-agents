@@ -64,6 +64,8 @@ log = logging.getLogger(__name__)
 POINT = "kg_sources"
 SOURCE_PREFIX = "plugin."
 CONNECTOR = "plugin"  # the connector the knowledge config names for a plugin's source
+UPLOAD_PREFIX = "upload."  # the sources uploaded archives are (evo_agents.hub.kg_upload_sources), held the same way
+UPLOAD_CONNECTOR = "upload"
 SOURCE_TIMEOUT = 300.0  # seconds a source may take to answer
 ITEM_KEYS = frozenset({"id", "kind", "rev_time", "uri", "parent", "title", "body", "fragments", "props", "label"})
 IDENTIFIER_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -291,7 +293,9 @@ def knowledge_with(knowledge: dict, sources: list[PluginSource]) -> dict:
     kept = [
         entry for entry in knowledge.get("sources") or [] if not (isinstance(entry, dict) and entry.get("id") in ids)
     ]
-    added = [{"id": source.id, "connector": CONNECTOR, "label": floor} for source in sorted(sources, key=_by_id)]
+    added = [
+        {"id": source.id, "connector": _connector(source.id), "label": floor} for source in sorted(sources, key=_by_id)
+    ]
     identifiers: list[dict] = []
     for entry in [i for source in sorted(sources, key=_by_id) for i in source.identifiers]:
         if entry not in identifiers:
@@ -309,16 +313,22 @@ def _by_id(source: PluginSource) -> str:
     return source.id
 
 
+def _connector(source: str) -> str:
+    return UPLOAD_CONNECTOR if source.startswith(UPLOAD_PREFIX) else CONNECTOR
+
+
 def keep_sources(project: Project, sources: list[PluginSource]) -> None:
     """Make each source's items and cursor in ``project``'s corpus those it gave, and remove the items of a plugin
-    source no longer given (``evo_agents.kg.replace``). Blocking."""
+    or upload source no longer given (``evo_agents.kg.replace``). Blocking."""
     corpus = project.corpus()
     try:
         for source in sources:
-            replace_source(corpus, source.id, list(source.items), connector=CONNECTOR, project=project.name)
+            connector = _connector(source.id)
+            replace_source(corpus, source.id, list(source.items), connector=connector, project=project.name)
             keep_cursor(corpus, source.id, source.cursor)
         keep = {source.id for source in sources}
-        drop_sources(corpus, SOURCE_PREFIX, keep, connector=CONNECTOR, project=project.name)
+        for prefix in (SOURCE_PREFIX, UPLOAD_PREFIX):
+            drop_sources(corpus, prefix, keep, connector=_connector(prefix), project=project.name)
     finally:
         corpus.close()
 
@@ -327,6 +337,8 @@ __all__ = [
     "CONNECTOR",
     "POINT",
     "SOURCE_PREFIX",
+    "UPLOAD_CONNECTOR",
+    "UPLOAD_PREFIX",
     "PluginSource",
     "SourceFailure",
     "checked",

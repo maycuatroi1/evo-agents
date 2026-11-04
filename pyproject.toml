@@ -38,6 +38,9 @@ bench = ["pyarrow>=15"]
 rank = ["lightgbm>=4.5", "numpy>=1.26"]
 # Edges the graph may lack, proposed by a graph model (evo_agents.kg.links): DistMult or RotatE trained on CPU with numpy alone.
 links = ["numpy>=1.26"]
+# The reading of archives uploaded to a hub's graph (evo_agents.kg.extract_office): PDF, docx, xlsx, pptx and html to
+# markdown. The hub's image installs it; without it those files are kept as assets.
+ingest = ["markitdown[pdf,docx,xlsx,pptx]>=0.1"]
 hub-server = [
     "fastapi>=0.135",
     "uvicorn[standard]>=0.34",
@@ -100,7 +103,7 @@ guard = "evo_agents.core_plugins.guard:MANIFEST"
 # evo_agents` see the entry points of the branch and of every core plugin, whatever the machine's own python has.
 [tool.evo-agents.worker]
 venv = true
-extras = ["test", "graphify", "hub-server", "worker"]
+extras = ["test", "graphify", "hub-server", "worker", "ingest"]
 requirements = ["deploy/hub/core-plugins.txt"]
 
 [tool.setuptools.dynamic]

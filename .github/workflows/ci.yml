@@ -112,7 +112,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e '.[test,graphify,hub-server,worker]'
+      - run: uv pip install --system -e '.[test,graphify,hub-server,worker,ingest]'
       # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): telegram, chats, crm, pm and
       # marketing of evo-agents-core-plugins, whose routes the golden copy of the API holds and with which tests build a hub's graph.
       - run: uv pip install --system --no-deps --require-hashes -r deploy/hub/core-plugins.txt

@@ -107,6 +107,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
   until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
   (``evo_agents.hub.server.merge_gate``, ``.merge_judge``).
+- ``hub.extract_uploads``, every minute, one pass at a time: each archive uploaded with ``hub kg upload`` read into the
+  items of its source, the uploads of the source it replaces released, and a build queued
+  (``evo_agents.hub.kg_upload_extract``).
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
@@ -398,6 +401,14 @@ async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict
     merged = await merge_ancestry.settle(found.engine, getattr(found, "github_app", None))
     checks = {**checks, **{f"checks_{key}": value for key, value in merged.items()}}
     return {**outcomes, **checks} if checks else outcomes
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.EXTRACT_UPLOADS, pass_context=True, lock=jobs.EXTRACT_UPLOADS, queueing_lock=jobs.EXTRACT_UPLOADS)
+async def extract_uploads(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.kg_upload_extract import extract_pending
+
+    return await extract_pending(hub(context), context.app.job_manager)
 
 
 @queue.periodic(cron="*/10 * * * *")

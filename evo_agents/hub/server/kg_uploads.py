@@ -14,8 +14,10 @@ through. The routes, under /v1/kg/{project}/uploads:
 - POST .../{id}/complete: once the store holds every part at its size, it joins them, checks the object's size and
   moves the upload to ``extracting``; 409 naming how many parts are missing otherwise. The hub does not read 20 GiB
   back here: the SHA-256 is checked when the archive is read.
-- GET: the uploads of the project the caller's grant sees, newest first, with their state, size, the files read and
-  skipped by reason (``report``) and the build that followed.
+- GET: the uploads of the project the caller's grant sees, newest first, with their state, size, the files read,
+  skipped and kept as assets by reason, the first such paths (to a grant that sees the upload's label only), the
+  upload that replaced it, and the build that followed. The worker fills these when it reads the archive
+  (``evo_agents.hub.kg_upload_extract``).
 
 Only the sender continues an upload. One still ``uploading`` and untouched for STALE_AFTER is marked failed and its
 parts dropped by the worker's cleanup job (``evo_agents.hub.kg_upload_prune``).
@@ -103,6 +105,11 @@ class KgPartUrls(BaseModel):
     parts: list[KgPartUrl]
 
 
+class KgUploadPath(BaseModel):
+    path: str
+    reason: str
+
+
 class KgUpload(BaseModel):
     id: int
     source: str
@@ -116,6 +123,12 @@ class KgUpload(BaseModel):
     ended_at: datetime | None
     files: int | None = Field(description="files read from the archive; None until it is read")
     skipped: dict[str, int] = Field(description="files left out, counted by reason")
+    assets: dict[str, int] = Field(default_factory=dict, description="files kept by path and size only, by reason")
+    paths: list[KgUploadPath] = Field(
+        default_factory=list,
+        description="the first files skipped or kept as assets; only for a grant that sees the label",
+    )
+    replaced_by: int | None = Field(None, description="the upload of the same source that replaced this one")
     build_id: int | None
     build_status: str | None
     error: str | None
@@ -332,6 +345,7 @@ async def _items(conn: AsyncConnection, access: ProjectAccess, *, upload_id: int
     items = []
     for row in (await conn.execute(query)).all():
         report = row.report or {}
+        seen = access.rules.visible_by_grant(row.label, access.max_level)
         items.append(
             KgUpload(
                 id=row.id,
@@ -346,6 +360,9 @@ async def _items(conn: AsyncConnection, access: ProjectAccess, *, upload_id: int
                 ended_at=row.ended_at,
                 files=report.get("files"),
                 skipped={str(k): int(v) for k, v in (report.get("skipped") or {}).items()},
+                assets={str(k): int(v) for k, v in (report.get("assets") or {}).items()},
+                paths=[KgUploadPath(**entry) for entry in report.get("paths") or []] if seen else [],
+                replaced_by=report.get("replaced_by"),
                 build_id=row.build_id,
                 build_status=row.build_status,
                 error=row.error,

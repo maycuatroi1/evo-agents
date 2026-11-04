@@ -43,9 +43,12 @@ UPLOAD = (
     "ended_at",
     "files",
     "skipped",
+    "assets",
+    "paths",
     "build_id",
     "build_status",
     "error",
+    "replaced_by",
 )
 SENT = ("sent", "kept")  # the parts this run sent, and those the hub already held
 

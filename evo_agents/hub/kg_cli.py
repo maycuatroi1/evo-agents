@@ -282,10 +282,12 @@ def forget_json(project: str, found: list[dict]) -> dict:
 
 
 def forget_line(project: str, found: dict) -> str:
-    runs = found["ingested"] + found["pending"]
-    if not runs:
+    runs, uploads = found["ingested"] + found["pending"], found.get("uploads", 0)
+    if not runs and not uploads:
         return f"the hub holds no run of source {found['source']} of project {project}; nothing changed"
     line = f"took {runs} run(s) of source {found['source']} off project {project}"
+    if uploads:
+        line += f"; deleted {uploads} uploaded archive(s) of it"
     if found["logs"]:
         line += f"; {found['logs']} log(s) leave the blob store with the next prune"
     build = found.get("build")

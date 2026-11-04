@@ -2899,6 +2899,29 @@ evo-agents hub kg upload ./lumen-handbook.zip --project demo --label internal
 evo-agents hub kg uploads --project demo
 ```
 
+**Reading an uploaded archive.** Every minute the worker job `hub.extract_uploads` reads each upload in `extracting`,
+oldest first (`evo_agents/hub/kg_upload_extract.py`). It fetches the archive into a temporary file under the hub's data
+directory and fails the upload when its size or SHA-256 is not the one sent. It then walks the archive entry by entry
+without unpacking it (`evo_agents/kg/archive.py`). Names are read as UTF-8 or, in a zip without the UTF-8 flag, as
+cp437, and normalized to NFC. An entry is skipped, and counted by reason, when its path is unsafe (`unsafe_path`), it is
+a link or a device (`symlink`, `link`, `device`), it is encrypted (`encrypted`), it is over 1 MiB and 100 times its
+compressed size (`ratio`), it repeats a path (`duplicate`) or it cannot be read (`corrupt`). An archive inside the
+archive is read too, two levels deep (`depth`). The whole read stops at 200,000 entries (`too_many_entries`) or 100 GiB
+unpacked (`total_size`). Each file becomes kg/1 items of the source `upload.<name>`, the name in lowercase
+(`evo_agents/kg/extract_office.py`): PDF, Word, PowerPoint, Excel and HTML files through markitdown (kinds `pdf`,
+`docx`, `pptx`, `xlsx`, `html`, each Excel sheet a `table`), CSV and TSV files as `table`, JSON arrays of objects as
+`json` with one `record` per object, and Markdown and text as a git source gives them, long text split into passages.
+A file with no text to read is kept as an `asset` by path and size only, counted by reason: `no_text_layer` (a scanned
+PDF), `too_large` (over 64 MiB), `binary`, `timeout` and `unreadable`. markitdown comes with the `ingest` extra, which
+the hub image installs; without it documents are `unreadable` assets. The items are stored next to the archive, the
+upload becomes `extracted` with its report and a build is queued. A new upload of the same source replaces the
+snapshot: the older upload's report names the one that replaced it, its archive and items leave the blob store, and a
+file the new archive lacks leaves the graph with the next build. The items carry the upload's label, kg_status names
+each upload source with its label and latest upload, and a config pushed later keeps the source.
+`evo-agents hub kg forget-source --project demo --source upload.<name>` (or the name the archive was sent with) deletes
+its uploads, archives and items. The report lists the first paths skipped or kept as assets only to members whose
+grant sees the upload's label; the log holds upload ids, counts and reasons, never a path.
+
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
 graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is

@@ -112,6 +112,7 @@ DEFAULT_CONCURRENCY = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or p
 MAX_CONCURRENCY = MAX_BLOB_CONCURRENCY
 DELETE_BATCH = 1000  # the most keys DeleteObjects takes
 ARCHIVE_PREFIX = "kg-archives/"
+ITEMS_SUFFIX = ".items.jsonl.gz"  # the items an archive gave, next to it (``items_key``)
 PART_SIZE = 64 * MiB  # one part of an archive's multipart upload, below the 100 MB a proxy such as Cloudflare takes
 MAX_PARTS = 10_000  # the most parts S3 takes in one multipart upload
 
@@ -150,6 +151,11 @@ def sealed_key(upload_id: str) -> str:
 
 def archive_key(upload_id: str) -> str:
     return ARCHIVE_PREFIX + str(uuid.UUID(upload_id))
+
+
+def items_key(object_key: str) -> str:
+    """Where the items read from the archive at ``object_key`` are kept: gzipped JSON Lines next to it."""
+    return object_key + ITEMS_SUFFIX
 
 
 def new_upload_id() -> str:
@@ -461,6 +467,15 @@ class BlobStore:
         if self.size(key) != size:
             raise BlobStoreUnavailable(f"blob {sha256} does not have its {size} bytes after it was written")
         return True
+
+    def put_object(self, key: str, path: Path) -> None:
+        """Store the file at ``path`` at ``key``, a key of the hub's own outside ``blobs/`` (the items an upload's
+        archive gave, ``items_key``), replacing what is there."""
+        size = path.stat().st_size
+        with open(path, "rb") as handle:
+            self._call("PutObject", "put_object", Key=key, Body=handle, ContentLength=size)
+        if self.size(key) != size:
+            raise BlobStoreUnavailable(f"object {key} does not have its {size} bytes after it was written")
 
     def copy(self, source: str, target: str) -> bool:
         """Copy ``source`` to ``target`` inside the bucket; False when ``source`` does not exist."""

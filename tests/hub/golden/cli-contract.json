@@ -11615,9 +11615,12 @@
           "ended_at",
           "files",
           "skipped",
+          "assets",
+          "paths",
           "build_id",
           "build_status",
           "error",
+          "replaced_by",
           "sent",
           "kept"
         ],
@@ -123129,6 +123132,34 @@
                 }
               ],
               "title": "Error"
+            },
+            "assets": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Assets",
+              "description": "files kept by path and size only, by reason"
+            },
+            "paths": {
+              "items": {
+                "$ref": "#/components/schemas/KgUploadPath"
+              },
+              "type": "array",
+              "title": "Paths",
+              "description": "the first files skipped or kept as assets; only for a grant that sees the label"
+            },
+            "replaced_by": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Replaced By",
+              "description": "the upload of the same source that replaced this one"
             }
           },
           "type": "object",
@@ -123226,6 +123257,24 @@
             "uploads"
           ],
           "title": "KgUploadList"
+        },
+        "KgUploadPath": {
+          "properties": {
+            "path": {
+              "type": "string",
+              "title": "Path"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "path",
+            "reason"
+          ],
+          "title": "KgUploadPath"
         },
         "KgUploadStarted": {
           "properties": {
@@ -157463,6 +157512,12 @@
               "type": "boolean",
               "title": "Declared",
               "description": "whether the knowledge config on the hub still declares the source: a machine holding its runs then pushes them again"
+            },
+            "uploads": {
+              "type": "integer",
+              "title": "Uploads",
+              "description": "uploaded archives of the source deleted, with their items",
+              "default": 0
             }
           },
           "type": "object",

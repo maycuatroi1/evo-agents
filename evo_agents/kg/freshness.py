@@ -21,7 +21,9 @@ commit. The tools show the link at the commit read instead (``Links``), so the l
 
 A source the hub's core plugins keep (``evo_agents.hub.kg_sources``) may end with a cursor naming the newest item it
 gave, ``{"item": "<id>", "at": "<time>"}``, such as the newest message of the chats; a build copies it as the
-source's read too, which kg_status shows (``describe``) and ``reads`` leaves out, since it names no commit.
+source's read too, which kg_status shows (``describe``) and ``reads`` leaves out, since it names no commit. An
+uploaded archive's source (``evo_agents.hub.kg_upload_sources``) names its upload so, with the upload's label as
+``"label": "<level>[/<location>]"``.
 
 Cursors come from connectors, and on the hub from any member's push: a value that does not look like a commit, a ref
 or an https link is dropped, so no text of theirs reaches a tool's answer or the SessionStart note; an item's cursor
@@ -39,6 +41,7 @@ ITEM = re.compile(ID_PATTERN)
 TIME = re.compile(TIME_PATTERN)
 REF = re.compile(r"[A-Za-z0-9._/@^~{}-]{1,200}")
 URL = re.compile(r"https://[^\s\"'<>]{1,500}")
+LABEL = re.compile(r"[a-z0-9_-]{1,40}(/[A-Za-z0-9_.-]{1,80})?")  # an upload's label, level/location
 SHORT = 7  # characters of a SHA shown
 FIELDS = ("commit", "ref", "at", "base", "behind", "url")  # what a read shows; ``blob`` stays inside the build
 
@@ -54,7 +57,11 @@ def _url(value) -> str | None:
 def _item_read(cursor: dict) -> dict | None:
     item, at = cursor.get("item"), cursor.get("at")
     if isinstance(item, str) and ITEM.match(item) and isinstance(at, str) and TIME.match(at):
-        return {"item": item, "at": at}
+        found = {"item": item, "at": at}
+        label = cursor.get("label")
+        if isinstance(label, str) and LABEL.fullmatch(label):
+            found["label"] = label
+        return found
     return None
 
 
@@ -127,9 +134,10 @@ def _behind(read: dict) -> str | None:
 def describe(read: dict) -> str:
     """One read in words: ``1550c7a of HEAD at <time>, 3 behind origin/main then`` when the count is the sync's,
     without ``then`` when this machine counted it again, without the time for a read older than ``at``; or
-    ``plugin.chats:message:812 at <time>``."""
+    ``plugin.chats:message:812 at <time>``, and ``upload.docs:upload:7 at <time>, label internal`` for an upload."""
     if "commit" not in read:
-        return f"{read.get('item')} at {read.get('at')}"
+        label = f", label {read['label']}" if read.get("label") else ""
+        return f"{read.get('item')} at {read.get('at')}{label}"
     at = read.get("at")
     behind = _behind(read)
     if behind and at and not read.get("recounted"):
