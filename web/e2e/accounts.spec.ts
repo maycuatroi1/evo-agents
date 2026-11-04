@@ -412,15 +412,17 @@ test("model accounts are a card per provider and service credentials their own t
   expect(await overflow(page)).toBe(0);
 
   // A reload keeps the tab; the arrow keys move between tabs and back to Providers drops it from the URL. The tab
-  // shows selected in the server's HTML, before the page hydrates and its keys do anything: again until they did.
+  // shows selected in the server's HTML, before the page hydrates and a key does anything: again until one did. An
+  // arrow moves the focus a task later (Radix's roving focus), so the next key waits for the tab the last one selected.
   await page.reload();
   await expect(main(page).getByTestId("accounts-tab-services")).toHaveAttribute("aria-selected", "true");
   await expect(async () => {
     await main(page).getByTestId("accounts-tab-services").focus();
     await page.keyboard.press("ArrowLeft");
-    await page.keyboard.press("ArrowLeft");
-    await expect(main(page).getByTestId("accounts-tab-providers")).toHaveAttribute("aria-selected", "true", { timeout: 1_000 });
+    await expect(main(page).getByTestId("accounts-tab-models")).toHaveAttribute("aria-selected", "true", { timeout: 1_000 });
   }).toPass();
+  await page.keyboard.press("ArrowLeft");
+  await expect(main(page).getByTestId("accounts-tab-providers")).toHaveAttribute("aria-selected", "true");
   await expect(page).not.toHaveURL(/tab=/);
 });
 
