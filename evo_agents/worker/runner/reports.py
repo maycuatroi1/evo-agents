@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 from typing import TYPE_CHECKING
 
+from evo_agents.worker import gitops
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, ReportRefused, RunGone, log, wait_or
 from evo_agents.worker.runner.transitions import bare_report, end_fields, report_body
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
 
 LOG_LIMIT = 64 * 1024 * 1024  # the run-log blob
-DIFF_LIMIT = 8 * 1024 * 1024  # the run-diff blob
+DIFF_LIMIT = gitops.DIFF_BYTES  # the run-diff blob
 
 
 class Reports:

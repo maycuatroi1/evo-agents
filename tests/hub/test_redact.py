@@ -129,3 +129,21 @@ def test_redact_shares_its_key_patterns_with_the_knowledge_graph():
     for kind in ("github_token", "hub_token"):
         assert graph[kind] in logs, kind
     assert secret_patterns.URI_PASSWORD in logs
+
+
+PROVIDER_TOKENS = {
+    "stripe secret": _joined("sk_", "live_", "4eC39HqLyjWDarjtT1zdp7dc"),
+    "stripe restricted": _joined("rk_", "live_", "51H8xQ2eZvKYlo2C0a1b2c3d"),
+    "gitlab": _joined("gl", "pat-", "xY7kQ2mN9pR4sT1vW6zA"),
+    "hugging face": _joined("hf_", "AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGh"),
+    "npm": _joined("npm_", "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"),
+    "slack app": _joined("xa", "pp-", "1-A0123BCDE-4815162342-9f8e7d6c5b4a"),
+    "google oauth": _joined("ya", "29.", "a0AfH6SMBx7Kq2Lm9Np4Rs8Tv1Wy3Zb5Cd"),
+}
+
+
+@pytest.mark.parametrize("secret", PROVIDER_TOKENS.values(), ids=PROVIDER_TOKENS.keys())
+def test_redact_masks_the_tokens_of_more_providers_provider_format(secret):
+    cleaned = redact(f"curl -H 'X: {secret}' and then {secret}.")
+    assert secret not in cleaned and secret[-12:] not in cleaned, cleaned
+    assert MASK in cleaned

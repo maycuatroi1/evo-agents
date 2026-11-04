@@ -107,10 +107,12 @@ users = Table(
     _stamp("created_at"),
     _when("last_seen_at"),
     Column("run_reach", ARRAY(Text), nullable=False, server_default="{}"),  # 0193: run_access_rules.REACH_GROUPS
+    Column("admin_login", Text),  # 0203: the EVO_HUB_ADMINS login bound to this account (security.admin_login)
     PrimaryKeyConstraint("id", name="users_pkey"),
     UniqueConstraint("github_id", name="users_github_id_key"),
 )
 Index("users_login_key", func.lower(users.c.login), unique=True)  # GitHub logins are case-insensitive
+Index("users_admin_login_key", users.c.admin_login, unique=True)  # 0203: one account a listed login
 
 tokens = Table(
     "tokens",
@@ -1025,6 +1027,7 @@ chat_bridges, chat_bridge_codes, chat_bridge_messages = bridge_tables(metadata) 
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 retired_project_plugins = tables_plugins.retired_table(metadata)  # canvas, srs and tasks before 0147
+plugin_cron = tables_plugins.cron_table(metadata)  # the last minute plugin jobs were queued for (0203)
 market_sources, plugin_publishers, market_install_requests = tables_market.market_tables(metadata)  # 0154
 hub_identity, market_listings, market_bundles, market_orders, market_payouts, market_purchases = (
     tables_seller.seller_tables(metadata)  # 0159

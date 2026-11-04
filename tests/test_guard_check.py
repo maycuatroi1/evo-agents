@@ -188,3 +188,81 @@ def test_refusal_shows_each_name_as_written_and_never_the_policy():
     hits = policy("Northwind").matcher().find("a brief of NORTHWIND today")
     text = private_names.refusal(hits, "the PR body")
     assert "'NORTHWIND'" in text and "fictional name" in text
+
+
+def test_a_push_to_the_guarded_remote_reads_a_commit_another_remote_has_other_remote(repo, policy_file, monkeypatch):
+    """A commit a fork already has was never checked against the guarded origin: the push to origin still reads it,
+    from the push remote of a bare ``git push`` and from the remote a pre-push hook names."""
+    git(repo, "remote", "add", "fork", "git@github.com:someone/fork.git")
+    (repo / "c.txt").write_text("lumen ops in the fork\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "fork work")
+    git(repo, "update-ref", "refs/remotes/fork/main", "HEAD")
+    assert "lumen ops" in guard_check.outgoing(repo, "HEAD")
+    assert "lumen ops" in guard_check.outgoing(repo, "HEAD", remote="origin")
+    assert "lumen ops" not in guard_check.outgoing(repo, "HEAD", remote="fork")
+    head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    monkeypatch.chdir(repo)
+    stdin = f"refs/heads/main {head} refs/heads/main {guard_check.ZERO}\n"
+    assert guard_check.hook("pre-push", ["origin", "git@github.com:acme/public.git"], stdin) == guard_check.REFUSED
+    unknown = "1" * 40  # the remote moved to a commit this checkout never fetched: what origin has is read instead
+    stdin = f"refs/heads/main {head} refs/heads/main {unknown}\n"
+    assert guard_check.hook("pre-push", ["origin", "git@github.com:acme/public.git"], stdin) == guard_check.REFUSED
+
+
+def test_the_guard_refuses_a_push_when_git_fails_or_runs_out_of_time_git_fails(repo, policy_file, monkeypatch):
+    from evo_agents.worker.gitops import PushRefused
+    from evo_agents.worker.guard import check_push
+
+    with pytest.raises(guard_check.Unread, match="failed"):
+        guard_check.outgoing(repo, "no-such-ref", remote="origin")
+    monkeypatch.setattr(guard_check, "_git", lambda cwd, *args: (124, ""))
+    with pytest.raises(guard_check.Unread, match="ran out of time"):
+        guard_check.outgoing(repo, "HEAD", remote="origin")
+    monkeypatch.chdir(repo)
+    stdin = f"refs/heads/main {'2' * 40} refs/heads/main {guard_check.ZERO}\n"
+    assert guard_check.hook("pre-push", ["origin", "git@github.com:acme/public.git"], stdin) == guard_check.REFUSED
+    with pytest.raises(PushRefused, match="could not read"):
+        check_push(repo, "HEAD", "main", "git@github.com:acme/public.git", None)
+
+
+@pytest.mark.parametrize(
+    ("args", "refused"),
+    [
+        (["api", "graphql", "-f", 'query=mutation { addComment(input: {body: "northwind"}) { clientMutationId } }'], 1),
+        (["api", "graphql", "-F", "body=lumen ops", "-f", "query=mutation($body: String!) { x(body: $body) }"], 1),
+        (["api", "graphql", "-f", 'query=query { search(query: "northwind") { issueCount } }'], 0),
+        (["api", "graphql", "-f", 'query=mutation { x(body: "clean") }'], 0),
+    ],
+)
+def test_the_gh_guard_reads_a_graphql_mutation_graphql(repo, policy_file, monkeypatch, args, refused):
+    monkeypatch.chdir(repo)
+    monkeypatch.delenv("GH_REPO", raising=False)
+    if refused:
+        with pytest.raises(guard_check.Refused, match="northwind|lumen"):
+            guard_check.gh_check(guard_check.load(), args, repo, [None])
+    else:
+        guard_check.gh_check(guard_check.load(), args, repo, [None])
+
+
+def test_a_graphql_mutation_names_its_repo_by_owner_and_name_graphql(repo, policy_file, monkeypatch):
+    git(repo, "remote", "set-url", "origin", "git@github.com:acme/internal.git")
+    monkeypatch.delenv("GH_REPO", raising=False)
+    mutation = 'query=mutation($owner: String!, $name: String!) { x(body: "northwind") }'
+    args = ["api", "graphql", "-F", "owner=acme", "-F", "name=public", "-f", mutation]
+    with pytest.raises(guard_check.Refused):
+        guard_check.gh_check(guard_check.load(), args, repo, [None])
+    guard_check.gh_check(guard_check.load(), ["api", "graphql", "-f", mutation], repo, [None])
+
+
+def test_the_owner_repo_placeholder_reads_as_the_checkouts_repo_placeholder(repo, policy_file, monkeypatch):
+    monkeypatch.delenv("GH_REPO", raising=False)
+    args = ["api", "-X", "POST", "repos/{owner}/{repo}/issues/1/comments", "-f", "body=for northwind"]
+    assert guard_check.gh_texts(args, [None]) == (None, ["body for northwind"])
+    with pytest.raises(guard_check.Refused):
+        guard_check.gh_check(guard_check.load(), args, repo, [None])
+    git(repo, "remote", "set-url", "origin", "git@github.com:acme/internal.git")
+    guard_check.gh_check(guard_check.load(), args, repo, [None])
+    monkeypatch.setenv("GH_REPO", "acme/public")
+    with pytest.raises(guard_check.Refused):
+        guard_check.gh_check(guard_check.load(), args, repo, [None])

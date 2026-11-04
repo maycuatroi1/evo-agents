@@ -723,6 +723,25 @@ def test_a_worker_reports_only_moves_of_runs_it_holds_and_the_table_allows(clien
     assert report(client, first, run_id, "running").status_code == 404  # it holds the run no more
 
 
+def test_a_resend_not_held_after_the_run_ended_writes_nothing(client, hub, hub_db):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    run_id = dispatched(client, hub["owner"], [2])[0]["id"]
+    claim(client, worker)
+    moved(client, worker, run_id, "running", usage={"input_tokens": 1200})
+    failed = moved(client, worker, run_id, "failed", commit_sha=SHA, verify=PASSED)
+    late = {
+        "commit_sha": "b" * 40,
+        "verify": [],
+        "usage": {"input_tokens": 9},
+        "diffstat": {"files": 9, "insertions": 1, "deletions": 1},
+    }
+    again = report(client, worker, run_id, "failed", **late)  # a resend of the report the run ended with
+    assert again.status_code == 200, again.text
+    kept = ("commit_sha", "verify", "usage", "diffstat")
+    assert {name: again.json()[name] for name in kept} == {name: failed[name] for name in kept}
+    assert failed["commit_sha"] == SHA and failed["usage"] == {"input_tokens": 1200}
+
+
 # Approval
 
 

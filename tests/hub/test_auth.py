@@ -142,6 +142,7 @@ HUB_TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 HUB_TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 HUB_TABLES |= {"kg_init_runs"}  # migration 0197
 HUB_TABLES |= {"kg_uploads"}  # migration 0200
+HUB_TABLES |= {"plugin_cron"}  # migration 0204
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 
@@ -488,6 +489,30 @@ def test_a_renamed_github_account_keeps_its_row_and_its_grants(client, github, h
     assert logins == [("alice", 999), ("alicia", 401), (ADMIN, 302)]
 
 
+def test_admin_renamed_on_github_stays_a_hub_admin(client, github, hub_db):
+    first = sign_in(client, github, ADMIN, 302)
+    assert first["admin"] is True
+    renamed = sign_in(client, github, "octo-renamed", 302)  # the same GitHub account under its new login
+    assert renamed["admin"] is True
+    for token in (first["token"], renamed["token"]):
+        me = bearer(token)
+        assert client.get("/v1/admin/users", headers=me).status_code == 200
+    users = tables.users
+    assert sql(hub_db, select(users.c.login, users.c.admin_login).where(users.c.github_id == 302)) == [
+        ("octo-renamed", ADMIN.lower())
+    ]
+
+
+def test_admin_login_taken_by_another_account_is_no_hub_admin(client, github, hub_db):
+    admin = sign_in(client, github, ADMIN, 302)
+    sign_in(client, github, "octo-renamed", 302)
+    taker = sign_in(client, github, ADMIN, 777)  # a new account takes the login the admin left
+    assert taker["admin"] is False
+    assert client.get("/v1/admin/users", headers=bearer(taker["token"])).status_code == 403
+    rows = {u["login"]: u for u in client.get("/v1/admin/users", headers=bearer(admin["token"])).json()}
+    assert rows[ADMIN]["admin"] is False and rows["octo-renamed"]["admin"] is True
+
+
 def test_admin_stats_counts_the_rows_of_every_table(client, github, hub_db):
     add_project(hub_db, "demo")
     admin = sign_in(client, github, ADMIN, 302)
@@ -654,7 +679,11 @@ def test_credentials_are_written_atomically_with_exact_modes(tmp_path, monkeypat
     assert mode(directory / "token") == 0o600 and mode(directory / "config.json") == 0o600
     assert (directory / "token").read_text() == "evh_new\n"
     assert os.stat(directory / "token").st_ino != old_inode  # replaced by rename, never rewritten in place
-    assert json.loads((directory / "config.json").read_text()) == {"url": "https://hub.test", "login": "octo"}
+    assert json.loads((directory / "config.json").read_text()) == {
+        "url": "https://hub.test",
+        "login": "octo",
+        "token": "evh_new",
+    }
     assert sorted(p.name for p in directory.iterdir()) == ["config.json", "token"]
     assert hub_client.load_credentials() == hub_client.Credentials("https://hub.test", "octo", "evh_new")
     assert "evh_new" not in repr(hub_client.load_credentials())
@@ -764,8 +793,8 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
         assert mode(directory) == 0o700
         assert mode(directory / "token") == 0o600 and mode(directory / "config.json") == 0o600
         assert sorted(p.name for p in directory.iterdir()) == ["config.json", "token"]
-        assert json.loads((directory / "config.json").read_text()) == {"url": hub.url, "login": ADMIN}
         token = (directory / "token").read_text().strip()
+        assert json.loads((directory / "config.json").read_text()) == {"url": hub.url, "login": ADMIN, "token": token}
         assert token.startswith("evh_") and token not in signed.stdout + signed.stderr
         tokens = tables.tokens
         stored = sql(hub_db, select(tokens.c.token_hash).where(tokens.c.revoked_at.is_(None)))

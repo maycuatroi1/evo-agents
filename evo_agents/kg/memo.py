@@ -12,6 +12,10 @@ a digest of what those keys held. The next run looks the keys up again; the outp
 them holds what it held. A task is a function of its inputs and of what it reads, so the same values make it read
 the same keys and return the same output.
 
+A memo commits as it goes, every COMMIT_ROWS rows written or COMMIT_SECONDS after its last commit, and ``run`` with
+``commit`` at once (an answer a model was paid for): another build sharing the memo waits on its write lock for a
+moment, not for a whole build, and a build that crashes keeps what it had committed.
+
 Every row a memo returns or writes counts as used: ``commit`` records, in ``memo_used``, the time the memo was opened
 as the row's last use, and in ``memo_meta`` that time as ``last_build``. Retention (``evo_agents.kg.retention``)
 deletes the rows no key uses any more: those whose last use is older than its period and than ``last_build``
@@ -25,6 +29,7 @@ from __future__ import annotations
 import gzip
 import json
 import sqlite3
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -42,6 +47,8 @@ CREATE TABLE IF NOT EXISTS memo_used (key TEXT PRIMARY KEY, used TEXT NOT NULL) 
 CREATE TABLE IF NOT EXISTS memo_meta (name TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 """
 # The rows no key uses: no use recorded since ``cut``, the earlier of the retention cutoff and ``last_build``.
+COMMIT_ROWS = 500
+COMMIT_SECONDS = 2.0
 UNUSED = "SELECT memo.key FROM memo LEFT JOIN memo_used USING (key) WHERE coalesce(memo_used.used, '') < :cut"
 
 
@@ -69,10 +76,13 @@ class Memo:
         self.misses: Counter[str] = Counter()
         self.opened = utc_now()
         self.used: set[str] = set()  # keys returned or written since the last commit
+        self.pending = 0  # rows written since the last commit
+        self.committed = time.monotonic()
 
-    def run(self, stage: str, code_version: str, inputs: dict[str, str], fn):
+    def run(self, stage: str, code_version: str, inputs: dict[str, str], fn, *, commit: bool = False):
         """Return ``(output, output_hash)``. Downstream keys take the output hash, so a recomputed task
-        whose output did not change does not invalidate anything after it (early cutoff)."""
+        whose output did not change does not invalidate anything after it (early cutoff). ``commit`` commits the
+        output it computes at once."""
         key = memo_key(stage, code_version, inputs)
         row = self.db.execute("SELECT output, output_hash FROM memo WHERE key = ?", (key,)).fetchone()
         if row is not None:
@@ -81,7 +91,10 @@ class Memo:
             return json.loads(gzip.decompress(row[0])), row[1]
         self.misses[stage] += 1
         output = fn()
-        return output, self._put(key, stage, output)
+        digest = self._put(key, stage, output)
+        if commit:
+            self.commit()
+        return output, digest
 
     def run_traced(self, stage: str, code_version: str, inputs: dict[str, str], fn, held):
         """Return ``(output, output_hash)`` of a task that reads a shared table (see the module). ``fn()`` returns
@@ -111,6 +124,9 @@ class Memo:
             (key, stage, gzip.compress(data, compresslevel=5), digest),
         )
         self.used.add(key)
+        self.pending += 1
+        if self.pending >= COMMIT_ROWS or time.monotonic() - self.committed >= COMMIT_SECONDS:
+            self.commit()
         return digest
 
     def commit(self) -> None:
@@ -128,6 +144,7 @@ class Memo:
             )
             self.used.clear()
         self.db.commit()
+        self.pending, self.committed = 0, time.monotonic()
 
     def close(self) -> None:
         self.commit()

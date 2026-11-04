@@ -95,10 +95,15 @@ def own_entry(harness: Harness | None, root: Path, origin: str) -> dict:
 
 
 def walk(root: Path):
+    """The files under ``root``, with their paths from it; a symlink whose target is outside ``root`` is left out,
+    so the harness never reads a file of the machine through a link a repo holds."""
+    inside = root.resolve()
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith("."))
         for name in sorted(filenames):
             full = Path(dirpath) / name
+            if full.is_symlink() and not full.resolve().is_relative_to(inside):
+                continue
             yield full, full.relative_to(root).as_posix()
 
 

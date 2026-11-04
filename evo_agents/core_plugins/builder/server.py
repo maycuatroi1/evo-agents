@@ -51,7 +51,7 @@ from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market_install import GitHubInstallIn, Installing, install_github
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, member_principal
 from evo_agents.hub.tables_settings import PROPOSAL_KINDS, PROPOSAL_STATES
 from evo_agents.plugins.signing import default_sigstore
 
@@ -70,16 +70,9 @@ def _text(text: str, *, error: bool = False) -> dict:
     return {"content": [{"type": "text", "text": text}], "is_error": error}
 
 
-def _is_admin(config, login: str) -> bool:
-    """Whether ``login`` is a hub admin; never without the hub's config, which names them."""
-    return config is not None and config.is_admin(login)
-
-
 async def _member(conn: AsyncConnection, user_id: int, config) -> Principal:
     """Member ``user_id`` as the hub sees a request of theirs that carries no token."""
-    u = tables.users
-    login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
-    return Principal(user_id, login, _is_admin(config, login), None, MACHINE, "")
+    return await member_principal(conn, user_id, config)
 
 
 async def _access(conn: AsyncConnection, member: Principal, project: str) -> ProjectAccess:

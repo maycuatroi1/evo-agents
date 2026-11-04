@@ -19,6 +19,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
+from evo_agents.hub import runs
 from evo_agents.worker import figures
 from tests.worker.test_plan_runs import (
     ROOT,
@@ -313,3 +314,20 @@ def test_the_open_items_of_a_report_are_its_unchecked_boxes_and_the_items_under_
     ]
     fenced = "## TODO\n\n```\n- not an item, code\n```\n- an item\n# Done\n- not open\n"
     assert figures.open_items(fenced) == [(6, "an item")]
+
+
+def test_a_review_run_with_no_repo_reads_the_hubs_graph_alone(machine):  # noqa: F811
+    """The KG init of a project fed by uploads alone names no repo: the run starts in an empty directory, ends done, and
+    the daemon says it runs such a review."""
+    machine.scenarios({"review": [{"sh": "ls -A | sort | tr '\\n' ' '"}, {"result": {"summary": "Picked prose."}}]})
+
+    async def body(hub, daemon):
+        run_id = hub.queue_review_run([])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert hub.runs[run_id]["summary"] == "Picked prose."
+        assert any("over no repo" in text for text in hub.texts(run_id))
+        (listed,) = [entry for entry in machine.commands() if entry["run"] == run_id]
+        assert "alpha" not in listed["stdout"] and "beta" not in listed["stdout"]
+        assert runs.REPOLESS_REVIEW in hub.last_heartbeat["features"]
+
+    with_daemon(machine, body)

@@ -209,9 +209,13 @@ def write_atomic(path: Path, data: bytes, mode: int) -> None:
 
 
 def save_credentials(url: str, login: str, token: str) -> Path:
+    """Save the login of the hub at ``url``. config.json takes the URL and the token together in one atomic write,
+    which is what ``credentials_in`` reads, so a Ctrl-C at any point leaves the old login or the new one, never the
+    token of one hub beside the URL of another. ``token`` is written after it, a copy for scripts that read it."""
     directory = _private_dir()
+    saved = {"url": url, "login": login, "token": token}
+    write_private(directory / "config.json", json.dumps(saved, indent=2).encode() + b"\n")
     write_private(directory / "token", token.encode() + b"\n")
-    write_private(directory / "config.json", json.dumps({"url": url, "login": login}, indent=2).encode() + b"\n")
     return directory
 
 
@@ -253,10 +257,15 @@ def login_dirs() -> list[Path]:
 
 
 def credentials_in(directory: Path) -> Credentials:
-    """The login saved in ``directory``; NotSignedIn when it holds none."""
+    """The login saved in ``directory``; NotSignedIn when it holds none. The token is config.json's, written with its
+    URL (``save_credentials``), else the file ``token`` beside a config.json that holds none, as an older release or a
+    script writes them."""
     try:
         config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
-        token = (directory / "token").read_text(encoding="utf-8").strip()
+        token = config.get("token") if isinstance(config, dict) else None
+        if not isinstance(token, str) or not token.strip():
+            token = (directory / "token").read_text(encoding="utf-8")
+        token = token.strip()
     except FileNotFoundError:
         raise NotSignedIn(f"not signed in to a hub: {LOGIN_HINT}") from None
     except (OSError, ValueError) as exc:

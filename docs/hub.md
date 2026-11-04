@@ -310,8 +310,11 @@ session secret, and the public URL. Until all four are set, its routes answer 50
 working with the client id alone. When the client secret is set, the hub also checks with GitHub that a CLI's token
 was issued to this App, so a personal token or another App's token signs nobody in.
 
-The logins in `EVO_HUB_ADMINS` are hub admins. An admin registers projects and grants roles; a login can be granted
-before its first sign-in, and the grant waits for it:
+The logins in `EVO_HUB_ADMINS` are hub admins. The hub binds each listed login to the GitHub account that first signs
+in with it (`users.admin_login`): that account stays an admin after it renames itself on GitHub, and an account that
+takes the login later is not one. To move a listed login to another account, an operator clears the binding
+(`users.admin_login` set to null) and the new account signs in. An admin registers projects and grants roles; a login
+can be granted before its first sign-in, and the grant waits for it:
 
 ```sh
 evo-agents hub admin grant alice demo --role writer --max-level internal
@@ -3491,7 +3494,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 `--queue kg` (again for both) takes the jobs of that queue alone; without it the worker takes every queue. Graph builds
 go to the queue `kg` (`jobs.KG_QUEUE`), so the compose file runs them on `worker-kg`, two replicas, each one build at a
 time, and `worker` takes `default`: a long build never holds back the merge queue, notifications or schedules, and
-two projects build at once (one build of a project at a time, under its lock). On SIGTERM a worker takes no
+two projects build at once (one build of a project at a time, under its lock). A worker that takes `default` keeps,
+beside its slots, one for `hub.recover_runs` and `hub.deliver_notifications` alone (queue `lease`), so they run every
+minute while a long plugin job holds the others. On SIGTERM a worker takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
 memory, so the compose file caps `worker` and each `worker-kg` with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With

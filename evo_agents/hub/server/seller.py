@@ -11,7 +11,8 @@ of a seller's hub. The feature ``seller`` (``evo_agents.hub.features``), off by 
   only for a licence of the hub that asks (``evo_agents.hub.server.seller_api``);
 - GET /v1/seller/orders, POST /v1/seller/orders/{number}/paid and /cancel (hub admins): the orders buying hubs placed;
   marking one paid with the invoice number issues its licence (``evo_agents.plugins.license``), signed with
-  EVO_HUB_SELLER_KEY, from the end of the hub's last licence of the plugin when that has not lapsed, else today;
+  EVO_HUB_SELLER_KEY, from the end of the hub's last licence of the plugin when that has not lapsed, else today. An
+  order left open ORDER_TTL is cancelled (``expire_orders``) the next time an order is read or placed;
 - GET /v1/seller/revenue?month=YYYY-MM and POST /v1/seller/payouts (hub admins): the month's revenue of each
   publisher, the orders paid that month in UTC, split PUBLISHER_PERCENT to the publisher and the rest to evo-agents
   (``evo_agents.hub.payments``), and a publisher's share marked paid out by hand.
@@ -71,6 +72,7 @@ SIGNAL_SOURCE = "market"
 SIGNAL_INGEST_KEY = "seller"  # the project's ingest key the seller's signals come through, made on first use
 ACTIVE_LICENSES = "market.active_licenses"
 REVENUE = "market.revenue_usd_month"
+ORDER_TTL = timedelta(days=30)  # an order left open this long is cancelled: nobody is paying it
 SIGNAL_KEYS = (
     (ACTIVE_LICENSES, "licences", "the licences of this hub's plugins that cover today"),
     (REVENUE, "USD", "the revenue of the orders paid this month, in UTC"),
@@ -502,7 +504,20 @@ def order_model(row) -> Order:
     )
 
 
+async def expire_orders(conn: AsyncConnection) -> None:
+    """Cancel the orders left open ORDER_TTL or longer, in the name of the owner of the listing each orders (a closed
+    order names who closed it), each audited."""
+    o, m = tables.market_orders, tables.market_listings
+    stale = and_(o.c.state == "open", o.c.created_at < func.now() - ORDER_TTL)
+    owner = select(m.c.owner_id).where(m.c.id == o.c.listing_id).scalar_subquery()
+    expired = update(o).where(stale).values(state="cancelled", closed_by=owner, closed_at=func.now())
+    for row in await conn.execute(expired.returning(o.c.number, o.c.buyer_hub)):
+        target = f"order:{row.number} hub:{row.buyer_hub} expired"
+        await audit.record(conn, actor_id=None, token_id=None, action=audit.MARKET_ORDER_CANCEL, target=target)
+
+
 async def order_row(conn: AsyncConnection, number: str, *, lock: bool = False):
+    await expire_orders(conn)
     query = _orders_query().where(tables.market_orders.c.number == number)
     if lock:
         query = query.with_for_update(of=tables.market_orders)
@@ -524,6 +539,7 @@ async def orders(
     if state is not None:
         query = query.where(o.c.state == state)
     async with request.app.state.engine.begin() as conn:
+        await expire_orders(conn)
         return Orders(orders=[order_model(row) for row in await conn.execute(query)])
 
 

@@ -225,6 +225,32 @@ def test_review_reader_sees_a_fix_only_through_every_node_it_names():
     assert "fix" not in review.visible_item(dupe, labels, visible_to_internal)["detail"]  # problem:3 is cut
 
 
+def test_review_skips_unfixable_mentions_of_history_and_each_repos_own_file_at_one_path():
+    graph = fixable()
+    node(graph, "app:commit:abc", "Commit", "abc", repo="app")
+    node(graph, "app:pr:7", "PullRequest", "Fix", repo="app")
+    node(graph, "chats:message:3", "ChatMessage", "m3")
+    node(graph, "h:file:plans/completed/p.yaml", "File", "plans/completed/p.yaml", path="plans/completed/p.yaml")
+    node(graph, "h:file:plans/active/q.yaml", "File", "plans/active/q.yaml", path="plans/active/q.yaml")
+    node(graph, "h:file:AGENTS.md", "Document", "AGENTS.md", path="AGENTS.md", repo="h")
+    node(graph, "app:file:AGENTS.md", "Document", "AGENTS.md", path="AGENTS.md", repo="app")
+    gone = {"dangling": 1, "samples": {"dangling": ["tests/test_calc.py"]}}
+    for nid in ("app:commit:abc", "app:pr:7", "chats:message:3", "h:file:plans/completed/p.yaml"):
+        graph.mentions[nid] = gone
+    graph.mentions["h:file:plans/active/q.yaml"] = gone
+    graph.mentions["app:pr:7"] = {"dangling": 1, "samples": {"dangling": ["x/util.py"]}}  # a moved file: a fix
+    graph.mentions["chats:message:3"] = {"ambiguous": 1, "samples": {"ambiguous": ["Run"]}}
+    found = by_rule(review.compute(graph))
+    dangling = {i["evidence"][0]: i for i in found["dangling_mention"]}
+    assert {"app:commit:abc", "chats:message:3", "h:file:plans/completed/p.yaml"}.isdisjoint(dangling)
+    assert "h:file:plans/active/q.yaml" in dangling  # a living plan is edited, so it stays open
+    assert [d["dst"] for d in dangling["app:pr:7"]["detail"]["fix"]] == ["app:src/x/util.py"]
+    assert "chats:message:3" not in {i["evidence"][0] for i in found["ambiguous_match"]}
+    dupes = {frozenset(i["evidence"]) for i in found["possible_duplicate"]}
+    assert frozenset({"h:file:AGENTS.md", "app:file:AGENTS.md"}) not in dupes
+    assert frozenset({"problem:1", "problem:2", "problem:3"}) in dupes
+
+
 def test_review_names_normalise_accents_case_and_punctuation():
     assert review.normal("Tìm kiếm  CHẬM!") == review.normal("tim kiem cham")
     assert review.GENERATED.search("web/pnpm-lock.yaml") and review.GENERATED.search("app/x_pb2.py")

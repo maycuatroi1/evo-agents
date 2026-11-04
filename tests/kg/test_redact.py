@@ -318,3 +318,44 @@ def test_redaction_runs_on_a_core_install_without_the_hub():
     env = {**os.environ, "PYTHONPATH": str(root)}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env, cwd=root)
     assert out.stdout.strip() == "[]"
+
+
+PROVIDER_TOKENS = {
+    "stripe_key": _joined("sk_", "live_", "4eC39HqLyjWDarjtT1zdp7dc"),
+    "gitlab_token": _joined("gl", "pat-", "xY7kQ2mN9pR4sT1vW6zA"),
+    "hugging_face_token": _joined("hf_", "AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGh"),
+    "npm_token": _joined("npm_", "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"),
+    "slack_token": _joined("xa", "pp-", "1-A0123BCDE-4815162342-9f8e7d6c5b4a"),
+    "google_oauth_token": _joined("ya", "29.", "a0AfH6SMBx7Kq2Lm9Np4Rs8Tv1Wy3Zb5Cd"),
+}
+
+
+@pytest.mark.parametrize(("kind", "secret"), PROVIDER_TOKENS.items(), ids=PROVIDER_TOKENS.keys())
+def test_redact_replaces_the_tokens_of_more_providers_provider_format(kind, secret):
+    cleaned, counts = redact_file(f"Call the API with {secret} as the header.\n", "docs/setup.md")
+    assert secret not in cleaned and f"[redacted:{kind}]" in cleaned
+    assert counts == {kind: 1}
+    restricted = _joined("rk_", "live_", "51H8xQ2eZvKYlo2C0a1b2c3d")
+    assert redact_file(f"{restricted}\n", "notes.md")[1] == {"stripe_key": 1}
+
+
+@pytest.mark.parametrize("word", ["KeY", "test", "xxx", "fake"])
+def test_a_provider_key_whose_random_body_holds_a_word_is_still_redacted_placeholder_body(word):
+    token = _joined("gh", "p_", "A1b2C3d4E5f6", word, "G7h8I9j0K1l2M3n4O5p6")
+    cleaned, counts = redact_file(f'GH = "{token}"\n', "deploy.py")
+    assert token not in cleaned and counts == {"github_token": 1}
+
+
+def test_an_obvious_placeholder_stays_placeholder_body():
+    text = 'API_KEY = "your-key-here"\nTOKEN: ' + _joined("gh", "p_", "x" * 36) + "\n"
+    cleaned, counts = redact_file(text, "settings.yaml")
+    assert cleaned == text and counts == {}
+
+
+@pytest.mark.parametrize("end", ["-", "_", "."])
+def test_a_secret_that_ends_with_punctuation_is_redacted_trailing_punct(end):
+    value = _joined("Zr8q", "K2vH", "n5cW", end)
+    cleaned, counts = redact_file(f'db_password = "{value}"\n', "app/settings.py")
+    assert value not in cleaned and counts == {"password": 1}
+    concatenated = f'db_password = "{value}" + suffix\n'
+    assert redact_file(concatenated, "app/settings.py") == (concatenated, {})

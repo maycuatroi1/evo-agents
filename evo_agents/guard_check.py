@@ -5,13 +5,17 @@ guarded repo.
 The policy is a file (``evo_agents.private_names.Policy``, as GET /v1/guard/policy answers it) that the environment
 names in EVO_GUARD_POLICY; a missing or unreadable file, or one without a term or a target, guards nothing.
 
-- ``outgoing``: the text a push would send, the messages, paths and added lines of the commits the remote has not
-  (``git log -p SOURCE --not --remotes=REMOTE``, as ``lease_leaks`` reads them), at most MAX_COMMITS commits.
+- ``outgoing``: the text a push would send, the messages, paths and added lines of the commits the remote the push
+  goes to has not (``git log -p SOURCE --not --remotes=REMOTE``, as ``lease_leaks`` reads them; a commit another
+  remote has counts as unchecked), at most MAX_COMMITS commits. A git command that fails or runs out of time refuses
+  the push: the guard never lets through what it could not read.
 - ``hook``: ``commit-msg`` checks the message of a commit in a checkout with a guarded remote; ``pre-push`` checks what
   each ref of the push to a guarded URL sends.
 - ``gh``: the shim a worker puts before the real ``gh`` on a run's PATH. ``pr``, ``issue`` and ``release`` commands
-  that write text (title, body, notes, files of them) and ``api`` calls to ``repos/OWNER/REPO/...`` (fields and
-  ``--input``) on a guarded repo are refused when the text holds a name; the rest runs the real ``gh`` as it was.
+  that write text (title, body, notes, files of them), ``api`` calls to ``repos/OWNER/REPO/...`` (fields and
+  ``--input``; ``{owner}/{repo}`` reads as the checkout's repo, as gh fills it) and ``api graphql`` mutations (the
+  query and its variables, the repo of ``owner`` and ``name`` or ``repo`` fields, else the checkout's) on a guarded
+  repo are refused when the text holds a name; the rest runs the real ``gh`` as it was.
 
 Standard library only, besides ``evo_agents.private_names``: a git hook starts a Python for each commit and push.
 Run as ``python -m evo_agents.guard_check hook NAME ...``, ``... gh ARGS`` or ``... check [--repo URL] [FILE]``.
@@ -21,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,6 +48,10 @@ class Refused(Exception):
     """Text bound for a guarded repo holds a private name; the message says where and shows each."""
 
 
+class Unread(Refused):
+    """A git command of the guard failed or ran out of time: what a push sends could not be read, so it is refused."""
+
+
 def load(path: str | os.PathLike | None = None) -> Policy | None:
     """The policy of the file ``path`` (EVO_GUARD_POLICY when None); None when there is none to apply."""
     name = path if path is not None else os.environ.get(ENV)
@@ -60,9 +69,24 @@ def _git(cwd: str | os.PathLike, *args: str) -> tuple[int, str]:
         done = subprocess.run(
             ["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace", timeout=GIT_TIMEOUT, check=False
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        return 124, ""
+    except OSError:
         return 1, ""
     return done.returncode, done.stdout
+
+
+def push_remote(cwd: str | os.PathLike) -> str:
+    """The remote a bare ``git push`` of the current branch goes to: its pushRemote, remote.pushDefault, its remote,
+    else origin."""
+    code, branch = _git(cwd, "symbolic-ref", "--quiet", "--short", "HEAD")
+    keys = [f"branch.{branch.strip()}.pushRemote"] if code == 0 and branch.strip() else []
+    keys += ["remote.pushDefault", *([f"branch.{branch.strip()}.remote"] if keys else [])]
+    for key in keys:
+        code, value = _git(cwd, "config", "--get", key)
+        if code == 0 and value.strip() and value.strip() != ".":
+            return value.strip()
+    return "origin"
 
 
 def remote_urls(cwd: str | os.PathLike) -> list[str]:
@@ -85,12 +109,17 @@ def _clip(text: str) -> str:
 
 def outgoing(cwd: str | os.PathLike, source: str, *, remote: str | None = None, base: str | None = None) -> str:
     """The messages, paths and added lines of the commits ``source`` would send: those after ``base`` when it is a
-    commit, else those no ref of ``remote`` (of any remote when None) has."""
-    since = [f"{base}..{source}"] if base and base != ZERO else [source, "--not", f"--remotes={remote or '*'}"]
+    commit of this checkout, else those no ref of ``remote`` (the push remote of the current branch when None) has,
+    a commit only another remote has still read. Raises Unread when git fails or runs out of time."""
+    if base and base != ZERO and _git(cwd, "cat-file", "-e", f"{base}^{{commit}}")[0] == 0:
+        since = [f"{base}..{source}"]
+    else:  # a remote URL as ``remote`` matches no ref: every commit of source, up to MAX_COMMITS, is read
+        since = [source, "--not", f"--remotes={remote or push_remote(cwd)}"]
     args = ["log", "-p", "--no-color", "--no-ext-diff", f"--max-count={MAX_COMMITS}", f"--format={MARK_FORMAT}%H%n%B"]
     code, out = _git(cwd, *args, *since)
     if code != 0:
-        return ""
+        reason = "ran out of time" if code == 124 else f"failed (exit {code})"
+        raise Unread(f"the guard could not read what the push of {source} sends: git log {reason}; push refused")
     kept = []
     for chunk in out.split(MARK)[1:]:
         message, diff_start, diff = chunk.partition("\ndiff --git ")
@@ -109,15 +138,23 @@ def check_text(policy: Policy, text: str, where: str) -> None:
         raise Refused(refusal(hits, where))
 
 
-def check_push(policy: Policy, cwd: str | os.PathLike, url: str, updates: list[tuple[str, str, str, str]]) -> None:
-    """Refused when a ref of a push to ``url`` (a guarded one) sends a commit that holds a name; ``updates`` are the
-    lines git hands a pre-push hook: local ref, local sha, remote ref, remote sha."""
+def check_push(
+    policy: Policy,
+    cwd: str | os.PathLike,
+    url: str,
+    updates: list[tuple[str, str, str, str]],
+    *,
+    remote: str | None = None,
+) -> None:
+    """Refused when a ref of a push to ``url`` (a guarded one, of the remote named ``remote``, or ``url`` itself
+    when None) sends a commit that holds a name; ``updates`` are the lines git hands a pre-push hook: local ref, local
+    sha, remote ref, remote sha."""
     if not policy.guards(url):
         return
     for local_ref, local_sha, remote_ref, remote_sha in updates:
         if local_sha == ZERO:  # a branch deleted sends nothing
             continue
-        text = outgoing(cwd, local_sha, base=remote_sha if remote_sha != ZERO else None)
+        text = outgoing(cwd, local_sha, remote=remote or url, base=remote_sha if remote_sha != ZERO else None)
         check_text(policy, f"{remote_ref}\n{text}", f"the push of {local_ref} to {url}")
 
 
@@ -145,7 +182,7 @@ def hook(name: str, args: list[str], stdin: str) -> int:
             check_message(policy, cwd, args[0])
         elif name == "pre-push" and len(args) >= 2:
             updates = [tuple(line.split()) for line in stdin.splitlines() if len(line.split()) == 4]
-            check_push(policy, cwd, args[1], updates)  # type: ignore[arg-type]
+            check_push(policy, cwd, args[1], updates, remote=args[0])  # type: ignore[arg-type]
     except Refused as exc:
         print(str(exc), file=sys.stderr)
         return REFUSED
@@ -159,6 +196,8 @@ FILE_FLAGS = {"--body-file", "-F", "--notes-file"}
 REPO_FLAGS = {"--repo", "-R"}
 API_VALUED = {"-X", "--method", "-H", "--header", "-f", "-F", "--field", "--raw-field", "--input", "-q", "--jq", "-t"}
 API_VALUED |= {"--template", "-p", "--preview", "--hostname", "--cache"}
+GRAPHQL_MUTATION = re.compile(r"\bmutation\b")
+GRAPHQL_FIELD = re.compile(r"^(owner|name|repo) ([\w.-]+)$", re.MULTILINE)  # a field as gh_texts keeps it: key value
 WRITES = {
     "pr": {"create", "edit", "comment", "review", "merge"},
     "issue": {"create", "edit", "comment"},
@@ -196,21 +235,12 @@ def gh_texts(args: list[str], stdin: list[str | None]) -> tuple[str | None, list
     words = [a for a in args if not a.startswith("-")]
     if not words:
         return None
-    group = words[0]
+    group, endpoint = words[0], None
     if group == "api":
-        endpoint, i = "", 1
-        while i < len(args):  # the first argument that is no flag nor a flag's value
-            if args[i] in API_VALUED:
-                i += 2
-            elif args[i].startswith("-"):
-                i += 1
-            else:
-                endpoint = args[i]
-                break
-        parts = endpoint.strip("/").split("/")
-        repo = f"{parts[1]}/{parts[2]}" if len(parts) >= 3 and parts[0] == "repos" else None
-        if repo is None:
+        endpoint = _api_endpoint(args)
+        if endpoint is None:
             return None
+        repo = endpoint if "/" in endpoint else None
     elif len(words) >= 2 and words[1] in WRITES.get(group, set()):
         repo = None
     else:
@@ -232,7 +262,39 @@ def gh_texts(args: list[str], stdin: list[str | None]) -> tuple[str | None, list
             texts.append(_read(val[1:], stdin) if val.startswith("@") else f"{key} {val}")
         elif flag == "--input":
             texts.append(_read(value, stdin))
+    if endpoint == "graphql":
+        if not any(GRAPHQL_MUTATION.search(text) for text in texts):
+            return None  # a query reads, it writes no text to a repo
+        repo = _graphql_repo(texts)
     return repo, texts
+
+
+def _api_endpoint(args: list[str]) -> str | None:
+    """What a ``gh api`` call the guard checks writes to: ``OWNER/REPO`` of ``repos/OWNER/REPO/...``, ``""`` for
+    ``repos/{owner}/{repo}/...`` (gh fills those with the checkout's repo, as gh_check reads it), ``graphql``; None
+    for any other endpoint."""
+    endpoint, i = "", 1
+    while i < len(args):  # the first argument that is no flag nor a flag's value
+        if args[i] in API_VALUED:
+            i += 2
+        elif args[i].startswith("-"):
+            i += 1
+        else:
+            endpoint = args[i]
+            break
+    parts = endpoint.strip("/").split("/")
+    if parts == ["graphql"]:
+        return "graphql"
+    if len(parts) >= 3 and parts[0] == "repos":
+        return "" if "{" in parts[1] or "{" in parts[2] else f"{parts[1]}/{parts[2]}"
+    return None
+
+
+def _graphql_repo(texts: list[str]) -> str | None:
+    """The repo the ``owner`` and ``name`` (or ``repo``) fields of a graphql call name, or None."""
+    fields = dict(GRAPHQL_FIELD.findall("\n".join(texts)))
+    owner, name = fields.get("owner"), fields.get("name") or fields.get("repo")
+    return f"{owner}/{name}" if owner and name else None
 
 
 def gh_check(policy: Policy, args: list[str], cwd: str | os.PathLike, stdin: list[str | None]) -> None:

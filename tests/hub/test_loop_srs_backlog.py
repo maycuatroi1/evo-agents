@@ -91,9 +91,7 @@ def test_a_plan_names_a_use_case_as_a_whole_word_outside_its_non_goals_and_holds
         for ref in ("UC LAB-385", "uc  lab-395", "UC LAB-387", "UC LAB-38", "UC LAB-400")
         if srs_backlog.names(text, ref)
     ]
-    assert named == ["UC LAB-385", "uc  lab-395", "UC LAB-387"], (
-        "a code that starts another, or a non-goal, is not"
-    )
+    assert named == ["UC LAB-385", "uc  lab-395", "UC LAB-387"], "a code that starts another, or a non-goal, is not"
     assert srs_backlog.plan_text(None) == "" and not srs_backlog.names("", "UC A-1")
     found = groups([case("UC A-1", None, "Orders"), case("UC A-2", None, "Orders"), case("UC A-3", None, "Returns")])
     free, held = srs_backlog.held(found, {"uc a-2": ("plan-b", "plan-a")})

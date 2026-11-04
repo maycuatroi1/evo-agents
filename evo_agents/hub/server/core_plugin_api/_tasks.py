@@ -38,7 +38,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     own_plugin,
 )
 from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import member_principal
 from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX
 from evo_agents.plugins import config as plugin_config
 
@@ -577,10 +577,9 @@ async def tool_caller(conn: AsyncConnection, plugin: Plugin, context: ApiContext
         user_id, run_kind = found.dispatcher_id, "chat"
     if user_id is None:
         return ToolCaller(None, context.run_id, run_kind)
-    login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
-    config = context.config
-    admin = config is not None and hasattr(config, "is_admin") and bool(config.is_admin(login))
-    principal = Principal(user_id, login, admin, None, MACHINE, "")
+    config = context.config if hasattr(context.config, "is_admin") else None
+    principal = await member_principal(conn, user_id, config)
+    admin, login = principal.admin, principal.login
     session = issue_session(user_id, login, 0, False, admin=admin, principal=principal)
     return ToolCaller(session, context.run_id, run_kind)
 

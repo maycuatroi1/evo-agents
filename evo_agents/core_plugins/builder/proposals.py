@@ -79,7 +79,7 @@ from evo_agents.hub.server.agent_profiles import AgentEdit, new_version, profile
 from evo_agents.hub.server.plugin_grants import installed_row
 from evo_agents.hub.server.profile_store import Profile, by_handle, version_rules
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, admin_login
 from evo_agents.hub.tables_settings import PROPOSAL_KINDS, PROPOSAL_STATES
 from evo_agents.plugins import config as plugin_config
 
@@ -1165,7 +1165,7 @@ async def approvers(
     u, g = tables.users, tables.grants
     if kind in HUB_WIDE and not own:
         logins = literal(sorted(admins), ARRAY(Text))
-        query = select(u.c.id).where(func.lower(u.c.login) == any_(logins))
+        query = select(u.c.id).where(admin_login(u) == any_(logins))
     else:
         roles = ("writer", "admin") if kind in BY_WRITERS else ("admin",)
         query = select(g.c.user_id).where(g.c.project_id == access.project_id, g.c.role.in_(roles))

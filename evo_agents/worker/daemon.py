@@ -29,7 +29,8 @@
 - A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; runs go on meanwhile.
 - SIGTERM or SIGINT: no new claim; the runs held go on until they end or reach their timeout, then the daemon exits
   0. A second signal stops the agents now and fails their runs.
-- A token the hub no longer takes (401, 403: the worker or its token was revoked) stops the daemon with exit status
+- A token the hub no longer takes (its own 401 or 403: the worker or its token was revoked; a proxy's 401 or 403 is
+  an ``Unreachable`` sent again with the backoff) stops the daemon with exit status
   ``home.EXIT_REVOKED`` (3), or the one EVO_WORKER_REVOKED_EXIT names: starting it again changes nothing, and the
   service tells its manager not to (``service``). A protocol the hub no longer speaks (426) stops it with exit status
   1, which an upgrade can mend; once its runs ended, it first updates itself to the tag nightly when it may and the
@@ -37,9 +38,9 @@
 - Each heartbeat says the commit its install was built from (``agent_commit``) and what it found of updating itself
   to the tag nightly (``self_update``), and each turn of its loop of self-update (every heartbeat period) decides it
   (``selfupdate``): a daemon that launchd or systemd runs from a uv tool install of evo-ak, whose worker the hub says
-  is not locked, installs the commit nightly points to once no daemon of the install holds a run, and exits
-  ``home.EXIT_UPDATED`` for its manager to start the new one. It claims nothing while another daemon of its install
-  updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json. The
+  is not locked, installs the commit nightly points to once no daemon of the install holds a run or has processes of
+  a parked run in its systemd service (``selfupdate.detached``), and exits ``home.EXIT_UPDATED`` for its manager to
+  start the new one. It claims nothing while another daemon of its install updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json. The
   answer's ``nightly`` (the commit the hub read the tag at, once a minute) spares the daemon its own hourly read, and
   its ``update_now`` (its owner's Update now) stops the claims of every daemon of the install until it updated, while
   the runs held go on to their end (``runs.UPDATE_NOW``).
@@ -208,6 +209,29 @@ def heartbeat_seconds(env: Mapping[str, str]) -> float:
     return min(max(value, 0.2), float(runs.HEARTBEAT_SECONDS))
 
 
+def _goes_on_from(spec: dict) -> set:
+    """The runs whose worktrees a run of claim ``spec`` may adopt: the one it resumes and its lost attempt."""
+    lost = spec.get("lost_attempt") if isinstance(spec.get("lost_attempt"), dict) else {}
+    ids = (spec.get("resume_of_run_id"), lost.get("run_id"))
+    return {int(found) for found in ids if isinstance(found, int | str) and str(found).isdigit()}
+
+
+def task_failed(task: asyncio.Task) -> None:
+    """Log what ended a background task of the daemon: a loop that raised stops for the daemon's life, and its error
+    must not wait in the task until the daemon stops (or vanish, when nothing awaits it)."""
+    if task.cancelled() or task.exception() is None:
+        return
+    exc = task.exception()
+    log.error("a background task of the daemon failed", extra={"task": task.get_name()}, exc_info=exc)
+
+
+def spawn(coro, name: str) -> asyncio.Task:
+    """``coro`` as a task named ``name`` whose error is logged as it ends (``task_failed``)."""
+    task = asyncio.create_task(coro, name=name)
+    task.add_done_callback(task_failed)
+    return task
+
+
 class Daemon:
     def __init__(
         self,
@@ -354,20 +378,20 @@ class Daemon:
             await self._look_at_machine(force=True)
             self._log_start()
             self.updater.publish(held=0, orphans=len(self.orphans), worker=self._who())
-            leftovers = asyncio.create_task(self._send_leftovers())
-            heartbeat = asyncio.create_task(self._heartbeat_loop())
-            claims = asyncio.create_task(self._claim_loop())
-            cleanup = asyncio.create_task(self._cleanup_loop())
-            updates = asyncio.create_task(self._self_update_loop())
+            leftovers = spawn(self._send_leftovers(), "leftovers")
+            heartbeat = spawn(self._heartbeat_loop(), "heartbeat")
+            claims = spawn(self._claim_loop(), "claims")
+            cleanup = spawn(self._cleanup_loop(), "cleanup")
+            updates = spawn(self._self_update_loop(), "self-update")
             doctoring = doctor_report.report_loop(
                 self.hub, self.stopping, lambda: doctor_report.examine_here(self.env), secrets=(self.token,)
             )
-            background = [leftovers, heartbeat, cleanup, updates, asyncio.create_task(doctoring)]
+            background = [leftovers, heartbeat, cleanup, updates, spawn(doctoring, "doctor-report")]
             if self.kg_on:
-                background.append(asyncio.create_task(self._kg_sync_loop()))
+                background.append(spawn(self._kg_sync_loop(), "kg-sync"))
             if self._in_pool():
                 syncing = skill_sync_loop.sync_loop(self.config.url, self.token, self.env, self.stopping)
-                background.append(asyncio.create_task(syncing))
+                background.append(spawn(syncing, "skill-sync"))
             await self.stopping.wait()
             claims.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -586,7 +610,7 @@ class Daemon:
             return
         self.install_asked = {"requested_at": requested_at, "ended": None, "error": None}
         if self._installing is None or self._installing.done():
-            self._installing = asyncio.create_task(self._install_browser())
+            self._installing = spawn(self._install_browser(), "browser-install")
 
     async def _install_browser(self) -> None:
         """Install Chromium as `evo-agents worker browser install` does, in a thread, without its progress on the
@@ -885,7 +909,7 @@ class Daemon:
         )
         self.runs[run.id] = run
         self.keep_awake.update(len(self.runs))
-        task = asyncio.create_task(run.main())
+        task = spawn(run.main(), f"run-{run.id}")
         self.run_tasks[run.id] = task
 
         def ended(_task: asyncio.Task, run_id: int = run.id) -> None:
@@ -1015,20 +1039,34 @@ class Daemon:
         removed = []
         for record in records:
             run_id = record["id"]
-            if run_id in self.runs or not record.get("finished_at"):
+            if run_id not in old and run_id not in merged:
+                continue
+            record = self._still_ended(run_id)  # read again: a run may have resumed or adopted it since
+            if record is None:
                 continue
             if run_id in old:
                 await self._remove_worktree(record)
                 log.info("old worktree removed", extra={"run_id": run_id, "worktree": record.get("worktree")})
-            elif run_id in merged and await self._recover(record):
+            elif await self._recover(record) and self._still_ended(run_id) is not None:
                 await self._remove_worktree(record)
                 where = record.get("dir") or record.get("worktree")
                 log.info("worktree of merged work removed", extra={"run_id": run_id, "worktree": where})
             else:
                 continue
-            self.home.remove_run(run_id)
+            await asyncio.to_thread(self.home.remove_run, run_id)
             removed.append(run_id)
         return removed
+
+    def _still_ended(self, run_id: int) -> dict | None:
+        """The record of run ``run_id`` as it is on disk now, while the cleanup may still remove what it names: the run
+        ended, this daemon holds it no more, and no run this daemon holds resumes it or goes on from its lost attempt
+        (a run that went on from it already took its worktrees out of the record, ``Conversation.adopt``). Else None."""
+        record = self.home.load_run(run_id)
+        if record is None or run_id in self.runs or not record.get("finished_at"):
+            return None
+        if any(run_id in _goes_on_from(run.spec) for run in self.runs.values()):
+            return None
+        return record
 
     async def _merged_work(self, young: list[dict], records: list[dict]) -> set[int]:
         """Of the runs of ``young`` (within their 7 days) whose worktrees this worker may remove (``_removable``, over
@@ -1133,4 +1171,4 @@ class Daemon:
                 if isinstance(branch, str) and branch.startswith("evo-run/"):
                     await gitops.delete_branch(checkout, branch)
         if path is not None and path.exists() and path.resolve().is_relative_to(self.home.worktrees_dir.resolve()):
-            shutil.rmtree(path, ignore_errors=True)
+            await asyncio.to_thread(shutil.rmtree, path, True)

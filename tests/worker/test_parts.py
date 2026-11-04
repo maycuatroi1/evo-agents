@@ -88,6 +88,37 @@ def test_a_body_over_64_kib_is_cut_before_it_is_spooled_so_a_batch_fits(tmp_path
     assert event["body"]["output"].endswith("[cut by the hub: the event was over 65536 bytes]")
 
 
+def test_lone_surrogate_of_an_event_is_spooled_as_u_fffd(tmp_path):
+    spool = Spool(tmp_path, 5, SpoolBudget())
+    assert spool.append("agent_message_chunk", {"text": "a\ud800b", "\udc00key": ["\ud83d"]}, AT) == 1
+    assert spool.batch()[0]["body"] == {"text": "a\ufffdb", "\ufffdkey": ["\ufffd"]}
+    assert spool.path.read_bytes().decode("utf-8").count("\ufffd") == 3
+
+
+def test_disk_full_teardown_spool_write_short_cuts_the_half_line_and_raises(tmp_path, monkeypatch):
+    from evo_agents.worker import spool as spool_module
+
+    budget = SpoolBudget()
+    spool = Spool(tmp_path, 6, budget)
+    spool.append("output", {"n": 1}, AT)
+    size, used = spool.path.stat().st_size, budget.used
+    writes = []
+
+    def short(fd, data):  # the disk takes 5 bytes, then nothing more
+        writes.append(len(data))
+        return 5 if len(writes) == 1 else 0
+
+    monkeypatch.setattr(spool_module.os, "write", short)
+    with pytest.raises(OSError):
+        spool.append("output", {"n": 2}, AT)
+    monkeypatch.undo()
+    assert writes[1] == writes[0] - 5, "the rest of the line was written again"
+    assert spool.path.stat().st_size == size, "no half line stays in the spool"
+    assert budget.used == used and spool.pending == 1 and spool.last_seq == 1
+    assert spool.append("output", {"n": 3}, AT) == 2
+    assert [event["body"]["n"] for event in Spool(tmp_path, 6, SpoolBudget()).batch()] == [1, 3]
+
+
 # The log
 
 
@@ -372,6 +403,166 @@ def test_a_plan_runs_directory_and_worktrees_go_7_days_after_it_ended_and_a_resu
             ["git", "-C", str(checkout), "branch", "--list", "evo-run/*"], capture_output=True, text=True, check=True
         ).stdout
         assert "evo-run/5/" not in branches and "evo-run/6/" in branches
+
+
+def _old_plan_run(home: WorkerHome, checkout: Path, run_id: int) -> Path:
+    """Run ``run_id``: a plan run that ended 8 days ago, with its directory and one worktree of ``checkout``."""
+    from evo_agents.worker.gitops import Workspace
+
+    directory = home.worktree_path("demo", run_id)
+    directory.mkdir()
+    branch, path = f"evo-run/{run_id}/alpha", directory / "alpha"
+    subprocess.run(["git", "-C", str(checkout), "worktree", "add", "--quiet", "-b", branch, str(path)], check=True)
+    base = _git_out(checkout, "rev-parse", "HEAD")
+    workspace = Workspace("alpha", "feat/x", "feat/x", checkout, path, branch, base, ("main",))
+    finished = (datetime.now(UTC) - timedelta(days=8)).isoformat()
+    home.save_run(
+        {"id": run_id, "kind": "plan", "dir": str(directory), "repos": [workspace.to_record()], "finished_at": finished}
+    )
+    return directory
+
+
+def test_cleanup_resumed_run_adopted_while_the_cleanup_waits_keeps_its_worktrees(tmp_path):
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.daemon import Daemon
+
+    checkout, _ = _committed_checkout(tmp_path / "checkout")
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    directory = _old_plan_run(home, checkout, 1)
+
+    class AdoptingHub(_MergedHub):
+        async def merged(self, run_ids):  # run 9 resumes run 1 while the cleanup waits for the hub
+            record = home.load_run(1)
+            record.update({"dir": None, "repos": [], "resumed_by": 9, "moved_to": str(directory)})
+            home.save_run(record)
+            return await super().merged(run_ids)
+
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    daemon = Daemon(home, config, "evw_x", adapters={})
+    daemon.hub = AdoptingHub()
+    _old_plan_run(home, checkout, 2)  # a run of its own, so the cleanup asks the hub
+    home.save_run({**home.load_run(2), "finished_at": datetime.now(UTC).isoformat()})
+    assert asyncio.run(daemon.cleanup()) == [1], "the record of the run resumed goes"
+    assert (directory / "alpha" / "README.md").exists(), "the worktrees the resumed run took stay"
+    assert "evo-run/1/alpha" in _git_out(checkout, "branch", "--list", "evo-run/*")
+
+
+def test_cleanup_resumed_by_a_held_run_that_has_not_adopted_it_yet_leaves_it(tmp_path):
+    pytest.importorskip("aiohttp")
+    from types import SimpleNamespace
+
+    from evo_agents.worker.daemon import Daemon
+
+    checkout, _ = _committed_checkout(tmp_path / "checkout")
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    directory = _old_plan_run(home, checkout, 1)
+    lost = _old_plan_run(home, checkout, 3)
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    daemon = Daemon(home, config, "evw_x", adapters={})
+    daemon.runs[9] = SimpleNamespace(spec={"resume_of_run_id": 1})
+    daemon.runs[10] = SimpleNamespace(spec={"lost_attempt": {"run_id": 3, "session_id": "s"}})
+    assert asyncio.run(daemon.cleanup()) == []
+    assert (directory / "alpha").is_dir() and (lost / "alpha").is_dir()
+    del daemon.runs[9], daemon.runs[10]
+    assert asyncio.run(daemon.cleanup()) == [1, 3]
+    assert not directory.exists() and not lost.exists()
+
+
+def test_rmtree_off_loop_the_cleanup_removes_worktrees_and_run_directories_in_a_thread(tmp_path, monkeypatch):
+    pytest.importorskip("aiohttp")
+    import shutil
+    import threading
+
+    from evo_agents.worker import daemon as daemon_module
+    from evo_agents.worker import home as home_module
+    from evo_agents.worker.daemon import Daemon
+
+    checkout, _ = _committed_checkout(tmp_path / "checkout")
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    directory = _old_plan_run(home, checkout, 1)
+    threads: list[str] = []
+    real = shutil.rmtree
+
+    def rmtree(path, *args, **kwargs):
+        threads.append(threading.current_thread().name)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(daemon_module.shutil, "rmtree", rmtree)
+    monkeypatch.setattr(home_module.shutil, "rmtree", rmtree)
+    config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
+    daemon = Daemon(home, config, "evw_x", adapters={})
+    loop_thread = threading.current_thread().name  # asyncio.run runs the loop in this thread
+    assert asyncio.run(daemon.cleanup()) == [1]
+    assert not directory.exists() and not home.run_dir(1).exists()
+    assert threads and loop_thread not in threads, "no rmtree ran on the event loop's thread"
+
+
+def test_task_error_logged_when_a_background_task_of_the_daemon_fails(caplog):
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker import daemon as daemon_module
+
+    async def broken():
+        raise RuntimeError("the heartbeat broke")
+
+    async def go():
+        task = daemon_module.spawn(broken(), "heartbeat")
+        await asyncio.wait([task])
+        await asyncio.sleep(0)  # the done callback runs on the next turn of the loop
+
+    with caplog.at_level(logging.ERROR, logger="evo_agents.worker"):
+        asyncio.run(go())
+    (record,) = [record for record in caplog.records if "background task of the daemon failed" in record.message]
+    assert record.task == "heartbeat" and "the heartbeat broke" in str(record.exc_info[1])
+
+
+def _spawned(monkeypatch) -> list:
+    """The processes asyncio starts from now on, as they were started."""
+    started = []
+    real = asyncio.create_subprocess_exec
+
+    async def spawn(*args, **kwargs):
+        proc = await real(*args, **kwargs)
+        started.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    return started
+
+
+def test_diff_bounded_stops_git_and_cuts_the_diff_at_a_line(tmp_path, monkeypatch):
+    from evo_agents.worker import gitops
+
+    checkout, env = _committed_checkout(tmp_path / "checkout")
+    base = _git_out(checkout, "rev-parse", "HEAD")
+    (checkout / "big.txt").write_text("".join(f"line {n}\n" for n in range(200_000)), encoding="utf-8")
+    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True, env=env)
+    subprocess.run(["git", "-C", str(checkout), "commit", "--quiet", "-m", "big"], check=True, env=env)
+    started = _spawned(monkeypatch)
+    out = asyncio.run(gitops.diff(checkout, base, limit=10_000))
+    assert len(out) <= 10_000 and out.endswith(b"[cut by the worker: the diff is over 10000 bytes]\n")
+    assert out.startswith(b"diff --git a/big.txt b/big.txt\n")
+    assert b"\n+line " in out and out.split(b"\n")[-3].startswith(b"+line "), "cut after a whole line"
+    assert started[0].returncode is not None, "git did not go on writing the rest"
+    whole = asyncio.run(gitops.diff(checkout, base))
+    assert len(whole) > 2_000_000 and not whole.endswith(b"bytes]\n")
+
+
+def test_diff_bounded_git_that_gives_no_answer_is_killed(tmp_path, monkeypatch):
+    from evo_agents.worker import gitops
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "git").write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
+    (bin_dir / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(gitops, "TIMEOUT", 0.3)
+    started = _spawned(monkeypatch)
+    with pytest.raises(gitops.GitError, match="no answer within 0.3s"):
+        asyncio.run(gitops.diff(tmp_path, "HEAD~1"))
+    assert started[0].returncode == -9, "git was killed"
 
 
 class _MergedHub:

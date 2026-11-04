@@ -52,6 +52,7 @@ from evo_agents.hub.server import (
     health,
     invites,
     projects,
+    security,
     tokens,
     user_emails,
     web_auth,
@@ -162,6 +163,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 extra={"missing": config.blob_store_missing()},
             )
         await _check_plugins(app, config)
+        await security.bind_admins(app.state.engine, config.admins)  # EVO_HUB_ADMINS to the accounts that hold them
         app.state.gateway_run = await gateway_sync.start(app, config)  # off without EVO_HUB_GATEWAY_SECRET
         log.info(
             "hub ready",

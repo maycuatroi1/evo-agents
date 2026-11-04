@@ -22,7 +22,7 @@ from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.docs import store
 from evo_agents.hub.server.docs.store import DocsError, DocumentRow
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import Principal, member_principal
 
 
 def _text(text: str, *, error: bool = False) -> dict:
@@ -47,8 +47,7 @@ class Reader:
 
 
 async def _principal(conn: AsyncConnection, user_id: int, config) -> Principal:
-    login = (await conn.execute(select(tables.users.c.login).where(tables.users.c.id == user_id))).scalar_one()
-    return Principal(user_id, login, config is not None and config.is_admin(login), None, MACHINE, "")
+    return await member_principal(conn, user_id, config)
 
 
 async def _access(conn: AsyncConnection, person: Principal, project: str) -> ProjectAccess:

@@ -12,8 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
-import signal
 from collections.abc import Collection
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -114,15 +112,16 @@ async def shell(
     run: Run, command: str, seconds: float, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> tuple[int, str]:
     """(exit code, the end of its output) of ``command`` in the run's worktree (or ``cwd``), in the agent's
-    environment (or ``env``); Stopped when the run is asked to stop or runs out of time first, with the command's
-    process group killed."""
+    environment (or ``env``); Stopped when the run is asked to stop or runs out of time first. Either way every
+    process it left (its session, and what carries its marker: a server started in the background) is killed."""
+    marker = untrusted.new_marker()
     proc = await asyncio.create_subprocess_shell(
         command,
         cwd=str(cwd or run.worktree),
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        env=env if env is not None else run.agent.env(),
+        env={**(env if env is not None else run.agent.env()), untrusted.MARKER_VARIABLE: marker},
         start_new_session=True,
     )
     tail = bytearray()
@@ -133,14 +132,15 @@ async def shell(
         done, _ = await asyncio.wait({waiter, stopper}, timeout=max(0.0, seconds), return_when=asyncio.FIRST_COMPLETED)
     finally:
         stopper.cancel()
+    killed = await untrusted.kill_leftovers(proc.pid, marker)
     if waiter not in done:
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(proc.pid, signal.SIGKILL)
         await waiter
         reader.cancel()
         if run.stop_reason is None:
             run.stop_reason = "timeout"
         raise Stopped(run.stop_reason)
+    if killed:
+        log.info("processes a verify command left were killed", extra={"run_id": run.id, "killed": killed})
     with contextlib.suppress(asyncio.TimeoutError):
         await asyncio.wait_for(reader, 5)
     return proc.returncode, tail.decode(errors="replace")

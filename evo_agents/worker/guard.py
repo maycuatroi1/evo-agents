@@ -149,8 +149,8 @@ def check_push(cwd: Path, source: str, branch: str, remote: str, env: Mapping[st
     url = found.stdout.strip() if found.returncode == 0 and found.stdout.strip() else remote
     if not policy.guards(url):
         return
-    text = guard_check.outgoing(cwd, source, remote=remote)
     try:
+        text = guard_check.outgoing(cwd, source, remote=remote)
         guard_check.check_text(policy, f"{branch}\n{text}", f"the push of {branch} to {url}")
     except guard_check.Refused as exc:
         raise PushRefused(str(exc)) from None

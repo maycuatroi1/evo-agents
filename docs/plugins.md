@@ -351,7 +351,8 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   plugin sees them.
 - **Jobs.** A job runs when its `cron` (five fields, UTC; `0 * * * *` when it names none) takes the minute, while a
   project enables its plugin, through the hub's job queue: `hub.plugin_jobs` queues one `hub.plugin_job` for it, with
-  the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. The call names the projects
+  the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. A pass that runs late, or the
+  first after the worker was down, catches up the minutes it missed in the last hour, each minute once. The call names the projects
   that enable the plugin and may take 120 seconds. A job named `value_check` (the core plugin canvas's) also runs at
   once for one project when a batch of the project's signals comes: `hub.value_check` calls it with that project alone
   (`docs/signals.md`, Value check).
@@ -1477,8 +1478,10 @@ workflow rather than a person (`docs/hub.md`, section Plugins). A workflow that 
 ```
 
 The operator's entry for that publisher names the workflow, `acme=sigstore:acme/my-plugin/.github/workflows/ci.yml`,
-which the workflow reads as `${GITHUB_WORKFLOW_REF%%@*}`. The hub accepts a signature from any ref of that workflow,
-so signing on the default branch alone is the workflow's own rule. Keyless signing writes the certificate to
+which the workflow reads as `${GITHUB_WORKFLOW_REF%%@*}`. The hub accepts a signature only from a run of that
+workflow at a tag (`refs/tags/...`) or on the repo's default branch, `main` unless the entry names another after the
+workflow (`acme=sigstore:acme/my-plugin/.github/workflows/ci.yml@trunk`); a run on any other branch or a pull request
+is refused with its ref in the reason. Keyless signing writes the certificate to
 Sigstore's public transparency log (Rekor): the repository's name, the workflow's path, the ref, the commit and the
 run become public there, even for a private repository. A publisher that must keep those private signs with an
 Ed25519 key instead (`plugin keygen`, `plugin sign`), and the operator trusts `acme=ed25519:<public key>`.

@@ -25,8 +25,9 @@ import or its ``__init__`` raises): ``last_error`` says why, and the deliveries 
 included, go on. Adding a channel takes a subclass of Channel, contributed by a core plugin to the channels
 under the kind's name (as the core plugin telegram does), or an entry in CHANNELS, a class or the ``module:name`` of
 one, imported when a pass first needs it (as the senders of push devices are, ``push_senders``); the tables, the
-outbox and the job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
-transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
+outbox and the job stay as they are. A class may read more of a notification first (``prepare``, in a savepoint of the
+delivery's transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's
+``external_id``. A database error in one delivery is a failed try of that delivery alone: the others of the pass go on.
 
 Before a channel of a row gets a notification, the job checks two things as they stand at the delivery, not as they
 stood when it was stored. The member must still hold a grant on the notification's project (NO_GRANT fails the
@@ -83,6 +84,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_events, review, runs, tables
@@ -582,7 +584,8 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     if channel is None:
         return "failed"
     try:
-        notification = await channel.prepare(conn, notification)
+        async with conn.begin_nested():  # a statement of prepare that fails rolls back its savepoint alone
+            notification = await channel.prepare(conn, notification)
         sent = await asyncio.wait_for(channel.send(notification, target), SEND_TIMEOUT_SECONDS)
     except Exception as exc:  # any failure of a channel is the delivery's, never the job's
         return await _not_sent(conn, delivery_id, row, kind, exc)
@@ -590,6 +593,28 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     if row.device_id is not None:
         await push_store.sent(conn, row.device_id)
     return "delivered"
+
+
+async def _database_failed(engine, delivery_id: int, exc: SQLAlchemyError) -> str:
+    """What becomes of delivery ``delivery_id`` whose transaction a database error ended: a failed try, in a
+    transaction of its own, as a channel's failure is; failed when even that does not write."""
+    where = {"delivery_id": delivery_id}
+    log.warning("notification delivery hit a database error", extra=where, exc_info=exc)
+    deliveries, error = tables.notification_deliveries, _error_text(exc)
+    try:
+        async with engine.begin() as conn:
+            query = select(deliveries.c.attempts).where(deliveries.c.id == delivery_id, deliveries.c.state == "pending")
+            attempts = (await conn.execute(query)).scalar_one_or_none()
+            if attempts is None:
+                return "failed"
+            if attempts + 1 >= runs.MAX_DELIVERY_ATTEMPTS:
+                await conn.execute(_failed(delivery_id, error))
+                return "failed"
+            await conn.execute(_retry(delivery_id, backoff(attempts + 1), error))
+            return "retried"
+    except SQLAlchemyError:
+        log.exception("notification delivery not marked after a database error", extra=where)
+        return "failed"
 
 
 async def deliver_notifications(
@@ -605,8 +630,11 @@ async def deliver_notifications(
     token = PASS_BLOBS.set(blobs)
     try:
         for delivery_id in due:
-            async with engine.begin() as conn:
-                outcome = await _deliver_one(conn, delivery_id, instances, config)
+            try:
+                async with engine.begin() as conn:
+                    outcome = await _deliver_one(conn, delivery_id, instances, config)
+            except SQLAlchemyError as exc:  # a database error is this delivery's: the others of the pass go on
+                outcome = await _database_failed(engine, delivery_id, exc)
             if outcome is not None:
                 report[outcome] += 1
     finally:

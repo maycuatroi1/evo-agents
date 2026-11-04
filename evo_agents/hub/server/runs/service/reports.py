@@ -263,7 +263,8 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         columns = _reported_columns(body)
         if state == body.state:  # a resend, or news without a move: kept, and nothing moves
             news = {name: value for name, value in columns.items() if name in SAME_COLUMNS}
-            if news:  # a column the report leaves out keeps its value
+            if news and state in runs.HELD_STATES:  # a column the report leaves out keeps its value; a run that
+                # ended (done, failed, review) keeps what it ended with: a resend after it writes nothing
                 r = tables.runs
                 await conn.execute(update(r).values(**news).where(r.c.id == run_id))
             return await run_view(conn, run_id)

@@ -99,7 +99,7 @@ if pg.DSN:
 
     from sqlalchemy import func, select, update
 
-    from evo_agents.hub import kg_init_db, kg_settings, tables
+    from evo_agents.hub import kg_init_db, kg_settings, runs, tables
     from evo_agents.hub.server import kg_init
     from evo_agents.hub.server.collect import review_prompt
     from tests.hub.live import sql
@@ -208,6 +208,32 @@ def test_a_run_is_measured_and_queued_as_a_review_run_whose_prompt_holds_the_pro
     assert "items 10" in text and "## Your decision" in text and "hit@5 55.0%" in text
     assert SECRET not in text and "kg_init" in text
     assert advanced(review) == {"running": 1}  # the agent run is still queued: the run waits
+
+
+@needs_pg
+def test_a_project_with_no_repo_is_reviewed_with_none_by_a_daemon_that_runs_such_a_review(review):
+    """A project fed by uploads alone has no repo: its KG init waits for a daemon that says it reviews with none."""
+    from tests.hub.test_review_runs import REVIEW_KINDS
+
+    client, db, owner = review.client, review.db, review.headers["owner"]
+    pid = project_id(db)
+    configured(review)
+    with_profile(db, pid, profile())
+    sql(db, tables.project_repos.delete().where(tables.project_repos.c.project_id == pid))
+    run_id = client.post(INIT, headers=owner).json()["id"]
+    assert advanced(review) == {"waiting": 1}  # no worker fits it yet
+    row = init_row(db, run_id)
+    assert row["agent_run_id"] is None and "runs no review with no repo" in row["body"]["notes"][-1]
+    worker = review.worker
+    body = {"runtimes": worker["runtimes"], "checkouts": {}, "free_slots": 1, "runs": [], "agent_version": "0.7.0",
+            "run_kinds": REVIEW_KINDS, "features": [runs.REPOLESS_REVIEW]}  # fmt: skip
+    assert client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"]).status_code == 200
+    advanced(review)
+    row = init_row(db, run_id)
+    assert row["state"] == "running" and row["agent_run_id"]
+    r = tables.runs
+    ((kind, repos),) = sql(db, select(r.c.kind, r.c.repos).where(r.c.id == row["agent_run_id"]))
+    assert (kind, repos) == ("review", None)
 
 
 @needs_pg

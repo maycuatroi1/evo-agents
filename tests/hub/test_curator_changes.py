@@ -1073,6 +1073,37 @@ def test_merge_a_tier_0_change_the_judge_passed_at_its_head_with_ci_green(world)
     assert moved_on(world) == {}  # nothing left to move
 
 
+def test_changes_pass_once_leaves_a_change_another_hand_merged_while_it_read_github(world, monkeypatch):
+    from evo_agents.hub.server import changes as module
+
+    through_the_judge(world)
+    world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
+    real = module.merge_read
+
+    async def merged_meanwhile(engine, *args, **kwargs):
+        read = await real(engine, *args, **kwargs)
+        async with engine.begin() as conn:  # an agent merges it in a chat run while the pass reads GitHub
+            await conn.execute(update(tables.curator_changes).values(state="merged", reason=None, merged_at=func.now()))
+        return read
+
+    monkeypatch.setattr(module, "merge_read", merged_meanwhile)
+    assert moved_on(world) == {"checked": 1, "moved": 1}
+    assert (
+        one_change(world)["state"] == "merged" and one_change(world)["merge_sha"] is None
+    )  # left as that hand left it
+    assert world.github.merges == [] and calls(world.github, "PUT", "/merge") == []
+
+
+def test_changes_pass_once_reopens_nothing_another_hand_moved(world):
+    from evo_agents.hub.server import changes as module
+
+    through_the_judge(world)
+    row = SimpleNamespace(**one_change(world))  # the change as the pass read it
+    sql(world.db, update(tables.curator_changes).values(state="merged", merged_at=func.now()))
+    found = world.client.portal.call(module._reopen, world.app.state.engine, row, "the Judge did not pass it")
+    assert found == module.MOVED and one_change(world)["state"] == "merged"
+
+
 def test_merge_waits_for_ci_and_stays_open_when_it_fails(world):
     through_the_judge(world)
     world.github.ci(HEAD, runs=[{"name": "test", "status": "in_progress"}])
@@ -1406,6 +1437,13 @@ def test_curator_plan_the_job_is_registered_every_minute():
     periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
     assert periodic[jobs.CURATOR_CHANGES].cron == "* * * * *"
     assert queue.tasks[jobs.CURATOR_CHANGES].queueing_lock == jobs.CURATOR_CHANGES == "curator.changes"
+
+
+def test_changes_pass_once_at_a_time_under_the_jobs_lock():
+    from evo_agents.hub import jobs
+
+    task = queue.tasks[jobs.CURATOR_CHANGES]
+    assert (task.lock, task.queueing_lock) == (jobs.CURATOR_CHANGES, jobs.CURATOR_CHANGES)
 
 
 def test_curator_plan_a_rejected_proposal_becomes_nothing(world):

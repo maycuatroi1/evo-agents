@@ -151,7 +151,7 @@ def asset_item(item_id: str, path: str, *, rev: str, rev_time: str, uri: str | N
 
 def git_blob_sha(data: bytes) -> str:
     """The SHA-1 git would give this content, so working-tree revisions match committed ones."""
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+    return hashlib.sha1(b"blob %d\0" % len(data) + data, usedforsecurity=False).hexdigest()
 
 
 def decode(data: bytes) -> str | None:
