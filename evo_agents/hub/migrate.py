@@ -42,6 +42,10 @@ log = logging.getLogger(__name__)
 LOCK_KEY = 0x65766F2D687562  # "evo-hub" in ASCII; advisory locks are per database
 LOCK_TIMEOUT = 300.0  # seconds to wait for another process's migration before giving up
 CONNECT_TIMEOUT = 10
+# What one revision, of the hub's chain or a core plugin's, may wait for a lock and take for one statement, in
+# seconds: a revision blocked behind a running query fails and rolls back instead of holding up the hub's start and
+# every query queued behind its own lock. ``limit_revision`` sets them before the first revision and again after each.
+REVISION_TIMEOUTS = {"lock_timeout": 30.0, "statement_timeout": 1200.0}
 APPLICATION_NAME = "evo-agents-hub-migrate"
 
 
@@ -136,6 +140,18 @@ def plugin_script(chain: PluginChain, config: Config) -> tuple[ScriptDirectory, 
             f"{chain.plugin_id}: revisions {', '.join(wrong)} must start with {chain.revision_prefix}"
         )
     return script, heads[0]
+
+
+def limit_revision(conn: Connection) -> None:
+    """Set REVISION_TIMEOUTS on ``conn`` for its session, so they hold across the transactions of a chain run one
+    revision at a time and a revision that changed them hands the next one the same limits. The Alembic environments
+    call it before the first revision and after each (``on_version_apply``); the connection is the migration's own and
+    closes after it. Outside a transaction, it commits the settings at once."""
+    outside = not conn.in_transaction()
+    for name, seconds in REVISION_TIMEOUTS.items():
+        conn.execute(select(func.set_config(name, f"{int(seconds * 1000)}ms", False)))
+    if outside:
+        conn.commit()
 
 
 def _key():

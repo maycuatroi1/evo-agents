@@ -537,14 +537,12 @@ def parse_diff(text: str) -> list[FileDiff]:
             current.path = line[len("rename to ") :].strip()
         elif line.startswith("Binary files ") or line.startswith("GIT binary patch"):
             current.readable = False
-        elif line.startswith("--- ") and not body:
-            continue
-        elif line.startswith("+++ ") and not body:
+        elif body or HUNK.match(line):
+            body.append(line)
+        elif line.startswith("+++ "):  # the rest of the header before the first hunk: index, modes, --- and +++
             name = line[4:].strip()
             if name != "/dev/null":
                 current.path = _strip_prefix(name, "b/")
-        else:
-            body.append(line)
     close()
     return files
 

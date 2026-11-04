@@ -1,10 +1,13 @@
 """The periodic jobs of plugins, run through the hub's job queue (``docs/plugins.md``, section Extension points).
 
 A jobs contribution names when it runs with five cron fields in UTC (``cron``, hourly at minute 0 when it names none).
-The job hub.plugin_jobs runs every minute (``evo_agents.hub.worker``): for the minute procrastinate scheduled it for, it
-finds each job of a plugin that is installed, turned on and enabled in at least one project, whose cron matches that
-minute, and defers one job hub.plugin_job for it with the queueing lock ``plugin-job:<plugin>:<job>``, so a job that
-is still waiting is not queued twice and a slow one does not pile up. hub.plugin_job checks the plugin again and calls
+The job hub.plugin_jobs runs every minute (``evo_agents.hub.worker``): for each minute since the last one it handled
+(plugin_cron, at most CATCH_UP minutes back) through the one procrastinate scheduled it for, it finds each job of a
+plugin that is installed, turned on and enabled in at least one project, whose cron matches that minute, and defers
+one job hub.plugin_job for it with the queueing lock ``plugin-job:<plugin>:<job>``, so a job that is still waiting is
+not queued twice and a slow one does not pile up. A pass that runs late, or the first one after the worker was down,
+so catches up the minutes it missed in the last hour, each minute once: plugin_cron moves in the transaction that
+queues them, under its row lock. hub.plugin_job checks the plugin again and calls
 its contribution (``plugin_calls.call``, method ``job`` of plugin/1) with the projects that enable it, within
 JOB_TIMEOUT. A cron that does not read is logged and never fires.
 
@@ -22,8 +25,10 @@ Outside ``evo_agents.hub.server``: the job worker imports it.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import jobs, tables
@@ -34,6 +39,8 @@ log = logging.getLogger(__name__)
 DEFAULT_CRON = "0 * * * *"
 JOB_TIMEOUT = 120.0  # seconds one run of a plugin's job may take, the plugin host's own bound
 SIGNAL_JOB = "value_check"  # a job that also runs for a project on each batch of its signals
+CATCH_UP = 60  # minutes back, this one included, a late pass of hub.plugin_jobs queues the jobs of
+MINUTE = timedelta(minutes=1)
 
 
 def lock(plugin: str, job: str) -> str:
@@ -76,26 +83,50 @@ def matches(cron: str, at: datetime) -> bool:
         return False
 
 
-async def due(engine: AsyncEngine, at: datetime) -> list[tuple[str, str]]:
-    """(plugin, job) of every job of an enabled plugin whose cron takes the minute ``at``."""
+def _due(enabled: dict[str, tuple], minutes: list[datetime]) -> list[tuple[str, str]]:
+    """(plugin, job) of every job of the plugins of ``enabled`` (of ``_enabled``) whose cron takes any of
+    ``minutes``, each once."""
     found = []
-    for name, (row, _) in (await _enabled(engine)).items():
+    for name, (row, _) in enabled.items():
         for item in (row.manifest.get("contributes") or {}).get("jobs") or []:
-            if matches(item.get("cron", DEFAULT_CRON), at):
+            if any(matches(item.get("cron", DEFAULT_CRON), at) for at in minutes):
                 found.append((name, item["name"]))
     return found
 
 
+async def due(engine: AsyncEngine, at: datetime) -> list[tuple[str, str]]:
+    """(plugin, job) of every job of an enabled plugin whose cron takes the minute ``at``."""
+    return _due(await _enabled(engine), [at])
+
+
+def _minutes(last: datetime | None, until: datetime) -> list[datetime]:
+    """The minutes after ``last`` through ``until``, at most CATCH_UP of them; ``until`` alone without ``last``."""
+    first = until if last is None else max(last + MINUTE, until - (CATCH_UP - 1) * MINUTE)
+    return [first + n * MINUTE for n in range(int((until - first) / MINUTE) + 1)] if first <= until else []
+
+
 async def fire(engine: AsyncEngine, job_manager, timestamp: int | None = None) -> dict:
-    """One pass of hub.plugin_jobs: a hub.plugin_job for each job due at ``timestamp`` (now without one)."""
+    """One pass of hub.plugin_jobs: a hub.plugin_job for each job due in a minute after the last pass's through the
+    one of ``timestamp`` (now without one), at most CATCH_UP minutes, each minute once."""
     at = datetime.fromtimestamp(timestamp, UTC) if timestamp is not None else datetime.now(UTC)
-    queue, deferred = jobs.JobQueue(job_manager), []
-    for plugin, job in await due(engine, at):
-        if await queue.defer(jobs.PLUGIN_JOB, queueing_lock=lock(plugin, job), plugin=plugin, job=job) is not None:
-            deferred.append(f"{plugin}:{job}")
+    until = at.replace(second=0, microsecond=0)
+    enabled = await _enabled(engine)
+    cron, deferred = tables.plugin_cron, []
+    async with engine.begin() as conn:
+        await conn.execute(insert(cron).values(id=1, fired_through=until - MINUTE).on_conflict_do_nothing())
+        last = (await conn.execute(select(cron.c.fired_through).where(cron.c.id == 1).with_for_update())).scalar_one()
+        minutes = _minutes(last, until)
+        if not minutes:
+            return {"deferred": [], "minutes": 0}
+        queue = jobs.JobQueue(job_manager)
+        for plugin, job in _due(enabled, minutes):
+            key = lock(plugin, job)
+            if await queue.defer(jobs.PLUGIN_JOB, queueing_lock=key, connection=conn, plugin=plugin, job=job):
+                deferred.append(f"{plugin}:{job}")
+        await conn.execute(cron.update().where(cron.c.id == 1).values(fired_through=until))
     if deferred:
-        log.info("plugin jobs queued", extra={"jobs": deferred})
-    return {"deferred": deferred}
+        log.info("plugin jobs queued", extra={"jobs": deferred, "minutes": len(minutes)})
+    return {"deferred": deferred, "minutes": len(minutes)}
 
 
 async def run_job(engine: AsyncEngine, config, plugin: str, job: str, *, host=None) -> dict:

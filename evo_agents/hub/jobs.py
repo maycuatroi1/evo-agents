@@ -14,6 +14,10 @@ waits already leaves the caller's transaction usable.
 The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_agents.hub.db``): procrastinate, whose
 only async connector is psycopg's, gets the psycopg connection under it through ``driver``, and the savepoint is the
 engine's ``begin_nested()``. This is the one place the hub hands out that psycopg connection.
+
+The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, every other job to
+procrastinate's default queue. The worker runs a worker of its own on ``LEASE``, so a long build or plugin job on the
+default queue never holds them back; ``queue_of`` names a task's queue, and ``JobQueue.defer`` uses it.
 """
 
 from __future__ import annotations
@@ -71,6 +75,16 @@ MARKET_SIGNALS = "hub.market_signals"  # daily: a seller's active licences and t
 REAP_POOL_NODES = "hub.reap_pool_nodes"  # hourly: pool nodes offline past their pool's reap_after_days revoked
 
 
+DEFAULT_QUEUE = "default"  # procrastinate's own
+LEASE = "lease"  # the short jobs that must run every minute whatever else runs
+LEASE_JOBS = frozenset({RECOVER_RUNS, DELIVER_NOTIFICATIONS})
+
+
+def queue_of(task: str) -> str:
+    """The queue the jobs of ``task`` go to."""
+    return LEASE if task in LEASE_JOBS else DEFAULT_QUEUE
+
+
 def kg_lock(project: str) -> str:
     """The lock and queueing lock of project ``project``'s kg builds."""
     return f"kg:{project}"
@@ -120,7 +134,9 @@ class JobQueue:
         ``queueing_lock`` waits already, which counts as queued. With ``connection``, the job is queued in that
         connection's transaction and exists only if it commits."""
         if connection is None:
-            deferrer = configure_task(name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock)
+            deferrer = configure_task(
+                name=task, job_manager=self._manager, lock=lock, queueing_lock=queueing_lock, queue=queue_of(task)
+            )
             try:
                 return await deferrer.defer_async(**kwargs)
             except exceptions.AlreadyEnqueued:
@@ -130,6 +146,7 @@ class JobQueue:
             job_manager=self._manager,
             lock=lock,
             queueing_lock=queueing_lock,
+            queue=queue_of(task),
             connection=await driver(connection),
         )
         # The refusal is an error in Postgres, which would abort the caller's whole transaction without the

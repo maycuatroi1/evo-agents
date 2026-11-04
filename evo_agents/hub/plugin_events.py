@@ -33,19 +33,27 @@ purpose: it carries the answer's text, to the core plugin that asked alone, whic
 checked that the project is not kept from the place the answer goes (``core_plugin_api.restricted``); delivering it
 checks that again (``_answer_payload``), and a project kept from it by then gets the state refused and no text.
 
-``deliver`` is the job hub.deliver_plugin_events, every minute. It takes the pending deliveries that are due, each in
-a transaction of its own with ``FOR UPDATE SKIP LOCKED``, checks again that the plugin is installed, turned on,
-enabled in the project and granted what the kind needs, and fails the delivery at once when it is not; then it calls
-the plugin's contribution (``plugin_calls.call``): method ``event`` or ``channel`` of plugin/1, with the delivery's id,
-which stays the same on every try. A delivery is delivered once the plugin answered, so a hub that stops between the
-answer and the commit delivers it again: at least once. A failed try waits BACKOFF_SECONDS, doubling up to
-BACKOFF_MAX_SECONDS, and the MAX_ATTEMPTS-th fails it; a channel that answers ``delivered: false`` fails it at once.
-Deliveries that ended are kept KEEP_DAYS days.
+``deliver`` is the job hub.deliver_plugin_events, every minute. It takes the pending deliveries that are due and
+claims each in a short transaction of its own with ``FOR UPDATE SKIP LOCKED``: it checks again that the plugin is
+installed, turned on, enabled in the project and granted what the kind needs, and fails the delivery at once when it
+is not; else it moves the delivery's next_at CLAIM_SECONDS ahead and commits. Then, with no transaction open and no row
+locked, it calls the plugin's contribution (``plugin_calls.call``): method ``event`` or ``channel`` of plugin/1, with
+the delivery's id, which stays the same on every try, and writes what came of it in another short transaction, unless
+another pass took the delivery meanwhile. A delivery is delivered once the plugin answered, so a hub that stops between
+the answer and the commit delivers it again once its claim runs out: at least once. A failed try waits
+BACKOFF_SECONDS, doubling up to BACKOFF_MAX_SECONDS, and the MAX_ATTEMPTS-th fails it; a channel that answers
+``delivered: false`` fails it at once. Deliveries that ended are kept KEEP_DAYS days.
+
+A pass starts no call after PASS_SECONDS, and a plugin that took its whole TIMEOUT to answer, or whose host could not
+be reached, gets no other call in the pass: the deliveries left wait for the next pass, untried, so one hung host holds
+the worker for about one TIMEOUT a pass, never a batch of them.
 """
 
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import delete, func, insert, select, update
@@ -99,6 +107,8 @@ BACKOFF_MAX_SECONDS = 3600
 BATCH = 500
 KEEP_DAYS = 14
 TIMEOUT = 30.0
+PASS_SECONDS = 40.0  # a pass starts no call after this: with TIMEOUT, it ends within the minute after the next
+CLAIM_SECONDS = TIMEOUT + 60  # a claimed delivery is not due again for this long, unless its try is written first
 MAX_ERROR_CHARS = 2000
 
 
@@ -326,7 +336,24 @@ async def _answer_payload(conn: AsyncConnection, row) -> dict:
     return {**payload, "state": "refused", "text": None}
 
 
-async def _deliver_one(conn: AsyncConnection, delivery_id: int, engine, config, host) -> str | None:
+@dataclass(frozen=True)
+class _Claim:
+    """A delivery claimed for one try: what the call needs, and its attempts when claimed."""
+
+    id: int
+    name: str
+    tier: str
+    point: str
+    item: dict
+    params: dict
+    attempts: int
+    context: CoreContext
+
+
+async def _claim(conn: AsyncConnection, delivery_id: int, engine, config, skip) -> _Claim | str | None:
+    """Delivery ``delivery_id`` claimed for a try, or what came of it at once: "failed" when its plugin may not get it,
+    "skipped" when ``skip(name, tier)`` says its plugin gets no call this pass, None when another pass holds it or it is
+    not due any more."""
     row = (await conn.execute(_lock_due(delivery_id))).one_or_none()
     if row is None:
         return None
@@ -335,42 +362,93 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, engine, config, 
         await conn.execute(_set(delivery_id, state="failed", attempts=row.attempts + 1, last_error=refused))
         log.info("plugin delivery refused", extra={"delivery_id": delivery_id, "why": refused})
         return "failed"
+    if skip(row.name, row.tier):
+        return "skipped"
     point, params = _params(row, await _answer_payload(conn, row))
     item = next(item for item in row.manifest["contributes"][point] if item["name"] == row.contribution)
     context = CoreContext(row.name, engine, config, row.project, row.project_id)
+    await conn.execute(_set(delivery_id, next_at=func.now() + timedelta(seconds=CLAIM_SECONDS)))
+    return _Claim(delivery_id, row.name, row.tier, point, item, params, row.attempts, context)
+
+
+def _settle(claim: _Claim, result: dict | None, error: str | None):
+    """The outcome of ``claim``'s try and the statement that writes it, which changes nothing once another pass took
+    the delivery (its attempts moved) or it ended."""
+    d = tables.plugin_deliveries
+    tried = claim.attempts + 1
+    if error is not None and tried >= MAX_ATTEMPTS:
+        outcome, values = "failed", {"state": "failed", "last_error": error}
+    elif error is not None:
+        outcome, values = "retried", {"next_at": func.now() + backoff(tried), "last_error": error}
+    elif claim.point == "channels" and not result["delivered"]:
+        said = f"plugin {claim.name}'s channel {claim.params['channel']} did not deliver it"
+        outcome, values = "failed", {"state": "failed", "last_error": said}
+    else:
+        outcome, values = "delivered", {"state": "delivered", "delivered_at": func.now()}
+    statement = (
+        update(d)
+        .where(d.c.id == claim.id, d.c.state == "pending", d.c.attempts == claim.attempts)
+        .values(attempts=tried, **values)
+    )
+    return outcome, statement
+
+
+async def _try(claim: _Claim, host) -> tuple[dict | None, str | None, bool]:
+    """The plugin's answer to ``claim``, or its error, and whether the plugin is silent: it took the whole TIMEOUT, or
+    its host could not be reached."""
+    started = time.monotonic()
     try:
-        result = await call(host, row.name, row.tier, point, item, params, context, TIMEOUT)
+        result = await call(host, claim.name, claim.tier, claim.point, claim.item, claim.params, claim.context, TIMEOUT)
     except (PluginCallError, PluginHostUnavailable) as exc:
         error = " ".join(f"{type(exc).__name__}: {exc}".split())[:MAX_ERROR_CHARS]
-        if row.attempts + 1 >= MAX_ATTEMPTS:
-            await conn.execute(_set(delivery_id, state="failed", attempts=row.attempts + 1, last_error=error))
-            log.warning("plugin delivery failed", extra={"delivery_id": delivery_id, "contribution": row.name})
-            return "failed"
-        wait = backoff(row.attempts + 1)
-        await conn.execute(_set(delivery_id, attempts=row.attempts + 1, next_at=func.now() + wait, last_error=error))
-        return "retried"
-    if point == "channels" and not result["delivered"]:
-        said = f"plugin {row.name}'s channel {row.contribution} did not deliver it"
-        await conn.execute(_set(delivery_id, state="failed", attempts=row.attempts + 1, last_error=said))
-        return "failed"
-    await conn.execute(_set(delivery_id, state="delivered", attempts=row.attempts + 1, delivered_at=func.now()))
-    return "delivered"
+        silent = isinstance(exc, PluginHostUnavailable) or time.monotonic() - started >= TIMEOUT
+        return None, error, silent
+    return result, None, False
+
+
+async def _deliver_one(engine: AsyncEngine, delivery_id: int, config, host, skip, silent: set) -> str | None:
+    async with engine.begin() as conn:
+        claim = await _claim(conn, delivery_id, engine, config, skip)
+    if not isinstance(claim, _Claim):
+        return claim
+    result, error, quiet = await _try(claim, host)  # no transaction open, no row locked
+    if quiet:
+        silent.add(claim.name if claim.tier == "core" else HOST)
+        log.warning("plugin silent: no other call this pass", extra={"plugin": claim.name, "delivery_id": claim.id})
+    outcome, statement = _settle(claim, result, error)
+    async with engine.begin() as conn:
+        if (await conn.execute(statement)).rowcount == 0:
+            return None  # another pass took it after its claim ran out
+    if outcome == "failed" and error is not None:
+        log.warning("plugin delivery failed", extra={"delivery_id": claim.id, "contribution": claim.name})
+    return outcome
+
+
+HOST = ""  # in a pass's silent plugins: the plugin host, which every isolated plugin goes through
 
 
 async def deliver(engine: AsyncEngine, *, config=None, host=None, batch: int = BATCH) -> dict:
-    """One pass of the job hub.deliver_plugin_events: each pending delivery that is due, tried once in a transaction
-    of its own; how many were delivered, are to be tried again, and failed. Without ``host`` it opens a client to the
-    plugin host of ``config``."""
-    report = {"delivered": 0, "retried": 0, "failed": 0}
+    """One pass of the job hub.deliver_plugin_events: each pending delivery that is due, claimed and tried once; how
+    many were delivered, are to be tried again, failed, and were left for the next pass (skipped: a silent plugin, or
+    the pass past PASS_SECONDS). Without ``host`` it opens a client to the plugin host of ``config``."""
+    report = {"delivered": 0, "retried": 0, "failed": 0, "skipped": 0}
     own = host is None and config is not None
     if own:
         host = PluginHostClient(config.plugin_host_url, config.plugin_host_token)
+    silent: set[str] = set()
+
+    def skip(name: str, tier: str) -> bool:
+        return (name if tier == "core" else HOST) in silent
+
+    deadline = time.monotonic() + PASS_SECONDS
     try:
         async with engine.begin() as conn:
             due = (await conn.execute(_due(batch))).scalars().all()
-        for delivery_id in due:
-            async with engine.begin() as conn:
-                outcome = await _deliver_one(conn, delivery_id, engine, config, host)
+        for number, delivery_id in enumerate(due):
+            if time.monotonic() >= deadline:
+                report["skipped"] += len(due) - number
+                break
+            outcome = await _deliver_one(engine, delivery_id, config, host, skip, silent)
             if outcome is not None:
                 report[outcome] += 1
         async with engine.begin() as conn:
@@ -380,7 +458,7 @@ async def deliver(engine: AsyncEngine, *, config=None, host=None, batch: int = B
     finally:
         if own:
             await host.aclose()
-    if report["retried"] or report["failed"]:
+    if report["retried"] or report["failed"] or report["skipped"]:
         log.warning("plugin deliveries", extra=report)
     elif report["delivered"]:
         log.info("plugin deliveries", extra=report)

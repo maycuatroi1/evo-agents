@@ -351,7 +351,8 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   plugin sees them.
 - **Jobs.** A job runs when its `cron` (five fields, UTC; `0 * * * *` when it names none) takes the minute, while a
   project enables its plugin, through the hub's job queue: `hub.plugin_jobs` queues one `hub.plugin_job` for it, with
-  the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. The call names the projects
+  the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. A pass that runs late, or the
+  first after the worker was down, catches up the minutes it missed in the last hour, each minute once. The call names the projects
   that enable the plugin and may take 120 seconds. A job named `value_check` (the core plugin canvas's) also runs at
   once for one project when a batch of the project's signals comes: `hub.value_check` calls it with that project alone
   (`docs/signals.md`, Value check).

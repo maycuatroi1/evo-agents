@@ -3490,7 +3490,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
-`evo-agents hub worker --data-dir /cache --concurrency 2` runs two jobs at a time (default 1). On SIGTERM it takes no
+`evo-agents hub worker --data-dir /cache --concurrency 2` runs two jobs at a time (default 1). Beside those slots it
+keeps one for `hub.recover_runs` and `hub.deliver_notifications` alone (queue `lease`), so they run every minute while
+a long build or plugin job holds the others. On SIGTERM it takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
 memory, so the compose file caps the worker with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With

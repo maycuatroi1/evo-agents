@@ -853,3 +853,32 @@ def test_agent_merge_goes_for_a_tier_outside_auto_merge_and_protected_paths_alon
 def test_agent_merge_refuses_every_other_case_with_the_reason(changes, why):
     decided, reasons = judge.agent_merge_decision(facts(tier=2, **changes))
     assert decided == "refuse" and any(why in reason for reason in reasons), reasons
+
+
+def test_diff_index_line_and_file_headers_of_a_real_git_diff_are_not_changed_lines(tmp_path):
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True, text=True).stdout
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.org")
+    git("config", "user.name", "t")
+    (tmp_path / "keep.py").write_text("a = 1\nb = 2\n")
+    (tmp_path / "gone.py").write_text("x = 1\n")
+    git("add", ".")
+    git("commit", "-qm", "one")
+    (tmp_path / "keep.py").write_text("a = 1\nb = 3\n")
+    (tmp_path / "gone.py").unlink()
+    (tmp_path / "new.py").write_text("y = 2\n")
+    git("add", "-A")
+    text = git("diff", "--cached")
+    assert "\nindex " in text and "\n--- a/keep.py" in text and "\n+++ b/keep.py" in text
+
+    files = {item.path: item for item in judge.parse_diff(text)}
+    assert set(files) == {"keep.py", "gone.py", "new.py"}
+    assert files["keep.py"].added == [(2, "b = 3")] and files["keep.py"].removed == [(2, "b = 2")]
+    assert files["new.py"].status == "added" and files["new.py"].added == [(1, "y = 2")]
+    assert files["new.py"].removed == []
+    assert files["gone.py"].status == "removed" and files["gone.py"].removed == [(1, "x = 1")]
+    assert files["gone.py"].added == []

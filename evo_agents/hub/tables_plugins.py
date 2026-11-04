@@ -50,6 +50,9 @@ plugins.builtin (0147) marks canvas, srs and tasks: features of the hub that it 
 store. A project has them on through its features (``evo_agents.hub.feature_rule``), not through project_plugins;
 retired_project_plugins keeps the rows project_plugins held of them, for going back below 0147.
 
+plugin_cron (0203) holds at most one row (id 1): the last minute whose plugin jobs hub.plugin_jobs queued
+(``evo_agents.hub.plugin_jobs.fire``), so a pass that comes late catches up the minutes since, each once.
+
 ``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``),
 tasks (0047, ``tables_tasks``) and canvas (0073, ``tables_canvas``), each as one attribute of ``evo_agents.hub.tables``
 (``tables.srs``, ``tables.tasks``, ``tables.canvas``), and with them agent_questions (``tables.agent_questions``).
@@ -219,6 +222,17 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         PrimaryKeyConstraint("run_id", "plugin_id", name="run_plugins_pkey"),
     )
     return project_plugins, plugin_configs, run_plugins
+
+
+def cron_table(metadata: MetaData) -> Table:
+    """plugin_cron, added to ``metadata``: at most one row, id 1."""
+    return Table(
+        "plugin_cron",
+        metadata,
+        Column("id", SmallInteger, nullable=False, server_default="1"),
+        Column("fired_through", DateTime(timezone=True), nullable=False),
+        PrimaryKeyConstraint("id", name="plugin_cron_pkey"),
+    )
 
 
 def retired_table(metadata: MetaData) -> Table:

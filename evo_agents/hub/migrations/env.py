@@ -11,6 +11,7 @@ older revisions made (``owned.PLUGIN_OWNED_TABLES``) and those of the installed 
 
 from alembic import context
 
+from evo_agents.hub.migrate import limit_revision
 from evo_agents.hub.migrations.owned import PLUGIN_OWNED_TABLES
 from evo_agents.hub.plugin_schema import installed_tables
 from evo_agents.hub.tables import metadata
@@ -21,9 +22,11 @@ if connection is None or context.is_offline_mode():
     raise RuntimeError("hub migrations run through `evo-agents hub migrate`, not the alembic command")
 
 applied = config.attributes.get("applied")
+limit_revision(connection)  # lock_timeout and statement_timeout of every revision (migrate.REVISION_TIMEOUTS)
 
 
 def record(ctx, step, heads, run_args) -> None:
+    limit_revision(connection)  # the next revision starts with the same limits, whatever this one set
     if applied is not None and step.up_revision_id:
         applied.append(step.up_revision_id)
 

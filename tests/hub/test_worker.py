@@ -294,6 +294,39 @@ def test_sigterm_lets_the_running_job_finish_before_the_worker_exits(hub_db, tmp
     assert query(hub_db, select(func.count()).select_from(procrastinate_workers)) == [(0,)]  # it unregistered itself
 
 
+def test_lease_recovery_not_starved_by_a_long_job_holding_every_slot(hub_db, tmp_path, s3):
+    migrate(hub_db.dsn)
+    j = procrastinate_jobs.c
+
+    async def defer_all(job_queue, pool):
+        long_job = await job_queue.defer(jobs.PING, seconds=25)
+        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS):
+            await job_queue.defer(task, queueing_lock=task, timestamp=int(time.time()))
+        return long_job
+
+    with running_worker(hub_db, tmp_path, s3) as worker:  # concurrency 1: the ping takes the one slot
+        long_job = asyncio.run(with_queue(hub_db, defer_all))
+        wait_for(lambda: job(hub_db, long_job)["status"] == "doing", what="the long job starting")
+        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS):
+            done = select(cast(j.status, Text)).where(j.task_name == task)
+            wait_for(lambda done=done: ("succeeded",) in query(hub_db, done), timeout=20, what=f"{task} running")
+        assert job(hub_db, long_job)["status"] == "doing"  # they ran beside it, not after it
+        worker.proc.kill()
+    queues = select(j.task_name, column("queue_name")).select_from(procrastinate_jobs).distinct()
+    assert {
+        jobs.RECOVER_RUNS: jobs.LEASE,
+        jobs.DELIVER_NOTIFICATIONS: jobs.LEASE,
+        jobs.PING: "default",
+    }.items() <= dict(query(hub_db, queues)).items()
+
+
+def test_lease_recovery_not_starved_its_jobs_alone_go_to_the_lease_queue():
+    assert {name for name, task in queue.tasks.items() if task.queue == jobs.LEASE} == jobs.LEASE_JOBS
+    hub_tasks = {name: task for name, task in queue.tasks.items() if task.queue != "builtin"}  # procrastinate's own
+    assert {task.queue for name, task in hub_tasks.items() if name not in jobs.LEASE_JOBS} == {"default"}
+    assert all(jobs.queue_of(name) == task.queue for name, task in hub_tasks.items())
+
+
 def test_a_worker_that_loses_postgres_exits_nonzero_so_it_is_restarted(hub_db, tmp_path, s3):
     with running_worker(hub_db, tmp_path, s3) as worker:
         pg.set_reachable(hub_db, False)

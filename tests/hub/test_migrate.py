@@ -46,6 +46,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB, REGCLASS
+from sqlalchemy.exc import OperationalError
 
 from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub import tables as hub_tables
@@ -167,6 +168,7 @@ TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 TABLES |= {"kg_init_runs"}  # migration 0197
 TABLES |= {"kg_uploads"}  # migration 0200
+TABLES |= {"plugin_cron"}  # migration 0203
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -257,8 +259,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_twenty_two_tables(hub_db):
-    assert len(TABLES) == 222  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_twenty_three_tables(hub_db):
+    assert len(TABLES) == 223  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5625,3 +5627,43 @@ def test_0202_binds_an_admin_login_to_one_account_and_an_order_to_its_address_an
     assert "admin_login" not in columns(hub_db, "users")
     assert "buyer_address" not in columns(hub_db, "market_orders")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0202") :]
+
+
+def test_0203_keeps_the_last_minute_of_plugin_jobs_in_one_row_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0202")
+    assert "plugin_cron" not in tables(hub_db)
+    move_to(hub_db, "0203")
+    cron = hub_tables.plugin_cron
+    at = datetime(2026, 11, 4, 9, 30, tzinfo=UTC)
+    live.sql(hub_db, insert(cron).values(fired_through=at))
+    assert query(hub_db, select(cron.c.id, cron.c.fired_through)) == [(1, at)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(cron).values(id=2, fired_through=at))  # one row
+    move_to(hub_db, "0202", down=True)
+    assert "plugin_cron" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0203") :]
+
+
+@pytest.mark.parametrize(
+    ("limits", "error"),
+    [
+        ({"lock_timeout": 0.5, "statement_timeout": 60.0}, errors.LockNotAvailable),
+        ({"lock_timeout": 60.0, "statement_timeout": 0.5}, errors.QueryCanceled),
+    ],
+)
+def test_migration_lock_timeout_and_statement_timeout_bound_a_revision_blocked_behind_a_lock(
+    hub_db, monkeypatch, limits, error
+):
+    move_to(hub_db, "0202")
+    monkeypatch.setattr(hub_migrate, "REVISION_TIMEOUTS", limits)
+    with live.engine(hub_db).connect() as holder:  # a long transaction holding the row every revision updates
+        holder.execute(select(ALEMBIC_VERSION.c.version_num).with_for_update())
+        started = time.monotonic()
+        with pytest.raises(OperationalError) as raised:
+            hub_migrate.migrate(hub_db.dsn)
+        assert isinstance(raised.value.orig, error)
+        assert time.monotonic() - started < 15  # instead of waiting for the holder as long as it holds
+        holder.rollback()
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0202",)]  # the revision rolled back
+    assert "plugin_cron" not in tables(hub_db)
+    assert hub_migrate.migrate(hub_db.dsn).after == (HEAD,)  # once the holder is gone it goes through

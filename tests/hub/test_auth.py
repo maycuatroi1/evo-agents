@@ -141,6 +141,8 @@ HUB_TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
 HUB_TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 HUB_TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 HUB_TABLES |= {"kg_init_runs"}  # migration 0197
+HUB_TABLES |= {"kg_uploads"}  # migration 0200
+HUB_TABLES |= {"plugin_cron"}  # migration 0203
 HUB_TABLES |= pg.plugin_chain_tables()  # the chains of the installed core plugins and their own tables
 
 
@@ -677,7 +679,11 @@ def test_credentials_are_written_atomically_with_exact_modes(tmp_path, monkeypat
     assert mode(directory / "token") == 0o600 and mode(directory / "config.json") == 0o600
     assert (directory / "token").read_text() == "evh_new\n"
     assert os.stat(directory / "token").st_ino != old_inode  # replaced by rename, never rewritten in place
-    assert json.loads((directory / "config.json").read_text()) == {"url": "https://hub.test", "login": "octo"}
+    assert json.loads((directory / "config.json").read_text()) == {
+        "url": "https://hub.test",
+        "login": "octo",
+        "token": "evh_new",
+    }
     assert sorted(p.name for p in directory.iterdir()) == ["config.json", "token"]
     assert hub_client.load_credentials() == hub_client.Credentials("https://hub.test", "octo", "evh_new")
     assert "evh_new" not in repr(hub_client.load_credentials())
@@ -787,8 +793,8 @@ def test_the_cli_signs_in_with_the_device_flow_and_manages_tokens_and_grants(hub
         assert mode(directory) == 0o700
         assert mode(directory / "token") == 0o600 and mode(directory / "config.json") == 0o600
         assert sorted(p.name for p in directory.iterdir()) == ["config.json", "token"]
-        assert json.loads((directory / "config.json").read_text()) == {"url": hub.url, "login": ADMIN}
         token = (directory / "token").read_text().strip()
+        assert json.loads((directory / "config.json").read_text()) == {"url": hub.url, "login": ADMIN, "token": token}
         assert token.startswith("evh_") and token not in signed.stdout + signed.stderr
         tokens = tables.tokens
         stored = sql(hub_db, select(tokens.c.token_hash).where(tokens.c.revoked_at.is_(None)))
