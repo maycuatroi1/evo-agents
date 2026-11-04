@@ -456,7 +456,8 @@ def init_runs(metadata: MetaData) -> Table:
     """kg_init_runs (0197), added to ``metadata``: each kg_init run of a project (``evo_agents.hub.server.kg_init``): the
     Curator configures the graph from its data profile. What asked for it (``via``: its first build, a profile that
     changed a lot, a call), the reasons, the build and the profile it was given, the review run of the agent it queued
-    (lens kg_init), what it was shown and decided (``body``), its report. One run a project is in flight at a time."""
+    (lens kg_init), what it was shown and decided (``body``), its report; the review run that wrote its starter
+    questions first (lens kg_questions, 0200). One run a project is in flight at a time."""
     name = "kg_init_runs"
     table = Table(
         name,
@@ -476,14 +477,19 @@ def init_runs(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         _when("ended_at"),
+        Column("questions_run_id", BigInteger),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
         ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
+        ForeignKeyConstraint(
+            ["questions_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_questions_run_id_fkey"
+        ),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         CheckConstraint(column("via").in_(INIT_VIAS), name=f"{name}_via_check"),
         CheckConstraint(column("state").in_(INIT_STATES), name=f"{name}_state_check"),
         Index(f"{name}_project_idx", "project_id", "id"),
         Index(f"{name}_agent_run_idx", "agent_run_id"),
+        Index(f"{name}_questions_run_idx", "questions_run_id"),
     )
     Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(INIT_ACTIVE))
     return table

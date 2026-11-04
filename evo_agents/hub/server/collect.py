@@ -775,6 +775,17 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
     ).one()
+    asking = await kg_init_db.of_questions_run(conn, view.id)
+    if asking is not None:  # the run that writes a kg_init run's starter questions: counts only, never an item
+        return review.build_review_prompt(
+            view.project,
+            None,
+            ["kg_questions"],
+            [repo.model_dump() for repo in view.repos or []],
+            {},
+            [],
+            optimize=["", ((asking.body or {}).get("questions") or {}).get("prompt") or ""],
+        )
     initiated = await kg_init_db.of_agent_run(conn, view.id)
     if initiated is not None:  # the review run of a kg_init run: no night, its own lens and prompt
         earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, ["kg_init"])

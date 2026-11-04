@@ -766,6 +766,22 @@ A strategy the Curator made keeps its settings and holds its identifiers, ontolo
 Sources, KG code and dependencies go through the proposal flow (`kg_propose`, the Judge, the auto-merge). Nobody waits
 for a person. `--status --json` prints the runs with their decisions and reports.
 
+### Starter questions written by an agent
+
+Data with no commit history, such as an uploaded archive, gives no starter questions. Before a kg_init run measures,
+the hub checks the project's eval set. When the project has none, or only the set made from its commits with fewer than
+30 questions, the hub queues a review run with the lens `kg_questions` (`evo_agents/hub/server/kg_questions.py`,
+migration 0200). It uses the same agent pool and cost cap as the kg_init run. Its prompt holds counts and data classes
+only. The agent reads the items through the kg_* tools within its sink's clearance. It writes at least 100 questions, or
+one for each readable document when there are fewer, and answers each with a file or a node of the graph. Together the
+questions cover every class of data the sink reads (assets and commits excepted). The agent sends them with
+`evo-agents hub kg init --project P --run ID --questions FILE` (a JSON array, or one object a line). The hub checks
+every answer against the graph as the agents' sink reads it. An answer above that clearance is refused like one that
+is not in the graph, and the refusal names no item. The hub keeps the questions as the next version of the eval set,
+named `written`. The kg_init run waits for the questions run to end, or for 2 hours, then measures the tune part. When
+the sink reads no document, no questions run is queued and the kg_init run says why in its notes. `--status --json`
+shows the questions run of each kg_init run under `questions`.
+
 On a machine, `evo-agents kg init --project P [--questions FILE] [--json]` builds the same input from the local graph
 and writes `kg-init.json` with the SHA-256 digests of the input files. The holdout part of the questions never enters the
 run's input.

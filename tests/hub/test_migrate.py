@@ -5539,3 +5539,37 @@ def test_0199_records_archive_uploads_one_in_flight_per_archive_and_going_back_d
     move_to(hub_db, "0198", down=True)
     assert "kg_uploads" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0199") :]
+
+
+def test_0200_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0199")
+    assert "questions_run_id" not in columns(hub_db, "kg_init_runs")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+    move_to(hub_db, "0200")
+    t = hub_tables
+    init = {"project_id": ids["project"], "via": "manual", "state": "queued", "why": ["asked"], "body": {}}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.kg_init_runs).values({**init, "questions_run_id": run_id}))
+    assert query(hub_db, select(t.kg_init_runs.c.questions_run_id)) == [(run_id,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(update(t.kg_init_runs).values(questions_run_id=run_id + 1000))
+    label = {"level": "internal"}
+    proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "kg_questions", "kind": "docs"}
+    proposal |= {"title": "Ask about the guide", "paths": [], "tier": 1, "tier_reasons": ["docs"]}
+    proposal |= {"evidence": [], "evidence_count": 1, "draft": {}, "fingerprint": "f" * 64, "label": label}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.proposals).values(proposal))  # the lens is taken
+        conn.execute(t.runs.delete().where(t.runs.c.id == run_id))
+    assert query(hub_db, select(t.kg_init_runs.c.questions_run_id)) == [(None,)]  # the run gone: SET NULL
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(ids))
+        conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id}))
+    move_to(hub_db, "0199", down=True)
+    assert "questions_run_id" not in columns(hub_db, "kg_init_runs")
+    lens = t.proposals.c.lens == "kg_questions"
+    assert query(hub_db, select(func.count()).select_from(t.proposals).where(lens)) == [(0,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id, "fingerprint": "a" * 64}))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0200") :]

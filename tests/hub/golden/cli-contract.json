@@ -5654,7 +5654,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -5779,7 +5780,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -5904,7 +5906,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -6407,7 +6410,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -6988,7 +6992,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -7265,7 +7270,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -10909,6 +10915,14 @@
         },
         {
           "flags": [
+            "--questions"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--run"
           ],
           "value": "integer",
@@ -10934,6 +10948,7 @@
           "why",
           "build_id",
           "agent_run_id",
+          "questions",
           "summary",
           "decisions",
           "notes",
@@ -10968,6 +10983,18 @@
               "applied"
             ],
             "schema": "DecisionOut"
+          },
+          "--questions": {
+            "kind": "object",
+            "keys": [
+              "run",
+              "set",
+              "version",
+              "questions",
+              "holdout",
+              "classes"
+            ],
+            "schema": "QuestionsOut"
           }
         }
       }
@@ -25421,7 +25448,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -25624,7 +25652,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         }
       ],
@@ -25800,7 +25829,8 @@
             "product_goals",
             "product",
             "kg_health",
-            "kg_init"
+            "kg_init",
+            "kg_questions"
           ]
         },
         {
@@ -45683,7 +45713,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -45962,7 +45993,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -53800,7 +53832,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -53960,7 +53993,8 @@
                       "product_goals",
                       "product",
                       "kg_health",
-                      "kg_init"
+                      "kg_init",
+                      "kg_questions"
                     ],
                     "type": "string"
                   },
@@ -98072,6 +98106,109 @@
             }
           }
         }
+      },
+      "/v1/kg/{project}/init/{run_id}/questions": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Put Questions",
+          "description": "Send the starter questions of a kg_init run: kept as the next version of the project's eval set when every\nanswer is a file or a node of the graph the agents' sink reads, and they are enough and cover its data.",
+          "operationId": "put_questions_v1_kg__project__init__run_id__questions_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionsBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/QuestionsOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -116852,7 +116989,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -120101,6 +120239,19 @@
                 }
               ],
               "title": "Ended At"
+            },
+            "questions": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Questions",
+              "description": "the run that wrote the starter questions first (lens kg_questions): state, why, agent_run_id, what the agents' sink reads, the target, the eval set version it made; null before the run looked"
             }
           },
           "type": "object",
@@ -136217,7 +136368,8 @@
                     "product_goals",
                     "product",
                     "kg_health",
-                    "kg_init"
+                    "kg_init",
+                    "kg_questions"
                   ]
                 },
                 {
@@ -144427,7 +144579,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -149719,7 +149872,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 16.0,
+              "maximum": 17.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",
@@ -155608,7 +155761,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -155703,7 +155857,8 @@
                 "product_goals",
                 "product",
                 "kg_health",
-                "kg_init"
+                "kg_init",
+                "kg_questions"
               ],
               "title": "Lens"
             },
@@ -168465,6 +168620,71 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
+        },
+        "QuestionsBody": {
+          "properties": {
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "maxItems": 2000,
+              "minItems": 1,
+              "title": "Questions",
+              "description": "the questions: each {question, files and/or nodes}, an id optional"
+            }
+          },
+          "type": "object",
+          "required": [
+            "questions"
+          ],
+          "title": "QuestionsBody"
+        },
+        "QuestionsOut": {
+          "properties": {
+            "run": {
+              "type": "integer",
+              "title": "Run",
+              "description": "the kg_init run"
+            },
+            "set": {
+              "type": "string",
+              "title": "Set"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the project's eval set the questions are"
+            },
+            "questions": {
+              "type": "integer",
+              "title": "Questions"
+            },
+            "holdout": {
+              "type": "integer",
+              "title": "Holdout",
+              "description": "the questions in the holdout part, which the kg_init run does not see"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "questions by the class of data their answers are of"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run",
+            "set",
+            "version",
+            "questions",
+            "holdout",
+            "classes"
+          ],
+          "title": "QuestionsOut"
         }
       }
     }
