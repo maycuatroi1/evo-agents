@@ -10,8 +10,10 @@ and it removes the uploads nobody committed. ``--data-dir`` is its cache, which 
 Jobs (names in ``evo_agents.hub.jobs``):
 
 - ``hub.ping``: waits a few seconds and returns; deferring it shows that a worker takes jobs.
-- ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER, and
-  the attachments no message took within ``attachments.STALE_AFTER`` (``attachment_prune.remove_stale``).
+- ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER, the
+  archive uploads (``hub kg upload``) untouched for as long, failed and their parts dropped
+  (``evo_agents.hub.kg_upload_prune``), and the attachments no message took within
+  ``attachments.STALE_AFTER`` (``attachment_prune.remove_stale``).
 - ``hub.expire_seats``, hourly: the org seats past their end date or that of a cohort holding them are ended, audited
   with the hub as actor, and the leases still out of the runs of every person whose primary seat ended are taken back
   and their GitHub tokens revoked (``evo_agents.hub.server.org_expiry``).
@@ -228,11 +230,13 @@ async def prune_audit(engine: AsyncEngine, days: int) -> dict:
 @queue.periodic(cron="17 * * * *")
 @queue.task(name=jobs.CLEANUP_UPLOADS, pass_context=True, queueing_lock=jobs.CLEANUP_UPLOADS)
 async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub import kg_upload_prune
     from evo_agents.hub.attachment_prune import remove_stale
 
     found = hub(context)
     removed = await remove_stale_uploads(found.blobs, found.engine)
-    return {**removed, **await remove_stale(found.engine, found.blobs)}
+    archives = await kg_upload_prune.remove_stale(found.blobs, found.engine, datetime.now(UTC))
+    return {**removed, **archives, **await remove_stale(found.engine, found.blobs)}
 
 
 @queue.periodic(cron="5 * * * *")

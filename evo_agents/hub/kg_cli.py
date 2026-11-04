@@ -565,11 +565,12 @@ def register_kg(hsub) -> None:
 
     kg_init_cli.register(ksub)
 
-    from evo_agents.hub import kg_profile_cli, kg_semantic_cli, kg_settings_cli
+    from evo_agents.hub import kg_profile_cli, kg_semantic_cli, kg_settings_cli, kg_upload_cli
 
     kg_profile_cli.register(ksub)
     kg_semantic_cli.register(ksub)
     kg_settings_cli.register(ksub)
+    kg_upload_cli.register(ksub)
 
 
 # The hub backend of kg serve and kg query

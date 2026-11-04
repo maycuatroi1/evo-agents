@@ -15,6 +15,8 @@ session or a run with what the agent opened after it, under the label of the ses
 (``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``. kg_eval_sets (0179) holds each version of a project's
 retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``. kg_optimize_runs (0182)
 holds each run of the KG optimize loop (``evo_agents.hub.server.kg_optimize``), as ``tables.kg_optimize_runs``.
+kg_uploads (0199) holds each archive a writer sends as a source with ``hub kg upload``
+(``evo_agents.hub.server.kg_uploads``), as ``tables.kg_uploads``.
 """
 
 from __future__ import annotations
@@ -484,6 +486,58 @@ def init_runs(metadata: MetaData) -> Table:
         Index(f"{name}_agent_run_idx", "agent_run_id"),
     )
     Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(INIT_ACTIVE))
+    return table
+
+
+UPLOAD_STATES = ("uploading", "extracting", "extracted", "failed")  # of an archive sent with `hub kg upload`
+
+
+def uploads(metadata: MetaData) -> Table:
+    """kg_uploads (0199), added to ``metadata``: each archive a writer sends as a source of a project's graph
+    (``evo_agents.hub.server.kg_uploads``), by S3 multipart upload to ``object_key``. Its source, label (by names),
+    sender, name, size, SHA-256 and part size, the store's multipart id while parts come, its state, what reading it
+    found (``report``) and the build that follows. One upload of the same archive by the same sender to the same source
+    is in flight at a time, so a second call resumes the first."""
+    name = "kg_uploads"
+    table = Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("source", Text, nullable=False),
+        Column("label", JSONB, nullable=False),
+        Column("name", Text, nullable=False),
+        Column("size", BigInteger, nullable=False),
+        Column("sha256", Text, nullable=False),
+        Column("part_size", BigInteger, nullable=False),
+        Column("object_key", Text, nullable=False),
+        Column("multipart_id", Text),
+        Column("state", Text, nullable=False),
+        Column("report", JSONB, nullable=False, server_default="{}"),
+        Column("build_id", BigInteger),
+        Column("error", Text),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        _when("uploaded_at"),
+        _when("ended_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["build_id"], ["kg_builds.id"], ondelete="SET NULL", name=f"{name}_build_id_fkey"),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        UniqueConstraint("object_key", name=f"{name}_object_key_key"),
+        CheckConstraint(column("state").in_(UPLOAD_STATES), name=f"{name}_state_check"),
+        Index(f"{name}_project_idx", "project_id", "id"),
+    )
+    Index(
+        f"{name}_resume_key",
+        table.c.project_id,
+        table.c.created_by,
+        table.c.sha256,
+        table.c.source,
+        unique=True,
+        postgresql_where=table.c.state == "uploading",
+    )
     return table
 
 

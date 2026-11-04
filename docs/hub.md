@@ -2877,6 +2877,28 @@ evo-agents hub kg forget-source --project demo --source old-repo  # asks first a
 evo-agents kg sync --push                                         # then: knowledge.yaml without old-repo
 ```
 
+**Uploading an archive.** A writer sends a `.zip`, `.tar`, `.tar.gz` or `.tgz` as a source of the project's graph with
+`evo-agents hub kg upload FILE --project demo [--source NAME] [--label L]`; each upload is a row of `kg_uploads`
+(migration 0199). Without `--source` the source is the
+file's name without its suffix; without `--label` the archive takes the project's default label. The archive can be up
+to `EVO_HUB_KG_UPLOAD_MAX_BYTES` (20 GiB by default). The bytes never pass through the API. `POST
+/v1/kg/{project}/uploads` checks the writer role, the size (413 over the limit) and the label against what the hub sink
+clears (422 above it, as for `kg sync --push`) before any part leaves the machine. It then starts an S3 multipart upload
+under `kg-archives/` in the blob store. The CLI asks for presigned PUTs a few parts at a time (`POST
+.../uploads/{id}/parts`), each part 64 MiB, below the 100 MB Cloudflare takes, and sends four parts at once. `POST
+.../uploads/{id}/complete` joins the parts once the store holds each one and moves the upload to `extracting` (audit
+row `kg.upload`). It answers 409 naming the missing count otherwise. Run again after an interruption, the command
+resumes the same upload (same project, sender, SHA-256 and source): the hub says which parts the store holds and only
+the others are sent. `evo-agents hub kg uploads --project demo [--json]` lists the uploads the caller's grant sees
+(`GET .../uploads`): state (`uploading`, `extracting`, `extracted`, `failed`), size, files read, files skipped by reason,
+and the build that followed. An upload still `uploading` and untouched for 24 hours is marked `failed` by the hourly
+`hub.cleanup_uploads`, which also aborts its multipart upload and drops its parts (`evo_agents/hub/kg_upload_prune.py`).
+
+```sh
+evo-agents hub kg upload ./lumen-handbook.zip --project demo --label internal
+evo-agents hub kg uploads --project demo
+```
+
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
 graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is
@@ -3537,6 +3559,7 @@ environment, never in a committed file.
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
+| `EVO_HUB_KG_UPLOAD_MAX_BYTES` | api | the largest archive (`.zip`, `.tar`, `.tar.gz`, `.tgz`) a writer may upload as a graph source with `evo-agents hub kg upload`, in bytes; default `21474836480` (20 GiB), at most 600 GiB |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
 | `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |

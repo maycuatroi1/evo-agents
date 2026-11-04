@@ -61,6 +61,9 @@ KG_SETTINGS = "kg.settings"
 # A writer put a new version of the project's retrieval question set (evo_agents.hub.server.kg_eval_sets):
 # "<project> set=<name> version=<n> questions=<n>".
 KG_EVAL_SET = "kg.eval_set"
+# A writer finished uploading an archive as a source (evo_agents.hub.server.kg_uploads):
+# "<project> source=<id> upload=<id> bytes=<n>", never a file name.
+KG_UPLOAD = "kg.upload"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 # A machine joined with a code or a pool's join token, as its owner with the new worker token:

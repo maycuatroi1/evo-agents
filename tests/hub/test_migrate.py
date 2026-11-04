@@ -166,6 +166,7 @@ TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
 TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 TABLES |= {"kg_init_runs"}  # migration 0197
+TABLES |= {"kg_uploads"}  # migration 0199
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -256,8 +257,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_twenty_one_tables(hub_db):
-    assert len(TABLES) == 221  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_twenty_two_tables(hub_db):
+    assert len(TABLES) == 222  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5506,3 +5507,35 @@ def test_0198_archives_a_project_with_who_did_it_and_going_back_makes_every_proj
     move_to(hub_db, "0197", down=True)
     assert not {"archived_at", "archived_by"} & columns(hub_db, "projects")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0198") :]
+
+
+def test_0199_records_archive_uploads_one_in_flight_per_archive_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0198")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0199")
+    u = hub_tables.kg_uploads
+    row = {
+        "project_id": ids["project"],
+        "source": "docs",
+        "label": {"level": "internal"},
+        "name": "docs.zip",
+        "size": 10,
+        "sha256": "a" * 64,
+        "part_size": 5,
+        "state": "uploading",
+        "created_by": ids["user"],
+    }
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(u).values({**row, "object_key": "kg-archives/one"}))
+    assert query(hub_db, select(u.c.state, u.c.report, u.c.build_id)) == [("uploading", {}, None)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(insert(u).values({**row, "object_key": "kg-archives/two"}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(u).values({**row, "state": "lost", "object_key": "kg-archives/three"}))
+    with live.connect(hub_db) as conn:
+        conn.execute(update(u).values(state="extracting"))
+        conn.execute(insert(u).values({**row, "object_key": "kg-archives/four"}))  # the first is no longer in flight
+    move_to(hub_db, "0198", down=True)
+    assert "kg_uploads" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0199") :]
