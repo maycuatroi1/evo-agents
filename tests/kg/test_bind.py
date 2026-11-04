@@ -1,10 +1,14 @@
 import json
+import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from evo_agents.cli import main
+from evo_agents.kg import project as project_module
 from evo_agents.kg import serve
 from evo_agents.kg.project import (
     ProjectError,
@@ -191,3 +195,52 @@ def test_bind_reaches_the_mcp_server_and_no_tool_takes_a_project(tmp_path, kg_en
     assert session.project is not None and session.project.name == "alpha"
     for tool in serve.TOOLS:
         assert "project" not in tool["inputSchema"].get("properties", {}), tool["name"]
+
+
+REMEMBER = """
+import sys
+from pathlib import Path
+
+from evo_agents.kg.project import load_project_at, remember
+
+project = load_project_at(Path(sys.argv[1]), Path(sys.argv[2]))
+for _ in range(int(sys.argv[3])):
+    remember(project)
+"""
+
+
+def test_remember_from_processes_at_once_loses_no_project(tmp_path, kg_env):
+    # `kg bench run --jobs` builds several projects in one kg home at once: on Windows a reader's open handle made the
+    # replace of projects.json fail (WinError 5), and anywhere two read-change-writes could drop each other's entry.
+    names = [f"p{i}" for i in range(4)]
+    roots = [harness(tmp_path, tmp_path / "scratch-home", name).harness.root for name in names]
+    procs = [
+        subprocess.Popen([sys.executable, "-c", REMEMBER, str(root), str(kg_env), "15"], stderr=subprocess.PIPE)
+        for root in roots
+    ]
+    errors = [proc.communicate(timeout=120)[1].decode() for proc in procs]
+    assert [proc.returncode for proc in procs] == [0] * len(procs), errors
+    assert set(read_index(kg_env)) == set(names)
+    assert not list(kg_env.glob("*.tmp"))
+
+
+def test_replace_tries_again_while_windows_refuses_it_and_raises_at_once_elsewhere(tmp_path, monkeypatch):
+    real = os.replace
+    refused = []
+
+    def busy(src, dst):
+        if len(refused) < 2:
+            refused.append(dst)
+            raise PermissionError(13, "Access is denied", str(dst))
+        real(src, dst)
+
+    monkeypatch.setattr(project_module.os, "replace", busy)
+    monkeypatch.setattr(project_module.sys, "platform", "win32")
+    project_module._write_json(tmp_path / "projects.json", {"a": 1})
+    assert len(refused) == 2 and json.loads((tmp_path / "projects.json").read_text()) == {"a": 1}
+
+    refused.clear()
+    monkeypatch.setattr(project_module.sys, "platform", "linux")
+    with pytest.raises(PermissionError):
+        project_module._write_json(tmp_path / "projects.json", {"a": 2})
+    assert len(refused) == 1
