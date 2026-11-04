@@ -17,7 +17,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { type DocsDocument, docsDocumentQuery } from "./api";
-import { DocumentHead } from "./document-head";
+import { DOCUMENT_COLUMN, DocumentHead } from "./document-head";
 import { documentHref } from "./links";
 import { imageResolver } from "./model";
 
@@ -67,7 +67,7 @@ function Body({ project, doc }: { project: string; doc: DocsDocument }) {
           testId="docs-older-version"
         />
       ) : null}
-      <article className="max-w-3xl" aria-label={doc.shown.title} data-testid="docs-body">
+      <article className="min-w-0" aria-label={doc.shown.title} data-testid="docs-body">
         {doc.shown.body.trim() ? (
           <SafeMarkdown variant="page" images={images} testId="docs-markdown">
             {doc.shown.body}
@@ -100,7 +100,7 @@ export function DocumentPage({
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
       {(doc) => (
-        <div className="flex flex-col gap-6" data-testid="docs-document">
+        <div className={DOCUMENT_COLUMN} data-testid="docs-document">
           <DocumentHead project={project} doc={doc} current="read" shown={doc.shown} actions={<VersionPicker project={project} doc={doc} />} />
           <Body project={project} doc={doc} />
         </div>
