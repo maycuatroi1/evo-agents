@@ -18419,9 +18419,57 @@
         "schema": "ProjectProblemShown"
       }
     },
+    "hub project archive": {
+      "positionals": [
+        {
+          "name": "project",
+          "metavar": "PROJECT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "harness",
+          "levels",
+          "locations",
+          "default_label",
+          "sinks",
+          "repos",
+          "role",
+          "max_level",
+          "created_at",
+          "updated_at",
+          "archived_at",
+          "archived_by"
+        ],
+        "schema": "Project"
+      }
+    },
     "hub project list": {
       "positionals": [],
       "options": [
+        {
+          "flags": [
+            "--archived"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
         {
           "flags": [
             "--json"
@@ -18444,7 +18492,9 @@
           "role",
           "max_level",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "archived_at",
+          "archived_by"
         ],
         "schema": "Project"
       }
@@ -18483,10 +18533,52 @@
           "max_level",
           "created_at",
           "updated_at",
+          "archived_at",
+          "archived_by",
           "created",
           "changed"
         ],
         "schema": "Registered"
+      }
+    },
+    "hub project unarchive": {
+      "positionals": [
+        {
+          "name": "project",
+          "metavar": "PROJECT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "harness",
+          "levels",
+          "locations",
+          "default_label",
+          "sinks",
+          "repos",
+          "role",
+          "max_level",
+          "created_at",
+          "updated_at",
+          "archived_at",
+          "archived_by"
+        ],
+        "schema": "Project"
       }
     },
     "hub provider-account add": {
@@ -27876,6 +27968,18 @@
           "summary": "List Projects",
           "operationId": "list_projects_v1_projects_get",
           "parameters": [
+            {
+              "name": "archived",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "list the archived projects too",
+                "default": false,
+                "title": "Archived"
+              },
+              "description": "list the archived projects too"
+            },
             {
               "name": "limit",
               "in": "query",
@@ -88174,6 +88278,174 @@
           }
         }
       },
+      "/v1/projects/{project}/archive": {
+        "post": {
+          "tags": [
+            "projects"
+          ],
+          "summary": "Archive",
+          "description": "Archive the project: it takes no new run, kg push or build, and nothing the hub schedules runs for it.",
+          "operationId": "archive_v1_projects__project__archive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/unarchive": {
+        "post": {
+          "tags": [
+            "projects"
+          ],
+          "summary": "Unarchive",
+          "description": "Make the archived project live again: its night shift, Loop and plugins' jobs run again as they are set.",
+          "operationId": "unarchive_v1_projects__project__unarchive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/plugins": {
         "get": {
           "tags": [
@@ -140034,6 +140306,31 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "when it was archived: it takes no new run, kg push or build; null while it is live"
+            },
+            "archived_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived By",
+              "description": "the login of whoever archived it; null while it is live"
             }
           },
           "type": "object",
@@ -145929,6 +146226,31 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "when it was archived: it takes no new run, kg push or build; null while it is live"
+            },
+            "archived_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived By",
+              "description": "the login of whoever archived it; null while it is live"
             },
             "created": {
               "type": "boolean",

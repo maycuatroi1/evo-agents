@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, project_archive
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.decisions import (
@@ -233,7 +233,9 @@ async def _end(conn: AsyncConnection, run_id: int, old: str, actor: str, reason:
 async def _register(
     conn: AsyncConnection, user: Principal, access: ProjectAccess, session_id: str, body: LocalRegister
 ):
-    """(run id, created) of the local run of ``session_id``: made now, or the member's own one updated."""
+    """(run id, created) of the local run of ``session_id``: made now, or the member's own one updated; 409 in an
+    archived project (``project_archive``), which takes no local run either."""
+    await project_archive.refuse_archived(conn, access.project_id, "it takes no local run of a session")
     r = tables.runs
     title = body.title or runs.clip(f"{body.machine}: {body.cwd}", MAX_TITLE_CHARS)
     fields = {

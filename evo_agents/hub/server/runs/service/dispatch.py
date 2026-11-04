@@ -25,6 +25,7 @@ from evo_agents.hub.server import (
     agent_placement,
     audit,
     autonomy_hold,
+    project_archive,
     run_access,
     run_access_rules,
     run_autonomy,
@@ -290,8 +291,10 @@ async def insert_run(conn: AsyncConnection, values: dict, who: run_autonomy.For 
     the principal when its kind does not say it). When the database refuses the row, the savepoint is rolled back and the IntegrityError,
     with the psycopg error that says why in ``orig``, goes on to the caller, whose transaction stays usable. A stop of
     autonomy that holds the run's principal refuses it, ``autonomy_hold.Stopped``, a 403, before anything is written,
-    and so does a request that carries a run's token, which starts no run (``run_access_rules.refuse_new_run``)."""
+    and so does a request that carries a run's token, which starts no run (``run_access_rules.refuse_new_run``), and an
+    archived project, ``project_archive.Archived``, a 409 that is a Stopped too."""
     run_access_rules.refuse_new_run()
+    await project_archive.refuse_archived(conn, values["project_id"])
     r = tables.runs
     if "profile_id" not in values:
         default = await ensure_default(conn, values["project_id"])

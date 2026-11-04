@@ -4,7 +4,8 @@ A tick is the job ``hub.loop_tick`` of one project, deferred with lock and queue
 (``jobs.loop_lock``): one tick of a project runs at a time, and at most one waits, which every event that comes
 meanwhile joins. ``hub.loop_ticks`` queues one for each project whose Loop is on (loop_states.enabled), every 5
 minutes; ``hub_events.record`` queues one in the transaction of each event of such a project (``on_event``), so the
-tick exists exactly when the event does. A project whose Loop is off gets no tick at all.
+tick exists exactly when the event does. A project whose Loop is off gets no tick at all, nor does an archived one
+(``server.project_archive``), whose Loop counts as off.
 
 The tick's code is the server's (``evo_agents.hub.server.loop.tick``); this module imports no server module, so
 ``hub_events`` and the worker's job list may import it (docs/structure.md, section Package boundaries).
@@ -22,10 +23,17 @@ from evo_agents.hub import jobs, tables
 log = logging.getLogger(__name__)
 
 
+def _on():
+    """The project ids of the Loops that are on, of projects that are not archived."""
+    s, p = tables.loop_states, tables.projects
+    return (
+        select(s.c.project_id).join_from(s, p, p.c.id == s.c.project_id).where(s.c.enabled, p.c.archived_at.is_(None))
+    )
+
+
 async def is_on(conn: AsyncConnection, project_id: int) -> bool:
-    """Whether project ``project_id``'s Loop is on."""
-    s = tables.loop_states
-    return bool(await conn.scalar(select(s.c.enabled).where(s.c.project_id == project_id)))
+    """Whether project ``project_id``'s Loop is on, its project not archived."""
+    return await conn.scalar(_on().where(tables.loop_states.c.project_id == project_id)) is not None
 
 
 async def defer_tick(conn: AsyncConnection, project_id: int) -> int | None:
@@ -47,9 +55,8 @@ async def on_event(conn: AsyncConnection, project_id: int) -> int | None:
 async def queue_ticks(engine: AsyncEngine, manager) -> dict:
     """Queue a tick of each project whose Loop is on (the periodic ``hub.loop_ticks``), with ``manager`` (the job
     manager of the worker running it)."""
-    s = tables.loop_states
     async with engine.begin() as conn:
-        projects = list(await conn.scalars(select(s.c.project_id).where(s.c.enabled).order_by(s.c.project_id)))
+        projects = list(await conn.scalars(_on().order_by(tables.loop_states.c.project_id)))
     queue, queued = jobs.JobQueue(manager), 0
     for project_id in projects:
         key = jobs.loop_lock(project_id)

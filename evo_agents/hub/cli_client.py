@@ -76,6 +76,8 @@ PROJECT_KEYS = (
     "max_level",
     "created_at",
     "updated_at",
+    "archived_at",
+    "archived_by",
 )
 
 
@@ -370,7 +372,7 @@ def cmd_project_register(args) -> int:
 @_client_command
 def cmd_project_list(args) -> int:
     hub, _ = _signed_in()
-    projects = hub.call("GET", "/v1/projects")
+    projects = hub.call("GET", "/v1/projects?archived=true" if args.archived else "/v1/projects")
     if args.json:
         _print_json(projects)
         return 0
@@ -378,8 +380,44 @@ def cmd_project_list(args) -> int:
         (p["name"], p["role"] or "-", p["max_level"] or "-", _hub_sink(p), len(p["repos"]), _when(p["updated_at"]))
         for p in projects
     ]
-    _table(("PROJECT", "ROLE", "MAX LEVEL", "HUB SINK", "REPOS", "UPDATED (UTC)"), rows)
+    header = ("PROJECT", "ROLE", "MAX LEVEL", "HUB SINK", "REPOS", "UPDATED (UTC)")
+    if args.archived:
+        rows = [(*row, _when(p["archived_at"])) for row, p in zip(rows, projects, strict=True)]
+        header = (*header, "ARCHIVED (UTC)")
+    _table(header, rows)
     return 0
+
+
+def archive_lines(project: dict) -> list[str]:
+    """What ``hub project archive`` and ``unarchive`` print of the project the hub answered."""
+    name = project["name"]
+    if project["archived_at"] is None:
+        return [f"Project {name} is live: runs, kg pushes and builds, its night shift, Loop and plugins' jobs go on."]
+    return [
+        f"Project {name} is archived since {_when(project['archived_at'])} UTC, by {project['archived_by']}: it takes no "
+        "new run, kg push or build, and the hub runs nothing for it; what it holds reads as before.",
+        f"Make it live again with `evo-agents hub project unarchive {name}`.",
+    ]
+
+
+def _archive_state(args, action: str) -> int:
+    hub, _ = _signed_in()
+    project = hub.call("POST", f"{_project_path(args.project)}/{action}")
+    if args.json:
+        _print_json(project)
+        return 0
+    print("\n".join(archive_lines(project)))
+    return 0
+
+
+@_client_command
+def cmd_project_archive(args) -> int:
+    return _archive_state(args, "archive")
+
+
+@_client_command
+def cmd_project_unarchive(args) -> int:
+    return _archive_state(args, "unarchive")
 
 
 @_client_command
@@ -484,8 +522,22 @@ def register_client(hsub) -> None:
     json_option(register, returns_object(*PROJECT_KEYS, "created", "changed", schema="Registered"))
     register.set_defaults(func=cmd_project_register)
     project_list = psub.add_parser("list", help="the projects you see, with your role and the hub sink of each")
+    project_list.add_argument("--archived", action="store_true", help="the archived projects too, with when")
     json_option(project_list, returns_array(*PROJECT_KEYS, schema="Project"))
     project_list.set_defaults(func=cmd_project_list)
+    for name, func, text in (
+        (
+            "archive",
+            cmd_project_archive,
+            "archive a project: it takes no new run, kg push or build, and the hub runs nothing for it; what it holds "
+            "reads as before (an admin of it; its active runs cancelled first)",
+        ),
+        ("unarchive", cmd_project_unarchive, "make an archived project live again (an admin of it)"),
+    ):
+        state = psub.add_parser(name, help=text)
+        state.add_argument("project", metavar="PROJECT", help="the project's name on the hub")
+        json_option(state, returns_object(*PROJECT_KEYS, schema="Project"))
+        state.set_defaults(func=func)
 
     registry = hsub.add_parser("registry", help="the harness registry of this machine")
     rsub = registry.add_subparsers(dest="registry_command", required=True)

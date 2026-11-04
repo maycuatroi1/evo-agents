@@ -14,6 +14,8 @@ which calls each such job of the plugins the project enables with that project a
 their cron. Its lock and queueing lock are the project's (``jobs.value_check_lock``): one runs at a time, at most one
 waits, and the batches that come meanwhile join it.
 
+An archived project (``evo_agents.hub.server.project_archive``) counts as enabling no plugin here: no job runs for it.
+
 Outside ``evo_agents.hub.server``: the job worker imports it.
 """
 
@@ -25,7 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import jobs, tables
-from evo_agents.hub.plugin_calls import CoreContext, PluginHostClient, call, enabled_plugins, enabled_query
+from evo_agents.hub.plugin_calls import CoreContext, PluginHostClient, call, enabled_query
 
 log = logging.getLogger(__name__)
 
@@ -39,9 +41,20 @@ def lock(plugin: str, job: str) -> str:
     return f"plugin-job:{plugin}:{job}"
 
 
+def _live():
+    """``enabled_query`` of the projects that are not archived."""
+    return enabled_query().where(tables.projects.c.archived_at.is_(None))
+
+
+async def _enabled_in(conn: AsyncConnection, project_id: int) -> list:
+    """The rows of ``enabled_query`` of project ``project_id``, by plugin name; none when it is archived."""
+    query = _live().where(tables.projects.c.id == project_id).order_by(tables.plugins.c.name)
+    return list(await conn.execute(query))
+
+
 async def _enabled(engine: AsyncEngine, name: str | None = None) -> dict[str, tuple]:
-    """plugin name -> (a row of ``enabled_query``, the names of the projects that enable it)."""
-    query = enabled_query().order_by(tables.plugins.c.name, tables.projects.c.name)
+    """plugin name -> (a row of ``enabled_query``, the names of the live projects that enable it)."""
+    query = _live().order_by(tables.plugins.c.name, tables.projects.c.name)
     if name is not None:
         query = query.where(tables.plugins.c.name == name)
     found: dict[str, tuple] = {}
@@ -126,7 +139,7 @@ def _signal_jobs(rows) -> list[tuple]:
 async def defer_on_signals(conn: AsyncConnection, project_id: int) -> int | None:
     """Queue hub.value_check for project ``project_id`` in ``conn``'s transaction, when a plugin it enables has a job
     named SIGNAL_JOB; the job's id, or None when there is none or one waits already."""
-    if not _signal_jobs(await enabled_plugins(conn, project_id)):
+    if not _signal_jobs(await _enabled_in(conn, project_id)):
         return None
     key = jobs.value_check_lock(project_id)
     return await jobs.JobQueue.in_transaction().defer(
@@ -137,7 +150,7 @@ async def defer_on_signals(conn: AsyncConnection, project_id: int) -> int | None
 async def run_on_signals(engine: AsyncEngine, config, project_id: int, *, host=None) -> dict:
     """Run each job named SIGNAL_JOB of the plugins project ``project_id`` enables, for that project alone."""
     async with engine.begin() as conn:
-        found = _signal_jobs(await enabled_plugins(conn, project_id))
+        found = _signal_jobs(await _enabled_in(conn, project_id))
     ran = {}
     own = host is None and config is not None and any(row.tier != "core" for row, _ in found)
     if own:

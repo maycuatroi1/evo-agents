@@ -5486,3 +5486,23 @@ def test_0197_keeps_the_kg_init_runs_one_in_flight_a_project_and_the_lens_going_
     assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "review")) == [(0,)]
     assert query(hub_db, select(func.count()).select_from(t.proposals).where(t.proposals.c.lens == "kg_init")) == [(0,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0197") :]
+
+
+def test_0198_archives_a_project_with_who_did_it_and_going_back_makes_every_project_live(hub_db):
+    move_to(hub_db, "0197")
+    assert not {"archived_at", "archived_by"} & columns(hub_db, "projects")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0198")
+    p = hub_tables.projects
+    assert query(hub_db, select(p.c.archived_at, p.c.archived_by)) == [(None, None)], "no project is archived"
+    with live.connect(hub_db) as conn:
+        conn.execute(update(p).values(archived_at=func.now(), archived_by=ids["user"]))
+    for half in ({"archived_by": None}, {"archived_at": None}):
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(update(p).values(half))
+    with live.connect(hub_db) as conn, pytest.raises(errors.ForeignKeyViolation):
+        conn.execute(update(p).values(archived_by=ids["user"] + 1000))
+    move_to(hub_db, "0197", down=True)
+    assert not {"archived_at", "archived_by"} & columns(hub_db, "projects")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0198") :]

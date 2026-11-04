@@ -13,8 +13,9 @@ default agent profile (``profile_store.ensure_default``), whose handle is the pr
 handle of another project's agent is refused (409), since @<name> would name both.
 
 GET /v1/projects lists the projects the caller holds a grant on, all of them for a hub admin, with the caller's
-role and max level; GET /v1/projects/{project} is one of them. A project that is not registered and one the caller
-cannot see get the same 404.
+role and max level, the archived ones (``evo_agents.hub.server.project_archive``) only with ``archived`` true;
+GET /v1/projects/{project} is one of them, archived or not. A project that is not registered and one the caller cannot
+see get the same 404.
 
 ``project_access`` is where the routes for memories, plans, skills and the knowledge graph start: the project's
 rules (``evo_agents.hub.access``) and the caller's grant, with the read and write rules applied through them. A hub
@@ -31,7 +32,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import ScalarSelect, and_, bindparam, delete, func, insert, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
@@ -110,6 +111,10 @@ class Project(BaseModel):
     max_level: str | None
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = Field(
+        None, description="when it was archived: it takes no new run, kg push or build; null while it is live"
+    )
+    archived_by: str | None = Field(None, description="the login of whoever archived it; null while it is live")
 
 
 class Registered(Project):
@@ -352,10 +357,10 @@ def _refusal(name: str) -> str:
     return f"registering or updating project {name} needs a hub admin, or the admin role on project {name}"
 
 
-def _visible(user: Principal, name: str | None):
+def _visible(user: Principal, name: str | None, archived: bool):
     """The projects ``user`` holds a grant on (every one for a hub admin), only ``name`` when given, and only the
-    run's project for the agent of a run; with the user's grant, by name."""
-    projects, grants = tables.projects, tables.grants
+    run's project for the agent of a run, the archived ones only with ``archived``; with the user's grant, by name."""
+    projects, grants, archiver = tables.projects, tables.grants, tables.users.alias("archiver")
     query = select(
         projects.c.id,
         projects.c.name,
@@ -367,9 +372,13 @@ def _visible(user: Principal, name: str | None):
         projects.c.default_label,
         projects.c.created_at,
         projects.c.updated_at,
+        projects.c.archived_at,
+        archiver.c.login.label("archived_by"),
         grants.c.role,
         grants.c.max_level,
-    ).select_from(_with_grant(user.user_id))
+    ).select_from(_with_grant(user.user_id).outerjoin(archiver, archiver.c.id == projects.c.archived_by))
+    if not archived:
+        query = query.where(projects.c.archived_at.is_(None))
     if not user.admin:
         query = query.where(grants.c.user_id.is_not(None))
     if name is not None:
@@ -380,10 +389,10 @@ def _visible(user: Principal, name: str | None):
 
 
 async def _projects(
-    conn: AsyncConnection, user: Principal, name: str | None = None, page: Page = WHOLE
+    conn: AsyncConnection, user: Principal, name: str | None = None, page: Page = WHOLE, *, archived: bool = True
 ) -> list[Project]:
     project_sinks, project_repos = tables.project_sinks, tables.project_repos
-    rows = await page.rows(conn, _visible(user, name))
+    rows = await page.rows(conn, _visible(user, name, archived))
     ids = [row.id for row in rows]
     sinks: dict[int, list[Sink]] = {}
     repos: dict[int, list[Repo]] = {}
@@ -427,24 +436,36 @@ async def _projects(
                 max_level=max_level,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
+                archived_at=row.archived_at,
+                archived_by=row.archived_by,
             )
         )
     return projects
 
 
 @router.get("", response_model=list[Project], responses=PAGED)
-async def list_projects(request: Request, user: CurrentUser, page: Paging = WHOLE) -> list[Project]:
+async def list_projects(
+    request: Request,
+    user: CurrentUser,
+    page: Paging = WHOLE,
+    archived: Annotated[bool, Query(description="list the archived projects too")] = False,
+) -> list[Project]:
     async with request.app.state.engine.begin() as conn:
-        return await _projects(conn, user, page=page)
+        return await _projects(conn, user, page=page, archived=archived)
+
+
+async def project_view(conn: AsyncConnection, user: Principal, project: str) -> Project:
+    """Project ``project`` as ``user`` sees it, archived or not; 404 when they do not see it."""
+    found = await _projects(conn, user, project)
+    if not found:
+        raise HTTPException(404, not_found(project))
+    return found[0]
 
 
 @router.get("/{project}", response_model=Project, responses={404: {"model": ErrorBody}})
 async def show(request: Request, project: ProjectName, user: CurrentUser) -> Project:
     async with request.app.state.engine.begin() as conn:
-        found = await _projects(conn, user, project)
-    if not found:
-        raise HTTPException(404, not_found(project))
-    return found[0]
+        return await project_view(conn, user, project)
 
 
 async def _refuse_agent_handle(conn: AsyncConnection, name: str) -> None:

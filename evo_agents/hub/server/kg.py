@@ -96,7 +96,7 @@ from evo_agents.hub.kg_ingest import (
 )
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import audit, rankers, run_audience
+from evo_agents.hub.server import audit, project_archive, rankers, run_audience
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -471,6 +471,7 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
     run_id = str(body.run_id)
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
+        await project_archive.refuse_archived(conn, access.project_id, "it takes no kg push")
         ceiling = _hub_ceiling(access)
         knowledge = await _config(conn, access)
         ingests, pending_runs = tables.kg_ingests, tables.kg_pending_runs
@@ -738,6 +739,7 @@ async def request_build(request: Request, project: ProjectName, user: CurrentUse
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _writer(access, "building")
+        await project_archive.refuse_archived(conn, access.project_id, "its graph is not built again")
         build_id, queued = await _queue(request, conn, access.project_id, project, user.user_id)
         if queued:
             await audit.record(

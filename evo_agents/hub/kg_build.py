@@ -680,8 +680,13 @@ async def queue_build(
     job_queue: JobQueue, conn: AsyncConnection, project_id: int, project: str, requested_by: int | None
 ) -> tuple[int | None, bool]:
     """Queue a build of ``project`` in ``conn``'s transaction: (its build id, True), or (the waiting build's id,
-    False) when one waits already. The waiting job's row stays locked until the transaction ends, and the worker
-    takes jobs with SKIP LOCKED, so it cannot start that build before the caller's rows are visible to it."""
+    False) when one waits already, or (None, False) when the project is archived (``server.project_archive``), whose
+    graph is not built again. The waiting job's row stays locked until the transaction ends, and the worker takes jobs
+    with SKIP LOCKED, so it cannot start that build before the caller's rows are visible to it."""
+    p = tables.projects
+    if await conn.scalar(select(p.c.archived_at).where(p.c.id == project_id)) is not None:
+        log.info("kg build not queued: the project is archived", extra={"project": project})
+        return None, False
     key = kg_lock(project)
     builds, jobs = tables.kg_builds, procrastinate_jobs
     for _ in range(QUEUE_ATTEMPTS):

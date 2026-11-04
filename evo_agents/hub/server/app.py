@@ -480,6 +480,7 @@ def create_app(config: HubConfig) -> FastAPI:
         problem_evidence,
         problems,
         project_admin,
+        project_archive,
         project_plugins,
         provider_accounts,
         rate_limits,
@@ -550,6 +551,7 @@ def create_app(config: HubConfig) -> FastAPI:
         seller_api.router,
         project_admin.admin_router,  # /v1/admin/projects/{p}: self-managed state
         project_admin.router,  # a self-managed project's admins: grants, invites, plugins
+        project_archive.router,  # /v1/projects/{p}/archive and /unarchive
         project_plugins.router,
         plugin_ui.router,
         plugin_cli.router,
