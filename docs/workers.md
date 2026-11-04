@@ -3344,7 +3344,12 @@ decides whether to reinstall its own install, and it does when all of these hold
   run counts for nothing: once the hub parks it, the daemon stops its agent at the end of the turn, records it
   `parked` with its session and directory in the worker's state, and lets it go, so the turn after that may update.
   The run that resumes it is a new claim, which the updated daemon takes and goes on in the same session and
-  worktrees (`Conversation.adopt`). A waiting run therefore holds the install back until the reaper's next pass after
+  worktrees (`Conversation.adopt`). What a parked run left running does count, on Linux: a job its agent started with
+  `setsid nohup` stays in the unit's cgroup, and systemd kills it when the daemon exits (`KillMode=mixed`), so while a
+  process whose environment names a run (`EVO_RUN_ID`) lives in the daemon's `.service` cgroup and started less than
+  24 hours ago, the daemon waits and says which runs (`selfupdate.detached`, read from `/proc/self/cgroup` and the
+  cgroup's `cgroup.procs`). launchd leaves a job that
+  left its process group alone, so a Mac counts none. A waiting run therefore holds the install back until the reaper's next pass after
   those 10 minutes, and as long as the hub's job worker runs no pass, the daemon keeps waiting with it.
 - **It is not turned off on the machine**: `EVO_WORKER_SELF_UPDATE` is not `off`, `0`, `false` or `no`.
 

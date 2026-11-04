@@ -15,7 +15,8 @@ A turn, in order:
    Else the daemon reads the tag itself, at the first turn, then hourly (after a failure, in 15 minutes), on a clock
    that counts the time the machine sleeps (``power.clock_through_sleep``). Unknown, ``waiting``; the commit it runs,
    ``current``. Whatever the hub says, the daemon installs the tag nightly from GitHub, never a commit the hub names.
-7. It holds runs or agents of a previous daemon, a daemon of the install is not ready (runs, a lock, run by hand),
+7. It holds runs or agents of a previous daemon, processes of a run it no longer holds (one parked on a wait) live
+   on in its systemd service (``detached``), a daemon of the install is not ready (runs, a lock, run by hand),
    another one updates the install, or the update to that commit failed less than an hour ago: ``waiting``.
 8. Else ``updating``: it closes the gate, waits until no daemon of the install claims, installs nightly
    (``installer``) and, once the new install starts, ends the daemon with ``home.EXIT_UPDATED``. A failure is kept as
@@ -48,6 +49,7 @@ from pathlib import Path
 from evo_agents.hub import runs
 from evo_agents.worker.home import WorkerHome
 from evo_agents.worker.power import clock_through_sleep
+from evo_agents.worker.selfupdate.detached import live_runs
 from evo_agents.worker.selfupdate.install import COMMIT, Install, find_uv, read_install
 from evo_agents.worker.selfupdate.installer import Installer, Outcome, nightly_commit
 from evo_agents.worker.selfupdate.peers import Peers, root_of
@@ -104,6 +106,7 @@ class SelfUpdate:
         lookup_retry: float = LOOKUP_RETRY,
         install_retry: float = INSTALL_RETRY,
         idle_wait: float = IDLE_WAIT,
+        live: Callable[[], Mapping[int, int]] = live_runs,
     ):
         self.install = install
         self.identity = install.identity()  # what lay in the install when the daemon started
@@ -113,6 +116,8 @@ class SelfUpdate:
         self.clock = clock
         self.check_every, self.lookup_retry, self.install_retry = check_every, lookup_retry, install_retry
         self.idle_wait = idle_wait
+        self.live = live  # run id -> its processes alive in the daemon's service (``detached``)
+        self._live: Mapping[int, int] = {}  # as the last turn found them
         self.static = self._static_reason(supervision, off)
         self.locked: bool | None = None  # as the hub said it in this daemon's life; None until it did
         self.state, self.reason = ("unsupported", self.static) if self.static else ("waiting", LOCK_UNKNOWN)
@@ -238,6 +243,7 @@ class SelfUpdate:
     # Turns
 
     def _why_not(self, held: int, orphans: int) -> str | None:
+        self._live = {}
         if self.static:
             return self.static
         if self.locked is None:
@@ -248,7 +254,22 @@ class SelfUpdate:
             return f"it holds {held} run(s)"
         if orphans:
             return "it has agents of a previous daemon to stop"
-        return None
+        return self._live_reason()
+
+    def _live_reason(self) -> str | None:
+        """Why the processes of runs this daemon no longer holds keep it from updating: its exit would kill them."""
+        try:
+            self._live = dict(self.live())
+        except Exception:  # a bug here must not end the daemon
+            log.exception("self-update: the processes of its service were not read")
+            self._live = {}
+        if not self._live:
+            return None
+        listed = ", ".join(f"#{run_id}" for run_id in sorted(self._live))
+        count = sum(self._live.values())
+        return (
+            f"{count} process(es) of run(s) {listed}, which it no longer holds, live in its service: an exit kills them"
+        )
 
     def publish(self, *, held: int, orphans: int, worker: str) -> str | None:
         """Write this daemon's state for the others of the install; why it may not update now, or None."""
@@ -270,7 +291,7 @@ class SelfUpdate:
             return False
         why = self.publish(held=held, orphans=orphans, worker=worker)
         if self._changed():
-            return self._restart_on_change(held == 0 and orphans == 0)
+            return self._restart_on_change(held == 0 and orphans == 0 and not self._live)
         if self.static:
             self._say("unsupported", self.static)
             self._end_request("impossible")

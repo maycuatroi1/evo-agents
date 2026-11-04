@@ -9,7 +9,8 @@ and the ``uv`` of ``tests.worker.fake_uv``, without Postgres.
   and builds it again (0.12.24); when the copy cannot go back, the old version is installed again. uv runs with a
   cache of the updates' own, which keeps no build or checkout of evo-ak once an update ends.
 - The daemon: an idle, unlocked daemon under a service manager installs nightly and exits ``EXIT_UPDATED``; a locked
-  one, one that has not heard the lock, one run by hand or one that holds a run does not; a failed update is reported
+  one, one that has not heard the lock, one run by hand, one that holds a run or one whose systemd service still has
+  processes of a parked run (``detached``, read from /proc and the cgroup tree) does not; a failed update is reported
   and tried again later while runs go on; a hub that answers 426 gets an update first when the lock kept in
   config.json says unlocked; two daemons of one install update once, after both are idle, and both restart.
 """
@@ -31,6 +32,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import EXIT_UPDATED, PidLock, WorkerConfig, WorkerHome
 from evo_agents.worker.selfupdate import backup as backup_module
+from evo_agents.worker.selfupdate import detached
 from evo_agents.worker.selfupdate import installer as installer_module
 from evo_agents.worker.selfupdate.install import find_uv, read_install, repo_of
 from evo_agents.worker.selfupdate.installer import Done, Installer, api_commit, nightly_commit, parse_ls_remote
@@ -123,7 +125,7 @@ class Fake:
         install = self.install()
         peers = Peers(self.tmp / "installs" / "one", home.root)
         installer = Installer(install, str(self.uv), peers.staging, self.env())
-        options = {"idle_wait": 10.0, **options}
+        options = {"idle_wait": 10.0, "live": dict, **options}  # no process of this machine holds it back
         return SelfUpdate(
             install, supervision=supervision, peers=peers, installer=installer, lookup=self.lookup, **options
         )
@@ -442,6 +444,111 @@ def test_a_daemon_whose_install_changes_during_an_update_restarts_only_once_the_
             assert b.state == "current" and b.may_claim(), "b goes on with the install it started on"
     finally:
         a.close()
+        b.close()
+
+
+def _proc(tmp: Path, cgroup_line: str, processes: dict[int, tuple[dict[str, str], float]], *, boot=1_000.0):
+    """A /proc and a cgroup tree in ``tmp``: this process in the cgroup of ``cgroup_line``, the pids of
+    ``processes`` in it, each with its environment and its start in seconds after ``boot``."""
+    proc, cgroups = tmp / "proc", tmp / "cgroup"
+    (proc / "self").mkdir(parents=True)
+    (proc / "self" / "cgroup").write_text(cgroup_line + "\n", encoding="utf-8")
+    (proc / "stat").write_text(f"cpu  1 2 3\nbtime {int(boot)}\n", encoding="utf-8")
+    path = cgroup_line.split(":", 2)[2].lstrip("/")
+    root = cgroups / "systemd" if ":name=systemd:" in cgroup_line else cgroups
+    (root / path).mkdir(parents=True)
+    (root / path / "cgroup.procs").write_text("".join(f"{pid}\n" for pid in processes), encoding="utf-8")
+    tick = os.sysconf("SC_CLK_TCK")
+    for pid, (env, started) in processes.items():
+        place = proc / str(pid)
+        place.mkdir()
+        place.joinpath("environ").write_bytes(b"".join(f"{k}={v}".encode() + b"\0" for k, v in env.items()))
+        fields = ["S"] + ["0"] * 18 + [str(int(started * tick))] + ["0"] * 5
+        place.joinpath("stat").write_text(f"{pid} (python (x)) " + " ".join(fields), encoding="utf-8")
+    return proc, cgroups
+
+
+SERVICE = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/evo-agents-worker-evo-agents.service"
+
+
+def test_the_processes_of_runs_in_the_daemons_service_are_counted_by_run(tmp_path):
+    boot, now = 1_000.0, 1_000.0 + 2 * detached.MAX_AGE
+    processes = {
+        10: ({"EVO_WORKER_HOME": "/w"}, detached.MAX_AGE * 2 - 5),  # the daemon itself
+        11: ({"EVO_RUN_ID": "1609", "PATH": "/bin"}, detached.MAX_AGE * 2 - 60),  # setsid nohup ./run-entities.sh
+        12: ({"EVO_RUN_ID": "1609"}, detached.MAX_AGE * 2 - 59),
+        13: ({"EVO_RUN_ID": "1610"}, detached.MAX_AGE * 2 - 30),
+        14: ({"EVO_RUN_ID": "1500"}, 10.0),  # a process left more than a day ago no longer counts
+        15: ({"HOME": "/home/evo"}, detached.MAX_AGE * 2 - 30),  # no run named
+    }
+    proc, cgroups = _proc(tmp_path, SERVICE, processes, boot=boot)
+    assert detached.live_runs(proc, cgroups, now=lambda: now, me=10) == {1609: 2, 1610: 1}
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "0::/user.slice/user-1000.slice/session-3.scope",  # a terminal: the daemon runs by hand
+        "0::/",  # a container's root
+    ],
+    ids=["session", "root"],
+)
+def test_a_daemon_in_no_systemd_service_finds_no_process_of_a_run(tmp_path, line):
+    proc, cgroups = _proc(tmp_path, line, {11: ({"EVO_RUN_ID": "7"}, 1.0)})
+    assert detached.live_runs(proc, cgroups, now=lambda: 2.0, me=1) == {}
+
+
+def test_the_v1_systemd_hierarchy_wins_over_the_unified_one(tmp_path):
+    line = "1:name=systemd:/user.slice/user@1000.service/evo-agents-worker.service"
+    proc, cgroups = _proc(tmp_path, line, {11: ({"EVO_RUN_ID": "7"}, 1.0)})
+    with (proc / "self" / "cgroup").open("a", encoding="utf-8") as handle:
+        handle.write("0::/user.slice/user@1000.service/init.scope\n")
+    assert detached.live_runs(proc, cgroups, now=lambda: 1_005.0, me=1) == {7: 1}
+
+
+def test_a_daemon_whose_service_runs_a_parked_runs_job_waits_and_holds_its_peers_back(fake, tmp_path):
+    """A plan run parked on a wait for a job it started with setsid nohup: its daemon holds no run, but its exit
+    would have systemd kill the job, so neither it nor another daemon of the install updates until the job ends."""
+    homes = [WorkerHome(tmp_path / name) for name in ("worker-a", "worker-b")]
+    for home in homes:
+        home.ensure()
+    locks = [PidLock(home.pid_path) for home in homes]  # both daemons run
+    assert all(lock.acquire() for lock in locks)
+    alive = {1609: 2}
+    a, b = fake.updater(homes[0], live=lambda: alive), fake.updater(homes[1])
+    for updater in (a, b):
+        updater.hear_lock(False)
+    try:
+        assert asyncio.run(a.turn(held=0, orphans=0, worker="a")) is False
+        said = "2 process(es) of run(s) #1609, which it no longer holds, live in its service: an exit kills them"
+        assert (a.state, a.reason) == ("waiting", said)
+        assert a.may_claim(), "the parked run may resume on it meanwhile"
+        assert [(peer["ready"], peer["why"]) for peer in b.peers.others()] == [(False, said)]
+        assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is False
+        assert b.state == "waiting" and fake.calls() == [], "b waits for a, and nothing was installed"
+        alive.clear()
+        assert a.publish(held=0, orphans=0, worker="a") is None
+        assert [peer["ready"] for peer in b.peers.others()] == [True]
+    finally:
+        a.close()
+        b.close()
+        for lock in locks:
+            lock.release()
+
+
+def test_a_daemon_whose_install_changed_restarts_once_the_parked_runs_processes_end(fake, tmp_path):
+    home = WorkerHome(tmp_path / "worker-b")
+    home.ensure()
+    alive = {1610: 1}
+    b = fake.updater(home, live=lambda: alive)
+    b.hear_lock(False)
+    try:
+        write_install(fake.tools, fake.bin, version="0.23.0", commit=NEW)  # another daemon of the install updated it
+        assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is False
+        assert (b.state, b.reason) == ("waiting", "the install was updated: it restarts on it once its runs end")
+        alive.clear()
+        assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is True
+    finally:
         b.close()
 
 
