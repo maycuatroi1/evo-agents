@@ -36,7 +36,7 @@ import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { promotionNight, seedCurator } from "./support/curator";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
-import { buildsPath, explorerReady, graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
+import { buildsPath, explorerReady, graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg, uploadPath } from "./support/kg";
 import { apiOf, markAgentMemory, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { dayFromNow, seatByApi, seatOf, unitByApi } from "./support/org";
@@ -685,6 +685,23 @@ const PAGES: Entry[] = [
       await grantOn(kg.project, me.login, "reader", "internal");
       await open(page, nodePath(kg.project, "deals:doc:acme-contract"));
       await expect(page.getByTestId("state-not-found")).toBeVisible();
+    },
+  },
+  {
+    name: "knowledge graph upload data",
+    open: async ({ page, me }) => {
+      const kg = await sharedKg();
+      await grantOn(kg.project, me.login, "writer", "customer");
+      await open(page, uploadPath(kg.project));
+      await expect(page.getByTestId("kg-upload-form")).toBeVisible();
+      await expect(page.getByTestId("kg-uploads").getByTestId("state-loading")).toHaveCount(0);
+    },
+  },
+  {
+    name: "new project from data",
+    open: async ({ page }) => {
+      await open(page, "/projects/new");
+      await expect(page.getByTestId("kg-new-project-form")).toBeVisible();
     },
   },
   {

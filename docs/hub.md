@@ -2881,7 +2881,7 @@ evo-agents kg sync --push                                         # then: knowle
 `evo-agents hub kg upload FILE --project demo [--source NAME] [--label L]`; each upload is a row of `kg_uploads`
 (migration 0199). Without `--source` the source is the
 file's name without its suffix; without `--label` the archive takes the project's default label. The archive can be up
-to `EVO_HUB_KG_UPLOAD_MAX_BYTES` (20 GiB by default). The bytes never pass through the API. `POST
+to `EVO_HUB_KG_UPLOAD_MAX_BYTES` (20 GiB by default). From the CLI the bytes never pass through the API. `POST
 /v1/kg/{project}/uploads` checks the writer role, the size (413 over the limit) and the label against what the hub sink
 clears (422 above it, as for `kg sync --push`) before any part leaves the machine. It then starts an S3 multipart upload
 under `kg-archives/` in the blob store. The CLI asks for presigned PUTs a few parts at a time (`POST
@@ -2898,6 +2898,22 @@ and the build that followed. An upload still `uploading` and untouched for 24 ho
 evo-agents hub kg upload ./lumen-handbook.zip --project demo --label internal
 evo-agents hub kg uploads --project demo
 ```
+
+**Uploading from the web.** The project's knowledge graph has an Upload data tab (`/p/{project}/kg/upload`). A writer
+drops or chooses one archive; the page computes its SHA-256 in the browser, slice by slice, and starts the upload with
+the same `POST /v1/kg/{project}/uploads`. The label picker offers only the project's levels up to what its hub sink
+clears. The page cannot PUT to the blob store, since its connect-src is `'self'`, so it sends each part to the hub's
+own origin: `PUT /v1/kg/{project}/uploads/{id}/parts/{number}` with the part's bytes as the body
+(`evo_agents/hub/server/kg_upload_relay.py`). Only the upload's sender may send a part, while the upload is
+`uploading`, and each part must have exactly its size (422 otherwise, 413 past it). The hub streams the body to a
+temporary file and hands it to the store as that part of the multipart upload. The page sends three parts at once,
+tries each up to three times, and shows each part's progress. It keeps a record of the upload (the file's name, size,
+last change, hash, source and label, never its bytes) in the browser's local storage for a day. After a reload the
+page lists the uploads left unfinished, and the same file chosen again resumes the upload: only the parts the store
+lacks are sent. Under the form, each upload's report shows the files read, the files skipped and kept without text by
+reason, and links to its build and to the kg_init run after it. The Next.js proxy takes a request body up to 65 MiB
+(`proxyClientMaxBodySize` in `web/next.config.ts`), which fits one part. "New project from data" (`/projects/new`,
+linked from Home) does the same with `new_project: true`.
 
 **A new project from an upload.** `evo-agents hub kg upload FILE --new-project P [--label L]` creates project P with no
 harness and uploads into it, in the transaction of `POST /v1/kg/{project}/uploads` with `new_project: true`

@@ -205,6 +205,7 @@
   "nav": {
     "label": "Main navigation",
     "home": "Home",
+    "newProject": "New project from data",
     "hub": "Hub",
     "project": "Project",
     "overview": "Overview",
@@ -601,7 +602,8 @@
       "count": "{count, plural, one {# project} other {# projects}}",
       "open": "Open project {name}",
       "curator": "Curator: {state}",
-      "proposals": "{count, plural, one {# proposal waits} other {# proposals wait}}"
+      "proposals": "{count, plural, one {# proposal waits} other {# proposals wait}}",
+      "newFromData": "New project from data"
     },
     "empty": {
       "title": "No project has been granted to you yet",
@@ -609,7 +611,8 @@
       "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page. To bring others in, make them invite links.",
       "admin": "Open Administration",
       "copyLogin": "Copy your login",
-      "invites": "Make an invite link"
+      "invites": "Make an invite link",
+      "newFromData": "New project from data"
     },
     "authorWaiting": {
       "title": "Waiting for your reply",
@@ -1864,7 +1867,8 @@
       "label": "Knowledge graph pages",
       "explore": "Explore",
       "builds": "Builds",
-      "review": "Review queue"
+      "review": "Review queue",
+      "upload": "Upload data"
     },
     "explorer": {
       "canvasRole": "graph",
@@ -7289,7 +7293,8 @@
       "product_goals": "Product goals",
       "product": "Product",
       "kg_health": "Graph health",
-      "kg_init": "Graph setup"
+      "kg_init": "Graph setup",
+      "kg_questions": "Starter questions"
     },
     "kinds": {
       "docs": "Docs",
@@ -11849,6 +11854,117 @@
         "paidOut": "Marked the share of {publisher} for {month} paid out",
         "payoutFailed": "Could not mark the share of {publisher} paid out"
       }
+    }
+  },
+  "kgUpload": {
+    "title": "Upload data",
+    "intro": "Send an archive of documents into this project's knowledge graph. The hub reads it as a source of its own, then builds the graph.",
+    "drop": {
+      "title": "Drop an archive here",
+      "hint": "A .zip, .tar, .tar.gz or .tgz file. Documents, sheets and text inside it become items of the graph.",
+      "choose": "Choose a file",
+      "input": "Archive to upload",
+      "over": "Drop the archive to choose it",
+      "notArchive": "{name} is not an archive the hub reads. Choose a .zip, .tar, .tar.gz or .tgz file.",
+      "oneFile": "Drop one archive at a time.",
+      "empty": "{name} is empty.",
+      "change": "Choose another file"
+    },
+    "form": {
+      "source": "Source name",
+      "sourceHint": "The graph keeps the archive's items under upload.{source}. Uploading again under the same name replaces them.",
+      "sourceHintEmpty": "Left empty, the source is named after the archive. Uploading again under the same name replaces its items.",
+      "label": "Label",
+      "labelHint": "Every item from the archive carries this label. The list stops at the highest label the project's hub sink clears.",
+      "start": "Upload",
+      "resume": "Resume upload",
+      "resumeHint": "This browser started uploading this file before. Only the parts the hub lacks are sent."
+    },
+    "levels": {
+      "notWriter": "You can read this project's graph but not add to it. A project admin can make you a writer.",
+      "noHubSink": "This project has no hub sink, so the hub cannot hold an uploaded archive. A project admin can add one to the project's knowledge config."
+    },
+    "progress": {
+      "hashing": "Checking the file: {read} of {size}",
+      "hashingLabel": "File checked",
+      "starting": "Starting the upload",
+      "sending": "Sending: {sent} of {size}",
+      "sendingLabel": "Archive sent",
+      "resumed": "{count, plural, one {# part was already on the hub and is not sent again.} other {# parts were already on the hub and are not sent again.}}",
+      "parts": "Parts",
+      "part": "Part {number}",
+      "partValue": "Part {number}: {percent}%",
+      "completing": "Joining the parts",
+      "done": "{name} is on the hub. The hub reads it next; its report appears under Uploads.",
+      "another": "Upload another file",
+      "cancel": "Stop upload",
+      "cancelled": "The upload of {name} was stopped. The parts already sent stay on the hub for a day: choose the same file again to resume.",
+      "failed": "The upload of {name} stopped",
+      "retry": "Try again"
+    },
+    "pending": {
+      "title": "{count, plural, one {An upload did not finish} other {# uploads did not finish}}",
+      "body": "Choose the same file again to resume. The parts already sent stay on the hub for a day.",
+      "forget": "Forget {name}"
+    },
+    "reports": {
+      "title": "Uploads",
+      "emptyTitle": "No archive uploaded yet",
+      "emptyDescription": "Archives uploaded to this project, and what the hub read from each, appear here.",
+      "label": "Label {level}",
+      "by": "Sent by {login}",
+      "state": {
+        "uploading": "Uploading",
+        "extracting": "Reading",
+        "failed": "Failed"
+      },
+      "build": {
+        "queued": "Build queued",
+        "running": "Building",
+        "failed": "Build failed"
+      },
+      "files": "Files read",
+      "skipped": "Skipped",
+      "assets": "Kept without text",
+      "none": "None",
+      "reasonCount": "{reason}: {count}",
+      "paths": "{count, plural, one {Show the skipped file} other {Show the # skipped files}}",
+      "replaced": "Replaced by a later upload of this source",
+      "buildLink": "Build #{id}",
+      "initLink": "Graph setup run #{id}",
+      "questionsLink": "Starter questions run #{id}",
+      "error": "The hub could not read this archive"
+    },
+    "reasons": {
+      "duplicate": "Duplicate",
+      "too_many_entries": "Over the entry limit",
+      "total_size": "Over the size limit",
+      "depth": "Nested too deep",
+      "corrupt": "Corrupt",
+      "symlink": "Symbolic link",
+      "link": "Hard link",
+      "device": "Device file",
+      "encrypted": "Encrypted",
+      "ratio": "Compressed too much",
+      "unsafe_path": "Unsafe path",
+      "binary": "Binary file",
+      "unreadable": "Unreadable",
+      "no_text_layer": "No text layer",
+      "timeout": "Timed out",
+      "too_large": "Too large"
+    },
+    "newProject": {
+      "title": "New project from data",
+      "intro": "Create a project from an archive of documents. The hub creates the project, reads the archive into its knowledge graph and builds it.",
+      "name": "Project name",
+      "nameHint": "Lowercase letters, digits and dashes, starting with a letter or digit.",
+      "nameInvalid": "Use lowercase letters, digits and dashes, starting with a letter or digit, up to 100 characters.",
+      "labelHint": "Every item from the archive carries this label. The new project's hub sink clears it.",
+      "create": "Create project and upload",
+      "done": "Project {name} is created and its archive is on the hub.",
+      "open": "Open the project's uploads",
+      "forbidden": "Creating a project takes a hub admin, or a register right you have not used yet.",
+      "taken": "A project named {name} already exists. Choose another name."
     }
   }
 }
