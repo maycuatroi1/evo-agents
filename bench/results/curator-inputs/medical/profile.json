@@ -1,0 +1,202 @@
+{
+ "chars": 1624037,
+ "classes": {
+  "other": {
+   "chars": 1624037,
+   "item_share": 1.0,
+   "items": 1000,
+   "lines": 4358,
+   "share": 1.0
+  }
+ },
+ "content_items": 1000,
+ "edges": 1000,
+ "graphs": 1,
+ "history": {
+  "commits": 0,
+  "pull_requests": 0
+ },
+ "identifier_candidates": [
+  {
+   "count": 100,
+   "items": 62,
+   "pattern": "\\b\\d\\-[a-z]{4}\\b",
+   "shape": "9-a{4}"
+  },
+  {
+   "count": 48,
+   "items": 12,
+   "pattern": "\\b[A-Z]{3}\\d\\b",
+   "shape": "A{3}9"
+  },
+  {
+   "count": 43,
+   "items": 9,
+   "pattern": "\\b[A-Z]{2}\\-\\d\\b",
+   "shape": "A{2}-9"
+  },
+  {
+   "count": 32,
+   "items": 23,
+   "pattern": "\\b\\d{2}\\-[a-z]{4}\\b",
+   "shape": "9{2}-a{4}"
+  },
+  {
+   "count": 27,
+   "items": 19,
+   "pattern": "\\b\\d\\-[a-z]{5}\\b",
+   "shape": "9-a{5}"
+  },
+  {
+   "count": 26,
+   "items": 7,
+   "pattern": "\\b[A-Z]{2}\\d\\b",
+   "shape": "A{2}9"
+  },
+  {
+   "count": 25,
+   "items": 11,
+   "pattern": "\\b\\d{2}\\-[a-z]{3}\\b",
+   "shape": "9{2}-a{3}"
+  },
+  {
+   "count": 24,
+   "items": 5,
+   "pattern": "\\b[A-Z]{4}\\d\\b",
+   "shape": "A{4}9"
+  },
+  {
+   "count": 22,
+   "items": 10,
+   "pattern": "\\b[A-Z]{3}\\-\\d\\b",
+   "shape": "A{3}-9"
+  },
+  {
+   "count": 21,
+   "items": 4,
+   "pattern": "\\b[A-Z][a-z]\\-\\d{2}\\b",
+   "shape": "Aa-9{2}"
+  },
+  {
+   "count": 18,
+   "items": 12,
+   "pattern": "\\b\\d{2}[a-z]{2}\\b",
+   "shape": "9{2}a{2}"
+  },
+  {
+   "count": 18,
+   "items": 3,
+   "pattern": "\\b[a-z]\\d{2}\\b",
+   "shape": "a9{2}"
+  },
+  {
+   "count": 17,
+   "items": 10,
+   "pattern": "\\b[A-Z]{2}\\-\\d{2}\\b",
+   "shape": "A{2}-9{2}"
+  },
+  {
+   "count": 16,
+   "items": 15,
+   "pattern": "\\b\\d{2}\\-[a-z]{5}\\b",
+   "shape": "9{2}-a{5}"
+  },
+  {
+   "count": 16,
+   "items": 5,
+   "pattern": "\\b[A-Z]\\d[a-z]\\b",
+   "shape": "A9a"
+  },
+  {
+   "count": 16,
+   "items": 3,
+   "pattern": "\\b[a-z]{2}\\d{7}\\b",
+   "shape": "a{2}9{7}"
+  },
+  {
+   "count": 15,
+   "items": 9,
+   "pattern": "\\b\\d[a-z]{2}\\b",
+   "shape": "9a{2}"
+  },
+  {
+   "count": 15,
+   "items": 2,
+   "pattern": "\\b[a-z][A-Z]\\d[a-z]\\b",
+   "shape": "aA9a"
+  },
+  {
+   "count": 13,
+   "items": 7,
+   "pattern": "\\b[A-Z]\\d{2}\\b",
+   "shape": "A9{2}"
+  },
+  {
+   "count": 12,
+   "items": 10,
+   "pattern": "\\b\\d\\-[a-z]{3}\\b",
+   "shape": "9-a{3}"
+  }
+ ],
+ "items": 1000,
+ "languages": {},
+ "length": {
+  "max": 3056,
+  "nodes_with_passages": 0,
+  "p50": 1616,
+  "p90": 2059,
+  "p99": 2620,
+  "passages": 0
+ },
+ "lines": 4358,
+ "mentions": {
+  "dangling": 0,
+  "mentions": 0,
+  "resolved": 0,
+  "resolved_ratio": 0.0
+ },
+ "natural_language": {
+  "chars": {},
+  "share": {}
+ },
+ "nodes": {
+  "File": 1000,
+  "Source": 1
+ },
+ "noise": {
+  "binary": 0,
+  "ratio": 0.0,
+  "tiny": 0
+ },
+ "sensitive": {
+  "email": {
+   "items": 0,
+   "strings": 0
+  },
+  "medical_code": {
+   "items": 0,
+   "strings": 0
+  },
+  "national_id": {
+   "items": 0,
+   "strings": 0
+  },
+  "phone": {
+   "items": 17,
+   "strings": 32
+  }
+ },
+ "sources": [
+  {
+   "chars": 1624037,
+   "id": "corpus",
+   "items": 1000,
+   "label": {
+    "level": "public",
+    "location": "any"
+   },
+   "lines": 4358
+  }
+ ],
+ "version": "1"
+}

@@ -1,0 +1,300 @@
+{
+ "chars": 73515264,
+ "classes": {
+  "binary": {
+   "chars": 0,
+   "item_share": 0.0182,
+   "items": 1370,
+   "lines": 0,
+   "share": 0.0
+  },
+  "code": {
+   "chars": 53107319,
+   "item_share": 0.0552,
+   "items": 4155,
+   "lines": 1400895,
+   "share": 0.7224
+  },
+  "history": {
+   "chars": 3985140,
+   "item_share": 0.8916,
+   "items": 67074,
+   "lines": 101264,
+   "share": 0.0542
+  },
+  "prose": {
+   "chars": 8818609,
+   "item_share": 0.02,
+   "items": 1506,
+   "lines": 348309,
+   "share": 0.12
+  },
+  "structured": {
+   "chars": 7604196,
+   "item_share": 0.0149,
+   "items": 1124,
+   "lines": 54758,
+   "share": 0.1034
+  }
+ },
+ "content_items": 73727,
+ "edges": 421716,
+ "graphs": 40,
+ "history": {
+  "commits": 5359,
+  "first": "2010-04-06T11:12:57.000000Z",
+  "last": "2025-02-04T05:08:45.000000Z",
+  "pull_requests": 0
+ },
+ "identifier_candidates": [
+  {
+   "count": 26530,
+   "items": 528,
+   "pattern": "\\b\\d\\.\\d{4}[a-z]\\-\\d{2}\\b",
+   "shape": "9.9{4}a-9{2}"
+  },
+  {
+   "count": 4434,
+   "items": 528,
+   "pattern": "\\b\\d\\.\\d{16}[a-z]\\-\\d{2}\\b",
+   "shape": "9.9{16}a-9{2}"
+  },
+  {
+   "count": 3576,
+   "items": 4,
+   "pattern": "\\b[a-z]{6}\\d{3}\\b",
+   "shape": "a{6}9{3}"
+  },
+  {
+   "count": 2698,
+   "items": 528,
+   "pattern": "\\b\\d\\.\\d{3}[a-z]\\-\\d{2}\\b",
+   "shape": "9.9{3}a-9{2}"
+  },
+  {
+   "count": 2654,
+   "items": 528,
+   "pattern": "\\b\\d\\.\\d{15}[a-z]\\-\\d{2}\\b",
+   "shape": "9.9{15}a-9{2}"
+  },
+  {
+   "count": 1104,
+   "items": 552,
+   "pattern": "\\b[a-z]{5}_[a-z]_\\d{2}\\b",
+   "shape": "a{5}_a_9{2}"
+  },
+  {
+   "count": 1104,
+   "items": 552,
+   "pattern": "\\b[a-z]{5}_[a-z]{2}_\\d{2}_[a-z]\\b",
+   "shape": "a{5}_a{2}_9{2}_a"
+  },
+  {
+   "count": 607,
+   "items": 158,
+   "pattern": "\\b[a-z]\\d\\.\\d\\.\\d\\b",
+   "shape": "a9.9.9"
+  },
+  {
+   "count": 585,
+   "items": 585,
+   "pattern": "\\b[a-z]{3}\\d{2}\\b",
+   "shape": "a{3}9{2}"
+  },
+  {
+   "count": 556,
+   "items": 556,
+   "pattern": "\\b[a-z]{11}\\-\\d{4}\\-[a-z]{3}\\b",
+   "shape": "a{11}-9{4}-a{3}"
+  },
+  {
+   "count": 443,
+   "items": 259,
+   "pattern": "\\b[a-z]{6}\\d\\b",
+   "shape": "a{6}9"
+  },
+  {
+   "count": 400,
+   "items": 400,
+   "pattern": "\\b[a-z]{10}\\-[a-z]{2}\\d\\.\\d{2}\\b",
+   "shape": "a{10}-a{2}9.9{2}"
+  },
+  {
+   "count": 373,
+   "items": 372,
+   "pattern": "\\b\\d[a-z]\\d[a-z]/[a-z]{5}\\b",
+   "shape": "9a9a/a{5}"
+  },
+  {
+   "count": 370,
+   "items": 6,
+   "pattern": "\\b[a-z]{6}\\d{2}\\b",
+   "shape": "a{6}9{2}"
+  },
+  {
+   "count": 294,
+   "items": 209,
+   "pattern": "\\b[a-z]{5}\\d\\b",
+   "shape": "a{5}9"
+  },
+  {
+   "count": 282,
+   "items": 226,
+   "pattern": "\\b\\d\\.\\d{2}[a-z]\\-\\d{2}\\b",
+   "shape": "9.9{2}a-9{2}"
+  },
+  {
+   "count": 282,
+   "items": 251,
+   "pattern": "\\b[a-z]{3}\\d\\b",
+   "shape": "a{3}9"
+  },
+  {
+   "count": 280,
+   "items": 6,
+   "pattern": "\\b[a-z]{5}\\.[a-z]{3}/[a-z]{3}/\\d{4}\\.\\d{5}\\b",
+   "shape": "a{5}.a{3}/a{3}/9{4}.9{5}"
+  },
+  {
+   "count": 276,
+   "items": 276,
+   "pattern": "\\b[a-z]{6}\\-\\d\\.[a-z]{3}\\b",
+   "shape": "a{6}-9.a{3}"
+  },
+  {
+   "count": 262,
+   "items": 186,
+   "pattern": "\\b\\d\\.\\d{14}[a-z]\\-\\d{2}\\b",
+   "shape": "9.9{14}a-9{2}"
+  }
+ ],
+ "items": 75229,
+ "languages": {
+  "css": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 32,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 5031
+  },
+  "html": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 141,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 1841
+  },
+  "javascript": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 30,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 12457
+  },
+  "python": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 3821,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 1376582
+  },
+  "shell": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 26,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 282
+  },
+  "sql": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 12,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 147
+  },
+  "typescript": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 93,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 4555
+  }
+ },
+ "length": {
+  "max": 462763,
+  "nodes_with_passages": 1033,
+  "p50": 41,
+  "p90": 517,
+  "p99": 23745,
+  "passages": 5191
+ },
+ "lines": 1905226,
+ "mentions": {
+  "dangling": 171,
+  "mentions": 6317,
+  "resolved": 6013,
+  "resolved_ratio": 0.9519
+ },
+ "natural_language": {
+  "chars": {
+   "en": 6091540,
+   "other": 10328916
+  },
+  "share": {
+   "en": 0.371,
+   "other": 0.629
+  }
+ },
+ "nodes": {
+  "Commit": 67074,
+  "Directory": 1211,
+  "Document": 1506,
+  "File": 6649,
+  "Section": 5107,
+  "Source": 40,
+  "Symbol": 80591
+ },
+ "noise": {
+  "binary": 1370,
+  "ratio": 0.2628,
+  "tiny": 18398
+ },
+ "sensitive": {
+  "email": {
+   "items": 1264,
+   "strings": 1374
+  },
+  "medical_code": {
+   "items": 3,
+   "strings": 3
+  },
+  "national_id": {
+   "items": 0,
+   "strings": 0
+  },
+  "phone": {
+   "items": 893,
+   "strings": 30976
+  }
+ },
+ "sources": [
+  {
+   "chars": 73515264,
+   "id": "repo",
+   "items": 75229,
+   "label": {
+    "level": "public",
+    "location": "any"
+   },
+   "lines": 1905226
+  }
+ ],
+ "version": "1"
+}

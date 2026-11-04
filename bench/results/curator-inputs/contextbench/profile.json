@@ -1,0 +1,348 @@
+{
+ "chars": 93857288,
+ "classes": {
+  "binary": {
+   "chars": 0,
+   "item_share": 0.0186,
+   "items": 4336,
+   "lines": 0,
+   "share": 0.0
+  },
+  "code": {
+   "chars": 62889340,
+   "item_share": 0.0453,
+   "items": 10544,
+   "lines": 1648941,
+   "share": 0.6701
+  },
+  "history": {
+   "chars": 19225645,
+   "item_share": 0.9269,
+   "items": 215630,
+   "lines": 432701,
+   "share": 0.2048
+  },
+  "prose": {
+   "chars": 7725543,
+   "item_share": 0.0052,
+   "items": 1221,
+   "lines": 129949,
+   "share": 0.0823
+  },
+  "structured": {
+   "chars": 4016760,
+   "item_share": 0.0039,
+   "items": 904,
+   "lines": 100611,
+   "share": 0.0428
+  }
+ },
+ "content_items": 228257,
+ "edges": 861132,
+ "graphs": 40,
+ "history": {
+  "commits": 21772,
+  "first": "2007-11-15T10:29:55.000000Z",
+  "last": "2024-12-27T16:41:16.000000Z",
+  "pull_requests": 0
+ },
+ "identifier_candidates": [
+  {
+   "count": 3738,
+   "items": 1528,
+   "pattern": "\\b[a-z]\\d\\.\\d\\.\\d\\b",
+   "shape": "a9.9.9"
+  },
+  {
+   "count": 3115,
+   "items": 79,
+   "pattern": "\\b[a-z]{6}/\\d{3}\\b",
+   "shape": "a{6}/9{3}"
+  },
+  {
+   "count": 1895,
+   "items": 668,
+   "pattern": "\\b[a-z]{3}\\d\\b",
+   "shape": "a{3}9"
+  },
+  {
+   "count": 1759,
+   "items": 346,
+   "pattern": "\\b[a-z]\\d\\.\\d{2}\\.\\d\\b",
+   "shape": "a9.9{2}.9"
+  },
+  {
+   "count": 1604,
+   "items": 1604,
+   "pattern": "\\b[a-z]{6}/[a-z]{2}/\\d{4}\\b",
+   "shape": "a{6}/a{2}/9{4}"
+  },
+  {
+   "count": 1580,
+   "items": 192,
+   "pattern": "\\b[a-z]{4}/\\d{4}\\b",
+   "shape": "a{4}/9{4}"
+  },
+  {
+   "count": 1105,
+   "items": 1105,
+   "pattern": "\\b[a-z]{5}\\-\\d{3}\\b",
+   "shape": "a{5}-9{3}"
+  },
+  {
+   "count": 1076,
+   "items": 843,
+   "pattern": "\\b[a-z]{5}\\d\\b",
+   "shape": "a{5}9"
+  },
+  {
+   "count": 1000,
+   "items": 969,
+   "pattern": "\\b[a-z]{5}\\.[a-z]{3}\\d{4}\\b",
+   "shape": "a{5}.a{3}9{4}"
+  },
+  {
+   "count": 909,
+   "items": 152,
+   "pattern": "\\b[a-z]{6}/\\d{4}\\b",
+   "shape": "a{6}/9{4}"
+  },
+  {
+   "count": 761,
+   "items": 407,
+   "pattern": "\\b[a-z]{4}\\d\\b",
+   "shape": "a{4}9"
+  },
+  {
+   "count": 500,
+   "items": 327,
+   "pattern": "\\b[a-z]{6}\\d\\b",
+   "shape": "a{6}9"
+  },
+  {
+   "count": 411,
+   "items": 162,
+   "pattern": "\\b[a-z]{3}\\d{3}\\b",
+   "shape": "a{3}9{3}"
+  },
+  {
+   "count": 341,
+   "items": 139,
+   "pattern": "\\b[a-z]{7}/[a-z]\\d\\.\\d\\.\\d\\b",
+   "shape": "a{7}/a9.9.9"
+  },
+  {
+   "count": 327,
+   "items": 196,
+   "pattern": "\\b[a-z]\\d{2}\\b",
+   "shape": "a9{2}"
+  },
+  {
+   "count": 318,
+   "items": 131,
+   "pattern": "\\b[a-z]{3}\\d{2}\\b",
+   "shape": "a{3}9{2}"
+  },
+  {
+   "count": 292,
+   "items": 139,
+   "pattern": "\\b[A-Z]{3}\\-\\d\\b",
+   "shape": "A{3}-9"
+  },
+  {
+   "count": 281,
+   "items": 281,
+   "pattern": "\\b[a-z]{5}\\-\\d\\b",
+   "shape": "a{5}-9"
+  },
+  {
+   "count": 273,
+   "items": 273,
+   "pattern": "\\b[a-z]\\d\\.\\d\\.\\d\\.\\d\\b",
+   "shape": "a9.9.9.9"
+  },
+  {
+   "count": 260,
+   "items": 260,
+   "pattern": "\\b[a-z]{6}\\-\\d{3}\\b",
+   "shape": "a{6}-9{3}"
+  }
+ ],
+ "items": 232635,
+ "languages": {
+  "css": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 108,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 27531
+  },
+  "go": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 541,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 42816
+  },
+  "html": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 590,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 19836
+  },
+  "java": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 1989,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 203765
+  },
+  "javascript": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 646,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 48766
+  },
+  "kotlin": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 12,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 1079
+  },
+  "less": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 264,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 24134
+  },
+  "python": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 1836,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 463162
+  },
+  "ruby": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 1,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 19
+  },
+  "rust": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 4165,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 786626
+  },
+  "scss": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 1,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 159
+  },
+  "shell": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 112,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 3665
+  },
+  "typescript": {
+   "calls": 0,
+   "calls_ratio": 0.0,
+   "files": 279,
+   "inherits": 0,
+   "inherits_ratio": 0.0,
+   "lines": 27383
+  }
+ },
+ "length": {
+  "max": 357342,
+  "nodes_with_passages": 331,
+  "p50": 51,
+  "p90": 415,
+  "p99": 7212,
+  "passages": 4179
+ },
+ "lines": 2312202,
+ "mentions": {
+  "dangling": 449,
+  "mentions": 13266,
+  "resolved": 11043,
+  "resolved_ratio": 0.8324
+ },
+ "natural_language": {
+  "chars": {
+   "en": 6306987,
+   "other": 5432164
+  },
+  "share": {
+   "en": 0.5373,
+   "other": 0.4627
+  }
+ },
+ "nodes": {
+  "Commit": 215630,
+  "Directory": 3628,
+  "Document": 1221,
+  "File": 15784,
+  "Section": 13597,
+  "Source": 40,
+  "Symbol": 102537
+ },
+ "noise": {
+  "binary": 4336,
+  "ratio": 0.1642,
+  "tiny": 33858
+ },
+ "sensitive": {
+  "email": {
+   "items": 9979,
+   "strings": 13725
+  },
+  "medical_code": {
+   "items": 2,
+   "strings": 8
+  },
+  "national_id": {
+   "items": 0,
+   "strings": 0
+  },
+  "phone": {
+   "items": 820,
+   "strings": 3189
+  }
+ },
+ "sources": [
+  {
+   "chars": 93857288,
+   "id": "repo",
+   "items": 232635,
+   "label": {
+    "level": "public",
+    "location": "any"
+   },
+   "lines": 2312202
+  }
+ ],
+ "version": "1"
+}

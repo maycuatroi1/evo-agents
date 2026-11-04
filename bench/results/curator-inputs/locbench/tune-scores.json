@@ -1,0 +1,82 @@
+{
+ "bench": "locbench",
+ "candidates": [
+  {
+   "kind": "default",
+   "n": 0,
+   "name": "default",
+   "primary": null,
+   "se": null,
+   "search": "graph",
+   "settings": {}
+  },
+  {
+   "kind": "strategy",
+   "n": 0,
+   "name": "strategy-conversation",
+   "primary": null,
+   "se": null,
+   "search": "graph",
+   "settings": {
+    "semantic_weight": 0.8
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 0,
+   "name": "strategy-media-metadata",
+   "primary": null,
+   "se": null,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0,
+    "bm25_path": 3.0
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 0,
+   "name": "strategy-records",
+   "primary": null,
+   "se": null,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 0,
+   "name": "weights-body-heavy",
+   "primary": null,
+   "se": null,
+   "search": "graph",
+   "settings": {
+    "bm25_body": 4.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 0,
+   "name": "weights-name-light",
+   "primary": null,
+   "se": null,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 2.0,
+    "bm25_path": 1.0
+   }
+  },
+  {
+   "kind": "bm25",
+   "n": 0,
+   "name": "plain-bm25",
+   "primary": null,
+   "se": null,
+   "search": "plain",
+   "settings": {}
+  }
+ ],
+ "metric": "acc_file@5",
+ "part": "tune"
+}

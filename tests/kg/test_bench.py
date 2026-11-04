@@ -981,3 +981,296 @@ def test_corpus_sets_take_the_graph_search_and_a_limit_kg_search_has(tmp_path, m
     err = capsys.readouterr().err
     assert "--search graph only" in err and "--limit 1 to 25" in err
     assert main(["kg", "bench", "fetch", "nosuchset", "--cache", str(cache)]) == 1
+
+
+# -- the Curator on a set ------------------------------------------------------------------------------------------
+
+
+def _candidate(name, scores, kind="weights"):
+    tasks = [{"id": f"t{i}", "v": v, "tokens": 10} for i, v in enumerate(scores)]
+    return {
+        "name": name,
+        "kind": kind,
+        "search": "graph",
+        "settings": {},
+        "parts": {"holdout": {"n": len(scores), "primary": sum(scores) / len(scores), "tasks": tasks}},
+    }
+
+
+def _inputs(**over):
+    row = {"name": "prompt.md", "path": "curator-inputs/x/prompt.md", "sha256": "a" * 64, "part": "none"}
+    return [{**row, **over}]
+
+
+def _curator_file(sets: dict[str, tuple[list[float], list[float]]], inputs=None) -> dict:
+    """A Curator file: for each set, (the Curator's scores, the best candidate's scores)."""
+    out = _summary({s: v[0] for s, v in sets.items()})
+    block = {}
+    for bench, (chosen, best) in sets.items():
+        flat = [max(v - 0.05, 0) for v in best]
+        block[bench] = {
+            "metric": out["benches"][bench]["primary"],
+            "chosen": {"candidate": "curator", "strategy": {"name": "code", "self_made": False}, "settings": {}},
+            "inputs": inputs if inputs is not None else _inputs(),
+            "candidates": [
+                _candidate("curator", chosen, "curator"),
+                _candidate("best", best),
+                *(_candidate(f"c{i}", flat) for i in range(4)),
+            ],
+        }
+        for c in block[bench]["candidates"]:
+            for t in c["parts"]["holdout"]["tasks"]:
+                t["id"] = f"{bench}-{t['id']}"
+    out["curator"] = {"format": "evo-kg-bench-curator/1", "split": "holdout", "benches": block}
+    return out
+
+
+def _agree(path, require, n, *extra):
+    return main(
+        ["kg", "bench", "show", path, "--require", require, "--split", "holdout", "--curator-agrees", str(n), *extra]
+    )
+
+
+def test_curator_agrees_counts_the_sets_within_two_standard_errors_of_the_best(tmp_path, capsys):
+    noise = [v + (0.02 if i % 2 else -0.02) for i, v in enumerate(SCORES)]
+    down = [max(v - 0.25, 0) for v in SCORES]
+    path = _write(
+        tmp_path / "curator.json",
+        _curator_file({"contextbench": (noise, SCORES), "locbench": (SCORES, SCORES), "mulocbench": (down, SCORES)}),
+    )
+    names = "contextbench,locbench,mulocbench"
+    assert _agree(path, names, 2) == 0
+    assert _agree(path, names, 3) == 1
+    out = capsys.readouterr().out
+    assert "2 of 3 within 2 SE of the best (contextbench, locbench), 3 needed" in out
+    assert (
+        "ok  curator-set: mulocbench: outside 2 SE: Curator" in out and "ok  curator-set: locbench: within 2 SE" in out
+    )
+    assert _agree(path, "contextbench,swe-explore", 1) == 1  # a set without a Curator block fails, not skipped
+    assert "swe-explore: no Curator block" in capsys.readouterr().out
+
+
+def test_curator_agrees_needs_four_candidates_besides_the_curators_and_a_chosen_one_among_them(tmp_path, capsys):
+    data = _curator_file({"locbench": (SCORES, SCORES)})
+    for _ in range(2):
+        data["curator"]["benches"]["locbench"]["candidates"].pop()
+    path = _write(tmp_path / "few.json", data)
+    assert _agree(path, "locbench", 1) == 1
+    assert "3 candidates besides the Curator's, at least 4" in capsys.readouterr().out
+    data = _curator_file({"locbench": (SCORES, SCORES)})
+    data["curator"]["benches"]["locbench"]["chosen"]["candidate"] = "nobody"
+    assert _agree(_write(tmp_path / "lost.json", data), "locbench", 1) == 1
+    assert "chosen candidate 'nobody' is not among the candidates" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"part": "holdout"},
+        {"part": "test"},
+        {"name": "questions.holdout.jsonl", "path": "curator-inputs/x/questions.holdout.jsonl"},
+        {"path": "curator-inputs/test/prompt.md"},
+        {"sha256": "short"},
+    ],
+)
+def test_curator_agrees_fails_when_an_input_is_a_file_of_holdout_or_test(tmp_path, capsys, bad):
+    path = _write(tmp_path / "c.json", _curator_file({"locbench": (SCORES, SCORES)}, _inputs(**bad)))
+    assert _agree(path, "locbench", 1) == 1
+    assert "FAIL  curator-inputs: locbench" in capsys.readouterr().out
+    good = _write(tmp_path / "g.json", _curator_file({"locbench": (SCORES, SCORES)}))
+    assert _agree(good, "locbench", 1) == 0  # tune is allowed; "contest" is not the word test
+    assert compare.held_out_input({"name": "tune-scores.json", "path": "x/contest.md", "sha256": "b" * 64}) is None
+
+
+def test_curator_inputs_are_checked_against_the_files_they_name(tmp_path, capsys):
+    (tmp_path / "curator-inputs" / "x").mkdir(parents=True)
+    kept = tmp_path / "curator-inputs" / "x" / "prompt.md"
+    kept.write_text("profile and tune scores")
+    import hashlib
+
+    sha = hashlib.sha256(kept.read_bytes()).hexdigest()
+    path = _write(tmp_path / "c.json", _curator_file({"locbench": (SCORES, SCORES)}, _inputs(sha256=sha)))
+    assert _agree(path, "locbench", 1) == 0
+    kept.write_text("changed after the run")
+    assert _agree(path, "locbench", 1) == 1
+    assert "SHA-256 of curator-inputs/x/prompt.md differs" in capsys.readouterr().out
+
+
+def test_curator_resolve_applies_query_keys_and_names_the_rest(tmp_path):
+    from evo_agents.kg import strategy as kg_strategy
+    from evo_agents.kg.bench import curator
+
+    pool = kg_strategy.builtins()
+    made = {"version": 1, "name": "clinical", "suits": ["prose"], "settings": {"bm25_name": 3.0, "passage_chars": 900}}
+    a = curator.resolve({"strategy": {"use": "records"}, "settings": {"bm25_body": 2.0}}, pool)
+    assert a["strategy"]["self_made"] is False and a["applied"] == {"bm25_name": 8.0, "bm25_body": 2.0}
+    assert a["unapplied"]["passage_chars"] == 800 and a["unapplied"]["semantic_mode"] == "index"
+    b = curator.resolve({"strategy": {"create": made}}, pool)
+    assert b["strategy"] == {
+        "name": "clinical",
+        "self_made": True,
+        "origin": "created by the Curator",
+        "steps": [],
+        "file": made,
+    }
+    assert b["applied"] == {"bm25_name": 3.0} and b["unapplied"] == {"passage_chars": 900}
+    assert curator.resolve({}, pool)["applied"] == {} and curator.resolve({}, pool)["strategy"]["name"] is None
+    with pytest.raises(BenchError, match="does not exist"):
+        curator.resolve({"strategy": {"use": "nope"}}, pool)
+    plan = curator.candidate_plan(code=True)
+    assert len(plan) >= 5 and plan[0]["name"] == "default" and plan[-1]["search"] == "plain"
+    assert {"bm25_name": 8.0} in [c["settings"] for c in plan]
+    assert all(c["search"] == "graph" for c in curator.candidate_plan(code=False))
+
+
+def _fake_profile(items=10):
+    cls = {"items": items, "lines": 100, "chars": 5000, "share": 1.0, "item_share": 1.0}
+    return {
+        "version": "1",
+        "items": items,
+        "content_items": items,
+        "lines": 100,
+        "chars": 5000,
+        "edges": 3,
+        "nodes": {"document": items},
+        "classes": {"prose": cls},
+        "languages": {},
+        "length": {"p50": 500, "p90": 900, "p99": 990, "max": 1000, "passages": 0, "nodes_with_passages": 0},
+        "natural_language": {"chars": {"en": 5000}, "share": {"en": 1.0}},
+        "identifier_candidates": [{"shape": "A{3}-9{4}", "pattern": "x", "count": 6, "items": 3}],
+        "sensitive": {k: {"strings": 0, "items": 0} for k in ("email", "phone", "national_id", "medical_code")},
+        "mentions": {"mentions": 4, "resolved": 2, "dangling": 1, "resolved_ratio": 0.5},
+        "noise": {"binary": 0, "tiny": 1, "ratio": 0.1},
+        "history": {"commits": 0, "pull_requests": 0},
+        "sources": [{"id": "corpus", "items": items, "lines": 100, "chars": 5000, "label": {"level": "public"}}],
+    }
+
+
+def test_curator_merges_the_profiles_of_the_graphs_of_a_set():
+    from evo_agents.kg import profile as kg_profile
+    from evo_agents.kg.bench import curator
+
+    merged = curator.merge_profiles([_fake_profile(10), _fake_profile(30)])
+    assert merged["graphs"] == 2 and merged["items"] == 40 and merged["chars"] == 10000
+    assert merged["classes"]["prose"]["items"] == 40 and merged["classes"]["prose"]["share"] == 1.0
+    assert merged["identifier_candidates"][0]["count"] == 12 and merged["mentions"]["resolved_ratio"] == 0.5
+    assert merged["length"]["p50"] == 500 and merged["sources"][0]["items"] == 40
+    assert "items 40" in kg_profile.render(merged)
+    with pytest.raises(BenchError, match="build the set first"):
+        curator.merge_profiles([])
+
+
+def _run_summary(bench, scores, part):
+    s = _summary({bench: scores}, part=part)
+    return s
+
+
+def test_curator_decides_from_the_profile_and_tune_scores_alone_and_assembles_the_file(tmp_path, monkeypatch, capsys):
+    from evo_agents.kg.bench import curator
+
+    skill = tmp_path / "skill"
+    (skill / "references").mkdir(parents=True)
+    (skill / "references" / "kg.md").write_text(
+        "# KG\n\n## Configuring a new graph (the kg_init lens)\nRead the profile.\n\n### Choose\nPick one.\n\n## Other\nno\n"
+    )
+    (skill / "references" / "lenses.md").write_text("## kg_init\nA run of its own.\n\n## The others\nx\n")
+    work = tmp_path / "work"
+    plan = curator.write_plan(work, "locbench", code=True)
+    assert (work / "locbench" / "settings" / "strategy-records.json").is_file()
+    base = [0.3, 0.5, 0.7, 0.4, 0.6] * 6
+    for c in plan:
+        for part in ("tune", "holdout"):
+            run_dir = work / "locbench" / part
+            run_dir.mkdir(exist_ok=True)
+            scores = [min(v + (0.1 if c["name"] == "strategy-records" else 0.0), 1.0) for v in base]
+            (run_dir / f"{c['name']}.json").write_text(json.dumps(_run_summary("locbench", scores, part)))
+    monkeypatch.setattr(
+        curator, "set_profile", lambda cache, bench, ids=None: curator.merge_profiles([_fake_profile()])
+    )
+    seen = []
+
+    def ask(prompt):
+        seen.append(prompt)
+        decision = {
+            "strategy": {"use": "records"},
+            "reasons": [{"about": "strategy", "why": "name weight helps on tune", "figures": {"tune_gain": 0.1}}],
+        }
+        return "```json\n" + json.dumps(decision) + "\n```", 0.0123
+
+    record = curator.decide_from(work, tmp_path / "cache", "locbench", skill=str(skill), ask=ask)
+    assert record["error"] is None and record["config"]["applied"] == {"bm25_name": 8.0}
+    assert record["cost_usd"] == 0.0123 and len(seen) == 1
+    prompt = seen[0]
+    assert "Read the profile." in prompt and "A run of its own." in prompt and "Pick one." in prompt
+    assert "no\n" not in prompt.split("## Data profile")[0].split("Read the profile.")[1]
+    assert "strategy-records: tune" in prompt and "holdout" not in prompt.replace("holdout or test", "")
+    names = {i["name"] for i in record["inputs"]}
+    assert names == {
+        "profile.json",
+        "prompt.md",
+        "skill-kg-init.md",
+        "skill-lenses-kg-init.md",
+        "strategies.json",
+        "tune-scores.json",
+    }
+    assert {i["name"]: i["part"] for i in record["inputs"]}["tune-scores.json"] == "tune"
+    assert all(compare.held_out_input(i) is None for i in record["inputs"])
+
+    # a refused answer is asked again once, with the reason
+    again = []
+
+    def ask_twice(prompt):
+        again.append(prompt)
+        return ("not json", None) if len(again) == 1 else ask(prompt)
+
+    done = curator.decide_from(work, tmp_path / "cache", "locbench", skill=str(skill), ask=ask_twice)
+    assert len(again) == 2 and "was refused" in again[1] and done["error"] is None
+
+    # the Curator is an extra candidate whose settings are what the decision applies
+    for part in ("tune", "holdout"):
+        scores = [min(v + 0.1, 1.0) for v in base]
+        (work / "locbench" / part / "curator.json").write_text(json.dumps(_run_summary("locbench", scores, part)))
+    out = tmp_path / "results" / "curator.json"
+    assert main(["kg", "bench", "curator", "assemble", "locbench", "--work", str(work), "--out", str(out)]) == 0
+    built = json.loads(out.read_text())
+    entry = built["curator"]["benches"]["locbench"]
+    assert entry["chosen"]["candidate"] == "curator" and entry["chosen"]["strategy"]["self_made"] is False
+    assert len(entry["candidates"]) == len(plan) + 1 and (tmp_path / "results" / entry["inputs"][0]["path"]).is_file()
+    assert (
+        main(["kg", "bench", "show", str(out), "--require", "locbench", "--split", "holdout", "--curator-agrees", "1"])
+        == 0
+    )
+
+    # the same work, ranked for the release defaults: the file of origin/main
+    base_out = tmp_path / "results" / "curator-base.json"
+    assert (
+        main(
+            [
+                "kg",
+                "bench",
+                "curator",
+                "assemble",
+                "locbench",
+                "--work",
+                str(work),
+                "--out",
+                str(base_out),
+                "--defaults",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(base_out.read_text())["curator"]["benches"]["locbench"]["chosen"]["candidate"] == "default"
+    assert main(["kg", "bench", "compare", str(base_out), str(out), "--split", "holdout", "--gate"]) == 0
+    capsys.readouterr()
+
+
+def test_curator_decide_refuses_tune_scores_that_hold_the_holdout(tmp_path):
+    from evo_agents.kg.bench import curator
+
+    work = tmp_path / "work"
+    curator.write_plan(work, "locbench", code=True)
+    (work / "locbench" / "tune").mkdir()
+    (work / "locbench" / "tune" / "default.json").write_text(json.dumps(_run_summary("locbench", SCORES, "holdout")))
+    with pytest.raises(BenchError, match="run them with --part tune"):
+        curator.decide_from(work, tmp_path / "cache", "locbench", ask=lambda p: ("", None))

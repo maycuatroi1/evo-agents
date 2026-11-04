@@ -1,0 +1,82 @@
+{
+ "bench": "swe-explore",
+ "candidates": [
+  {
+   "kind": "default",
+   "n": 40,
+   "name": "default",
+   "primary": 0.1126,
+   "se": 0.0302,
+   "search": "graph",
+   "settings": {}
+  },
+  {
+   "kind": "strategy",
+   "n": 40,
+   "name": "strategy-conversation",
+   "primary": 0.1126,
+   "se": 0.0302,
+   "search": "graph",
+   "settings": {
+    "semantic_weight": 0.8
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 40,
+   "name": "strategy-media-metadata",
+   "primary": 0.1126,
+   "se": 0.0302,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0,
+    "bm25_path": 3.0
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 40,
+   "name": "strategy-records",
+   "primary": 0.1126,
+   "se": 0.0302,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 40,
+   "name": "weights-body-heavy",
+   "primary": 0.1103,
+   "se": 0.0302,
+   "search": "graph",
+   "settings": {
+    "bm25_body": 4.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 40,
+   "name": "weights-name-light",
+   "primary": 0.0959,
+   "se": 0.0249,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 2.0,
+    "bm25_path": 1.0
+   }
+  },
+  {
+   "kind": "bm25",
+   "n": 40,
+   "name": "plain-bm25",
+   "primary": 0.0613,
+   "se": 0.0238,
+   "search": "plain",
+   "settings": {}
+  }
+ ],
+ "metric": "line_f1",
+ "part": "tune"
+}

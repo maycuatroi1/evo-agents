@@ -1,0 +1,73 @@
+{
+ "bench": "customers",
+ "candidates": [
+  {
+   "kind": "default",
+   "n": 392,
+   "name": "default",
+   "primary": 0.9847,
+   "se": 0.0062,
+   "search": "graph",
+   "settings": {}
+  },
+  {
+   "kind": "strategy",
+   "n": 392,
+   "name": "strategy-conversation",
+   "primary": 0.9847,
+   "se": 0.0062,
+   "search": "graph",
+   "settings": {
+    "semantic_weight": 0.8
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 392,
+   "name": "strategy-media-metadata",
+   "primary": 0.9847,
+   "se": 0.0062,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0,
+    "bm25_path": 3.0
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 392,
+   "name": "strategy-records",
+   "primary": 0.9847,
+   "se": 0.0062,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 392,
+   "name": "weights-body-heavy",
+   "primary": 0.9949,
+   "se": 0.0036,
+   "search": "graph",
+   "settings": {
+    "bm25_body": 4.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 392,
+   "name": "weights-name-light",
+   "primary": 0.9847,
+   "se": 0.0062,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 2.0,
+    "bm25_path": 1.0
+   }
+  }
+ ],
+ "metric": "recall_all@5",
+ "part": "tune"
+}

@@ -570,3 +570,86 @@ Baseline, `bench/results/noncode-base.json` (release ranking, `recall_all@5`, `-
 `musique` is low because a question needs all 2 to 4 supporting paragraphs in the first 5 results. `medical` is
 near its ceiling. The `music` questions are made from the page text, not written by people, so read them as a
 retrieval check and not as a quality measure of answers.
+
+## The Curator on the benches (step 12)
+
+Does the Curator's kg_init choice, made from a set's data profile and its tune numbers alone, rank as well as the best
+fixed config on the holdout? `bench/results/curator.json` answers that for all 11 sets.
+
+**The run.** For each set `kg bench curator` does four things:
+
+1. `plan SET` writes the configs to rank: `default` (the release defaults), `strategy-conversation`,
+   `strategy-media-metadata`, `strategy-records` (the query keys each built-in strategy sets), `weights-body-heavy`
+   (`bm25_body` 4), `weights-name-light` (`bm25_name` 2, `bm25_path` 1) and, on the code sets, `plain-bm25`.
+2. Each config runs on the tune part with `kg bench run --settings`.
+3. `decide SET` builds one prompt from the skill text of the lens (agent-skills, `skills/curator`, `kg_init`), the
+   set's merged data profile (counts and shapes, no content), the strategy list and the tune table (score, n, SE per
+   config), and asks the agent runtime. The answer is the kg_init decision JSON of `init_run.parse_decision`. The
+   inputs are written to `curator-inputs/SET/` with a SHA-256 each (`prompt.md`, `profile.json`, `strategies.json`,
+   `tune-scores.json`, the two skill files, `decision.json`). No question file or answer of holdout or test is among
+   them. A set without a tune part (LocBench) gets the profile and the line "no tune questions".
+4. The decision becomes a config (`kg bench` applies its query keys; `unapplied` lists build keys and `semantic_mode`,
+   which a bench run cannot change), runs as the extra candidate `curator` on the holdout with all the others, and
+   `assemble SET... --out FILE` writes the file. `--defaults` writes the same runs ranked with no Curator decision.
+
+**File format.** `curator.json` is an `evo-kg-bench/1` summary (the chosen config's tasks, so `compare` and `show`
+read it as any other) plus a top-level `curator` block: `format` (`evo-kg-bench-curator/1`), `split`, `note`,
+`sampling`, and per set: `chosen` (candidate, `strategy` with `name`, `self_made`, `origin`, `steps`, and `settings`,
+`applied`, `unapplied`), `reasons` (the Curator's, with figures), `inputs` (name, path, SHA-256, part), `profile_graphs`
+and `candidates`. A candidate has `name`, `kind`, `search`, `settings` and, per part, `n`, `primary`, `mean_tokens` and
+`tasks` (id, value, tokens), so any two candidates can be paired per question.
+
+**The check.** `kg bench show FILE --require SETS --split holdout --curator-agrees N` exits nonzero when:
+
+- fewer than N of the required sets have the Curator's config within two standard errors of the best candidate (the
+  paired bootstrap of `compare`; the best is the candidate with the highest holdout mean),
+- a set has fewer than 4 candidates besides the Curator's, or no input list,
+- an input list holds a file of the holdout or test part (by its part, its name or its path), has a malformed SHA-256,
+  or a file next to the summary whose SHA-256 differs.
+
+`kg bench compare bench/results/curator-base.json bench/results/curator.json --split holdout --gate` then tests the
+Curator against the release defaults (`curator-base.json`, the ranking of origin/main).
+
+**What the Curator did.** It ran as a Claude subagent (model sonnet) that read only the one prompt file. A nested
+`claude -p` had no login on the machine, so the usual `EVO_KG_INIT_AGENT` runtime was replaced by a relay that handed
+each prompt over and took the answer back; the cost is not metered (about 20 000 tokens a set, 11 calls, one per set).
+
+| Set | Strategy | Self-made | Query keys applied | Curator holdout | Best candidate | gap / SE |
+|---|---|---|---|---|---|---|
+| `contextbench` | `code` | no | none | 0.0937 | 0.0937 (curator) | 0 |
+| `swe-explore` | `code` | no | none | 0.1401 | 0.1401 (curator) | 0 |
+| `locbench` | `code` | no | none | 0.5405 | 0.5405 (curator) | 0 |
+| `mulocbench` | `code` | no | none | 0.3158 | 0.3684 (weights-body-heavy) | 0.0526 / 0.0525 |
+| `musique` | `code` | no | none | 0.1266 | 0.1392 (weights-name-light) | 0.0127 / 0.0157 |
+| `longmemeval` | `conversation` | no | `semantic_weight` 0.8 | 0.8333 | 0.8333 (curator) | 0 |
+| `memoryagentbench` | `conversation` | no | `semantic_weight` 0.8 | 0.6197 | 0.6197 (curator) | 0 |
+| `medical` | none | no | none | 1.0000 | 1.0000 (curator) | 0 |
+| `literature` | `code` | no | none | 0.9434 | 0.9472 (weights-name-light) | 0.0038 / 0.0038 |
+| `music` | none | no | none | 0.9838 | 0.9838 (curator) | 0 |
+| `customers` | `code` | no | none | 0.9598 | 1.0000 (weights-body-heavy) | 0.0402 / 0.0139 |
+
+Reading it honestly:
+
+- The Curator made no strategy of its own and moved no query key that mattered. On tune, the candidates tied or sat
+  inside noise, and it kept the defaults, as the skill tells it to when no figure beats the default by two standard
+  errors. Its config equals the release default in effect on all 11 sets (on `longmemeval` and `memoryagentbench` the
+  `semantic_weight` of 0.8 changes nothing, as the graphs hold no vectors). So the gate against `curator-base.json`
+  shows a difference of 0 everywhere, and "within two SE of the best" is easy where all candidates tie. The result
+  says the Curator does no harm and picks safe settings, not that it finds gains.
+- Where a candidate beat the default on the holdout (`customers`, `mulocbench`, `musique`, `literature`), the tune
+  numbers had not shown it: on `customers` the tune gap of `weights-body-heavy` was 0.0102 against 2 SE of 0.0124, and
+  the holdout gap is 0.0402 (2.9 SE). The Curator stayed inside the rule, and the rule lost there. That is the one set
+  of 11 that misses.
+- Targets: code sets 4 of 4 (needed 3), non-code sets 6 of 7 (needed 5), the gate passes.
+
+**Limits.**
+
+- Sampling, not full runs. Code sets: repos over 100 MB left out, then 40 tasks per part (`--sample 40 --seed 0`,
+  stratified by repo), so the holdout n is 37 to 40 and the SE is wide; a gap under 0.05 cannot be told from noise.
+  `longmemeval` and `memoryagentbench` use `--sample 60 --seed 0`. The other five non-code sets run in full.
+- Only the query keys are measured. Build keys (`passage_from`, `passage_chars`, `embed_chars`) and `semantic_mode`
+  change the graph and are not applied in a bench run, so a strategy's build side is never tested here.
+- No hybrid candidate: `fastembed` is not installed on the machine, so no vectors exist and `semantic_weight` has
+  nothing to weigh.
+- LocBench has no tune part. The profile of its sampled graphs is all the Curator had there.
+- On a set without a distinct class (`medical`, `music`: all items of class `other`) the Curator named no strategy.

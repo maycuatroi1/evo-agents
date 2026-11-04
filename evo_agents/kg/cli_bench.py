@@ -285,6 +285,8 @@ def cmd_show(args) -> int:
         precision_min=args.precision_min,
         arms=_names(args.arms),
         cost_max=args.cost_max,
+        curator_agrees=args.curator_agrees,
+        base=Path(args.summary).parent,
     )
     ok = all(passed for _, passed, _ in checks)
     if args.json:
@@ -342,6 +344,50 @@ def cmd_profile(args) -> int:
             f"{repo}: {row['graphs']} graphs, {row['items']} items, noise {row['noise']:.0%}; mean item share {shares}"
         )
     return 0
+
+
+def cmd_curator(args) -> int:
+    """``kg bench curator plan|decide|assemble``: the Curator on a bench set (evo_agents.kg.bench.curator)."""
+    from evo_agents.kg.bench import curator, datasets
+    from evo_agents.kg.bench.datasets import CODE_BENCHES
+
+    work = Path(args.work)
+    try:
+        if args.curator_command == "plan":
+            for bench in _benches(args.sets):
+                plan = curator.write_plan(work, bench, bench in CODE_BENCHES)
+                print(f"{bench}: {len(plan)} configs in {work / bench}: " + ", ".join(c["name"] for c in plan))
+            return 0
+        if args.curator_command == "decide":
+            cache = datasets.cache_dir(args.cache)
+            for bench in _benches(args.sets):
+                record = curator.decide_from(work, cache, bench, skill=args.skill)
+                if record["error"]:
+                    print(f"{bench}: no valid decision: {record['error']}", file=sys.stderr)
+                    return 1
+                config = record["config"]
+                print(
+                    f"{bench}: strategy {config['strategy']['name']} "
+                    f"({'made by the Curator' if config['strategy']['self_made'] else 'built-in'}), "
+                    f"applies {json.dumps(config['applied'])}, unapplied {json.dumps(config['unapplied'])}, "
+                    f"cost {record['cost_usd']} USD"
+                )
+            return 0
+        out = Path(args.out)
+        built = curator.from_work(
+            work,
+            _benches(args.sets),
+            out.parent,
+            curator=not args.defaults,
+            note=args.note or "",
+            sampling=args.sampling or "",
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(built, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+        print(f"written to {out}")
+        return 0
+    except (datasets.BenchError, OSError, ValueError, KeyError) as exc:
+        return _fail(f"{type(exc).__name__}: {exc}" if not isinstance(exc, datasets.BenchError) else str(exc), 1)
 
 
 def _ratio(text: str) -> float:
@@ -493,5 +539,34 @@ def register(ksub) -> None:
     show.add_argument("--precision-min", type=_ratio, metavar="R", help="least mean line precision")
     show.add_argument("--arms", metavar="ARM,...", help="arms the summary must have run")
     show.add_argument("--cost-max", type=float, metavar="USD", help="most the run may have cost")
+    show.add_argument(
+        "--curator-agrees",
+        type=int,
+        metavar="N",
+        help="fail unless N of the --require sets have the Curator's config within 2 SE of the best, "
+        "and no Curator input is a file of holdout or test",
+    )
     show.add_argument("--json", action="store_true", help="machine-readable output")
     show.set_defaults(func=cmd_show)
+
+    cur = sub.add_parser(
+        "curator", help="the Curator's kg_init run on a set: plan the configs, decide, assemble the file"
+    )
+    csub = cur.add_subparsers(dest="curator_command", required=True)
+    for name, text in (
+        ("plan", "write the configs to rank (and their settings files) under --work"),
+        ("decide", "run the Curator on the set's profile and tune scores in --work, keep inputs and decision"),
+        ("assemble", "join the runs and decisions in --work into the Curator file (curator.json)"),
+    ):
+        one = csub.add_parser(name, help=text)
+        one.add_argument("sets", nargs="+", help="the sets (or noncode)")
+        one.add_argument("--work", required=True, metavar="DIR", help="work directory, SET/plan.json and runs under it")
+        one.set_defaults(func=cmd_curator)
+        if name == "decide":
+            one.add_argument("--cache", help="bench cache, outside any repo")
+            one.add_argument("--skill", metavar="DIR", help="the curator skill (default $EVO_CURATOR_SKILL, ~/.claude)")
+        if name == "assemble":
+            one.add_argument("--out", required=True, metavar="PATH")
+            one.add_argument("--defaults", action="store_true", help="rank for the release defaults: no Curator run")
+            one.add_argument("--note", help="what the file ranked and how, kept in it")
+            one.add_argument("--sampling", help="how the tasks were sampled, kept in it")

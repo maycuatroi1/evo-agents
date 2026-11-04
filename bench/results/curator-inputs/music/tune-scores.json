@@ -1,0 +1,73 @@
+{
+ "bench": "music",
+ "candidates": [
+  {
+   "kind": "default",
+   "n": 428,
+   "name": "default",
+   "primary": 0.993,
+   "se": 0.004,
+   "search": "graph",
+   "settings": {}
+  },
+  {
+   "kind": "strategy",
+   "n": 428,
+   "name": "strategy-conversation",
+   "primary": 0.993,
+   "se": 0.004,
+   "search": "graph",
+   "settings": {
+    "semantic_weight": 0.8
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 428,
+   "name": "strategy-media-metadata",
+   "primary": 0.993,
+   "se": 0.004,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0,
+    "bm25_path": 3.0
+   }
+  },
+  {
+   "kind": "strategy",
+   "n": 428,
+   "name": "strategy-records",
+   "primary": 0.993,
+   "se": 0.004,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 8.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 428,
+   "name": "weights-body-heavy",
+   "primary": 0.986,
+   "se": 0.0057,
+   "search": "graph",
+   "settings": {
+    "bm25_body": 4.0
+   }
+  },
+  {
+   "kind": "weights",
+   "n": 428,
+   "name": "weights-name-light",
+   "primary": 0.993,
+   "se": 0.004,
+   "search": "graph",
+   "settings": {
+    "bm25_name": 2.0,
+    "bm25_path": 1.0
+   }
+  }
+ ],
+ "metric": "recall_all@5",
+ "part": "tune"
+}
