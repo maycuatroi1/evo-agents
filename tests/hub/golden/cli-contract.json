@@ -25059,6 +25059,18 @@
           "required": false,
           "repeatable": false,
           "default": 1
+        },
+        {
+          "flags": [
+            "--queue"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "default",
+            "kg"
+          ]
         }
       ],
       "json": null

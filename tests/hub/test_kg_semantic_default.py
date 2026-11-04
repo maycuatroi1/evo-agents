@@ -83,5 +83,5 @@ def test_kg_status_takes_the_vectors_from_the_hubs_record_of_the_build_since_the
     assert HubSession.recorded(type("S", (), {"graph": built})(), {"ready": False}) == {"ready": False}
 
 
-def test_the_hub_embeds_for_fifteen_minutes_at_most():
-    assert kg_semantic.EMBED_BUDGET_SECONDS == 900.0
+def test_the_hub_embeds_for_five_minutes_at_most_so_a_build_frees_its_worker():
+    assert kg_semantic.EMBED_BUDGET_SECONDS == 300.0

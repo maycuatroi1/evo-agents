@@ -300,7 +300,7 @@ async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> 
     return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
-@queue.task(name=jobs.KG_BUILD, pass_context=True)
+@queue.task(name=jobs.KG_BUILD, queue=jobs.KG_QUEUE, pass_context=True)
 async def kg_build(context: JobContext, project: str, build_id: int | None = None) -> dict:
     from evo_agents.hub.kg_build import run_build
 
@@ -655,9 +655,17 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None) -> int:
-    """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
+async def run(
+    config: HubConfig,
+    concurrency: int = 1,
+    *,
+    queues: list[str] | None = None,
+    release_pass=None,
+    loop_tick=None,
+    memory_upkeep=None,
+) -> int:
+    """Migrate, then run jobs of ``queues`` (None: every queue) until a signal stops the worker. The exit status: 0
+    when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
     (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
@@ -684,6 +692,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
             "db": target,
             "data_dir": str(config.data_dir),
             "concurrency": concurrency,
+            "queues": queues or "all",
             "bucket": store.bucket,
             "worker": name,
         },
@@ -720,6 +729,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
                 signalled = await work(
                     name=name,
                     concurrency=concurrency,
+                    queues=queues,
                     shutdown_graceful_timeout=SHUTDOWN_GRACE,
                     listen_notify=True,
                     additional_context={"hub": context},
@@ -739,8 +749,16 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None) -> int:
+def main(
+    config: HubConfig,
+    concurrency: int = 1,
+    *,
+    queues: list[str] | None = None,
+    release_pass=None,
+    loop_tick=None,
+    memory_upkeep=None,
+) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
     passes = {"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
-    return asyncio.run(run(config, concurrency, **passes))
+    return asyncio.run(run(config, concurrency, queues=queues, **passes))

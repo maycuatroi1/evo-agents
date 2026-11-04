@@ -3487,10 +3487,14 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
-`evo-agents hub worker --data-dir /cache --concurrency 2` runs two jobs at a time (default 1). On SIGTERM it takes no
+`evo-agents hub worker --data-dir /cache --concurrency 2` runs two jobs at a time (default 1). `--queue default` or
+`--queue kg` (again for both) takes the jobs of that queue alone; without it the worker takes every queue. Graph builds
+go to the queue `kg` (`jobs.KG_QUEUE`), so the compose file runs them on `worker-kg`, two replicas, each one build at a
+time, and `worker` takes `default`: a long build never holds back the merge queue, notifications or schedules, and
+two projects build at once (one build of a project at a time, under its lock). On SIGTERM a worker takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
-memory, so the compose file caps the worker with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
+memory, so the compose file caps `worker` and each `worker-kg` with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
 `EVO_KG_EMBEDDINGS=openrouter` the embedding of a build goes to OpenRouter and takes none of those CPUs. The worker
 refuses to start without a blob store, since builds read from it and write to it.
 
