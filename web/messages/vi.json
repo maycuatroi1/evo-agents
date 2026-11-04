@@ -7288,7 +7288,8 @@
       "security": "Bảo mật",
       "product_goals": "Mục tiêu sản phẩm",
       "product": "Sản phẩm",
-      "kg_health": "Sức khoẻ graph"
+      "kg_health": "Sức khoẻ graph",
+      "kg_init": "Cấu hình graph"
     },
     "kinds": {
       "docs": "Tài liệu",

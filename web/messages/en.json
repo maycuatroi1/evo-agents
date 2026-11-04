@@ -7288,7 +7288,8 @@
       "security": "Security",
       "product_goals": "Product goals",
       "product": "Product",
-      "kg_health": "Graph health"
+      "kg_health": "Graph health",
+      "kg_init": "Graph setup"
     },
     "kinds": {
       "docs": "Docs",
