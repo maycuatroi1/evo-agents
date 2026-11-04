@@ -20,6 +20,12 @@ came, each in a transaction of its own under the locks an answer takes (``decisi
 answered by nobody (``answered_by`` NULL), its ``answer_text`` the words the agent gets, and those go to the run's inbox
 as a message naming the decision, as an owner's answer does; a parked run is resumed first, by the reaper
 (``decisions.resume_parked``). A wait of a run that ended was cancelled with the run's other decisions.
+
+A run still waiting when its wait wakes takes the message in its inbox from its worker; but when the reaper ran late,
+the same pass parks it right after (``run_state.park_waiting``), and no worker hands a parked run its inbox: runs #1568
+and #1582 stayed parked on no open decision, the answer untaken. ``resume_answered``, right after the parking, resumes
+each parked run with no open decision and a message of its inbox no worker took, and moves those messages to the run
+that resumes it; an owner's answer given just before the run parked is taken the same way.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, runs, tables
@@ -48,6 +54,7 @@ from evo_agents.hub.server.notifications import one_line
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
+from evo_agents.hub.server.runs.service.views import lock_plan
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -265,3 +272,32 @@ async def wake_waits(engine: AsyncEngine, batch: int) -> int:
             woken += 1
             log.info("wait woke", extra={"decision_id": row.id, "run_id": inbox_run, "event": bool(event)})
     return woken
+
+
+async def resume_answered(engine: AsyncEngine, batch: int) -> int:
+    """Resume every parked run, at most ``batch``, with no open decision and a message of its inbox no worker took
+    (see the module), each in a transaction of its own under the locks an answer takes; how many resumed."""
+    r, d, i = tables.runs, tables.decisions, tables.run_inbox
+    untaken = (i.c.run_id == r.c.id, i.c.delivered_at.is_(None))
+    stranded = (
+        r.c.state == "parked",
+        r.c.kind.in_(runs.RESUME_KINDS),
+        ~exists().where(d.c.run_id == r.c.id, d.c.state == "open"),
+        exists().where(*untaken),
+    )
+    async with engine.begin() as conn:
+        query = select(r.c.id, r.c.project_id, r.c.plan_id).where(*stranded).order_by(r.c.parked_at).limit(batch)
+        parked = (await conn.execute(query)).all()
+    resumed = 0
+    for row in parked:
+        async with engine.begin() as conn:
+            if row.plan_id is not None:
+                await lock_plan(conn, row.project_id, row.plan_id)
+            lock = select(r.c.id).where(r.c.id == row.id, *stranded).with_for_update(of=r, skip_locked=True)
+            if (await conn.execute(lock)).one_or_none() is None:  # answered, resumed or ended meanwhile
+                continue
+            new_id = await resume_parked(conn, None, row.id, "as an answer it had not taken was in its inbox")
+            await conn.execute(update(i).values(run_id=new_id).where(i.c.run_id == row.id, i.c.delivered_at.is_(None)))
+        resumed += 1
+        log.info("parked run resumed with its untaken answer", extra={"run_id": row.id, "new_run_id": new_id})
+    return resumed

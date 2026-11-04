@@ -48,6 +48,8 @@ PLAN_ID = "pull-check"
 BRANCH = "plan/pull-check"
 VERIFY = "python -m pytest -q"
 HEAD, NEWER = "a1" * 20, "b2" * 20
+# The verify of the step that merges and deploys: it reads what the merge does, so the merge check never runs it
+DEPLOYED = "curl -fsS https://hub.example/v1/health"
 READ = {"pull_requests": "read", "contents": "read", "metadata": "read"}
 
 
@@ -56,7 +58,10 @@ def plan_body() -> dict:
         "id": PLAN_ID,
         "goal": "Check a pull request before it merges.",
         "repos": [{"repo": REPO, "branch": BRANCH}],
-        "steps": [{"id": 1, "title": "Report", "repo": REPO, "what": "a report", "verify": VERIFY}],
+        "steps": [
+            {"id": 1, "title": "Report", "repo": REPO, "what": "a report", "verify": VERIFY, "status": "done"},
+            {"id": 2, "title": "Ship", "repo": REPO, "what": "merge and deploy", "verify": DEPLOYED, "depends_on": [1]},
+        ],
     }
 
 
@@ -182,7 +187,7 @@ def test_github_merge_check_judges_the_head_merged_with_the_base_and_its_verdict
     assert "Pull request #7: Add the report" in prompt and "merged with the current origin/main" in prompt
     inputs = world.client.get(f"/v1/worker/runs/{spec['id']}/merge-judge", headers=headers)
     assert inputs.status_code == 200, inputs.text
-    assert (inputs.json()["iid"], inputs.json()["verify"]) == (7, [VERIFY])
+    assert (inputs.json()["iid"], inputs.json()["verify"]) == (7, [VERIFY]), "step 2 is not done: its verify waits"
     passed = verdict(world, spec, headers, HEAD)
     assert passed.status_code == 200, passed.text
     assert passed.json()["passed"] and passed.json()["state"] == "judging"  # the risk is weighed next

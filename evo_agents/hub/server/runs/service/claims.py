@@ -22,6 +22,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 from fastapi import HTTPException
 from sqlalchemy import BigInteger, Text, and_, case, column, exists, func, literal, or_, select, true
@@ -85,9 +86,9 @@ WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role,
 
 class RunWakeups:
     """The claims waiting in this api process, woken by RUNS_CHANNEL on the process's one LISTEN (``listen``),
-    opened by the first claim or stream. A notification, or a newer claim of the same worker, wakes every waiting
-    claim, which then looks at the queue again; a claim also looks every CLAIM_POLL_SECONDS, so it never depends on
-    the connection being up."""
+    opened by the first claim or stream. A notification wakes every waiting claim, which then looks at the queue
+    again; a newer claim of a worker wakes only the older claim of that worker, which ends; a claim also looks every
+    CLAIM_POLL_SECONDS, so it never depends on the connection being up."""
 
     def __init__(self, listener: Listener):
         self._listener = listener
@@ -95,6 +96,7 @@ class RunWakeups:
         self._event = asyncio.Event()  # set by the next wake-up, then replaced
         self.generation = 0  # counts wake-ups; a claim waits only while it has not changed
         self._tickets: dict[int, int] = {}  # worker id: the number of its newest claim
+        self._ends: dict[int, asyncio.Event] = {}  # worker id: set when a newer claim of it ends the waiting one
 
     def start(self) -> None:
         self._listener.start()
@@ -104,20 +106,28 @@ class RunWakeups:
         self._event.set()
         self._event = asyncio.Event()
 
-    async def wait(self, seen: int, timeout: float) -> None:
-        """Return once something woke the claims after generation ``seen``, or after ``timeout`` seconds."""
-        if self.generation != seen:
+    async def wait(self, seen: int, timeout: float, worker_id: int, number: int) -> None:
+        """Return once something woke the claims after generation ``seen``, a newer claim of ``worker_id`` ended
+        claim ``number``, or after ``timeout`` seconds."""
+        if self.generation != seen or not self.current(worker_id, number):
             return
+        woken = asyncio.ensure_future(self._event.wait())
+        ended = asyncio.ensure_future(self._ends[worker_id].wait())
         try:
-            await asyncio.wait_for(self._event.wait(), timeout)
-        except TimeoutError:
-            pass
+            await asyncio.wait((woken, ended), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            woken.cancel()
+            ended.cancel()
 
     async def ticket(self, worker_id: int) -> int:
-        """The number of a new claim of ``worker_id``, which makes any older one of it end without a run."""
+        """The number of a new claim of ``worker_id``, which makes any older one of it end without a run. Only that
+        claim wakes: waking every claim here made each new claim of any worker run the claim query of every other."""
         number = self._tickets.get(worker_id, 0) + 1
         self._tickets[worker_id] = number
-        self.wake()
+        older = self._ends.get(worker_id)
+        if older is not None:
+            older.set()
+        self._ends[worker_id] = asyncio.Event()
         return number
 
     def current(self, worker_id: int, number: int) -> bool:
@@ -126,6 +136,7 @@ class RunWakeups:
     def done(self, worker_id: int, number: int) -> None:
         if self._tickets.get(worker_id) == number:
             del self._tickets[worker_id]
+            del self._ends[worker_id]
 
 
 def worker_columns(w=None) -> list:
@@ -230,7 +241,7 @@ def _claim_conditions(
     them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included. What the run's agent
     profile, its browser, the gateway, the agent pools and the worker's labels and taints ask of the worker is
-    ``Claimer.gates``."""
+    ``_gates``."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -477,7 +488,7 @@ async def _claim_once(
             claimer.environments,
             claimer.served,
         )
-        query = _claimable(claimer.conditions())
+        query = claim_query(claimer.shape())
         waiting = await overlap.blocked(conn, list(served))
         if waiting:  # a step run whose files another run of its plan is editing waits in the queue
             query = query.where(tables.runs.c.id.not_in(waiting))
@@ -581,54 +592,116 @@ class Claimer:
         )
         return [key for failed, key in checks if failed]
 
-    def conditions(self) -> list[tuple[str, object]]:
-        """Every condition on a queued run for the worker to take it now, each with its key: on a drained worker, that
-        the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``gates``."""
+    def shape(self) -> ClaimShape:
+        """What its ``conditions`` are built from."""
         row = self.row
-        drained = [("draining", resumes_here(row.id))] if row.drained_at is not None else []
-        kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
-        said = {kind: kind in kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
-        said |= {kind: kind in kinds for kind in ("task", "question", "release", "browser")}
-        conditions = _claim_conditions(
-            row.id,
-            row.owner_id,
-            list(self.served),
-            self.runtimes,
-            self.pairs,
-            offered=tuple(self.offered),
-            plan_runs=runs.takes_plan_runs(row.agent_version),
+        return ClaimShape(
+            worker_id=row.id,
+            owner_id=row.owner_id,
+            name=row.name,
+            drained=row.drained_at is not None,
+            agent_version=row.agent_version,
             web_only=row.dispatch_from == "web",
-            **{f"{kind}_runs": runs_it for kind, runs_it in said.items()},
-            step_sessions=runs.SESSION_PER_STEP in features,
+            run_kinds=tuple(row.run_kinds or ()),
+            features=tuple(row.features or ()),
+            plugins=tuple(row.plugins or ()),
+            shared=row.shared,
+            served=tuple(self.served),
+            runtimes=tuple(self.runtimes),
+            offered=tuple(self.offered),
+            pairs=tuple(tuple(pair) for pair in self.pairs),
+            environments=tuple(self.environments),
             clones=self.clones,
             steady=self.steady,
-            shared=row.shared,
+            node=self.node,
         )
-        return drained + conditions + self.gates()
 
-    def gates(self) -> list[tuple[str, object]]:
-        """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes),
-        its browser, the model gateway, a judge of merge requests, the agent pools, the account pools and the worker's
-        labels and taints ask of the worker, each by its key."""
-        row = self.row
-        clause = claim_clause(
-            row.name,
-            self.runtimes,
-            row.features,
-            self.offered,
-            self.environments,
-            row.plugins,
-        )
-        return [
-            ("profile", clause),
-            ("browser", browsers.claim_gate(row.id, row.features)),
-            ("gateway", gateway_accounts.claim_gate(row.agent_version)),
-            ("merge_judge", merge_judge_gate(row.features)),
-            ("repoless_review", repoless_review_gate(row.features)),
-            ("agent_pool", agent_placement.claim_gate(row.id)),
-            ("pool_accounts", pool_accounts.claim_gate()),
-            ("placement", or_(agent_placement.home_run(row.id), self.node.gate(row.id))),
-        ]
+    def conditions(self) -> list[tuple[str, object]]:
+        """Every condition on a queued run for the worker to take it now, each with its key (``_conditions``)."""
+        return list(_conditions(self.shape()))
+
+
+@dataclass(frozen=True)
+class ClaimShape:
+    """What the conditions of a worker's claim are built from (``Claimer.shape``), hashable: the claim query of a worker
+    whose shape has not changed since its last claim is reused (``_conditions``, ``claim_query``), as building it anew
+    took every look of every waiting claim milliseconds of the api's one event loop. Each condition is SQL, so what
+    the database holds is read when the query runs, never cached."""
+
+    worker_id: int
+    owner_id: int
+    name: str
+    drained: bool
+    agent_version: str | None
+    web_only: bool
+    run_kinds: tuple[str, ...]
+    features: tuple[str, ...]
+    plugins: tuple[str, ...]
+    shared: bool
+    served: tuple[int, ...]
+    runtimes: tuple[str, ...]
+    offered: tuple[str, ...]
+    pairs: tuple[tuple[int, str], ...]
+    environments: tuple[str, ...]
+    clones: bool
+    steady: bool
+    node: worker_placement.Placement
+
+
+@lru_cache(maxsize=512)
+def _conditions(at: ClaimShape) -> tuple[tuple[str, object], ...]:
+    """Every condition on a queued run for the worker of ``at`` to take it now, each with its key: on a drained worker,
+    that the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``_gates``."""
+    drained = [("draining", resumes_here(at.worker_id))] if at.drained else []
+    said = {kind: kind in at.run_kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
+    said |= {kind: kind in at.run_kinds for kind in ("task", "question", "release", "browser")}
+    conditions = _claim_conditions(
+        at.worker_id,
+        at.owner_id,
+        list(at.served),
+        list(at.runtimes),
+        list(at.pairs),
+        offered=at.offered,
+        plan_runs=runs.takes_plan_runs(at.agent_version),
+        web_only=at.web_only,
+        **{f"{kind}_runs": runs_it for kind, runs_it in said.items()},
+        step_sessions=runs.SESSION_PER_STEP in at.features,
+        clones=at.clones,
+        steady=at.steady,
+        shared=at.shared,
+    )
+    return tuple(drained + conditions + _gates(at))
+
+
+def _gates(at: ClaimShape) -> list[tuple[str, object]]:
+    """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes), its
+    browser, the model gateway, a judge of merge requests, a review with no repo, the agent pools, the account pools
+    and the worker's labels and taints ask of the worker of ``at``, each by its key."""
+    clause = claim_clause(
+        at.name,
+        list(at.runtimes),
+        at.features,
+        list(at.offered),
+        list(at.environments),
+        at.plugins,
+    )
+    return [
+        ("profile", clause),
+        ("browser", browsers.claim_gate(at.worker_id, at.features)),
+        ("gateway", gateway_accounts.claim_gate(at.agent_version)),
+        ("merge_judge", merge_judge_gate(at.features)),
+        ("repoless_review", repoless_review_gate(at.features)),
+        ("agent_pool", agent_placement.claim_gate(at.worker_id)),
+        ("pool_accounts", pool_accounts.claim_gate()),
+        ("placement", or_(agent_placement.home_run(at.worker_id), at.node.gate(at.worker_id))),
+    ]
+
+
+@lru_cache(maxsize=512)
+def claim_query(at: ClaimShape):
+    """``_claimable`` of the conditions of ``at``, built once per shape; reusing the statement also keeps its cache
+    key, so SQLAlchemy compiles it once."""
+    return _claimable(list(_conditions(at)))
 
 
 def repoless_review_gate(features):
@@ -1023,6 +1096,8 @@ async def wait_for_run(
             # Hung up already: a run leased now would wait out its lease with nobody to run it.
             if await is_disconnected():
                 return Claim(run=None)
+            if not wakeups.current(worker_id, number):  # a newer claim of the worker ended this one
+                return Claim(run=None)
             seen = wakeups.generation
             try:
                 spec = await _try_claim(engine, user, lease, is_disconnected, blobs)
@@ -1035,6 +1110,6 @@ async def wait_for_run(
             remaining = deadline - loop.time()
             if remaining <= 0 or not wakeups.current(worker_id, number):
                 return Claim(run=None)
-            await wakeups.wait(seen, min(remaining, CLAIM_POLL_SECONDS))
+            await wakeups.wait(seen, min(remaining, CLAIM_POLL_SECONDS), worker_id, number)
     finally:
         wakeups.done(worker_id, number)

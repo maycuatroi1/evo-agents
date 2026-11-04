@@ -18,6 +18,7 @@ evo-run/<run>, sends the owner the notice run_failed naming it, and fails the ru
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import secrets
@@ -41,6 +42,7 @@ from evo_agents.worker.home import WorkerConfig, WorkerHome
 from evo_agents.worker.run import ANSWER_PROMPT
 from evo_agents.worker.runner import sessions
 from evo_agents.worker.runner.conversation import KEEP_GOING_PROMPT
+from evo_agents.worker.selfupdate.updater import SelfUpdate
 from tests.worker import fake_adapter
 from tests.worker.fake_hub import TOKEN, FakeHub
 
@@ -168,43 +170,53 @@ def with_daemon(machine: Machine, body, *, plan: dict | None = None, adapters: d
         hub = FakeHub(PROJECT)
         hub.put_plan(plan or plan_body())
         url = await hub.start()
-        config = WorkerConfig(
-            url=url,
-            worker_id=1,
-            name="mac",
-            projects=[PROJECT],
-            checkouts={f"{PROJECT}/{name}": str(path) for name, path in machine.checkouts.items()},
-        )
-        machine.home.save(config, TOKEN)
-        daemon = Daemon(
-            machine.home,
-            config,
-            TOKEN,
-            adapters=adapters or {"claude-code": fake_adapter.FakeAdapter},
-            env=machine.env,
-            **options,
-        )
-        task = asyncio.create_task(daemon.run())
         try:
-            for _ in range(600):
-                if getattr(daemon, "beat_ok", None) is not None and daemon.beat_ok.is_set():
-                    break
-                assert not task.done(), task.exception() if task.done() else None
-                await asyncio.sleep(0.05)
-            await body(hub, daemon)
+            async with daemon_on(machine, url, adapters=adapters, **options) as daemon:
+                await body(hub, daemon)
         finally:
-            if not task.done():
-                daemon._signal(signal.SIGTERM)
-                done, _ = await asyncio.wait({task}, timeout=10)
-                if not done:
-                    daemon._signal(signal.SIGTERM)  # the second stops the agents now
-                    done, _ = await asyncio.wait({task}, timeout=30)
-                if not done:
-                    task.cancel()
             await hub.stop()
-        assert task.result() == 0
 
     asyncio.run(go())
+
+
+@contextlib.asynccontextmanager
+async def daemon_on(machine: Machine, url: str, *, adapters: dict | None = None, **options):
+    """The daemon of ``machine`` running in this process against the hub at ``url`` once its first heartbeat went
+    through, stopped as SIGTERM does when the block ends; it exits 0."""
+    config = WorkerConfig(
+        url=url,
+        worker_id=1,
+        name="mac",
+        projects=[PROJECT],
+        checkouts={f"{PROJECT}/{name}": str(path) for name, path in machine.checkouts.items()},
+    )
+    machine.home.save(config, TOKEN)
+    daemon = Daemon(
+        machine.home,
+        config,
+        TOKEN,
+        adapters=adapters or {"claude-code": fake_adapter.FakeAdapter},
+        env=machine.env,
+        **options,
+    )
+    task = asyncio.create_task(daemon.run())
+    try:
+        for _ in range(600):
+            if getattr(daemon, "beat_ok", None) is not None and daemon.beat_ok.is_set():
+                break
+            assert not task.done(), task.exception() if task.done() else None
+            await asyncio.sleep(0.05)
+        yield daemon
+    finally:
+        if not task.done():
+            daemon._signal(signal.SIGTERM)
+            done, _ = await asyncio.wait({task}, timeout=10)
+            if not done:
+                daemon._signal(signal.SIGTERM)  # the second stops the agents now
+                done, _ = await asyncio.wait({task}, timeout=30)
+            if not done:
+                task.cancel()
+    assert task.result() == 0
 
 
 async def wait_for(predicate, what: str, timeout: float = WAIT):
@@ -1121,6 +1133,75 @@ def test_a_parked_run_keeps_its_worktrees_and_the_run_that_resumes_it_goes_on_in
     assert hub.runs[parked]["state"] == "done" and hub.runs[parked]["resumed_by"] == resumed
     assert machine.origin("alpha", "log", "--format=%s", "-1", "feat/alpha") == f"run #{resumed} step 1: Alpha file"
     assert hub.decisions[1]["delivered"]
+    old, new = machine.home.load_run(parked), machine.home.load_run(resumed)
+    assert old["resumed_by"] == resumed and old["dir"] is None and old["repos"] == [], "the cleanup leaves them alone"
+    assert new["dir"] == str(directory) and [item["repo"] for item in new["repos"]] == ["alpha", "beta"]
+    assert any(f"Goes on from parked run #{parked}" in text for text in hub.texts(resumed))
+
+
+def test_a_parked_run_holds_back_no_self_update_and_the_daemon_after_it_resumes_it_in_its_session_and_worktrees(
+    machine, monkeypatch
+):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [{"write": {"alpha/a.txt": "a\n"}}, ask()],
+            f"plan:{PLAN}/resume": [
+                {"sh": "pwd -P; echo $EVO_RUN_ID; cat alpha/a.txt"},
+                {"cli": ["step", "1", "done", "--verify", "test -f a.txt"]},
+                {"result": {"summary": "Resumed and done."}},
+            ],
+        }
+    )
+    turns: list[tuple[int, int]] = []  # (held, orphans) of each turn of the self-update
+    turn = SelfUpdate.turn
+
+    async def counted(self, *, held: int, orphans: int, worker: str) -> bool:
+        turns.append((held, orphans))
+        return await turn(self, held=held, orphans=orphans, worker=worker)
+
+    monkeypatch.setattr(SelfUpdate, "turn", counted)
+    found = {}
+
+    async def go():
+        hub = FakeHub(PROJECT)
+        hub.put_plan(plan_body())
+        url = await hub.start()
+        try:
+            async with daemon_on(machine, url) as daemon:
+                parked = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+                assert await hub.wait_state(parked, "waiting", "done", "failed") == "waiting", hub.texts(parked)
+                count = len(turns)
+                await wait_for(lambda: len(turns) > count, "a turn of the self-update while the run waits")
+                assert turns[-1] == (1, 0), "a run waiting for its owner's answer keeps its slot and the install"
+                hub.park(parked)
+                await wait_for(lambda: parked not in daemon.runs, "the parked run to free its slot")
+                count = len(turns)
+                await wait_for(lambda: len(turns) > count, "a turn of the self-update after the park")
+                assert turns[-1] == (0, 0), "a parked run holds back no update of the install"
+            # the daemon exited as it does to restart on an updated install, once no claim of it was open (the update
+            # waits for them, IDLE_WAIT); the next one starts on the same home
+            await wait_for(lambda: hub.claims_open == 0, "the last claim of the stopped daemon to end")
+            record = machine.home.load_run(parked)
+            assert record["state"] == "parked" and record["finished_at"] and record["session_id"], record
+            assert not machine.home.load_agents(), "no agent left for the next daemon to take as an orphan"
+            async with daemon_on(machine, url) as daemon:
+                assert not daemon.orphans
+                resumed = hub.answer(1, "yes")
+                assert hub.runs[resumed]["spec"]["resume_of_run_id"] == parked
+                state = await hub.wait_state(resumed, "done", "failed")
+                assert state == "done", (hub.runs[resumed], hub.texts(resumed))
+            found.update(parked=parked, resumed=resumed, hub=hub, session=record["session_id"])
+        finally:
+            await hub.stop()
+
+    asyncio.run(go())
+    parked, resumed, hub = found["parked"], found["resumed"], found["hub"]
+    directory = machine.directory(parked)
+    first, again = machine.starts()
+    assert first["session"] == found["session"] and again["resume"] == found["session"], "the same session"
+    assert again["run"] == resumed and Path(again["cwd"]) == directory, "the same directory and worktrees"
+    assert machine.commands()[1]["stdout"].splitlines() == [str(directory.resolve()), str(resumed), "a"]
+    assert machine.origin("alpha", "log", "--format=%s", "-1", "feat/alpha") == f"run #{resumed} step 1: Alpha file"
     old, new = machine.home.load_run(parked), machine.home.load_run(resumed)
     assert old["resumed_by"] == resumed and old["dir"] is None and old["repos"] == [], "the cleanup leaves them alone"
     assert new["dir"] == str(directory) and [item["repo"] for item in new["repos"]] == ["alpha", "beta"]

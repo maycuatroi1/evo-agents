@@ -543,10 +543,12 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
     handed = []
     monkeypatch.setattr(worker, "main", lambda config, concurrency, **kwargs: handed.append(kwargs) or 0)
     args = argparse.Namespace(
-        dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker"
+        dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker", queues=None
     )
     assert hub_cli.cmd_worker.__wrapped__(args) == 0
-    assert handed == [{"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}]
+    assert handed == [
+        {"queues": None, "release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
+    ]
 
 
 # From the command line

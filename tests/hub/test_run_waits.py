@@ -245,6 +245,32 @@ def test_a_parked_run_resumes_by_the_reaper_when_its_wait_wakes_and_stays_parked
     assert message["decision_id"] == wait["id"]
 
 
+def test_a_run_parked_in_the_pass_its_wait_woke_resumes_with_the_answer_it_had_not_taken(client, hub, hub_db):
+    """Runs #1568 and #1582: the reaper ran late, woke the wait of a run still waiting (the answer went to its inbox),
+    then parked it in the same pass, and no worker hands a parked run its inbox."""
+    worker, run, wait = a_waiting_run(client, hub, until=soon(0.05))  # wakes within the slot: the run keeps it
+    recover(client)
+    assert run_view(client, hub["owner"], run["id"])["state"] == "waiting"
+    came(hub_db, wait["id"])
+    park(hub_db, run["id"])
+    recover(client)
+    (reason,) = last_reason(hub_db, run["id"])[0]
+    assert reason.startswith("resumed as #")
+    new_id = int(reason.removeprefix("resumed as #"))
+    assert [move[1:] for move in moves(hub_db, run["id"])[-2:]] == [
+        ("waiting", "parked", "reaper"),
+        ("parked", "done", "reaper"),
+    ]
+    new = run_view(client, hub["owner"], new_id)
+    assert (new["state"], new["resume_of_run_id"], new["pinned_worker_id"]) == ("queued", run["id"], worker["id"])
+    assert claim(client, worker)["id"] == new_id
+    moved(client, worker, new_id, "running")
+    (message,) = inbox(client, worker, new_id)
+    assert message["decision_id"] == wait["id"]
+    recover(client)
+    assert run_view(client, hub["owner"], new_id)["state"] == "running"  # resumed once
+
+
 def test_the_wait_for_something_elsewhere_the_prompt_names_parks_the_run_and_resumes_it_on_its_worker(
     client, hub, hub_db
 ):

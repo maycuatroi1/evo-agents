@@ -17,9 +17,11 @@ merge queue's own judge run (``merge_judge.queue_judge_run``: pinned to the poli
 worker on duty, on Claude Code with a model other than the Builder's, one judge run active a project), tried again
 when one ends without a verdict, up to ``judge.JUDGE_ATTEMPTS``. Its claim (``claim``) names the pull request, its head
 and its base branch, with ``merge_result``: the worker merges the current base into the head in a scratch worktree, a
-conflict fails the check with "needs a rebase", and the plan's verify for the repo and the project's hidden checks run
-on that merge result, while the Judge reads the pull request's own diff. Its prompt is ``merge_gate.build_prompt`` for
-a pull request (``prompt``), it reads its inputs from GET /v1/worker/runs/{id}/merge-judge and posts its verdict to
+conflict fails the check with "needs a rebase", and the verify of the plan's done steps in the repo
+(``merge_gate.done_verify_of``: a step not done yet, such as the one that merges and deploys, is not the pull
+request's to prove) and the project's hidden checks run on that merge result, while the Judge reads the pull
+request's own diff. Its prompt is ``merge_gate.build_prompt`` for a pull request (``prompt``), it reads its inputs
+from GET /v1/worker/runs/{id}/merge-judge and posts its verdict to
 POST /v1/worker/runs/{id}/merge-verdict, the merge queue's routes, which hand a run of a check to this module. The
 verdict is read as the queue reads its own (``merge_judge.Judged``: the checks, the Judge's dimensions, the findings of
 each round with its marks of earlier ones, and the security pass, ``evo_agents.hub.security_pass``). Once the first
@@ -468,10 +470,10 @@ async def inputs(conn: AsyncConnection, user: Principal, run_id: int, key: str |
     _, row = await held(conn, user, run_id, key)
     charter = await queue.charter_of(conn, row.project_id)
     hidden = judging.hidden_of(charter)
-    verify = merge_gate.verify_of(await queue.plan_body(conn, row.project_id, row.plan_id), row.repo)
+    verify = merge_gate.done_verify_of(await queue.plan_body(conn, row.project_id, row.plan_id), row.repo)
     await set_row(conn, row.id, verdict={**(row.verdict or {}), "hidden_count": len(hidden)})
     text = (
-        f"The Judge read its inputs: {len(verify)} verify command(s) of the plan and {len(hidden)} hidden check(s) of "
+        f"The Judge read its inputs: {len(verify)} verify command(s) of the plan's done steps and {len(hidden)} hidden check(s) of "
         "the project, which only this run reads; they run on the pull request's head merged with its base."
     )
     await write_event(conn, run_id, {"text": text, "merge_check": row.id})
@@ -511,7 +513,7 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
         found = judging.Judged(
             body=body,
             second=second,
-            expected=merge_gate.verify_of(await queue.plan_body(conn, row.project_id, row.plan_id), row.repo),
+            expected=merge_gate.done_verify_of(await queue.plan_body(conn, row.project_id, row.plan_id), row.repo),
             hidden_count=hidden_count,
             head=row.head_sha,
             ledger=findings.ledger_of(row.verdict),

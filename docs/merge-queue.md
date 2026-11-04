@@ -355,7 +355,12 @@ tried again up to three times when a run ends without a verdict. Its worker:
 
 1. merges origin's current base branch into the head in a scratch commit, with no branch, work tree or hook touched. A
    conflict fails the check with `needs a rebase` and the paths that conflict, and nothing else runs;
-2. runs the plan's verify for the repo and the project's hidden checks on that merge result;
+2. runs the verify of the plan's done steps in the repo and the project's hidden checks on that merge result. A step
+   not done yet is not the pull request's to prove: the step that merges and deploys reads, in its verify, what the
+   merge does, and `evo-agents worker step` runs it once the agent reports it done. When the repo asks for a Python
+   environment of its worktree (`[tool.evo-agents.worker]`), each check first makes it with `uv sync --frozen`, as
+   code of the change, and runs with its `.venv/bin` first on PATH, the change's own pinned tools rather than the
+   machine's; the restore between checks removes it with the rest of what a check left;
 3. runs the Judge, then the security pass, on the pull request's own diff at its head. The findings of each round stay
    with the pull request (`hub/findings.py`), so a later round marks the ones still open.
 

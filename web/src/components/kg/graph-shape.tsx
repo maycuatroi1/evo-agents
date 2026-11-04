@@ -1,11 +1,12 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useFormatter, useTranslations } from "next-intl";
+import { useId, useMemo, useState } from "react";
 
 import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { TableSkeleton } from "@/components/states/states";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import { kgShapeQuery } from "@/lib/kg/queries";
@@ -14,8 +15,13 @@ import type { ShapeRow } from "@/lib/kg/types";
 import { KindBadge } from "./badges";
 import { NoGraph } from "./no-graph";
 
-function ShapeTable({ rows, caption }: { rows: ShapeRow[]; caption: string }) {
+/** Rows the section shows before Show all: the combinations with the most edges. */
+export const SHAPE_SHOWN = 10;
+
+function ShapeTable({ rows, caption, id }: { rows: ShapeRow[]; caption: string; id?: string }) {
   const t = useTranslations("kg.shape");
+  const format = useFormatter();
+  const most = Math.max(1, ...rows.map((row) => row.count));
   const columns = useMemo(() => {
     const helper = dataTableColumns<ShapeRow>();
     return helper.columns([
@@ -37,20 +43,60 @@ function ShapeTable({ rows, caption }: { rows: ShapeRow[]; caption: string }) {
       helper.accessor("count", {
         header: () => t("columns.count"),
         sortFn: "basic",
-        cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
+        meta: { numeric: true },
+        // The bar is for the eye, against the largest count; the figure says the number.
+        cell: (info) => (
+          <span className="inline-flex items-center justify-end gap-2.5">
+            <span className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-muted sm:block" aria-hidden="true">
+              <span
+                className="block h-full min-w-0.5 rounded-full bg-chart-1"
+                style={{ width: `${(info.getValue() / most) * 100}%` }}
+              />
+            </span>
+            <span className="min-w-[4.5rem] tabular-nums">{format.number(info.getValue())}</span>
+          </span>
+        ),
       }),
     ]);
-  }, [t]);
+  }, [t, format, most]);
   return (
-    <DataTable
-      data={rows}
-      columns={columns}
-      caption={caption}
-      getRowId={(row) => `${row.src_kind}\u0000${row.rel}\u0000${row.dst_kind}`}
-      initialSorting={[{ id: "count", desc: true }]}
-      density="compact"
-      testId="kg-shape-table"
-    />
+    <div id={id}>
+      <DataTable
+        data={rows}
+        columns={columns}
+        caption={caption}
+        getRowId={(row) => `${row.src_kind}\u0000${row.rel}\u0000${row.dst_kind}`}
+        initialSorting={[{ id: "count", desc: true }]}
+        density="compact"
+        testId="kg-shape-table"
+      />
+    </div>
+  );
+}
+
+/** The shape's rows, the combinations with the most edges first, then Show all for the rest. */
+function ShapeRows({ rows }: { rows: ShapeRow[] }) {
+  const t = useTranslations("kg.shape");
+  const [all, setAll] = useState(false);
+  const id = useId();
+  const sorted = useMemo(() => [...rows].sort((a, b) => b.count - a.count), [rows]);
+  const shown = all ? sorted : sorted.slice(0, SHAPE_SHOWN);
+  return (
+    <div className="flex flex-col gap-3">
+      <ShapeTable rows={shown} caption={t("caption", { count: rows.length })} id={id} />
+      {rows.length > SHAPE_SHOWN ? (
+        <Button
+          variant="outline"
+          className="self-start"
+          aria-expanded={all}
+          aria-controls={id}
+          onClick={() => setAll((value) => !value)}
+          data-testid="kg-shape-all"
+        >
+          {all ? t("showFewer") : t("showAll", { count: rows.length })}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -80,7 +126,7 @@ export function GraphShapeSection({ project }: { project: string }) {
                   {t("empty")}
                 </p>
               ) : (
-                <ShapeTable rows={data.shape} caption={t("caption", { count: data.shape.length })} />
+                <ShapeRows rows={data.shape} />
               )
             }
           </QueryView>

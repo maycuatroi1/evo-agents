@@ -89,6 +89,8 @@ claude plugin install evo-hub@evo-agents
 claude plugin install evo-kg@evo-agents
 ```
 
+The plugins run the `evo-agents` CLI installed above from the `PATH`; they pin no release of their own.
+
 ### Codex
 
 ```sh

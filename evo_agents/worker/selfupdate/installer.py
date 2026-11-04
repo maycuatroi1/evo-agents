@@ -26,7 +26,8 @@ it holds of evo-ak: ``uv cache clean evo-ak`` the wheel built of each commit, an
 each commit, which no uv command but a whole ``uv cache clean`` removes. The dependencies stay for the next update. In
 the user's cache these piled up at every move of nightly, about 100 MB a commit: in two weeks they took 27 GB of a
 worker's disk, which filled, and its updates failed (2026-11-04). ``uv cache clean evo-ak`` is not for the user's
-cache, where it would drop the ``evo-ak==X`` the plugins' hooks start with ``uvx --offline``.
+cache, where it would drop the ``evo-ak==X`` that plugins of 0.56.2 and before start with ``uvx --offline`` (later ones
+run ``evo-agents`` from the PATH).
 
 The daemons of the install claim nothing meanwhile (``peers``), so no run's code changes under it.
 """

@@ -3338,7 +3338,14 @@ decides whether to reinstall its own install, and it does when all of these hold
 - **nightly points to another commit** than the one the install was built from, which the daemon reads from
   `direct_url.json` of evo-ak's dist-info.
 - **Every daemon of the install is idle and may update**: none holds a run or agents a previous daemon left, none is
-  locked, and none is run by hand or otherwise unable to update (see Daemons that share an install, below).
+  locked, and none is run by hand or otherwise unable to update (see Daemons that share an install, below). A run
+  counts from its claim until it is over on the worker: leased, running, verifying, and `waiting` for its owner's
+  answer, which keeps its slot and its lease until the reaper parks it (`DECISION_WAIT_SECONDS`, 10 minutes). A parked
+  run counts for nothing: once the hub parks it, the daemon stops its agent at the end of the turn, records it
+  `parked` with its session and directory in the worker's state, and lets it go, so the turn after that may update.
+  The run that resumes it is a new claim, which the updated daemon takes and goes on in the same session and
+  worktrees (`Conversation.adopt`). A waiting run therefore holds the install back until the reaper's next pass after
+  those 10 minutes, and as long as the hub's job worker runs no pass, the daemon keeps waiting with it.
 - **It is not turned off on the machine**: `EVO_WORKER_SELF_UPDATE` is not `off`, `0`, `false` or `no`.
 
 **Where nightly points.** The hub reads the tag every minute (`hub.read_nightly`) and each heartbeat answer carries

@@ -45,7 +45,7 @@ evo-agents kg semantic --project demo --mode on               # the next build k
 On the hub the mode is the project's row of `kg_semantic` (migration 0181), off without one; the build reads it
 (`evo_agents/hub/kg_semantic.py`). The Curator's kg_init run writes it with the KG settings (`semantic_mode`); the optimize loop no longer does. A project registered
 on the hub gets its row at `index` from the start (a project that has a row keeps it), so its first build writes the
-vectors and search stays by words until the holdout says `on`. A build embeds for 15 minutes at most; the rows left have
+vectors and search stays by words until the holdout says `on`. A build embeds for 5 minutes at most; the rows left have
 no vector, the build's coverage says so (`coverage.vectors`: model, mode, rows, vectors, partial), and the next build goes
 on from the cache. `evo-agents hub kg semantic --project P --json` prints the mode, the model, `model_available`
 (whether the newest build could load it) and how many rows hold a vector. The hub image installs the `semantic`

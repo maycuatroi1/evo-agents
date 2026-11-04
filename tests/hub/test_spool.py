@@ -444,15 +444,15 @@ def test_nothing_is_pruned_when_nothing_is_spooled(own_home, monkeypatch, capsys
 # The plugin's hooks.json, run as Claude Code runs it
 
 
-def test_the_plugin_command_spools_through_uvx_and_exits_0_without_it(own_home, tmp_path):
+def test_the_plugin_command_spools_through_evo_agents_and_exits_0_without_it(own_home, tmp_path):
     from tests.hub import pg
-    from tests.hub.test_hooks import SH, fake_evo_agents, fake_uvx, hook_runs, plugin_hooks
+    from tests.hub.test_hooks import SH, fake_evo_agents, hook_runs, plugin_hooks
 
     group = plugin_hooks()["PostToolUse"][0]  # the second group is the local-tool hook: tests/hub/test_local_sync.py
     assert group["matcher"] == "Bash|Read|Grep|WebFetch|mcp__.*"
     (hook,) = group["hooks"]
     assert hook_runs(hook["command"]) == "hub hook post-tool-use"
-    assert hook["timeout"] >= spool.BUDGET + 5  # uvx and the interpreter start inside Claude Code's limit
+    assert hook["timeout"] >= spool.BUDGET + 5  # the interpreter starts inside Claude Code's limit
     data = json.dumps(payload("Bash", bash_response(long_text())))
 
     def run(path: str) -> subprocess.CompletedProcess:
@@ -463,16 +463,9 @@ def test_the_plugin_command_spools_through_uvx_and_exits_0_without_it(own_home, 
 
     missing = run(str(tmp_path / "empty"))
     assert (missing.returncode, missing.stdout) == (0, "")
-    failing = run(str(fake_uvx(tmp_path / "failing", exit_code=2).parent))
+    failing = run(str(fake_evo_agents(tmp_path / "failing", exit_code=2).parent))
     assert (failing.returncode, failing.stdout) == (0, "")
-    working = run(str(fake_uvx(tmp_path / "working").parent))
+    working = run(str(fake_evo_agents(tmp_path / "working").parent))
     assert (working.returncode, working.stderr) == (0, "")
     assert "only its start and end are shown here" in replaced(working.stdout)["stdout"]
-    assert spool_file(own_home).read_text(encoding="utf-8") == json.loads(data)["tool_response"]["stdout"]
-    spool_file(own_home).unlink()
-    # uvx has no evo-ak of the plugin's release: evo-agents on the PATH gets the whole result and spools it
-    path = fake_evo_agents(tmp_path / "path").parent
-    fallback = run(f"{fake_uvx(tmp_path / 'failing', exit_code=2).parent}{os.pathsep}{path}")
-    assert fallback.returncode == 0 and fallback.stderr.splitlines()[-1].endswith(" runs hub hook post-tool-use")
-    assert "only its start and end are shown here" in replaced(fallback.stdout)["stdout"]
     assert spool_file(own_home).read_text(encoding="utf-8") == json.loads(data)["tool_response"]["stdout"]
