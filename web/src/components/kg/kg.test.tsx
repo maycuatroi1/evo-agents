@@ -7,18 +7,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { kgKeys, NODE_PAGE_GROUPING } from "@/lib/kg/queries";
-import type { GraphNode, GraphShape, KgBuild, KgBuilds, Neighbourhood, SourceRead } from "@/lib/kg/types";
+import type { GraphNode, GraphShape, KgBuild, Neighbourhood, SourceRead } from "@/lib/kg/types";
 import { makeQueryClient } from "@/lib/query-client";
 import { renderVi } from "@/test/render";
 
 import { BuildStatusBadge } from "./badges";
-import { BuildHistory, LatestBuild, latestSucceeded } from "./build-status";
+import { BuildFigures, buildRecord, median } from "./build-figures";
+import { BuildActivity } from "./build-activity";
+import { BuildHistory, latestSucceeded } from "./build-status";
+import { GraphInUse } from "./graph-in-use";
 import { GraphShapeSection } from "./graph-shape";
 import { KgNodePage } from "./kg-node-page";
 import { KgBuildsPage } from "./kg-builds";
 import { NeighbourhoodSection } from "./neighbourhood";
 import { SourceCommits } from "./source-commits";
-import { StatusTiles } from "./status-tiles";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -114,35 +116,6 @@ describe("build status", () => {
     }
   });
 
-  it("shows a failed build's error, times and no content hash", () => {
-    const build: KgBuild = {
-      id: 9,
-      status: "failed",
-      job_id: 4,
-      requested_by: "alice",
-      config_digest: null,
-      runs: 2,
-      artifact_sha256: null,
-      artifact_size: null,
-      artifact_reused_from: null,
-      artifact_pruned_at: null,
-      content_hash: null,
-      nodes: null,
-      edges: null,
-      error: "the build reported 1 error(s): source docs is missing",
-      queued_at: "2026-10-04T10:00:00Z",
-      started_at: "2026-10-04T10:00:03Z",
-      finished_at: "2026-10-04T10:00:13Z",
-    };
-    renderVi(<LatestBuild build={build} now={null} />);
-    expect(screen.getByTestId("build-error")).toHaveTextContent("source docs is missing");
-    expect(screen.getByText("Do alice yêu cầu")).toBeInTheDocument();
-    expect(screen.getByTestId("build-wait")).toHaveTextContent("3 giây");
-    expect(screen.getByTestId("build-run")).toHaveTextContent("10 giây");
-    expect(screen.getByText("Chưa có: build chưa thành công")).toBeInTheDocument();
-    expect(screen.getByTestId("build-artifact")).toHaveAttribute("data-state", "none");
-  });
-
   const succeeded = (id: number, overrides: Partial<KgBuild> = {}): KgBuild => ({
     id,
     status: "succeeded",
@@ -164,21 +137,61 @@ describe("build status", () => {
     ...overrides,
   });
 
-  it("says whose artifact a build points at, and when the retention deleted it", () => {
-    const { unmount } = renderVi(<LatestBuild build={succeeded(12, { artifact_reused_from: 10 })} now={null} />);
+  it("puts the newest build first when it failed, with its error and the graph the pages still read", () => {
+    const failed: KgBuild = {
+      ...succeeded(9),
+      status: "failed",
+      requested_by: "alice",
+      artifact_sha256: null,
+      artifact_size: null,
+      content_hash: null,
+      nodes: null,
+      edges: null,
+      error: "the build reported 1 error(s): source docs is missing",
+    };
+    renderVi(<BuildActivity builds={[failed, succeeded(8)]} now={null} />);
+    const banner = screen.getByTestId("kg-activity");
+    expect(banner).toHaveAttribute("data-status", "failed");
+    expect(within(banner).getByTestId("build-status")).toHaveTextContent("Thất bại");
+    expect(screen.getByTestId("build-error")).toHaveTextContent("source docs is missing");
+    expect(banner).toHaveTextContent("Các trang vẫn đọc build #8.");
+  });
+
+  it("says how long the build in flight has run and waited, and stays silent once the newest succeeded", () => {
+    const running: KgBuild = { ...succeeded(11), status: "running", finished_at: null, content_hash: null };
+    const waiting: KgBuild = { ...succeeded(12), status: "queued", started_at: null, finished_at: null };
+    const now = Date.parse("2026-10-04T10:01:03Z");
+    const { unmount } = renderVi(<BuildActivity builds={[waiting, running, succeeded(10)]} now={now} />);
+    const banner = screen.getByTestId("kg-activity");
+    expect(banner).toHaveAttribute("data-build-id", "11");
+    expect(banner).toHaveTextContent("Đã chạy 1 phút 0 giây, sau 3 giây trong hàng đợi.");
+    expect(banner).toHaveTextContent("Còn 1 build chờ sau nó.");
+    unmount();
+    renderVi(<BuildActivity builds={[succeeded(10)]} now={null} />);
+    expect(screen.queryByTestId("kg-activity")).toBeNull();
+  });
+
+  it("says whose artifact the graph in use points at, and when the retention deleted it", () => {
+    const { unmount } = renderVi(<GraphInUse graph={succeeded(12, { artifact_reused_from: 10 })} />);
     const reused = screen.getByTestId("build-artifact");
     expect(reused).toHaveAttribute("data-state", "reused");
     expect(reused).toHaveTextContent("Dùng lại tệp của build #10");
     expect(screen.getByTitle("cd".repeat(32))).toHaveTextContent("cdcdcdcdcdcd…");
+    expect(screen.getByTestId("graph-time")).toHaveTextContent("Chạy 10 giây, sau 3 giây trong hàng đợi");
     unmount();
 
     const pruned = succeeded(9, { artifact_sha256: null, artifact_pruned_at: "2026-10-05T03:31:00Z" });
-    renderVi(<LatestBuild build={pruned} now={null} />);
+    const { unmount: again } = renderVi(<GraphInUse graph={pruned} />);
     const note = screen.getByTestId("build-artifact");
     expect(note).toHaveAttribute("data-state", "pruned");
     expect(note).toHaveTextContent("Đã xoá");
     expect(note.querySelector("time")).toHaveAttribute("dateTime", "2026-10-05T03:31:00Z");
-    expect(screen.getByTestId("latest-content-hash")).toHaveTextContent("sha256:" + "ab".repeat(32)); // still described
+    expect(screen.getByTestId("graph-content-hash")).toHaveTextContent("sha256:" + "ab".repeat(32)); // still described
+    again();
+
+    renderVi(<GraphInUse graph={undefined} />);
+    expect(screen.getByTestId("kg-graph-in-use")).toHaveTextContent("Chưa có");
+    expect(screen.queryByTestId("graph-content-hash")).toBeNull();
   });
 
   it("reads the newest build that still holds an artifact, and the history shows every artifact's state", () => {
@@ -384,24 +397,42 @@ describe("knowledge graph overview", () => {
     started_at: "2026-10-04T10:00:03Z",
     finished_at: "2026-10-04T10:01:00Z",
   };
-  const data = (build: KgBuild): KgBuilds => ({ builds: [build], jobs: [] });
-
   it("sizes a graph that hides its totals by what the reader can read, and the build's totals otherwise", () => {
     const visible = { ...VIEW.graph, build_id: 21, nodes: 42, edges: 17 };
-    const { unmount } = renderVi(<StatusTiles data={data(hidden)} now={null} visible={visible} />);
-    const tile = screen.getByTestId("tile-size");
-    expect(tile).toHaveTextContent("42 node");
-    expect(tile).toHaveTextContent("17 cạnh, trong phần bạn đọc được");
+    const { unmount } = renderVi(<BuildFigures builds={[hidden]} visible={visible} />);
+    expect(screen.getByTestId("summary-nodes")).toHaveTextContent("42");
+    expect(screen.getByTestId("summary-edges")).toHaveTextContent("17");
+    expect(screen.getByTestId("summary-edges")).toHaveTextContent("trong phần bạn đọc được");
     unmount();
 
-    const { unmount: again } = renderVi(<StatusTiles data={data(hidden)} now={null} visible={null} />);
-    expect(screen.getByTestId("tile-size")).toHaveTextContent("-");
+    const { unmount: again } = renderVi(<BuildFigures builds={[hidden]} visible={null} />);
+    expect(screen.getByTestId("summary-nodes-value")).toHaveTextContent("-");
     again();
 
-    renderVi(<StatusTiles data={data({ ...hidden, nodes: 900, edges: 1200 })} now={null} visible={visible} />);
-    expect(screen.getByTestId("tile-size")).toHaveTextContent("900 node");
-    expect(screen.getByTestId("tile-size")).toHaveTextContent("1.200 cạnh");
-    expect(screen.getByTestId("tile-size")).not.toHaveTextContent("bạn đọc được");
+    renderVi(<BuildFigures builds={[{ ...hidden, nodes: 900, edges: 1200 }]} visible={visible} />);
+    expect(screen.getByTestId("summary-nodes-value")).toHaveTextContent("900");
+    expect(screen.getByTestId("summary-edges-value")).toHaveTextContent("1.200");
+    expect(screen.getByTestId("summary-edges")).not.toHaveTextContent("bạn đọc được");
+  });
+
+  it("counts the latest builds that succeeded, in attention when most failed, and their typical run", () => {
+    const failed = (id: number): KgBuild => ({ ...hidden, id, status: "failed", artifact_sha256: null, error: "stopped" });
+    const slow = { ...hidden, id: 4, started_at: "2026-10-04T10:00:00Z", finished_at: "2026-10-04T10:03:00Z" };
+    const builds = [failed(6), failed(5), slow, hidden, { ...hidden, id: 2, status: "running" as const, finished_at: null }];
+    const record = buildRecord(builds);
+    expect(record).toMatchObject({ finished: 4, succeeded: 2, failed: 2 });
+    expect(record.runs).toEqual([57_000, 180_000]); // oldest first
+    expect(median(record.runs)).toBe(118_500);
+    expect(median([])).toBeNull();
+
+    const { unmount } = renderVi(<BuildFigures builds={builds} visible={null} />);
+    const cell = screen.getByTestId("summary-succeeded-value");
+    expect(cell).toHaveTextContent("2trên 4");
+    expect(cell).not.toHaveClass("text-attention"); // half failed: not most
+    expect(screen.getByTestId("summary-build-time-value")).toHaveTextContent("1 phút 58 giây");
+    unmount();
+    renderVi(<BuildFigures builds={[failed(7), ...builds]} visible={null} />);
+    expect(screen.getByTestId("summary-succeeded-value")).toHaveClass("text-attention");
   });
 
   it("lists the graph's shape, the most used kinds and edge type first", () => {

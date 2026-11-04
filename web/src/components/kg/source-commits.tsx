@@ -40,7 +40,7 @@ export function SourceCommits({ sources }: { sources: readonly SourceRead[] }) {
   if (sources.length === 0) return null;
   return (
     <section aria-labelledby="kg-commits-title">
-      <Card data-testid="kg-commits">
+      <Card className="h-full" data-testid="kg-commits">
         <CardHeader>
           <CardTitle>
             <h2 id="kg-commits-title">{t("title")}</h2>

@@ -44,16 +44,17 @@ test.describe("knowledge graph", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: "Đồ thị tri thức" })).toBeVisible();
     await expect(page.getByTestId("kg-tab-builds")).toHaveAttribute("aria-current", "page");
-    const latest = page.getByTestId("kg-latest-build");
-    await expect(latest).toHaveAttribute("data-build-id", String(kg.build.id));
-    await expect(latest.getByTestId("build-status")).toHaveText("Thành công");
-    await expect(latest.getByTestId("build-status")).toHaveAttribute("data-status", "succeeded");
-    await expect(latest.getByTestId("latest-content-hash")).toHaveText(kg.build.content_hash!);
-    await expect(latest.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
-    await expect(page.getByTestId("tile-hash").locator("[title]").first()).toHaveAttribute("title", kg.build.content_hash!);
-    await expect(page.getByTestId("tile-size")).toContainText(`${kg.build.nodes} node`);
-    await expect(page.getByTestId("queue-empty")).toBeVisible();
-    await expect(page.getByTestId("kg-build-history").getByRole("row")).toHaveCount(2); // header and the build
+    const graph = page.getByTestId("kg-graph-in-use");
+    await expect(graph).toHaveAttribute("data-build-id", String(kg.build.id));
+    await expect(graph.getByTestId("graph-content-hash")).toHaveText(kg.build.content_hash!);
+    await expect(graph.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
+    await expect(page.getByTestId("summary-nodes")).toHaveAttribute("data-value", String(kg.build.nodes));
+    await expect(page.getByTestId("summary-succeeded")).toHaveAttribute("data-value", "1");
+    // A calm graph: no banner, nothing running or waiting.
+    await expect(page.getByTestId("kg-activity")).toHaveCount(0);
+    const history = page.getByTestId("kg-build-history");
+    await expect(history.getByRole("row")).toHaveCount(2); // header and the build
+    await expect(history.getByTestId("build-status")).toHaveAttribute("data-status", "succeeded");
     // Read-only: nothing on the page queues a build.
     await expect(page.getByTestId("kg-read-only")).toBeVisible();
     await expect(page.getByRole("button", { name: /xếp build|chạy build|build lại/i })).toHaveCount(0);
@@ -267,18 +268,16 @@ test.describe("knowledge graph", () => {
     await signInAs(reader);
     await open(page, buildsPath(project));
 
-    const latest = page.getByTestId("kg-latest-build");
-    await expect(latest).toHaveAttribute("data-build-id", String(queued.id));
-    await expect(latest.getByTestId("build-status")).toHaveText("Đang chờ");
-    await expect(latest.getByTestId("build-wait")).not.toHaveText("-");
-    await expect(page.getByTestId("queue-job")).toHaveCount(1);
-    await expect(page.getByTestId("queue-job")).toHaveAttribute("data-status", "todo");
-    await expect(page.getByTestId("tile-queue")).toContainText("1 đang chờ, 0 đang chạy");
+    const activity = page.getByTestId("kg-activity");
+    await expect(activity).toHaveAttribute("data-build-id", String(queued.id));
+    await expect(activity.getByTestId("build-status")).toHaveText("Đang chờ");
+    await expect(activity).toContainText("Đang chờ worker build được");
+    await expect(activity).not.toContainText("được -");
     const history = page.getByTestId("kg-build-history");
     const failedRow = history.getByRole("row").filter({ hasText: `#${failed.id}` });
     await expect(failedRow.getByTestId("build-status")).toHaveText("Thất bại");
     await expect(failedRow).toContainText("has no knowledge config on the hub yet");
-    await expect(page.getByTestId("tile-graph")).toContainText("Chưa có");
+    await expect(page.getByTestId("kg-graph-in-use")).toContainText("Chưa có");
     // No graph yet: the explorer says so instead of failing, and its rail names the build that is waiting.
     await open(page, kgPath(project));
     await expect(page.getByTestId("kg-explorer")).toContainText("Dự án chưa có đồ thị");
@@ -301,10 +300,9 @@ test.describe("knowledge graph", () => {
     await admin.grant(project, reader.login, "reader", "internal");
     await signInAs(reader);
     await open(page, buildsPath(project));
-    const latest = page.getByTestId("kg-latest-build");
-    await expect(latest).toHaveAttribute("data-build-id", String(changed.id));
-    await expect(latest.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
-    await expect(page.getByTestId("tile-graph")).toContainText(`#${changed.id}`);
+    const graph = page.getByTestId("kg-graph-in-use");
+    await expect(graph).toHaveAttribute("data-build-id", String(changed.id));
+    await expect(graph.getByTestId("build-artifact")).toHaveAttribute("data-state", "own");
     const history = page.getByTestId("kg-build-history");
     for (const id of [first.id, same.id]) {
       const row = history.getByRole("row").filter({ has: page.getByText(`#${id}`, { exact: true }) });

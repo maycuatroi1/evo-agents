@@ -26,7 +26,7 @@ test.describe("knowledge graph refusals", () => {
       await expect(state, path).toBeVisible();
       await expect(state.getByRole("heading", { name: "Bạn không có quyền xem trang này" })).toBeVisible();
       await expect(page.getByTestId("kg-neighbours")).toHaveCount(0);
-      await expect(page.getByTestId("kg-latest-build")).toHaveCount(0);
+      await expect(page.getByTestId("kg-graph-in-use")).toHaveCount(0);
       await expect(page.getByTestId("user-menu")).toBeVisible(); // the shell stays around the state
     }
   });

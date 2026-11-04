@@ -1994,58 +1994,49 @@
       "minutes": "{minutes} phút {seconds} giây",
       "hours": "{hours} giờ {minutes} phút"
     },
-    "tiles": {
-      "graph": "Đồ thị đang đọc",
+    "activity": {
+      "label": "Tình trạng build",
       "build": "Build #{id}",
-      "noGraph": "Chưa có",
-      "noGraphDetail": "Chưa có build nào thành công",
-      "size": "Kích thước",
-      "nodes": "{count, plural, other {# node}}",
-      "edges": "{count, plural, other {# cạnh}}",
-      "contentHash": "Content hash",
-      "hashDetail": "Cùng dữ liệu đầu vào thì cùng hash",
-      "copyHash": "Chép content hash",
-      "queue": "Hàng đợi",
-      "queueEmpty": "Không có job nào",
-      "queueCounts": "{waiting} đang chờ, {running} đang chạy",
-      "refreshing": "Tự cập nhật mỗi 5 giây",
-      "visibleEdges": "{count, plural, other {# cạnh}}, trong phần bạn đọc được"
-    },
-    "latest": {
-      "title": "Build #{id}",
       "requestedBy": "Do {login} yêu cầu",
       "byPush": "Được xếp sau một lượt đẩy",
-      "errorTitle": "Lỗi của build",
-      "queued": "Xếp hàng lúc",
-      "wait": "Thời gian chờ",
-      "started": "Bắt đầu lúc",
-      "run": "Thời gian chạy",
-      "finished": "Xong lúc",
-      "runs": "Số lượt đẩy",
-      "size": "Node và cạnh",
-      "sizeValue": "{nodes} node, {edges} cạnh",
+      "running": "Đã chạy {run}, sau {wait} trong hàng đợi.",
+      "queued": "Đang chờ worker build được {wait}.",
+      "moreWaiting": "Còn {count, plural, other {# build}} chờ sau nó.",
+      "failedAt": "Lỗi",
+      "stillReads": "Các trang vẫn đọc build #{id}.",
+      "noGraphYet": "Dự án chưa có đồ thị cho tới khi một build thành công."
+    },
+    "figures": {
+      "label": "Đồ thị và các build qua số liệu",
+      "nodes": "Node",
+      "edges": "Cạnh",
+      "readable": "trong phần bạn đọc được",
+      "succeeded": "Build thành công",
+      "ofFinished": "trên {count}",
+      "failed": "{count, plural, =0 {không build nào lỗi} other {# build lỗi}}",
+      "noneFinished": "Chưa có build nào chạy xong",
+      "buildTime": "Thời gian build",
+      "median": "{count, plural, one {của build thành công duy nhất} other {trung vị của # build thành công}}",
+      "noRuns": "Chưa có build nào thành công",
+      "series": "Thời gian chạy của các build thành công gần đây, cũ nhất trước, tính bằng phút: {values}"
+    },
+    "graphInUse": {
+      "title": "Đồ thị đang dùng",
+      "build": "Build #{id}",
+      "finished": "xong",
+      "none": "Chưa có: các trang chỉ đọc được đồ thị sau khi có build thành công.",
       "contentHash": "Content hash",
-      "copyHash": "Chép content hash của build",
-      "noHash": "Chưa có: build chưa thành công",
+      "copyHash": "Chép content hash",
       "artifact": "Tệp đồ thị",
-      "artifactSize": "{size, number} byte",
+      "time": "Thời gian",
+      "ran": "Chạy {run}, sau {wait} trong hàng đợi",
+      "runs": "Số lượt đẩy",
       "config": "Cấu hình"
     },
     "artifact": {
       "own": "Do build này tải lên",
       "reused": "Dùng lại tệp của build #{id}",
       "pruned": "Đã xoá"
-    },
-    "queue": {
-      "title": "Hàng đợi",
-      "description": "Job build của dự án đang chờ hoặc đang chạy. Mỗi dự án chạy một build một lúc và giữ tối đa một build chờ.",
-      "empty": "Không có job nào đang chờ hay đang chạy.",
-      "todo": "Đang chờ",
-      "doing": "Đang chạy",
-      "job": "Job #{id}",
-      "forBuild": "build #{id}",
-      "since": "xếp lúc",
-      "waited": "đã chờ"
     },
     "history": {
       "caption": "Các build gần nhất của dự án",
@@ -2063,11 +2054,10 @@
       "edges": "Cạnh",
       "hash": "Content hash",
       "artifact": "Tệp đồ thị",
-      "error": "Lỗi"
+      "count": "{value, number}"
     },
     "builds": {
-      "title": "Build",
-      "description": "Hub dựng lại đồ thị sau mỗi lượt đẩy. Trang này chỉ đọc: build được xếp bằng <code>evo-agents hub kg push</code>, web không có nút xếp build.",
+      "description": "Hub dựng lại đồ thị sau mỗi lượt đẩy (<code>evo-agents hub kg push</code>); web không bao giờ xếp build.",
       "history": "Lịch sử build",
       "emptyTitle": "Chưa có build nào",
       "emptyDescription": "Build đầu tiên được xếp khi một thành viên có quyền ghi đẩy dữ liệu bằng <code>evo-agents hub kg push</code>.",
@@ -2205,7 +2195,9 @@
         "count": "Số cạnh"
       },
       "empty": "Không có cạnh nào bạn đọc được trong đồ thị này.",
-      "caption": "{count, plural, other {# tổ hợp loại node và loại cạnh}}"
+      "caption": "{count, plural, other {# tổ hợp loại node và loại cạnh}}",
+      "showAll": "Hiện cả {count}",
+      "showFewer": "Thu gọn"
     },
     "map": {
       "title": "Bản đồ cụm",
