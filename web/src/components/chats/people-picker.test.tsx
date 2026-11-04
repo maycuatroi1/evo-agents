@@ -61,6 +61,14 @@ describe("PeoplePicker", () => {
     expect(matching([person("lan")], "  ")).toHaveLength(1);
   });
 
+  it("names the list the search controls only once it is there, not while the people load", async () => {
+    setup(<Pick />);
+    const search = screen.getByTestId("people-search");
+    expect(search).not.toHaveAttribute("aria-controls");
+    await waitFor(() => expect(logins()).toHaveLength(3));
+    expect(search).toHaveAttribute("aria-controls", screen.getByTestId("people-list").id);
+  });
+
   it("lists the people with the agents given, and one who could not be in the chat says why and is not picked", async () => {
     const user = userEvent.setup();
     setup(<Pick agents={["reviewer", "fixer", "reviewer"]} />);
