@@ -56,6 +56,7 @@ import json
 import math
 import os
 import sqlite3
+import weakref
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -360,7 +361,10 @@ class Store:
         self.asked_weight: float | None = None  # the weight of the asked rows to use in place of the file's (an eval)
         self._trigram: bool | None = None  # whether the file has a filled node_tri, once looked up
         self._asked_weight: tuple[float | None] | None = None  # (the weight the file records or None), once read
-        self.db.create_function("aud_seen", 1, lambda text: audience_below(stored_audience(text), self.reader))
+        # The connection holds the function, so a strong self would make a cycle: the file stays open until the cycle
+        # collector runs, and Windows cannot delete or replace a file a connection holds.
+        me = weakref.ref(self)
+        self.db.create_function("aud_seen", 1, lambda text: audience_below(stored_audience(text), me().reader))
 
     @staticmethod
     def stored_schema(path: Path) -> str | None:
