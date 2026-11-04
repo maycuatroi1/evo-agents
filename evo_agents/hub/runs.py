@@ -125,6 +125,7 @@ FAILURE_CAUSES = (
     "push_declined",
     "no_worker",  # the hub: no worker claimed a question run in time (question_runs.QUEUE_SECONDS)
     "no_answer",  # the agent of a question run wrote no answer
+    "steps_left",  # a plan run's agent kept ending its turn with steps of the plan to do and no decision open
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
@@ -136,6 +137,9 @@ MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
 MAX_RUN_REPOS = 50  # the repos of one run (runs.repos, as schema 0010 bounds it)
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
+# Turns in a row the worker sends a plan run's agent back to its plan (``RunSpec.keep_going``) when a turn ends with
+# steps to do and no decision open, before the run fails with steps_left; a turn after which fewer are left resets it.
+KEEP_GOING_TURNS = 3
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
@@ -737,6 +741,19 @@ def next_session_step(body: dict, skip: Collection[str] = ()) -> tuple[str, dict
         if key not in skip and unready_reason(body, {**step, "status": "pending"}) is None:
             return key, step
     return None
+
+
+def steps_to_go(body: dict) -> list[str]:
+    """The keys of the steps of the plan ``body`` a plan run still has to do, in plan order: each pending or
+    in_progress one whose depends_on names only steps done. A blocked or descoped step, or one that waits for a step
+    not done, is not among them."""
+    return [
+        step_key(step, index)
+        for index, step in enumerate(_steps(body))
+        if isinstance(step, dict)
+        and _status(step) in ("pending", "in_progress")
+        and unready_reason(body, {**step, "status": "pending"}) is None
+    ]
 
 
 def verify_of(step) -> list[str]:

@@ -40,6 +40,7 @@ from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import WorkerConfig, WorkerHome
 from evo_agents.worker.run import ANSWER_PROMPT
 from evo_agents.worker.runner import sessions
+from evo_agents.worker.runner.conversation import KEEP_GOING_PROMPT
 from tests.worker import fake_adapter
 from tests.worker.fake_hub import TOKEN, FakeHub
 
@@ -1418,6 +1419,90 @@ def test_session_per_step_ends_the_run_when_a_session_leaves_its_step_not_done(m
     assert any("The session of step 1 ended with the step in_progress" in text for text in hub.texts(run_id))
     assert hub.runs[run_id]["summary"] == "Step 1: Could not write a.txt: the disk is read-only."
     assert [item["status"] for item in machine.home.load_run(run_id)["step_sessions"]] == ["in_progress"]
+
+
+def test_session_per_step_sends_the_agent_back_to_its_step_then_fails_with_steps_left(machine):
+    """With the claim's keep_going, the session of step 1 that ends its turn with the step in_progress and nothing to
+    wait for is sent back to the step that many times; then the sessions end there, step 2 gets none, and the run
+    fails with steps_left."""
+    keep = runs.KEEP_GOING_TURNS
+    nudges = {f"plan:{PLAN}/{turn}": [] for turn in range(2, keep + 2)}
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"cli": ["step", "1", "in_progress"]},
+                {"result": {"summary": "Could not write a.txt: the disk is read-only."}},
+            ],
+            **nudges,
+            f"plan:{PLAN}/{keep + 2}": [{"touch": str(machine.tmp / "second-session")}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True, keep_going=keep)
+        assert await hub.wait_state(run_id, "done", "failed") == "failed", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    first, *again = machine.starts()
+    assert len(again) == keep and not (machine.tmp / "second-session").exists()
+    assert all(start["session"] == first["session"] for start in again), "the agent goes back in the step's session"
+    assert again[0]["prompt"] == sessions.STEP_KEEP_GOING_PROMPT.replace("{steps}", "step 1")
+    assert any("The session of step 1 ended with the step in_progress" in text for text in hub.texts(run_id))
+    run = hub.runs[run_id]
+    assert run["failure_cause"] == "steps_left", run
+    assert "Could not write a.txt: the disk is read-only." in run["error"], "the agent's summary goes with the error"
+    assert [item["status"] for item in machine.home.load_run(run_id)["step_sessions"]] == ["in_progress"]
+
+
+def test_a_plan_run_whose_agent_stops_with_steps_left_is_sent_back_and_ends_done(machine):
+    """Run 1575 of the hub: the agent ended its turn with a step to do and no decision open, and the run ended done
+    with its plan unfinished. Now the agent goes back to the plan in its session, and the run ends once it is done."""
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [*step_one_done(), {"say": "A command was declined, so I stopped. Tell me how to go on."}],
+            f"plan:{PLAN}/2": [*step_two_done(), {"result": {"summary": "Both."}}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), keep_going=runs.KEEP_GOING_TURNS)
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    first, second = machine.starts()
+    assert second["session"] == first["session"] and second["resume"], second
+    assert second["prompt"] == KEEP_GOING_PROMPT.replace("{steps}", "step 2")
+    assert any("it goes back to the plan in its session (1 of 3)" in text for text in hub.texts(run_id))
+    assert hub.runs[run_id]["summary"] == "Both."
+    assert machine.origin_rev("beta", "refs/heads/feat/beta") is not None
+
+
+def test_a_plan_run_whose_agent_keeps_stopping_with_steps_left_pushes_and_fails(machine):
+    """An agent that ends keep_going turns in a row after the first with the same steps to do: the run pushes what it
+    did, so the next run goes on from it, and fails with steps_left for its triage, never done."""
+    keep = runs.KEEP_GOING_TURNS
+    nudges = {f"plan:{PLAN}/{turn}": [] for turn in range(2, keep + 3)}
+    machine.scenarios({f"plan:{PLAN}": [*step_one_done(), {"write": {"beta/half.txt": "half\n"}}], **nudges})
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), keep_going=keep)
+        assert await hub.wait_state(run_id, "done", "failed") == "failed", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    assert len(machine.starts()) == 1 + keep
+    run = hub.runs[run_id]
+    assert run["failure_cause"] == "steps_left" and "step(s) 2 of the plan to do" in run["error"], run
+    pushed = machine.origin_rev("beta", "refs/heads/feat/beta")
+    assert pushed is not None and "half.txt" in machine.origin("beta", "ls-tree", "--name-only", pushed)
 
 
 def test_session_per_step_waits_for_a_decision_in_the_session_of_its_step(machine):

@@ -36734,6 +36734,12 @@ export interface components {
              */
             session_per_step: boolean;
             /**
+             * Keep Going
+             * @description a plan run: the turns in a row its worker sends the agent back to the plan, in its session, when a turn ends with steps to do and no decision open, before the run pushes and fails with steps_left; a turn after which fewer steps are left starts the count again. Absent (0): such a turn ends the run done
+             * @default 0
+             */
+            keep_going: number;
+            /**
              * Browser
              * @description true: start a Chromium for the run's agent before its first turn and hand its DevTools endpoint to the agent (EVO_BROWSER_CDP); absent for a run without one
              * @default false

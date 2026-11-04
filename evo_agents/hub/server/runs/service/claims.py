@@ -900,6 +900,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         verify=verify,
         criteria=criteria,
         session_per_step=view.session_per_step,
+        keep_going=runs.KEEP_GOING_TURNS if view.kind == "plan" else 0,
         browser=view.browser,
         browser_identities=view.browser_identities,
         profile=await run_profile(conn, run_id),
