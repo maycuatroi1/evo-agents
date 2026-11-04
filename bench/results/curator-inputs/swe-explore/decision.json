@@ -1,0 +1,196 @@
+{
+ "format": "evo-kg-bench-curator/1",
+ "bench": "swe-explore",
+ "at": "2026-11-04T09:51:46Z",
+ "inputs": [
+  {
+   "name": "profile.json",
+   "path": "curator-inputs/swe-explore/profile.json",
+   "sha256": "bffdaf985509609f7cc96cfbd30035fdbd4409bf1dd85b7a0682e217d39775e3",
+   "part": "none"
+  },
+  {
+   "name": "prompt.md",
+   "path": "curator-inputs/swe-explore/prompt.md",
+   "sha256": "f83257c9362d62773eb05d30df7cf48d01998aa681d6f61485190b464bd08f42",
+   "part": "none"
+  },
+  {
+   "name": "skill-kg-init.md",
+   "path": "curator-inputs/swe-explore/skill-kg-init.md",
+   "sha256": "221268dbbc723dad09a9fc5911b6de2514bbbc6b0f865a87d15770a5a92645dc",
+   "part": "none"
+  },
+  {
+   "name": "skill-lenses-kg-init.md",
+   "path": "curator-inputs/swe-explore/skill-lenses-kg-init.md",
+   "sha256": "fe59e38ef1a7ee77280dbc1d2fc5f023d7e22233329d77f1a0d7f639bb277e4f",
+   "part": "none"
+  },
+  {
+   "name": "strategies.json",
+   "path": "curator-inputs/swe-explore/strategies.json",
+   "sha256": "3940c9c6298a407c5e7eac254bd3f63d34f8359cf2701b66d76f26b36c8b4918",
+   "part": "none"
+  },
+  {
+   "name": "tune-scores.json",
+   "path": "curator-inputs/swe-explore/tune-scores.json",
+   "sha256": "7fd29ac053d32b4db02b216ec17e1ca1082c94eebb7fbc24cd5dafdb7af0cc0a",
+   "part": "tune"
+  }
+ ],
+ "profile_graphs": 40,
+ "tune": {
+  "bench": "swe-explore",
+  "metric": "line_f1",
+  "part": "tune",
+  "candidates": [
+   {
+    "name": "default",
+    "kind": "default",
+    "search": "graph",
+    "settings": {},
+    "n": 40,
+    "primary": 0.1126,
+    "se": 0.0302
+   },
+   {
+    "name": "strategy-conversation",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "semantic_weight": 0.8
+    },
+    "n": 40,
+    "primary": 0.1126,
+    "se": 0.0302
+   },
+   {
+    "name": "strategy-media-metadata",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 8.0,
+     "bm25_path": 3.0
+    },
+    "n": 40,
+    "primary": 0.1126,
+    "se": 0.0302
+   },
+   {
+    "name": "strategy-records",
+    "kind": "strategy",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 8.0
+    },
+    "n": 40,
+    "primary": 0.1126,
+    "se": 0.0302
+   },
+   {
+    "name": "weights-body-heavy",
+    "kind": "weights",
+    "search": "graph",
+    "settings": {
+     "bm25_body": 4.0
+    },
+    "n": 40,
+    "primary": 0.1103,
+    "se": 0.0302
+   },
+   {
+    "name": "weights-name-light",
+    "kind": "weights",
+    "search": "graph",
+    "settings": {
+     "bm25_name": 2.0,
+     "bm25_path": 1.0
+    },
+    "n": 40,
+    "primary": 0.0959,
+    "se": 0.0249
+   },
+   {
+    "name": "plain-bm25",
+    "kind": "bm25",
+    "search": "plain",
+    "settings": {},
+    "n": 40,
+    "primary": 0.0613,
+    "se": 0.0238
+   }
+  ]
+ },
+ "answers": [
+  "```json\n{\"reasons\":[{\"about\":\"strategy\",\"why\":\"The profile is code-dominated by chars (code 68% of chars, 5% of items). History is 92% of items but only 19% of chars, and prose is 7% of chars. The code strategy is the default graph and sets nothing. The conversation, media-metadata and records strategies all measured the same as the default (tune line_f1 0.1126 each, n 40, se 0.0302), so none is supported. Binary is under 1% of chars, so media-metadata does not apply.\",\"figures\":{\"code_chars_pct\":68,\"history_chars_pct\":19,\"prose_chars_pct\":7,\"default_tune\":0.1126,\"strategy_records_tune\":0.1126,\"strategy_conversation_tune\":0.1126,\"strategy_media_metadata_tune\":0.1126}},{\"about\":\"settings\",\"why\":\"Keep all settings at their defaults. The body-heavy candidate (bm25_body 4.0) scored 0.1103 against 0.1126, a drop of 0.0023, well under one se (0.0302), so it is noise and the simpler default stays. The name-light candidate scored 0.0959, a drop of 0.0167, still under two se (0.0604). No candidate beats the default. The tune set is small (n 40). Build keys stay at default: there are 11814 passages over only 922 nodes and p50 length is 52 chars, and no measure here tests them. Semantic mode stays unchanged. The entities step is not wanted: prose is 7% of chars and 1% of items.\",\"figures\":{\"default_tune\":0.1126,\"weights_body_heavy_tune\":0.1103,\"weights_name_light_tune\":0.0959,\"se\":0.0302,\"n\":40,\"passages\":11814,\"passage_nodes\":922,\"prose_chars_pct\":7}},{\"about\":\"code_changes\",\"why\":\"Every code language in the profile shows 0% calls and 0% inherits. Call and inheritance edges are missing for all of them, so a call-edge backend is worth proposing. No tune figure measures the gain, so this is a proposal for the Judge to review and not a setting, and no gain is claimed.\",\"figures\":{\"python_files\":6138,\"php_files\":5563,\"ruby_files\":3001,\"rust_files\":1752,\"go_files\":1554,\"javascript_files\":1222,\"calls_pct\":0}}],\"strategy\":{\"use\":\"code\"},\"settings\":{},\"code_changes\":[{\"title\":\"Add call and inheritance edge extraction for the main code languages\",\"why\":\"All code languages in the profile have 0% calls and 0% inherits (python 6138 files, php 5563, ruby 3001, rust 1752, go 1554, javascript 1222). Impact and path queries cannot follow calls across files without those edges.\"}]}\n```\n"
+ ],
+ "cost_usd": 0.0,
+ "decision": {
+  "code_changes": [
+   {
+    "title": "Add call and inheritance edge extraction for the main code languages",
+    "why": "All code languages in the profile have 0% calls and 0% inherits (python 6138 files, php 5563, ruby 3001, rust 1752, go 1554, javascript 1222). Impact and path queries cannot follow calls across files without those edges."
+   }
+  ],
+  "reasons": [
+   {
+    "about": "strategy",
+    "why": "The profile is code-dominated by chars (code 68% of chars, 5% of items). History is 92% of items but only 19% of chars, and prose is 7% of chars. The code strategy is the default graph and sets nothing. The conversation, media-metadata and records strategies all measured the same as the default (tune line_f1 0.1126 each, n 40, se 0.0302), so none is supported. Binary is under 1% of chars, so media-metadata does not apply.",
+    "figures": {
+     "code_chars_pct": 68,
+     "history_chars_pct": 19,
+     "prose_chars_pct": 7,
+     "default_tune": 0.1126,
+     "strategy_records_tune": 0.1126,
+     "strategy_conversation_tune": 0.1126,
+     "strategy_media_metadata_tune": 0.1126
+    }
+   },
+   {
+    "about": "settings",
+    "why": "Keep all settings at their defaults. The body-heavy candidate (bm25_body 4.0) scored 0.1103 against 0.1126, a drop of 0.0023, well under one se (0.0302), so it is noise and the simpler default stays. The name-light candidate scored 0.0959, a drop of 0.0167, still under two se (0.0604). No candidate beats the default. The tune set is small (n 40). Build keys stay at default: there are 11814 passages over only 922 nodes and p50 length is 52 chars, and no measure here tests them. Semantic mode stays unchanged. The entities step is not wanted: prose is 7% of chars and 1% of items.",
+    "figures": {
+     "default_tune": 0.1126,
+     "weights_body_heavy_tune": 0.1103,
+     "weights_name_light_tune": 0.0959,
+     "se": 0.0302,
+     "n": 40,
+     "passages": 11814,
+     "passage_nodes": 922,
+     "prose_chars_pct": 7
+    }
+   },
+   {
+    "about": "code_changes",
+    "why": "Every code language in the profile shows 0% calls and 0% inherits. Call and inheritance edges are missing for all of them, so a call-edge backend is worth proposing. No tune figure measures the gain, so this is a proposal for the Judge to review and not a setting, and no gain is claimed.",
+    "figures": {
+     "python_files": 6138,
+     "php_files": 5563,
+     "ruby_files": 3001,
+     "rust_files": 1752,
+     "go_files": 1554,
+     "javascript_files": 1222,
+     "calls_pct": 0
+    }
+   }
+  ],
+  "settings": {},
+  "strategy": {
+   "use": "code"
+  }
+ },
+ "config": {
+  "strategy": {
+   "name": "code",
+   "self_made": false,
+   "origin": "built-in",
+   "steps": []
+  },
+  "settings": {},
+  "applied": {},
+  "unapplied": {}
+ },
+ "error": null
+}
