@@ -16,12 +16,10 @@ def current_version(root: Path) -> str:
 
 
 def targets(root: Path) -> list[tuple[Path, str]]:
-    # The hooks read the version from plugin.json (plugins/<name>/bin/evo-ak); the MCP server, which Codex starts with
-    # no plugin directory to read it from, names it in .mcp.json.
+    # The plugins run evo-agents from the PATH, so plugin.json is the one file of a plugin that names the release.
     found = [(SOURCE, '__version__ = "')]
     for plugin in sorted(path for path in (root / "plugins").iterdir() if path.is_dir()):
-        base = plugin.relative_to(root)
-        found += [(base / ".claude-plugin" / "plugin.json", '"version": "'), (base / ".mcp.json", "evo-ak==")]
+        found.append((plugin.relative_to(root) / ".claude-plugin" / "plugin.json", '"version": "'))
     return found
 
 

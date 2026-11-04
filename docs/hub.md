@@ -2691,8 +2691,8 @@ Code already saves in its session directory with a 2,000-character preview, is c
 file holds all of it. A failed call (PostToolUseFailure, whose output Claude Code already cuts to about 10,000
 characters of head and tail, enough to see why it failed), an image, a Read with an offset or a limit, and a call that
 names `~/.evo/tool-output` pass unchanged. The hook runs in worker runs too, talks to no hub, never sends a spool
-file anywhere, and adds the start of `uvx` and the interpreter, about 0.15 seconds, to each Bash, Read, Grep,
-WebFetch or MCP call.
+file anywhere, and adds the start of the interpreter to each Bash, Read, Grep, WebFetch or MCP call (about 0.15
+seconds with `uvx` in front of it, before the plugins ran `evo-agents` from the PATH).
 
 Codex does not take this hook. Tried with codex-cli 0.153.4 on 2026-10-12: a command that printed 51,013 characters
 reached the model as about 40,000, cut in the middle (`Warning: truncated output (original token count: 13026)` and
