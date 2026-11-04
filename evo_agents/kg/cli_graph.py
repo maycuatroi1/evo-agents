@@ -44,6 +44,37 @@ def cmd_build(args) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_profile(args) -> int:
+    """Print the data profile of the project's newest graph (``evo_agents.kg.profile``)."""
+    from evo_agents.kg import profile as kg_profile
+    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.store import StaleSchema, Store
+
+    project = _project(args)
+    try:
+        store = Store.open_readonly(project)
+    except StaleSchema as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if store is None:
+        print(f"error: project {project.name} has no graph yet: run evo-agents kg build", file=sys.stderr)
+        return 1
+    try:
+        summary = store.summary()
+    finally:
+        store.close()
+    found = kg_profile.of_coverage(summary.get("coverage")) if summary.get("ready") else None
+    if found is None:
+        print("error: the newest build holds no profile: run evo-agents kg build --force", file=sys.stderr)
+        return 1
+    if args.json:
+        _print_json({"project": project.name, "build_id": summary["build_id"], "profile": found})
+    else:
+        print(f"project {project.name}, build {summary['build_id']}")
+        print(kg_profile.render(found))
+    return 0
+
+
 def cmd_semantic(args) -> int:
     """Show or set whether the project's graph is searched by meaning too, and with ``--index`` write its vectors."""
     from evo_agents.kg import semantic
@@ -379,6 +410,11 @@ def register(ksub, with_project) -> None:
         "--force", action="store_true", help="build even when the corpus and the config are those of the latest build"
     )
     build.set_defaults(func=cmd_build)
+
+    profile = with_project(
+        ksub.add_parser("profile", help="the data profile of the graph: what the corpus is made of, counts and shapes")
+    )
+    profile.set_defaults(func=cmd_profile)
 
     query = with_project(ksub.add_parser("query", help="call a kg tool from the shell"))
     query.add_argument(

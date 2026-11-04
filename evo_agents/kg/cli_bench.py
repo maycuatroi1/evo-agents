@@ -255,6 +255,54 @@ def cmd_show(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_profile(args) -> int:
+    """The data profile of every graph of this extractor in the bench cache, summed by repo."""
+    from evo_agents.kg import profile as kg_profile
+    from evo_agents.kg.bench import datasets, graphs
+    from evo_agents.kg.store import StaleSchema, Store
+
+    try:
+        lay = graphs.layout(datasets.cache_dir(args.cache))
+    except datasets.BenchError as exc:
+        return _fail(str(exc), 1)
+    repos: dict[str, dict] = {}
+    for graph in graphs.cached(lay):
+        if not graph.current:
+            continue
+        try:
+            store = Store.open_file(graph.project / "graph.sqlite")
+        except (StaleSchema, OSError):
+            continue
+        try:
+            found = kg_profile.of_coverage((store.summary() or {}).get("coverage"))
+        finally:
+            store.close()
+        if found is None:
+            continue
+        repo = graph.name.rsplit("-", 1)[0]
+        row = repos.setdefault(repo, {"graphs": 0, "items": 0, "chars": 0, "noise": 0.0, "classes": {}})
+        row["graphs"] += 1
+        row["items"] += found["items"]
+        row["chars"] += found["chars"]
+        row["noise"] += found["noise"]["ratio"]
+        for name, c in found["classes"].items():
+            row["classes"][name] = row["classes"].get(name, 0) + c["item_share"]
+    for row in repos.values():
+        n = row["graphs"]
+        row["noise"] = round(row["noise"] / n, 4)
+        row["classes"] = {k: round(v / n, 4) for k, v in sorted(row["classes"].items()) if v}
+    if args.json:
+        print(json.dumps({"repos": repos}, indent=2))
+    elif not repos:
+        print("no graph with a profile in the cache: run kg bench build")
+    for repo, row in repos.items():
+        shares = ", ".join(f"{k} {v:.0%}" for k, v in row["classes"].items())
+        print(
+            f"{repo}: {row['graphs']} graphs, {row['items']} items, noise {row['noise']:.0%}; mean item share {shares}"
+        )
+    return 0
+
+
 def _ratio(text: str) -> float:
     try:
         value = float(text)
@@ -378,6 +426,11 @@ def register(ksub) -> None:
     )
     mrg.add_argument("summaries", nargs="+")
     mrg.set_defaults(func=cmd_merge)
+
+    prof = sub.add_parser("profile", help="the data profile of the cached bench graphs, by repo")
+    prof.add_argument("--cache", help="bench cache, outside any repo")
+    prof.add_argument("--json", action="store_true", help="machine-readable output")
+    prof.set_defaults(func=cmd_profile)
 
     show = sub.add_parser("show", help="print a summary and check it")
     show.add_argument("summary")

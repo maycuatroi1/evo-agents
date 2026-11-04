@@ -217,6 +217,8 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.curator",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
     "evo_agents.hub.worker -> evo_agents.hub.server.market_install",
     "evo_agents.hub.worker -> evo_agents.hub.server.market_licenses",
     "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
@@ -365,6 +367,9 @@ ignore_imports = [
     "evo_agents.kg.schedule -> evo_agents.hub.**",
     # The MCP proxy finds a worker's home to serve the agent of a run.
     "evo_agents.hub.mcp_proxy -> evo_agents.worker.home",
+    # The curator session commands read the agent's input files and the worker's state error, inside their functions.
+    "evo_agents.hub.curator_session_cli -> evo_agents.worker.home",
+    "evo_agents.hub.curator_session_cli -> evo_agents.worker.agent_input",
     # The CLI contract walks the parser of the whole CLI, inside its functions.
     "evo_agents.hub.contract -> evo_agents.cli",
     # The harness loader validates knowledge.yaml with the graph's policy, protocol and schema.

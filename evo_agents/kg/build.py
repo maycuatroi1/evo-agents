@@ -52,6 +52,7 @@ from evo_agents.kg.pipeline.stages import (
     structure_item,
 )
 from evo_agents.kg.policy import Label, Policy, any_of, join_all
+from evo_agents.kg.profile import PROFILE_VERSION, build_profile, item_stats
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
@@ -383,7 +384,25 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             if entry["code"]["warning"]:
                 coverage["warnings"].append(f"source {sid}: {entry['code']['warning']}")
         coverage["sources"].append(entry)
+    coverage["profile"] = build_profile(graph, item_rows(records, memo, body), coverage, policy)
     return graph, coverage, errors, issues
+
+
+def item_rows(records, memo: Memo, body) -> list[tuple[str, str, dict]]:
+    """(source, item id, figures) of each item for the data profile (``evo_agents.kg.profile``); an item's figures are
+    memoized by its hash, so a build that changes little reads little."""
+    rows = []
+    for rec in records:
+        r = rec.record
+        inputs = {"item": rec.item_id, "hash": r["hash"], "kind": r["kind"]}
+        stats, _ = memo.run(
+            "profile",
+            PROFILE_VERSION,
+            inputs,
+            lambda rec=rec, r=r: item_stats(r, body(rec), declares(r)),
+        )
+        rows.append((rec.source, rec.item_id, stats))
+    return rows
 
 
 def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Corpus, body) -> dict[str, list[dict]]:

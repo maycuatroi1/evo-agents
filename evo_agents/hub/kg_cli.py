@@ -561,6 +561,10 @@ def register_kg(hsub) -> None:
 
     kg_optimize_cli.register(ksub)
 
+    from evo_agents.hub import kg_profile_cli
+
+    kg_profile_cli.register(ksub)
+
 
 # The hub backend of kg serve and kg query
 

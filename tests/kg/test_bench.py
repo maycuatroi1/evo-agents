@@ -736,3 +736,8 @@ def test_contextbench_workspace_prefix_is_stripped_from_answer_paths(monkeypatch
     tasks, _ = datasets.read_contextbench(Path("."))
     assert tasks[0]["files"] == ["src/a.c", "lib/b.py"]
     assert sorted(tasks[0]["lines"]) == [["lib/b.py", 1, 2], ["src/a.c", 3, 9]]
+
+
+def test_bench_profile_reads_the_cache_and_says_so_when_it_is_empty(tmp_path, capsys):
+    assert main(["kg", "bench", "profile", "--cache", str(tmp_path / "cache")]) == 0
+    assert "no graph with a profile" in capsys.readouterr().out

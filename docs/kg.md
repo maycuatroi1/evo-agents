@@ -206,6 +206,22 @@ The text is what an agent's model reads, so it is kept short and readable:
   error that lists the tool's arguments. kg_impact reads a path that names no file as an id, and an id that names no
   node and looks like a path as a path.
 
+## The data profile
+
+Every build measures its own corpus, with no model, and keeps the result in the build's coverage (`coverage["profile"]`).
+It holds counts and shapes only, never a value: how many items of each class (code, prose, conversation, structured,
+binary, history), lines and characters, languages and how many files of each have call and inherit edges, the length
+percentiles of items and passages, the natural language of prose (vi, en, other), the shapes that look like identifiers
+(`A9{2}.9{3}` stands for two letters, a dot, three digits), how many strings look like an email, a phone number, a
+national id or a medical code, how many mentions resolved, the share of noise (binary and tiny items), the span of
+history, and each source with its label. The Curator reads it to configure a new graph.
+
+The profile sits outside the content hash, so kg_search, kg_context and the other tools answer the same with or without
+it. `evo-agents kg profile [--project P] [--json]` prints the newest build's; a build made before profiles says to build
+again. On the hub, `evo-agents hub kg profile --project P [--json]` reads it from kg_status; a caller whose audience is
+not whole gets a coverage without it, and the command says so. `evo-agents kg bench profile` sums the profiles of the
+cached bench graphs by repo.
+
 ## Audience
 
 A label (`evo_agents/kg/policy.py`) has, besides a level, a location, an integrity and the projects it names, an

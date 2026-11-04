@@ -13,7 +13,17 @@ from pathlib import Path
 import pytest
 
 from evo_agents import __version__
-from evo_agents.hub import cli_inbox, cli_market, contract, kg_cli, local_send, memory, skill_sync, transcript_sync
+from evo_agents.hub import (
+    cli_inbox,
+    cli_market,
+    contract,
+    kg_cli,
+    kg_profile_cli,
+    local_send,
+    memory,
+    skill_sync,
+    transcript_sync,
+)
 from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_cli import ImportResult
@@ -35,6 +45,7 @@ BUILT_HERE = {
     "hub memory pull": lambda: memory.Report("pull", HUB_URL).as_json(),
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
     "hub kg push": lambda: kg_cli.push_json([]),
+    "hub kg profile": lambda: kg_profile_cli.profile_json("demo", 1, {}),
     "hub kg scrub": lambda: kg_cli.scrub_json(False, []),
     "hub kg forget-source": lambda: kg_cli.forget_json("demo", []),
     "hub sessions backfill": lambda: transcript_sync.Report(HUB_URL).as_json(),
