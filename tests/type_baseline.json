@@ -1578,8 +1578,8 @@
             {
                 "code": "reportGeneralTypeIssues",
                 "range": {
-                    "startColumn": 21,
-                    "endColumn": 25,
+                    "startColumn": 20,
+                    "endColumn": 24,
                     "lineCount": 1
                 }
             },
@@ -1738,8 +1738,8 @@
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 68,
-                    "endColumn": 73,
+                    "startColumn": 67,
+                    "endColumn": 72,
                     "lineCount": 1
                 }
             },
@@ -1786,8 +1786,8 @@
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
-                    "startColumn": 44,
-                    "endColumn": 49,
+                    "startColumn": 43,
+                    "endColumn": 48,
                     "lineCount": 1
                 }
             },
@@ -1866,8 +1866,8 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 72,
-                    "endColumn": 80,
+                    "startColumn": 71,
+                    "endColumn": 79,
                     "lineCount": 1
                 }
             },
@@ -3744,16 +3744,16 @@
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 30,
-                    "endColumn": 37,
+                    "startColumn": 29,
+                    "endColumn": 36,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 62,
-                    "endColumn": 69,
+                    "startColumn": 61,
+                    "endColumn": 68,
                     "lineCount": 1
                 }
             },
@@ -4706,8 +4706,8 @@
             {
                 "code": "reportOptionalIterable",
                 "range": {
-                    "startColumn": 86,
-                    "endColumn": 95,
+                    "startColumn": 85,
+                    "endColumn": 94,
                     "lineCount": 1
                 }
             },
@@ -4754,16 +4754,16 @@
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 32,
-                    "endColumn": 40,
+                    "startColumn": 31,
+                    "endColumn": 39,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
-                    "startColumn": 78,
-                    "endColumn": 81,
+                    "startColumn": 77,
+                    "endColumn": 80,
                     "lineCount": 1
                 }
             },
@@ -4938,16 +4938,16 @@
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 17,
-                    "endColumn": 22,
+                    "startColumn": 16,
+                    "endColumn": 21,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 44,
-                    "endColumn": 49,
+                    "startColumn": 42,
+                    "endColumn": 47,
                     "lineCount": 1
                 }
             },
@@ -5280,8 +5280,8 @@
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 27,
-                    "endColumn": 35,
+                    "startColumn": 26,
+                    "endColumn": 34,
                     "lineCount": 1
                 }
             },
@@ -6944,8 +6944,8 @@
             {
                 "code": "reportOptionalSubscript",
                 "range": {
-                    "startColumn": 31,
-                    "endColumn": 37,
+                    "startColumn": 30,
+                    "endColumn": 36,
                     "lineCount": 1
                 }
             },
@@ -8766,8 +8766,8 @@
             {
                 "code": "reportOptionalIterable",
                 "range": {
-                    "startColumn": 94,
-                    "endColumn": 103,
+                    "startColumn": 93,
+                    "endColumn": 102,
                     "lineCount": 1
                 }
             },
@@ -18356,8 +18356,8 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 29,
-                    "endColumn": 33,
+                    "startColumn": 28,
+                    "endColumn": 32,
                     "lineCount": 1
                 }
             },
