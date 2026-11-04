@@ -175,6 +175,12 @@ export function labelScale(zoom: number): number {
   return Math.min(4, Math.max(0.25, 1 / zoom));
 }
 
+/**
+ * How far the zoom may move before the labels are restyled to their size on screen again: a smaller move keeps the
+ * stylesheet, so a label may read up to this share smaller or larger than its size until the next zoom.
+ */
+export const LABEL_RESTYLE = 0.03;
+
 
 type Box = { x1: number; y1: number; x2: number; y2: number };
 

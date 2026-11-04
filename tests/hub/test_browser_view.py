@@ -12,6 +12,7 @@ Both ends are websocket clients of one TestClient, as in ``tests.hub.test_termin
 """
 
 import json
+from contextlib import contextmanager
 
 import pytest
 
@@ -163,6 +164,15 @@ def worker_end(client, worker: dict, run_id: int, headers: dict | None = None):
     return client.websocket_connect(f"/v1/worker/runs/{run_id}/browser", headers=given)
 
 
+@contextmanager
+def attached_end(client, worker: dict, run_id: int):
+    """The worker's end once the hub attached it: the hub accepts the socket before it checks the worker, and a viewer
+    that says its hello in between reads LINK {"worker": false} first."""
+    with worker_end(client, worker, run_id) as end:
+        wait_until(lambda: attached(client, run_id), "the worker's end attached")
+        yield end
+
+
 def body(data: bytes, kind: int) -> dict:
     got, payload = frames.parse(data)
     assert got == kind, (got, data[:80])
@@ -254,7 +264,7 @@ def test_browser_view_waits_for_the_worker_and_tells_the_viewer_when_it_comes_an
 def test_browser_view_a_newer_viewer_or_worker_connection_takes_the_channel(client, hub, hub_db):
     worker, run_id = browser_run(client, hub)
     token = web_session(hub_db, OWNER)
-    with worker_end(client, worker, run_id) as end:
+    with attached_end(client, worker, run_id) as end:
         with viewer(client, run_id, token) as first:
             opened(client, first, token, worker=True)
             assert body(received(end), frames.VIEW)["viewing"] is True
@@ -287,7 +297,7 @@ def test_browser_view_only_the_dispatcher_views_on_any_worker(client, hub, hub_d
             assert code == 4403, (login, said)
             assert reason is None or said == reason, (login, said)
     token = web_session(hub_db, OTHER)
-    with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
+    with attached_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
     rows = audit_rows(hub_db, "browser.view")
@@ -364,7 +374,7 @@ def test_browser_view_a_frame_too_big_or_of_a_type_the_end_may_not_send_closes_t
 ):
     worker, run_id = browser_run(client, hub)
     token = web_session(hub_db, OWNER)
-    with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
+    with attached_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
         source = view if sender == "viewer" else end
@@ -383,7 +393,7 @@ def test_browser_view_an_idle_view_is_closed(client, hub, hub_db, monkeypatch):
     worker, run_id = browser_run(client, hub)
     token = web_session(hub_db, OWNER)
     monkeypatch.setattr(browser_view, "IDLE_SECONDS", 0.5)
-    with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
+    with attached_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
         assert closed(view) == (4408, "closed after 0.00833333 idle minutes")
@@ -411,8 +421,7 @@ def test_browser_view_audits_control_as_the_worker_state_says_and_never_what_was
     worker, run_id = browser_run(client, hub, state="interactive")  # taken over: the broker says mode human
     token = web_session(hub_db, OWNER)
     secret = "hunter2-northwind"
-    with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
-        wait_until(lambda: attached(client, run_id), "the worker's end attached")
+    with attached_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
         end.send_bytes(state("human"))
@@ -448,8 +457,7 @@ def test_browser_view_a_run_waiting_on_a_login_decision_opens_in_human_mode(clie
     asked(hub_db, run_id, "scope")
     moved(client, worker, run_id, "waiting")
     token = web_session(hub_db, OWNER)
-    with worker_end(client, worker, run_id) as end:
-        wait_until(lambda: attached(client, run_id), "the worker's end attached")
+    with attached_end(client, worker, run_id) as end:
         with viewer(client, run_id, token) as view:
             opened(client, view, token, worker=True)
             assert body(received(end), frames.VIEW) == {"viewing": True, "login": False}  # a decision, not a login
@@ -473,7 +481,7 @@ def test_browser_view_stays_open_through_a_takeover(client, hub, hub_db):
     says the mode it made."""
     worker, run_id = browser_run(client, hub)
     token = web_session(hub_db, OWNER)
-    with worker_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
+    with attached_end(client, worker, run_id) as end, viewer(client, run_id, token) as view:
         opened(client, view, token, worker=True)
         assert body(received(end), frames.VIEW)["viewing"] is True
         response = client.post(f"/v1/projects/{PROJECT}/runs/{run_id}/takeover", headers=hub["owner"])

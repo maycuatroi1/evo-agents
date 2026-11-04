@@ -513,10 +513,11 @@ def test_run_samples_a_set_with_a_seed_and_names_the_sample(bench, tmp_path):
     sample = json.loads(out.read_text())["benches"]["swe-explore"]["sample"]
     assert (sample["size"], sample["of"], sample["seed"], len(sample["ids"])) == (1, 2, 3, 1)
 
-    # past max-hours at the build time measured so far, a sample of the share that fits
+    # past max-hours at the build time measured so far, a sample of the share that fits: the build above may round to
+    # 0.0 s on a fast machine, so the mean must pass the hour with it too (with 7200 s it would sit at exactly 1 h)
     lay = graphs.layout(cache)
     with (lay.base / "builds.jsonl").open("a") as f:
-        f.write(json.dumps({"bench": "swe-explore", "seconds": 7200.0}) + "\n")
+        f.write(json.dumps({"bench": "swe-explore", "seconds": 3 * 3600.0}) + "\n")
     selection = run.select(cache, "swe-explore", lay, run.Options(max_hours=1.0, seed=3))
     assert selection.sample is not None and selection.sample["size"] == 1 and "over 1 h" in selection.sample["why"]
 

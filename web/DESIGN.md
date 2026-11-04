@@ -134,11 +134,13 @@ surface-hover, `--border` border, `--input` border-control, `--ring` focus-ring,
 
 ## Type
 
-IBM Plex Sans for the interface and IBM Plex Mono for data, logs and the terminal, both through `next/font/google`
-with the latin, latin-ext and vietnamese subsets, so the files come from the app's own origin (`font-src 'self'`) and
-the Vietnamese people write in plans, evidence and memories renders in the same faces as the English around it.
-Sans loads 400, 500 and 600; Mono loads 400 and 500, so mono text is never set heavier than `font-medium`. The faces
-reach Tailwind as `--font-plex-sans` and `--font-plex-mono` behind `font-sans`, `font-heading` and `font-mono`.
+IBM Plex Sans for the interface and IBM Plex Mono for data, logs and the terminal, both with the latin, latin-ext
+and vietnamese subsets, so the Vietnamese people write in plans, evidence and memories renders in the same faces as
+the English around it. The files are Google Fonts' own, kept in `src/app/fonts` by `node scripts/fonts.mjs` with the
+`plex.css` that declares them, so they come from the app's own origin (`font-src 'self'`) and a build never fetches
+them; each family has a fallback face with next/font's metrics, so the swap moves no line. Sans loads 400, 500 and
+600; Mono loads 400 and 500, so mono text is never set heavier than `font-medium`. The faces reach Tailwind as
+`--font-plex-sans` and `--font-plex-mono` behind `font-sans`, `font-heading` and `font-mono`.
 
 | Role | Size / line | Weight | Tailwind | Use |
 | --- | --- | --- | --- | --- |

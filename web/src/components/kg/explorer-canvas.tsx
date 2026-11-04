@@ -12,7 +12,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { type ExplorerElement, type Scope, stepOrder } from "@/lib/kg/explorer";
 import { parseMoreId } from "@/lib/kg/explorer-working";
 
-import { declutter, type ExplorerLayout, fit, inView, labelScale, layoutOptions, light, sync } from "./explorer-layout";
+import { declutter, type ExplorerLayout, fit, inView, LABEL_RESTYLE, labelScale, layoutOptions, light, sync } from "./explorer-layout";
 
 import { explorerStylesheet } from "./explorer-style";
 import { readTheme } from "./graph-theme";
@@ -36,7 +36,7 @@ type Labels = { scale: number; forced: (string | null)[] };
 /** Labels back to their size on screen for the zoom, then only those with room (explorer-layout.ts, declutter). */
 function relabel(cy: cytoscape.Core, kind: Scope["kind"], labels: Labels): void {
   const scale = labelScale(cy.zoom());
-  if (Math.abs(scale - labels.scale) / labels.scale > 0.03) {
+  if (Math.abs(scale - labels.scale) / labels.scale > LABEL_RESTYLE) {
     cy.style(explorerStylesheet(readTheme(), kind, scale));
     labels.scale = scale;
   }

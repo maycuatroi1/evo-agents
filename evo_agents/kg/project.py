@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents import filelock
 from evo_agents.harness import (
     Harness,
     find_manifest,
@@ -19,6 +23,8 @@ from evo_agents.harness import (
 from evo_agents.kg.corpus import Corpus, kg_home
 from evo_agents.kg.policy import Policy
 from evo_agents.schema import errors
+
+REPLACE_TRIES = 60  # filelock.POLL apart: about 3 s for another process to close the file on Windows
 
 
 class ProjectError(RuntimeError):
@@ -106,7 +112,33 @@ def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")  # its own: two processes writing at once never share one
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    _replace(tmp, path)
+
+
+def _replace(tmp: Path, path: Path) -> None:
+    """os.replace, tried again while Windows refuses it (WinError 5) because another process has ``path`` open for a
+    moment, as a reader does; POSIX replaces an open file, so there a refusal is real and raises at once."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if sys.platform != "win32" or attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(filelock.POLL)
+
+
+@contextlib.contextmanager
+def _locked(path: Path):
+    """Serialise a read-change-write of ``path`` across processes (``kg bench run --jobs`` builds several projects
+    in one kg home at once), so no writer drops another's entry or replaces the file under its read."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path.with_name(f"{path.name}.lock"), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        filelock.lock(fd)
+        yield
+    finally:
+        os.close(fd)  # closing releases the lock
 
 
 def read_index(home: Path | None = None) -> dict:
@@ -116,12 +148,14 @@ def read_index(home: Path | None = None) -> dict:
 def remember(project: Project) -> None:
     """Record where a project's harness and repos live, so an MCP server started in any of those
     directories can find the project without a flag."""
-    index = read_index(project.home)
-    index[project.name] = {
-        "harness_root": str(project.harness.root),
-        "dirs": [str(p) for p in project.repo_dirs()],
-    }
-    _write_json(_index_path(project.home), index)
+    path = _index_path(project.home)
+    with _locked(path):
+        index = _read_json(path)
+        index[project.name] = {
+            "harness_root": str(project.harness.root),
+            "dirs": [str(p) for p in project.repo_dirs()],
+        }
+        _write_json(path, index)
 
 
 def read_bindings(home: Path | None = None) -> dict:
