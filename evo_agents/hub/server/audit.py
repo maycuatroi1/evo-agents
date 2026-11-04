@@ -51,6 +51,9 @@ KG_REVIEW = "kg.review"
 # A writer took, accepted, rejected or undid a decision on the graph, or an agent proposed one
 # (evo_agents.hub.server.kg_decisions): "<project> decision=<number> action=<action>".
 KG_DECISION = "kg.decision"
+# A writer or the agent of a run changed or undid a project's KG settings (evo_agents.hub.server.kg_settings):
+# "<project> change=<id> kind=<set|undo>".
+KG_SETTINGS = "kg.settings"
 # A writer put a new version of the project's retrieval question set (evo_agents.hub.server.kg_eval_sets):
 # "<project> set=<name> version=<n> questions=<n>".
 KG_EVAL_SET = "kg.eval_set"

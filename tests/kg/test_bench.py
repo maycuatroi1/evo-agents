@@ -741,3 +741,21 @@ def test_contextbench_workspace_prefix_is_stripped_from_answer_paths(monkeypatch
 def test_bench_profile_reads_the_cache_and_says_so_when_it_is_empty(tmp_path, capsys):
     assert main(["kg", "bench", "profile", "--cache", str(tmp_path / "cache")]) == 0
     assert "no graph with a profile" in capsys.readouterr().out
+
+
+def test_run_settings_file_asks_under_query_keys_and_refuses_keys_that_need_a_build(tmp_path, kg_env, capsys):
+    project = make_project(tmp_path, kg_env)
+    sync_project(project)
+    assert build_project(project).ok
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text(json.dumps({"settings": {"bm25_name": 3.0, "semantic_weight": 1.0}}))
+    out = tmp_path / "tuned.json"
+    argv = ["kg", "bench", "run", "--set", f"evo-agents={FIXTURE}", "--project", str(project.harness.root)]
+    assert main([*argv, "--settings", str(candidate), "--out", str(out)]) == 0
+    assert compare.load_summary(out)["settings"]["kg_settings"] == {"bm25_name": 3.0, "semantic_weight": 1.0}
+    plain = tmp_path / "plain.json"
+    assert main([*argv, "--out", str(plain)]) == 0
+    assert "kg_settings" not in compare.load_summary(plain)["settings"]
+    candidate.write_text(json.dumps({"passage_from": 900}))
+    assert main([*argv, "--settings", str(candidate), "--out", str(tmp_path / "no.json")]) == 1
+    assert "passage_from" in capsys.readouterr().err

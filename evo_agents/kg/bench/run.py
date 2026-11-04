@@ -71,6 +71,7 @@ class Options:
     jobs: int = 1  # repos asked at once, each in a process of its own
     exclude: tuple[str, ...] = ()  # repos (OWNER/NAME) left out before sampling, for ones too big for the disk
     like: Path | None = None  # a summary whose tasks (by id) are the ones to ask, instead of a sample
+    tuning: dict | None = None  # settings of kg.settings the search is asked under, on the defaults (--settings)
     progress: object = None  # a callable(str) for progress lines
 
     @property
@@ -267,6 +268,13 @@ def session_of(project, search: str, files: tuple | None = None):
 def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:
     """Build each graph ``tasks`` need (one repo's) and ask each task with every search of ``options``; with ``prune``,
     a graph goes once its last task was asked, and the clone once the repo's last was."""
+    from evo_agents.kg import settings as kg_settings
+
+    with kg_settings.overriding(options.tuning):
+        return _ask_repo(cache, bench, tasks, options)
+
+
+def _ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:
     lay = graphs.layout(cache)
     say = options.progress or (lambda line: None)
     asked = Asked({s: [] for s in options.searches}, {s: {} for s in options.searches})
@@ -346,6 +354,7 @@ def ask_repo_kept(cache: Path, bench: str, tasks: list[Task], options: Options) 
             options.methods,
             options.limit_of(bench),
             options.budget_tokens,
+            options.tuning,
         ]
         + [options.line_budget, [t.id for t in tasks]]
     )
@@ -503,6 +512,7 @@ def summary(benches: dict[str, dict], records: list[dict], options: Options, sea
             "sample": options.sample,
             "max_hours": options.max_hours,
             "rank": rank_state(),
+            **({"kg_settings": options.tuning} if options.tuning else {}),
         },
         "cost": {
             "usd": 0.0,

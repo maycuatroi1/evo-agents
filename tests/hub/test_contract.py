@@ -20,6 +20,7 @@ from evo_agents.hub import (
     kg_cli,
     kg_profile_cli,
     kg_semantic_cli,
+    kg_settings_cli,
     local_send,
     memory,
     skill_sync,
@@ -48,6 +49,10 @@ BUILT_HERE = {
     "hub kg push": lambda: kg_cli.push_json([]),
     "hub kg profile": lambda: kg_profile_cli.profile_json("demo", 1, {}),
     "hub kg semantic": lambda: kg_semantic_cli.semantic_json("demo", 1, {}),
+    "hub kg measure": lambda: kg_settings_cli.measure_json("demo", {}),
+    "hub kg settings": lambda: kg_settings_cli.settings_json(
+        "demo", {"values": {}, "overrides": {}, "needs_rebuild": [], "changes": []}
+    ),
     "hub kg scrub": lambda: kg_cli.scrub_json(False, []),
     "hub kg forget-source": lambda: kg_cli.forget_json("demo", []),
     "hub sessions backfill": lambda: transcript_sync.Report(HUB_URL).as_json(),

@@ -10857,6 +10857,71 @@
         "schema": "KgHealthView"
       }
     },
+    "hub kg measure": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--settings"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--split"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "tune",
+            "holdout"
+          ],
+          "default": "tune"
+        },
+        {
+          "flags": [
+            "--max-questions"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 300
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "build_id",
+          "split",
+          "questions",
+          "current",
+          "candidate",
+          "candidate_settings",
+          "needs_rebuild",
+          "why"
+        ]
+      }
+    },
     "hub kg optimize": {
       "positionals": [],
       "options": [
@@ -11302,6 +11367,69 @@
           "coverage",
           "partial",
           "error"
+        ]
+      }
+    },
+    "hub kg settings": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--set"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--undo"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--figures"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "settings",
+          "overrides",
+          "needs_rebuild",
+          "changes"
         ]
       }
     },
@@ -33819,6 +33947,330 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/settings": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Get Settings",
+          "description": "What the project's search and build are tuned with, and the newest changes.",
+          "operationId": "get_settings_v1_kg__project__settings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Put Settings",
+          "description": "Set keys of the project's KG settings; the change keeps who made it, why, and the figures it cites.",
+          "operationId": "put_settings_v1_kg__project__settings_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/settings/undo": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Undo Settings",
+          "description": "Put back what the newest change that is not undone replaced.",
+          "operationId": "undo_settings_v1_kg__project__settings_undo_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/measure": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Measure",
+          "description": "Score the project's settings and a candidate on its question set; nothing is stored or changed.",
+          "operationId": "measure_v1_kg__project__measure_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasureBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MeasureOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -106588,6 +107040,103 @@
           ],
           "title": "ChangeList"
         },
+        "ChangeOut": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "changed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed By"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "figures": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Figures"
+            },
+            "before": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Before"
+            },
+            "after": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "After"
+            },
+            "undoes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undoes"
+            },
+            "changed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Changed At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "changed_by",
+            "run_id",
+            "reason",
+            "figures",
+            "before",
+            "after",
+            "undoes",
+            "changed_at"
+          ],
+          "title": "ChangeOut"
+        },
         "ChangeReplay": {
           "properties": {
             "project": {
@@ -125524,6 +126073,120 @@
           ],
           "title": "MarketingWeekly",
           "description": "The Growth section of the project's weekly bulletin: the 7 days up to ``until``."
+        },
+        "MeasureBody": {
+          "properties": {
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Values",
+              "description": "the candidate's keys, on top of the project's settings"
+            },
+            "split": {
+              "type": "string",
+              "enum": [
+                "tune",
+                "holdout"
+              ],
+              "title": "Split",
+              "description": "the part of the question set that is asked",
+              "default": "tune"
+            },
+            "max_questions": {
+              "type": "integer",
+              "maximum": 1000.0,
+              "minimum": 1.0,
+              "title": "Max Questions",
+              "default": 300
+            }
+          },
+          "type": "object",
+          "title": "MeasureBody"
+        },
+        "MeasureOut": {
+          "properties": {
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id"
+            },
+            "split": {
+              "type": "string",
+              "title": "Split"
+            },
+            "questions": {
+              "type": "integer",
+              "title": "Questions"
+            },
+            "current": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current",
+              "description": "the figures with the project's settings (n, hit@5, tokens per hit, p95)"
+            },
+            "candidate": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Candidate",
+              "description": "the figures with the candidate's query keys on top"
+            },
+            "candidate_settings": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Candidate Settings"
+            },
+            "needs_rebuild": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Needs Rebuild",
+              "description": "keys of the candidate that need a new build and were not measured"
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Why",
+              "description": "why nothing was measured"
+            }
+          },
+          "type": "object",
+          "required": [
+            "build_id",
+            "split",
+            "questions",
+            "current",
+            "candidate",
+            "candidate_settings",
+            "needs_rebuild"
+          ],
+          "title": "MeasureOut"
         },
         "MemberCounts": {
           "properties": {
@@ -153240,6 +153903,46 @@
           ],
           "title": "SessionTranscripts"
         },
+        "SetBody": {
+          "properties": {
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Values",
+              "description": "keys of the KG settings and their new values"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "figures": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Figures",
+              "description": "the numbers the change rests on, as the bench or measure gave them"
+            }
+          },
+          "type": "object",
+          "required": [
+            "values"
+          ],
+          "title": "SetBody"
+        },
         "SettingsClass": {
           "properties": {
             "name": {
@@ -153427,6 +154130,57 @@
           ],
           "title": "SettingsLayer",
           "description": "One layer of a setting at one version."
+        },
+        "SettingsOut": {
+          "properties": {
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Values",
+              "description": "every key with the value the project is tuned with"
+            },
+            "overrides": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Overrides",
+              "description": "the keys that differ from the defaults"
+            },
+            "defaults": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Defaults"
+            },
+            "needs_rebuild": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Needs Rebuild",
+              "description": "the keys changed by this call that act on the next build"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/components/schemas/ChangeOut"
+              },
+              "type": "array",
+              "title": "Changes",
+              "description": "the newest changes, newest first"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change"
+            }
+          },
+          "type": "object",
+          "required": [
+            "values",
+            "overrides",
+            "defaults",
+            "needs_rebuild",
+            "changes",
+            "can_change"
+          ],
+          "title": "SettingsOut"
         },
         "SettingsRollback": {
           "properties": {
@@ -162999,6 +163753,24 @@
             "was_by"
           ],
           "title": "Undismissed"
+        },
+        "UndoBody": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "title": "UndoBody"
         },
         "UnitCreate": {
           "properties": {

@@ -48,6 +48,30 @@ def _memory_options(options):
     )
 
 
+def _tuning_file(path: str | None) -> dict | None:
+    """The search settings of ``--settings FILE`` (a json object of kg.settings keys, or {"settings": {...}}); a key
+    that needs a build of the graphs (or the semantic mode, which --search sets) is refused."""
+    if not path:
+        return None
+    from evo_agents.kg import settings as kg_settings
+    from evo_agents.kg.bench.datasets import BenchError
+
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = data.get("settings", data) if isinstance(data, dict) else data
+        wanted = kg_settings.of(data)
+    except (OSError, ValueError) as exc:
+        raise BenchError(f"--settings {path}: {exc}") from None
+    fixed = sorted(set(data) & (kg_settings.BUILD_KEYS | kg_settings.SEMANTIC_KEYS))
+    if fixed:
+        raise BenchError(
+            f"--settings {path}: {', '.join(fixed)} change what a build writes or --search sets; "
+            "kg bench run asks the graphs it has with the query keys: "
+            + ", ".join(sorted(set(kg_settings.KEYS) - kg_settings.BUILD_KEYS - kg_settings.SEMANTIC_KEYS))
+        )
+    return wanted.overrides() or None
+
+
 def _options(args):
     from evo_agents.kg.bench import graphs, run
     from evo_agents.kg.bench.tasks import HOLDOUT, TEST, TUNE
@@ -73,6 +97,7 @@ def _options(args):
         jobs=getattr(args, "jobs", 1),
         exclude=tuple(getattr(args, "exclude_repo", None) or ()),
         like=Path(args.like) if getattr(args, "like", None) else None,
+        tuning=_tuning_file(getattr(args, "settings", None)),
         progress=None if getattr(args, "json", False) and not args.verbose else run.progress_to_stderr,
     )
 
@@ -133,6 +158,7 @@ def _local_sets(entries: list[str] | None) -> list[tuple[str, Path]]:
 
 
 def cmd_run(args) -> int:
+    from evo_agents.kg import settings as kg_settings
     from evo_agents.kg.bench import compare, datasets, memory, run
     from evo_agents.kg.evaluate import load_set, project_checkouts
     from evo_agents.kg.project import ProjectError, resolve_project
@@ -147,31 +173,32 @@ def cmd_run(args) -> int:
         cache = datasets.cache_dir(args.cache) if benches else None
         parts: dict[str, dict] = {s: {} for s in options.searches}
         records: dict[str, list[dict]] = {s: [] for s in options.searches}
-        for bench in benches:
-            if memory.is_memory(bench):
-                if options.searches != ("graph",):
-                    raise datasets.BenchError(f"{bench} is asked with --search graph only")
-                part, mine = memory.run_memory(cache, bench, _memory_options(options))
-                parts["graph"][bench] = part
-                records["graph"] += mine
-                continue
-            part, mine, _ = run.run_bench(cache, bench, options)
-            for search in options.searches:
-                parts[search][bench] = part[search]
-                records[search] += mine[search]
-        for name, path in local:
-            project = resolve_project(args.project)
-            for search in options.searches:
-                part, mine = run.score_local(
-                    name,
-                    load_set(path),
-                    lambda _project, project=project, search=search: run.session_of(project, search),
-                    lambda _project: project_checkouts(args.project),
-                    options,
-                    run.file_digest(path),
-                )
-                parts[search][name] = part
-                records[search] += mine
+        with kg_settings.overriding(options.tuning):
+            for bench in benches:
+                if memory.is_memory(bench):
+                    if options.searches != ("graph",):
+                        raise datasets.BenchError(f"{bench} is asked with --search graph only")
+                    part, mine = memory.run_memory(cache, bench, _memory_options(options))
+                    parts["graph"][bench] = part
+                    records["graph"] += mine
+                    continue
+                part, mine, _ = run.run_bench(cache, bench, options)
+                for search in options.searches:
+                    parts[search][bench] = part[search]
+                    records[search] += mine[search]
+            for name, path in local:
+                project = resolve_project(args.project)
+                for search in options.searches:
+                    part, mine = run.score_local(
+                        name,
+                        load_set(path),
+                        lambda _project, project=project, search=search: run.session_of(project, search),
+                        lambda _project: project_checkouts(args.project),
+                        options,
+                        run.file_digest(path),
+                    )
+                    parts[search][name] = part
+                    records[search] += mine
         summaries = [run.summary(parts[s], records[s], options, s) for s in options.searches]
     except (datasets.BenchError, ProjectError, ValueError) as exc:
         return _fail(str(exc), 1)
@@ -382,6 +409,11 @@ def register(ksub) -> None:
         "--set", action="append", metavar="NAME=QUESTIONS", help="also a local `kg eval` set, such as evo-agents"
     )
     go.add_argument("--project", help="project of the local sets (default: from the cwd)")
+    go.add_argument(
+        "--settings",
+        metavar="FILE",
+        help="ask under these search settings (kg settings keys: semantic_weight, bm25_name, bm25_path, bm25_body)",
+    )
     go.add_argument("--method", action="append", choices=ev.METHODS, help="method (repeatable; first is primary)")
     go.add_argument(
         "--limit", type=int, help="kg_search's limit (default 5 for swe-explore, 25 for the memory sets, else 10)"

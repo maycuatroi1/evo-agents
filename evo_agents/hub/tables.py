@@ -1074,6 +1074,9 @@ kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
 kg_query_labels = tables_kg.query_labels(metadata)  # each kg_search and what the agent opened after it (0178)
 kg_eval_sets = tables_kg.eval_sets(metadata)  # each version of a project's retrieval question set (0179)
 kg_semantic = tables_kg.semantic_settings(metadata)  # whether a project's graph is searched by meaning too (0181)
+kg_settings, kg_settings_changes = tables_kg.kg_settings_tables(
+    metadata
+)  # a project's KG settings and their changes (0196)
 kg_optimize_runs = tables_kg.optimize_runs(metadata)  # each run of the KG optimize loop (0182)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

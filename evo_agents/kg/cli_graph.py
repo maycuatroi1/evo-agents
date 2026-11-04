@@ -122,6 +122,62 @@ def cmd_semantic(args) -> int:
     return 1 if indexed is not None and indexed.error else 0
 
 
+def cmd_settings(args) -> int:
+    """Show the project's KG settings, set some (``--set KEY=VALUE``, a reason with ``--reason``) or put back the last
+    change (``--undo``). A key that needs a build says so."""
+    from evo_agents.kg import settings as kg_settings
+    from evo_agents.kg.cli import _print_json, _project
+
+    project = _project(args)
+    try:
+        before = kg_settings.read(project.root)
+        after = before
+        if args.undo:
+            after = kg_settings.undo(project.root)
+            if after is None:
+                raise kg_settings.SettingsError("nothing to undo: the settings were never changed")
+        elif args.set:
+            changes = {}
+            for item in args.set:
+                key, sep, text = item.partition("=")
+                if not sep:
+                    raise kg_settings.SettingsError(f"--set {item!r}: write KEY=VALUE")
+                changes[key.strip()] = kg_settings.parse_value(key.strip(), text)
+            after = kg_settings.write(
+                project.root, kg_settings.of(changes, before), reason=args.reason, figures=_figures(args.figures)
+            )
+    except (kg_settings.SettingsError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    out = {
+        "project": project.name,
+        "settings": after.to_json(),
+        "changed": kg_settings.diff(before, after),
+        "needs_rebuild": kg_settings.rebuild_keys(before, after),
+    }
+    if args.json:
+        _print_json(out)
+    else:
+        for key, value in after.to_json().items():
+            mark = "" if value == getattr(kg_settings.DEFAULT, key) else "  (set)"
+            print(f"{key} = {value}{mark}")
+        if out["needs_rebuild"]:
+            print(f"takes effect with the next build: {', '.join(out['needs_rebuild'])}")
+    return 0
+
+
+def _figures(text: str | None) -> dict | None:
+    if not text:
+        return None
+    try:
+        found = json.loads(text)
+    except ValueError:
+        raise ValueError("--figures must be a json object") from None
+    if not isinstance(found, dict):
+        raise ValueError("--figures must be a json object")
+    return found
+
+
 def cmd_query(args) -> int:
     from evo_agents.kg.cli import _project
     from evo_agents.kg.serve import Session
@@ -508,3 +564,12 @@ def register(ksub, with_project) -> None:
     sem.add_argument("--model", help="embedding model (default BAAI/bge-m3)")
     sem.add_argument("--index", action="store_true", help="write the vectors into the graph now (downloads the model)")
     sem.set_defaults(func=cmd_semantic)
+
+    st = with_project(
+        ksub.add_parser("settings", help="show, set (--set KEY=VALUE) or undo the project's KG settings (kg.settings)")
+    )
+    st.add_argument("--set", action="append", metavar="KEY=VALUE", help="set a key (repeatable)")
+    st.add_argument("--reason", help="why, kept with the change")
+    st.add_argument("--figures", help="json object of the figures that justify the change, kept with it")
+    st.add_argument("--undo", action="store_true", help="put back what the last change replaced")
+    st.set_defaults(func=cmd_settings)

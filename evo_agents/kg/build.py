@@ -56,6 +56,9 @@ from evo_agents.kg.profile import PROFILE_VERSION, build_profile, item_stats
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
+from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
+from evo_agents.kg.settings import SettingsError, Tuning
+from evo_agents.kg.settings import read as read_tuning
 from evo_agents.kg.store import Clusters, Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
 from evo_agents.kg.text import split_passages
 
@@ -360,7 +363,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             holders.append(f"{nid} (source {', '.join(srcs)})")
         errors.append(f"duplicate {kind} key {key}: " + ", ".join(holders))
 
-    cut = search_texts(graph, records, corpus, body, notes)
+    cut = search_texts(graph, records, corpus, body, notes, tuning_of(project))
 
     coverage = {
         "sources": [],
@@ -435,13 +438,23 @@ def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Co
     return second
 
 
-def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, list[str]]) -> list[str]:
+def tuning_of(project: Project) -> Tuning:
+    """What the project's settings.json tunes the build by; the defaults when it has none."""
+    try:
+        return read_tuning(project.root)
+    except SettingsError as exc:
+        raise ProjectError(str(exc)) from None
+
+
+def search_texts(
+    graph: Graph, records, corpus: Corpus, body, notes: dict[str, list[str]], tuning: Tuning = DEFAULT_TUNING
+) -> list[str]:
     """Fill ``graph.texts`` and ``graph.paths``, what the full-text index holds besides names (``kg.search``): the
     sections of a document, the text of an item that is neither code, markup nor a plan (a plan's text is on its plan
     and step nodes), the descriptions and docstrings in ``notes``, and a requirement's code; ``graph.code``, the text
     of a code or markup file without an audience, for ``code_fts``; the path of a node that has
     one, a section's being its document's; and ``graph.passages``, a section or a file read whole longer than
-    ``kg.search.PASSAGE_FROM`` cut into passages with their lines, each after the document's name and the headings
+    the project's ``passage_from`` (``kg.settings``) cut into passages with their lines, each after the document's name and the headings
     above it. The ids of the nodes whose body was cut (``kg.search.MAX_TEXT_CHARS``)."""
     parts: dict[str, list[str]] = defaultdict(list)
     long: list[tuple[str, int, str, list[str]]] = []  # (node id, first line, text, context) of a body to cut
@@ -458,12 +471,12 @@ def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, l
                 target = sid if sid in graph.nodes else r["id"]
                 parts[target].append(f["text"])
                 first = _first_line(f.get("span"))
-                if first is not None and len(f["text"]) > text_search.PASSAGE_FROM:
+                if first is not None and len(f["text"]) > tuning.passage_from:
                     long.append((target, first, f["text"], [node["name"] or r["id"], *_headings(f, heads)]))
         elif r["kind"] not in UNSEARCHED_ITEMS:
             text = body(rec) or ""
             parts[r["id"]].append(text)
-            if node["kind"] in ("File", "Document") and len(text) > text_search.PASSAGE_FROM:  # lines of a file
+            if node["kind"] in ("File", "Document") and len(text) > tuning.passage_from:  # lines of a file
                 long.append((r["id"], 1, text, [node["name"] or r["id"]]))
         if r["kind"] in CODE_TEXT_ITEMS and node["kind"] == "File" and not node["label"].audience:
             text = body(rec)
@@ -471,7 +484,7 @@ def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, l
                 graph.code[r["id"]] = text
     for nid, first, text, context in long:  # past MAX_TEXT_CHARS, a passage would index what the body cut
         prefix = " > ".join(dict.fromkeys(c for c in context if c))
-        found = split_passages(text[: text_search.MAX_TEXT_CHARS], first, text_search.PASSAGE_CHARS)
+        found = split_passages(text[: text_search.MAX_TEXT_CHARS], first, tuning.passage_chars)
         graph.passages.setdefault(nid, []).extend({**p, "text": f"{prefix}\n{p['text']}"} for p in found)
     for nid, texts in notes.items():
         if nid in graph.nodes:
@@ -602,8 +615,8 @@ def _vectors(project: Project, report: BuildReport) -> None:
 
     path = project.root / "graph.sqlite"
     try:
-        settings = semantic.read_settings(project.root)
-    except ValueError as exc:
+        settings = tuning_of(project).semantic_settings()
+    except (ValueError, ProjectError) as exc:
         report.warnings.append(f"semantic: {exc}")
         return
     if not path.exists():
@@ -632,6 +645,10 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
         "cursors": {sid: corpus.cursor(sid) for sid in sources},
         "clusters": kg_clusters.inputs(),
     }
+    tuning = tuning_of(project).overrides()
+    chosen = {k: v for k, v in tuning.items() if k in ("passage_from", "passage_chars", "strategy")}
+    if chosen:  # only a project that set them: every other project keeps the digest it had
+        parts["tuning"] = chosen
     return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
 
 

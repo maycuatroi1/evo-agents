@@ -75,6 +75,7 @@ class SemanticUnavailable(RuntimeError):
 class Settings:
     mode: str = "off"
     model: str = DEFAULT_MODEL
+    embed_chars: int = EMBED_CHARS  # of a row's text that are embedded (kg.settings)
 
     def __post_init__(self):
         if self.mode not in MODES:
@@ -87,7 +88,7 @@ class Settings:
         return self.mode != "off"
 
     def to_json(self) -> dict:
-        return {"mode": self.mode, "model": self.model}
+        return {"mode": self.mode, "model": self.model}  # embed_chars lives in kg.settings
 
     @classmethod
     def of(cls, data) -> Settings:
@@ -316,11 +317,11 @@ def _numpy():
 # -- the text of a row --------------------------------------------------------------------------------------------
 
 
-def embed_text(name: str, path: str, body: str) -> str:
+def embed_text(name: str, path: str, body: str, chars: int = EMBED_CHARS) -> str:
     """What is embedded of a full-text row: the first line of its name, its path, its body, cut at EMBED_CHARS."""
     first = str(name or "").split("\n", 1)[0]
     head = "\n".join(p for p in (first, path or "") if p)
-    return f"{head}\n{body}"[:EMBED_CHARS]
+    return f"{head}\n{body}"[:chars]
 
 
 def query_text(query: str) -> str:
@@ -331,7 +332,7 @@ def text_digest(model: str, text: str) -> str:
     return sha256(canonical_json([model, text]))
 
 
-def index_rows(db: sqlite3.Connection) -> list[tuple[str, str, str, str | None, str]]:
+def index_rows(db: sqlite3.Connection, chars: int = EMBED_CHARS) -> list[tuple[str, str, str, str | None, str]]:
     """(key, node id, kind, audience, text) of every full-text row with a body, by key."""
     out = []
     for table, aud in (("node_fts", "NULL"), ("node_fts_aud", "f.aud")):
@@ -341,7 +342,9 @@ def index_rows(db: sqlite3.Connection) -> list[tuple[str, str, str, str | None, 
             f" JOIN {table} f ON f.rowid = r.fts_rowid WHERE r.aud = ? AND length(trim(f.body)) > 0",
             (flag,),
         ).fetchall()
-    return sorted((key, nid, kind, aud, embed_text(name, path, body)) for key, nid, kind, aud, name, path, body in out)
+    return sorted(
+        (key, nid, kind, aud, embed_text(name, path, body, chars)) for key, nid, kind, aud, name, path, body in out
+    )
 
 
 # -- the cache of vectors -----------------------------------------------------------------------------------------
@@ -448,7 +451,7 @@ def index(
     if not settings.indexes:
         drop(db)
         return Indexed("off")
-    rows = index_rows(db)
+    rows = index_rows(db, settings.embed_chars)
     digests = [text_digest(settings.model, text) for *_, text in rows]
     digest = sha256(canonical_json([settings.model, [[r[0], d] for r, d in zip(rows, digests, strict=True)]]))
     held_info = info(db)

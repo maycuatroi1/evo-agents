@@ -164,6 +164,7 @@ TABLES |= {"merge_checks"}  # migration 0187
 TABLES |= {"proposal_threads"}  # migration 0188
 TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
 TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
+TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -5416,3 +5417,32 @@ def test_migration_0195_gives_each_agent_with_no_pool_its_pool(hub_db):
     move_to(hub_db, "0194", down=True)
     assert query(hub_db, select(func.count()).select_from(p).where(p.c.agent_id.is_not(None))) == [(2,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0195") :]
+
+
+def test_0196_keeps_a_projects_kg_settings_and_their_changes_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0195")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0196")
+    settings, changes = hub_tables.kg_settings, hub_tables.kg_settings_changes
+    row = {"project_id": ids["project"], "kind": "set", "before": {}, "after": {"bm25_body": 2.0}}
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(changes).values({**row, "kind": "edit"}))
+        conn.execute(
+            insert(settings).values(project_id=ids["project"], overrides={"bm25_body": 2.0}, updated_by=ids["user"])
+        )
+        first = conn.execute(
+            insert(changes).values({**row, "changed_by": ids["user"], "reason": "trial"}).returning(changes.c.id)
+        ).scalar()
+        conn.execute(
+            insert(changes).values({**row, "kind": "undo", "before": row["after"], "after": {}, "undoes": first})
+        )
+    assert query(hub_db, select(settings.c.overrides)) == [({"bm25_body": 2.0},)]
+    assert query(hub_db, select(changes.c.kind, changes.c.undoes).order_by(changes.c.id)) == [
+        ("set", None),
+        ("undo", first),
+    ]
+    move_to(hub_db, "0195", down=True)
+    assert not {"kg_settings", "kg_settings_changes"} & set(tables(hub_db))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0196") :]

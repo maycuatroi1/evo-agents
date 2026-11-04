@@ -61,10 +61,11 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_eval_starter, kg_semantic, kg_sources, tables
+from evo_agents.hub import blob_gc, kg_asked, kg_coverage, kg_eval_starter, kg_semantic, kg_settings, kg_sources, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
+from evo_agents.kg import settings
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.protocol import sha256 as sha256_of
@@ -313,6 +314,16 @@ def graph_reach(path: Path) -> dict | None:
         graph.close()
 
 
+def put_tuning(root: Path, tuning: settings.Tuning) -> None:
+    """The project's overrides as the settings.json a build reads (none: no file)."""
+    rest = {k: v for k, v in tuning.overrides().items() if k not in settings.SEMANTIC_KEYS}
+    path = root / settings.SETTINGS_FILE
+    if rest:
+        path.write_text(json.dumps(rest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+
+
 def build_in_cache(
     store: BlobStore,
     data_dir: Path,
@@ -322,6 +333,7 @@ def build_in_cache(
     sources: list | None = None,
     learned: kg_asked.Learned | None = None,
     semantic: kg_semantic.semantic.Settings | None = None,
+    tuning: settings.Tuning | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
@@ -329,13 +341,17 @@ def build_in_cache(
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
     build whose graph is the same but whose index is not uploads its file. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when the project's vectors.sqlite
-    lacks them, and the content hash folds in their digest and the mode, the same way. Blocking."""
+    lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
+    overrides are put in its settings.json first, so the build reads them as a local one does. Blocking."""
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
     drop_forgotten(project, ingests)
     kg_sources.keep_sources(project, sources)
     merged = prepare_corpus(store, project, ingests)
+    if tuning is not None:
+        put_tuning(project.root, tuning)
+        semantic = tuning.semantic_settings()
     path, report = build_graph(project)
     asked = kg_asked.write(path, learned) if learned is not None else None
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
@@ -599,9 +615,9 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         sources = await kg_sources.read_sources(engine, context.config, project_id, project, found[1])
         async with engine.connect() as conn:
             learned = await kg_asked.read(conn, project_id, project, found[1])
-            semantic = await kg_semantic.read(conn, project_id)
+            tuning = await kg_settings.read(conn, project_id)
         built = await asyncio.to_thread(
-            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, semantic
+            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources, learned, None, tuning
         )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)

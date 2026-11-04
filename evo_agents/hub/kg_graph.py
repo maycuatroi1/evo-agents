@@ -49,6 +49,7 @@ from pathlib import Path
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.srs_baseline import CODE_COMMENT, COMMIT, PLAN_COMPLETED, PULL_REQUEST, STEP_DONE, Evidence
 from evo_agents.kg import freshness
+from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.policy import Label, Policy, audience_below
@@ -467,13 +468,16 @@ def answer(
     tool: str,
     arguments: dict,
     explore: bool = False,
+    tuning: kg_settings.Tuning | None = None,
 ) -> dict:
     """One kg_* call on the newest graph of ``project`` that can be read; ``explore``: a kg_search of an agent's, which
     may explore the ranking (``evo_agents.kg.explore``). Blocking: run it in a thread, which also keeps the SQLite
-    connection in the thread that made it."""
+    connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings)."""
     path, graph = cache.acquire(store, project, graphs)
     try:
         opened = open_graph(path, project, graph)
+        if tuning is not None:
+            opened.tuning = tuning
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             session.explorer = Explorer() if explore else None
