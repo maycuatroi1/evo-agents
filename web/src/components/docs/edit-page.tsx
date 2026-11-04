@@ -11,7 +11,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { docsDocumentQuery } from "./api";
-import { DocumentHead } from "./document-head";
+import { DOCUMENT_COLUMN, DocumentHead } from "./document-head";
 import { DocumentEditor } from "./editor";
 import { useDocsViewer } from "./hooks";
 import { canWrite } from "./model";
@@ -33,7 +33,7 @@ export function EditPage({ project, slug, initialError }: { project: string; slu
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
       {(doc) => (
-        <div className="flex flex-col gap-6" data-testid="docs-edit-page">
+        <div className={DOCUMENT_COLUMN} data-testid="docs-edit-page">
           <DocumentHead project={project} doc={doc} current="edit" />
           {viewer && !canWrite(viewer) ? <ReadersRead project={project} /> : <DocumentEditor project={project} doc={doc} />}
         </div>
@@ -47,7 +47,7 @@ export function NewDocumentPage({ project }: { project: string }) {
   const t = useTranslations("docs.editor");
   const viewer = useDocsViewer(project);
   return (
-    <div className="flex flex-col gap-6" data-testid="docs-new-page">
+    <div className={DOCUMENT_COLUMN} data-testid="docs-new-page">
       <PageHeader title={t("newTitle")} sub={t("newSub", { project })} />
       {viewer && !canWrite(viewer) ? <ReadersRead project={project} /> : <DocumentEditor project={project} doc={null} />}
     </div>
