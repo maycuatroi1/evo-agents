@@ -219,7 +219,7 @@ def test_memory_list_of_one_agent_profile_through_the_cli(hub, agents, capsys, m
     assert [m["id"] for m in cli_memory.listed(member, agent="scout")] == [memory["id"]]
     assert memory["id"] not in [m["id"] for m in cli_memory.listed(member, project=A)]
 
-    monkeypatch.setattr(cli_memory, "_signed_in", lambda: (member, None))
+    monkeypatch.setattr(cli_memory, "signed_in", lambda: (member, None))
     args = SimpleNamespace(project=None, agent="@scout", limit=100, json=False)
     assert cli_memory.cmd_memory_list(args) == 0
     shown = capsys.readouterr().out

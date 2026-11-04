@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 
-from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.skill_sync import (
     AUDIENCES,
@@ -64,13 +64,13 @@ def _where(skill: dict) -> str:
     return "global" if skill.get("project") is None else f"project {skill['project']}"
 
 
-@_client_command
+@client_command
 def cmd_skills_publish(args) -> int:
     _, project = parse_scope(args.scope)
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     published = publish(hub, args.dir, project, args.source_repo, args.source_commit, args.audience)
     if args.json:
-        _print_json(published)
+        print_json(published)
         return 0
     latest = published["latest"]
     what = f"{_where(published)} skill {published['name']}"
@@ -83,12 +83,12 @@ def cmd_skills_publish(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_skills_audience(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     changed = set_audience(hub, args.name, args.audience)
     if args.json:
-        _print_json(changed)
+        print_json(changed)
         return 0
     who = "every signed-in member" if changed["audience"] == "everyone" else "hub admins alone"
     if changed["changed"]:
@@ -98,13 +98,13 @@ def cmd_skills_audience(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_skills_list(args) -> int:
     scope, project = parse_scope(args.scope, any_project=True) if args.scope else (None, None)
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = list_skills(hub, scope, project)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found:
         print("No skill you can see on this hub.")
@@ -116,14 +116,14 @@ def cmd_skills_list(args) -> int:
             s["version"],
             s["sha256"][:12],
             _size(s["size"]),
-            _when(s["published_at"]),
+            when(s["published_at"]),
             s["published_by"],
             f"{s['source_repo']}@{s['source_commit'][:12]}" if s.get("source_repo") else "-",
             s.get("audience", "everyone"),
         )
         for s in found
     ]
-    _table(("PROJECT", "NAME", "VERSION", "SHA256", "SIZE", "PUBLISHED (UTC)", "BY", "SOURCE", "AUDIENCE"), rows)
+    table(("PROJECT", "NAME", "VERSION", "SHA256", "SIZE", "PUBLISHED (UTC)", "BY", "SOURCE", "AUDIENCE"), rows)
     return 0
 
 
@@ -164,13 +164,13 @@ def _print_report(report: Report) -> None:
         print(f"note: {note}")
 
 
-@_client_command
+@client_command
 def cmd_skills_sync(args) -> int:
     runtimes = parse_runtimes(args.runtime)
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     report = sync(hub, runtimes=runtimes, check=args.check, adopt=args.adopt)
     if args.json:
-        _print_json(report.as_json())
+        print_json(report.as_json())
     elif args.quiet:
         if args.check:
             print(report.differences)

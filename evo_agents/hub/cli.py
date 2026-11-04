@@ -32,7 +32,7 @@ EXIT_USAGE = 2
 OWN_COMMANDS: set[str] = set()  # the hub commands of the CLI itself, the plugins' left out (cli_plugin_commands)
 
 
-def _server_command(func):
+def server_command(func):
     """Configure JSON logging first, and turn every failure of ``func`` into a log line and an exit code."""
 
     @functools.wraps(func)
@@ -59,7 +59,7 @@ def _config_error(exc) -> int:
     return EXIT_USAGE
 
 
-def _missing_extra(exc: ImportError, args) -> int:
+def missing_extra(exc: ImportError, args) -> int:
     log.error(
         f"hub {args.hub_command} needs the hub-server extra (missing module {exc.name}): {EXTRA_HINT}",
         extra={"missing_module": exc.name},
@@ -67,7 +67,7 @@ def _missing_extra(exc: ImportError, args) -> int:
     return EXIT_USAGE
 
 
-@_server_command
+@server_command
 def cmd_serve(args) -> int:
     from evo_agents.hub.config import ConfigError, load_config
 
@@ -80,7 +80,7 @@ def cmd_serve(args) -> int:
 
         from evo_agents.hub.server.app import create_app, init_sentry
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     init_sentry(config)
     # A failed start (Postgres unreachable, migration refused) makes uvicorn exit with status 3.
     uvicorn.run(
@@ -97,7 +97,7 @@ def cmd_serve(args) -> int:
     return 0
 
 
-@_server_command
+@server_command
 def cmd_worker(args) -> int:
     from evo_agents.hub.config import ConfigError, load_config
 
@@ -113,7 +113,7 @@ def cmd_worker(args) -> int:
         from evo_agents.hub import worker
         from evo_agents.hub.server.app import init_sentry, loop_tick, memory_upkeep, release_pass
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     init_sentry(config)
     return worker.main(
         config,
@@ -125,12 +125,12 @@ def cmd_worker(args) -> int:
     )
 
 
-@_server_command
+@server_command
 def cmd_plugin_host(args) -> int:
     try:
         from evo_agents.hub.plugin_host_service import load_host_config, run_service
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     try:
         config = load_host_config(args)
     except ValueError as exc:
@@ -156,7 +156,7 @@ def _storage_stores(args, *paths: str | None):
     try:
         from evo_agents.hub.blob_migrate import store_from_env
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     stores = []
     try:
         for path in paths:
@@ -173,7 +173,7 @@ def _storage_stores(args, *paths: str | None):
     return stores
 
 
-@_server_command
+@server_command
 def cmd_storage_check(args) -> int:
     stores = _storage_stores(args, args.env)
     if isinstance(stores, int):
@@ -192,7 +192,7 @@ def cmd_storage_check(args) -> int:
     return 0 if steps and all(step.ok for step in steps) else EXIT_FAILED
 
 
-@_server_command
+@server_command
 def cmd_storage_migrate(args) -> int:
     import json
 
@@ -229,7 +229,7 @@ def cmd_storage_migrate(args) -> int:
     return EXIT_FAILED if report.failed else 0
 
 
-def _positive(value: str) -> int:
+def positive(value: str) -> int:
     try:
         number = int(value)
     except ValueError:
@@ -239,7 +239,7 @@ def _positive(value: str) -> int:
     return number
 
 
-@_server_command
+@server_command
 def cmd_migrate(args) -> int:
     from evo_agents.hub.config import ConfigError, load_dsn
     from evo_agents.hub.log import redact_dsn
@@ -254,7 +254,7 @@ def cmd_migrate(args) -> int:
 
         from evo_agents.hub.migrate import MigrationError, migrate, status
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     try:
         if getattr(args, "status", False):
             return _print_status(status(dsn))
@@ -419,7 +419,7 @@ def register(sub) -> None:
         help="cache directory, rebuilt from Postgres and the blob store when lost "
         "(default: $EVO_HUB_DATA_DIR or ~/.evo/hub-server/cache)",
     )
-    worker.add_argument("--concurrency", type=_positive, default=1, help="jobs run at the same time (default: 1)")
+    worker.add_argument("--concurrency", type=positive, default=1, help="jobs run at the same time (default: 1)")
     worker.add_argument(
         "--queue",
         action="append",
@@ -485,7 +485,7 @@ def register(sub) -> None:
         required=True,
         help="an environment file of EVO_HUB_S3_* variables describing the target store",
     )
-    move.add_argument("--parallel", type=_positive, default=8, help="blobs copied at the same time (default: 8)")
+    move.add_argument("--parallel", type=positive, default=8, help="blobs copied at the same time (default: 8)")
     move.add_argument("--dry-run", action="store_true", help="count what would be copied, and copy nothing")
     move.add_argument("--verify", action="store_true", help="hash the target's copies too, and copy a wrong one again")
     move.add_argument("--scratch", metavar="DIR", help="where each blob waits on its way (default: the temp directory)")

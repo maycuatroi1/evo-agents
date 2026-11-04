@@ -201,7 +201,7 @@ def test_the_daily_upkeep_archives_an_agent_memory_nobody_opened_for_30_days_and
     not_agent = hub.client.post(f"/v1/memories/{shared}/restore", headers=hub.alice)
     assert not_agent.status_code == 422, not_agent.text
     member = InProcessHub(hub.client, hub.alice)
-    monkeypatch.setattr(cli_memory, "_signed_in", lambda: (member, None))
+    monkeypatch.setattr(cli_memory, "signed_in", lambda: (member, None))
     assert cli_memory.cmd_memory_restore(SimpleNamespace(id=old["id"], json=False)) == 0
     assert "is active" in capsys.readouterr().out
     restored = state(hub, old["id"])

@@ -352,7 +352,7 @@ def test_the_command_and_the_mcp_tool_give_the_route_s_text(hub, monkeypatch, ca
         assert full["content"] == tool["content"]
         assert "text" not in full["structuredContent"] and full["structuredContent"]["revision"] == 1
 
-        monkeypatch.setattr(plan_cli, "_signed_in", lambda: (Through(reader), None))
+        monkeypatch.setattr(plan_cli, "signed_in", lambda: (Through(reader), None))
         assert run_cli(["rollout", "--project", PROJECT, *argv]) == 0
         assert capsys.readouterr().out == text
         assert run_cli(["rollout", "--project", PROJECT, "--json", *argv]) == 0

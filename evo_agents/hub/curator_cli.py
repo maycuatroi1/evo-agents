@@ -52,14 +52,14 @@ from urllib.parse import quote, urlencode
 
 import yaml
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
+from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money
 from evo_agents.hub.curator_session_cli import register_session
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
-from evo_agents.hub.plan_cli import _project
+from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.playbook_cli import register_playbook
 from evo_agents.hub.probe_cli import register_probe
 from evo_agents.hub.replay import DEFAULT_TASKS
@@ -183,7 +183,7 @@ CHARTER = returns_object(*CHARTER_KEYS, schema="Charter")
 
 
 def _curator_path(project: str, *parts: str) -> str:
-    return "/".join((f"{_project_path(project)}/curator", *parts))
+    return "/".join((f"{project_path(project)}/curator", *parts))
 
 
 def _read_charter(source: str) -> dict:
@@ -233,7 +233,7 @@ def _print_charter(charter: dict) -> None:
     window = charter["window"]
     print(
         f"Charter of {charter['project']}, revision {charter['revision']}, by {charter['updated_by']} at "
-        f"{_when(charter['updated_at'])} UTC"
+        f"{when(charter['updated_at'])} UTC"
     )
     run_cap = money(charter["run_budget_usd"]) if charter["run_budget_usd"] is not None else "what the night has left"
     lines = [
@@ -268,27 +268,27 @@ def _print_charter(charter: dict) -> None:
         print(f"  goal {goal['id']}: {goal['what']}")
 
 
-@_client_command
+@client_command
 def cmd_charter_show(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     query = f"?{urlencode({'revision': args.revision})}" if args.revision is not None else ""
     charter = hub.call("GET", _curator_path(project, "charter") + query)
     if args.json:
-        _print_json(charter)
+        print_json(charter)
         return 0
     _print_charter(charter)
     return 0
 
 
-@_client_command
+@client_command
 def cmd_charter_set(args) -> int:
     body = _read_charter(args.file)
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     charter = hub.call("PUT", _curator_path(project, "charter"), body)
     if args.json:
-        _print_json(charter)
+        print_json(charter)
         return 0
     print(f"Charter of {charter['project']} is at revision {charter['revision']}.")
     print(
@@ -299,17 +299,17 @@ def cmd_charter_set(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_charter_history(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     revisions = hub.call("GET", _curator_path(project, "charter", "revisions"))
     if args.json:
-        _print_json(revisions)
+        print_json(revisions)
         return 0
-    rows = [(row["revision"], row["updated_by"], _when(row["updated_at"])) for row in revisions]
+    rows = [(row["revision"], row["updated_by"], when(row["updated_at"])) for row in revisions]
     if rows:
-        _table(("REVISION", "BY", "AT (UTC)"), rows)
+        table(("REVISION", "BY", "AT (UTC)"), rows)
     print(f"{len(rows)} revision(s) of the charter of {project}")
     return 0
 
@@ -325,7 +325,7 @@ def _print_status(status: dict) -> None:
     print(f"Night shift of {status['project']}: {state}, charter revision {charter['revision']}")
     for schedule in status["schedules"]:
         by = schedule["paused_by"] or "the hub"
-        paused = f", paused by {by} at {_when(schedule['paused_at'])} UTC" if schedule["paused_at"] else ""
+        paused = f", paused by {by} at {when(schedule['paused_at'])} UTC" if schedule["paused_at"] else ""
         print(f"  {schedule['kind']}: runs dispatched as {schedule['owner']}{paused}")
         if schedule.get("pause_reason"):
             print(f"    {schedule['pause_reason']}")
@@ -346,33 +346,33 @@ def _print_status(status: dict) -> None:
     brief = status.get("last_brief")
     if brief is not None:
         print(
-            f"  last brief: {brief['day']} (night of {brief['night']}) to {brief['to']}, at {_when(brief['sent_at'])} "
+            f"  last brief: {brief['day']} (night of {brief['night']}) to {brief['to']}, at {when(brief['sent_at'])} "
             f"UTC: {brief['title']}"
         )
     elif charter is not None:
         print(f"  no morning brief yet: the first goes out at {charter['brief_at']} in {charter['window']['timezone']}")
 
 
-@_client_command
+@client_command
 def cmd_status(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     status = hub.call("GET", _curator_path(project))
     if args.json:
-        _print_json(status)
+        print_json(status)
         return 0
     _print_status(status)
     return 0
 
 
 def _switch(action: str):
-    @_client_command
+    @client_command
     def run(args) -> int:
-        hub, _ = _signed_in()
-        project = _project(args)
+        hub, _ = signed_in()
+        project = project_of_args(args)
         status = hub.call("POST", _curator_path(project, action))
         if args.json:
-            _print_json(status)
+            print_json(status)
             return 0
         if action == "pause":
             print(f"Paused the night shift of {project}: it queues no run until `evo-agents hub curator resume`.")
@@ -400,10 +400,10 @@ def _query(**values) -> str:
     return f"?{urlencode(pairs)}" if pairs else ""
 
 
-@_client_command
+@client_command
 def cmd_proposal_list(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     query = _query(
         state=args.state or [],
         tier=args.tier or [],
@@ -414,14 +414,14 @@ def cmd_proposal_list(args) -> int:
     )
     found = hub.call("GET", _curator_path(project, "proposals") + query)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     rows = [
         (f"#{p['id']}", p["tier"], p["state"], p["kind"], p["lens"], f"#{p['run_id']}", p["evidence_count"], p["title"])
         for p in found["proposals"]
     ]
     if rows:
-        _table(("ID", "TIER", "STATE", "KIND", "LENS", "RUN", "EVIDENCE", "TITLE"), rows)
+        table(("ID", "TIER", "STATE", "KIND", "LENS", "RUN", "EVIDENCE", "TITLE"), rows)
     print(f"{len(rows)} of {found['total']} proposal(s) of {project}")
     return 0
 
@@ -434,15 +434,15 @@ def _print_proposal(proposal: dict) -> None:
         ("kind", proposal["kind"] + (f" of #{proposal['revert_of']}" if proposal.get("revert_of") else "")),
         *([("fixes", f"change #{proposal['fix_of']}, whose probe recurred")] if proposal.get("fix_of") else []),
         ("lens", proposal["lens"]),
-        ("run", f"#{proposal['run_id']}, {_when(proposal['created_at'])} UTC"),
+        ("run", f"#{proposal['run_id']}, {when(proposal['created_at'])} UTC"),
         ("paths", ", ".join(f"{p['repo']}:{p['path']}" for p in proposal["paths"]) or "none"),
         ("findings", ", ".join(f"#{item}" for item in proposal["finding_ids"]) or "none"),
         ("evidence", f"{proposal['evidence_count']} pieces"),
     ]
     if proposal.get("answered_by"):
-        lines.append(("answered", f"by {proposal['answered_by']} at {_when(proposal['answered_at'])} UTC"))
+        lines.append(("answered", f"by {proposal['answered_by']} at {when(proposal['answered_at'])} UTC"))
     if proposal.get("deferred_until"):
-        lines.append(("deferred", f"until {_when(proposal['deferred_until'])} UTC"))
+        lines.append(("deferred", f"until {when(proposal['deferred_until'])} UTC"))
     if proposal.get("note"):
         lines.append(("note", proposal["note"]))
     change = proposal.get("change")
@@ -470,23 +470,23 @@ def _print_proposal(proposal: dict) -> None:
     print(json.dumps(proposal["plan"], ensure_ascii=False, indent=2))
 
 
-@_client_command
+@client_command
 def cmd_proposal_show(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     proposal = hub.call("GET", _curator_path(project, "proposals", str(args.id)))
     if args.json:
-        _print_json(proposal)
+        print_json(proposal)
         return 0
     _print_proposal(proposal)
     return 0
 
 
 def _answer(action: str):
-    @_client_command
+    @client_command
     def run(args) -> int:
-        hub, _ = _signed_in()
-        project = _project(args)
+        hub, _ = signed_in()
+        project = project_of_args(args)
         body: dict = {"action": action}
         if args.note:
             body["note"] = args.note
@@ -494,9 +494,9 @@ def _answer(action: str):
             body["defer_days"] = args.days
         proposal = hub.call("POST", _curator_path(project, "proposals", str(args.id), "answer"), body)
         if args.json:
-            _print_json(proposal)
+            print_json(proposal)
             return 0
-        until = f" until {_when(proposal['deferred_until'])} UTC" if proposal.get("deferred_until") else ""
+        until = f" until {when(proposal['deferred_until'])} UTC" if proposal.get("deferred_until") else ""
         print(f"Proposal #{proposal['id']} of {project} is {proposal['state']}{until}: {proposal['title']}")
         return 0
 
@@ -508,13 +508,13 @@ cmd_reject = _answer("reject")
 cmd_defer = _answer("defer")
 
 
-@_client_command
+@client_command
 def cmd_proposal_plan(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     change = hub.call("POST", _curator_path(project, "proposals", str(args.id), "plan"))
     if args.json:
-        _print_json(change)
+        print_json(change)
         return 0
     if change["plan_id"]:
         print(
@@ -532,49 +532,49 @@ def cmd_proposal_plan(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_findings(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     query = _query(run_id=args.run, lens=args.lens, limit=args.limit, offset=args.offset or None)
     found = hub.call("GET", _curator_path(project, "findings") + query)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     rows = [
         (f"#{f['id']}", f["severity"], f["lens"], f"#{f['run_id']}", len(f["evidence"]), f["title"])
         for f in found["findings"]
     ]
     if rows:
-        _table(("ID", "SEVERITY", "LENS", "RUN", "EVIDENCE", "TITLE"), rows)
+        table(("ID", "SEVERITY", "LENS", "RUN", "EVIDENCE", "TITLE"), rows)
     print(f"{len(rows)} of {found['total']} finding(s) of {project}")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_figures(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     found = hub.call("GET", _curator_path(project, "figures") + _query(night=args.night))
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     review = f", review run #{found['run_id']}" if found.get("run_id") else ""
     print(
         f"Figures of {found['project']} for the night of {found['night']}{review}: sessions and runs from "
-        f"{_when(found['since'])} to {_when(found['until'])} UTC"
+        f"{when(found['since'])} to {when(found['until'])} UTC"
     )
     print(json.dumps(found["figures"], ensure_ascii=False, indent=2))
     return 0
 
 
-@_client_command
+@client_command
 def cmd_changes(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     found = hub.call("GET", _curator_path(project, "changes"))
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     rows = []
     for change in found["changes"]:
@@ -592,7 +592,7 @@ def cmd_changes(args) -> int:
             )
         )
     if rows:
-        _table(("ID", "PROPOSAL", "TIER", "STATE", "JUDGE", "REPO", "PULL REQUEST"), rows)
+        table(("ID", "PROPOSAL", "TIER", "STATE", "JUDGE", "REPO", "PULL REQUEST"), rows)
     print(f"{len(rows)} change(s) of the Curator in {project}")
     for change in found["changes"]:
         if change["reason"]:
@@ -600,13 +600,13 @@ def cmd_changes(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_change_close(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     change = hub.call("POST", _curator_path(project, "changes", str(args.id), "close"), {"reason": args.reason})
     if args.json:
-        _print_json(change)
+        print_json(change)
         return 0
     print(
         f"Change #{change['id']} of {project} (proposal #{change['proposal_id']}) is {change['state']}: {change['reason']}"
@@ -614,14 +614,14 @@ def cmd_change_close(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_protection(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     if args.check:
         found = hub.call("POST", _curator_path(project, "protection", quote(args.check, safe=""), "check"))
         if args.json:
-            _print_json(found)
+            print_json(found)
             return 0
         word = "keeps the Curator's App off" if found["protected"] else "does not keep the Curator's App off"
         branch = found["default_branch"] or "its default branch"
@@ -630,7 +630,7 @@ def cmd_protection(args) -> int:
         return 0
     found = hub.call("GET", _curator_path(project, "protection"))
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     rows = []
     for repo in found["repos"]:
@@ -640,11 +640,11 @@ def cmd_protection(args) -> int:
                 repo["repo"],
                 repo["forge"] or "-",
                 protected,
-                _when(repo["checked_at"]) if repo["checked_at"] else "never",
+                when(repo["checked_at"]) if repo["checked_at"] else "never",
             )
         )
     if rows:
-        _table(("REPO", "FORGE", "PROTECTED", "CHECKED"), rows)
+        table(("REPO", "FORGE", "PROTECTED", "CHECKED"), rows)
     return 0
 
 

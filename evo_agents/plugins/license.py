@@ -26,7 +26,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 
-from evo_agents.plugins.signing import SignatureUnavailable, _public_key, key_id
+from evo_agents.plugins.signing import SignatureUnavailable, decode_public_key, key_id
 
 LICENSE_FORMAT = "evo-license/1"
 VERSION = 1
@@ -139,7 +139,7 @@ def seller_keys(seller: Mapping) -> dict[str, bytes]:
     found = {}
     for key in seller.get("keys") or ():
         try:
-            raw = _public_key(key["public_key"])
+            raw = decode_public_key(key["public_key"])
         except (KeyError, ValueError):
             continue
         if key_id(raw) == key.get("key_id"):

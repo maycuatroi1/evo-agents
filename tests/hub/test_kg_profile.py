@@ -34,9 +34,9 @@ def test_it_says_why_there_is_none():
 
 def test_the_command_prints_json(monkeypatch, capsys):
     hub = FakeHub(status({"profile": {"items": 3}}))
-    monkeypatch.setattr(cli, "_signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli, "signed_in", lambda: (hub, None))
     args = SimpleNamespace(project="p", sink=None, json=True)
     assert cli.cmd_profile(args) == 0
     assert json.loads(capsys.readouterr().out) == {"project": "p", "build_id": 7, "profile": {"items": 3}}
-    monkeypatch.setattr(cli, "_signed_in", lambda: (FakeHub(status({})), None))
+    monkeypatch.setattr(cli, "signed_in", lambda: (FakeHub(status({})), None))
     assert cli.cmd_profile(args) == 1

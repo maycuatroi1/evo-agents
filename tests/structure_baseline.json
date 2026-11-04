@@ -27,86 +27,10 @@
     "evo_agents/worker/runtimes/claude_code.py::events_of": {"complexity": 17}
   },
   "private_imports": {
-    "evo_agents/hub/cli_memory.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/cli_secrets.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/cli_skills.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/contract.py": [
-      "evo_agents.hub.cli._missing_extra",
-      "evo_agents.hub.cli._positive",
-      "evo_agents.hub.cli._server_command"
-    ],
-    "evo_agents/hub/curator_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._project_path",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
-      "evo_agents.hub.plan_cli._project"
-    ],
-    "evo_agents/hub/decision_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._project_path",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
-      "evo_agents.hub.plan_cli._plan_id",
-      "evo_agents.hub.plan_cli._project"
-    ],
     "evo_agents/hub/kg_cli.py": [
-      "evo_agents.hub.cli._positive",
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
       "evo_agents.kg.serve._error"
     ],
-    "evo_agents/hub/openapi.py": [
-      "evo_agents.hub.cli._missing_extra",
-      "evo_agents.hub.cli._server_command"
-    ],
-    "evo_agents/hub/plan_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/run_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._project_path",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
-      "evo_agents.hub.client._OPENER",
-      "evo_agents.hub.client._json",
-      "evo_agents.hub.client._origin",
-      "evo_agents.hub.plan_cli._plan_id",
-      "evo_agents.hub.plan_cli._project"
-    ],
     "evo_agents/hub/server/mcp.py": [
-      "evo_agents.hub.plan_cli._check_retry",
       "evo_agents.kg.serve._error"
     ],
     "evo_agents/kg/cli_graph.py": [

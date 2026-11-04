@@ -81,7 +81,7 @@ PROJECT_KEYS = (
 )
 
 
-def _client_command(func):
+def client_command(func):
     """Turn a HubError of ``func`` into an ``error:`` line and the exit status ``client.exit_status`` gives it."""
 
     @functools.wraps(func)
@@ -95,16 +95,16 @@ def _client_command(func):
     return run
 
 
-def _signed_in():
+def signed_in():
     credentials = load_credentials()
     return Hub(credentials.url, credentials.token), credentials
 
 
-def _print_json(data) -> None:
+def print_json(data) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def _when(value: str | None) -> str:
+def when(value: str | None) -> str:
     """An ISO timestamp from the hub as ``YYYY-MM-DD HH:MM`` UTC; ``-`` for none."""
     if not value:
         return "-"
@@ -121,22 +121,13 @@ def _grants(grants: list[dict]) -> str:
     return ", ".join(f"{g['project']} {g['role']} up to {g['max_level']}" for g in grants) or "none"
 
 
-def _table(header: tuple[str, ...], rows: list[tuple]) -> None:
+def table(header: tuple[str, ...], rows: list[tuple]) -> None:
     widths = [max(len(str(cell)) for cell in column) for column in zip(header, *rows, strict=False)]
     for row in (header, *rows):
         print("  ".join(str(cell).ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip())
 
 
-# Public names of the helpers above for the client modules written since private names may no longer cross modules
-# (docs/structure.md, section Private names); the older modules keep importing the underscored names.
-client_command = _client_command
-signed_in = _signed_in
-print_json = _print_json
-when = _when
-table = _table
-
-
-@_client_command
+@client_command
 def cmd_login(args) -> int:
     url = args.url
     if not url:
@@ -152,7 +143,7 @@ def cmd_login(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_logout(args) -> int:
     if env_credentials() is not None:
         raise HubError(
@@ -160,7 +151,7 @@ def cmd_logout(args) -> int:
             "as it is"
         )
     try:
-        hub, credentials = _signed_in()
+        hub, credentials = signed_in()
     except NotSignedIn:
         print("Not signed in; nothing to do.")
         return 0
@@ -182,47 +173,47 @@ def cmd_logout(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_whoami(args) -> int:
-    hub, credentials = _signed_in()
+    hub, credentials = signed_in()
     me = hub.call("GET", "/v1/auth/whoami")
     if args.json:
-        _print_json({**me, "url": credentials.url})
+        print_json({**me, "url": credentials.url})
         return 0
     token = me["token"]
     print(f"{me['login']}{' (admin)' if me['admin'] else ''} on {credentials.url}")
-    print(f"token {token['id']}: {token['kind']} on {token['host'] or 'the web'}, expires {_when(token['expires_at'])}")
+    print(f"token {token['id']}: {token['kind']} on {token['host'] or 'the web'}, expires {when(token['expires_at'])}")
     print(f"grants: {_grants(me['grants'])}")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_token_list(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     tokens = hub.call("GET", "/v1/tokens?all=true" if args.all else "/v1/tokens")
     if args.json:
-        _print_json(tokens)
+        print_json(tokens)
         return 0
     rows = [
         (
             ("*" if t["current"] else " ") + str(t["id"]),
             t["kind"],
             t["host"] or "-",
-            _when(t["created_at"]),
-            _when(t["last_used_at"]),
-            _when(t["expires_at"]),
+            when(t["created_at"]),
+            when(t["last_used_at"]),
+            when(t["expires_at"]),
             t["state"],
         )
         for t in tokens
     ]
-    _table((" ID", "KIND", "HOST", "CREATED", "LAST USED", "EXPIRES (UTC)", "STATE"), rows)
+    table((" ID", "KIND", "HOST", "CREATED", "LAST USED", "EXPIRES (UTC)", "STATE"), rows)
     print("* the token of this machine")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_token_revoke(args) -> int:
-    hub, credentials = _signed_in()
+    hub, credentials = signed_in()
     current = hub.call("GET", "/v1/auth/whoami")["token"]["id"]
     hub.call("DELETE", f"/v1/tokens/{args.id}")
     if args.id == current:
@@ -237,9 +228,9 @@ def _grant_path(project: str, login: str) -> str:
     return f"/v1/admin/projects/{quote(project, safe='')}/grants/{quote(login, safe='')}"
 
 
-@_client_command
+@client_command
 def cmd_admin_grant(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     body = {"role": args.role, "max_level": args.max_level}
     grant = hub.call("PUT", _grant_path(args.project, args.login), body)
     verb = "Granted" if grant["created"] else "Changed the grant:"
@@ -247,45 +238,45 @@ def cmd_admin_grant(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_admin_revoke(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     hub.call("DELETE", _grant_path(args.project, args.login))
     print(f"Revoked the grant of {args.login} on {args.project}.")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_admin_users(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     users = hub.call("GET", "/v1/admin/users")
     if args.json:
-        _print_json(users)
+        print_json(users)
         return 0
     rows = [
         (
             u["login"],
             "yes" if u["admin"] else "no",
             "yes" if u["signed_in"] else "not yet",
-            _when(u["last_seen_at"]),
+            when(u["last_seen_at"]),
             u["active_tokens"],
             _grants(u["grants"]),
         )
         for u in users
     ]
-    _table(("LOGIN", "ADMIN", "SIGNED IN", "LAST SEEN (UTC)", "TOKENS", "GRANTS"), rows)
+    table(("LOGIN", "ADMIN", "SIGNED IN", "LAST SEEN (UTC)", "TOKENS", "GRANTS"), rows)
     return 0
 
 
-@_client_command
+@client_command
 def cmd_admin_telegram(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     if args.set_webhook:
         found = hub.call("POST", "/v1/admin/telegram/webhook")
     else:
         found = hub.call("GET", "/v1/admin/telegram")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found["configured"]:
         print(
@@ -297,18 +288,18 @@ def cmd_admin_telegram(args) -> int:
     print(f"Webhook: {found['url'] or 'none'} (expected {found['expected_url'] or 'unknown: no EVO_HUB_PUBLIC_URL'})")
     print(f"Updates waiting at Telegram: {found['pending_update_count'] or 0}")
     if found["last_error_message"]:
-        print(f"Last error: {found['last_error_message']} at {_when(found['last_error_date'])} UTC")
+        print(f"Last error: {found['last_error_message']} at {when(found['last_error_date'])} UTC")
     if found["url"] != found["expected_url"] and not args.set_webhook:
         print("The webhook does not point at this hub: `evo-agents hub admin telegram --set-webhook` points it here")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_admin_telegram_unlink(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = hub.call("DELETE", f"/v1/admin/users/{quote(args.login, safe='')}/telegram")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if found["unlinked"]:
         print(
@@ -320,22 +311,19 @@ def cmd_admin_telegram_unlink(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_admin_stats(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     counts = hub.call("GET", "/v1/admin/stats")
     if args.json:
-        _print_json(counts)
+        print_json(counts)
         return 0
-    _table(("TABLE", "ROWS"), sorted(counts.items()))
+    table(("TABLE", "ROWS"), sorted(counts.items()))
     return 0
 
 
-def _project_path(project: str) -> str:
+def project_path(project: str) -> str:
     return f"/v1/projects/{quote(project, safe='')}"
-
-
-project_path = _project_path  # its public name (see the public names above)
 
 
 def _hub_sink(project: dict) -> str:
@@ -346,15 +334,15 @@ def _hub_sink(project: dict) -> str:
     return clearance["level"] + (f"/{clearance['location']}" if clearance.get("location") else "")
 
 
-@_client_command
+@client_command
 def cmd_project_register(args) -> int:
     from evo_agents.hub.registration import registration
 
     found = registration(args.root)
-    hub, _ = _signed_in()
-    project = hub.call("PUT", _project_path(found.project), found.body)
+    hub, _ = signed_in()
+    project = hub.call("PUT", project_path(found.project), found.body)
     if args.json:
-        _print_json(project)
+        print_json(project)
         return 0
     counts = f"{len(project['repos'])} repo(s), {len(project['sinks'])} sink(s), levels {' < '.join(project['levels'])}"
     if project["created"]:
@@ -369,22 +357,22 @@ def cmd_project_register(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_project_list(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     projects = hub.call("GET", "/v1/projects?archived=true" if args.archived else "/v1/projects")
     if args.json:
-        _print_json(projects)
+        print_json(projects)
         return 0
     rows = [
-        (p["name"], p["role"] or "-", p["max_level"] or "-", _hub_sink(p), len(p["repos"]), _when(p["updated_at"]))
+        (p["name"], p["role"] or "-", p["max_level"] or "-", _hub_sink(p), len(p["repos"]), when(p["updated_at"]))
         for p in projects
     ]
     header = ("PROJECT", "ROLE", "MAX LEVEL", "HUB SINK", "REPOS", "UPDATED (UTC)")
     if args.archived:
-        rows = [(*row, _when(p["archived_at"])) for row, p in zip(rows, projects, strict=True)]
+        rows = [(*row, when(p["archived_at"])) for row, p in zip(rows, projects, strict=True)]
         header = (*header, "ARCHIVED (UTC)")
-    _table(header, rows)
+    table(header, rows)
     return 0
 
 
@@ -394,44 +382,44 @@ def archive_lines(project: dict) -> list[str]:
     if project["archived_at"] is None:
         return [f"Project {name} is live: runs, kg pushes and builds, its night shift, Loop and plugins' jobs go on."]
     return [
-        f"Project {name} is archived since {_when(project['archived_at'])} UTC, by {project['archived_by']}: it takes no "
+        f"Project {name} is archived since {when(project['archived_at'])} UTC, by {project['archived_by']}: it takes no "
         "new run, kg push or build, and the hub runs nothing for it; what it holds reads as before.",
         f"Make it live again with `evo-agents hub project unarchive {name}`.",
     ]
 
 
 def _archive_state(args, action: str) -> int:
-    hub, _ = _signed_in()
-    project = hub.call("POST", f"{_project_path(args.project)}/{action}")
+    hub, _ = signed_in()
+    project = hub.call("POST", f"{project_path(args.project)}/{action}")
     if args.json:
-        _print_json(project)
+        print_json(project)
         return 0
     print("\n".join(archive_lines(project)))
     return 0
 
 
-@_client_command
+@client_command
 def cmd_project_archive(args) -> int:
     return _archive_state(args, "archive")
 
 
-@_client_command
+@client_command
 def cmd_project_unarchive(args) -> int:
     return _archive_state(args, "unarchive")
 
 
-@_client_command
+@client_command
 def cmd_registry_pull(args) -> int:
     from pathlib import Path
 
     from evo_agents.hub.registry import pull
 
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     workspace = Path(args.workspace).expanduser().resolve() if args.workspace else None
     registry = Path(args.registry).expanduser() if args.registry else None
     result = pull(hub, registry, workspace)
     if args.json:
-        _print_json(result.as_json())
+        print_json(result.as_json())
         return 0
     if not result.changed:
         print(f"{result.registry} already holds every hub project you see; nothing written.")
@@ -444,7 +432,7 @@ def cmd_registry_pull(args) -> int:
         for c in result.clusters
     ]
     if rows:
-        _table(("STATUS", "CLUSTER", "PROJECT", "ROOT"), rows)
+        table(("STATUS", "CLUSTER", "PROJECT", "ROOT"), rows)
     for skipped in result.skipped:
         print(f"skipped {skipped}")
     return 0

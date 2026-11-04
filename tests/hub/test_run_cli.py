@@ -416,7 +416,7 @@ def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypat
                 return planless
             return {"decisions": [planned, planless], "total": 2, "limit": 50, "offset": 0}
 
-    monkeypatch.setattr(decision_cli, "_signed_in", lambda: (Answers(), None))
+    monkeypatch.setattr(decision_cli, "signed_in", lambda: (Answers(), None))
     home = tmp_path / "home"
     table = ok(cli(monkeypatch, capsys, home, "hub", "decision", "list", "--project", "demo")).out
     (row,) = [line for line in table.splitlines() if line.startswith("#12")]
@@ -469,7 +469,7 @@ def test_decision_show_prints_the_recommended_reason_reversible_undo_and_decisio
         def call(self, method, path, body=None):
             return found if path.endswith("/decisions/14") else {**found, "reversible": False, "undo": None}
 
-    monkeypatch.setattr(decision_cli, "_signed_in", lambda: (Answers(), None))
+    monkeypatch.setattr(decision_cli, "signed_in", lambda: (Answers(), None))
     home = tmp_path / "home"
     shown = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "14", "--project", "demo")).out
     lines = [line.strip() for line in shown.splitlines()]
@@ -542,7 +542,7 @@ def show_offline(monkeypatch, capsys, tmp_path, run: dict) -> list[str]:
             assert (method, path) == ("GET", f"/v1/projects/demo/runs/{run['id']}")
             return run
 
-    monkeypatch.setattr(run_cli, "_signed_in", lambda: (Answering(), None))
+    monkeypatch.setattr(run_cli, "signed_in", lambda: (Answering(), None))
     home = tmp_path / "home"
     if not home.exists():
         write_credentials(home, HUB_URL, "owner", "evh_unused")

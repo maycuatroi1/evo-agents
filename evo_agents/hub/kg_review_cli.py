@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import JsonOutput, json_option, returns_object
 from evo_agents.kg.review import RULES
 
@@ -50,13 +50,13 @@ def _list(hub, args) -> int:
         params["cluster"] = args.cluster
     found = hub.call("GET", f"{_base(args.project)}/review?{urlencode(params)}")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found["computed"]:
         print(f"project {args.project} has no review queue: {found['reason']}")
         return 0
     if found["items"]:
-        _table(
+        table(
             ("ITEM", "RULE", "CLUSTER", "ACTION", "WHAT"),
             [(i["fingerprint"], i["rule"], i["cluster_label"] or "-", i["action"], _what(i)) for i in found["items"]],
         )
@@ -70,7 +70,7 @@ def _dismiss(hub, args) -> int:
     path = f"{_base(args.project)}/review/{quote(args.fingerprint, safe=':')}/dismiss"
     found = hub.call("POST", path, {"reason": args.reason})
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     print(f"dismissed {args.fingerprint} in project {args.project}: {found['reason']}")
     return 0
@@ -80,7 +80,7 @@ def _undismiss(hub, args) -> int:
     path = f"{_base(args.project)}/review/{quote(args.fingerprint, safe=':')}/dismiss"
     found = hub.call("DELETE", path)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     print(f"{args.fingerprint} in project {args.project} is open again; {found['was_by']} had dismissed it")
     return 0
@@ -94,7 +94,7 @@ def _apply(hub, args) -> int:
         body["rules"] = [args.rule]
     found = hub.call("POST", f"{_base(args.project)}/review/apply", body)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     rows = [
         (d["number"] if d["number"] is not None else "-", d["kind"], i["rule"], _subject(d), d["reason"])
@@ -102,7 +102,7 @@ def _apply(hub, args) -> int:
         for d in i["decisions"]
     ]
     if rows:
-        _table(("DECISION", "KIND", "RULE", "SUBJECT", "REASON"), rows)
+        table(("DECISION", "KIND", "RULE", "SUBJECT", "REASON"), rows)
     verb = "would take" if found["dry_run"] else "took"
     left = ", ".join(f"{rule} {n}" for rule, n in sorted(found["left"].items())) or "none"
     print(
@@ -121,7 +121,7 @@ def _subject(d: dict) -> str:
     return f"{d['src']} -{d['rel']}-> {d['dst']}" if d["rel"] else d["src"]
 
 
-@_client_command
+@client_command
 def cmd_review(args) -> int:
     if args.action == "dismiss" and not (args.fingerprint and args.reason):
         print("error: review dismiss needs an item's FINGERPRINT and --reason", file=sys.stderr)
@@ -135,7 +135,7 @@ def cmd_review(args) -> int:
     if args.action is None and args.fingerprint:
         print("error: give an item after dismiss: review dismiss FINGERPRINT --reason TEXT", file=sys.stderr)
         return 2
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     if args.action == "dismiss":
         return _dismiss(hub, args)
     if args.action == "apply":

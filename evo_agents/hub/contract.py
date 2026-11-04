@@ -121,7 +121,7 @@ def _subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentP
 
 
 def _value_type(action: argparse.Action) -> str:
-    from evo_agents.hub.cli import _positive
+    from evo_agents.hub.cli import positive
     from evo_agents.hub.run_cli_options import runtime_name
 
     types = {
@@ -129,7 +129,7 @@ def _value_type(action: argparse.Action) -> str:
         str: "string",
         int: "integer",
         float: "number",
-        _positive: "integer",
+        positive: "integer",
         runtime_name: "string",
     }
     if action.type not in types:
@@ -465,12 +465,12 @@ def load_commands(path: str) -> dict:
 
 
 def cmd_print(args) -> int:
-    from evo_agents.hub.cli import _missing_extra
+    from evo_agents.hub.cli import missing_extra
 
     try:
         text = render(build())
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     sys.stdout.write(text)
     return 0
 
@@ -493,14 +493,14 @@ def cmd_check(args) -> int:
 
 
 def register(hsub) -> None:
-    from evo_agents.hub.cli import _server_command
+    from evo_agents.hub.cli import server_command
 
     contract = hsub.add_parser("contract", help="the hub command line as data (seam hub-cli-v1), and a check of docs")
     csub = contract.add_subparsers(dest="contract_command", required=True)
     printed = csub.add_parser(
         "print", help="print the commands, their options and --json keys, and the OpenAPI document, as JSON"
     )
-    printed.set_defaults(func=_server_command(cmd_print))
+    printed.set_defaults(func=server_command(cmd_print))
     checked = csub.add_parser(
         "check", help="report `evo-agents hub` commands in markdown code that the command line does not have"
     )

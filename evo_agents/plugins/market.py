@@ -35,7 +35,7 @@ from evo_agents.plugins.signing import (
     Publisher,
     SigstoreCheck,
     Verified,
-    _public_key,
+    decode_public_key,
     key_id,
     parse_publishers,
     read_signature,
@@ -91,7 +91,7 @@ def _semantics(data: dict) -> list[str]:
         seller_ids.add(seller["id"])
         for number, key in enumerate(seller["keys"]):
             try:
-                actual = key_id(_public_key(key["public_key"]))
+                actual = key_id(decode_public_key(key["public_key"]))
             except ValueError as exc:
                 problems.append(f"sellers[{index}].keys[{number}].public_key: {exc}")
                 continue

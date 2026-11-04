@@ -37,7 +37,7 @@ import sys
 import time
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.kg_push import push_all, push_project
@@ -103,19 +103,19 @@ def print_reports(reports: list, out=None) -> None:
             print(f"  error: {error}", file=out)
 
 
-@_client_command
+@client_command
 def cmd_push(args) -> int:
     from evo_agents.kg.project import ProjectError
 
     if args.all == bool(args.project):
         raise HubError("pass --project P or --all")
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     try:
         reports = push(hub, args.project, args.all, _progress)
     except ProjectError as exc:
         raise HubError(str(exc)) from None
     if args.json:
-        _print_json(push_json(reports))
+        print_json(push_json(reports))
     else:
         print_reports(reports)
     return 0 if all(r.ok for r in reports) else 1
@@ -146,24 +146,24 @@ def _build_row(build: dict) -> tuple:
     return (
         build["id"],
         build["status"],
-        _when(build.get("queued_at")),
-        _when(build.get("finished_at")),
+        when(build.get("queued_at")),
+        when(build.get("finished_at")),
         build.get("runs") if build.get("runs") is not None else "-",
         (build.get("content_hash") or "-")[:19],
         outcome[:80],
     )
 
 
-@_client_command
+@client_command
 def cmd_builds(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = hub.call("GET", f"{_base(args.project)}/builds?limit={args.limit}")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     rows = [_build_row(build) for build in found["builds"]]
     if rows:
-        _table(("BUILD", "STATUS", "QUEUED (UTC)", "FINISHED (UTC)", "RUNS", "CONTENT HASH", "OUTCOME"), rows)
+        table(("BUILD", "STATUS", "QUEUED (UTC)", "FINISHED (UTC)", "RUNS", "CONTENT HASH", "OUTCOME"), rows)
     else:
         print(f"project {args.project} has no build on the hub yet")
     for job in found["jobs"]:
@@ -183,9 +183,9 @@ def wait_for(hub: Hub, project: str, build_id: int, timeout: float, sleep=time.s
         sleep(WAIT_INTERVAL)
 
 
-@_client_command
+@client_command
 def cmd_build(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     queued = hub.call("POST", f"{_base(args.project)}/builds")
     build = queued.get("build")
     if build is None:
@@ -193,7 +193,7 @@ def cmd_build(args) -> int:
     if args.wait:
         build = wait_for(hub, args.project, build["id"], args.timeout)
     if args.json:
-        _print_json({"queued": queued["queued"], "build": build})
+        print_json({"queued": queued["queued"], "build": build})
     else:
         verb = "Queued" if queued["queued"] else "A build was waiting already:"
         print(f"{verb} build {build['id']} of project {args.project}: {build['status']}.")
@@ -240,24 +240,24 @@ def _eval_line(found: dict | None) -> str:
     )
 
 
-@_client_command
+@client_command
 def cmd_health(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = hub.call("GET", f"/v1/projects/{quote(args.project, safe='')}/curator/kg-health?limit={args.limit}")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     measures = found["measures"]
     if not measures:
         print(f"the hub has not measured the graph of project {args.project} yet: curator.collect does, every 6 hours")
         return 0
     latest = measures[0]
-    print(f"Measured {_when(latest['measured_at'])} (UTC), build {latest.get('build_id') or '-'}:")
+    print(f"Measured {when(latest['measured_at'])} (UTC), build {latest.get('build_id') or '-'}:")
     if latest.get("error"):
         print(f"error: {latest['error']}", file=sys.stderr)
     rows = [_source_row(source) for source in latest["sources"]]
     if rows:
-        _table(("SOURCE", "COMMIT", "BEHIND", "LAG (H)", "MISSING", "STALE", "DELETED", "WHY"), rows)
+        table(("SOURCE", "COMMIT", "BEHIND", "LAG (H)", "MISSING", "STALE", "DELETED", "WHY"), rows)
     print(_eval_line(latest.get("eval")))
     builds = found["builds"]
     unchanged = sum(1 for build in builds if not build["changed"])
@@ -297,9 +297,9 @@ def forget_line(project: str, found: dict) -> str:
     return line
 
 
-@_client_command
+@client_command
 def cmd_forget_source(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     sources = list(dict.fromkeys(args.source))
     if not args.yes and not args.json and sys.stdin.isatty():
         print(
@@ -311,7 +311,7 @@ def cmd_forget_source(args) -> int:
             return 1
     found = forget(hub, args.project, sources)
     if args.json:
-        _print_json(forget_json(args.project, found))
+        print_json(forget_json(args.project, found))
         return 0
     for one in found:
         print(forget_line(args.project, one))
@@ -325,20 +325,20 @@ def cmd_forget_source(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_prune(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     body = {"project": args.project, "keep": args.keep, "dry_run": args.dry_run}
     report = hub.call("POST", "/v1/admin/kg/prune", body, timeout=PRUNE_TIMEOUT)
     if args.json:
-        _print_json(report)
+        print_json(report)
         return 0
     rows = [
         (p["project"], p["artifacts"], p["kept"], p["pruned"], _bytes(p["pruned_bytes"]), p["builds"])
         for p in report["projects"]
     ]
     if rows:
-        _table(("PROJECT", "ARTIFACTS", "KEPT", "PRUNED", "PRUNED SIZE", "BUILDS"), rows)
+        table(("PROJECT", "ARTIFACTS", "KEPT", "PRUNED", "PRUNED SIZE", "BUILDS"), rows)
     else:
         print("no project has a built graph on the hub")
     verb = "would delete" if report["dry_run"] else "deleted"
@@ -437,12 +437,12 @@ def _scrub_confirmed(args, reports: list[dict]) -> bool:
     return args.yes or input("Delete them? [y/N] ").strip().lower() in ("y", "yes")
 
 
-@_client_command
+@client_command
 def cmd_scrub(args) -> int:
     if args.purge and not args.yes and (args.json or not sys.stdin.isatty()):
         print("error: --purge deletes for good; pass --yes too when no terminal can confirm it", file=sys.stderr)
         return 2
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     names = [args.project] if args.project else [p["name"] for p in hub.call("GET", "/v1/projects")]
     reports = [scrub_scan(hub, name, None if args.json else _progress) for name in names]
     if not args.json:
@@ -450,7 +450,7 @@ def cmd_scrub(args) -> int:
             _print_scrub(report)
     if not args.purge:
         if args.json:
-            _print_json(scrub_json(False, reports))
+            print_json(scrub_json(False, reports))
         else:
             print(f"Count only, nothing was deleted. --purge deletes the {len(_old(reports))} old object(s).")
         return 0
@@ -463,14 +463,14 @@ def cmd_scrub(args) -> int:
             if not args.json:
                 _print_purged(report)
     if args.json:
-        _print_json(scrub_json(True, reports))
+        print_json(scrub_json(True, reports))
     elif not _old(reports):
         print("Nothing to delete.")
     return 0
 
 
 def register_kg(hsub) -> None:
-    from evo_agents.hub.cli import _positive
+    from evo_agents.hub.cli import positive
 
     kg = hsub.add_parser(
         "kg",
@@ -525,7 +525,7 @@ def register_kg(hsub) -> None:
     prune.add_argument("--project", help="project name on the hub (default: every project)")
     prune.add_argument(
         "--keep",
-        type=_positive,
+        type=positive,
         help="newest graphs of each project whose artifact stays (default: the hub's EVO_HUB_KG_KEEP_ARTIFACTS, 3)",
     )
     prune.add_argument("--dry-run", action="store_true", help="say what would be deleted, and delete nothing")

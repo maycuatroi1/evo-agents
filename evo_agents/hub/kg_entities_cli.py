@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.kg import claude_code
 
@@ -63,15 +63,15 @@ def answer_all(hub, project: str, limit: int | None = None, answer=claude_code.a
     return done
 
 
-@_client_command
+@client_command
 def cmd_entities(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     if not claude_code.available():
         print("error: claude is not installed here: run this inside a run of the project's agent pool", file=sys.stderr)
         return 1
     done = answer_all(hub, args.project, args.limit)
     if args.json:
-        _print_json(done)
+        print_json(done)
     else:
         print(
             f"{done['answered']} of {done['requests']} entity request(s) of {args.project} answered, "
@@ -82,13 +82,13 @@ def cmd_entities(args) -> int:
 
 
 def register(ksub) -> None:
-    from evo_agents.hub.cli import _positive
+    from evo_agents.hub.cli import positive
 
     p = ksub.add_parser(
         "entities",
         help="answer with Claude Code, in a run of the project's agent pool, the entity requests of its latest build",
     )
     p.add_argument("--project", required=True, help="project name on the hub")
-    p.add_argument("--limit", type=_positive, help="calls of Claude Code at most (default: every request)")
+    p.add_argument("--limit", type=positive, help="calls of Claude Code at most (default: every request)")
     json_option(p, returns_object("project", "requests", "answered", "kept", "failed", "stopped"))
     p.set_defaults(func=cmd_entities)

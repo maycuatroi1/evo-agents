@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.kg import settings as kg_settings
 
@@ -56,9 +56,9 @@ def settings_json(project: str, found: dict) -> dict:
     }
 
 
-@_client_command
+@client_command
 def cmd_settings(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     base = f"/v1/kg/{quote(args.project, safe='')}/settings"
     try:
         if args.undo:
@@ -80,7 +80,7 @@ def cmd_settings(args) -> int:
         return 2
     out = settings_json(args.project, found)
     if args.json:
-        _print_json(out)
+        print_json(out)
         return 0
     for key, value in out["settings"].items():
         print(f"{key} = {value}" + ("  (set)" if key in out["overrides"] else ""))
@@ -98,9 +98,9 @@ def measure_json(project: str, found: dict) -> dict:
     return {"project": project, **{k: found.get(k) for k in keys}}
 
 
-@_client_command
+@client_command
 def cmd_measure(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     try:
         values = json.loads(Path(args.settings).read_text(encoding="utf-8")) if args.settings else {}
         if not isinstance(values, dict):
@@ -112,7 +112,7 @@ def cmd_measure(args) -> int:
     found = hub.call("POST", f"/v1/kg/{quote(args.project, safe='')}/measure", body)
     out = measure_json(args.project, found)
     if args.json:
-        _print_json(out)
+        print_json(out)
         return 0
     if out["why"]:
         print(f"nothing measured: {out['why']}")

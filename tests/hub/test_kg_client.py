@@ -342,7 +342,7 @@ def test_forget_source_takes_each_source_off_once_and_asks_first_at_a_terminal(m
         "old": forgotten("old", 0, False),
     }
     hub = ForgettingHub(answers)
-    monkeypatch.setattr(kg_cli, "_signed_in", lambda: (hub, None))
+    monkeypatch.setattr(kg_cli, "signed_in", lambda: (hub, None))
     command = ["hub", "kg", "forget-source", "--project", "alpha", "--source", "docs", "--source", "old"]
 
     assert main([*command, "--source", "docs", "--yes"]) == 0

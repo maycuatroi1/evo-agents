@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlencode
 
-from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.memory import AGENT_SINK, MemorySync, Report, frontmatter, well_formed
@@ -84,17 +84,17 @@ def _summary(report: Report) -> str:
 def _sync(args, command: str) -> int:
     if args.all and args.dir:
         raise HubError("pass a directory or --all, not both")
-    hub, credentials = _signed_in()
+    hub, credentials = signed_in()
     audience = session_audience() if command == "push" else []
     sync = MemorySync(hub, credentials.login, sink=args.sink, dry_run=args.dry_run, prune=args.prune, audience=audience)
     target = Path(args.dir) if args.dir else None
     report = sync.push(target, everything=args.all) if command == "push" else sync.pull(target, everything=args.all)
     if args.json:
-        _print_json(report.as_json())
+        print_json(report.as_json())
     elif not args.quiet:
         print(_summary(report))
         if report.dry_run and report.places:
-            _table(("PLACE", "MEMORIES"), sorted(report.places.items()))
+            table(("PLACE", "MEMORIES"), sorted(report.places.items()))
         for note in report.notes:
             print(f"note: {note}")
     for conflict in report.conflicts:
@@ -140,12 +140,12 @@ def listed(hub: Hub, *, project: str | None = None, agent: str | None = None, li
     return items
 
 
-@_client_command
+@client_command
 def cmd_memory_list(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = listed(hub, project=args.project, agent=args.agent.lstrip("@") if args.agent else None, limit=args.limit)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found:
         print("No memory you can see" + (f" of agent {args.agent}." if args.agent else "."))
@@ -158,20 +158,20 @@ def cmd_memory_list(args) -> int:
             m["name"],
             m["type"],
             "@" + m["agent"] if m.get("agent") else "-",
-            _when(m["updated_at"]),
+            when(m["updated_at"]),
         )
         for m in found
     ]
-    _table(("ID", "PROJECT", "LOCATION", "NAME", "TYPE", "AGENT", "UPDATED (UTC)"), rows)
+    table(("ID", "PROJECT", "LOCATION", "NAME", "TYPE", "AGENT", "UPDATED (UTC)"), rows)
     return 0
 
 
-@_client_command
+@client_command
 def cmd_memory_restore(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     memory = hub.call("POST", f"/v1/memories/{args.id}/restore")
     if args.json:
-        _print_json(memory)
+        print_json(memory)
         return 0
     print(
         f"Memory {memory['id']} ({memory['name']}) of @{memory.get('agent')} is active: back in the index and the "
@@ -180,22 +180,22 @@ def cmd_memory_restore(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_memory_push(args) -> int:
     return _sync(args, "push")
 
 
-@_client_command
+@client_command
 def cmd_memory_pull(args) -> int:
     return _sync(args, "pull")
 
 
-@_client_command
+@client_command
 def cmd_memory_search(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = search(hub, args.query, project=args.project, limit=args.limit, sink=args.sink)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found:
         print(f"No memory you can see matches {args.query!r}.")
@@ -210,11 +210,11 @@ def cmd_memory_search(args) -> int:
                 memory["location"],
                 memory["name"],
                 memory["type"],
-                _when(memory["updated_at"]),
+                when(memory["updated_at"]),
                 description[:60] + ("..." if len(description) > 60 else ""),
             )
         )
-    _table(("PROJECT", "LOCATION", "NAME", "TYPE", "UPDATED (UTC)", "DESCRIPTION"), rows)
+    table(("PROJECT", "LOCATION", "NAME", "TYPE", "UPDATED (UTC)", "DESCRIPTION"), rows)
     return 0
 
 

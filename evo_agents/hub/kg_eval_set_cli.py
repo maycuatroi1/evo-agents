@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import JsonOutput, json_option, returns_object
 
 EVAL_SET_VIEW = ("set", "version", "digest", "created_at", "split", "answers", "questions")
@@ -68,7 +68,7 @@ def _push(hub, args) -> int:
         return 2
     found = hub.call("PUT", _path(args.project), {"set": name, "questions": entries})
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     state = "put as version" if found["created"] else "unchanged: still version"
     print(
@@ -84,7 +84,7 @@ def _pull(hub, args) -> int:
         params["version"] = args.version
     found = hub.call("GET", f"{_path(args.project)}?{urlencode(params)}")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     text = "".join(line + "\n" for line in set_lines(found))
     if args.output:
@@ -99,7 +99,7 @@ def _pull(hub, args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_eval_set(args) -> int:
     if args.action == "push" and not args.file:
         print("error: eval-set push needs the set FILE", file=sys.stderr)
@@ -107,12 +107,12 @@ def cmd_eval_set(args) -> int:
     if args.action == "pull" and args.file:
         print("error: eval-set pull takes no FILE; write it with -o FILE", file=sys.stderr)
         return 2
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     return _push(hub, args) if args.action == "push" else _pull(hub, args)
 
 
 def register(ksub) -> None:
-    from evo_agents.hub.cli import _positive
+    from evo_agents.hub.cli import positive
 
     parser = ksub.add_parser(
         "eval-set", help="put a project's retrieval question set on the hub, or pull it (tune, or holdout unanswered)"
@@ -121,7 +121,7 @@ def register(ksub) -> None:
     parser.add_argument("file", metavar="FILE", nargs="?", help="with push: the set file (JSONL, docs/kg-eval.md)")
     parser.add_argument("--project", required=True, help="project name on the hub")
     parser.add_argument("--set", help="with push: the set's name, when the file has no header line")
-    parser.add_argument("--version", type=_positive, help="with pull: this version, not the latest")
+    parser.add_argument("--version", type=positive, help="with pull: this version, not the latest")
     parser.add_argument(
         "--split",
         choices=["all", "tune", "holdout"],

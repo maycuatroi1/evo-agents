@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
 
 
@@ -46,16 +46,16 @@ def semantic_json(project: str, build_id: int | None, vectors: dict) -> dict:
     }
 
 
-@_client_command
+@client_command
 def cmd_semantic(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     build_id, vectors, why = read_vectors(hub, args.project, args.sink)
     if vectors is None:
         print(f"error: {why}")
         return 1
     found = semantic_json(args.project, build_id, vectors)
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     print(f"project {args.project}, build {build_id}: mode {found['mode']}, model {found['model'] or '-'}")
     if found["mode"] == "off":

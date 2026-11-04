@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
 
 INIT_RUN = (
@@ -85,7 +85,7 @@ def _send_questions(hub, args) -> int:
         sys.exit(f"project {args.project} has no kg init run in flight; pass --run ID")
     made = hub.call("POST", f"{_path(args.project)}/{int(run)}/questions", {"questions": _questions(args.questions)})
     if args.json:
-        _print_json(made)
+        print_json(made)
         return 0
     print(
         f"kg init run #{made['run']} of project {args.project}: {made['questions']} starter questions kept as version "
@@ -107,13 +107,13 @@ def _decision(path: str) -> dict:
         sys.exit(str(exc))
 
 
-@_client_command
+@client_command
 def cmd_init(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     if args.all:
         found = hub.call("POST", "/v1/admin/kg-init", {})
         if args.json:
-            _print_json(found)
+            print_json(found)
             return 0
         print(f"kg init asked for {len(found['started'])} projects: {', '.join(found['started']) or 'none'}")
         for name, why in sorted(found["skipped"].items()):
@@ -131,14 +131,14 @@ def cmd_init(args) -> int:
                 sys.exit(f"project {args.project} has no kg init run in flight; pass --run ID")
             made = hub.call("POST", f"{_path(args.project)}/{int(run)}/decision", {"decision": _decision(args.decide)})
             if args.json:
-                _print_json(made)
+                print_json(made)
                 return 0
             print(f"kg init run #{made['run']} of project {args.project} decided:")
             for part, what in sorted(made["applied"].items()):
                 print(f"  {part}: {what}")
             return 0
         if args.json:
-            _print_json(found)
+            print_json(found)
             return 0
         if not found["runs"]:
             print(f"project {args.project} has no kg init run yet")
@@ -147,14 +147,14 @@ def cmd_init(args) -> int:
         return 0
     found = hub.call("POST", _path(args.project), {})
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     print(f"kg init run of project {args.project}: {_line(found)}")
     return 0
 
 
 def register(ksub) -> None:
-    from evo_agents.hub.cli import _positive
+    from evo_agents.hub.cli import positive
 
     parser = ksub.add_parser(
         "init",
@@ -163,13 +163,13 @@ def register(ksub) -> None:
     parser.add_argument("--project", help="project name on the hub")
     parser.add_argument("--all", action="store_true", help="every project with a knowledge config (a hub admin)")
     parser.add_argument("--status", action="store_true", help="list the project's runs instead of starting one")
-    parser.add_argument("--limit", type=_positive, default=10, help="with --status: the newest runs listed")
+    parser.add_argument("--limit", type=positive, default=10, help="with --status: the newest runs listed")
     parser.add_argument("--decide", metavar="FILE", help="record the Curator's decision (a JSON file) in a run")
     parser.add_argument(
         "--questions", metavar="FILE", help="send the starter questions (JSON lines) of a kg init run's questions run"
     )
     parser.add_argument(
-        "--run", type=_positive, help="with --decide or --questions: the kg init run (default: the one in flight)"
+        "--run", type=positive, help="with --decide or --questions: the kg init run (default: the one in flight)"
     )
     json_option(
         parser,
