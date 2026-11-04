@@ -115,11 +115,11 @@ def test_the_privacy_of_the_prompt_counts_and_classes_never_an_item(store):
         assert node.path not in text and node.node_id not in text
 
 
-def test_the_lens_is_on_demand_and_migration_0200_holds_the_same_lenses():
+def test_the_lens_is_on_demand_and_migration_0201_holds_the_same_lenses():
     from importlib import import_module
 
     assert model.LENS in review_model.LENSES and model.LENS in review_model.ON_DEMAND_LENSES
-    migration = import_module("evo_agents.hub.migrations.versions.0200_kg_questions")
+    migration = import_module("evo_agents.hub.migrations.versions.0201_kg_questions")
     assert sorted(migration.LENSES) == sorted(review_model.LENSES)
 
 

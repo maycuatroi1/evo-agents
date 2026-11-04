@@ -400,6 +400,7 @@ source_modules = [
     "evo_agents.kg.store",
     "evo_agents.kg.serve",
     "evo_agents.kg.locate",
+    "evo_agents.kg.ppr",
     "evo_agents.kg.rank",
     "evo_agents.kg.links",
     "evo_agents.kg.tools",

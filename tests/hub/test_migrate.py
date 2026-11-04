@@ -166,7 +166,7 @@ TABLES |= {"account_pools", "account_pool_members"}  # migration 0191
 TABLES |= {"guard_terms", "guard_targets"}  # migration 0192
 TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 TABLES |= {"kg_init_runs"}  # migration 0197
-TABLES |= {"kg_uploads"}  # migration 0199
+TABLES |= {"kg_uploads"}  # migration 0200
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -5509,11 +5509,42 @@ def test_0198_archives_a_project_with_who_did_it_and_going_back_makes_every_proj
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0198") :]
 
 
-def test_0199_records_archive_uploads_one_in_flight_per_archive_and_going_back_drops_them(hub_db):
+def test_0199_lets_a_dismissal_name_conflicting_claim_and_going_back_deletes_those(hub_db):
     move_to(hub_db, "0198")
+    d = hub_tables.kg_review_dismissals
     with live.connect(hub_db) as conn:
         ids = seed(conn)
+        row = {
+            "project_id": ids["project"],
+            "fingerprint": "r:0123456789abcdef",
+            "rule": "possible_duplicate",
+            "reason": "two names of one thing, on purpose",
+            "dismissed_by": ids["user"],
+        }
+        conn.execute(insert(d).values(row))
+    claim = {**row, "fingerprint": "r:fedcba9876543210", "rule": "conflicting_claim", "reason": "both hold"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(d).values(claim))
     move_to(hub_db, "0199")
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(d).values(claim))
+        for bad in (
+            {**claim, "fingerprint": "r:1", "rule": "whatever"},
+            {**claim, "fingerprint": "r:2", "reason": " "},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(d).values(bad))
+    assert query(hub_db, select(d.c.rule).order_by(d.c.rule)) == [("conflicting_claim",), ("possible_duplicate",)]
+    move_to(hub_db, "0198", down=True)
+    assert query(hub_db, select(d.c.rule)) == [("possible_duplicate",)], "the other dismissals stay"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0199") :]
+
+
+def test_0200_records_archive_uploads_one_in_flight_per_archive_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0199")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0200")
     u = hub_tables.kg_uploads
     row = {
         "project_id": ids["project"],
@@ -5536,18 +5567,18 @@ def test_0199_records_archive_uploads_one_in_flight_per_archive_and_going_back_d
     with live.connect(hub_db) as conn:
         conn.execute(update(u).values(state="extracting"))
         conn.execute(insert(u).values({**row, "object_key": "kg-archives/four"}))  # the first is no longer in flight
-    move_to(hub_db, "0198", down=True)
+    move_to(hub_db, "0199", down=True)
     assert "kg_uploads" not in tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0199") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0200") :]
 
 
-def test_0200_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_back_drops_both(hub_db):
-    move_to(hub_db, "0199")
+def test_0201_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0200")
     assert "questions_run_id" not in columns(hub_db, "kg_init_runs")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         run_id = one(conn, _author_run(ids))
-    move_to(hub_db, "0200")
+    move_to(hub_db, "0201")
     t = hub_tables
     init = {"project_id": ids["project"], "via": "manual", "state": "queued", "why": ["asked"], "body": {}}
     with live.connect(hub_db) as conn:
@@ -5566,10 +5597,10 @@ def test_0200_names_the_questions_run_of_a_kg_init_run_takes_its_lens_and_going_
     with live.connect(hub_db) as conn:
         run_id = one(conn, _author_run(ids))
         conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id}))
-    move_to(hub_db, "0199", down=True)
+    move_to(hub_db, "0200", down=True)
     assert "questions_run_id" not in columns(hub_db, "kg_init_runs")
     lens = t.proposals.c.lens == "kg_questions"
     assert query(hub_db, select(func.count()).select_from(t.proposals).where(lens)) == [(0,)]
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(t.proposals).values({**proposal, "run_id": run_id, "fingerprint": "a" * 64}))
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0200") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0201") :]

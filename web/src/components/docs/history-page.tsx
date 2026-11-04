@@ -13,7 +13,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { type DocsDocument, type DocsVersion, docsDocumentQuery } from "./api";
-import { DocumentHead } from "./document-head";
+import { DOCUMENT_COLUMN, DocumentHead } from "./document-head";
 import { documentHref } from "./links";
 
 const NARROW_HIDDEN = { author: "hidden md:table-cell", created_at: "hidden sm:table-cell" };
@@ -77,7 +77,7 @@ export function HistoryPage({ project, slug, initialError }: { project: string; 
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
       {(doc) => (
-        <div className="flex flex-col gap-6" data-testid="docs-history">
+        <div className={DOCUMENT_COLUMN} data-testid="docs-history">
           <DocumentHead project={project} doc={doc} current="history" />
           <section aria-labelledby="docs-history-title">
             <h2 id="docs-history-title" className="sr-only">

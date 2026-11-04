@@ -1,7 +1,7 @@
 """Archives a writer uploads as sources of a project's graph.
 
-Revision ID: 0199
-Revises: 0198
+Revision ID: 0200
+Revises: 0199
 Create Date: 2026-11-04
 
 kg_uploads is new (plan kg-upload-archive, step 1): one row for each archive (.zip, .tar, .tar.gz, .tgz) a writer sends
@@ -24,8 +24,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0199"
-down_revision = "0198"
+revision = "0200"
+down_revision = "0199"
 branch_labels = None
 depends_on = None
 

@@ -2273,7 +2273,8 @@
         "cluster_without_knowledge": "Cụm có mã mà không có tri thức",
         "possible_duplicate": "Có thể trùng lặp",
         "ambiguous_match": "Khớp tên mơ hồ",
-        "bulk_noise": "Nhiễu hàng loạt"
+        "bulk_noise": "Nhiễu hàng loạt",
+        "conflicting_claim": "Khẳng định mâu thuẫn"
       },
       "actions": {
         "fix_mention": "Sửa chỗ nhắc tới",
@@ -2281,7 +2282,8 @@
         "add_knowledge": "Thêm tài liệu, kế hoạch hoặc vấn đề",
         "merge": "Gộp lại",
         "disambiguate": "Gọi đúng tên đích",
-        "exclude": "Loại khỏi đồ thị"
+        "exclude": "Loại khỏi đồ thị",
+        "check_claims": "Xem khẳng định nào đúng"
       },
       "filters": "Lọc hàng đợi",
       "rule": "Luật",
@@ -2300,6 +2302,7 @@
       "more": "và {count} nút nữa",
       "mentions": "{count} lần nhắc",
       "samples": "ví dụ {samples}",
+      "claims": "hai tài liệu nói khác nhau về {rel}",
       "edges": "{count} cạnh",
       "dismissedBy": "{by} đã bỏ qua: {reason}",
       "dismiss": "Bỏ qua",

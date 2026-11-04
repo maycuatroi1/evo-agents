@@ -17,7 +17,8 @@ artifacts of graphs older than each project's ``--keep`` newest leave the bucket
 value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
 ``clusters`` lists the clusters of a project's graph the caller can see, and ``clusters show ID`` one of them
 (``evo_agents.hub.kg_clusters_cli``). ``review`` lists the review queue the caller can see, and ``review dismiss FP``
-dismisses one item of it (``evo_agents.hub.kg_review_cli``). ``decisions`` lists the decisions on the graph the caller
+dismisses one item of it (``evo_agents.hub.kg_review_cli``). ``entities``, inside a run of the project's agent pool, answers with Claude Code
+the entity requests of its latest build (``evo_agents.hub.kg_entities_cli``). ``decisions`` lists the decisions on the graph the caller
 can see, and a writer takes or steps one (``evo_agents.hub.kg_decisions_cli``).
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
@@ -573,6 +574,10 @@ def register_kg(hsub) -> None:
     kg_semantic_cli.register(ksub)
     kg_settings_cli.register(ksub)
     kg_upload_cli.register(ksub)
+
+    from evo_agents.hub import kg_entities_cli
+
+    kg_entities_cli.register(ksub)
 
 
 # The hub backend of kg serve and kg query

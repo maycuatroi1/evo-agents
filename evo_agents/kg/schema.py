@@ -64,6 +64,8 @@ HUB_RELATIONS = {
     "addresses": ("*", "Problem"),  # a plan, a claim or a goal to a problem of the hub it answers
     "evidences": ("*", "Problem"),  # a line of evidence of the hub to the problem it shows hurts
     "answers": ("Opportunity", "Problem"),  # an opportunity of the hub to a problem of its own project it answers
+    "refers_to": ("*", "*"),  # an entity a model stated to the one Symbol or File its name names (kg.entity_links)
+    "synonym_of": ("*", "*"),  # two entities of one kind whose names are near in meaning (kg.entity_links)
 }
 
 ITEM_KIND_TO_NODE = {

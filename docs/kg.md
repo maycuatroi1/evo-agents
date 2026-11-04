@@ -615,7 +615,7 @@ skills and knowledge graphs) lists the routes and `evo-agents hub kg clusters`.
 
 ## Review
 
-Each build with clusters computes a review queue: what in the graph a person should look at, found by six rules with
+Each build with clusters computes a review queue: what in the graph a person should look at, found by seven rules with
 no model (`evo_agents/kg/review.py`, stored in the build's `review_items` table).
 
 | Rule | What it finds | Suggested action |
@@ -626,6 +626,7 @@ no model (`evo_agents/kg/review.py`, stored in the build's `review_items` table)
 | `possible_duplicate` | nodes of one kind whose normalised names (accents dropped, case folded, letters and digits only) are the same and whose ids differ | `merge` |
 | `ambiguous_match` | an item whose mentions matched several nodes by name, or a path edge resolved to one of several files with that path | `disambiguate` |
 | `bulk_noise` | images, generated files (lockfiles, `dist/`, `node_modules/`, `*.min.js` and the like) and plan steps whose name repeats across plans, 3 or more of a kind in one place | `exclude` |
+| `conflicting_claim` | two `extracted` edges (the entities step) with one subject and one relation and different objects, stated by two different documents, each with conf 0.6 or more; `mentions`, `refers_to` and `synonym_of` state no claim, and one subject and relation opens at most 20 items | `check_claims` |
 
 An item holds its rule, the ids of the nodes it is about (its evidence, at most 50 with the full count in its detail),
 the level-1 cluster its first node counts in, the suggested action and what it found. Kinds whose names repeat by
@@ -633,15 +634,17 @@ design (Symbol, Section, File, PlanStep and the like) are not checked for duplic
 
 **Fingerprints.** An item's fingerprint, `r:` and 16 hex digits, hashes its rule with what it is about: a node id, an
 edge id, a cluster id, a kind and name, a directory. Nothing that changes between builds goes in, so the same finding
-keeps its fingerprint across builds.
+keeps its fingerprint across builds. A conflicting claim hashes its subject, relation and both objects, entity ids that
+the entities step folds the same way in every build.
 
 **Dismissing.** A writer of the project dismisses an item with a reason, on the web's review page or with `evo-agents
-hub kg review dismiss`. The hub keeps the dismissal by fingerprint (`kg_review_dismissals`, migration 0141), so the item stays
+hub kg review dismiss`. The hub keeps the dismissal by fingerprint (`kg_review_dismissals`, migration 0141; 0199 adds `conflicting_claim` to the rules a dismissal names), so the item stays
 dismissed in later builds. Dismissing an item again replaces the reason and keeps the first build. There is no undo.
 
 **Who sees what.** A reader sees an item only through its nodes: the first nodes the rule requires must all be
 visible to them, the rest of its evidence is shown only where visible, and an item left with too few visible nodes
-(two for a duplicate) is not shown. The hub recomputes each item's cluster label and order for that reader, so the queue names no hidden node, id or count.
+(two for a duplicate) is not shown. A conflicting claim requires all five of its nodes: the subject, both objects and
+one source document of each edge. The hub recomputes each item's cluster label and order for that reader, so the queue names no hidden node, id or count.
 The page groups items by rule, then by cluster, most connected nodes first.
 
 **Health.** The open items of each rule are a level metric of the graph's health, `kg_review_<rule>`, measured as the
@@ -771,7 +774,7 @@ for a person. `--status --json` prints the runs with their decisions and reports
 Data with no commit history, such as an uploaded archive, gives no starter questions. Before a kg_init run measures,
 the hub checks the project's eval set. When the project has none, or only the set made from its commits with fewer than
 30 questions, the hub queues a review run with the lens `kg_questions` (`evo_agents/hub/server/kg_questions.py`,
-migration 0200). It uses the same agent pool and cost cap as the kg_init run. Its prompt holds counts and data classes
+migration 0201). It uses the same agent pool and cost cap as the kg_init run. Its prompt holds counts and data classes
 only. The agent reads the items through the kg_* tools within its sink's clearance. It writes at least 100 questions, or
 one for each readable document when there are fewer, and answers each with a file or a node of the graph. Together the
 questions cover every class of data the sink reads (assets and commits excepted). The agent sends them with

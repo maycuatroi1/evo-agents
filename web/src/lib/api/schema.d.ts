@@ -1833,6 +1833,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/entities/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Entity Requests
+         * @description The items the latest succeeded build deferred to a run that has Claude Code.
+         */
+        get: operations["entity_requests_v1_kg__project__entities_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entities/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Entity Answers
+         * @description Keep the answers of a run of this project to the latest entity requests and queue a build that reads them.
+         */
+        post: operations["entity_answers_v1_kg__project__entities_answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/cause/restore": {
         parameters: {
             query?: never;
@@ -13700,6 +13740,24 @@ export interface components {
              */
             secret?: string | null;
         };
+        /** AnswersKept */
+        AnswersKept: {
+            /**
+             * Kept
+             * @description answers whose key the latest requests name
+             */
+            kept: number;
+            /**
+             * Ignored
+             * @description answers to no request of the latest build
+             */
+            ignored: number;
+            /**
+             * Queued
+             * @description whether a build was queued to read them; false when one was waiting already
+             */
+            queued: boolean;
+        };
         /** ApnsDeviceIn */
         ApnsDeviceIn: {
             /**
@@ -13755,7 +13813,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
             /**
              * Whole
              * @description true when every decision of the item's fix is taken or was said already
@@ -13787,7 +13845,7 @@ export interface components {
              * Rules
              * @description only the items of these rules; every rule when null
              */
-            rules?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise")[] | null;
+            rules?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim")[] | null;
             /**
              * Dry Run
              * @description say what would be decided and decide nothing
@@ -20275,6 +20333,43 @@ export interface components {
              * @description one address; case does not matter
              */
             email: string;
+        };
+        /** EntityAnswers */
+        EntityAnswers: {
+            /**
+             * Answers
+             * @description {key of a request: {nodes, edges, usage}}
+             */
+            answers: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** EntityRequest */
+        EntityRequest: {
+            /** Key */
+            key: string;
+            /** Item */
+            item?: string | null;
+            /** Text */
+            text: string;
+            /** Node Kinds */
+            node_kinds?: string[];
+            /** Relations */
+            relations?: string[];
+            /** Model */
+            model: string;
+        };
+        /** EntityRequests */
+        EntityRequests: {
+            /**
+             * Build Id
+             * @description the build that deferred them; None when the latest deferred nothing
+             */
+            build_id: number | null;
+            /** Requests */
+            requests: components["schemas"]["EntityRequest"][];
         };
         /** ErrorBody */
         ErrorBody: {
@@ -34643,7 +34738,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
             /** Cluster */
             cluster: string | null;
             /** Cluster Label */
@@ -34767,10 +34862,10 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
             /**
              * Action
-             * @description what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude
+             * @description what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate, exclude or check_claims
              */
             action: string;
             /**
@@ -34790,7 +34885,7 @@ export interface components {
             nodes: components["schemas"]["ReviewNode"][];
             /**
              * Detail
-             * @description what the rule found: count, and per rule mentions, samples, path, kind, where
+             * @description what the rule found: count, and per rule mentions, samples, path, kind, where, rel, claims
              */
             detail: {
                 [key: string]: unknown;
@@ -35101,7 +35196,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
             /** Open */
             open: number;
             /** Dismissed */
@@ -48104,7 +48199,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description only the items of this rule */
-                rule?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise") | null;
+                rule?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim") | null;
                 /** @description only the items of this cluster */
                 cluster?: string | null;
                 /** @description which items to list */
@@ -49943,6 +50038,162 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    entity_requests_v1_kg__project__entities_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityRequests"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    entity_answers_v1_kg__project__entities_answers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityAnswers"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswersKept"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

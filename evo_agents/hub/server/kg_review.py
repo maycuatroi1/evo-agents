@@ -55,6 +55,7 @@ Rule = Literal[  # RULES of evo_agents.kg.review, in order
     "possible_duplicate",
     "ambiguous_match",
     "bulk_noise",
+    "conflicting_claim",
 ]
 
 router = APIRouter(
@@ -81,13 +82,15 @@ class ReviewItem(BaseModel):
     fingerprint: str = Field(description="the item's id, the same in every build that finds it")
     rule: Rule
     action: str = Field(
-        description="what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or "
-        "exclude"
+        description="what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate, "
+        "exclude or check_claims"
     )
     cluster: str | None = Field(description="the level-1 cluster of its first node you can see, if any")
     cluster_label: str | None = Field(description="that cluster's label, as your map shows it")
     nodes: list[ReviewNode] = Field(description="the nodes the item is about that you can see")
-    detail: dict = Field(description="what the rule found: count, and per rule mentions, samples, path, kind, where")
+    detail: dict = Field(
+        description="what the rule found: count, and per rule mentions, samples, path, kind, where, rel, claims"
+    )
     weight: int = Field(description="the most edges you can see any of its nodes has; the queue's order")
     dismissal: Dismissal | None = Field(description="null while the item is open")
 

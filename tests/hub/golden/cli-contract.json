@@ -10672,6 +10672,46 @@
         }
       }
     },
+    "hub kg entities": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "requests",
+          "answered",
+          "kept",
+          "failed",
+          "stopped"
+        ]
+      }
+    },
     "hub kg eval-set": {
       "positionals": [
         {
@@ -11300,7 +11340,8 @@
             "cluster_without_knowledge",
             "possible_duplicate",
             "ambiguous_match",
-            "bulk_noise"
+            "bulk_noise",
+            "conflicting_claim"
           ]
         },
         {
@@ -26279,7 +26320,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.54.9"
+      "version": "0.55.4"
     },
     "paths": {
       "/v1/health": {
@@ -33879,7 +33920,8 @@
                       "cluster_without_knowledge",
                       "possible_duplicate",
                       "ambiguous_match",
-                      "bulk_noise"
+                      "bulk_noise",
+                      "conflicting_claim"
                     ],
                     "type": "string"
                   },
@@ -36357,6 +36399,204 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entities/requests": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Entity Requests",
+          "description": "The items the latest succeeded build deferred to a run that has Claude Code.",
+          "operationId": "entity_requests_v1_kg__project__entities_requests_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityRequests"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entities/answers": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Entity Answers",
+          "description": "Keep the answers of a run of this project to the latest entity requests and queue a build that reads them.",
+          "operationId": "entity_answers_v1_kg__project__entities_answers_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityAnswers"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AnswersKept"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             }
           }
         }
@@ -101177,6 +101417,32 @@
           "type": "object",
           "title": "AnswerIn"
         },
+        "AnswersKept": {
+          "properties": {
+            "kept": {
+              "type": "integer",
+              "title": "Kept",
+              "description": "answers whose key the latest requests name"
+            },
+            "ignored": {
+              "type": "integer",
+              "title": "Ignored",
+              "description": "answers to no request of the latest build"
+            },
+            "queued": {
+              "type": "boolean",
+              "title": "Queued",
+              "description": "whether a build was queued to read them; false when one was waiting already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kept",
+            "ignored",
+            "queued"
+          ],
+          "title": "AnswersKept"
+        },
         "ApnsDeviceIn": {
           "properties": {
             "kind": {
@@ -101304,7 +101570,8 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },
@@ -101371,7 +101638,8 @@
                       "cluster_without_knowledge",
                       "possible_duplicate",
                       "ambiguous_match",
-                      "bulk_noise"
+                      "bulk_noise",
+                      "conflicting_claim"
                     ]
                   },
                   "type": "array"
@@ -116169,6 +116437,101 @@
             "email"
           ],
           "title": "EmailAdd"
+        },
+        "EntityAnswers": {
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Answers",
+              "description": "{key of a request: {nodes, edges, usage}}"
+            }
+          },
+          "type": "object",
+          "required": [
+            "answers"
+          ],
+          "title": "EntityAnswers"
+        },
+        "EntityRequest": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "node_kinds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Node Kinds"
+            },
+            "relations": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Relations"
+            },
+            "model": {
+              "type": "string",
+              "title": "Model"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "text",
+            "model"
+          ],
+          "title": "EntityRequest"
+        },
+        "EntityRequests": {
+          "properties": {
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build that deferred them; None when the latest deferred nothing"
+            },
+            "requests": {
+              "items": {
+                "$ref": "#/components/schemas/EntityRequest"
+              },
+              "type": "array",
+              "title": "Requests"
+            }
+          },
+          "type": "object",
+          "required": [
+            "build_id",
+            "requests"
+          ],
+          "title": "EntityRequests"
         },
         "ErrorBody": {
           "properties": {
@@ -149395,7 +149758,8 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },
@@ -149712,14 +150076,15 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },
             "action": {
               "type": "string",
               "title": "Action",
-              "description": "what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate or exclude"
+              "description": "what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate, exclude or check_claims"
             },
             "cluster": {
               "anyOf": [
@@ -149757,7 +150122,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Detail",
-              "description": "what the rule found: count, and per rule mentions, samples, path, kind, where"
+              "description": "what the rule found: count, and per rule mentions, samples, path, kind, where, rel, claims"
             },
             "weight": {
               "type": "integer",
@@ -150415,7 +150780,8 @@
                 "cluster_without_knowledge",
                 "possible_duplicate",
                 "ambiguous_match",
-                "bulk_noise"
+                "bulk_noise",
+                "conflicting_claim"
               ],
               "title": "Rule"
             },

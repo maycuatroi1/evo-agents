@@ -2273,7 +2273,8 @@
         "cluster_without_knowledge": "Clusters with code and no knowledge",
         "possible_duplicate": "Possible duplicates",
         "ambiguous_match": "Ambiguous name matches",
-        "bulk_noise": "Bulk noise"
+        "bulk_noise": "Bulk noise",
+        "conflicting_claim": "Conflicting claims"
       },
       "actions": {
         "fix_mention": "Fix the mention",
@@ -2281,7 +2282,8 @@
         "add_knowledge": "Add a document, plan or problem",
         "merge": "Merge them",
         "disambiguate": "Name the target exactly",
-        "exclude": "Exclude them from the graph"
+        "exclude": "Exclude them from the graph",
+        "check_claims": "Check which claim holds"
       },
       "filters": "Filter the queue",
       "rule": "Rule",
@@ -2300,6 +2302,7 @@
       "more": "and {count, plural, one {# more} other {# more}}",
       "mentions": "{count, plural, one {# mention} other {# mentions}}",
       "samples": "e.g. {samples}",
+      "claims": "two documents state {rel} differently",
       "edges": "{count, plural, one {# edge} other {# edges}}",
       "dismissedBy": "Dismissed by {by}: {reason}",
       "dismiss": "Dismiss",

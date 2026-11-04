@@ -8,14 +8,15 @@ kg_pending_runs (0006) the runs waiting for their blobs, and kg_builds (0006, 00
 (``evo_agents.hub.server.kg``, ``evo_agents.hub.kg_build``). kg_builds.coverage, kg_source_files and kg_health (0055)
 say how healthy the graph is over time: what each build covers, the files each git source holds in the latest
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
-kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``).
+kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``); 0199 lets
+a dismissal name the seventh rule, conflicting_claim.
 kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
 with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0178) holds each kg_search of a
 session or a run with what the agent opened after it, under the label of the session or the run
 (``evo_agents.hub.kg_labels``), as ``tables.kg_query_labels``. kg_eval_sets (0179) holds each version of a project's
 retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``. kg_optimize_runs (0182)
 holds each run of the KG optimize loop (``evo_agents.hub.server.kg_optimize``), as ``tables.kg_optimize_runs``.
-kg_uploads (0199) holds each archive a writer sends as a source with ``hub kg upload``
+kg_uploads (0200) holds each archive a writer sends as a source with ``hub kg upload``
 (``evo_agents.hub.server.kg_uploads``), as ``tables.kg_uploads``.
 """
 
@@ -457,7 +458,7 @@ def init_runs(metadata: MetaData) -> Table:
     Curator configures the graph from its data profile. What asked for it (``via``: its first build, a profile that
     changed a lot, a call), the reasons, the build and the profile it was given, the review run of the agent it queued
     (lens kg_init), what it was shown and decided (``body``), its report; the review run that wrote its starter
-    questions first (lens kg_questions, 0200). One run a project is in flight at a time."""
+    questions first (lens kg_questions, 0201). One run a project is in flight at a time."""
     name = "kg_init_runs"
     table = Table(
         name,
@@ -499,7 +500,7 @@ UPLOAD_STATES = ("uploading", "extracting", "extracted", "failed")  # of an arch
 
 
 def uploads(metadata: MetaData) -> Table:
-    """kg_uploads (0199), added to ``metadata``: each archive a writer sends as a source of a project's graph
+    """kg_uploads (0200), added to ``metadata``: each archive a writer sends as a source of a project's graph
     (``evo_agents.hub.server.kg_uploads``), by S3 multipart upload to ``object_key``. Its source, label (by names),
     sender, name, size, SHA-256 and part size, the store's multipart id while parts come, its state, what reading it
     found (``report``) and the build that follows. One upload of the same archive by the same sender to the same source
