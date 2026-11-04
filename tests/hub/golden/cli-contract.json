@@ -150596,6 +150596,12 @@
               "description": "true for a run of an agent in pool mode: its model account is the lease's alone, from the agent's account pool; the daemon uses none of its own environment's nor of this machine's login, and copies none of the owner's",
               "default": false
             },
+            "owner_setup": {
+              "type": "boolean",
+              "title": "Owner Setup",
+              "description": "true for a run of its project's default agent in pool mode: the agent of a claude-code run keeps the owner's Claude Code setup (CLAUDE.md, settings, skills, agents, commands, plugins) in its config dir of its own, never the owner's login",
+              "default": false
+            },
             "origin": {
               "anyOf": [
                 {

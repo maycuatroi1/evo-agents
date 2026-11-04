@@ -254,6 +254,24 @@ def test_a_profile_keeps_the_session_to_its_models_and_refuses_a_run_on_another(
     assert chosen({"profile": DEFAULT}, setting) == "haiku" and chosen({}, setting) == "haiku", "as before"
 
 
+def test_a_pooled_claude_run_on_a_leased_token_alone_starts_on_opus_unless_something_names_a_model():
+    token = {"CLAUDE_CODE_OAUTH_TOKEN": "leased-token"}
+
+    def chosen(run: dict, env: dict, leased=("CLAUDE_CODE_OAUTH_TOKEN",), runtime="claude-code") -> str | None:
+        context = adapter_module.RunContext(run=run, worktree=None, prompt="", env=env, leased=frozenset(leased))
+        return profiles.session_model(context, runtime)
+
+    pooled = {"account_pool": True, "profile": DEFAULT}
+    assert chosen(pooled, token) == profiles.POOL_MODEL == "opus", "the token alone shows Claude Code no plan"
+    assert chosen({**pooled, "model": "sonnet"}, token) == "sonnet"
+    assert chosen(pooled, {**token, "EVO_WORKER_CLAUDE_CODE_MODEL": "haiku"}) == "haiku"
+    assert chosen({**pooled, "profile": profile(model=["sonnet"])}, token) == "sonnet"
+    assert chosen(pooled, token, leased=()) is None, "a token of the daemon's own, not a lease"
+    assert chosen(pooled, {}) is None
+    assert chosen({"profile": DEFAULT}, token) is None, "not pooled: Claude Code's own choice, as before"
+    assert chosen(pooled, token, runtime="codex") is None
+
+
 # opencode
 
 

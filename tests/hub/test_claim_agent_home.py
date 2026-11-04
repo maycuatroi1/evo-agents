@@ -4,7 +4,7 @@ agent a config dir of its own, and its claim says ``own_home``; a run under the 
 that runs on another runtime, go to any daemon as before. Each run goes to a node of its agent's pool (plan
 agent-dedicated-pools), where the worker is moved for the run of each agent, and takes its model account from the
 agent's account pool, so the claim of every run of an agent says ``own_home``, the default agent's too
-(``pool_accounts.is_pooled``)."""
+(``pool_accounts.is_pooled``); the default agent's says ``owner_setup`` as well, so its agent keeps the owner's setup."""
 
 import pytest
 
@@ -45,6 +45,7 @@ def test_claim_of_a_claude_run_of_another_profile_needs_the_feature_agent_home(c
     spec = claim(client, worker)
     assert spec["id"] == run["id"] and spec["runtime"] == "claude-code"
     assert spec["own_home"] is True and spec["profile"]["handle"] == "reviewer"
+    assert "owner_setup" not in spec, "an agent of another profile gets none of the owner's setup"
 
 
 def test_claim_of_a_default_profile_run_needs_no_feature_agent_home_and_says_own_home(client, admin, hub_db):
@@ -53,6 +54,7 @@ def test_claim_of_a_default_profile_run_needs_no_feature_agent_home_and_says_own
     plain = dispatched(client, admin["owner"])
     spec = claim(client, worker)
     assert spec["id"] == plain["id"] and spec["own_home"] is True, "its account is its account pool's"
+    assert spec["owner_setup"] is True, "the default agent keeps the owner's setup, its login aside"
     done(client, worker, plain["id"])
     beat(client, worker, features=FEATURES)
     again = dispatched(client, admin["owner"], "lumen-kb-docs")

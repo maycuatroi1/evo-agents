@@ -350,6 +350,7 @@ class Agent:
                 leased=leased_oauth(context),
                 gateway=route,
                 pooled=claude_home.pooled(run.spec),
+                owner_setup=claude_home.keeps_owner_setup(run.spec, run.runtime),
                 server=server,
                 lock=Path(run.daemon.home.root) / claude_home.REFRESH_LOCK,
             )
@@ -369,7 +370,7 @@ class Agent:
             refusal = claude_home.POOL_REFUSAL if claude_home.pooled(run.spec) else claude_home.REFUSAL
             run.note(f"{refusal}; the agent did not start.", cause="credentials")
             raise RunFailed(refusal, cause="credentials")
-        self.note_once(claude_home.note(directory, login))
+        self.note_once(claude_home.note(directory, login, claude_home.keeps_owner_setup(run.spec, run.runtime)))
 
     def note_once(self, line: str) -> None:
         if line not in self.environment_noted:

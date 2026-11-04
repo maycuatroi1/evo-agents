@@ -420,6 +420,15 @@ async def own_home(conn: AsyncConnection, run_id: int) -> bool:
     return default is False or await pool_accounts.is_pooled(conn, run_id)
 
 
+async def owner_setup(conn: AsyncConnection, run_id: int) -> bool:
+    """Whether run ``run_id`` is one of its project's default agent in pool mode, whose claude-code agent keeps the
+    owner's Claude Code setup in its config dir of its own, all but the login (``RunSpec.owner_setup``)."""
+    r, ap = tables.runs, tables.agent_profiles
+    query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
+    default = (await conn.execute(query)).scalar_one_or_none()
+    return default is True and await pool_accounts.is_pooled(conn, run_id)
+
+
 async def run_origin(conn: AsyncConnection, run_id: int) -> RunOrigin:
     """The person who dispatched run ``run_id``, with their GitHub login and id, whom its worker names as co-author of
     the commits its agent authors."""

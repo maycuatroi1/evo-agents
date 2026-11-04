@@ -633,6 +633,13 @@ class RunSpec(BaseModel):
         "of the owner's",
         exclude_if=lambda value: not value,
     )
+    owner_setup: bool = Field(
+        False,
+        description="true for a run of its project's default agent in pool mode: the agent of a claude-code run keeps "
+        "the owner's Claude Code setup (CLAUDE.md, settings, skills, agents, commands, plugins) in its config dir of "
+        "its own, never the owner's login",
+        exclude_if=lambda value: not value,
+    )
     origin: RunOrigin | None = Field(
         None,
         description="the person who dispatched the run, whom the worker names as co-author of the commits of a chat "

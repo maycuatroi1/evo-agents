@@ -32,6 +32,12 @@ that ignores all of it, even when the run's directory is a step run's worktree.
   copied as it is: the daemon writes no keychain item. No token value is ever logged.
 - for a run of an agent in pool mode (the claim's ``account_pool``), the lease's token alone: no copy of the owner's
   login, no refresh of it, and no login of this machine (``POOL_REFUSAL`` when none was leased);
+- for such a run of its project's default agent (the claim's ``owner_setup``), a link to each entry of OWNER_SETUP the
+  owner's config dir has (``link_owner_setup``): the agent keeps the owner's ``CLAUDE.md``, settings, skills, agents,
+  commands and plugins, as a run of the default agent did before pool mode, and its login alone is the lease's. Without
+  them its plan runs had no execute-plan skill nor plan-step agent and its triage threads no triaging-failed-runs
+  (runs #1490 and #1526 of evo-agents against #1426). Plugins add skills, agents and hooks; their MCP servers stay out
+  under ``--strict-mcp-config`` (Claude Code 2.1.295), so the hub's server is not offered twice;
 - ``gh-config``, an empty dir beside the config dir: the agent's GH_CONFIG_DIR (``gh_dir``), so ``gh`` in the run
   sees none of the owner's logins (``~/.config/gh``) and speaks with GH_TOKEN of the run's leases alone.
 
@@ -48,6 +54,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -68,6 +75,9 @@ OAUTH_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
 GH_DIR = f"{runs.RESULT_DIR}/gh-config"  # the agent's GH_CONFIG_DIR, empty
 STRICT_MCP = "--strict-mcp-config"
 OAUTH_KEY = "claudeAiOauth"
+# The entries of the owner's config dir a pooled run of its project's default agent links (``link_owner_setup``): its
+# user-level setup, never the login (CREDENTIALS_FILE), the sessions, transcripts nor anything else Claude Code writes.
+OWNER_SETUP = ("CLAUDE.md", "settings.json", "skills", "agents", "commands", "plugins", "output-styles", "rules")
 # How Claude Code 2.1.295 refreshes its claude.ai login (its bundled config: TOKEN_URL, CLIENT_ID, the scopes it asks)
 TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
@@ -121,6 +131,12 @@ def pooled(spec: Mapping) -> bool:
     """Whether the claim says the run is one of an agent in pool mode (``account_pool``): its login is the lease's alone,
     never one stored on this machine nor a copy of the owner's."""
     return bool(spec.get("account_pool"))
+
+
+def keeps_owner_setup(spec: Mapping, runtime: str) -> bool:
+    """Whether the agent of the run of claim ``spec`` on ``runtime`` gets the owner's setup in its config dir of its own
+    (``link_owner_setup``): a pooled run (``pooled``) the claim says ``owner_setup`` of, its project's default agent's."""
+    return pooled(spec) and bool(spec.get("owner_setup")) and wanted(spec, runtime)
 
 
 def keeps_owner_home(spec: Mapping, runtime: str) -> bool:
@@ -346,6 +362,29 @@ def _write_private(path: Path, text: str) -> None:
     os.replace(part, path)
 
 
+def link_owner_setup(directory: Path, owner_env: Mapping[str, str], keep: bool = True) -> list[str]:
+    """Link each entry of OWNER_SETUP that the owner's config dir (``owner_dir``) has into ``directory``, in place of
+    what is there; the names linked. With ``keep`` false, take out the links an earlier start made instead, so an agent
+    that gets no owner's setup never keeps one."""
+    owner = owner_dir(owner_env)
+    if owner.resolve() == directory.resolve():
+        return []
+    linked = []
+    for name in OWNER_SETUP:
+        link, target = directory / name, owner / name
+        if link.is_symlink():
+            link.unlink()
+        if not keep or not target.exists():
+            continue
+        if link.is_dir():
+            shutil.rmtree(link)  # one Claude Code wrote in the run's own dir before
+        elif link.exists():
+            link.unlink()
+        link.symlink_to(target)
+        linked.append(name)
+    return linked
+
+
 def _global_config(directory: Path, server: dict | None) -> str:
     """The ``.claude.json`` of the dir: what it holds already (the terminal UI writes it too), onboarding done, and
     the hub's server under ``mcpServers``, or none when ``server`` is None."""
@@ -375,6 +414,7 @@ def prepare(
     lock: Path | None = None,
     post: Callable[[dict], dict] | None = None,
     pooled: bool = False,
+    owner_setup: bool = False,
 ) -> str | None:
     """Write the config dir ``directory`` for an agent that starts now (see the module): ``leased`` says a lease of
     the run sets CLAUDE_CODE_OAUTH_TOKEN, ``gateway`` that the run goes through the gateway route, which gives the dir
@@ -382,10 +422,12 @@ def prepare(
     login, refreshed first under the lock of file ``lock`` when it expires soon (``refresh_owner``). Where the
     agent's login comes from; None when there is none (``REFUSAL``). OSError when the dir is not written,
     RefreshFailed when the owner's login expires soon and was not refreshed. A ``pooled`` run (``pooled``) takes the
-    lease's login or none: it never copies nor refreshes the owner's."""
+    lease's login or none: it never copies nor refreshes the owner's. With ``owner_setup`` the dir links the owner's
+    setup (``link_owner_setup``), its login aside."""
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     (directory / ".gitignore").write_text("*\n", encoding="utf-8")
     _write_private(directory / GLOBAL_FILE, _global_config(directory, server))
+    link_owner_setup(directory, owner_env, keep=owner_setup)
     (directory.parent / Path(GH_DIR).name).mkdir(mode=0o700, exist_ok=True)
     copy = directory / CREDENTIALS_FILE
     if gateway:
@@ -408,8 +450,14 @@ def prepare(
     return f"a copy of {source}" + (", refreshed first: its access token expired within the hour" if refreshed else "")
 
 
-def note(directory: Path, login: str) -> str:
+def note(directory: Path, login: str, owner_setup: bool = False) -> str:
     """What the run's log says once of the agent's config dir."""
+    if owner_setup:
+        return (
+            f"Claude Code runs with a config dir of its own, {directory}, as the agent's account pool asks: it links "
+            f"the owner's CLAUDE.md, settings, skills, agents, commands and plugins, never the owner's login. Its login "
+            f"is {login}."
+        )
     why = "through the hub's gateway route" if login == GATEWAY_LOGIN else "under a profile not the project's default"
     return (
         f"Claude Code runs with a config dir of its own, {directory}, {why}: none of the owner's user settings, "

@@ -64,7 +64,7 @@ from evo_agents.hub import terminal as frames
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.worker.adapter import AgentEvent, RunContext
 from evo_agents.worker.claude_trust import TrustError, trust_folder
-from evo_agents.worker.runtimes import claude_code, codex, common, gateway, hub_tools, opencode
+from evo_agents.worker.runtimes import claude_code, codex, common, gateway, hub_tools, opencode, profiles
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -722,7 +722,7 @@ class ClaudeCodeTui(Tui):
         if self.remote_control:
             argv += ["--remote-control", name]
         for key, flag in (("model", "--model"), ("effort", "--effort")):
-            value = self.setting(key)
+            value = profiles.session_model(self.context, self.runtime) if key == "model" else self.setting(key)
             if value:
                 argv += [flag, value]
         argv += hub_tools.tui_args(self.context, self.runtime)  # the hub's MCP server alone, in a config dir of its own

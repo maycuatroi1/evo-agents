@@ -285,6 +285,63 @@ def test_pooled_agent_without_a_lease_never_falls_back_to_a_login_of_this_machin
     assert (claude_home.config_dir(tmp_path / "p" / "worktree") / claude_home.CREDENTIALS_FILE).exists()
 
 
+def owner_setup(env: dict[str, str]) -> Path:
+    """The owner's config dir of ``env`` with a setup: CLAUDE.md, a skill, an agent, a plugin, beside its settings."""
+    owner = claude_home.owner_dir(env)
+    (owner / "CLAUDE.md").write_text("# The owner's rules\n", encoding="utf-8")
+    for folder, name in (("skills", "execute-plan/SKILL.md"), ("agents", "plan-step.md"), ("plugins", "x.json")):
+        (owner / folder / name).parent.mkdir(parents=True, exist_ok=True)
+        (owner / folder / name).write_text("x", encoding="utf-8")
+    return owner
+
+
+def test_pooled_default_agent_links_the_owners_setup_and_never_its_login(tmp_path):
+    env = owner(tmp_path)
+    owner_dir = owner_setup(env)
+    own = agent(
+        tmp_path,
+        env,
+        own_home=True,
+        account_pool=True,
+        owner_setup=True,
+        profile=profile(),
+        leased=("CLAUDE_CODE_OAUTH_TOKEN",),
+    )
+    context = own.context("go", None)
+    asyncio.run(own.prepare_home(context))
+    asyncio.run(own.prepare_home(context))  # again, as at each agent start
+    directory = Path(context.env["CLAUDE_CONFIG_DIR"])
+    assert directory == claude_home.config_dir(tmp_path / "worktree")
+    linked = sorted(path.name for path in directory.iterdir() if path.is_symlink())
+    assert linked == ["CLAUDE.md", "agents", "plugins", "settings.json", "skills"]
+    assert (directory / "skills" / "execute-plan" / "SKILL.md").is_file()
+    assert (directory / "settings.json").resolve() == (owner_dir / "settings.json").resolve()
+    assert not (directory / claude_home.CREDENTIALS_FILE).exists()
+    assert list(json.loads((directory / ".claude.json").read_text())["mcpServers"]) == [hub_tools.SERVER]
+    notes = [text for text, _ in own.run.note]
+    assert len(notes) == 1 and "links the owner's CLAUDE.md" in notes[0] and "CLAUDE_CODE_OAUTH_TOKEN" in notes[0]
+    # the same dir under another agent's run: the links go, what Claude Code wrote itself stays
+    (directory / "projects").mkdir()
+    assert claude_home.link_owner_setup(directory, env, keep=False) == []
+    assert not any(path.is_symlink() for path in directory.iterdir()) and (directory / "projects").is_dir()
+    assert (owner_dir / "skills" / "execute-plan" / "SKILL.md").is_file(), "the owner's own files stay"
+
+
+def test_pooled_agent_of_another_profile_gets_none_of_the_owners_setup(tmp_path):
+    env = owner(tmp_path)
+    owner_setup(env)
+    for spec in ({"own_home": True, "account_pool": True}, {"own_home": True, "owner_setup": True}):
+        root = tmp_path / str(len(spec)) / ("a" if "account_pool" in spec else "b")
+        root.mkdir(parents=True)
+        own = agent(root, env, profile=profile(), leased=("CLAUDE_CODE_OAUTH_TOKEN",), **spec)
+        context = own.context("go", None)
+        asyncio.run(own.prepare_home(context))
+        directory = Path(context.env["CLAUDE_CONFIG_DIR"])
+        assert not any(path.is_symlink() for path in directory.iterdir())
+        assert "none of the owner's user settings" in own.run.note[0][0]
+    assert not claude_home.keeps_owner_setup({"account_pool": True, "owner_setup": True}, "codex")
+
+
 def test_own_home_codex_keeps_the_owners_home_and_says_so_once(tmp_path):
     codex = agent(tmp_path, owner(tmp_path), runtime="codex", own_home=True, profile=profile())
     context = codex.context("go", None)
