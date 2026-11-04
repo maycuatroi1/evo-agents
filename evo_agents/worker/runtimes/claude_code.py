@@ -123,6 +123,11 @@ here.
 - A run with a snapshot of autonomy gets the PreToolUse hook of ``evo_agents.worker.autonomy_hook`` on its Bash
   commands, with a profile or without one (``RunContext.autonomy``); every run of the daemon gets its file floor on
   Edit, Write, MultiEdit, NotebookEdit, Read, Grep, Glob and Bash (``RunContext.floor``).
+- A plan run gets the PreToolUse hook of ``evo_agents.worker.wait_guard`` (``RunContext.waits``), which refuses Monitor
+  and the Bash commands that wait for something elsewhere (a long sleep, a loop that sleeps, ``gh run watch``) and
+  names ``evo-agents worker wait``, and PLAN_WAIT_NOTE after SYSTEM_NOTE: a wait in the session parks nothing, since
+  the session stays open while a background command runs, up to the run's time cap (run #1537 held a slot that way
+  for hours).
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -252,6 +257,13 @@ BACKGROUND_NOTE = (
 _CLAUDE_FORK = "With the Task tool, start a fresh subagent, not a resumed or forked one."
 SUBAGENT = SUBAGENT_NOTE.format(fork=_CLAUDE_FORK)
 SYSTEM_NOTE = f"{HEADLESS_NOTE}\n\n{BACKGROUND_NOTE}\n\n{SUBAGENT}"
+# Appended for a plan run, whose waits for something elsewhere park it (``evo_agents.worker.wait_guard``).
+PLAN_WAIT_NOTE = (
+    "In this plan run, a command in the background is for work on this machine, such as tests or a build. Never wait "
+    "in this session for something elsewhere (the CI of a commit or a tag, a package on an index, a build or a run on "
+    "the hub, a deploy): no Monitor, no loop that sleeps, no long sleep, no watch. Wait with `evo-agents worker wait` "
+    "and end your turn: the run parks, holds no worker, and this session goes on when the wait wakes."
+)
 # What the agent is told when its background commands ended and the CLI opened no turn for them.
 FOLLOW_UP = (
     "The command(s) you started in the background have ended:\n{ended}\nRead their output and go on with the task "
@@ -755,7 +767,8 @@ class ClaudeCodeAdapter(QueueAdapter):
 
         dropped = dropped_env(self.context)
         profile = profiles.profile_of(self.context)
-        append = packs.with_instructions(profiles.with_instructions(SYSTEM_NOTE, profile), self.context.packs)
+        note = f"{SYSTEM_NOTE}\n\n{PLAN_WAIT_NOTE}" if self.context.run.get("kind") == "plan" else SYSTEM_NOTE
+        append = packs.with_instructions(profiles.with_instructions(note, profile), self.context.packs)
         settings = {
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
@@ -802,7 +815,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
         settings.update({"mcp_servers": servers} if servers else {})
         # the run's file floor and hook of autonomy beside the profile's
-        hooks = profiles.claude_hooks(profile, self.context.autonomy, self.context.floor)
+        hooks = profiles.claude_hooks(profile, self.context.autonomy, self.context.floor, self.context.waits)
         if hooks is not None:
             settings["hooks"] = hooks
         if self.budget is not None:

@@ -60,7 +60,17 @@ from evo_agents.hub import browser_login, curator, runs
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import autonomy_hook, environments, guard, interactive, model_router, orphans, packs, venvs
+from evo_agents.worker import (
+    autonomy_hook,
+    environments,
+    guard,
+    interactive,
+    model_router,
+    orphans,
+    packs,
+    venvs,
+    wait_guard,
+)
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
@@ -424,6 +434,7 @@ class Agent:
             packs=self.with_browser(self._packs or ()),
             autonomy=self.gate(),
             floor=autonomy_hook.floor_for_run(run, env),
+            waits=wait_guard.for_run(run),
         )
 
     def gate(self):
