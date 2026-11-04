@@ -79,6 +79,15 @@ LOST_PROMPT = (
     "complete. Then go on with the plan from where you stopped: read the plan as the hub holds it now with "
     "`evo-agents worker plan` first; the steps it holds as done stay done."
 )
+# And when its turn ended with steps of the plan to do and nothing to wait for: such a turn would end the run.
+KEEP_GOING_PROMPT = (
+    "Your turn ended with no decision of yours open while the plan still has {steps} to do, and a turn that ends so "
+    "ends the run before its plan is done. Nobody reads a question you write in a message. A tool call that came "
+    "back refused or cancelled without the reason of a hook (such as \"The user doesn't want to take this action "
+    'right now") was not refused by your owner: run it again, or reach the same end another way. Go on with the '
+    "plan now: read it as the hub holds it with `evo-agents worker plan` first. Ask your owner only with "
+    "`evo-agents worker ask`, and wait for a time or an event of the hub with `evo-agents worker wait`."
+)
 
 
 def read_asked(home, run_id: int) -> set[int]:
@@ -146,6 +155,10 @@ class Conversation:
         self.after_turn = after_turn or self.wait_for_decisions
         self.prompt_for = prompt_for or (lambda messages: self.reply_prompt)
         self.usages: list[dict | None] = []  # the usage each turn's agent ended with, in order (``sessions``)
+        self.start: int | None = None  # where the usages of the session ``turns`` works on start
+        keep = spec.get("keep_going")
+        # turns in a row the agent goes back to its plan (``keep_going``); 0: a turn with nothing to wait for ends it
+        self.keep_turns = keep if isinstance(keep, int) and not isinstance(keep, bool) and keep > 0 else 0
         run.record["resume_of_run_id"] = self.resume_of
         run.daemon.home.save_run(run.record)
 
@@ -312,16 +325,19 @@ class Conversation:
         resumed = opening + ("\n\n" + said if said else "")
         return runs.clip(resumed, runs.MAX_PROMPT_BYTES), self.session_id
 
-    async def turns(self, cls, prompt: str, session_id: str | None) -> None:
+    async def turns(self, cls, prompt: str, session_id: str | None, *, more: bool = False) -> None:
         """Turns of the agent until one ends with nothing to wait for: after each, the owner's messages that came in
         the meantime, or the answer the run waits for, start the next in the same session. The usage of each turn
         holds the first request of the session's first turn that reports one (``with_first_request``), null when the
         session started in the terminal UI; ``usages`` keeps each turn's, and the run's outcome holds those of every
         turn of the session so far (``sessions.session_usage``: the numbers added up, the largest peak, context
-        window and running total of the session's cost), not the last turn's alone."""
+        window and running total of the session's cost), not the last turn's alone. With ``more``, the turns go on
+        the session of the call before (``keep_going``), whose usages the outcome still counts."""
         run = self.run
-        terminal_first = run.mode == "interactive"
-        start, unseen = len(self.usages), terminal_first  # the usages of this session's turns follow
+        terminal_first = run.mode == "interactive" and not more
+        if not more or self.start is None:
+            self.start = len(self.usages)  # the usages of this session's turns follow
+        start, unseen = self.start, terminal_first
         while True:
             outcome, session_id = await run.agent.turns(cls, prompt, session_id, terminal_first=terminal_first)
             turns = [*self.usages[start:], outcome.usage]
@@ -350,6 +366,34 @@ class Conversation:
             prompt = runs.clip(
                 self.prompt_for(messages) + "\n\n" + await run.inbox.take(messages), runs.MAX_PROMPT_BYTES
             )
+
+    async def keep_going(self, cls, to_go: Callable[[], Awaitable[list[str] | None]], prompt: str) -> list[str]:
+        """Send the agent back to its plan, in its session, while its turn ended with nothing to wait for and steps
+        to do (``to_go``: their keys, None when the plan was not read): ``prompt`` naming them (``{steps}``) starts
+        the next turns, at most ``keep_turns`` in a row that leave the agent as many steps to do; a turn after which
+        fewer are left starts the count again. Not for a run its hub gave no ``keep_going`` (``runs.KEEP_GOING_TURNS``),
+        one in the terminal UI, nor once its owner asked it to finish. The steps still to do once it stops; none when
+        it did not go on, or the plan was not read."""
+        run = self.run
+        if not self.keep_turns or run.mode == "interactive":
+            return []
+        left, tries = await to_go(), 0
+        while left and tries < self.keep_turns and not run.finish_asked.is_set():
+            run.check()
+            tries += 1
+            shown = ", ".join(left)
+            run.note(
+                f"The agent's turn ended with no decision open and step(s) {shown} of the plan to do: it goes back to "
+                f"the plan in its session ({tries} of {self.keep_turns}).",
+                steps=left,
+            )
+            named = f"step {left[0]}" if len(left) == 1 else f"steps {shown}"
+            await self.turns(cls, prompt.replace("{steps}", named), self.session_id, more=True)
+            now_left = await to_go()
+            if now_left is not None and len(now_left) < len(left):
+                tries = 0
+            left = now_left
+        return [] if left is None or run.finish_asked.is_set() else left
 
     def session_usage(self, start: int) -> dict | None:
         """The usage of the turns of the session from ``usages[start]`` on: the one turn's as it is, else them added

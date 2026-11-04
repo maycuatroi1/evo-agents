@@ -21,6 +21,10 @@ each step when it was dispatched with ``session_per_step`` (``sessions``).
    the hub parks keeps its session and worktrees for the run that resumes it. The next attempt of a run the hub lost
    on this worker goes on in the lost attempt's session and worktrees when they are still here
    (``Conversation.adopt_lost``), with no session for each step.
+   A turn that ends with nothing to wait for while the plan as the hub holds it has steps to do sends the agent back
+   to them in its session (``Conversation.keep_going``), at most ``keep_going`` turns in a row (the claim's) without a step
+   getting done; a run whose agent still leaves steps to do then pushes as below and fails with ``steps_left``,
+   rather than ending done with its plan unfinished.
 4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
    of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
    names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
@@ -51,14 +55,16 @@ from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner import access, origin, push, venv, verify
-from evo_agents.worker.runner.common import Parked, RunFailed, log, push_cause
-from evo_agents.worker.runner.conversation import Conversation
+from evo_agents.worker.runner.common import Parked, RunFailed, cut, log, push_cause
+from evo_agents.worker.runner.conversation import KEEP_GOING_PROMPT, Conversation
 from evo_agents.worker.runner.directory import RunDirectory
 from evo_agents.worker.runner.sessions import StepSessions
 from evo_agents.worker.runner.transitions import start_refs
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
+
+SUMMARY_IN_ERROR = 1000  # characters of the agent's summary the error of a run that fails with steps_left keeps
 
 
 class PlanRun:
@@ -118,16 +124,40 @@ class PlanRun:
         if self.sessions is not None:
             await self.sessions.work(cls)
             usage = self.sessions.usage()
+            conversation = self.conversation  # the steps keep_going leaves to do are none in these cases too
+            done_with = not conversation.keep_turns or run.finish_asked.is_set() or run.mode == "interactive"
+            left = [] if done_with else await self.steps_to_go() or []
         else:
             prompt, session_id = await self.conversation.first_turn(self.prompt())
             await self.conversation.turns(cls, prompt, session_id)
+            left = await self.conversation.keep_going(cls, self.steps_to_go, KEEP_GOING_PROMPT)
             run.summary = verify.read_summary(run, self.directory.path)
             usage = run.outcome.usage if run.outcome else None
         await self.conversation.ensure_running()
         await run.reports.report("verifying")
         run.check()
         diffstat = await self.push_repos()
+        if left:  # pushed first, so what the agent did is on origin for the run that goes on
+            said = f"; its summary: {cut(run.summary, SUMMARY_IN_ERROR)}" if run.summary else ""
+            raise RunFailed(
+                f"the agent ended its turns with step(s) {', '.join(left)} of the plan to do and no decision open, "
+                f"{self.conversation.keep_turns} times in a row after it was sent back to the plan{said}",
+                cause="steps_left",
+                usage=usage,
+            )
         await run.reports.end("done", diffstat=diffstat, summary=run.summary, usage=usage)
+
+    async def steps_to_go(self) -> list[str] | None:
+        """The steps of the plan as the hub holds it now that the run still has to do (``runs.steps_to_go``); None
+        when the hub did not answer the plan."""
+        run = self.run
+        try:
+            view = await run.daemon.hub.plan(run.id)
+        except HubProblem as exc:
+            run.note(f"The plan was not read again after the agent's turn: {exc}")
+            return None
+        body = view.get("body") if isinstance(view, dict) else None
+        return runs.steps_to_go(body) if isinstance(body, dict) else None
 
     # The directory and its worktrees
 

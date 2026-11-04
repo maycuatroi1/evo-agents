@@ -786,6 +786,25 @@ def test_a_plan_run_with_a_session_per_step_takes_the_next_step_in_plan_order():
     assert runs.next_session_step({"steps": "none"}) is None
 
 
+def test_the_steps_a_plan_run_still_has_to_do_leave_out_blocked_descoped_and_waiting_ones():
+    body = {
+        "steps": [
+            {"id": 1, "status": "done"},
+            {"id": 2, "status": "in_progress", "depends_on": [1]},
+            {"id": 3, "depends_on": [1]},
+            {"id": 4, "status": "pending", "depends_on": [5]},
+            {"id": 5, "status": "blocked"},
+            {"id": 6, "status": "descoped"},
+            "a bare string",
+        ]
+    }
+    assert runs.steps_to_go(body) == ["2", "3"], "step 4 waits for the blocked step 5"
+    for item in body["steps"][1:3]:
+        item["status"] = "done"
+    assert runs.steps_to_go(body) == []
+    assert runs.steps_to_go({"steps": "none"}) == []
+
+
 def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff(plan):
     target = step(plan, 2)
     worktrees = {entry["repo"]: entry["repo"] for entry in plan.get("repos") or []}

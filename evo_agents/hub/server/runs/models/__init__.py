@@ -614,6 +614,14 @@ class RunSpec(BaseModel):
         description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
         "and the handoff of the plan; false: one session does every step, with the prompt above",
     )
+    keep_going: int = Field(
+        0,
+        ge=0,
+        exclude_if=lambda value: not value,
+        description="a plan run: the turns in a row its worker sends the agent back to the plan, in its session, when "
+        "a turn ends with steps to do and no decision open, before the run pushes and fails with steps_left; a turn "
+        "after which fewer steps are left starts the count again. Absent (0): such a turn ends the run done",
+    )
     browser: bool = Field(False, description=browser_help.SPEC_HELP, exclude_if=browser_help.no_browser)
     browser_identities: list[int] = Field(
         [], description=browser_help.SPEC_IDENTITIES_HELP, exclude_if=browser_help.no_identities
