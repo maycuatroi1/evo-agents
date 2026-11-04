@@ -158,7 +158,7 @@ it. The hub:
 2. opens the pull request "Release X.Y.Z" of `release/<version>` into the default branch, or finds the one open;
 3. reads its files and never merges a change with a sign of test hacking: a test removed, an assertion removed or
    loosened (an assert made always true among them), or a skip or xfail added, other than `pytest.importorskip` and a
-   skip on one platform with `reason=` (the signs of `judge.hack_signs`); such a pull request stays open and the cycle
+   skip on one platform with `reason=` (the signs of `diff_signs.hack_signs`); such a pull request stays open and the cycle
    stops (cause `hacking`);
 4. merges it with a merge commit at the run's commit alone, so GitHub refuses once the branch moved;
 5. makes the lightweight tag `v<version>` on the merge commit (`POST .../git/refs`), audited as `release.tag`.

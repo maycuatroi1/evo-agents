@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import TypeVar
 
 from evo_agents.hub import kg_decisions, kg_map, kg_review
@@ -209,14 +210,29 @@ class WebSession(HubSession):
         if focus is None:
             raise NotVisible(node_id)
         self.read = None
-        included: dict[str, dict] = {focus["id"]: focus}
-        hop: dict[str, int] = {focus["id"]: 0}
-        hubs: set[str] = set()
-        edges: dict[str, dict] = {}
-        left_out: set[str] = set()
-        neighbours: set[str] = set()
-        groups: dict[str, dict] = {}
-        degree: dict[str, int] = {}
+        walk = self._neighbourhood_walk(store, b, focus, hops, limit, group, opened)
+        missing = [nid for nid in walk.included if nid not in walk.degree]
+        if missing:
+            walk.degree.update(self._degrees(store, missing, b))
+        return {
+            "build": b,
+            "focus": focus["id"],
+            "hops": hops,
+            "limit": limit,
+            "group": group,
+            "nodes": self._walked_nodes(walk),
+            "edges": self._walked_edges(walk),
+            "groups": _groups_json(walk),
+            "neighbours": len(walk.neighbours),
+            "left_out": len(walk.left_out),
+            "truncated": bool(walk.left_out),
+        }
+
+    def _neighbourhood_walk(
+        self, store: Store, b: int, focus: dict, hops: int, limit: int, group: int | None, opened: frozenset[str]
+    ) -> _Walk:
+        """Breadth first from ``focus``, at most ``hops`` steps and ``limit`` nodes, as ``neighbourhood`` says."""
+        walk = _Walk(included={focus["id"]: focus}, hop={focus["id"]: 0})
         frontier = deque([(focus["id"], 0)])
         while frontier:
             current, depth = frontier.popleft()
@@ -224,76 +240,110 @@ class WebSession(HubSession):
                 continue
             found = [e for e in store.edges_of(current, b, limit=SEED_EDGES) if self.visible(e["label"])]
             if depth > 0 and len(found) > HUB_DEGREE:
-                hubs.add(current)  # not expanded: open it to see its neighbours
+                walk.hubs.add(current)  # not expanded: open it to see its neighbours
                 continue
-            found.sort(
-                key=lambda e: (
-                    -STATUS_RANK.get(e["status"], 0),
-                    e["rel"] in ("in_source", "part_of"),
-                    e["rel"],
-                    e["src"],
-                    e["dst"],
-                )
-            )
-            others = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in found}, b)
-            found = [e for e in found if _visible_node(self, others, _other(e, current))]
+            found, others = self._steps(store, b, current, found)
             if depth == 0:
-                neighbours = {_other(e, current) for e in found}
-                groups = _groups(found, current, others)
-                degree.update(self._degrees(store, {nid for g in groups.values() for nid in g["members"]}, b))
-                if group is not None:
-                    rank = _ranked(groups, degree, group, opened)  # the direct neighbours shown, in order
-                    found = [e for e in found if _other(e, current) in rank]
-                    found.sort(key=lambda e: rank[_other(e, current)])  # stable: ties keep the order above
+                found = self._first_step(walk, store, b, current, found, others, group, opened)
             for e in found:
                 other = _other(e, current)
-                node = others[other]
-                if other not in included:
-                    if len(included) >= limit:
-                        left_out.add(other)
+                if other not in walk.included:
+                    if len(walk.included) >= limit:
+                        walk.left_out.add(other)
                         continue
-                    included[other] = node
-                    hop[other] = depth + 1
+                    walk.included[other] = others[other]
+                    walk.hop[other] = depth + 1
                     frontier.append((other, depth + 1))
-                edges[e["id"]] = e
-        missing = [nid for nid in included if nid not in degree]
-        if missing:
-            degree.update(self._degrees(store, missing, b))
+                walk.edges[e["id"]] = e
+        return walk
+
+    def _steps(self, store: Store, b: int, current: str, found: list[dict]) -> tuple[list[dict], dict[str, dict]]:
+        """The visible edges ``found`` of ``current`` whose other node is visible too, strongest status first and
+        ``in_source`` and ``part_of`` last, with the other nodes by id."""
+        found = sorted(
+            found,
+            key=lambda e: (
+                -STATUS_RANK.get(e["status"], 0),
+                e["rel"] in ("in_source", "part_of"),
+                e["rel"],
+                e["src"],
+                e["dst"],
+            ),
+        )
+        others = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in found}, b)
+        return [e for e in found if _visible_node(self, others, _other(e, current))], others
+
+    def _first_step(
+        self,
+        walk: _Walk,
+        store: Store,
+        b: int,
+        current: str,
+        found: list[dict],
+        others: dict[str, dict],
+        group: int | None,
+        opened: frozenset[str],
+    ) -> list[dict]:
+        """Note the focus's direct neighbours, their groups and degrees in ``walk``; the edges of ``found`` the walk
+        follows: with ``group``, those to the neighbours each group shows, in their order."""
+        walk.neighbours = {_other(e, current) for e in found}
+        walk.groups = _groups(found, current, others)
+        walk.degree.update(self._degrees(store, {nid for g in walk.groups.values() for nid in g["members"]}, b))
+        if group is None:
+            return found
+        rank = _ranked(walk.groups, walk.degree, group, opened)  # the direct neighbours shown, in order
+        found = [e for e in found if _other(e, current) in rank]
+        found.sort(key=lambda e: rank[_other(e, current)])  # stable: ties keep the order above
+        return found
+
+    def _walked_nodes(self, walk: _Walk) -> list[dict]:
+        """The nodes the walk took, as kg_node shows them, with their hop, whether they are hubs and their degree."""
         nodes = []
-        for nid, n in included.items():
+        for nid, n in walk.included.items():
             entry = self._node_json(n)
-            entry["hop"] = hop[nid]
-            entry["hub"] = nid in hubs
-            entry["degree"] = degree.get(nid, 0)
+            entry["hop"] = walk.hop[nid]
+            entry["hub"] = nid in walk.hubs
+            entry["degree"] = walk.degree.get(nid, 0)
             nodes.append(entry)
+        return nodes
+
+    def _walked_edges(self, walk: _Walk) -> list[dict]:
+        """The edges the walk followed between two nodes it took."""
         shown = []
-        for e in edges.values():
-            if e["src"] in included and e["dst"] in included:
+        for e in walk.edges.values():
+            if e["src"] in walk.included and e["dst"] in walk.included:
                 self._saw(e["label"])
                 shown.append({"id": e["id"], "src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]})
-        return {
-            "build": b,
-            "focus": focus["id"],
-            "hops": hops,
-            "limit": limit,
-            "group": group,
-            "nodes": nodes,
-            "edges": shown,
-            "groups": [
-                {
-                    "key": key,
-                    "rel": g["rel"],
-                    "direction": g["direction"],
-                    "kind": g["kind"],
-                    "total": len(g["members"]),
-                    "shown": [nid for nid in _order(g["members"], degree) if nid in included],
-                }
-                for key, g in groups.items()
-            ],
-            "neighbours": len(neighbours),
-            "left_out": len(left_out),
-            "truncated": bool(left_out),
+        return shown
+
+
+@dataclass
+class _Walk:
+    """What the walk of a neighbourhood found: the nodes it took with their hop, the hubs it did not expand, the edges
+    it followed, the nodes past the limit, and the focus's direct neighbours, their groups and visible degrees."""
+
+    included: dict[str, dict]
+    hop: dict[str, int]
+    hubs: set[str] = field(default_factory=set)
+    edges: dict[str, dict] = field(default_factory=dict)
+    left_out: set[str] = field(default_factory=set)
+    neighbours: set[str] = field(default_factory=set)
+    groups: dict[str, dict] = field(default_factory=dict)
+    degree: dict[str, int] = field(default_factory=dict)
+
+
+def _groups_json(walk: _Walk) -> list[dict]:
+    return [
+        {
+            "key": key,
+            "rel": g["rel"],
+            "direction": g["direction"],
+            "kind": g["kind"],
+            "total": len(g["members"]),
+            "shown": [nid for nid in _order(g["members"], walk.degree) if nid in walk.included],
         }
+        for key, g in walk.groups.items()
+    ]
 
 
 def _other(edge: dict, current: str) -> str:

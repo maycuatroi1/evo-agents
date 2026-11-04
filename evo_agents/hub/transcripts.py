@@ -9,8 +9,8 @@ messages. Where they are:
   id>/subagents/`` (``agent-<id>.jsonl``, or deeper for a workflow's agents), read from Claude Code 2.1.2xx. The
   projects directories are ``$CLAUDE_CONFIG_DIR/projects`` (else ``~/.claude/projects``), every ``~/.claude*/projects``
   (another config directory, as a second account uses) and those where a hook found a transcript. ``<slug>`` is the
-  directory the session started in, as ``evo_agents.hub.memory.slug`` names it, and decides its project as memories
-  decide theirs (``Places``).
+  directory the session started in, as ``evo_agents.hub.memory_places.slug`` names it, and decides its project as
+  memories decide theirs (``Places``).
 - Codex: ``$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`` (else ``~/.codex``), and ``archived_sessions``. Codex
   compresses an older rollout to ``.jsonl.zst``, which is read through ``compression.zstd`` (Python 3.14), the
   ``zstandard`` module or the ``zstd`` command, whichever is there; without any, the file is skipped and said so. The
@@ -54,7 +54,7 @@ from pathlib import Path
 from evo_agents import filelock
 from evo_agents.hub.client import FILE_MODE, HubError, hub_dir, load_credentials, write_atomic
 from evo_agents.hub.digest import SESSION_ID, is_codex
-from evo_agents.hub.memory import SLUG, claude_projects, slug
+from evo_agents.hub.memory_places import SLUG, claude_projects, slug
 from evo_agents.hub.redact import redact, redact_data
 
 MiB = 1024 * 1024

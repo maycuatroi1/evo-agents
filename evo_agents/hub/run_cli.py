@@ -550,13 +550,22 @@ def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
 
 def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs; ``_describe_local`` says those of a local run."""
-    plan_run = run["kind"] != "step"  # every other kind has repos, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"), *_what(run, hub_url)]
+    lines += _placement(run)
+    lines += _moves(run)
+    lines += _results(run)
+    lines.append(("events", f"{run['last_seq']}"))
+    return lines
+
+
+def _placement(run: dict) -> list[tuple[str, str]]:
+    """Where and how the run works: its repos or repo with the commit, its worker, its runtime, who dispatched it."""
+    plan_run = run["kind"] != "step"  # every other kind has repos, and no step
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
     if plan_run:
-        lines.append(("repos", (_repos(run) or "none") + commit))
+        lines = [("repos", (_repos(run) or "none") + commit)]
     else:
-        lines.append(("repo", run["repo"] + (f", branch {run['branch']}" if run["branch"] else "") + commit))
+        lines = [("repo", run["repo"] + (f", branch {run['branch']}" if run["branch"] else "") + commit)]
     worker = f"{run['worker']} (#{run['worker_id']})" if run["worker_id"] else "none yet"
     if run["pinned_worker_id"]:
         worker += f", pinned to worker #{run['pinned_worker_id']}"
@@ -565,11 +574,17 @@ def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
     )
     runtime += f", model {run['model']}" if run["model"] else ""
     approval = "" if plan_run else f", approval {run['approval']}"
-    lines += [
+    return lines + [
         ("worker", worker),
         ("runtime", f"{runtime}, {run['mode']}{approval}, timeout {_timeout(run)}"),
         ("dispatched", f"by {run['dispatched_by']} at {when(run['queued_at'])} UTC{_as_owner(run)}"),
     ]
+
+
+def _moves(run: dict) -> list[tuple[str, str]]:
+    """How the run went so far: its agent time and times, waits, lease, the owner's asks, the run it retries, its
+    session."""
+    lines = []
     if run["run_seconds"]:
         lines.append(("agent time", f"{run['run_seconds'] // 60} min used of {_timeout(run)}"))
     times = [(name, run[f"{name}_at"]) for name in ("leased", "started", "finished") if run[f"{name}_at"]]
@@ -593,31 +608,32 @@ def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
         lines.append(("waits for", _steady_wait(run)))
     if run["session_id"]:
         lines.append(("session", run["session_id"]))
+    return lines
+
+
+def _verify_text(result) -> str:
+    if isinstance(result, dict):
+        return f"exit {result.get('exit_code')}: {result.get('command')}"
+    return json.dumps(result, ensure_ascii=False)
+
+
+def _results(run: dict) -> list[tuple[str, str]]:
+    """What the run left: its diffstat, verify results, usage, error and cause, evidence, request and uploads."""
+    lines = []
     stat = run["diffstat"]
     if isinstance(stat, dict):
         parts = [f"{stat[key]} {key}" for key in ("files", "insertions", "deletions") if key in stat]
         lines.append(("diffstat", ", ".join(parts) or json.dumps(stat)))
     for index, result in enumerate(run["verify"] or ()):
-        text = (
-            f"exit {result.get('exit_code')}: {result.get('command')}"
-            if isinstance(result, dict)
-            else json.dumps(result, ensure_ascii=False)
-        )
-        lines.append(("verify" if index == 0 else "", text))
+        lines.append(("verify" if index == 0 else "", _verify_text(result)))
     if run["usage"]:
         lines.append(("usage", _clip(json.dumps(run["usage"], ensure_ascii=False, separators=(",", ":")), RAW_CHARS)))
-    if run["error"]:
-        lines.append(("error", run["error"]))
-    if run.get("failure_cause"):
-        lines.append(("cause", run["failure_cause"]))
-    if run["evidence"]:
-        lines.append(("evidence", run["evidence"]))
-    if run.get("request"):
-        lines.append(("request", run["request"]))
+    texts = [("error", run["error"]), ("cause", run.get("failure_cause")), ("evidence", run["evidence"])]
+    texts.append(("request", run.get("request")))
+    lines += [(label, text) for label, text in texts if text]
     blobs = [f"{name} {run[f'{name}_sha256'][:12]}" for name in ("log", "diff") if run[f"{name}_sha256"]]
     if blobs:
         lines.append(("uploaded", ", ".join(blobs)))
-    lines.append(("events", f"{run['last_seq']}"))
     return lines
 
 
@@ -828,7 +844,52 @@ def _control(action: str, said: Callable[[dict], str]):
     return command
 
 
-def _register_author(rsub, with_project) -> None:
+def _project_option(parser) -> None:
+    parser.add_argument("--project", help=PROJECT_HELP)
+
+
+def _run_argument(parser) -> None:
+    parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
+    _project_option(parser)
+
+
+def _model_option(parser) -> None:
+    parser.add_argument(
+        "--model",
+        help="the model, as the runtime names it (opencode: provider/model); needs --runtime with that runtime "
+        "(default: the runtime's own choice)",
+    )
+
+
+def _register_dispatch(rsub) -> None:
+    dispatch = rsub.add_parser(
+        "dispatch",
+        help="queue a run of each step named for the pool of its agent, all of them or none (needs writer)",
+    )
+    dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
+    dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
+    _project_option(dispatch)
+    dispatch_options(dispatch)
+    _model_option(dispatch)
+    account_option(dispatch)
+    json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
+    dispatch.set_defaults(func=cmd_dispatch)
+
+
+def _register_plan(rsub) -> None:
+    plan = rsub.add_parser(
+        "plan",
+        help="queue a plan run: one run, on the pool of its agent, that does every step of the plan "
+        "not done yet (needs writer)",
+    )
+    plan.add_argument("plan", metavar="PLAN", help="the plan's id")
+    _project_option(plan)
+    plan_options(plan, _model_option)
+    json_option(plan, RUN)
+    plan.set_defaults(func=cmd_plan)
+
+
+def _register_author(rsub) -> None:
     authored = rsub.add_parser(
         "author",
         help="queue an author run: a plan written from your request with the create-exec-plan skill, on the pool of "
@@ -839,74 +900,30 @@ def _register_author(rsub, with_project) -> None:
         metavar="REQUEST",
         help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
     )
-    with_project(authored)
+    _project_option(authored)
     author_options(authored)
     json_option(authored, RUN)
     authored.set_defaults(func=cmd_author)
 
 
-def register_runs(hsub) -> None:
-    run = hsub.add_parser(
-        "run",
-        help="dispatch plan steps, or a whole plan, to the pool of their agent, and follow, steer and end their runs",
-    )
-    rsub = run.add_subparsers(dest="run_command", required=True)
-
-    def with_project(parser) -> None:
-        parser.add_argument("--project", help=PROJECT_HELP)
-
-    def with_run(parser) -> None:
-        parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
-        with_project(parser)
-
-    def with_model(parser) -> None:
-        parser.add_argument(
-            "--model",
-            help="the model, as the runtime names it (opencode: provider/model); needs --runtime with that runtime "
-            "(default: the runtime's own choice)",
-        )
-
-    dispatch = rsub.add_parser(
-        "dispatch",
-        help="queue a run of each step named for the pool of its agent, all of them or none (needs writer)",
-    )
-    dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
-    dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
-    with_project(dispatch)
-    dispatch_options(dispatch)
-    with_model(dispatch)
-    account_option(dispatch)
-    json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
-    dispatch.set_defaults(func=cmd_dispatch)
-
-    plan = rsub.add_parser(
-        "plan",
-        help="queue a plan run: one run, on the pool of its agent, that does every step of the plan "
-        "not done yet (needs writer)",
-    )
-    plan.add_argument("plan", metavar="PLAN", help="the plan's id")
-    with_project(plan)
-    plan_options(plan, with_model)
-    json_option(plan, RUN)
-    plan.set_defaults(func=cmd_plan)
-
-    _register_author(rsub, with_project)
-
+def _register_list_and_show(rsub) -> None:
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
-    with_project(listed)
+    _project_option(listed)
     list_options(listed)
     json_option(listed, returns_object(*RUN_LIST_KEYS, schema="RunList"))
     listed.set_defaults(func=cmd_list)
 
     show = rsub.add_parser("show", help="one run: state, step, worker, commit, verify results, evidence")
-    with_run(show)
+    _run_argument(show)
     json_option(show, RUN)
     show.set_defaults(func=cmd_show)
 
+
+def _register_logs(rsub) -> None:
     logs = rsub.add_parser(
         "logs", help="a run's events: what its agent said and did, and its moves; --follow prints them as they come"
     )
-    with_run(logs)
+    _run_argument(logs)
     logs.add_argument(
         "-f", "--follow", action="store_true", help="keep reading the run's live stream until the run ends"
     )
@@ -925,12 +942,12 @@ def register_runs(hsub) -> None:
     )
     logs.set_defaults(func=cmd_logs)
 
-    register_send(rsub, with_run, project_of_args)
 
+def _register_chat_and_credentials(rsub) -> None:
     chat = rsub.add_parser(
         "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"
     )
-    with_run(chat)
+    _run_argument(chat)
     json_option(chat, returns_object(*CHAT_KEYS, schema="RunChat"))
     chat.set_defaults(func=cmd_chat)
 
@@ -939,17 +956,35 @@ def register_runs(hsub) -> None:
         help="the leases a run got: secret or GitHub App, target, worker, when issued, ending and revoked; never the "
         "value (owner only)",
     )
-    with_run(credentials)
+    _run_argument(credentials)
     json_option(credentials, returns_array(*LEASE_KEYS, schema="RunLease"))
     credentials.set_defaults(func=cmd_credentials)
 
-    register_candidates(rsub, with_run, project_of_args)
-    register_outputs(rsub, with_run, project_of_args)
-    register_access(rsub, with_run, project_of_args, RUN)
+
+def _register_controls(rsub) -> None:
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
-        with_run(parser)
+        _run_argument(parser)
         if action == "rerun":
             rerun_options(parser)
         json_option(parser, RUN)
         parser.set_defaults(func=_control(action, said))
+
+
+def register_runs(hsub) -> None:
+    run = hsub.add_parser(
+        "run",
+        help="dispatch plan steps, or a whole plan, to the pool of their agent, and follow, steer and end their runs",
+    )
+    rsub = run.add_subparsers(dest="run_command", required=True)
+    _register_dispatch(rsub)
+    _register_plan(rsub)
+    _register_author(rsub)
+    _register_list_and_show(rsub)
+    _register_logs(rsub)
+    register_send(rsub, _run_argument, project_of_args)
+    _register_chat_and_credentials(rsub)
+    register_candidates(rsub, _run_argument, project_of_args)
+    register_outputs(rsub, _run_argument, project_of_args)
+    register_access(rsub, _run_argument, project_of_args, RUN)
+    _register_controls(rsub)

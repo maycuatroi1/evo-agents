@@ -11,7 +11,7 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import kg_eval_sessions as ks
-from evo_agents.hub.memory import slug
+from evo_agents.hub.memory_places import slug
 from evo_agents.kg import evaluate as ev
 from evo_agents.kg.project import load_project_at
 from tests.kg.projects import commit, git, write

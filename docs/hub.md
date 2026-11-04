@@ -1793,7 +1793,7 @@ App's (`docs/credentials.md`); the Builder and the Judge of a change never run a
 
 When the Builder ends done with every step of its plan done, the job `curator.changes` opens its pull request on
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
-hacking (`judge.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
+hacking (`diff_signs.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
 verify or a file it runs changed, CI or the configuration of lint and tests changed, a lint warning silenced, `__eq__`
 overloaded, an exit in a test, a protected path of the charter touched, and the gaps a security review found: an
 assertion compared with its own file's lines alone (moved to another file, or under a guard that never runs, it is

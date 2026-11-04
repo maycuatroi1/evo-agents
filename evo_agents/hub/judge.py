@@ -1,8 +1,7 @@
-"""The Curator's Builder and Judge as the hub models them: the plan and the branch an accepted proposal becomes, the
-deterministic detector of score hacking that reads a diff before the Judge does, which runtime judges, the verdict, CI
-on a pull request, and when the hub may merge one. Pure functions over JSON values, standard library only, so the api,
-the hub's worker, the worker daemon and the tests share them. ``evo_agents.hub.server.changes`` holds the routes and
-the job built on them; ``docs/curator.md`` the design.
+"""The Curator's Builder and Judge as the hub models them: the plan and the branch an accepted proposal becomes, which
+runtime judges, the verdict, CI on a pull request, and when the hub may merge one. Pure functions over JSON values,
+standard library only, so the api, the hub's worker, the worker daemon and the tests share them.
+``evo_agents.hub.server.changes`` holds the routes and the job built on them; ``docs/curator.md`` the design.
 
 A proposal of a tier the charter's ``planned_tiers`` names (``planned_tiers``: tiers 0 to 2, PLANNED_TIERS, unless the
 charter names others, tier 3 included) that an admin accepts becomes a plan on the hub (``curator_plan_id``), the
@@ -12,19 +11,8 @@ opens a pull request on GitHub (a merge request on GitLab opens with the push, `
 judge run on the worker on duty. The Judge reads the proposal, the diff, the plan's verify and the project's hidden
 checks; it never reads the Builder's transcript.
 
-``hack_signs`` reads a diff, file by file, for what a change does to pass its checks rather than to do its work
-(SIGN_KINDS): an assertion removed (an assertion of a test file is compared with what that same file adds, never with
-another file's, and one put under a guard that never runs counts as removed), a skip or an xfail added (aliased or
-imported on its own included), a test removed (one renamed, its definition the same but for its name, is not), a
-number changed on an assertion's line of a test, an expected value of a test changed on a line of its own, a golden or
-snapshot file of the tests changed, an assertion's failure caught, a file the plan's verify runs or a plan's copy
-changed (the Makefile, justfile, noxfile or script of package.json a verify command runs included), a CI workflow or the configuration of lint, types and tests changed, a lint warning silenced, ``__eq__``
-overloaded, the process exited from a test, a file of the charter's protected paths touched, an instruction of a
-harness (a skill's file, an AGENTS.md or a CLAUDE.md) to test or verify weakened (``weakened``: a line added that lets
-an agent skip them, or more lines about them removed than added), or a diff that cannot be read: a binary or unknown
-file where tests, CI, configuration or a harness live counts, an image of the docs does not. One sign is enough: the
-proposal goes to tier 3 and the Judge fails it. What a verify command runs is read from its shell words
-(``evo_agents.hub.verify_words``).
+``evo_agents.hub.diff_signs`` holds the deterministic detector (``hack_signs``) and what it reads: the signs of score
+hacking in a diff. One sign is enough: the proposal goes to tier 3 and the Judge fails it.
 
 ``judge_runtime`` says what the Judge runs on: Codex when the project's policy declares a sink for Codex (an id
 ``codex@...``) whose clearance covers the project's label and the worker on duty has it, else Claude Code with a model
@@ -56,18 +44,17 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Literal, get_args
 from urllib.parse import urlsplit
 
-from evo_agents.hub import proofs, tiers
+from evo_agents.hub import proofs
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
+from evo_agents.hub.diff_signs import SIGN_KINDS
 from evo_agents.hub.judges import codex_cleared as codex_cleared  # their home before evo_agents.hub.judges
 from evo_agents.hub.judges import judge_runtime as judge_runtime
-from evo_agents.hub.replay import harness_path
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 from evo_agents.hub.verify_words import programs as programs  # its home before evo_agents.hub.verify_words
-from evo_agents.hub.verify_words import verify_paths, verify_runners
 
 ChangeState = Literal[
     "planned",  # the plan is on the hub: the night shift may queue its Builder
@@ -102,8 +89,6 @@ VERDICTS: tuple[str, ...] = get_args(Verdict)
 MAX_REASONS_CHARS = 8000
 MAX_VERDICT_MESSAGE = 64 * 1024  # the end of the Judge's last message read for its verdict
 MAX_VERDICT_TRIES = 200  # opening braces tried, from the end, for the JSON object that ends it
-MAX_SIGNS = 50
-MAX_SIGN_TEXT = 200
 MAX_PATHS = 3000  # changed paths a verdict names, as GitHub lists at most 3000 files of a pull request
 MAX_CHECK_OUTPUT_CHARS = 60_000  # GitHub takes 65535 in a check run's summary
 CI_OK = frozenset({"success", "neutral", "skipped"})  # a check run's conclusion that lets a merge go
@@ -116,236 +101,6 @@ SKIP_CI = re.compile(
     r"\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|\*\*\*NO_CI\*\*\*|^skip-checks:\s*true\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
-
-SignKind = Literal[
-    "assert_removed",
-    "test_removed",
-    "skip_added",
-    "threshold_changed",
-    "verify_changed",
-    "ci_changed",
-    "lint_config_changed",
-    "lint_suppressed",
-    "eq_overridden",
-    "exit_in_test",
-    "protected_path",
-    "diff_unreadable",
-    "expected_changed",
-    "golden_changed",
-    "assert_caught",
-    "instruction_weakened",
-]  # the keys of SIGN_KINDS, as a type
-SIGN_KINDS: dict[str, str] = {
-    "assert_removed": "an assertion of a test removed",
-    "test_removed": "a test removed",
-    "skip_added": "a skip, an xfail or an only added to tests",
-    "threshold_changed": "a number changed on an assertion's line of a test",
-    "verify_changed": "a plan's copy, or a file the plan's verify runs, changed",
-    "ci_changed": "a CI workflow changed",
-    "lint_config_changed": "the configuration of lint or tests changed",
-    "lint_suppressed": "a lint or type warning silenced",
-    "eq_overridden": "__eq__ or __ne__ overloaded",
-    "exit_in_test": "the process exited from a test",
-    "protected_path": "a protected path of the charter touched",
-    "diff_unreadable": "a file whose diff cannot be read",
-    "expected_changed": "an expected value of a test changed",
-    "golden_changed": "a golden, snapshot or data file of the tests changed",
-    "assert_caught": "the failure of an assertion caught",
-    "instruction_weakened": "an instruction of a skill, an AGENTS.md or a CLAUDE.md to test or verify weakened",
-}
-
-CI_PATHS = (
-    ".github/workflows/**",
-    ".github/actions/**",
-    ".gitlab-ci.yml",
-    ".gitlab-ci/**",
-    ".circleci/**",
-    ".travis.yml",
-    ".buildkite/**",
-    "azure-pipelines.yml",
-    "Jenkinsfile",
-    "**/Jenkinsfile",
-)
-LINT_CONFIG_PATHS = (
-    "ruff.toml",
-    ".ruff.toml",
-    "**/ruff.toml",
-    ".flake8",
-    "tox.ini",
-    "pytest.ini",
-    "mypy.ini",
-    ".mypy.ini",
-    ".pylintrc",
-    "pylintrc",
-    ".coveragerc",
-    "codecov.yml",
-    ".codecov.yml",
-    ".pre-commit-config.yaml",
-    "**/conftest.py",
-    "eslint.config.*",
-    "**/eslint.config.*",
-    ".eslintrc*",
-    "**/.eslintrc*",
-    ".prettierrc*",
-    "**/.prettierrc*",
-    "biome.json",
-    "**/biome.json",
-    "jest.config.*",
-    "**/jest.config.*",
-    "vitest.config.*",
-    "**/vitest.config.*",
-    "playwright.config.*",
-    "**/playwright.config.*",
-    "tsconfig.json",
-    "**/tsconfig.json",
-    "tsconfig.*.json",
-    "**/tsconfig.*.json",
-    "jsconfig.json",
-    "**/jsconfig.json",
-    "pyrightconfig.json",
-    "**/pyrightconfig.json",
-    ".golangci.*",
-    "**/.golangci.*",
-    ".mocharc*",
-    "**/.mocharc*",
-    "karma.conf.*",
-    "**/karma.conf.*",
-    "cypress.config.*",
-    "**/cypress.config.*",
-    ".nycrc*",
-    "**/.nycrc*",
-    ".c8rc*",
-    "**/.c8rc*",
-)
-SECTIONED_CONFIG = (
-    "pyproject.toml",
-    "**/pyproject.toml",
-    "setup.cfg",
-    "**/setup.cfg",
-    "package.json",
-    "**/package.json",
-)
-# Golden, snapshot and expected-output files, wherever they live: a change to one changes what a test expects.
-GOLDEN_PATHS = (
-    "**/__snapshots__/**",
-    "**/*.snap",
-    "**/snapshots/**",
-    "**/golden/**",
-    "**/goldens/**",
-    "**/*.golden",
-    "**/testdata/**",
-    "**/expected/**",
-    "**/*.approved.*",
-    "**/*.received.*",
-)
-ASSET_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".pdf")
-# The files of a test area that are code a reader can judge line by line; any other file there is the tests' data.
-SOURCE_SUFFIXES = (
-    ".py",
-    ".pyi",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".cjs",
-    ".ts",
-    ".tsx",
-    ".mts",
-    ".cts",
-    ".go",
-    ".rs",
-    ".rb",
-    ".java",
-    ".kt",
-    ".kts",
-    ".scala",
-    ".swift",
-    ".c",
-    ".cc",
-    ".cpp",
-    ".h",
-    ".hpp",
-    ".cs",
-    ".php",
-    ".sh",
-    ".bash",
-    ".ex",
-    ".exs",
-    ".dart",
-    ".lua",
-    ".vue",
-    ".svelte",
-)
-ASSERTION = re.compile(
-    r"\bassert\b|\bself\.assert\w*\s*\(|\bassert\w*\s*\(|\bexpect\s*\(|\bpytest\.raises\b|\.should\b"
-)
-TEST_DEFINITION = re.compile(r"^\s*(?:async\s+)?def\s+test\w*\s*\(|^\s*(?:it|test)\s*\(\s*['\"`]")
-TEST_NAME = re.compile(r"\bdef\s+test\w*")  # a Python test's name; the literals of it() and test() fold apart
-SKIP = re.compile(
-    r"\bpytest\.(?:mark\.)?(?:skip|skipif|xfail|importorskip)\b|\bunittest\.(?:skip\w*|expectedFailure)\b"
-    r"|@skip\w*\b|\b(?:it|test|describe|context)\.(?:skip|only|todo|fixme)\s*\(|\bx(?:it|describe|test)\s*\("
-    r"|\bt\.Skip\w*\s*\(|#\[ignore\]"
-    r"|\bmark\.(?:skip|skipif|xfail)\b|\bskipTest\s*\(|\bSkipTest\b|@expectedFailure\b|\b__test__\s*=\s*False\b"
-    r"|^\s*from\s+(?:pytest|_pytest[\w.]*|unittest[\w.]*|nose\w*)\s+import\b.*\b(?:skip\w*|xfail|importorskip"
-    r"|SkipTest|expectedFailure|mark)\b"
-)
-# In a test file, besides SKIP: a skip, an xfail or an only called through any name, as an alias of pytest does.
-TEST_SKIP = re.compile(r"\.(?:skip|skipif|xfail|only|todo|fixme)\s*\(|(?<![\w.])(?:skip|xfail|importorskip)\s*\(")
-SUPPRESS = re.compile(
-    r"#\s*noqa\b|#\s*type:\s*ignore|#\s*pyright:\s*ignore|#\s*pylint:\s*disable|#\s*nosec\b|#\s*fmt:\s*off"
-    r"|#\s*pragma:\s*no\s*cover|eslint-disable|@ts-(?:ignore|nocheck|expect-error)|biome-ignore"
-)
-EQ_OVERLOAD = re.compile(r"\bdef\s+__(?:eq|ne)__\s*\(|\b__(?:eq|ne)__\s*=")
-EXIT = re.compile(
-    r"\bsys\.exit\s*\(|\bos\._exit\s*\(|\braise\s+SystemExit\b|^\s*(?:exit|quit)\s*\(|\bprocess\.exit\s*\("
-    r"|\bgetattr\s*\(\s*(?:os|sys)\s*,|\b__import__\s*\(\s*['\"](?:os|sys)['\"]\s*\)|\bos\.(?:abort|kill|killpg)\s*\("
-    r"|\bpytest\.exit\s*\(|\bSystemExit\s*\(|\bbuiltins\.(?:exit|quit)\b"
-)
-# An assertion's failure caught: `except AssertionError`, a bare or BaseException except, contextlib.suppress of it,
-# pytest.raises(AssertionError), or an empty catch in JavaScript.
-CATCH = re.compile(
-    r"^\s*except\s*(?::|\(?\s*(?:[\w.]*\.)?(?:AssertionError|BaseException)\b)|\bsuppress\s*\([^)]*\b(?:AssertionError"
-    r"|BaseException)\b|\braises\s*\(\s*AssertionError\b|\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}|\.catch\s*\(\s*\(\s*\w*"
-    r"\s*\)\s*=>\s*(?:\{\s*\}|undefined|null|void 0)\s*\)"
-)
-# A guard that never lets what it holds run: an assertion put under it is an assertion removed.
-DEAD_GUARD = re.compile(
-    r"^\s*(?:el)?if\s*\(?\s*(?:False|false|0|None|null|undefined|not\s+True|!\s*true|!\s*1)\s*\)?\s*"
-    r"(?::|\{|$)|^\s*while\s*\(?\s*(?:False|false|0)\s*\)?\s*(?::|\{|$)"
-)
-# What an instruction of a harness says of testing and verifying, and the words of one that lets an agent skip it
-# rather than forbids skipping it (``weakened``).
-_CHECKS = r"(?:tests?|testing|pytest|vitest|jest|verify|verifying|verification|lint|linting|linters?|typecheck\w*|ci)\b"
-TESTING = re.compile(r"\b" + _CHECKS, re.IGNORECASE)
-SKIPPING = re.compile(
-    r"--no-verify\b|\b(?:skip|skipping|omit|omitting|bypass|bypassing|ignore|ignoring|disable|disabling|drop|dropping)"
-    r"\b[^.\n]{0,40}?\b" + _CHECKS + r"|\b(?:no need to|not necessary to|needn't|unnecessary|optional(?:ly)?)\b"
-    r"[^.\n]{0,40}?\b" + _CHECKS + r"|\b" + _CHECKS + r"[^.\n]{0,30}?\b(?:is|are)\s+(?:optional|not (?:needed|required"
-    r"|necessary))\b",
-    re.IGNORECASE,
-)
-NEGATED = re.compile(
-    r"\b(?:do not|don't|never|must not|mustn't|should not|shouldn't|no)\s+(?:\w+\s+){0,2}?(?:skip|omit|bypass|ignore"
-    r"|disable|drop)\b",
-    re.IGNORECASE,
-)
-TOLERANCE = re.compile(
-    r"approx|isclose|allclose|toleran|\brel\s*=|\babs\s*=|atol|rtol|\bdelta\b|\bplaces\b|threshold|timeout"
-    r"|toBeCloseTo|toBeLessThan|toBeGreaterThan",
-    re.IGNORECASE,
-)
-NUMBER = re.compile(r"\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
-STRING = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`")
-CONFIG_KEY = re.compile(
-    r"^\s*\[\[?tool\.(?:ruff|pytest|mypy|coverage|pyright|black|isort|pylint|flake8|bandit)\b"
-    r"|^\s*\[(?:tool:pytest|pytest|mypy[^\]]*|flake8|pycodestyle|pylint[^\]]*|coverage:[^\]]*|isort|tool:isort)\]"
-    r"|^\s*(?:select|ignore|extend-select|extend-ignore|per-file-ignores|exclude|extend-exclude|addopts"
-    r"|filterwarnings|fail_under|fail-under|strict\w*|testpaths|python_files|python_classes|python_functions|markers"
-    r"|ignore_missing_imports|ignore_errors|follow_imports|disable_error_code|norecursedirs|collect_ignore\w*"
-    r"|minversion|required_plugins|disallow_\w+|warn_\w+|check_untyped_defs|no_implicit_optional|omit)\s*="
-    r"|\"(?:lint|test|typecheck|check|format|jest|vitest|eslintConfig|prettier|mocha|ava|c8|nyc)[\w:-]*\"\s*:"
-    r"|\"(?:testMatch|testRegex|testPathIgnorePatterns|coveragePathIgnorePatterns|coverageThreshold|strict\w*)\"\s*:"
-)
-HUNK = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 SHA = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 
 
@@ -488,295 +243,6 @@ def gitlab_push_options(target: str, title: str | None = None) -> list[str]:
     return options
 
 
-# Reading a diff
-
-
-@dataclass
-class FileDiff:
-    """One file of a diff: its path (the new one), the old path of a rename or a deletion, how it changed, and the
-    lines added and removed, each (line number in its side, text). ``readable`` is False for a binary file, or one
-    whose patch GitHub left out."""
-
-    path: str
-    old_path: str | None = None
-    status: str = "modified"  # added, removed, modified, renamed
-    added: list[tuple[int, str]] = field(default_factory=list)
-    removed: list[tuple[int, str]] = field(default_factory=list)
-    readable: bool = True
-
-
-def _strip_prefix(name: str, prefix: str) -> str:
-    name = name.strip()
-    if name.startswith('"') and name.endswith('"'):
-        name = name[1:-1]
-    return name[len(prefix) :] if name.startswith(prefix) else name
-
-
-def _read_hunks(lines: list[str], diff: FileDiff) -> None:
-    old = new = 0
-    for line in lines:
-        found = HUNK.match(line)
-        if found:
-            old, new = int(found.group(1)), int(found.group(2))
-            continue
-        if line.startswith("\\"):  # "\ No newline at end of file"
-            continue
-        if line.startswith("+"):
-            diff.added.append((new, line[1:]))
-            new += 1
-        elif line.startswith("-"):
-            diff.removed.append((old, line[1:]))
-            old += 1
-        else:
-            old += 1
-            new += 1
-
-
-def parse_diff(text: str) -> list[FileDiff]:
-    """The files of a unified diff as ``git diff`` writes it."""
-    files: list[FileDiff] = []
-    current: FileDiff | None = None
-    body: list[str] = []
-
-    def close() -> None:
-        if current is not None:
-            _read_hunks(body, current)
-            files.append(current)
-
-    for line in (text or "").splitlines():
-        if line.startswith("diff --git "):
-            close()
-            parts = line[len("diff --git ") :].split(" b/", 1)
-            old = _strip_prefix(parts[0], "a/")
-            new = _strip_prefix(parts[1], "") if len(parts) == 2 else old
-            current, body = FileDiff(path=new, old_path=old if old != new else None), []
-            continue
-        if current is None:
-            continue
-        if line.startswith("new file mode"):
-            current.status = "added"
-        elif line.startswith("deleted file mode"):
-            current.status = "removed"
-            current.old_path = current.old_path or current.path
-        elif line.startswith("rename from "):
-            current.status, current.old_path = "renamed", line[len("rename from ") :].strip()
-        elif line.startswith("rename to "):
-            current.path = line[len("rename to ") :].strip()
-        elif line.startswith("Binary files ") or line.startswith("GIT binary patch"):
-            current.readable = False
-        elif body or HUNK.match(line):
-            body.append(line)
-        elif line.startswith("+++ "):  # the rest of the header before the first hunk: index, modes, --- and +++
-            name = line[4:].strip()
-            if name != "/dev/null":
-                current.path = _strip_prefix(name, "b/")
-    close()
-    return files
-
-
-def from_github_files(items: list[dict]) -> list[FileDiff]:
-    """The files of a pull request as GitHub lists them (GET /repos/{o}/{r}/pulls/{n}/files): a file without a
-    ``patch`` (binary, or too large for GitHub to show) is unreadable."""
-    files = []
-    for item in items:
-        if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
-            continue
-        status = {"added": "added", "removed": "removed", "renamed": "renamed"}.get(item.get("status"), "modified")
-        previous = item.get("previous_filename")
-        diff = FileDiff(path=item["filename"], old_path=previous if isinstance(previous, str) else None, status=status)
-        patch = item.get("patch")
-        if isinstance(patch, str):
-            _read_hunks(patch.splitlines(), diff)
-        elif item.get("changes", 1) != 0:
-            diff.readable = False
-        files.append(diff)
-    return files
-
-
-# Signs of score hacking
-
-
-def _matches(globs, repo: str, path: str) -> str | None:
-    return next((glob for glob in globs if tiers.matches(glob, repo, path)), None)
-
-
-def _is_test(repo: str, path: str) -> bool:
-    return _matches(tiers.TEST_PATHS, repo, path) is not None
-
-
-def _is_doc(repo: str, path: str) -> bool:
-    return _matches(tiers.DOC_PATHS, repo, path) is not None
-
-
-def _masked(text: str) -> str:
-    return NUMBER.sub("#", " ".join(text.split()))
-
-
-def _removed_signs(sign, path: str, diff: FileDiff) -> None:
-    """The signs of the lines ``diff`` of a test file removes, each read against what that same file adds."""
-    # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
-    added_texts = {" ".join(text.split()) for _, text in diff.added}
-    added_masked = {_masked(text) for _, text in diff.added}
-    added_literal = {_literal_free(text) for _, text in diff.added}
-    removed_texts = {" ".join(text.split()) for _, text in diff.removed}
-    renamed = [  # the definitions this file adds anew, each the rename of at most one it removes
-        _definition_shape(text)
-        for _, text in diff.added
-        if TEST_DEFINITION.search(text) and " ".join(text.split()) not in removed_texts
-    ]
-    for number, text in diff.removed:
-        flat = " ".join(text.split())
-        if not flat or flat in added_texts:
-            continue
-        asserting = ASSERTION.search(text) is not None
-        if (asserting or TOLERANCE.search(text)) and NUMBER.search(text) and _masked(text) in added_masked:
-            sign("threshold_changed", path, number, text)
-        elif asserting:
-            sign("assert_removed", path, number, text)
-        elif TEST_DEFINITION.search(text):
-            if _definition_shape(text) in renamed:  # a test renamed, once for each definition added
-                renamed.remove(_definition_shape(text))
-            else:
-                sign("test_removed", path, number, text)
-        elif _has_literal(text) and _literal_free(text) in added_literal:
-            sign("expected_changed", path, number, text)
-
-
-def _added_signs(sign, path: str, diff: FileDiff, test: bool) -> None:
-    """The signs of the lines ``diff`` of a file that is neither documentation nor a test's data adds."""
-    for number, text in diff.added:
-        if SKIP.search(text) or (test and TEST_SKIP.search(text)):
-            sign("skip_added", path, number, text)
-        if SUPPRESS.search(text):
-            sign("lint_suppressed", path, number, text)
-        if EQ_OVERLOAD.search(text):
-            sign("eq_overridden", path, number, text)
-        if test and EXIT.search(text):
-            sign("exit_in_test", path, number, text)
-        if test and CATCH.search(text):
-            sign("assert_caught", path, number, text)
-        if test and DEAD_GUARD.search(text):
-            sign("assert_removed", path, number, f"a guard that never runs what it holds: {text}")
-
-
-def weakened(diff: FileDiff) -> list[tuple[int | None, str]]:
-    """(line, text) of what a diff of a harness file (``replay.harness_path``: a skill's file, an AGENTS.md or a
-    CLAUDE.md) does to its instructions to test or verify: each line it adds that lets an agent skip them (SKIPPING,
-    unless it forbids that, NEGATED), and, when it removes more lines that speak of them (TESTING) than it adds, the
-    first of those it removes. A line kept as it was, blanks aside, counts neither way."""
-    added = {" ".join(text.split()) for _, text in diff.added}
-    removed = {" ".join(text.split()) for _, text in diff.removed}
-    found = [
-        (number, text)
-        for number, text in diff.added
-        if SKIPPING.search(text) and not NEGATED.search(text) and " ".join(text.split()) not in removed
-    ]
-    gone = [(n, text) for n, text in diff.removed if TESTING.search(text) and " ".join(text.split()) not in added]
-    kept = [text for _, text in diff.added if TESTING.search(text) and " ".join(text.split()) not in removed]
-    if len(gone) > len(kept):
-        found.append((gone[0][0], f"an instruction removed: {gone[0][1]}"))
-    return found
-
-
-def hack_signs(
-    files: list[FileDiff], *, repo: str, protected: list[str], verify_commands: list[str] = ()
-) -> list[dict]:
-    """The signs of score hacking in the diff ``files`` of ``repo`` (see the module's docstring), each ``{kind,
-    path, line, text}``, at most MAX_SIGNS, in the order the files come."""
-    signs: list[dict] = []
-
-    def sign(kind: str, path: str, line: int | None = None, text: str = "") -> None:
-        if len(signs) < MAX_SIGNS:
-            signs.append({"kind": kind, "path": path, "line": line, "text": " ".join(text.split())[:MAX_SIGN_TEXT]})
-
-    commands = list(verify_commands or [])
-    named = verify_paths(commands)
-    runner_globs, scripts = verify_runners(commands)
-    script_key = (
-        re.compile(r"\"(?:" + "|".join(re.escape(name) for name in sorted(scripts)) + r")\"\s*:") if scripts else None
-    )
-    for diff in files:
-        paths = [diff.path] + ([diff.old_path] if diff.old_path and diff.old_path != diff.path else [])
-        for path in paths:
-            glob = _matches(protected, repo, path)
-            if glob is not None:
-                sign("protected_path", path, None, f"protected by the charter ({glob})")
-        path = diff.path
-        ci = any(_matches(CI_PATHS, repo, item) for item in paths)
-        lint = any(_matches(LINT_CONFIG_PATHS, repo, item) for item in paths)
-        if ci:
-            sign("ci_changed", path)
-        if lint:
-            sign("lint_config_changed", path)
-        if any(_matches(("plans/**",), repo, item) for item in paths):
-            sign("verify_changed", path, None, "a copy of a plan")
-        runs_it = any(item in named or _matches(runner_globs, repo, item) for item in paths)
-        if diff.status != "added" and runs_it and not _is_test(repo, path):
-            sign("verify_changed", path, None, "a file the plan's verify runs")
-        doc = _is_doc(repo, path)
-        test = any(_is_test(repo, item) for item in paths)
-        golden = any(_matches(GOLDEN_PATHS, repo, item) for item in paths)
-        data = test and not doc and not any(item.lower().endswith(SOURCE_SUFFIXES) for item in paths)
-        harness = any(harness_path(item) for item in paths)
-        guarded = (
-            test or golden or ci or lint or runs_it or harness or any(_matches(protected, repo, item) for item in paths)
-        )
-        if (golden or data) and diff.status != "added":
-            sign("golden_changed", path, None, "what a test compares with")
-        if not diff.readable:
-            if guarded or not (doc or path.lower().endswith(ASSET_SUFFIXES)):
-                sign("diff_unreadable", path)
-            continue
-        if test and diff.status == "removed":
-            sign("test_removed", diff.old_path or path, None, "the whole file")
-        sectioned = _matches(SECTIONED_CONFIG, repo, path) is not None
-        if sectioned:
-            for number, text in [*diff.added, *diff.removed]:
-                if CONFIG_KEY.search(text):
-                    sign("lint_config_changed", path, number, text)
-                    break
-            if script_key is not None and path.endswith("package.json"):
-                for number, text in [*diff.added, *diff.removed]:
-                    if script_key.search(text):
-                        sign("verify_changed", path, number, text)
-                        break
-        for number, text in weakened(diff) if harness else ():
-            sign("instruction_weakened", path, number, text)
-        if doc or (test and data):
-            continue
-        _added_signs(sign, path, diff, test)
-        if test:
-            _removed_signs(sign, path, diff)
-    return signs
-
-
-def _literal_free(text: str) -> str:
-    """``text`` with its strings and numbers each one mark, blanks folded: equal for two lines that differ in their
-    literals alone."""
-    return NUMBER.sub("#", STRING.sub("'#'", " ".join(text.split())))
-
-
-def _definition_shape(text: str) -> str:
-    """A test's definition with its name and literals folded: equal for a test and the same test renamed."""
-    return _literal_free(TEST_NAME.sub("def test", text))
-
-
-def _has_literal(text: str) -> bool:
-    return bool(NUMBER.search(text) or STRING.search(text))
-
-
-def changed_paths(files: list[FileDiff]) -> list[str]:
-    """Every path a diff touches, both sides of a rename, sorted, each once."""
-    return sorted({item for diff in files for item in (diff.path, diff.old_path) if item})
-
-
-def raised_reason(signs: list[dict]) -> str:
-    """The tier rule a diff with signs adds to its proposal's reasons."""
-    kinds = sorted({item["kind"] for item in signs})
-    shown = ", ".join(SIGN_KINDS.get(kind, kind) for kind in kinds)
-    return f"the diff of the Builder shows signs of score hacking ({shown}): tier 3"
-
-
 # The verdict
 
 
@@ -871,6 +337,35 @@ def required_checks(rules: list[dict]) -> list[dict]:
     return list(found.values())
 
 
+def _run_reasons(runs: list[dict], names: set[str], red: list[str], pending: list[str]) -> None:
+    """Why the check runs ``runs`` are red or still pending; a check the ruleset requires (``names``) must have
+    concluded success."""
+    for item in runs:
+        name = str(item.get("name") or "a check")
+        if item.get("status") != "completed":
+            pending.append(f"{name} is {item.get('status') or 'not done'}")
+        elif item.get("conclusion") not in (REQUIRED_OK if name in names else CI_OK):
+            red.append(f"{name} ended {item.get('conclusion') or 'without a conclusion'}")
+
+
+def _required_reasons(
+    needed: list[dict], runs: list[dict], reported: list[dict], red: list[str], pending: list[str]
+) -> None:
+    """Why the checks the ruleset requires (``needed``) are red or have not passed yet, from the check runs ``runs``
+    and the commit statuses ``reported``."""
+    for check in needed:
+        context, app = check["context"], check.get("integration_id")
+        own = [item for item in runs if item.get("name") == context]
+        mine = [item for item in own if app is None or (item.get("app") or {}).get("id") == app]
+        stated = [item for item in reported if item.get("context") == context] if app is None else []
+        if own and not mine:
+            red.append(f"{context} is required from App {app}, and another App wrote it")
+        elif not mine and not stated:
+            pending.append(f"the required check {context} has not reported")
+        elif stated and not mine and any(item.get("state") != "success" for item in stated):
+            pending.append(f"the required status {context} is not success yet")
+
+
 def ci_state(
     check_runs: list[dict] | None,
     statuses: dict | None,
@@ -905,13 +400,7 @@ def ci_state(
             "ruleset requires have passed"
         ]
     red, pending = [], []
-    names = {item["context"] for item in needed}
-    for item in runs:
-        name = str(item.get("name") or "a check")
-        if item.get("status") != "completed":
-            pending.append(f"{name} is {item.get('status') or 'not done'}")
-        elif item.get("conclusion") not in (REQUIRED_OK if name in names else CI_OK):
-            red.append(f"{name} ended {item.get('conclusion') or 'without a conclusion'}")
+    _run_reasons(runs, {item["context"] for item in needed}, red, pending)
     if count:
         state = statuses.get("state")
         if state == "pending":
@@ -919,17 +408,7 @@ def ci_state(
         elif state != "success":
             red.append(f"the commit statuses are {state or 'unknown'}")
     reported = [item for item in statuses.get("statuses") or [] if isinstance(item, dict)]
-    for check in needed:
-        context, app = check["context"], check.get("integration_id")
-        own = [item for item in runs if item.get("name") == context]
-        mine = [item for item in own if app is None or (item.get("app") or {}).get("id") == app]
-        stated = [item for item in reported if item.get("context") == context] if app is None else []
-        if own and not mine:
-            red.append(f"{context} is required from App {app}, and another App wrote it")
-        elif not mine and not stated:
-            pending.append(f"the required check {context} has not reported")
-        elif stated and not mine and any(item.get("state") != "success" for item in stated):
-            pending.append(f"the required status {context} is not success yet")
+    _required_reasons(needed, runs, reported, red, pending)
     if red:
         return "red", red
     if pending:
@@ -960,6 +439,32 @@ class MergeFacts:
     merge_without_ci: bool = False  # the charter's: no CI at all is no bar once the Judge passed it
 
 
+def _pull_bar(facts: MergeFacts) -> list[str] | None:
+    """Why the pull request itself, judged, stays open for its owner whatever CI says; None when nothing bars it."""
+    if facts.pr_merged:
+        return ["the pull request was merged already, not by the hub"]
+    if facts.pr_state != "open":
+        return [f"the pull request is {facts.pr_state or 'gone'}"]
+    if not facts.passed:
+        return ["the Judge did not pass it"]
+    if facts.signs:  # before the tier, which the same files may have raised: the signs say more
+        kinds = sorted({item.get("kind", "?") for item in facts.signs})
+        return [f"its files show signs of score hacking or protected paths: {', '.join(kinds)}"]
+    if facts.tier not in facts.auto_merge:
+        if facts.tier == 0:
+            return ["the charter's auto_merge does not name tier 0"]
+        return [f"tier {facts.tier} waits for its owner to merge it"]
+    if not facts.repo_checked:
+        return ["the hub has not checked that the repo's ruleset keeps the Curator off its default branch"]
+    if not facts.judged_sha or facts.pr_head != facts.judged_sha:
+        return ["the pull request's head is not the commit the Judge passed"]
+    if not facts.default_branch or facts.pr_base != facts.default_branch:
+        return [f"the pull request is not into the default branch {facts.default_branch or '(unknown)'}"]
+    if facts.mergeable is False:
+        return ["GitHub cannot merge it as it is: it conflicts with the default branch"]
+    return None
+
+
 def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
     """``("merge", [])`` when the hub merges the pull request now, ``("wait", why)`` when CI is still running,
     ``("queue", why)`` when a merge request on GitLab goes to the merge queue, and ``("open", why)`` when it stays open
@@ -969,27 +474,9 @@ def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
         if facts.queue and facts.passed:
             return "queue", ["its repo is in mode auto with a forge secret: the merge queue gates and merges it"]
         return "open", ["a merge request on GitLab stays open: the hub never merges one"]
-    if facts.pr_merged:
-        return "open", ["the pull request was merged already, not by the hub"]
-    if facts.pr_state != "open":
-        return "open", [f"the pull request is {facts.pr_state or 'gone'}"]
-    if not facts.passed:
-        return "open", ["the Judge did not pass it"]
-    if facts.signs:  # before the tier, which the same files may have raised: the signs say more
-        kinds = sorted({item.get("kind", "?") for item in facts.signs})
-        return "open", [f"its files show signs of score hacking or protected paths: {', '.join(kinds)}"]
-    if facts.tier not in facts.auto_merge:
-        if facts.tier == 0:
-            return "open", ["the charter's auto_merge does not name tier 0"]
-        return "open", [f"tier {facts.tier} waits for its owner to merge it"]
-    if not facts.repo_checked:
-        return "open", ["the hub has not checked that the repo's ruleset keeps the Curator off its default branch"]
-    if not facts.judged_sha or facts.pr_head != facts.judged_sha:
-        return "open", ["the pull request's head is not the commit the Judge passed"]
-    if not facts.default_branch or facts.pr_base != facts.default_branch:
-        return "open", [f"the pull request is not into the default branch {facts.default_branch or '(unknown)'}"]
-    if facts.mergeable is False:
-        return "open", ["GitHub cannot merge it as it is: it conflicts with the default branch"]
+    bar = _pull_bar(facts)
+    if bar is not None:
+        return "open", bar
     if facts.ci == "pending":
         return "wait", list(facts.ci_reasons) or ["CI is still running"]
     if facts.ci == "none" and facts.merge_without_ci:

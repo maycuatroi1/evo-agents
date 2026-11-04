@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, findings, judge, security_pass, tables, tiers
+from evo_agents.hub import curator, diff_signs, findings, judge, security_pass, tables, tiers
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.runs.models import OBJECT_NAME, VerifyResult
 
@@ -99,10 +99,10 @@ class HiddenResult(BaseModel):
 
 
 class Sign(BaseModel):
-    kind: judge.SignKind
+    kind: diff_signs.SignKind
     path: str = Field(min_length=1, max_length=1000)
     line: int | None = Field(None, ge=0)
-    text: str = Field("", max_length=judge.MAX_SIGN_TEXT)
+    text: str = Field("", max_length=diff_signs.MAX_SIGN_TEXT)
 
 
 class SecurityFinding(BaseModel):
@@ -148,7 +148,7 @@ class VerdictIn(BaseModel):
     base_sha: str | None = Field(None, pattern=OBJECT_NAME)
     verify: list[VerifyResult] = Field(default_factory=list, max_length=50)
     hidden: list[HiddenResult] = Field(default_factory=list, max_length=curator.MAX_HIDDEN_CHECKS)
-    signs: list[Sign] = Field(default_factory=list, max_length=judge.MAX_SIGNS)
+    signs: list[Sign] = Field(default_factory=list, max_length=diff_signs.MAX_SIGNS)
     paths: list[Annotated[str, Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)]] = Field(
         default_factory=list,
         max_length=judge.MAX_PATHS,
@@ -413,7 +413,7 @@ async def raise_tier(conn: AsyncConnection, change, signs: list[dict]) -> None:
     """Put the change's proposal at tier 3, with the reason, once a diff of it shows signs."""
     pr = tables.proposals
     reasons = (await conn.execute(select(pr.c.tier_reasons).where(pr.c.id == change.proposal_id))).scalar_one()
-    reason = judge.raised_reason(signs)
+    reason = diff_signs.raised_reason(signs)
     kept = list(reasons or [])
     if reason not in kept:
         kept.append(reason)

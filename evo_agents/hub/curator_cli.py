@@ -723,6 +723,25 @@ def register_curator(hsub) -> None:
     def with_project(parser) -> None:
         parser.add_argument("--project", help=project_help)
 
+    _register_charter(csub, with_project)
+    _register_schedules(csub, with_project)
+    _register_proposal(csub, with_project)
+    _register_findings(csub, with_project)
+    _register_changes(csub, with_project)
+
+    for register in (
+        _register_protection,
+        register_replay,
+        register_history,
+        register_playbook,
+        register_probe,
+        register_session,
+    ):
+        register(csub, with_project)
+
+
+def _register_charter(csub, with_project) -> None:
+    """``curator charter`` and its commands."""
     charter = csub.add_parser("charter", help="the project's charter: show it, write a revision, list revisions")
     chsub = charter.add_subparsers(dest="charter_command", required=True)
     show = chsub.add_parser("show", help="the charter at its newest revision, or an older one")
@@ -742,6 +761,9 @@ def register_curator(hsub) -> None:
     json_option(history, returns_array(*REVISION_KEYS, schema="CharterRevision"))
     history.set_defaults(func=cmd_charter_history)
 
+
+def _register_schedules(csub, with_project) -> None:
+    """``curator status``, ``pause`` and ``resume``."""
     status = csub.add_parser("status", help="the charter, the schedules and the night now")
     with_project(status)
     json_option(status, STATUS)
@@ -757,8 +779,9 @@ def register_curator(hsub) -> None:
     json_option(resume, STATUS)
     resume.set_defaults(func=cmd_resume)
 
-    _register_proposal(csub, with_project)
 
+def _register_findings(csub, with_project) -> None:
+    """``curator findings`` and ``curator figures``: what the review runs found and counted."""
     findings = csub.add_parser("findings", help="what the review runs found, newest first")
     with_project(findings)
     findings.add_argument("--run", type=int, metavar="ID", help="of this review run")
@@ -779,6 +802,9 @@ def register_curator(hsub) -> None:
     )
     figures.set_defaults(func=cmd_figures)
 
+
+def _register_changes(csub, with_project) -> None:
+    """``curator changes`` and ``curator change close``."""
     changes = csub.add_parser(
         "changes", help="what the accepted proposals became: plan, branch, pull request, the Judge's verdict, merge"
     )
@@ -795,13 +821,3 @@ def register_curator(hsub) -> None:
     with_project(close)
     json_option(close, returns_object(*CHANGE_KEYS, schema="Change"))
     close.set_defaults(func=cmd_change_close)
-
-    for register in (
-        _register_protection,
-        register_replay,
-        register_history,
-        register_playbook,
-        register_probe,
-        register_session,
-    ):
-        register(csub, with_project)

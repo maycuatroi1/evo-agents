@@ -63,7 +63,8 @@ from evo_agents.hub.mcp_tools import (
     TOOLS,
     offered,
 )
-from evo_agents.hub.memory import HARNESS, memory_type
+from evo_agents.hub.memory_files import memory_type
+from evo_agents.hub.memory_places import HARNESS
 from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_cli import ATTEMPTS, check_retry
 from evo_agents.hub.plans import PlanProblem, step_index

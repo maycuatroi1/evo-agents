@@ -777,7 +777,11 @@ def _selling(msub) -> None:
     info = msub.add_parser("seller", help="whether the hub sells plugins: its seller id and public key")
     json_option(info, returns_object(*SELLER_KEYS, schema="SellerInfo"))
     info.set_defaults(func=cmd_seller_info)
+    _listings(msub)
+    _orders(msub)
 
+
+def _listings(msub) -> None:
     listing = msub.add_parser(
         "listing", help="the paid plugins the hub sells (their publishers, signed in with GitHub)"
     )
@@ -814,6 +818,8 @@ def _selling(msub) -> None:
     json_option(upload, returns_object(*LISTING_KEYS, schema="Listing"))
     upload.set_defaults(func=cmd_bundle_upload)
 
+
+def _orders(msub) -> None:
     orders = msub.add_parser("orders", help="the orders buying hubs placed (hub admins of a seller)")
     orders.add_argument("--state", choices=("open", "paid", "cancelled"))
     json_option(orders, returns_object("orders", schema="Orders"))

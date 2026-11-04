@@ -31,10 +31,10 @@ sessions; a hub that never sees SessionEnd ends a run silent for 24 hours. The p
 to set: a plan write that names the run sets them (``run_for`` gives the id to ``evo_agents.hub.plan_cli`` and to the
 MCP proxy), whether it comes from ``hub plan step``, ``evo harness step`` through the hub, or the ``plan_step`` tool.
 
-What this machine keeps is ``~/.evo/hub/local/<session id>.json``: the run's id, the project, the state last sent, the
-position in the transcript and the events that wait for the hub (at most MAX_PENDING; the oldest go first). Events
-are redacted before they are written there. The files of sessions untouched for KEEP_DAYS are deleted when a session
-registers.
+What this machine keeps is ``~/.evo/hub/local/<session id>.json`` (``evo_agents.hub.local_store``): the run's id, the
+project, the state last sent, the position in the transcript and the events that wait for the hub (at most
+MAX_PENDING; the oldest go first). Events are redacted before they are written there. The files of sessions untouched
+for KEEP_DAYS are deleted when a session registers. What one hook says to the hub is ``evo_agents.hub.local_delivery``.
 
 It never fails or holds a session, as every hook of the plugin: the exit status is 0 whatever happens; a hub that did
 not answer one hook of the machine, or answered with a failure that may pass (``client.transient``: a 502 or a 404 of
@@ -70,39 +70,21 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import socket
 import sys
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
 
-from evo_agents.hub import digest, hooks, local_account, local_outputs
-from evo_agents.hub.client import (
-    FILE_MODE,
-    Hub,
-    HubError,
-    hub_dir,
-    load_credentials,
-    transient,
-    write_atomic,
-)
-
-try:
-    import fcntl
-except ImportError:  # Windows: no lock, the writes stay atomic and the hooks of one session rarely meet
-    fcntl = None  # type: ignore[assignment]
+from evo_agents.hub import digest, hooks, local_outputs
+from evo_agents.hub.client import Hub, HubError, hub_dir, load_credentials, transient
+from evo_agents.hub.local_delivery import MAX_ASKS, Delivery, Late
+from evo_agents.hub.local_store import Store, cut, directory, locked, read_record
 
 DISABLE_VARIABLE = "EVO_HUB_LOCAL_SYNC"
 SESSION_VARIABLE = "CLAUDE_CODE_SESSION_ID"  # set by Claude Code in the environment of its tools
 OFF = frozenset({"0", "off", "false", "no"})
-DIRECTORY = "local"  # under ~/.evo/hub
-VERSION = 1
-KEEP_DAYS = 7
 MAX_PENDING = 500  # events kept for a hub that does not answer
-BATCH = 100  # events in one request
-BATCHES = 3  # requests of events one run sends at most
 FLUSH_EVERY = 2.0  # seconds between two requests of PostToolUse
 FIRST_READ = 200_000  # bytes of a transcript read from its start when the session registers late; more is history
 MAX_READ = 1 << 20  # bytes of a transcript one hook reads
@@ -141,14 +123,8 @@ TAIL = 256 * 1024  # bytes of a transcript's end read for how its last turn ende
 INTERRUPTED = "[Request interrupted by user"  # how Claude Code marks a turn the person stopped, with a tool or not
 TURN_ENDS = frozenset({"end_turn", "stop_sequence", "refusal"})  # stop reasons of the agent's last message of a turn
 ASK_TOOL = "AskUserQuestion"
-MAX_QUESTIONS = 4  # questions of one dialog put to the hub
-MAX_ASKS = 5  # dialogs whose answers are still awaited, kept in the session's file
 ANSWER_CHARS = 1000  # of one answer given in a dialog, kept until the hub has it
 NOTE_CHARS = 4000  # what the inbox hands the agent at one message of the person
-QUESTION_CHARS = 2000
-LABEL_CHARS = 200
-DESCRIPTION_CHARS = 1000
-OPTIONS = (2, 6)
 
 
 def enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -161,111 +137,6 @@ def enabled(env: Mapping[str, str] | None = None) -> bool:
 
 def _now() -> float:
     return time.time()
-
-
-def _cut(text, limit: int) -> str:
-    text = str(text)
-    return text if len(text) <= limit else text[: limit - 3] + "..."
-
-
-def machine_name() -> str:
-    name = socket.gethostname().strip().removesuffix(".local") or "unknown"
-    return _cut(" ".join(name.split()), 200)
-
-
-# The session's file
-
-
-def _directory() -> Path:
-    return hub_dir() / DIRECTORY
-
-
-def _read(path: Path) -> dict | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) and data.get("version") == VERSION else None
-
-
-@contextlib.contextmanager
-def locked(path: Path, wait: float) -> Iterator[bool]:
-    """True when this process holds the lock of ``path`` (waiting up to ``wait`` seconds for it); False when another
-    does, or when the file cannot be made. Without ``fcntl`` it is always True."""
-    if fcntl is None:
-        yield True
-        return
-    fd = None
-    try:
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        fd = os.open(path, os.O_CREAT | os.O_RDWR, FILE_MODE)
-    except OSError:
-        yield False
-        return
-    got = False
-    try:
-        deadline = time.monotonic() + wait
-        while not got:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                got = True
-            except OSError:
-                if time.monotonic() >= deadline:
-                    break
-                time.sleep(0.02)
-        yield got
-    finally:
-        if got:
-            with contextlib.suppress(OSError):
-                fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
-
-
-class Store:
-    """The file of one session for one hub."""
-
-    def __init__(self, session_id: str, url: str):
-        self.url = url
-        self.path = _directory() / f"{session_id}.json"
-        self.lock = _directory() / f"{session_id}.lock"
-
-    def load(self) -> dict | None:
-        rec = _read(self.path)
-        return rec if rec is not None and rec.get("hub") == self.url else None
-
-    def save(self, rec: dict) -> None:
-        with contextlib.suppress(OSError):  # only ever what waits for the hub
-            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            write_atomic(self.path, json.dumps(rec, ensure_ascii=False).encode(), FILE_MODE)
-
-    def fresh(self, cwd: str) -> dict:
-        return {
-            "version": VERSION,
-            "hub": self.url,
-            "cwd": cwd,
-            "project": None,
-            "resolved": False,
-            "run_id": None,
-            "sent": None,
-            "wanted": None,
-            "seq": 0,
-            "events": [],
-            "offset": None,
-            "flushed": 0.0,
-            "touched": _now(),
-            "title": None,
-            "account": None,
-            "refused_at": None,
-        }
-
-
-def prune(now: float) -> None:
-    """Delete the files of sessions untouched for KEEP_DAYS days."""
-    with contextlib.suppress(OSError):
-        for path in _directory().iterdir():
-            with contextlib.suppress(OSError):
-                if now - path.stat().st_mtime > KEEP_DAYS * 86400:
-                    path.unlink()
 
 
 # What the plan and MCP writes need: the run of the session that writes
@@ -294,12 +165,12 @@ def live_session(
         if session_id:
             if not digest.SESSION_ID.fullmatch(session_id):
                 return None
-            rec = _read(_directory() / f"{session_id}.json")
+            rec = read_record(directory() / f"{session_id}.json")
             return (session_id, rec) if _live(rec, url, project) is not None else None
         where = os.path.abspath(cwd or os.getcwd())
         now, found = _now(), []
-        for path in _directory().glob("*.json"):
-            rec = _read(path)
+        for path in directory().glob("*.json"):
+            rec = read_record(path)
             if rec and rec.get("cwd") == where and now - float(rec.get("touched") or 0) < PLAN_FALLBACK_SECONDS:
                 if _live(rec, url, project) is not None:
                     found.append((float(rec["touched"]), path.stem, rec))
@@ -320,14 +191,14 @@ def run_for(url: str, project: str | None, env: Mapping[str, str] | None = None,
 
 def _tool_input(name: str, data) -> object:
     if not isinstance(data, dict):
-        return _cut(data, INPUT_CHARS) if data is not None else None
+        return cut(data, INPUT_CHARS) if data is not None else None
     if name == "Bash":
-        shown = {"command": _cut(data.get("command", ""), INPUT_CHARS)}
+        shown = {"command": cut(data.get("command", ""), INPUT_CHARS)}
         if isinstance(data.get("description"), str):
-            shown["description"] = _cut(data["description"], INPUT_CHARS)
+            shown["description"] = cut(data["description"], INPUT_CHARS)
         return shown
     return {
-        str(k): _cut(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False), INPUT_CHARS)
+        str(k): cut(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False), INPUT_CHARS)
         for k, v in data.items()
     }
 
@@ -363,7 +234,7 @@ def tool_events(payload: dict, found: local_outputs.Found | None = None) -> list
     call = payload.get("tool_use_id")
     call = call if isinstance(call, str) and call else f"{payload.get('session_id')}-{int(_now() * 1000)}"
     text = " ".join(_text_of(found.response).split())
-    content = [{"type": "content", "content": {"type": "text", "text": _cut(text, OUTPUT_CHARS)}}]
+    content = [{"type": "content", "content": {"type": "text", "text": cut(text, OUTPUT_CHARS)}}]
     content += [{"type": "content", "content": reference} for reference in found.references()]
     return [
         (
@@ -433,267 +304,7 @@ def _append(rec: dict, events: list[tuple[str, dict]], token: str) -> None:
     del rec["events"][:-MAX_PENDING]
 
 
-# The hub
-
-
-class Late(Exception):
-    """The run is past its deadline: nothing more is sent, and what waits stays on disk."""
-
-
-class Delivery:
-    """One hook's talk with the hub for one session."""
-
-    def __init__(
-        self,
-        hub: Hub,
-        login: str,
-        rec: dict,
-        sid: str,
-        where: Path,
-        hook: str,
-        state: hooks.HookState,
-        payload: dict | None = None,
-        deadline: float | None = None,
-    ):
-        self.hub, self.login, self.rec, self.sid, self.where, self.hook, self.state = (
-            hub,
-            login,
-            rec,
-            sid,
-            where,
-            hook,
-            state,
-        )
-        self.payload = payload or {}
-        self.notes: list[str] = []
-        self.deadline = (
-            deadline if deadline is not None else time.monotonic() + LIMITS[limit_key(hook, self.payload)][1]
-        )
-
-    def call(self, method: str, path: str, body: dict | None = None):
-        if time.monotonic() > self.deadline:
-            raise Late
-        return self.hub.call(method, path, body)
-
-    def base(self) -> str:
-        return f"/v1/projects/{quote(self.rec['project'], safe='')}/local-runs"
-
-    def register(self, title: str | None) -> None:
-        rec = self.rec
-        if rec.get("account") is None:
-            found = local_account.read_account(self.sid)
-            rec["account"] = {"email": found.email, "profile": found.profile}
-        body = {"machine": machine_name(), "cwd": rec["cwd"], "claude_email": rec["account"]["email"]}
-        if rec["account"].get("profile"):
-            body["claude_profile"] = rec["account"]["profile"]
-        if rec.get("title") or title:
-            body["title"] = rec["title"] = rec.get("title") or title
-        view = self.call("PUT", f"{self.base()}/{quote(self.sid, safe='')}", body)
-        rec["run_id"] = int(view["id"])
-        rec["sent"] = view.get("state")
-        if not rec["events"] and isinstance(view.get("last_seq"), int):
-            rec["seq"] = view["last_seq"]  # the hub has events of an earlier life of this session
-        prune(_now())
-
-    def moved(self) -> bool:
-        """Whether a Desktop session's account reads otherwise than the one it registered with (read before Desktop's
-        variables were, or by an earlier evo-ak); the next register sends the new one. Other sessions keep theirs."""
-        if local_account.desktop_email(os.environ) is None:
-            return False
-        found = local_account.read_account(self.sid)
-        account = {"email": found.email, "profile": found.profile}
-        if account == self.rec.get("account"):
-            return False
-        self.rec["account"] = account
-        return True
-
-    def state_post(self, wanted: str) -> None:
-        for attempt in range(2):
-            try:
-                self.call("POST", f"{self.base()}/{self.rec['run_id']}/state", {"state": wanted})
-                self.rec["sent"] = wanted
-                return
-            except HubError as exc:
-                if attempt or transient(exc) or exc.status not in (404, 409):
-                    raise
-                if wanted == "ended":
-                    self.rec["sent"] = "ended"  # it ended already, or the hub never had it
-                    return
-                self.register(None)  # the run ended or is gone: the session registers again
-                if wanted == self.rec["sent"]:
-                    return
-
-    def flush(self) -> None:
-        rec = self.rec
-        for _ in range(BATCHES):
-            events = rec["events"]
-            if not events:
-                break
-            batch = events[:BATCH]
-            answer = self.call("POST", f"{self.base()}/{rec['run_id']}/events", {"events": batch})
-            ack = answer.get("ack_seq") if isinstance(answer, dict) else None
-            if not isinstance(ack, int):
-                break
-            if (
-                ack < batch[0]["seq"] - 1
-            ):  # the hub lacks events this machine dropped: number what is left after its last
-                for number, event in enumerate(events, start=ack + 1):
-                    event["seq"] = number
-                rec["seq"] = ack + len(events)
-                continue
-            rec["events"] = [e for e in events if e["seq"] > ack]
-            rec["flushed"] = _now()
-
-    def ask(self) -> None:
-        """Put the questions of the AskUserQuestion dialog about to open to the hub, as decisions of the run, each
-        carrying the files the session sent since the person's last message (``local_outputs.for_question``)."""
-        rec = self.rec
-        data = self.payload.get("tool_input")
-        questions = data.get("questions") if isinstance(data, dict) else None
-        if not isinstance(questions, list):
-            return
-        attached = local_outputs.for_question(self.sid, self.hub.url, self.deadline)
-        entries = []
-        for q in questions[:MAX_QUESTIONS]:
-            found = _question(q)
-            if found is None:
-                continue
-            body, keys = found
-            view = self._decision({**body, "output_ids": attached} if attached else body)
-            if view is None:
-                continue  # the hub will not take this question: the dialog still opens
-            entries.append({"decision": int(view["id"]), "question": q["question"], "keys": keys})
-            rec["sent"] = "waiting"
-        if entries:
-            asks = rec.setdefault("asks", {})
-            asks[str(self.payload.get("tool_use_id") or "last")] = entries
-            for stale in list(asks)[:-MAX_ASKS]:
-                del asks[stale]
-
-    def _decision(self, body: dict) -> dict | None:
-        """The hub's view of the decision ``body`` asks; None when the hub will not take it. A question whose files
-        the hub refuses (422: an output of another run, or deleted) is asked again without them."""
-        for attempt in (body, {k: v for k, v in body.items() if k != "output_ids"}):
-            try:
-                return self.call("POST", f"{self.base()}/{self.rec['run_id']}/decisions", attempt)
-            except HubError as exc:
-                if transient(exc) or exc.status not in (404, 409, 422):
-                    raise
-                if exc.status != 422 or "output_ids" not in attempt:
-                    return None
-        return None
-
-    def answered(self) -> None:
-        """Dialogs were answered in the session: report each answer to the decision it was put as, the ones an earlier
-        hook could not report too (they wait in the session's file)."""
-        rec = self.rec
-        waiting = rec.get("answers") or {}
-        for key in list(waiting):
-            self._report(key, waiting[key] if isinstance(waiting[key], dict) else {})
-            del waiting[key]
-
-    def _report(self, key: str, given: dict) -> None:
-        rec = self.rec
-        asks = rec.get("asks") or {}
-        entries = asks.get(key) or (asks.get("last") if key != "last" else None) or []
-        for entry in entries:
-            said = given.get(entry["question"])
-            body = {"text": "answered in the session"}
-            if isinstance(said, str) and said.strip():
-                from evo_agents.hub.redact import redact
-
-                body = {"text": _cut(redact(said.strip()), 1000)}
-                if said in entry["keys"]:
-                    body = {"option": entry["keys"][said]}
-            try:
-                self.call("POST", f"{self.base()}/{rec['run_id']}/decisions/{entry['decision']}/answered", body)
-            except HubError as exc:
-                if transient(exc) or exc.status not in (404, 409, 422):
-                    raise  # kept in the file: the next hook tells the hub
-        for name in [k for k, v in asks.items() if v is entries]:
-            del asks[name]
-        if entries:
-            rec["sent"] = "running"
-
-    def inbox(self) -> None:
-        """What the member answered on the hub since the agent last heard: for the agent, at the person's message."""
-        rec = self.rec
-        ack = rec.get("inbox_ack")
-        try:
-            answer = self.call(
-                "POST", f"{self.base()}/{rec['run_id']}/inbox", {"ack": ack} if isinstance(ack, int) else None
-            )
-        except HubError as exc:
-            if transient(exc) or exc.status not in (404, 405):
-                raise
-            return  # a hub that has no inbox for local runs: nothing to hand over
-        messages = answer.get("messages") if isinstance(answer, dict) else None
-        for message in messages or []:
-            if isinstance(message, dict) and isinstance(message.get("text"), str) and message["text"].strip():
-                by = message.get("sent_by")
-                self.notes.append(f"{by + ': ' if isinstance(by, str) and by else ''}{message['text'].strip()}")
-                if isinstance(message.get("id"), int):
-                    rec["inbox_ack"] = max(message["id"], rec.get("inbox_ack") or 0)
-
-    def run(self, title: str | None, wanted: str, due: bool) -> None:
-        rec = self.rec
-        if not rec["resolved"]:
-            from evo_agents.hub.memory import MemorySync
-
-            rec["project"] = MemorySync(self.hub, self.login, lock_timeout=hooks.LOCK_WAIT).project_of(self.where)
-            rec["resolved"] = True
-        if rec["project"] is None:
-            rec["events"] = []
-            return
-        if rec["run_id"] is None or (self.hook == "user-prompt" and self.moved()):
-            self.register(title)
-        if wanted == "ended" and due:
-            self.flush()
-        if wanted != rec["sent"]:
-            self.state_post(wanted)
-        if wanted != "ended" and due:
-            self.flush()
-        if rec.get("answers"):  # before a new dialog is put: the earlier ones' answers end their wait first
-            self.answered()
-        if self.hook == "ask":
-            self.ask()
-        elif self.hook == "user-prompt":
-            self.inbox()
-
-
-def _options(options: list) -> tuple[list[dict], dict[str, str]]:
-    """The options of a question as the hub takes them, keyed 1, 2, .., and {label: key}."""
-    from evo_agents.hub.redact import redact
-
-    keys, sent = {}, []
-    for n, option in enumerate(options[: OPTIONS[1]], start=1):
-        label = " ".join(str(option.get("label") if isinstance(option, dict) else option).split())
-        if not label:
-            continue
-        shown = {"key": str(n), "label": _cut(redact(label), LABEL_CHARS)}
-        if isinstance(option, dict) and isinstance(option.get("description"), str) and option["description"]:
-            shown["description"] = _cut(redact(option["description"]), DESCRIPTION_CHARS)
-        keys[label] = shown["key"]
-        sent.append(shown)
-    return sent, keys
-
-
-def _question(q) -> tuple[dict, dict[str, str]] | None:
-    """(the decision a question of the dialog is put as, {label: key}); None for one the hub cannot take."""
-    from evo_agents.hub.redact import redact
-
-    options = q.get("options") if isinstance(q, dict) else None
-    if not isinstance(q.get("question") if isinstance(q, dict) else None, str) or not isinstance(options, list):
-        return None
-    sent, keys = _options(options)
-    if len(sent) < OPTIONS[0]:
-        return None
-    body = {"category": "question", "question": _cut(redact(q["question"]).strip(), QUESTION_CHARS), "options": sent}
-    header = q.get("header")
-    multi = "Several options may be picked in the session. " if q.get("multiSelect") else ""
-    if multi or isinstance(header, str) and header.strip():
-        body["context"] = _cut(multi + (redact(header) if isinstance(header, str) else ""), 1000).strip()
-    return body, keys
+# One hook
 
 
 def limit_key(hook: str, payload: dict) -> str:
@@ -712,7 +323,7 @@ def _title(payload: dict) -> str | None:
     from evo_agents.hub.redact import redact
 
     line = " ".join(redact(prompt).split())
-    return _cut(line, TITLE_CHARS) if line else None
+    return cut(line, TITLE_CHARS) if line else None
 
 
 def _answer_text(answer) -> str | None:
@@ -720,7 +331,7 @@ def _answer_text(answer) -> str | None:
     label may hold commas, and one picked alone stays that label, so it is still reported as its option."""
     if isinstance(answer, list):
         answer = "; ".join(" ".join(a.split()) for a in answer if isinstance(a, str) and a.strip())
-    return _cut(answer, ANSWER_CHARS) if isinstance(answer, str) and answer.strip() else None
+    return cut(answer, ANSWER_CHARS) if isinstance(answer, str) and answer.strip() else None
 
 
 def _keep_answers(rec: dict, payload: dict) -> None:
@@ -747,7 +358,7 @@ def _hook_events(hook: str, payload: dict, rec: dict, found: local_outputs.Found
     events = []
     transcript = _absolute(payload.get("transcript_path"))
     if hook in ("tool", "stop") and transcript:
-        events += [("agent_message_chunk", {"text": _cut(t, TEXT_CHARS)}) for t in agent_words(rec, Path(transcript))]
+        events += [("agent_message_chunk", {"text": cut(t, TEXT_CHARS)}) for t in agent_words(rec, Path(transcript))]
     if hook == "tool":
         events += tool_events(payload, found)
     if hook == "user-prompt" and rec.get("offset") is None and transcript:
@@ -803,7 +414,8 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         if not got:
             return []
         rec = store.load() or rec
-        delivery = Delivery(hub, login, rec, session_id, where, hook, state, payload)
+        deadline = time.monotonic() + LIMITS[limit_key(hook, payload)][1]
+        delivery = Delivery(hub, login, rec, session_id, where, hook, state, payload, deadline=deadline)
         try:
             reached = _deliver(delivery, title, STATES[hook], due, now)
         finally:
@@ -933,7 +545,7 @@ def _end_turn(rec: dict, sid: str, token: str) -> None:
     transcript = _transcript_of(rec, sid)
     if transcript is not None:
         words = agent_words(rec, transcript)
-        _append(rec, [("agent_message_chunk", {"text": _cut(t, TEXT_CHARS)}) for t in words], token)
+        _append(rec, [("agent_message_chunk", {"text": cut(t, TEXT_CHARS)}) for t in words], token)
     rec["wanted"] = "idle"
 
 
@@ -943,8 +555,8 @@ def sweep(hub: Hub, login: str, state: hooks.HookState, skip: str, deadline: flo
     session whose file another hook holds is skipped."""
     found = []
     with contextlib.suppress(OSError):
-        for path in _directory().glob("*.json"):
-            sid, rec = path.stem, _read(path)
+        for path in directory().glob("*.json"):
+            sid, rec = path.stem, read_record(path)
             if sid == skip or not digest.SESSION_ID.fullmatch(sid):
                 continue
             if _waiting(rec, hub.url, now) or _stale(rec, sid, hub.url, now):
@@ -1000,7 +612,7 @@ def _context(notes: list[str]) -> str:
         "evo-hub: the member answered, on the hub, a question this session asked and stopped waiting for. "
         f"Take it into account:\n{lines}"
     )
-    return _cut(text, NOTE_CHARS)
+    return cut(text, NOTE_CHARS)
 
 
 def on_stop(payload: dict) -> None:

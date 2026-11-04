@@ -17,7 +17,8 @@ pytest.importorskip("fastapi", reason="needs the hub-server extra, evo-ak[hub-se
 from evo_agents.harness import load_schema, load_yaml
 from evo_agents.hub import judge, merge_gate, proofs, record_rule
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.runs import build_prompt, build_step_session_prompt, plan_repo
+from evo_agents.hub.run_prompts import build_prompt, build_step_session_prompt
+from evo_agents.hub.runs import plan_repo
 from evo_agents.hub.server.runs.models import StepProof, StepReport
 from evo_agents.schema import errors, validate
 

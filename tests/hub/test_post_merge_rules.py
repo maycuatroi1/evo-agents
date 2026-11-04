@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from evo_agents.hub import judge, post_merge
+from evo_agents.hub import diff_signs, post_merge
 from evo_agents.hub.post_merge import Candidate, Settled, deploy_target, job_step, pipeline_step, settle
 
 
@@ -86,12 +86,12 @@ def test_post_merge_a_revert_takes_the_commits_newest_first_whatever_order_gitla
     assert post_merge.newest_first([commit("x"), commit("y")], "y") == ["y", "x"]
 
 
-def added(path: str, *lines: str) -> judge.FileDiff:
-    return judge.FileDiff(path=path, status="added", added=[(i + 1, line) for i, line in enumerate(lines)])
+def added(path: str, *lines: str) -> diff_signs.FileDiff:
+    return diff_signs.FileDiff(path=path, status="added", added=[(i + 1, line) for i, line in enumerate(lines)])
 
 
-def removed(path: str, *lines: str) -> judge.FileDiff:
-    return judge.FileDiff(
+def removed(path: str, *lines: str) -> diff_signs.FileDiff:
+    return diff_signs.FileDiff(
         path=path, old_path=path, status="removed", removed=[(i + 1, line) for i, line in enumerate(lines)]
     )
 
@@ -102,7 +102,7 @@ def test_post_merge_a_revert_must_undo_the_merged_diff_exactly():
     more = [removed("kb/report.py", "def total():", "    return 3"), removed("kb/other.py", "x = 1")]
     assert "not the exact inverse" in post_merge.undo_problem(more, merged)
     assert "no diff" in post_merge.undo_problem([], [])
-    binary = [judge.FileDiff(path="kb/logo.png", status="added", readable=False)]
+    binary = [diff_signs.FileDiff(path="kb/logo.png", status="added", readable=False)]
     assert "cannot read" in post_merge.undo_problem(binary, binary)
 
 

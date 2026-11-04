@@ -40,7 +40,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import guard, judge, release_ci, release_runs, releases, tables
+from evo_agents.hub import diff_signs, guard, release_ci, release_runs, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, autonomy_gates, pull_trailers, pulls
@@ -233,7 +233,7 @@ def _pull_text(row: Landing, tag: str) -> str:
 
 async def _no_signs(app: GitHubApp, token: str, where: tuple[str, str], row: Landing, number: int) -> None:
     """Hacking when the files of pull request ``number`` show signs of test hacking."""
-    files = judge.from_github_files(await pulls.pull_files(app, token, *where, number))
+    files = diff_signs.from_github_files(await pulls.pull_files(app, token, *where, number))
     signs = release_ci.release_signs(files, row.repo)
     if signs:
         raise Hacking(

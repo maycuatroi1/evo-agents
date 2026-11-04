@@ -3,7 +3,7 @@ each step not done yet a new agent session, in the order depends_on allows, rath
 
 1. Before each session the daemon reads the plan as the hub holds it now and takes the next step
    (``runs.next_session_step``): the first pending or in_progress step whose depends_on are done and that had no
-   session in this run yet. Its prompt is the step's (``runs.build_step_session_prompt``): the rules of a step's
+   session in this run yet. Its prompt is the step's (``run_prompts.build_step_session_prompt``): the rules of a step's
    session, the run's repos, the plan's context, the step's what, verify and note, and the handoff of the plan for
    the step (``handoff.build_handoff``) in the room the rest leaves within ``runs.MAX_PROMPT_BYTES``, at most
    ``handoff.DEFAULT_BUDGET_TOKENS``.
@@ -32,7 +32,7 @@ import contextlib
 import json
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import handoff, runs
+from evo_agents.hub import handoff, run_prompts, runs
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner.common import RunFailed, cut, now, wait_or
@@ -254,8 +254,8 @@ class StepSessions:
         repos = run.spec.get("repos") or []
         folders = {name: workspace.worktree.name for name, workspace in self.plan_run.directory.workspaces.items()}
         autonomy = run.spec.get("autonomy")  # the card of the run's autonomy, from a hub that sends one
-        bare = runs.build_step_session_prompt(body, step, repos, folders, autonomy=autonomy)
-        room = runs.handoff_room(bare) // handoff.BYTES_PER_TOKEN
+        bare = run_prompts.build_step_session_prompt(body, step, repos, folders, autonomy=autonomy)
+        room = run_prompts.handoff_room(bare) // handoff.BYTES_PER_TOKEN
         budget = max(handoff.MIN_BUDGET_TOKENS, min(handoff.DEFAULT_BUDGET_TOKENS, room))
         if revision is None:
             plan = run.spec.get("plan") if isinstance(run.spec.get("plan"), dict) else {}
@@ -266,7 +266,7 @@ class StepSessions:
             f"The prompt of step {key} carries the handoff of the plan at revision {revision}: about {built.tokens} of "
             f"{budget} tokens{cut_note}."
         )
-        return runs.build_step_session_prompt(body, step, repos, folders, built.text, autonomy)
+        return run_prompts.build_step_session_prompt(body, step, repos, folders, built.text, autonomy)
 
     async def session(self, cls, key: str, prompt: str, session_id: str | None) -> None:
         """The agent's session of step ``key``, a new one or ``session_id``, turn after turn until it has nothing left

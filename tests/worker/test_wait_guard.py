@@ -12,7 +12,7 @@ import dataclasses
 import pytest
 
 from evo_agents.harness import load_yaml
-from evo_agents.hub import runs
+from evo_agents.hub import run_prompts
 from evo_agents.worker import wait_guard
 from evo_agents.worker.wait_guard import WaitGuard, waiting
 
@@ -132,6 +132,6 @@ def test_the_plan_runs_prompt_says_how_to_wait_for_something_elsewhere():
     from tests.hub.test_runs_model import FIXTURE
 
     plan = load_yaml(FIXTURE)
-    prompt = runs.build_plan_prompt(plan, plan["repos"])
+    prompt = run_prompts.build_plan_prompt(plan, plan["repos"])
     assert "the CI of a commit, a pull request or a tag" in prompt
     assert "--until +15m --step KEY" in prompt and "no Monitor, no loop that sleeps" in prompt

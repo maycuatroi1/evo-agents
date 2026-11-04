@@ -20,7 +20,7 @@ import typing
 
 import pytest
 
-from evo_agents.hub import judge
+from evo_agents.hub import diff_signs, judge, verify_words
 from evo_agents.hub.access import ProjectRules
 
 REPO = "evo-agents"
@@ -28,8 +28,8 @@ PROTECTED = ["curator.yaml", ".github/workflows/**", "evo-agents:evo_agents/hub/
 HEAD = "a" * 40
 
 
-def diff_of(*files: str) -> list[judge.FileDiff]:
-    return judge.parse_diff("\n".join(files) + "\n")
+def diff_of(*files: str) -> list[diff_signs.FileDiff]:
+    return diff_signs.parse_diff("\n".join(files) + "\n")
 
 
 def file_diff(path: str, *lines: str, start: int = 1, old_path: str | None = None, mode: str = "") -> str:
@@ -48,7 +48,7 @@ def kinds(signs: list[dict]) -> list[str]:
 
 
 def signs_of(*files: str, verify=()) -> list[dict]:
-    return judge.hack_signs(diff_of(*files), repo=REPO, protected=PROTECTED, verify_commands=list(verify))
+    return diff_signs.hack_signs(diff_of(*files), repo=REPO, protected=PROTECTED, verify_commands=list(verify))
 
 
 # The plan and the branch
@@ -238,7 +238,7 @@ def test_hack_a_protected_path_of_the_charter_is_a_sign_even_renamed_away():
         ]
     )
     assert kinds(signs_of(renamed)) == ["protected_path"]
-    other_repo = judge.hack_signs(
+    other_repo = diff_signs.hack_signs(
         diff_of(file_diff("evo_agents/hub/credentials.py", "+x = 1")), repo="other", protected=PROTECTED
     )
     assert other_repo == []  # repo:glob protects that repo's path alone
@@ -254,25 +254,25 @@ def test_hack_a_diff_that_cannot_be_read_is_a_sign_but_an_image_is_not():
 
 
 def test_hack_the_files_of_a_github_pull_request_read_as_a_diff():
-    files = judge.from_github_files(
+    files = diff_signs.from_github_files(
         [
             {"filename": "tests/test_queue.py", "status": "modified", "patch": "@@ -4,2 +4,1 @@\n-    assert x\n y\n"},
             {"filename": "evo_agents/big.py", "status": "modified", "changes": 9000},
             {"filename": "docs/new.md", "status": "renamed", "previous_filename": "curator.yaml", "changes": 0},
         ]
     )
-    found = judge.hack_signs(files, repo=REPO, protected=PROTECTED)
+    found = diff_signs.hack_signs(files, repo=REPO, protected=PROTECTED)
     assert kinds(found) == ["assert_removed", "diff_unreadable", "protected_path"]
     assert found[0]["line"] == 4
-    reason = judge.raised_reason(found)
+    reason = diff_signs.raised_reason(found)
     assert reason.startswith("the diff of the Builder shows signs of score hacking") and reason.endswith("tier 3")
     assert (
         len(
-            judge.hack_signs(
+            diff_signs.hack_signs(
                 diff_of(*[file_diff(f"tests/test_{n}.py", "-assert x") for n in range(80)]), repo=REPO, protected=[]
             )
         )
-        == judge.MAX_SIGNS
+        == diff_signs.MAX_SIGNS
     )
 
 
@@ -630,7 +630,7 @@ def test_hack_an_unknown_or_unreadable_file_where_tests_or_ci_live_fails_closed(
 
 
 def test_hack_the_runners_a_verify_command_calls():
-    globs, scripts = judge.verify_runners(
+    globs, scripts = verify_words.verify_runners(
         ["cd web && pnpm test", "bash -c 'make lint && just check'", "FOO=1 uv run nox -s unit", "npm run e2e:ci"]
     )
     assert {"Makefile", "justfile", "noxfile.py"} <= globs and scripts == {"test", "e2e:ci"}
@@ -877,7 +877,7 @@ def test_diff_index_line_and_file_headers_of_a_real_git_diff_are_not_changed_lin
     text = git("diff", "--cached")
     assert "\nindex " in text and "\n--- a/keep.py" in text and "\n+++ b/keep.py" in text
 
-    files = {item.path: item for item in judge.parse_diff(text)}
+    files = {item.path: item for item in diff_signs.parse_diff(text)}
     assert set(files) == {"keep.py", "gone.py", "new.py"}
     assert files["keep.py"].added == [(2, "b = 3")] and files["keep.py"].removed == [(2, "b = 2")]
     assert files["new.py"].status == "added" and files["new.py"].added == [(1, "y = 2")]
@@ -887,4 +887,4 @@ def test_diff_index_line_and_file_headers_of_a_real_git_diff_are_not_changed_lin
 
 
 def test_a_sign_kind_is_a_key_of_the_sign_texts():
-    assert typing.get_args(judge.SignKind) == tuple(judge.SIGN_KINDS)
+    assert typing.get_args(diff_signs.SignKind) == tuple(diff_signs.SIGN_KINDS)

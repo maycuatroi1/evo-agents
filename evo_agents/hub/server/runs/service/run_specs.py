@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import author, autonomy_card, curator, model_router, proofs, runs, tables
+from evo_agents.hub import author, autonomy_card, curator, model_router, proofs, run_prompts, runs, tables
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import attachment_store, pool_accounts, principals
@@ -299,7 +299,9 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
         current = await current_plan(conn, project_id, view.plan_id)
         body, revision = current if current else (plan, view.plan_revision or 0)  # the plan gone: as dispatched
         copy = PlanCopy(body=body, revision=revision)
-        prompt = runs.build_plan_prompt(copy.body, [repo.model_dump() for repo in view.repos or []], None, autonomy)
+        prompt = run_prompts.build_plan_prompt(
+            copy.body, [repo.model_dump() for repo in view.repos or []], None, autonomy
+        )
         title = view.title
     else:
         try:
@@ -308,7 +310,7 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
             step = None
         if not isinstance(step, dict):
             step = {"id": view.step_key}
-        prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
+        prompt = run_prompts.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = text_or_none(step.get("title"))
         verify = runs.verify_of(step)
         criteria = [key for key, _ in proofs.criteria(plan, step)] or None

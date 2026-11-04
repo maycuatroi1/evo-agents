@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import findings, judge, judges, merge_gate
+from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate
 from evo_agents.hub.server.gitlab import FileDiff, LabelEvent
 
 HEAD = "a" * 40
@@ -179,10 +179,10 @@ def test_merge_gate_gate_3_reads_the_diff_gitlab_lists_for_signs_of_score_hackin
     )
     files = merge_gate.files_of([removed])
     assert files[0].removed == [(2, "    assert total() == 3")]
-    signs = judge.hack_signs(files, repo="billing", protected=[])
+    signs = diff_signs.hack_signs(files, repo="billing", protected=[])
     assert [sign["kind"] for sign in signs] == ["assert_removed"]
     added = gitlab_diff("src/report.py", "@@ -0,0 +1 @@\n+TOTAL = 3\n", new_file=True)
-    assert judge.hack_signs(merge_gate.files_of([added]), repo="billing", protected=[]) == []
+    assert diff_signs.hack_signs(merge_gate.files_of([added]), repo="billing", protected=[]) == []
     cut = merge_gate.files_of([gitlab_diff("tests/data.bin", "", cut=True)])
     assert cut[0].readable is False
     binary = merge_gate.files_of(

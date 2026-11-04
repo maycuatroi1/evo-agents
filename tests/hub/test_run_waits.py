@@ -21,7 +21,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
-from evo_agents.hub import hub_events, runs, tables
+from evo_agents.hub import hub_events, run_prompts, runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.live import sql
 from tests.hub.test_decisions import (
@@ -275,9 +275,11 @@ def test_the_wait_for_something_elsewhere_the_prompt_names_parks_the_run_and_res
     client, hub, hub_db
 ):
     """Run #1537 waited hours for CI, PyPI and hub builds inside its session, holding its slot; the prompt
-    (``runs.WAIT_RULE``) and the worker's hook of waits (``wait_guard.REFUSAL``) send such a wait to ``evo-agents worker
+    (``run_prompts.WAIT_RULE``) and the worker's hook of waits (``wait_guard.REFUSAL``) send such a wait to ``evo-agents worker
     wait --until +15m``, which wakes later than the hold, so the reaper parks the run at once."""
-    assert "--until +15m" in runs.WAIT_RULE and timedelta(minutes=15).total_seconds() > runs.DECISION_WAIT_SECONDS
+    assert (
+        "--until +15m" in run_prompts.WAIT_RULE and timedelta(minutes=15).total_seconds() > runs.DECISION_WAIT_SECONDS
+    )
     worker, run, wait = a_waiting_run(client, hub, until=soon(0.25))
     recover(client)
     assert run_view(client, hub["owner"], run["id"])["state"] == "parked"

@@ -51,7 +51,7 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, autonomy, findings, judge, merge_gate, runs, tables, task_runs
+from evo_agents.hub import approval_heads, autonomy, diff_signs, findings, judge, merge_gate, runs, tables, task_runs
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, pull_trailers
 from evo_agents.hub.server.autonomy_policies import project_repos
 from evo_agents.hub.server.forge import forge_token, has_forge
@@ -802,13 +802,13 @@ class RepoPass:
                     row = await row_of(conn, row_id, lock=True)
                     await hold(conn, row, 3, hacked, blocked=True)
                 return
-        risk = await self.risk(judge.changed_paths(files))
+        risk = await self.risk(diff_signs.changed_paths(files))
         await self.passed(row_id, mr, merge_gate.patch_fingerprint(files), risk, passed_by)
 
-    def hacked(self, files: list[judge.FileDiff], body: dict | None) -> str | None:
+    def hacked(self, files: list[diff_signs.FileDiff], body: dict | None) -> str | None:
         """Gate 3: why the diff ``files`` of a merge request on plan ``body`` shows signs of score hacking; None when
         it shows none."""
-        signs = judge.hack_signs(
+        signs = diff_signs.hack_signs(
             files,
             repo=self.repo,
             protected=protected_of(self.project.charter),

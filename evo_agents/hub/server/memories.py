@@ -79,17 +79,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.db import one_of
-from evo_agents.hub.memory import (
-    AGENT_SINK,
-    HARNESS,
-    MAX_AUDIENCE,
-    MAX_BODY,
-    PERSONAL_LOCATION,
-    SHARED_TYPES,
-    TYPES,
-    body_problem,
-    name_problem,
-)
+from evo_agents.hub.memory import AGENT_SINK, MAX_AUDIENCE
+from evo_agents.hub.memory_files import MAX_BODY, SHARED_TYPES, TYPES, body_problem, name_problem
+from evo_agents.hub.memory_places import HARNESS, PERSONAL_LOCATION
 from evo_agents.hub.profiles import HANDLE_PATTERN
 from evo_agents.hub.server import memory_agents, memory_paging, memory_state
 from evo_agents.hub.server.admin import PROJECT_NAME

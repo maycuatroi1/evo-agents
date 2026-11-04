@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 
 from aiohttp import WSMsgType, web
 
-from evo_agents.hub import credential_requests, runs
+from evo_agents.hub import credential_requests, run_prompts, runs
 from evo_agents.hub.history import HISTORY_KEY_HEADER
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
 from evo_agents.hub.probes import PROBE_KEY_HEADER
@@ -312,7 +312,7 @@ class FakeHub:
             "branch": None,
             "repos": repos,
             "lease_expires_at": _now(),
-            "prompt": runs.build_plan_prompt(held["body"], repos),
+            "prompt": run_prompts.build_plan_prompt(held["body"], repos),
             "plan": {"revision": held["revision"], "body": copy.deepcopy(held["body"])},
         }
         return self.queue_run(**(spec | extra))  # ``extra`` may name the attempt, as the next one of a lost run
@@ -341,7 +341,7 @@ class FakeHub:
             branch=branch,
             repos=None,
             lease_expires_at=_now(),
-            prompt=runs.build_prompt(held["body"], step, {"repo": repo, "branch": branch}),
+            prompt=run_prompts.build_prompt(held["body"], step, {"repo": repo, "branch": branch}),
             plan=None,
             verify=runs.verify_of(step),
         )

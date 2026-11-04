@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 
 from evo_agents.hub import intakes, problems
-from evo_agents.hub.memory import FRONTMATTER, frontmatter
+from evo_agents.hub.memory_files import FRONTMATTER, frontmatter
 from evo_agents.kg.serve import CAP_CHARS
 
 # Characters of the text of digest_show and run_events, under the envelope's cut: the Curator's review reads them

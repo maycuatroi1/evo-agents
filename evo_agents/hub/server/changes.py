@@ -31,7 +31,7 @@ request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitL
 request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
 its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
 The job ``curator.changes`` (``advance``), one pass at a time, opens the pull request with the workers' App, reads its
-files and runs ``judge.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
+files and runs ``diff_signs.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
 files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
 really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
 key, which only ever raises it), so a proposal of docs whose pull request changes code is tier 1 from then on. A list of
@@ -86,7 +86,7 @@ from functools import partial
 from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, guard, judge, tables
+from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
 from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
 from evo_agents.hub.server.change_watch import settle_by_branch, watch_pass
@@ -143,9 +143,9 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
 
 
 def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[dict]:
-    """``judge.hack_signs`` of a pull request's files, and first, so the cap on signs never drops it, the sign of a
+    """``diff_signs.hack_signs`` of a pull request's files, and first, so the cap on signs never drops it, the sign of a
     list of files GitHub did not give whole (``cut``)."""
-    signs = judge.hack_signs(
+    signs = diff_signs.hack_signs(
         diff,
         repo=change.repo,
         protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
@@ -269,9 +269,9 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         return await _files_of(app, token, target, number, made.get("changed_files"))
 
     files, cut = await pulls.with_token(app, target.owner, target.name, "read", read)
-    diff = judge.from_github_files(files)
+    diff = diff_signs.from_github_files(files)
     signs = _signs_of(diff, change, charter, body, cut)
-    facts = await change_tiers.pull_facts(engine, app, change, target, judge.changed_paths(diff), made, reader)
+    facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), made, reader)
     return await _pull_opened(engine, change, project, made, found["base"], signs, facts, charter)
 
 
@@ -417,7 +417,7 @@ async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dic
 async def _tier_again(engine: AsyncEngine, app: GitHubApp, change, target: Target, diff, pull: dict, charter, reader):
     """The tier of a judged change from its pull request's files as GitHub lists them now (``change_tiers.retier``),
     kept on the change when it rose."""
-    facts = await change_tiers.pull_facts(engine, app, change, target, judge.changed_paths(diff), pull, reader)
+    facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), pull, reader)
     async with engine.begin() as conn:
         tier = await change_tiers.retier(conn, change, facts, charter)
         if tier != change.tier:
@@ -469,7 +469,7 @@ async def merge_read(
     ruleset = await _ruleset_now(engine, curator_app, change, target)
     seen = await pulls.with_token(app, target.owner, target.name, "read", partial(_read_merge, app, target, change))
     found = seen["pull"]
-    diff = judge.from_github_files(seen["files"])
+    diff = diff_signs.from_github_files(seen["files"])
     signs = _signs_of(diff, change, charter, body, seen["cut"])
     tier = change.tier
     if reader is not None:
@@ -507,7 +507,7 @@ async def merge_read(
 
 def merge_act(change, read: MergeRead) -> dict:
     """The act of merging ``change``'s pull request at the head the Judge passed, as the gate K5 names it."""
-    scope = approval_heads.scope_of(judge.changed_paths(read.diff), read.pull.get("body"))
+    scope = approval_heads.scope_of(diff_signs.changed_paths(read.diff), read.pull.get("body"))
     return autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch, change.head_sha, scope)
 
 

@@ -76,14 +76,9 @@ def _cents(value) -> bool:
     return isinstance(value, (int, float)) and abs(round(value * 100) - value * 100) < 1e-6
 
 
-def _semantics(data: dict) -> list[str]:
+def _seller_problems(sellers: list[dict]) -> list[str]:
+    """What is wrong with the index's sellers beyond the schema: an id listed twice, a key whose id is not its own."""
     problems: list[str] = []
-    sellers = data.get("sellers") or []
-    plugins = data.get("plugins") or []
-    if len(sellers) > MAX_SELLERS:
-        problems.append(f"sellers: at most {MAX_SELLERS}")
-    if len(plugins) > MAX_PLUGINS:
-        problems.append(f"plugins: at most {MAX_PLUGINS}")
     seller_ids: set[str] = set()
     for index, seller in enumerate(sellers):
         if seller["id"] in seller_ids:
@@ -99,25 +94,38 @@ def _semantics(data: dict) -> list[str]:
                 problems.append(
                     f"sellers[{index}].keys[{number}].key_id: the key's id is {actual}, not {key['key_id']}"
                 )
+    return problems
+
+
+def _price_problems(where: str, plugin: dict, seller_ids: set[str]) -> list[str]:
+    """What is wrong with the price and tier of ``plugin``, listed at ``where``."""
+    problems: list[str] = []
+    price = plugin["price"]
+    if price["kind"] == "subscription":
+        if not _cents(price["usd_per_hub_month"]):
+            problems.append(f"{where}.price.usd_per_hub_month: at most two decimals")
+        if price["seller"] not in seller_ids:
+            problems.append(f"{where}.price.seller: {price['seller']} is not in sellers")
+    if plugin["tier"] == "core":
+        if "package" not in plugin:
+            problems.append(f"{where}.package: a core plugin names the Python package that ships it in the image")
+        if price["kind"] != "free":
+            problems.append(f"{where}.price: a core plugin comes with the image and is not sold by subscription")
+    elif "package" in plugin:
+        problems.append(f"{where}.package: only a core plugin ships in a Python package")
+    return problems
+
+
+def _plugin_problems(plugins: list[dict], seller_ids: set[str]) -> list[str]:
+    """What is wrong with the index's plugins beyond the schema, given the ids of its sellers."""
+    problems: list[str] = []
     seen: set[str] = set()
     for index, plugin in enumerate(plugins):
         where = f"plugins[{index}]"
         if plugin["id"] in seen:
             problems.append(f"{where}.id: {plugin['id']} is listed twice")
         seen.add(plugin["id"])
-        price = plugin["price"]
-        if price["kind"] == "subscription":
-            if not _cents(price["usd_per_hub_month"]):
-                problems.append(f"{where}.price.usd_per_hub_month: at most two decimals")
-            if price["seller"] not in seller_ids:
-                problems.append(f"{where}.price.seller: {price['seller']} is not in sellers")
-        if plugin["tier"] == "core":
-            if "package" not in plugin:
-                problems.append(f"{where}.package: a core plugin names the Python package that ships it in the image")
-            if price["kind"] != "free":
-                problems.append(f"{where}.price: a core plugin comes with the image and is not sold by subscription")
-        elif "package" in plugin:
-            problems.append(f"{where}.package: only a core plugin ships in a Python package")
+        problems += _price_problems(where, plugin, seller_ids)
         if "requires" in plugin:
             try:
                 parse_spec(plugin["requires"])
@@ -128,6 +136,18 @@ def _semantics(data: dict) -> list[str]:
         except ValueError as exc:
             problems.append(f"{where}.publisher.signer: {exc}")
     return problems
+
+
+def _semantics(data: dict) -> list[str]:
+    problems: list[str] = []
+    sellers = data.get("sellers") or []
+    plugins = data.get("plugins") or []
+    if len(sellers) > MAX_SELLERS:
+        problems.append(f"sellers: at most {MAX_SELLERS}")
+    if len(plugins) > MAX_PLUGINS:
+        problems.append(f"plugins: at most {MAX_PLUGINS}")
+    problems += _seller_problems(sellers)
+    return problems + _plugin_problems(plugins, {seller["id"] for seller in sellers})
 
 
 def check_market(data) -> list[str]:

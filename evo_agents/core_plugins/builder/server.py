@@ -35,7 +35,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents import __version__
-from evo_agents.core_plugins.builder import plugin_changes, proposals
+from evo_agents.core_plugins.builder import kinds, plugin_changes, proposals
 from evo_agents.core_plugins.builder.proposals import APPROVE, REJECT, ROLLBACK, BuilderProposal, ProposalError
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
@@ -115,7 +115,7 @@ class ReviewRun:
 async def _tell_approvers(
     conn: AsyncConnection,
     access: ProjectAccess,
-    change: proposals.Change,
+    change: kinds.Change,
     proposal_id: int,
     run,
     link: str,
@@ -158,11 +158,9 @@ async def _review_run(conn: AsyncConnection, context: CoreContext) -> ReviewRun 
     return ReviewRun(context.run_id, row.dispatched_by)
 
 
-async def _propose_for_review(
-    conn: AsyncConnection, change: proposals.Change, context: CoreContext, run: ReviewRun
-) -> str:
+async def _propose_for_review(conn: AsyncConnection, change: kinds.Change, context: CoreContext, run: ReviewRun) -> str:
     """Keep ``change`` as a proposal of the Curator's review run ``run``, for the night shift's owner."""
-    if change.kind != proposals.POLICY:
+    if change.kind != kinds.POLICY:
         raise ProposalError(
             403, f"the Curator's review run proposes a change of the autonomy policy alone, not of {change.kind}"
         )
@@ -188,7 +186,7 @@ async def _propose_for_review(
     )
 
 
-async def _propose(conn: AsyncConnection, change: proposals.Change, context: CoreContext) -> str:
+async def _propose(conn: AsyncConnection, change: kinds.Change, context: CoreContext) -> str:
     review = await _review_run(conn, context)
     if review is not None:
         return await _propose_for_review(conn, change, context, review)
@@ -417,7 +415,7 @@ async def waiting_proposals(
             k
             for k in PROPOSAL_KINDS
             if kind in (None, k)
-            and not proposals.refusal(user, access, k, "deciding", own=self_managed and k == proposals.PLUGIN_INSTALL)
+            and not proposals.refusal(user, access, k, "deciding", own=self_managed and k == kinds.PLUGIN_INSTALL)
         ]
         return await proposals.listed(conn, access.project_id, proposals.PENDING, kinds=decides) if decides else []
 

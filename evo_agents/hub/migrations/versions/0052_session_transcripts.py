@@ -37,7 +37,7 @@ MAX_SESSION_ID = 100  # evo_agents.hub.digest.MAX_SESSION_ID
 FILE_KEY = r"^(main|subagents(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}){1,5})$"  # evo_agents.hub.transcripts.FILE_KEY
 MAX_FILE_KEY = 512  # evo_agents.hub.transcripts.MAX_FILE_KEY
 RUNTIMES = ("claude-code", "codex")  # evo_agents.hub.transcripts.RUNTIMES
-MACHINE = r"^[A-Za-z0-9-]{1,40}$"  # evo_agents.hub.memory.host_tag
+MACHINE = r"^[A-Za-z0-9-]{1,40}$"  # evo_agents.hub.memory_files.host_tag
 MAX_CWD = 4096  # evo_agents.hub.digest.MAX_CWD
 SHA256 = r"^[0-9a-f]{64}$"
 

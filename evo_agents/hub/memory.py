@@ -45,104 +45,50 @@ import contextlib
 import hashlib
 import json
 import os
-import re
-import stat
 import time
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote, urlencode
-
-import yaml
+from urllib.parse import urlencode
 
 from evo_agents import filelock
-from evo_agents.hub.client import Hub, HubError, host_name, hub_dir, write_atomic
-from evo_agents.hub.registry import cluster_of, default_registry, read_registry
-from evo_agents.kg.project import binding_of, bound_project, read_bindings
+from evo_agents.hub.client import Hub, HubError, hub_dir, write_atomic
+from evo_agents.hub.memory_files import (
+    CONFLICT_COPY,
+    FILE_MODE,
+    INDEX,
+    SHARED_TYPES,
+    TYPES,
+    LeftAlone,
+    add_pointers,
+    body_problem,
+    conflict_path,
+    file_mode,
+    host_tag,
+    memory_type,
+    name_problem,
+    points_at,
+    read_memory,
+    read_regular,
+)
+from evo_agents.hub.memory_places import SLUG, Place, Places, claude_projects, slug
+from evo_agents.hub.registry import default_registry, read_registry
+from evo_agents.kg.project import read_bindings
 
-TYPES = ("user", "feedback", "project", "reference")
-SHARED_TYPES = frozenset({"project", "reference"})  # in a project, its members see these; their owner the others
-PRIVATE_TYPE = "user"  # what a file without a readable type counts as: only its owner sees it
 SCOPES = ("project", "personal")
-HARNESS = "harness"  # the location of a project's harness root
-INDEX = "MEMORY.md"
 AGENT_SINK = "claude-code@anthropic"  # what reads the files a pull writes: Claude Code sessions
-MAX_BODY = 256 * 1024  # bytes of UTF-8 in one memory file
-MAX_NAME = 255  # bytes in a file name, as file systems allow
 MAX_AUDIENCE = 256  # principals one write of a memory names (chat:<id>, grant:<project>:<level>)
 STATE_FILE = "memory-state.json"
 LOCK_FILE = "memory.lock"
 LOCK_TIMEOUT = 60.0  # seconds to wait for another sync on this machine
 PAGE = 200  # memories per listing request
 MAX_PAGES = 10_000
-FILE_MODE = 0o600
 DIR_MODE = 0o700
 STATE_VERSION = 1
 
-SLUG = re.compile(r"[A-Za-z0-9-]{1,255}")
-PERSONAL_LOCATION = re.compile(r"[~A-Za-z0-9-][A-Za-z0-9-]{0,254}")
-CONFLICT_COPY = re.compile(r"\.conflict-[A-Za-z0-9-]+\.md\Z")
-FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(.*?\r?\n)?---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
-
-# The slug rule and the places of memory directories
-
-
-def slug(path: str | os.PathLike) -> str:
-    """Claude Code's directory name for ``path``: every character outside [A-Za-z0-9] becomes ``-``, as many as
-    JavaScript counts UTF-16 units in it."""
-    return "".join(ch if ch.isascii() and ch.isalnum() else "-" * (2 if ord(ch) > 0xFFFF else 1) for ch in str(path))
-
-
-def claude_projects(env: Mapping[str, str] | None = None) -> Path:
-    """Where Claude Code keeps one directory per working directory: $CLAUDE_CONFIG_DIR/projects, else
-    ~/.claude/projects."""
-    env = os.environ if env is None else env
-    config = env.get("CLAUDE_CONFIG_DIR")
-    return (Path(config).expanduser() if config else Path.home() / ".claude") / "projects"
-
-
-def personal_location(name: str, home: Path) -> str:
-    """The location of the personal memories of directory ``name`` (a slug)."""
-    base = slug(home)
-    if name == base:
-        return "~"
-    if name.startswith(base + "-"):
-        rest = name[len(base) + 1 :]
-        return rest if rest[:1].isalnum() else "~" + name[len(base) :]
-    return name
-
-
-def personal_slug(location: str, home: Path) -> str | None:
-    """The directory of personal memories at ``location`` under ``home``; None for a location no slug gives."""
-    if not isinstance(location, str) or not PERSONAL_LOCATION.fullmatch(location):
-        return None
-    base = slug(home)
-    if location.startswith("~"):
-        name = base + location[1:]
-    elif location.startswith("-"):
-        name = location
-    else:
-        name = f"{base}-{location}"
-    return name if SLUG.fullmatch(name) else None
-
-
-@dataclass(frozen=True)
-class Place:
-    """Where a memory directory goes on the hub."""
-
-    scope: str  # project or personal
-    project: str | None
-    location: str
-
-    def __str__(self) -> str:
-        return f"project {self.project}, {self.location}" if self.scope == "project" else f"personal, {self.location}"
-
-    def filters(self) -> dict:
-        found = {"scope": self.scope, "location": self.location}
-        return {**found, "project": self.project} if self.project else found
+# Places and types
 
 
 def _place(entry: Mapping) -> Place:
@@ -153,327 +99,8 @@ def _shared(scope: str, kind: str) -> bool:
     return scope == "project" and kind in SHARED_TYPES
 
 
-def _owns_cluster(cluster: Mapping, project: Mapping, hub_url: str) -> bool:
-    hub = cluster.get("hub")
-    if isinstance(hub, dict) and hub.get("project") == project["name"] and hub.get("url") == hub_url:
-        return True
-    return cluster.get("name") == project["harness"]["name"]
-
-
-def _listed(names) -> str:
-    return ", ".join(sorted(names))
-
-
-class Places:
-    """The memory directories of the hub projects a person sees, at the paths ``hub registry pull`` gives their
-    harness and repos on this machine. Any other directory is personal.
-
-    A directory several projects claim belongs to the one whose claim is strongest, by this precedence:
-
-    1. the harness root of a project. Two projects whose harness root is one directory here are refused, whatever
-       else claims it: one of the two registrations is a mistake, and guessing would put memories in the wrong one.
-    2. ``evo-agents kg bind``: the project bound.json binds the directory to, by its own binding or that of its
-       nearest bound ancestor, as the knowledge graph reads it. It chooses among the projects that list the
-       directory as a repo; a binding to any other project refuses the directory, since that project has no place
-       for it on the hub.
-    3. a repo listing, when one project alone lists the directory.
-
-    Anything else, such as one repo of two projects without a binding, is refused, and the message names the
-    binding that settles it. So the memories of a directory go to another project only when a stronger claim says
-    so, never because of how projects happen to list their repos; and a memory synced with one project is never
-    moved to another by a push (``MemorySync._push_file``). A binding never makes a directory a project's that no
-    project claims: it has no location there, so it stays personal."""
-
-    def __init__(self, home: Path, bindings: Mapping | None = None):
-        self.home = home
-        self.bindings = dict(bindings or {})  # bound.json, as ``evo_agents.kg.project.read_bindings`` reads it
-        self._claims: dict[str, set[Place]] = {}
-        self._roots: dict[str, set[str]] = {}  # per directory, the projects whose harness root it is
-        self._paths: dict[str, set[str]] = {}  # per directory, the paths that claimed it
-        self._slugs: dict[Place, str] = {}
-        self._decided: dict[str, str | None | HubError] = {}  # what project_of found, per directory
-
-    def add(self, place: Place, path: str, *, root: bool = False) -> None:
-        """``path`` holds ``place`` here, as the harness root of its project when ``root``; the first path added for
-        a place is where its memories are pulled to."""
-        self._decided.clear()
-        self._slugs.setdefault(place, slug(path))
-        for name in {slug(path), slug(os.path.realpath(path))}:
-            self._claims.setdefault(name, set()).add(place)
-            self._paths.setdefault(name, set()).add(os.path.normpath(path))
-            if root:
-                self._roots.setdefault(name, set()).add(place.project)
-
-    @classmethod
-    def from_hub(
-        cls,
-        projects: list,
-        registry: Mapping,
-        hub_url: str,
-        home: Path | None = None,
-        bindings: Mapping | None = None,
-    ) -> Places:
-        """``projects`` as GET /v1/projects lists them; the workspace of each is the one its cluster in ``registry``
-        names, or the one it was registered with. ``bindings`` is bound.json of ``evo-agents kg bind``."""
-        places = cls(home or Path.home(), bindings)
-        clusters = [c for c in registry.get("clusters") or [] if isinstance(c, dict)]
-        for project in projects:
-            if not isinstance(project, dict) or not isinstance(project.get("harness"), dict):
-                continue  # registered without its harness paths: no directory of this machine is its own
-            held = next((c for c in clusters if _owns_cluster(c, project, hub_url)), None)
-            workspace = held.get("workspace") if held else None
-            base = Path(workspace).expanduser() if isinstance(workspace, str) and workspace else None
-            cluster = cluster_of(project, hub_url, base)
-            harness = Place("project", project["name"], HARNESS)
-            places.add(harness, cluster["root"], root=True)
-            if held and isinstance(held.get("root"), str):
-                places.add(harness, held["root"], root=True)
-            for repo, path in zip(project.get("repos") or [], cluster["repos"], strict=True):
-                places.add(Place("project", project["name"], repo["name"]), path)
-        return places
-
-    def _shown(self, name: str) -> str:
-        paths = sorted(self._paths.get(name, ()))
-        return " and ".join(paths) if paths else name
-
-    def _bound(self, name: str) -> tuple[set, list[str]]:
-        """The projects the bindings of directory ``name``'s paths name (None for a binding that names none), and
-        the bound directories they come from."""
-        projects, where = set(), []
-        for path in sorted(self._paths.get(name, ())):
-            found = binding_of(path, self.bindings)
-            if found is not None:
-                where.append(found[0])
-                projects.add(bound_project(found[1]))
-        return projects, where
-
-    def project_of(self, name: str) -> str | None:
-        """The project directory ``name`` (a slug) belongs to here, by the precedence of the class: None when no
-        project claims it, so it is personal; HubError naming the way out when the claims do not settle it. Every
-        caller (push, pull, the hooks) decides through here."""
-        if name not in self._decided:
-            try:
-                self._decided[name] = self._decide(name)
-            except HubError as exc:
-                self._decided[name] = exc
-        found = self._decided[name]
-        if isinstance(found, HubError):
-            raise HubError(str(found))
-        return found
-
-    def _decide(self, name: str) -> str | None:
-        claims = self._claims.get(name)
-        if not claims:
-            return None
-        shown = self._shown(name)
-        roots = self._roots.get(name, set())
-        if len(roots) > 1:
-            raise HubError(
-                f"{shown}: the harness root of projects {_listed(roots)} at once on this machine, so its memories are "
-                "not synced; a harness is the root of one hub project, so one of these registrations has to go"
-            )
-        if roots:
-            return next(iter(roots))  # the harness root wins over a binding and over repo listings
-        listing = {place.project for place in claims}
-        fix = f"`evo-agents kg bind --project <name> {sorted(self._paths.get(name, {name}))[0]}`"
-        bound, where = self._bound(name)
-        if bound:
-            if len(bound) == 1 and next(iter(bound)) in listing:
-                return next(iter(bound))
-            named = _listed(p or "no project" for p in bound)
-            raise HubError(
-                f"{shown}: bound to {named} (`evo-agents kg bind`, at {', '.join(where)}), while the hub projects "
-                f"listing it as a repo here are {_listed(listing)}; its memories are not synced. Choose one of those "
-                f"with {fix}"
-            )
-        if len(listing) == 1:
-            return next(iter(listing))
-        raise HubError(
-            f"{shown}: a repo of projects {_listed(listing)} at once on this machine and the harness root of none, so "
-            f"its memories are not synced; choose its project with {fix}"
-        )
-
-    def candidates(self, name: str) -> list[Place]:
-        """The places directory ``name`` may sync with, the preferred first: its project's harness before its repos,
-        else the personal place. HubError when ``project_of`` cannot tell its project."""
-        project = self.project_of(name)
-        if project is None:
-            return [Place("personal", None, personal_location(name, self.home))]
-        claims = (place for place in self._claims[name] if place.project == project)
-        return sorted(claims, key=lambda place: (place.location != HARNESS, place.location))
-
-    def directory(self, place: Place) -> str | None:
-        """The directory (slug) the memories of ``place`` are pulled into here; None when there is none: a project
-        location no harness or repo of this machine holds, a personal location that is not a slug, a directory that
-        belongs to another project here, or one whose project cannot be told, or for a personal memory a directory
-        any project claims here."""
-        if place.scope == "personal":
-            name = personal_slug(place.location, self.home)
-            return None if name is None or name in self._claims else name
-        name = self._slugs.get(place)
-        if name is None or not SLUG.fullmatch(name):
-            return None
-        try:
-            return name if self.project_of(name) == place.project else None
-        except HubError:
-            return None
-
-
-# Files
-
-
-def name_problem(name) -> str | None:
-    """Why ``name`` cannot name a memory file, or None. Shared with the server, which applies it to every write."""
-    if not isinstance(name, str) or len(name) <= 3 or not name.endswith(".md"):
-        return "a memory name is a file name ending in .md"
-    try:
-        size = len(name.encode("utf-8"))
-    except UnicodeEncodeError:
-        return "a memory name must be valid Unicode text"
-    if size > MAX_NAME:
-        return f"a memory name is at most {MAX_NAME} bytes"
-    if name.startswith("."):
-        return "a memory name does not start with a dot"
-    if "/" in name or "\\" in name or _CONTROL.search(name):
-        return "a memory name holds no slash, backslash or control character"
-    if name.lower() == INDEX.lower():
-        return f"{INDEX} is the index of a memory directory, never a memory"
-    return None
-
-
-def body_problem(text) -> str | None:
-    """Why ``text`` cannot be the content of a memory, or None."""
-    if not isinstance(text, str):
-        return "a memory is text"
-    try:
-        size = len(text.encode("utf-8"))
-    except UnicodeEncodeError:
-        return "a memory must be valid Unicode text"
-    if size > MAX_BODY:
-        return f"a memory is at most {MAX_BODY // 1024} KiB of UTF-8"
-    if "\x00" in text:
-        return "a memory holds no NUL character"
-    return None
-
-
-def frontmatter(text: str) -> dict:
-    """The YAML block a memory file opens with; empty when it has none or it cannot be read."""
-    found = FRONTMATTER.match(text)
-    if found is None or found.group(1) is None:
-        return {}
-    try:
-        data = yaml.safe_load(found.group(1))
-    except yaml.YAMLError:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def memory_type(text: str) -> str:
-    """metadata.type of the frontmatter, else type, else ``user``: a memory nobody typed stays its owner's."""
-    data = frontmatter(text)
-    metadata = data.get("metadata")
-    for value in (metadata.get("type") if isinstance(metadata, dict) else None, data.get("type")):
-        if isinstance(value, str) and value.strip().lower() in TYPES:
-            return value.strip().lower()
-    return PRIVATE_TYPE
-
-
-def _one_line(value) -> str:
-    return " ".join(str(value).split()) if isinstance(value, (str, int, float)) else ""
-
-
-def pointer_line(name: str, text: str) -> str:
-    """The MEMORY.md line pointing at memory file ``name``, as Claude Code writes them."""
-    data = frontmatter(text)
-    title = (_one_line(data.get("name")) or name[:-3]).replace("[", "(").replace("]", ")")
-    target = f"<{name}>" if re.search(r"[\s()<>]", name) else name
-    description = _one_line(data.get("description"))
-    return f"- [{title}]({target})" + (f" — {description}" if description else "")
-
-
-def _points_at(index: str, name: str) -> bool:
-    targets = {name, f"./{name}", f"<{name}>", f"<./{name}>", quote(name), f"./{quote(name)}"}
-    return any(f"]({target})" in index for target in targets)
-
-
-def add_pointers(directory: Path, files: Mapping[str, str]) -> list[str]:
-    """Append to ``directory``/MEMORY.md a pointer line for each of ``files`` (name to text) it does not point at
-    yet, creating it if needed. Every line already there stays as it is. The names a line was added for."""
-    index = directory / INDEX
-    try:
-        raw = index.read_bytes()
-    except FileNotFoundError:
-        raw = None
-    held = (raw or b"").decode("utf-8", "replace")
-    missing = [name for name in sorted(files) if not _points_at(held, name)]
-    if not missing:
-        return []
-    data = raw or b""
-    if data and not data.endswith(b"\n"):
-        data += b"\n"
-    data += "".join(pointer_line(name, files[name]) + "\n" for name in missing).encode("utf-8")
-    write_atomic(index, data, _mode(index))
-    return missing
-
-
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
-
-def _mode(path: Path) -> int:
-    try:
-        return stat.S_IMODE(os.stat(path, follow_symlinks=False).st_mode)
-    except FileNotFoundError:
-        return FILE_MODE
-
-
-def host_tag(host: str | None = None) -> str:
-    """This machine's name as a conflict copy carries it: letters, digits and ``-`` only."""
-    return re.sub(r"[^A-Za-z0-9]+", "-", host or host_name()).strip("-")[:40] or "host"
-
-
-def conflict_path(path: Path, host: str) -> Path:
-    """``<name>.conflict-<host>.md`` next to ``path``, numbered when that is taken."""
-    stem = path.name[:-3]
-    number = 1
-    while True:
-        suffix = f".conflict-{host}" + (f"-{number}" if number > 1 else "") + ".md"
-        while len((stem + suffix).encode("utf-8")) > MAX_NAME:
-            stem = stem[:-1]
-        candidate = path.with_name(stem + suffix)
-        if not os.path.lexists(candidate):
-            return candidate
-        number += 1
-
-
-class LeftAlone(Exception):
-    """A file the sync does not read or replace; ``str`` says why."""
-
-
-def read_regular(path: Path, limit: int = MAX_BODY) -> bytes | None:
-    """The bytes of regular file ``path``, at most ``limit`` + 1 of them; None when nothing is there. A symlink is
-    never followed and a FIFO never waited on."""
-    nofollow = getattr(os, "O_NOFOLLOW", 0)
-    if not nofollow and os.path.islink(path):
-        raise LeftAlone("a symlink")
-    try:
-        fd = os.open(path, os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0))
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise LeftAlone("a symlink" if os.path.islink(path) else exc.strerror or str(exc)) from None
-    with os.fdopen(fd, "rb") as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-            raise LeftAlone("not a regular file")
-        return handle.read(limit + 1)
-
-
-def read_memory(path: Path) -> bytes | None:
-    """``read_regular`` for a memory file, which is at most MAX_BODY bytes: a larger one is never cut short."""
-    data = read_regular(path)
-    if data is not None and len(data) > MAX_BODY:
-        raise LeftAlone(f"larger than {MAX_BODY // 1024} KiB")
-    return data
 
 
 # State and lock
@@ -1021,7 +648,7 @@ class MemorySync:
         if self.dry_run:
             index = directory / INDEX
             held = index.read_text(encoding="utf-8", errors="replace") if index.is_file() else ""
-            self.report.counts["indexed"] += sum(1 for n in present if not _points_at(held, n))
+            self.report.counts["indexed"] += sum(1 for n in present if not points_at(held, n))
             return
         self.report.counts["indexed"] += len(add_pointers(directory, present))
 
@@ -1092,7 +719,7 @@ class MemorySync:
     def _write(self, path: Path, data: bytes, expected: str | None) -> None:
         self._unchanged(path, expected)
         path.parent.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
-        write_atomic(path, data, _mode(path))
+        write_atomic(path, data, file_mode(path))
 
     def _remove(self, path: Path, expected: str) -> None:
         self._unchanged(path, expected)
@@ -1107,7 +734,7 @@ class MemorySync:
         copy = conflict_path(path, self.host)
         if not self.dry_run:
             self._unchanged(path, _sha(local))
-            write_atomic(copy, local, _mode(path))  # first, so this machine's version is safe whatever happens next
+            write_atomic(copy, local, file_mode(path))  # first, so this machine's version is safe whatever happens next
             if current["deleted"]:
                 self._remove(path, _sha(local))
             else:

@@ -160,6 +160,22 @@ def register_plugin_commands(hsub, plugins: list[dict] | None = None) -> None:
             _command(gsub, name, command)
 
 
+def _options(arg: dict) -> dict:
+    """The options of ``add_argument`` that argument ``arg`` of a command gives whether it is positional or a flag."""
+    options: dict = {"help": arg.get("help")}
+    if arg["type"] == "boolean":
+        options["action"] = "store_true"
+        return options
+    options["type"] = TYPES[arg["type"]]
+    if arg.get("choices"):
+        options["choices"] = arg["choices"]
+    if arg.get("repeatable"):
+        options["action"] = "append"
+    if arg.get("default") is not None:
+        options["default"] = arg["default"]
+    return options
+
+
 def _command(gsub, plugin: str, command: dict) -> None:
     parser = gsub.add_parser(command["name"], help=command.get("help"))
     if command.get("project"):
@@ -169,17 +185,7 @@ def _command(gsub, plugin: str, command: dict) -> None:
     groups: dict = {}
     for arg in command.get("args") or []:
         kind = arg["type"]
-        options: dict = {"help": arg.get("help")}
-        if kind == "boolean":
-            options["action"] = "store_true"
-        else:
-            options["type"] = TYPES[kind]
-            if arg.get("choices"):
-                options["choices"] = arg["choices"]
-            if arg.get("repeatable"):
-                options["action"] = "append"
-            if arg.get("default") is not None:
-                options["default"] = arg["default"]
+        options = _options(arg)
         metavar = arg.get("metavar") or arg["name"].upper()
         if arg.get("positional"):
             if arg.get("repeatable"):

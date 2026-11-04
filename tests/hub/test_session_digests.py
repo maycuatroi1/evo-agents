@@ -31,7 +31,7 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import jobs, tables
 from evo_agents.hub.digest import STATE_FILE, DigestState, build
-from evo_agents.hub.memory import slug
+from evo_agents.hub.memory_places import slug
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.digests import DIGEST_DAYS, prune_digests
 from evo_agents.hub.worker import queue

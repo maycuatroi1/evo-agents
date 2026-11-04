@@ -19,7 +19,7 @@ worker could not self-update while it was held.
 The refusal tells the agent to wait with ``evo-agents worker wait`` and end its turn. Work on the machine (tests, a
 build) still runs in the background as before. The thresholds are a reading of the commands such waits use, not a
 boundary: a poll kept in a script, or a sleep under another name, gets past the hook, so the plan run's prompt
-(``runs.WAIT_RULE``) and the execute-plan skill say the same.
+(``run_prompts.WAIT_RULE``) and the execute-plan skill say the same.
 """
 
 from __future__ import annotations

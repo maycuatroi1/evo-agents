@@ -843,7 +843,7 @@ def aged(path: Path, seconds: float, now: float) -> Path:
 def test_the_sweep_queues_the_sessions_no_hook_pushed_and_reads_a_short_one_again_only_once_it_changed(
     home, monkeypatch
 ):
-    from evo_agents.hub.memory import slug
+    from evo_agents.hub.memory_places import slug
 
     now = 2_000_000_000.0
     url = "https://hub.test"

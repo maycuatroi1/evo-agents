@@ -1,5 +1,5 @@
 """The proposals of @builder of kind ``opportunity`` (plan opportunity-intake, criterion a1 and a2): where one applies,
-how it is checked, applied and rolled back. ``proposals`` calls these for its kind, as it calls its own for a problem.
+how it is checked, applied and rolled back, as its ``KIND`` (``kinds.Kind``), which ``proposals`` maps its kind to.
 
 A proposal names an opportunity of the project (``target.opportunity``, its code) or none, for a new one whose code the
 hub picks when it is proposed and keeps in the target. Its version is the opportunity's revision, 0 for a new one. It
@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
+from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing, refuse
 from evo_agents.hub import opportunities as model
 from evo_agents.hub.server import opportunities as routes
 from evo_agents.hub.server import opportunity_evidence as lines_of
@@ -173,3 +174,36 @@ async def roll_back(
     held = await routes.found(conn, access.project_id, code)
     await lines_of.remove_proposed(conn, user, access, held.id, proposal_id)
     return version
+
+
+# Its Kind
+
+
+async def _target(conn: AsyncConnection, access: ProjectAccess, change: Change, lock: bool) -> Target:
+    title, version, held, fields, code = await locate(conn, access, change.target)
+    return Target(title, version, held, opportunity=fields, names={"opportunity": code})
+
+
+def _fields(target: Target) -> dict:
+    assert target.opportunity is not None  # located for an opportunity
+    return target.opportunity
+
+
+async def _check(
+    conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
+) -> None:
+    code = target.names["opportunity"]
+    refuse(await wrong(conn, access, change, code, target.version, _fields(target)))
+
+
+async def _apply(w: Writing) -> int:
+    code = w.target.names["opportunity"]
+    return await apply(w.conn, w.user, w.access, w.change, code, _fields(w.target), w.version, w.proposal_id)
+
+
+async def _roll_back(w: Writing) -> int:
+    code = w.target.names["opportunity"]
+    return await roll_back(w.conn, w.user, w.access, w.change, code, w.version, w.proposal_id)
+
+
+KIND = Kind(_target, _check, _apply, _roll_back)

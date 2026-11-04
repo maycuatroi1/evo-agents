@@ -38,7 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import findings, judge, judges, merge_gate, runs, tables, tiers
+from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
@@ -285,7 +285,7 @@ class MergeVerdictIn(BaseModel):
     base_sha: str | None = Field(None, pattern=OBJECT_NAME)
     verify: list[VerifyResult] = Field(default_factory=list, max_length=50)
     hidden: list[HiddenResult] = Field(default_factory=list, max_length=50)
-    signs: list[Sign] = Field(default_factory=list, max_length=judge.MAX_SIGNS)
+    signs: list[Sign] = Field(default_factory=list, max_length=diff_signs.MAX_SIGNS)
     paths: list[Annotated[str, Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)]] = Field(
         default_factory=list, max_length=judge.MAX_PATHS
     )

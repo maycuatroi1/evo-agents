@@ -5,7 +5,7 @@ categories of decision, a category belongs to one class. The claim's side: test_
 
 from __future__ import annotations
 
-from evo_agents.hub import autonomy_card, autonomy_levels, runs
+from evo_agents.hub import autonomy_card, autonomy_levels, run_prompts, runs
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES, FREE_CATEGORIES, HEADING, Who
 from evo_agents.hub.autonomy_levels import NO_ASK, Source, effective, pref_source, snapshot
 
@@ -60,23 +60,23 @@ def test_autonomy_level_card_shows_an_ask_of_a_project_policy_as_auto():
 def test_autonomy_level_card_replaces_the_fixed_categories_of_a_plan_runs_prompt():
     plan = {"id": "fleet", "steps": [{"id": 1, "what": "do it", "status": "pending"}]}
     repos = [{"name": "app", "branch": "main"}]
-    bare = runs.build_plan_prompt(plan, repos)
+    bare = run_prompts.build_plan_prompt(plan, repos)
     assert not bare.startswith(HEADING) and SHIPS in bare
     for category in runs.PROMPTED_DECISION_CATEGORIES:
         assert f"\n  - {category}: " in bare, category
     spec = autonomy_card.card(of(pref_source("ivan", "A2")), IVAN).spec()
-    carded = runs.build_plan_prompt(plan, repos, None, spec)
+    carded = run_prompts.build_plan_prompt(plan, repos, None, spec)
     assert carded.startswith(spec["card"] + "\n\n")
     assert SHIPS not in carded and "(K5) and a deploy or a release (K6) go as your autonomy card says" in carded
     assert MERGES not in carded and "merges into that repo's default branch only as your autonomy card says" in carded
     listed = [line[4:].split(":")[0] for line in carded.splitlines() if line.startswith("  - ")]
     assert listed == ["deploy", "external_send", "merge", "architecture", "scope"]
     short = autonomy_card.card(of(pref_source("lena", None)), LENA).spec()
-    at_a5 = runs.build_plan_prompt(plan, repos, None, short)
+    at_a5 = run_prompts.build_plan_prompt(plan, repos, None, short)
     assert at_a5.startswith(HEADING) and SHIPS in at_a5 and MERGES in at_a5
-    step = runs.build_step_session_prompt(plan, plan["steps"][0], repos, autonomy=spec)
+    step = run_prompts.build_step_session_prompt(plan, plan["steps"][0], repos, autonomy=spec)
     assert step.startswith(spec["card"])
-    shipped = runs.build_step_session_prompt(plan, plan["steps"][0], repos, autonomy=short)
+    shipped = run_prompts.build_step_session_prompt(plan, plan["steps"][0], repos, autonomy=short)
     assert MERGES not in step and MERGES in shipped
     assert autonomy_card.with_card("the prompt", None) == "the prompt"
 

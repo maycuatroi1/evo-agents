@@ -19,9 +19,9 @@ This page is the design in one place. The details live with the parts they belon
 | the morning brief, `curator_paused`, proposals in the Inbox and on Telegram | `docs/notifications.md` |
 
 The code: `evo_agents/hub/curator.py` (the window, the night, the caps), `evo_agents/hub/review.py` (lenses and the
-review prompt), `evo_agents/hub/tiers.py` (the tiers), `evo_agents/hub/judge.py` (the Builder's plan, the signs of
-score hacking, the verdict, the merge rule), `evo_agents/hub/ledger.py` (the ledger and outcomes),
-`evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (the replays and the suite they run on),
+review prompt), `evo_agents/hub/tiers.py` (the tiers), `evo_agents/hub/judge.py` (the Builder's plan, the verdict,
+the merge rule), `evo_agents/hub/diff_signs.py` (the signs of score hacking), `evo_agents/hub/ledger.py` (the ledger
+and outcomes), `evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (the replays and the suite they run on),
 `evo_agents/hub/history.py` and `evo_agents/hub/excerpts.py` (the history run and what its model reads),
 `evo_agents/hub/history_index.py` (the words of the history for search), `evo_agents/hub/playbook.py` (the playbook),
 and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.py`, `changes.py`,
@@ -384,7 +384,7 @@ writes the verdict on the pull request as the check run `evo-agents Judge`. The 
 the run's own key, which the hub hands the daemon in the claim alone and keeps as a SHA-256 (schema 0019): code on the
 worker's machine that reads the worker token neither reads a hidden check nor writes a verdict.
 
-**Signs of score hacking** (`judge.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test
+**Signs of score hacking** (`diff_signs.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test
 changed, an expected value changed, a golden or snapshot file changed, an assertion's failure caught, a plan's verify
 or a file it runs changed, CI or the configuration of lint, types and tests changed, a lint warning silenced, `__eq__`
 overloaded, an exit from a test, a protected path touched, an instruction of a skill, an AGENTS.md or a CLAUDE.md to

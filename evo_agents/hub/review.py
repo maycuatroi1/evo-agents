@@ -52,7 +52,8 @@ import re
 from datetime import date
 from typing import Literal, get_args
 
-from evo_agents.hub.runs import MAX_PROMPT_BYTES, OUTPUTS_RULE, RESULT_DIR, RESULT_FILE, clip
+from evo_agents.hub.run_prompts import OUTPUTS_RULE
+from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
 from evo_agents.hub.tiers import CHANGE_KINDS, REJECTED_DAYS, normalize_path
 
 # lens: what the Reviewer looks for through it, in the order the nights take them.

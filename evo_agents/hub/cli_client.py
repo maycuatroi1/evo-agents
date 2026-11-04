@@ -439,6 +439,15 @@ def cmd_registry_pull(args) -> int:
 
 
 def register_client(hsub) -> None:
+    _register_session(hsub)
+    _register_admin(hsub)
+    _register_project(hsub)
+    _register_registry(hsub)
+    _register_other_groups(hsub)
+
+
+def _register_session(hsub) -> None:
+    """hub login, logout, whoami and token."""
     login_parser = hsub.add_parser("login", help="sign in to a hub with GitHub (device flow) and keep a machine token")
     login_parser.add_argument("--url", help="the hub, such as https://hub.example.org (default: the last one used)")
     login_parser.set_defaults(func=cmd_login)
@@ -463,6 +472,9 @@ def register_client(hsub) -> None:
     revoke.add_argument("id", metavar="ID", type=int, help="token id, from `hub token list`")
     revoke.set_defaults(func=cmd_token_revoke)
 
+
+def _register_admin(hsub) -> None:
+    """hub admin: grants, users, stats and the Telegram bot."""
     from evo_agents.hub.cli_invites import admin_commands  # hub admin, and hub admin invite in that module
 
     asub = admin_commands(hsub)
@@ -497,6 +509,9 @@ def register_client(hsub) -> None:
     json_option(telegram_unlink, returns_object(*TELEGRAM_UNLINK_KEYS, schema="TelegramUnlinked"))
     telegram_unlink.set_defaults(func=cmd_admin_telegram_unlink)
 
+
+def _register_project(hsub) -> None:
+    """hub project: register, list, archive and unarchive."""
     project = hsub.add_parser("project", help="projects on the hub, registered from their harness")
     psub = project.add_subparsers(dest="project_command", required=True)
     register = psub.add_parser(
@@ -527,6 +542,9 @@ def register_client(hsub) -> None:
         json_option(state, returns_object(*PROJECT_KEYS, schema="Project"))
         state.set_defaults(func=func)
 
+
+def _register_registry(hsub) -> None:
+    """hub registry pull."""
     registry = hsub.add_parser("registry", help="the harness registry of this machine")
     rsub = registry.add_subparsers(dest="registry_command", required=True)
     pull = rsub.add_parser(
@@ -541,6 +559,9 @@ def register_client(hsub) -> None:
     json_option(pull, returns_object("registry", "backup", "clusters", "skipped"))
     pull.set_defaults(func=cmd_registry_pull)
 
+
+def _register_other_groups(hsub) -> None:
+    """The command groups registered by their own modules, in the order of the CLI contract."""
     from evo_agents.hub.plan_cli import register_plans
 
     register_plans(hsub)

@@ -37,7 +37,8 @@ from urllib.parse import quote
 
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.client import Hub, HubError, Unreachable, put_presigned
-from evo_agents.hub.memory import Places, host_tag
+from evo_agents.hub.memory_files import host_tag
+from evo_agents.hub.memory_places import Places
 from evo_agents.hub.registry import default_registry, read_registry
 from evo_agents.kg.project import read_bindings
 

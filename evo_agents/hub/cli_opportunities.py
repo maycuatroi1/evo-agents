@@ -373,6 +373,13 @@ def register_opportunities(hsub) -> None:
     )
     osub = opportunity.add_subparsers(dest="opportunity_command", required=True)
 
+    _register_reading(osub)
+    _register_writing(osub)
+    _register_evidence(osub)
+
+
+def _register_reading(osub) -> None:
+    """``opportunity list`` and ``opportunity show``."""
     listed = osub.add_parser("list", help="the project's opportunities by rank")
     listed.add_argument("--status", choices=opportunities.STATUSES, help="those of this status alone")
     listed.add_argument(
@@ -395,6 +402,9 @@ def register_opportunities(hsub) -> None:
     )
     shown.set_defaults(func=cmd_show)
 
+
+def _register_writing(osub) -> None:
+    """``opportunity set`` and ``opportunity close``."""
     written = osub.add_parser(
         "set", help="make an opportunity, or write an opportunity's next revision (the writer role on the project)"
     )
@@ -418,6 +428,9 @@ def register_opportunities(hsub) -> None:
     json_option(closed, returns_object(*OPPORTUNITY_KEYS, "changed", schema="ProjectOpportunityWritten"))
     closed.set_defaults(func=cmd_close)
 
+
+def _register_evidence(osub) -> None:
+    """``opportunity evidence list|add|confirm``."""
     evidence = osub.add_parser(
         "evidence", help="the evidence of an opportunity: lines of sources that show it is there"
     )

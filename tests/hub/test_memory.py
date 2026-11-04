@@ -24,24 +24,18 @@ from evo_agents.hub import client as hub_client
 from evo_agents.hub import memory as hub_memory
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.hooks import _memory_place
-from evo_agents.hub.memory import (
-    HARNESS,
+from evo_agents.hub.memory import MemorySync
+from evo_agents.hub.memory_files import (
     INDEX,
     MAX_BODY,
-    SLUG,
-    MemorySync,
-    Place,
-    Places,
     add_pointers,
     body_problem,
     host_tag,
     memory_type,
     name_problem,
-    personal_location,
-    personal_slug,
     pointer_line,
-    slug,
 )
+from evo_agents.hub.memory_places import HARNESS, SLUG, Place, Places, personal_location, personal_slug, slug
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
 

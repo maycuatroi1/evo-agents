@@ -48,7 +48,9 @@ from sqlalchemy import BigInteger, DateTime, and_, bindparam, func, insert, sele
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import review, tables
-from evo_agents.hub.memory import AGENT_SINK, HARNESS, MAX_BODY, SHARED_TYPES, body_problem, name_problem
+from evo_agents.hub.memory import AGENT_SINK
+from evo_agents.hub.memory_files import MAX_BODY, SHARED_TYPES, body_problem, name_problem
+from evo_agents.hub.memory_places import HARNESS
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import memories, memory_agents, run_audience
 from evo_agents.hub.server.audit import record

@@ -469,15 +469,8 @@ def cmd_scrub(args) -> int:
     return 0
 
 
-def register_kg(hsub) -> None:
-    from evo_agents.hub.cli import positive
-
-    kg = hsub.add_parser(
-        "kg",
-        help="knowledge graphs on the hub: push runs, list and queue builds, their health, clusters, prune old graphs",
-    )
-    ksub = kg.add_subparsers(dest="kg_command", required=True)
-
+def _register_graph_commands(ksub) -> None:
+    """``hub kg push``, ``builds``, ``build`` and ``health``."""
     push_parser = ksub.add_parser("push", help="send the runs of a project's corpus that the hub does not have")
     push_parser.add_argument("--project", help="project name or harness path")
     push_parser.add_argument(
@@ -506,6 +499,11 @@ def register_kg(hsub) -> None:
     health.add_argument("--limit", type=int, default=30, help="measures and builds to show (default: 30, at most 200)")
     json_option(health, returns_object("project", "measures", "builds", schema="KgHealthView"))
     health.set_defaults(func=cmd_health)
+
+
+def _register_cleanup_commands(ksub) -> None:
+    """``hub kg forget-source``, ``prune`` and ``scrub``."""
+    from evo_agents.hub.cli import positive
 
     forget_parser = ksub.add_parser(
         "forget-source",
@@ -543,6 +541,16 @@ def register_kg(hsub) -> None:
     scrub.add_argument("--yes", action="store_true", help="with --purge: delete without asking")
     json_option(scrub, returns_object("purge", "projects"))
     scrub.set_defaults(func=cmd_scrub)
+
+
+def register_kg(hsub) -> None:
+    kg = hsub.add_parser(
+        "kg",
+        help="knowledge graphs on the hub: push runs, list and queue builds, their health, clusters, prune old graphs",
+    )
+    ksub = kg.add_subparsers(dest="kg_command", required=True)
+    _register_graph_commands(ksub)
+    _register_cleanup_commands(ksub)
 
     from evo_agents.hub import kg_clusters_cli
 

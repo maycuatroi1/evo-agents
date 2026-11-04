@@ -369,26 +369,70 @@ def _check_value(what: str, entry: dict, value: str) -> str | None:
     return None
 
 
-def check_words(contract_commands: dict, words: list[str]) -> list[str]:
-    """What is wrong with ``evo-agents hub ...`` split into ``words`` (``evo-agents`` first), by the contract."""
+def _command_of(contract_commands: dict, words: list[str]) -> tuple[str | None, list[str], list[str]]:
+    """(command, the words after it, problems) of ``words`` (``evo-agents`` first): the command None when the words
+    name none of the contract's, with why (nothing for a group named on its own, as in "see `evo-agents hub plan`")."""
     path, rest = words[1:2], words[2:]
     while " ".join(path) not in contract_commands:
         prefix = " ".join(path)
         children = sorted({key.split()[len(path)] for key in contract_commands if key.startswith(prefix + " ")})
         if not children:
-            return [f"`evo-agents {prefix}` is not a command"]
+            return None, rest, [f"`evo-agents {prefix}` is not a command"]
         if not rest or rest[0] in HELP_FLAGS or rest[0] in WILDCARDS or SENTINEL in rest[0]:
-            return []  # the group itself, as in "see `evo-agents hub plan`"
+            return None, rest, []  # the group itself
         word = rest.pop(0)
         if word.startswith("-"):
-            return [f"`evo-agents {prefix}` takes a subcommand ({', '.join(children)}), not the option {word}"]
+            return (
+                None,
+                rest,
+                [f"`evo-agents {prefix}` takes a subcommand ({', '.join(children)}), not the option {word}"],
+            )
         if word not in children:
-            return [f"`evo-agents {prefix}` has no subcommand {word!r}; it has {', '.join(children)}"]
+            return None, rest, [f"`evo-agents {prefix}` has no subcommand {word!r}; it has {', '.join(children)}"]
         path.append(word)
-    name = " ".join(path)
+    return " ".join(path), rest, []
+
+
+def _option_problem(name: str, options: dict, word: str, rest: list[str], index: int) -> tuple[str | None, int]:
+    """(what is wrong with the option ``word`` of command ``name``, the index in ``rest`` of the word after it and its
+    value)."""
+    flag, equals, value = word.partition("=")
+    if flag in HELP_FLAGS:
+        return None, index
+    entry = options.get(flag)
+    if entry is None:
+        return f"`evo-agents {name}` has no option {flag}", index
+    if entry["value"] is None:
+        return (f"{flag} takes no value" if equals else None), index
+    if not equals:
+        if index >= len(rest):
+            return f"{flag} needs a value", index
+        value = rest[index]
+        index += 1
+    return _check_value(flag, entry, value), index
+
+
+def _positional_problems(name: str, positionals: list[dict], given: list[str], wildcard: bool) -> list[str]:
+    """What is wrong with the arguments ``given`` to command ``name``, whose positionals are ``positionals``."""
+    problems = []
+    if not any(p["repeatable"] for p in positionals) and not wildcard and len(given) > len(positionals):
+        extra = " ".join("<...>" if SENTINEL in word else word for word in given[len(positionals) :])
+        problems.append(f"`evo-agents {name}` takes at most {len(positionals)} argument(s); {extra!r} is too many")
+    for entry, value in zip(positionals, given, strict=False):
+        problem = _check_value(entry["metavar"], entry, value)
+        if problem:
+            problems.append(problem)
+    return problems
+
+
+def check_words(contract_commands: dict, words: list[str]) -> list[str]:
+    """What is wrong with ``evo-agents hub ...`` split into ``words`` (``evo-agents`` first), by the contract."""
+    name, rest, problems = _command_of(contract_commands, words)
+    if name is None:
+        return problems
     spec = contract_commands[name]
     options = {flag: entry for entry in spec["options"] for flag in entry["flags"]}
-    problems, given, wildcard, index = [], [], False, 0
+    given, wildcard, index = [], False, 0
     while index < len(rest):
         word = rest[index]
         index += 1
@@ -398,37 +442,12 @@ def check_words(contract_commands: dict, words: list[str]) -> list[str]:
             given.extend(rest[index:])
             break
         elif word.startswith("-") and len(word) > 1 and not word.lstrip("-").isdigit():
-            flag, equals, value = word.partition("=")
-            if flag in HELP_FLAGS:
-                continue
-            entry = options.get(flag)
-            if entry is None:
-                problems.append(f"`evo-agents {name}` has no option {flag}")
-                continue
-            if entry["value"] is None:
-                if equals:
-                    problems.append(f"{flag} takes no value")
-                continue
-            if not equals:
-                if index >= len(rest):
-                    problems.append(f"{flag} needs a value")
-                    break
-                value = rest[index]
-                index += 1
-            problem = _check_value(flag, entry, value)
+            problem, index = _option_problem(name, options, word, rest, index)
             if problem:
                 problems.append(problem)
         else:
             given.append(word)
-    positionals = spec["positionals"]
-    if not any(p["repeatable"] for p in positionals) and not wildcard and len(given) > len(positionals):
-        extra = " ".join("<...>" if SENTINEL in word else word for word in given[len(positionals) :])
-        problems.append(f"`evo-agents {name}` takes at most {len(positionals)} argument(s); {extra!r} is too many")
-    for entry, value in zip(positionals, given, strict=False):
-        problem = _check_value(entry["metavar"], entry, value)
-        if problem:
-            problems.append(problem)
-    return problems
+    return problems + _positional_problems(name, spec["positionals"], given, wildcard)
 
 
 def check_command(contract_commands: dict, text: str) -> list[str]:
