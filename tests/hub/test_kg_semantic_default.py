@@ -62,5 +62,26 @@ def test_a_reader_below_the_build_still_learns_whether_it_embedded_but_not_how_m
     assert found["model_available"] and found["mode"] == "index" and found["rows"] == 0 and found["coverage"] is None
 
 
+def test_kg_status_takes_the_vectors_from_the_hubs_record_of_the_build_since_the_graph_file_lacks_them():
+    from datetime import UTC, datetime
+
+    from evo_agents.hub.kg_graph import BuiltGraph, HubSession
+
+    vectors = {"model": "m", "mode": "index", "rows": 10, "vectors": 4, "partial": True}
+    built = BuiltGraph(3, "0" * 64, 0, "h", 2, 1, datetime.now(UTC), vectors)
+    assert built == BuiltGraph(3, "0" * 64, 0, "h", 2, 1, built.finished_at) and hash(built)
+    session = type("S", (), {"graph": built})()
+    summary = {"ready": True, "build_id": 1, "coverage": {"sources": [], "warnings": []}}
+    found = HubSession.recorded(session, summary)
+    assert (
+        found["coverage"] == {"sources": [], "warnings": [], "vectors": vectors}
+        and "vectors" not in summary["coverage"]
+    )
+    assert kg_semantic_cli.semantic_json("demo", 3, found["coverage"]["vectors"])["model_available"]
+    session.graph = BuiltGraph(3, "0" * 64, 0, "h", 2, 1, built.finished_at)  # a build that did not embed
+    assert HubSession.recorded(session, summary) is summary
+    assert HubSession.recorded(type("S", (), {"graph": built})(), {"ready": False}) == {"ready": False}
+
+
 def test_the_hub_embeds_for_fifteen_minutes_at_most():
     assert kg_semantic.EMBED_BUDGET_SECONDS == 900.0

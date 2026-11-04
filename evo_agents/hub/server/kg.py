@@ -850,6 +850,7 @@ async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> li
             builds.c.nodes,
             builds.c.edges,
             builds.c.finished_at,
+            builds.c.coverage["vectors"].label("vectors"),
         )
         .where(
             builds.c.project_id == project_id,
