@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.hub import kg_build, kg_graph, kg_settings
 from evo_agents.kg import semantic
 from evo_agents.kg import settings as kg
@@ -40,10 +42,11 @@ def stub(monkeypatch, overrides=None, mode="index", model=semantic.DEFAULT_MODEL
 
     class Conn:
         async def execute(self, statement):
-            text = str(statement)
-            if text.startswith("SELECT kg_settings.overrides"):
+            kind = statement.__visit_name__
+            table = statement.table.name if kind == "insert" else None
+            if kind == "select" and statement.get_final_froms()[0].name == "kg_settings":
                 return Result(state.overrides)
-            if text.startswith("INSERT INTO kg_settings_changes"):
+            if table == "kg_settings_changes":
                 params = statement.compile().params
                 state.changes.insert(
                     0,
@@ -61,10 +64,10 @@ def stub(monkeypatch, overrides=None, mode="index", model=semantic.DEFAULT_MODEL
                     ),
                 )
                 return Result(len(state.changes))
-            if text.startswith("INSERT INTO kg_settings "):
+            if table == "kg_settings":
                 state.overrides = dict(statement.compile().params["overrides"])
                 return Result()
-            raise AssertionError(text)
+            raise AssertionError(str(statement))
 
     async def read_semantic(conn, project_id):
         return semantic.Settings(state.mode, state.model)

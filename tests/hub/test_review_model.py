@@ -146,14 +146,18 @@ def test_the_lenses_of_the_nights_take_turns_and_each_comes_round():
     seen = set()
     for offset in range(len(review.LENSES)):
         seen |= set(review.lenses_for(night + timedelta(days=offset), 3))
-    assert seen == set(review.LENSES)
+    assert seen == set(review.LENSES) - set(review.ON_DEMAND_LENSES)
     assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 15
 
 
 def test_review_lenses_take_the_lens_product_in_turn_with_the_others_and_show_its_figure_first():
     names = list(review.LENSES)
     assert review.PRODUCT == "product" and names.index("product") == names.index("product_goals") + 1
-    assert names[-1] == "kg_health" and "product" in review.FIGURE_KEYS and review.LENS_FIGURES["product"] == "product"
+    assert (
+        names[-2:] == ["kg_health", "kg_init"]
+        and "product" in review.FIGURE_KEYS
+        and review.LENS_FIGURES["product"] == "product"
+    )
     nights = [review.lenses_for(date(2026, 10, 8) + timedelta(days=offset)) for offset in range(len(names))]
     assert any("product" in lenses for lenses in nights)
     figures = {"tools": [{"tool": "Bash", "errors": 3}], "product": {"goals": [{"goal": f"G-{n}"} for n in range(9)]}}
