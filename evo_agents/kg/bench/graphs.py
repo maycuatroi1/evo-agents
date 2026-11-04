@@ -31,7 +31,9 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -162,10 +164,12 @@ class Cached:
 
 
 def tree_bytes(path: Path) -> int:
-    """What the files under ``path`` take on disk."""
+    """What the files under ``path`` take on disk, the marker aside: writing the size into it changes no size."""
     total = 0
     for root, _, files in os.walk(path):
         for name in files:
+            if name == MARKER:
+                continue
             try:
                 st = os.lstat(os.path.join(root, name))
             except OSError:
@@ -173,6 +177,20 @@ def tree_bytes(path: Path) -> int:
             blocks = getattr(st, "st_blocks", None)  # none on Windows
             total += blocks * 512 if blocks is not None else st.st_size
     return total
+
+
+def remove_tree(path: Path) -> None:
+    """Delete ``path`` and what is under it, read-only files too (git's packs on Windows); what stays is ignored."""
+
+    def writable(func, name, _exc) -> None:
+        with contextlib.suppress(OSError):
+            os.chmod(name, stat.S_IWRITE)
+            func(name)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=writable)
+    else:
+        shutil.rmtree(path, onerror=writable)
 
 
 def disk_usage(path: Path):
@@ -240,14 +258,14 @@ def _evict(graph: Cached) -> None:
     """Delete a graph, its marker first so no run takes it for built meanwhile; an extractor left with no graph goes
     whole (its memo, harness and shards were for graphs no run builds any more)."""
     (graph.project / MARKER).unlink(missing_ok=True)
-    shutil.rmtree(graph.project, ignore_errors=True)
+    remove_tree(graph.project)
     base = graph.project.parent.parent
     if graph.current:
-        shutil.rmtree(base / "harness" / graph.name, ignore_errors=True)
+        remove_tree(base / "harness" / graph.name)
     else:
         with contextlib.suppress(OSError):
             if not any((base / "home").iterdir()):
-                shutil.rmtree(base, ignore_errors=True)
+                remove_tree(base)
 
 
 def make_room(lay: Layout, task: Task, room: Room, keep: frozenset[str] = frozenset()) -> list[Cached]:
@@ -432,13 +450,13 @@ def build_graph(
 def prune_graph(lay: Layout, task: Task) -> None:
     """Delete the graph of the task's repo and commit, and its harness: ``run --prune`` keeps only graphs in flight."""
     (lay.project_dir(task) / MARKER).unlink(missing_ok=True)
-    shutil.rmtree(lay.project_dir(task), ignore_errors=True)
-    shutil.rmtree(lay.harness(task), ignore_errors=True)
+    remove_tree(lay.project_dir(task))
+    remove_tree(lay.harness(task))
 
 
 def prune_repo(lay: Layout, repo: str) -> None:
     """Delete the bare clone of ``repo``, the memo of its builds and its cache of vectors."""
-    shutil.rmtree(lay.clone(repo), ignore_errors=True)
+    remove_tree(lay.clone(repo))
     for suffix in ("", "-wal", "-shm"):
         Path(f"{lay.memo(repo)}{suffix}").unlink(missing_ok=True)
         Path(f"{lay.vectors(repo)}{suffix}").unlink(missing_ok=True)

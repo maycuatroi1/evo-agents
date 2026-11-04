@@ -1,6 +1,7 @@
 import datetime as dt
 import gc
 import sqlite3
+import weakref
 from pathlib import Path
 
 import pytest
@@ -547,6 +548,22 @@ def test_a_build_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
             if Path(path).resolve() == store:
                 held.append(path)
         assert held == []
+    finally:
+        gc.enable()
+
+
+def test_a_read_only_store_lets_its_file_go_once_dropped(tmp_path, kg_env):
+    # A search opens the store for each call; Windows cannot delete a graph whose file a dropped store still holds.
+    project = make_project(tmp_path, kg_env)
+    sync_build(project)
+    gc.collect()
+    gc.disable()
+    try:
+        store = Store.open_readonly(project)
+        assert store is not None and store.db.execute("SELECT aud_seen(NULL)").fetchone() is not None
+        dropped = weakref.ref(store)
+        del store
+        assert dropped() is None
     finally:
         gc.enable()
 
