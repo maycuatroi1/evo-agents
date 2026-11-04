@@ -570,6 +570,25 @@ echo '{"walk": {}}' > walk.json
 evo-agents kg bench run musique --strategy multi-hop --entities entities.json --settings walk.json --out multihop.json
 ```
 
+**Entity graph on MuSiQue, `bench/results/entity-graph.json`** (plan kg-entity-graph, step 8). The file is the
+shipped arm's summary with `arms` and `configs` added: each config's tune and holdout parts, its tasks, its
+`extraction` and its holdout compare against the shipped arm. One entity graph was built with the `multi-hop`
+strategy (Claude Haiku 5.5 through the machine's Claude Code login, sink clear public, `max_cost` 18 USD, `jobs` 8).
+The entities arm and the multi-hop arm ask that same graph. The multi-hop arm adds the walk back with
+`--settings walk.json`. `recall_all@5`:
+
+| Config | tune (n 301) | holdout (n 158) | holdout vs shipped, 95% CI | extraction USD / 1,000 docs |
+|---|---|---|---|---|
+| shipped (`--search graph`) | 0.1163 | 0.1266 | | 0 |
+| hybrid (`--search hybrid`, OpenRouter embeddings) | 0.1694 | 0.1709 | +0.0443 [+0.0063, +0.0886] improved | 0 (embeddings not metered) |
+| entities, no walk | 0.0498 | 0.0570 | -0.0696 [-0.1139, -0.0316] regressed | 1.9632 |
+| multi-hop (entities and walk) | 0.0432 | 0.0380 | -0.0886 [-0.1392, -0.0380] regressed | 1.9632 |
+
+The entities step made 7,921 calls, used 23.1M input and 21.7M output tokens, and cost 15.55 USD, as Claude Code
+reported it. Each arm asks `kg_search` with limit 25 and scores only the document nodes, so entity nodes that rank
+in the 25 can take slots that documents would otherwise fill. `medical` was not run because it needs `pyarrow`, which
+the bench venv lacks. `literature` was not run because its extraction does not fit the cap.
+
 The code sets are untouched: `kg bench` without a set name still runs the four.
 
 Baseline, `bench/results/noncode-base.json` (release ranking, `recall_all@5`, `--jobs 4`):
