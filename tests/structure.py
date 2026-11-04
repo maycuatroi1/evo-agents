@@ -16,6 +16,11 @@ or the ref EVO_STRUCTURE_BASE names (CI sets it, so a missing ref fails there in
 
     python -m tests.structure report [--json]   modules and functions over budget, by overage and recent commits
     python -m tests.structure tighten           lower the baseline to the code; never adds or raises an entry
+    python -m tests.structure tighten-types     rewrite the basedpyright baseline after fixing errors; never adds one
+
+The types of evo_agents have a baseline of their own, tests/type_baseline.json, which basedpyright writes and reads
+(``baselineFile`` in pyproject.toml): against main it may hold no more errors of a rule in a module than main's does,
+and none in a module main's does not name.
 
 docs/structure.md says how to split a module or a function along a seam. Needs ruff (the test extra) and git.
 """
@@ -40,6 +45,8 @@ BASELINE = "tests/structure_baseline.json"
 PYPROJECT = "pyproject.toml"
 GUIDE = "docs/structure.md"
 TIGHTEN = "python -m tests.structure tighten"
+TYPE_BASELINE = "tests/type_baseline.json"
+TIGHTEN_TYPES = "python -m tests.structure tighten-types"
 BASE_ENV = "EVO_STRUCTURE_BASE"
 DEFAULT_BASE = "origin/main"
 FETCH_MAIN = "git fetch origin +refs/heads/main:refs/remotes/origin/main"
@@ -437,6 +444,52 @@ def compare_baselines(branch: dict, main: dict) -> list[str]:
     return problems
 
 
+def load_type_baseline(text: str) -> dict[str, Counter]:
+    """The errors a basedpyright baseline holds, counted by rule in each module (``evo_agents/x.py``)."""
+    files = json.loads(text)["files"]
+    return {path.removeprefix("./"): Counter(e["code"] for e in errors) for path, errors in files.items() if errors}
+
+
+def _errors(count: int) -> str:
+    return f"{count} error" if count == 1 else f"{count} errors"
+
+
+def compare_type_baselines(branch: dict[str, Counter], main: dict[str, Counter]) -> list[str]:
+    """What ``branch``, a type baseline, holds beyond ``main``'s: more errors of a rule in a module, or any error in a
+    module main's does not name (a module split off another starts clean)."""
+    problems = []
+    for path, codes in sorted(branch.items()):
+        before = main.get(path)
+        if before is None:
+            problems.append(
+                f"{TYPE_BASELINE} holds {_errors(codes.total())} in {path}, which main's does not name.\n  A new module, "
+                f"or one split off another, type-checks clean: fix them (see {GUIDE}, section Type check)."
+            )
+            continue
+        for code, count in sorted((codes - before).items()):
+            problems.append(
+                f"{TYPE_BASELINE} holds {codes[code]} {code} in {path}, {count} more than main's {before[code]}.\n"
+                f"  The type baseline only shrinks: fix the new errors instead (see {GUIDE}, section Type check)."
+            )
+    return problems
+
+
+def tighten_types(root: Path = ROOT) -> int:
+    """Rewrite the type baseline with basedpyright; put the old one back when the new one holds an error it did not."""
+    path = root / TYPE_BASELINE
+    old = path.read_text(encoding="utf-8")
+    subprocess.run([sys.executable, "-m", "basedpyright", "--writebaseline"], cwd=root, capture_output=True)
+    before, after = load_type_baseline(old), load_type_baseline(path.read_text(encoding="utf-8"))
+    added = compare_type_baselines(after, before)
+    if added:
+        path.write_text(old, encoding="utf-8")
+        print(problems_text(f"{TYPE_BASELINE} kept: the code has errors its baseline does not hold", added))
+        return 1
+    counts = [sum(c.total() for c in b.values()) for b in (before, after)]
+    print(f"{TYPE_BASELINE}: errors {counts[0]} -> {counts[1]}, modules {len(before)} -> {len(after)}")
+    return 0
+
+
 def _import_expression(text: str) -> str:
     return " -> ".join(part.strip() for part in text.split("->"))
 
@@ -560,7 +613,11 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--json", action="store_true", help="print the rows as JSON")
     report.add_argument("--since", default=RECENT, help=f"count commits since this date (default: {RECENT!r})")
     sub.add_parser("tighten", help=f"lower {BASELINE} to the code; never adds or raises an entry")
+    sub.add_parser("tighten-types", help=f"rewrite {TYPE_BASELINE} after fixing type errors; never adds one")
     args = parser.parse_args(argv)
+
+    if args.command == "tighten-types":
+        return tighten_types()
 
     measures = measure()
     if args.command == "report":

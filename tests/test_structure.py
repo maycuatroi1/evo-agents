@@ -24,6 +24,7 @@ from tests.structure import (
     PYPROJECT,
     ROOT,
     TIGHTEN,
+    TYPE_BASELINE,
     Measures,
 )
 
@@ -97,6 +98,14 @@ def test_the_baseline_adds_or_raises_nothing_against_main(baseline):
     main = structure.load_baseline(on_main(BASELINE))
     problems = structure.compare_baselines(baseline, main)
     assert not problems, structure.problems_text(f"{BASELINE} against main", problems)
+
+
+@pytest.mark.structure
+def test_the_type_baseline_holds_nothing_beyond_main():
+    main = structure.load_type_baseline(on_main(TYPE_BASELINE))
+    branch = structure.load_type_baseline((ROOT / TYPE_BASELINE).read_text(encoding="utf-8"))
+    problems = structure.compare_type_baselines(branch, main)
+    assert not problems, structure.problems_text(f"{TYPE_BASELINE} against main", problems)
 
 
 @pytest.mark.structure
@@ -221,6 +230,30 @@ def test_a_function_moved_unchanged_is_not_an_addition_against_main():
         "private_imports": {},
     }
     assert structure.compare_baselines(kept_and_copied, main)
+
+
+def type_baseline(**files: list[str]) -> dict[str, Counter]:
+    errors = {
+        f"./evo_agents/{name}.py": [{"code": code, "range": {}} for code in codes] for name, codes in files.items()
+    }
+    return structure.load_type_baseline(json.dumps({"files": errors}))
+
+
+def test_the_type_baseline_may_shrink_but_not_grow_against_main():
+    main = type_baseline(a=["reportArgumentType", "reportArgumentType", "reportReturnType"], b=["reportCallIssue"])
+    assert structure.compare_type_baselines(type_baseline(a=["reportArgumentType"], b=[]), main) == []
+    [problem] = structure.compare_type_baselines(type_baseline(a=["reportReturnType", "reportReturnType"]), main)
+    assert "holds 2 reportReturnType in evo_agents/a.py, 1 more than main's 1" in problem and GUIDE in problem
+    [problem] = structure.compare_type_baselines(type_baseline(b=["reportOptionalSubscript"]), main)
+    assert "holds 1 reportOptionalSubscript in evo_agents/b.py, 1 more than main's 0" in problem
+
+
+def test_a_module_split_off_another_has_nothing_in_the_type_baseline():
+    main = type_baseline(big=["reportArgumentType", "reportArgumentType"])
+    split = type_baseline(big=["reportArgumentType"], part=["reportArgumentType"])
+    [problem] = structure.compare_type_baselines(split, main)
+    assert "holds 1 error in evo_agents/part.py, which main's does not name" in problem
+    assert "Type check" in problem
 
 
 def test_import_exceptions_may_shrink_but_not_grow_against_main():
