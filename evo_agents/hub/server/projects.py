@@ -485,9 +485,10 @@ def _locked(name: str):
     return select(projects.c.id).where(projects.c.name == name).with_for_update()
 
 
-async def _create(conn: AsyncConnection, user: Principal, project: str, fields: dict, top: str) -> int | None:
+async def create_project(conn: AsyncConnection, user: Principal, project: str, fields: dict, top: str) -> int | None:
     """Insert the new project ``project`` as a hub admin, or as a member spending a right to register one, who becomes
-    its admin at level ``top``; None when another request registered it a moment ago, and the right stays unused."""
+    its admin at level ``top``; None when another request registered it a moment ago, and the right stays unused.
+    ``register`` and a project made from an upload (``evo_agents.hub.server.kg_upload_project``) call it."""
     right = None if user.admin else await invites.register_right(conn, user)
     if not user.admin and right is None:
         raise HTTPException(403, _refusal(project))
@@ -526,7 +527,7 @@ async def register(request: Request, body: Registration, project: ProjectName, u
         project_id = (await conn.execute(_locked(project))).scalar()
         created = False
         if project_id is None:
-            project_id = await _create(conn, user, project, fields, desired["levels"][-1])
+            project_id = await create_project(conn, user, project, fields, desired["levels"][-1])
             created = project_id is not None
             if not created:  # registered by another request a moment ago: this one updates it
                 project_id = (await conn.execute(_locked(project))).scalar_one()

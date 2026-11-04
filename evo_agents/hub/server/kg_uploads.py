@@ -5,11 +5,12 @@ The bytes never pass through the API: they go to the blob store as an S3 multipa
 (``evo_agents.hub.blobs``), one presigned URL per part of PART_SIZE, below the 100 MB a proxy such as Cloudflare lets
 through. The routes, under /v1/kg/{project}/uploads:
 
-- POST: start an upload, or resume the one in flight for the same archive (project, sender, SHA-256, source). The
-  hub checks the writer role, that the project is not archived, the size against the hub's limit (413) and the label
-  against what the hub sink clears (403 or 422, as a push), before the client sends any byte of the archive. It
-  answers with the part size, the number of parts and the parts the store already has, so a client cut off before
-  sends only the others.
+- POST: start an upload, or resume the one in flight for the same archive (project, sender, SHA-256, source). With
+  ``new_project`` (``hub kg upload --new-project``) it first creates the project, with no harness, in the same
+  transaction (``evo_agents.hub.server.kg_upload_project``). The hub checks the writer role, that the project is not
+  archived, the size against the hub's limit (413) and the label against what the hub sink clears (403 or 422, as a
+  push), before the client sends any byte of the archive. It answers with the part size, the number of parts and the
+  parts the store already has, so a client cut off before sends only the others.
 - POST .../{id}/parts: presigned PUTs for some parts, at most MAX_PART_URLS a call, each working for UPLOAD_TTL.
 - POST .../{id}/complete: once the store holds every part at its size, it joins them, checks the object's size and
   moves the upload to ``extracting``; 409 naming how many parts are missing otherwise. The hub does not read 20 GiB
@@ -47,7 +48,7 @@ from evo_agents.hub.blobs import (
     archive_key,
     new_upload_id,
 )
-from evo_agents.hub.server import audit, project_archive
+from evo_agents.hub.server import audit, kg_upload_project, project_archive
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
@@ -76,6 +77,10 @@ class KgUploadAsk(BaseModel):
     source: SourceName | None = Field(None, description="the source the archive becomes; from its name without one")
     label: str | None = Field(
         None, min_length=1, max_length=100, description="a level of the project; its default label without one"
+    )
+    new_project: bool = Field(
+        False,
+        description="create the project, with no harness, before the upload (``kg_upload_project``); 409 if it exists",
     )
 
 
@@ -203,6 +208,8 @@ async def start_upload(request: Request, project: ProjectName, ask: KgUploadAsk,
     engine: AsyncEngine = request.app.state.engine
     try:
         async with engine.begin() as conn:
+            if ask.new_project:
+                await kg_upload_project.create(conn, user, project, ask.label)
             access = await project_access(conn, user, project)
             await project_archive.refuse_archived(conn, access.project_id, "it takes no kg upload")
             label = access.push_label(None if ask.label is None else {"level": ask.label})

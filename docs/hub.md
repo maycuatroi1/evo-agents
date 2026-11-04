@@ -2899,6 +2899,22 @@ evo-agents hub kg upload ./lumen-handbook.zip --project demo --label internal
 evo-agents hub kg uploads --project demo
 ```
 
+**A new project from an upload.** `evo-agents hub kg upload FILE --new-project P [--label L]` creates project P with no
+harness and uploads into it, in the transaction of `POST /v1/kg/{project}/uploads` with `new_project: true`
+(`evo_agents/hub/server/kg_upload_project.py`); the web's "New project from data" uses the same route. P gets the
+default ladder (`public`, `internal`, `customer`, `secret`, location `any`), `L` as its default label (`internal`
+without `--label`), a hub sink `evo-hub` that clears `L`, a Claude Code sink `claude-code@anthropic` that clears only
+`internal`, so an agent reads data labelled above that only after an admin raised the clearance on purpose (by
+registering the project from a harness), and a minimal knowledge config with that ladder and those sinks and no source
+of its own. The build that follows the upload's extraction is its first, which queues a kg_init run (`first_build`).
+Creating P takes what registering a project takes: a hub admin, or a member holding an unused register right of an
+invite link, which is spent. The creator becomes its admin at the top level (audit row `project.register`). A name the
+hub holds already is refused with 409 and nothing changes; an interrupted upload continues with `--project P`.
+
+```sh
+evo-agents hub kg upload ./lumen-records.zip --new-project lumen-records --label customer
+```
+
 **Reading an uploaded archive.** Every minute the worker job `hub.extract_uploads` reads each upload in `extracting`,
 oldest first (`evo_agents/hub/kg_upload_extract.py`). It fetches the archive into a temporary file under the hub's data
 directory and fails the upload when its size or SHA-256 is not the one sent. It then walks the archive entry by entry

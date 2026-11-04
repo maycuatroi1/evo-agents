@@ -11572,7 +11572,15 @@
             "--project"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--new-project"
+          ],
+          "value": "string",
+          "required": false,
           "repeatable": false
         },
         {
@@ -123232,6 +123240,12 @@
               ],
               "title": "Label",
               "description": "a level of the project; its default label without one"
+            },
+            "new_project": {
+              "type": "boolean",
+              "title": "New Project",
+              "description": "create the project, with no harness, before the upload (``kg_upload_project``); 409 if it exists",
+              "default": false
             }
           },
           "type": "object",

@@ -1,7 +1,9 @@
 """``evo-agents hub kg upload`` and ``hub kg uploads``: send an archive as a source of a project's graph, and list
 what was sent.
 
-``upload FILE --project P [--source NAME] [--label L]`` sends a .zip, .tar, .tar.gz or .tgz (the writer role). It
+``upload FILE --project P [--source NAME] [--label L]`` sends a .zip, .tar, .tar.gz or .tgz (the writer role);
+``--new-project P`` in place of ``--project P`` has the hub create P first, with no harness, as its creator's
+(``evo_agents.hub.server.kg_upload_project``), which takes what registering a project takes. It
 hashes the file, asks the hub to start the upload (POST /v1/kg/{project}/uploads), which checks the size, the role and
 the label against what the project's hub sink clears before any byte of the archive leaves this machine, then PUTs
 the parts the hub does not hold yet straight to the blob store, PARALLEL at a time, each through a presigned URL and
@@ -84,8 +86,18 @@ def _put(url: str, path: Path, offset: int, size: int) -> None:
             time.sleep(PUT_DELAYS[min(number - 1, len(PUT_DELAYS) - 1)])
 
 
-def upload(hub: Hub, project: str, path: Path, *, source: str | None = None, label: str | None = None, progress=None):
-    """Send the archive at ``path``; (the hub's answer for the upload once joined, parts sent, parts kept)."""
+def upload(
+    hub: Hub,
+    project: str,
+    path: Path,
+    *,
+    source: str | None = None,
+    label: str | None = None,
+    new_project: bool = False,
+    progress=None,
+):
+    """Send the archive at ``path``, into project ``project`` the hub first creates with ``new_project``; (the hub's
+    answer for the upload once joined, parts sent, parts kept)."""
     say = progress or (lambda line: None)
     size = path.stat().st_size
     ask = {"name": path.name, "size": size, "sha256": file_sha256(path)}
@@ -93,6 +105,8 @@ def upload(hub: Hub, project: str, path: Path, *, source: str | None = None, lab
         ask["source"] = source
     if label:
         ask["label"] = label
+    if new_project:
+        ask["new_project"] = True
     started = hub.call("POST", _base(project), ask)
     upload_id, each = started["id"], started["part_size"]
     kept = set(started["done"])
@@ -121,14 +135,20 @@ def cmd_upload(args) -> int:
         sys.exit(f"{path.name} is not an archive the hub reads: {', '.join(SUFFIXES)}")
     hub, _ = signed_in()
     progress = None if args.json else (lambda line: print(line, file=sys.stderr))
-    done, sent, kept = upload(hub, args.project, path, source=args.source, label=args.label, progress=progress)
+    project = args.new_project or args.project
+    done, sent, kept = upload(
+        hub, project, path, source=args.source, label=args.label, new_project=bool(args.new_project), progress=progress
+    )
     if args.json:
         print_json({**done, "sent": sent, "kept": kept})
         return 0
+    made = f"new project {project}" if args.new_project else f"project {project}"
     print(
-        f"uploaded {path.name} ({_bytes(done['size'])}) to project {args.project} as source {done['source']}: "
+        f"uploaded {path.name} ({_bytes(done['size'])}) to {made} as source {done['source']}: "
         f"upload {done['id']} is {done['state']}"
     )
+    if args.new_project:
+        print(f"an interrupted upload continues with --project {project}", file=sys.stderr)
     return 0 if done["state"] != "failed" else 1
 
 
@@ -161,9 +181,18 @@ def cmd_uploads(args) -> int:
 def register(ksub) -> None:
     parser = ksub.add_parser("upload", help="send an archive (.zip, .tar, .tar.gz, .tgz) as a source of the graph")
     parser.add_argument("file", help="the archive")
-    parser.add_argument("--project", required=True, help="project name on the hub")
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--project", help="project name on the hub")
+    target.add_argument(
+        "--new-project",
+        metavar="PROJECT",
+        help="create this project, with no harness, and upload into it (a hub admin, or an unused register right)",
+    )
     parser.add_argument("--source", help="the source it becomes (default: the file's name without its suffix)")
-    parser.add_argument("--label", help="a level of the project (default: the project's default label)")
+    parser.add_argument(
+        "--label",
+        help="a level of the project (default: the project's default label; internal for a new project)",
+    )
     json_option(
         parser,
         returns_object(*UPLOAD, *SENT, schema="KgUpload", added=SENT),
