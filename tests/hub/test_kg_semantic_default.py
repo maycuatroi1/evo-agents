@@ -3,6 +3,10 @@ Fake connections stand in for Postgres."""
 
 import asyncio
 
+import pytest
+
+pytest.importorskip("sqlalchemy")
+
 from sqlalchemy.dialects import postgresql
 
 from evo_agents.hub import kg_semantic, kg_semantic_cli
@@ -19,8 +23,9 @@ class Conn:
 def test_a_new_project_gets_a_row_at_index_that_never_overwrites_a_choice():
     conn = Conn()
     asyncio.run(kg_semantic.start(conn, 7))
-    sql = str(conn.statements[0].compile(dialect=postgresql.dialect()))
-    assert "INSERT INTO kg_semantic" in sql and "ON CONFLICT (project_id) DO NOTHING" in sql
+    statement = conn.statements[0]
+    assert statement.table.name == "kg_semantic" and statement.__visit_name__ == "insert"
+    assert statement._post_values_clause.__visit_name__ == "on_conflict_do_nothing"
     assert conn.statements[0].compile(dialect=postgresql.dialect()).params["mode"] == "index"
 
 

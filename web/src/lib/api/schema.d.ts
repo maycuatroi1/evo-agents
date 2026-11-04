@@ -1506,6 +1506,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description What the project's search and build are tuned with, and the newest changes.
+         */
+        get: operations["get_settings_v1_kg__project__settings_get"];
+        /**
+         * Put Settings
+         * @description Set keys of the project's KG settings; the change keeps who made it, why, and the figures it cites.
+         */
+        put: operations["put_settings_v1_kg__project__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/settings/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Settings
+         * @description Put back what the newest change that is not undone replaced.
+         */
+        post: operations["undo_settings_v1_kg__project__settings_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/measure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Measure
+         * @description Score the project's settings and a candidate on its question set; nothing is stored or changed.
+         */
+        post: operations["measure_v1_kg__project__measure_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/optimize": {
         parameters: {
             query?: never;
@@ -1525,6 +1589,71 @@ export interface paths {
          *     new run, or 200 with the run in flight, as one runs at a time.
          */
         post: operations["start_optimize_v1_kg__project__optimize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/init": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Init
+         * @description The project's kg_init runs, newest first, with the one in flight, its decisions and its report.
+         */
+        get: operations["list_init_v1_kg__project__init_get"];
+        put?: never;
+        /**
+         * Start Init
+         * @description Ask for a kg_init run of the project now: 201 with the new run, or 200 with the run in flight.
+         */
+        post: operations["start_init_v1_kg__project__init_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/init/{run_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Init
+         * @description Record the Curator's decision of a kg_init run: validated, then applied (the strategy and settings, with the
+         *     reasons and figures kept in the settings' history, a rebuild queued when needed).
+         */
+        post: operations["decide_init_v1_kg__project__init__run_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/kg-init": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Init All
+         * @description Queue a kg_init run for every project with a knowledge config (an admin's).
+         */
+        post: operations["start_init_all_v1_admin_kg_init_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16590,6 +16719,38 @@ export interface components {
              */
             changes: components["schemas"]["Change"][];
         };
+        /** ChangeOut */
+        ChangeOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Changed By */
+            changed_by: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /** Reason */
+            reason: string | null;
+            /** Figures */
+            figures: {
+                [key: string]: unknown;
+            } | null;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            };
+            /** After */
+            after: {
+                [key: string]: unknown;
+            };
+            /** Undoes */
+            undoes: number | null;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+        };
         /** ChangeReplay */
         ChangeReplay: {
             /** Project */
@@ -18682,6 +18843,16 @@ export interface components {
             /** Items */
             items: components["schemas"]["BoardItem"][];
         };
+        /** DecisionBody */
+        DecisionBody: {
+            /**
+             * Decision
+             * @description the decision: strategy, settings, sources, code_changes and reasons
+             */
+            decision: {
+                [key: string]: unknown;
+            };
+        };
         /** DecisionList */
         DecisionList: {
             /**
@@ -18715,6 +18886,18 @@ export interface components {
              * @default false
              */
             waits: boolean;
+        };
+        /** DecisionOut */
+        DecisionOut: {
+            /** Run */
+            run: number;
+            /**
+             * Applied
+             * @description what each part of the decision did
+             */
+            applied: {
+                [key: string]: unknown;
+            };
         };
         /** DiffLink */
         DiffLink: {
@@ -20358,7 +20541,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init";
             /**
              * Severity
              * @default medium
@@ -21772,6 +21955,86 @@ export interface components {
              * @description the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves
              */
             attachments?: components["schemas"]["Attachment"][];
+        };
+        /** InitAll */
+        InitAll: {
+            /**
+             * Started
+             * @description the projects a run was queued for
+             */
+            started: string[];
+            /**
+             * Skipped
+             * @description the projects left out, with why
+             */
+            skipped: {
+                [key: string]: string;
+            };
+        };
+        /** InitRun */
+        InitRun: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Via
+             * @enum {string}
+             */
+            via: "first_build" | "profile" | "manual";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "failed";
+            /**
+             * Why
+             * @description what asked for the run
+             */
+            why: string[];
+            /** Build Id */
+            build_id: number | null;
+            /**
+             * Agent Run Id
+             * @description the review run (lens kg_init) of the agent that decides
+             */
+            agent_run_id: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Decisions
+             * @description what the Curator decided and what was applied; empty until it decided
+             */
+            decisions: {
+                [key: string]: unknown;
+            };
+            /** Notes */
+            notes: string[];
+            /**
+             * Report
+             * @description the report, markdown; null until the run ends
+             */
+            report: string | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Ended At */
+            ended_at: string | null;
+        };
+        /** InitRuns */
+        InitRuns: {
+            active: components["schemas"]["InitRun"] | null;
+            /** Runs */
+            runs: components["schemas"]["InitRun"][];
         };
         /**
          * Intake
@@ -24821,6 +25084,65 @@ export interface components {
              * @description the hub project the proposals go to; none when not set
              */
             proposals_project: string | null;
+        };
+        /** MeasureBody */
+        MeasureBody: {
+            /**
+             * Values
+             * @description the candidate's keys, on top of the project's settings
+             */
+            values?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Split
+             * @description the part of the question set that is asked
+             * @default tune
+             * @enum {string}
+             */
+            split: "tune" | "holdout";
+            /**
+             * Max Questions
+             * @default 300
+             */
+            max_questions: number;
+        };
+        /** MeasureOut */
+        MeasureOut: {
+            /** Build Id */
+            build_id: number | null;
+            /** Split */
+            split: string;
+            /** Questions */
+            questions: number;
+            /**
+             * Current
+             * @description the figures with the project's settings (n, hit@5, tokens per hit, p95)
+             */
+            current: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Candidate
+             * @description the figures with the candidate's query keys on top
+             */
+            candidate: {
+                [key: string]: unknown;
+            } | null;
+            /** Candidate Settings */
+            candidate_settings: {
+                [key: string]: unknown;
+            };
+            /**
+             * Needs Rebuild
+             * @description keys of the candidate that need a new build and were not measured
+             */
+            needs_rebuild: string[];
+            /**
+             * Why
+             * @description why nothing was measured
+             */
+            why?: string | null;
         };
         /** MemberCounts */
         MemberCounts: {
@@ -28323,7 +28645,7 @@ export interface components {
              * Lens
              * @description add: the lens it is for; none: every lens
              */
-            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init") | null;
             /**
              * Text
              * @description add: the lesson
@@ -32067,7 +32389,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -36931,7 +37253,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init";
             /**
              * Severity
              * @default medium
@@ -36964,7 +37286,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -37023,6 +37345,25 @@ export interface components {
              * @description the session's own (main) first, then its subagents'
              */
             transcripts: components["schemas"]["TranscriptFile"][];
+        };
+        /** SetBody */
+        SetBody: {
+            /**
+             * Values
+             * @description keys of the KG settings and their new values
+             */
+            values: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Figures
+             * @description the numbers the change rests on, as the bench or measure gave them
+             */
+            figures?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** SettingsClass */
         SettingsClass: {
@@ -37106,6 +37447,39 @@ export interface components {
             changed_by: string | null;
             /** Changed At */
             changed_at: string | null;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            /**
+             * Values
+             * @description every key with the value the project is tuned with
+             */
+            values: {
+                [key: string]: unknown;
+            };
+            /**
+             * Overrides
+             * @description the keys that differ from the defaults
+             */
+            overrides: {
+                [key: string]: unknown;
+            };
+            /** Defaults */
+            defaults: {
+                [key: string]: unknown;
+            };
+            /**
+             * Needs Rebuild
+             * @description the keys changed by this call that act on the next build
+             */
+            needs_rebuild: string[];
+            /**
+             * Changes
+             * @description the newest changes, newest first
+             */
+            changes: components["schemas"]["ChangeOut"][];
+            /** Can Change */
+            can_change: boolean;
         };
         /** SettingsRollback */
         SettingsRollback: {
@@ -41106,6 +41480,11 @@ export interface components {
              * @description who had dismissed it: a login, or plugin:<id> for a core plugin
              */
             was_by: string;
+        };
+        /** UndoBody */
+        UndoBody: {
+            /** Reason */
+            reason?: string | null;
         };
         /** UnitCreate */
         UnitCreate: {
@@ -47657,6 +48036,250 @@ export interface operations {
             };
         };
     };
+    get_settings_v1_kg__project__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_settings_v1_kg__project__settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    undo_settings_v1_kg__project__settings_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    measure_v1_kg__project__measure_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeasureBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeasureOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_optimize_v1_kg__project__optimize_get: {
         parameters: {
             query?: {
@@ -47790,6 +48413,244 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_init_v1_kg__project__init_get: {
+        parameters: {
+            query?: {
+                /** @description the newest runs listed */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitRuns"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_init_v1_kg__project__init_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a run is in flight already: that run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitRun"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decide_init_v1_kg__project__init__run_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_init_all_v1_admin_kg_init_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitAll"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -54475,7 +55336,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -54614,7 +55475,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -59593,7 +60454,7 @@ export interface operations {
     show_earlier_v1_projects__project__curator_earlier_get: {
         parameters: {
             query?: {
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init") | null;
                 status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
                 limit?: number;
             };
@@ -59658,7 +60519,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description its entries and those of no lens */
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init") | null;
                 /** @description the retired entries too, after the live ones */
                 retired?: boolean;
             };

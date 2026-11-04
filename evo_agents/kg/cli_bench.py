@@ -18,11 +18,11 @@ def _names(text: str | None) -> list[str]:
 
 
 def _benches(given: list[str] | None) -> list[str]:
-    from evo_agents.kg.bench.datasets import CODE_BENCHES, BenchError
+    from evo_agents.kg.bench.datasets import CODE_BENCHES, NONCODE_BENCHES, NONCODE_GROUP, BenchError
     from evo_agents.kg.bench.memory import MEMORY_BENCHES
 
-    names = given or list(CODE_BENCHES)
-    known = (*CODE_BENCHES, *MEMORY_BENCHES)
+    names = [b for n in given or CODE_BENCHES for b in (NONCODE_BENCHES if n == NONCODE_GROUP else (n,))]
+    known = (*CODE_BENCHES, *MEMORY_BENCHES, *(b for b in NONCODE_BENCHES if b not in MEMORY_BENCHES))
     unknown = [n for n in names if n not in known]
     if unknown:
         raise BenchError(f"no bench {', '.join(unknown)}: one of {', '.join(known)}")
@@ -35,7 +35,7 @@ def _memory_options(options):
     from evo_agents.kg.bench.datasets import BenchError
 
     if options.limit is not None and not 1 <= options.limit <= memory.LIMIT:
-        raise BenchError(f"a memory set asks kg_search with --limit 1 to {memory.LIMIT}, not {options.limit}")
+        raise BenchError(f"a non-code set asks kg_search with --limit 1 to {memory.LIMIT}, not {options.limit}")
     return memory.Options(
         parts=options.parts,
         limit=options.limit or memory.LIMIT,
@@ -103,12 +103,14 @@ def _options(args):
 
 
 def cmd_fetch(args) -> int:
-    from evo_agents.kg.bench import datasets, memory
+    from evo_agents.kg.bench import corpus, datasets, memory
 
     try:
         cache = datasets.cache_dir(args.cache)
         for bench in _benches(args.sets):
-            fetch = memory.fetch if memory.is_memory(bench) else datasets.fetch
+            fetch = (
+                memory.fetch if memory.is_memory(bench) else corpus.fetch if corpus.is_corpus(bench) else datasets.fetch
+            )
             got = fetch(bench, cache, mirror=Path(args.mirror) if args.mirror else None, force=args.force)
             size = sum(f["bytes"] for f in got["files"])
             left = ", ".join(f"{n} {why}" for why, n in sorted(got["skipped"].items())) or "none"
@@ -119,13 +121,18 @@ def cmd_fetch(args) -> int:
 
 
 def cmd_build(args) -> int:
-    from evo_agents.kg.bench import datasets, memory, run
+    from evo_agents.kg.bench import corpus, datasets, memory, run
 
     try:
         cache = datasets.cache_dir(args.cache)
         options = _options(args)
         failed = 0
         for bench in _benches(args.sets):
+            if corpus.is_corpus(bench):
+                done = corpus.build_only(cache, bench, _memory_options(options))
+                failed += bool(done.error)
+                print(f"{bench}: 1 graph: " + ("reused" if done.reused else done.error or f"built in {done.seconds}s"))
+                continue
             if memory.is_memory(bench):
                 cases, done = memory.build_memory(cache, bench, _memory_options(options))
                 failed += sum(1 for b in done if b.error)
@@ -159,7 +166,7 @@ def _local_sets(entries: list[str] | None) -> list[tuple[str, Path]]:
 
 def cmd_run(args) -> int:
     from evo_agents.kg import settings as kg_settings
-    from evo_agents.kg.bench import compare, datasets, memory, run
+    from evo_agents.kg.bench import compare, corpus, datasets, memory, run
     from evo_agents.kg.evaluate import load_set, project_checkouts
     from evo_agents.kg.project import ProjectError, resolve_project
 
@@ -175,6 +182,13 @@ def cmd_run(args) -> int:
         records: dict[str, list[dict]] = {s: [] for s in options.searches}
         with kg_settings.overriding(options.tuning):
             for bench in benches:
+                if corpus.is_corpus(bench):
+                    if options.searches != ("graph",):
+                        raise datasets.BenchError(f"{bench} is asked with --search graph only")
+                    part, mine = corpus.run_corpus(cache, bench, _memory_options(options))
+                    parts["graph"][bench] = part
+                    records["graph"] += mine
+                    continue
                 if memory.is_memory(bench):
                     if options.searches != ("graph",):
                         raise datasets.BenchError(f"{bench} is asked with --search graph only")
@@ -345,7 +359,10 @@ def _selection_args(parser) -> None:
     from evo_agents.kg.bench.tasks import PARTS
 
     parser.add_argument(
-        "sets", nargs="*", help="code benches (default: all four) or longmemeval, memoryagentbench (docs/kg-bench.md)"
+        "sets",
+        nargs="*",
+        help="code benches (default: all four), the non-code sets (musique, longmemeval, memoryagentbench, medical, "
+        "literature, music, customers) or noncode for the seven (docs/kg-bench.md)",
     )
     parser.add_argument("--cache", help="bench cache, outside any repo (default $EVO_KG_BENCH_CACHE or ~/.cache/...)")
     parser.add_argument(
@@ -390,7 +407,7 @@ def register(ksub) -> None:
     sub = bench.add_subparsers(dest="bench_command", required=True)
 
     fetch = sub.add_parser("fetch", help="download the sets at their pinned revisions into the bench cache")
-    fetch.add_argument("sets", nargs="*", help="code benches (default: all four)")
+    fetch.add_argument("sets", nargs="*", help="code benches (default: all four), non-code sets or noncode")
     fetch.add_argument("--cache", help="bench cache, outside any repo")
     fetch.add_argument("--from", dest="mirror", metavar="DIR", help="copy DIR/DATASET/FILE instead of downloading")
     fetch.add_argument("--force", action="store_true", help="download again what the cache has")
@@ -416,7 +433,9 @@ def register(ksub) -> None:
     )
     go.add_argument("--method", action="append", choices=ev.METHODS, help="method (repeatable; first is primary)")
     go.add_argument(
-        "--limit", type=int, help="kg_search's limit (default 5 for swe-explore, 25 for the memory sets, else 10)"
+        "--limit",
+        type=int,
+        help="kg_search's limit (default 5 for swe-explore, 25 for the non-code sets, else 10)",
     )
     go.add_argument("--budget-tokens", type=int, default=run.DEFAULT_BUDGET_TOKENS, help="kg_context's budget")
     go.add_argument("--line-budget", type=int, default=ev.LINE_BUDGET, help="lines scored per answer (default 500)")

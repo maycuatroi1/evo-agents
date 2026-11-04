@@ -321,7 +321,7 @@ def night(activity: int, **health) -> dict:
 
 
 def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
-    assert list(review.LENSES)[-1] == "kg_health" and "kg_health" in review.FIGURE_KEYS
+    assert list(review.LENSES)[-2:] == ["kg_health", "kg_init"] and "kg_health" in review.FIGURE_KEYS
     queue = tuple(f"kg_review_{rule}" for rule in RULES)
     assert ledger.LENS_METRICS["kg_health"] == (
         "kg_behind",

@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.hub import kg_eval_starter as starter
 from evo_agents.hub.server import kg_eval_sets
 from evo_agents.kg.build import build_project

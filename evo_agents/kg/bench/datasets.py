@@ -87,6 +87,56 @@ SOURCES: dict[str, tuple[Source, ...]] = {
     ),
     MULOCBENCH: (Source("somethingone/MULocBench", "a456004b54a4f537c22bde84993457585ebf7387", "all_data_card.jsonl"),),
 }
+
+# -- the non-code sets ---------------------------------------------------------------------------------------------
+# Seven sets of text, not code (docs/kg-bench.md). LongMemEval and MemoryAgentBench keep their sources in memory.py
+# (a graph a haystack); the five here are corpora, one graph each (corpus.py). Every dataset here has a license that
+# allows the use; a set with none that does is not used. The cache is outside any repo as the code sets' is.
+MUSIQUE = "musique"
+LONGMEMEVAL = "longmemeval"
+MEMORYAGENTBENCH = "memoryagentbench"
+MEDICAL = "medical"
+LITERATURE = "literature"
+MUSIC = "music"
+CUSTOMERS = "customers"
+CORPUS_BENCHES = (MUSIQUE, MEDICAL, LITERATURE, MUSIC, CUSTOMERS)
+NONCODE_BENCHES = (MUSIQUE, LONGMEMEVAL, MEMORYAGENTBENCH, MEDICAL, LITERATURE, MUSIC, CUSTOMERS)
+NONCODE_GROUP = "noncode"  # `kg bench fetch noncode` names the seven
+
+MUSIC_WIKI = "seungheondoh/music-wiki"
+MUSIC_WIKI_REVISION = "cdf5bfb7850c98635a640402d0d30bb3054562a7"
+CORPUS_SOURCES: dict[str, tuple[Source, ...]] = {
+    # MuSiQue-Ans, dev: multi-hop questions over 20 paragraphs each, 2 or 3 of them supporting
+    MUSIQUE: (Source("dgslibisey/MuSiQue", "c8f4f8c9465fb69d31a8eae894c3fd509c4ca321", "musique_ans_v1.0_dev.jsonl"),),
+    # PubMedQA, the 1000 expert-labelled questions with the abstract each is asked about
+    MEDICAL: (
+        Source(
+            "qiaojin/PubMedQA", "9001f2853fb87cab8d220904e0de81ac6973b318", "pqa_labeled/train-00000-of-00001.parquet"
+        ),
+    ),
+    # NarrativeQA: the Wikipedia plot summary of each of its 1572 stories, and the questions written about them
+    LITERATURE: (
+        Source("deepmind/narrativeqa", "2e643e7363944af1c33a652d1c87320d0871c4e4", "data/narrativeqa-master.zip"),
+    ),
+    # music-wiki: Wikipedia text and MusicBrainz metadata of genres, instruments and artists; no audio
+    MUSIC: (
+        Source(MUSIC_WIKI, MUSIC_WIKI_REVISION, "data/musicbrainz_genre-00000-of-00001-f8b5f593e77895b9.parquet"),
+        Source(MUSIC_WIKI, MUSIC_WIKI_REVISION, "data/musicbrainz_instrument-00000-of-00001-52e14347e4447ae5.parquet"),
+        Source(MUSIC_WIKI, MUSIC_WIKI_REVISION, "data/musicbrainz_artist-00000-of-00001-eed47ca746149b88.parquet"),
+    ),
+    CUSTOMERS: (),  # made by a seeded generator (corpus.generate_customers): nothing is downloaded
+}
+# The license of each set's data as its source states it; the sets with a license that does not allow the use are not
+# here. CUSTOMERS is made here, with invented names and no real record.
+LICENSES = {
+    MUSIQUE: "CC-BY-4.0 (StonyBrookNLP/musique; the Hugging Face copy names none)",
+    LONGMEMEVAL: "MIT",
+    MEMORYAGENTBENCH: "MIT",
+    MEDICAL: "MIT (PubMedQA dataset card; the abstracts are PubMed records)",
+    LITERATURE: "Apache-2.0 (NarrativeQA dataset card; the summaries are Wikipedia text, CC-BY-SA)",
+    MUSIC: "MIT (music-wiki dataset card; the text is Wikipedia, CC-BY-SA, the metadata MusicBrainz, CC0)",
+    CUSTOMERS: "none needed: generated here from a seed, invented names, no real data",
+}
 EXPLORE_SOURCES = {"verified": SWE_VERIFIED, "pro": SWE_PRO, "multilingual": SWE_MULTILINGUAL}
 
 LANGUAGES = {

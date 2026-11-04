@@ -759,3 +759,224 @@ def test_run_settings_file_asks_under_query_keys_and_refuses_keys_that_need_a_bu
     candidate.write_text(json.dumps({"passage_from": 900}))
     assert main([*argv, "--settings", str(candidate), "--out", str(tmp_path / "no.json")]) == 1
     assert "passage_from" in capsys.readouterr().err
+
+
+# -- the corpus sets (musique, medical, literature, music, customers): one graph a corpus, tiny fixtures ----------------
+
+
+def _id_in(bench: str, part: str, n: int = 0, prefix: str = "q") -> str:
+    """A question id the hash puts in ``part`` of ``bench`` (the nth such)."""
+    from evo_agents.kg.bench import corpus
+
+    found = [f"{prefix}{i}" for i in range(400) if corpus.question_part(bench, f"{prefix}{i}") == part]
+    return found[n]
+
+
+def _corpus_mirror(tmp_path, monkeypatch):
+    """Four corpus sets in a mirror (JSON Lines, a zip for literature) and their sources: (cache, mirror, ids)."""
+    import zipfile
+
+    monkeypatch.setattr(graphs, "disk_usage", lambda path: ROOMY)
+    src = {
+        datasets.MUSIQUE: (Source("t/musique", "1" * 40, "musique.jsonl"),),
+        datasets.MEDICAL: (Source("t/pubmed", "2" * 40, "pqa.jsonl"),),
+        datasets.LITERATURE: (Source("t/narrative", "3" * 40, "narrative.zip"),),
+        datasets.MUSIC: (
+            Source("t/music", "4" * 40, "musicbrainz_genre-0.jsonl"),
+            Source("t/music", "4" * 40, "musicbrainz_instrument-0.jsonl"),
+            Source("t/music", "4" * 40, "musicbrainz_artist-0.jsonl"),
+        ),
+        datasets.CUSTOMERS: (),
+    }
+    monkeypatch.setattr(datasets, "CORPUS_SOURCES", src)
+    mirror = tmp_path / "mirror"
+    ids = {
+        "mu_holdout": _id_in(datasets.MUSIQUE, "holdout", prefix="2hop__"),
+        "mu_tune": _id_in(datasets.MUSIQUE, "tune", prefix="3hop__"),
+        "med_holdout": _id_in(datasets.MEDICAL, "holdout"),
+        "med_tune": _id_in(datasets.MEDICAL, "tune"),
+    }
+
+    def paragraph(i, title, text, support):
+        return {"idx": i, "title": title, "paragraph_text": text, "is_supporting": support}
+
+    lighthouse = "The Skerry lighthouse keeper logs every ship that passes the northern reef each night."
+    harvest = "Barley is harvested in late summer and dried in the long barns of the valley farms."
+    glass = "Stained glass windows of the abbey were restored by a guild of glaziers in the fifteenth century."
+    _jsonl(
+        mirror / "t/musique/musique.jsonl",
+        [
+            {
+                "id": ids["mu_holdout"],
+                "question": "Who keeps the lighthouse on the northern reef?",
+                "answer": "the keeper",
+                "answerable": True,
+                "paragraphs": [paragraph(0, "Skerry", lighthouse, True), paragraph(1, "Barley", harvest, False)],
+            },
+            {
+                "id": ids["mu_tune"],
+                "question": "Which guild restored the stained glass windows of the abbey?",
+                "answer": "glaziers",
+                "answerable": True,
+                "paragraphs": [paragraph(0, "Abbey", glass, True), paragraph(1, "Barley", harvest, False)],
+            },
+            {
+                "id": "2hop__none",
+                "question": "Is anything here?",
+                "answer": "",
+                "answerable": False,
+                "paragraphs": [paragraph(0, "Skerry", lighthouse, True)],
+            },
+        ],
+    )
+
+    def abstract(pubid, question, text):
+        context = {"contexts": [text], "labels": ["RESULTS"], "meshes": ["Humans"]}
+        return {"pubid": pubid, "question": question, "context": context, "final_decision": "yes"}
+
+    _jsonl(
+        mirror / "t/pubmed/pqa.jsonl",
+        [
+            abstract(ids["med_holdout"], "Does zinc shorten the common cold?", "Zinc lozenges shortened the cold."),
+            abstract(ids["med_tune"], "Is aspirin useful after a stroke?", "Aspirin lowered a second stroke."),
+            abstract("x1", "Does ginger ease nausea after surgery?", "Ginger eased postoperative nausea."),
+        ],
+    )
+    (mirror / "t/narrative").mkdir(parents=True)
+    with zipfile.ZipFile(mirror / "t/narrative/narrative.zip", "w") as zf:
+        head = "narrativeqa-master/"
+        zf.writestr(
+            head + "documents.csv",
+            "document_id,set,kind,story_url,story_file_size,wiki_url,wiki_title,story_word_count,story_start,story_end\n"
+            "d1,train,gutenberg,u,1,w,The Tide Book,1,a,b\nd2,test,movie,u,1,w,Harbour Lights,1,a,b\n",
+        )
+        zf.writestr(
+            head + "third_party/wikipedia/summaries.csv",
+            "document_id,set,summary,summary_tokenized\nd1,train,A fisherman finds a bell under the tide.,x\n"
+            "d2,test,A harbour pilot guides a ship through fog.,x\n",
+        )
+        zf.writestr(
+            head + "qaps.csv",
+            "document_id,set,question,answer1,answer2,question_tokenized,answer1_tokenized,answer2_tokenized\n"
+            "d1,train,What does the fisherman find?,a bell,a bell,q,a,a\n"
+            "d2,test,Who guides the ship through fog?,the pilot,a pilot,q,a,a\n",
+        )
+    skiffle = (
+        "Skiffle is a music genre with jazz, blues and folk influences, usually using improvised or homemade "
+        "instruments, popular in the 1950s."
+    )
+    harp = (
+        "The Nyckelharpa is a traditional Swedish musical instrument with keys that press tangents against its "
+        "strings, played with a bow."
+    )
+    duo = "Fenn Orchard are a folk duo from the coast who recorded three albums together over a long career."
+    music = {
+        "genre": [("g1", "Skiffle", skiffle)],
+        "instrument": [("i1", "Nyckelharpa", harp)],
+        "artist": [("a1", "Fenn Orchard", duo)],
+    }
+    for kind, rows in music.items():
+        _jsonl(
+            mirror / f"t/music/musicbrainz_{kind}-0.jsonl",
+            [{"mbid": m, "entity": n, "text": t, "url": f"https://x/{n}", "entity_type": kind} for m, n, t in rows],
+        )
+    return tmp_path / "cache", mirror, ids
+
+
+def test_corpus_licenses_are_recorded_and_the_noncode_group_names_the_seven():
+    from evo_agents.kg.cli_bench import _benches
+
+    seven = ["musique", "longmemeval", "memoryagentbench", "medical", "literature", "music", "customers"]
+    assert list(datasets.NONCODE_BENCHES) == seven and _benches(["noncode"]) == seven
+    assert set(datasets.LICENSES) == set(seven) and all(datasets.LICENSES.values())
+    pinned = [s for b in datasets.CORPUS_BENCHES for s in datasets.CORPUS_SOURCES[b]]
+    assert pinned and all(len(s.revision) == 40 for s in pinned)
+    assert datasets.CORPUS_SOURCES[datasets.CUSTOMERS] == ()  # generated, nothing downloaded
+
+
+def test_musique_keeps_questions_with_an_answer_and_a_shared_paragraph_once(tmp_path, monkeypatch):
+    from evo_agents.kg.bench import corpus
+
+    cache, mirror, ids = _corpus_mirror(tmp_path, monkeypatch)
+    got = corpus.fetch(datasets.MUSIQUE, cache, mirror=mirror)
+    assert got["tasks"] == 2 and got["documents"] == 3 and got["skipped"] == {"no answer": 1}
+    assert got["license"].startswith("CC-BY-4.0")
+    docs, questions = corpus.load(cache, datasets.MUSIQUE)
+    by_key = {d["key"]: d for d in docs}
+    assert sorted(d["title"] for d in docs) == ["Abbey", "Barley", "Skerry"]  # Barley is in two questions: one document
+    answers = {q["id"]: [by_key[k]["title"] for k in q["answers"]] for q in questions}
+    assert answers == {ids["mu_holdout"]: ["Skerry"], ids["mu_tune"]: ["Abbey"]}
+    assert {q["kind"] for q in questions} == {"2hop", "3hop"}
+    assert corpus.question_part("musique", ids["mu_holdout"]) == "holdout"  # the hash of the set and the id
+
+
+def test_customers_are_invented_the_same_for_a_seed_and_each_question_fits_few_records():
+    from evo_agents.kg.bench import corpus
+
+    docs, questions = corpus.generate_customers(120, seed=7)
+    assert corpus.generate_customers(120, seed=7) == (docs, questions)
+    assert corpus.generate_customers(120, seed=8)[0] != docs
+    titles = [d["title"] for d in docs]
+    assert len(set(titles)) == len(titles) and all(t.startswith("customers/C-") for t in titles)
+    keys = {d["key"] for d in docs}
+    assert len(questions) == 120
+    for q in questions:
+        assert q["id"] in q["answers"] and set(q["answers"]) <= keys and 1 <= len(q["answers"]) <= corpus.MAX_FIT
+    assert {q["kind"] for q in questions} == {"ticket", "note", "seats"}
+    text = "\n".join(d["text"] for d in docs)
+    assert "@" not in text and "http" not in text  # no contact detail, no address
+    assert corpus.keep_questions(datasets.CUSTOMERS, questions) == questions  # fewer than MAX_QUESTIONS: all kept
+    limit = corpus.MAX_QUESTIONS[datasets.CUSTOMERS]
+    many = [{"id": f"x{i}"} for i in range(limit + 50)]
+    assert len(corpus.keep_questions(datasets.CUSTOMERS, many)) == limit
+
+
+def test_corpus_sets_build_one_graph_each_and_score_documents_by_part(tmp_path, monkeypatch, kg_env, capsys):
+    cache, mirror, ids = _corpus_mirror(tmp_path, monkeypatch)
+    argv = ["--cache", str(cache)]
+    sets = ["musique", "medical", "literature", "music", "customers"]
+    assert main(["kg", "bench", "fetch", *sets, *argv, "--from", str(mirror)]) == 0
+    out = capsys.readouterr().out
+    assert "musique: 2 tasks" in out and "literature: 2 tasks" in out and "customers: 800 tasks" in out
+    music = datasets.fetched_info(cache, "music")
+    assert music["documents"] == 3 and music["files"][0]["revision"] == "4" * 40
+
+    summary_path = tmp_path / "results" / "corpus.json"
+    assert main(["kg", "bench", "run", *sets, *argv, "--sample", "40", "--out", str(summary_path)]) == 0
+    capsys.readouterr()
+    summary = compare.load_summary(summary_path)
+    benches = summary["benches"]
+    assert list(benches) == sets
+    for name in sets:
+        bench = benches[name]
+        assert bench["kind"] == "corpus" and bench["primary"] == "recall_all@5" and bench["build"]["built"] == 1
+        assert bench["license"] and bench["build"]["failed"] == 0 and "test" not in bench["parts"]
+    assert benches["musique"]["revision"] == {"t/musique": "1" * 40}
+    assert benches["customers"]["revision"]["generator"].startswith("customers-")
+    assert benches["medical"]["documents"] == 3 and benches["medical"]["parts"]["holdout"]["n"] >= 1
+    held = next(r for r in summary["tasks"] if r["bench"] == "medical" and r["id"] == ids["med_holdout"])
+    assert held["metrics"]["recall_all@5"] == 1.0 and held["part"] == "holdout" and held["skipped"] is None
+    mu = next(r for r in summary["tasks"] if r["bench"] == "musique" and r["id"] == ids["mu_holdout"])
+    assert mu["metrics"]["recall_any@5"] == 1.0
+    assert all(r["error"] is None for r in summary["tasks"])
+    assert benches["customers"]["sample"]["size"] == 40  # 40 of the customers questions, a sample by the seed
+    assert benches["customers"]["parts"]["holdout"]["primary"] is not None
+
+    shown = ["kg", "bench", "show", str(summary_path), "--require", "musique,medical,customers", "--split", "holdout"]
+    assert main(shown) == 0
+    # a second run reuses the graph of the corpus
+    again = tmp_path / "results" / "again.json"
+    assert main(["kg", "bench", "run", "medical", *argv, "--out", str(again)]) == 0
+    build = compare.load_summary(again)["benches"]["medical"]["build"]
+    assert (build["built"], build["reused"], build["failed"]) == (0, 1, 0)
+
+
+def test_corpus_sets_take_the_graph_search_and_a_limit_kg_search_has(tmp_path, monkeypatch, kg_env, capsys):
+    cache, mirror, _ = _corpus_mirror(tmp_path, monkeypatch)
+    assert main(["kg", "bench", "fetch", "medical", "--cache", str(cache), "--from", str(mirror)]) == 0
+    argv = ["kg", "bench", "run", "medical", "--cache", str(cache)]
+    assert main([*argv, "--search", "bm25", "--out", str(tmp_path / "x.json")]) == 1
+    assert main([*argv, "--limit", "40", "--out", str(tmp_path / "x.json")]) == 1
+    err = capsys.readouterr().err
+    assert "--search graph only" in err and "--limit 1 to 25" in err
+    assert main(["kg", "bench", "fetch", "nosuchset", "--cache", str(cache)]) == 1

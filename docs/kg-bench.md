@@ -498,3 +498,75 @@ extractor `8418fefbc7d7eafc`. Builds took 953 s for the 365 LongMemEval graphs a
 | knowledge update | 1.000 (1.000), 47 | 1.000 (1.000), 15 |
 | temporal reasoning | 0.806 (0.903), 62 | 0.706 (0.794), 34 |
 | MemoryAgentBench `longmemeval_s*` (about 111 sessions a context) | 0.715 (0.808), 151 | 0.620 (0.732), 71 |
+
+## Non-code sets: seven sets of text (step 11)
+
+`kg bench` also scores seven sets that are not code. Together they are the group `noncode`, which every command takes
+as a name (`evo-agents kg bench fetch noncode`). `longmemeval` and `memoryagentbench` are the memory sets above, with
+a graph for each haystack. The other five are *corpus* sets: all documents of a set go into one graph, and every
+question searches it, the way a user's questions search a project's graph. The code is in
+`evo_agents/kg/bench/corpus.py`.
+
+```sh
+evo-agents kg bench fetch noncode
+evo-agents kg bench run noncode --jobs 4 --out bench/results/noncode-base.json
+evo-agents kg bench show bench/results/noncode-base.json --split holdout \
+  --require musique,longmemeval,memoryagentbench,medical,literature,music,customers
+```
+
+| Set | Source (pinned in `datasets.CORPUS_SOURCES`) | License | Documents | Questions kept | Answer |
+|---|---|---|---|---|---|
+| `musique` | `dgslibisey/MuSiQue` at `c8f4f8c9465f`, `musique_ans_v1.0_dev.jsonl` | CC-BY-4.0 (StonyBrookNLP/musique; the Hugging Face copy names none) | 7921 paragraphs | 600 of 2417 | the supporting paragraphs (2 to 4) |
+| `longmemeval` | `xiaowu0162/longmemeval-cleaned` | MIT | a graph a question | 365 | the answer sessions |
+| `memoryagentbench` | `ai-hyz/MemoryAgentBench` | MIT | a graph a context | 222 scored | the answer sessions |
+| `medical` | `qiaojin/PubMedQA` at `9001f2853fb8`, `pqa_labeled` | MIT | 1000 abstracts | 1000 | the abstract the question was asked about |
+| `literature` | `deepmind/narrativeqa` at `2e643e736394`, `data/narrativeqa-master.zip` | Apache-2.0 (the summaries are Wikipedia text, CC-BY-SA) | 1572 plot summaries | 1000 of 46765 | the story the question was written about |
+| `music` | `seungheondoh/music-wiki` at `cdf5bfb7850c`, MusicBrainz genre, instrument and artist files | MIT (the text is Wikipedia, CC-BY-SA; the metadata MusicBrainz, CC0) | 3829 pages | 800 | the page the question describes |
+| `customers` | a seeded generator, nothing downloaded | none needed | 1500 records | 800 | the records the question fits (at most 3) |
+
+A set with no license that allows the use is not used. The cache is outside any repo here too (`EVO_KG_BENCH_CACHE`),
+and a summary holds ids and scores, never text.
+
+- **Questions and answers.** MuSiQue's question is read as it is, and only a question with an answer (`answerable`) is
+  kept, since every question of `kg eval` needs one. PubMedQA's and NarrativeQA's are read as they are. For `music`
+  the question is the first sentence of a page with its name taken out ("Which genre page says: this is a ...?"),
+  because the set has no questions. The answers are documents, the files of the corpus: a result counts for the
+  document its id names, and a section of a document counts for the document.
+- **Cap.** At most 600 (`musique`), 1000, 1000, 800 and 800 questions are kept, the ones with the smallest SHA-256 of
+  the seed and the id, so a graph stays within a few thousand documents. For `musique` only the paragraphs of the kept
+  questions are read. For `music` the artists are the 1500 with the smallest hash of 7002.
+- **Customers.** `generate_customers` makes 1500 records from seed 20261104. Names are built from syllables
+  (such as "Nehoux Dapir") and so are companies and cities: no real person, company or town, no contact detail.
+  A record holds a plan, seats, an account note and one to three support tickets. A question gives some of a record's
+  facts in one of three styles (plan, city and a ticket; plan, city and the note; company and seats). Its answers
+  are every record those facts fit, and a question that would fit more than 3 gets the seat count added.
+- **Graph.** Each document is one item `corpus:doc:N`, kind `document`, its text the body and its metadata (MeSH terms,
+  entity type, MusicBrainz id, plan and city) the props, labelled public. The items reach the build through the
+  memory sets' in-process connector. The graph is named by a digest of the documents, so a change of the corpus builds
+  it again; the same corpus is reused.
+- **Scoring** is the memory sets': `recall_all@k` is 1 when every answer document is in the first k documents,
+  `recall_any@k` when one is, `ndcg_any@k`; `kg_search` gets the question verbatim with limit 25. The primary metric is
+  `recall_all@5`. The summary gives it per question kind (hop count, yes/no/maybe, book or movie, genre,
+  instrument or artist, customer style).
+- **Parts.** A question falls in `tune`, `holdout` or `test` by the SHA-256 of `<set>/<question id>`, with the shares of
+  the code sets (a half, a quarter, a quarter). `test` is sealed as before. `--sample N` samples the questions
+  asked, not the corpus.
+- **Search.** The corpus and memory sets take `--search graph` only, and `--limit` 1 to 25.
+
+The code sets are untouched: `kg bench` without a set name still runs the four.
+
+Baseline, `bench/results/noncode-base.json` (release ranking, `recall_all@5`, `--jobs 4`):
+
+| Set | tune | holdout |
+|---|---|---|
+| `musique` | 0.1163 (n 301) | 0.1266 (n 158) |
+| `longmemeval` | 0.8327 (n 251) | 0.8158 (n 114) |
+| `memoryagentbench` | 0.7152 (n 151) | 0.6197 (n 71) |
+| `medical` | 0.9881 (n 503) | 1.0000 (n 237) |
+| `literature` | 0.9024 (n 502) | 0.9434 (n 265) |
+| `music` | 0.9930 (n 428) | 0.9838 (n 185) |
+| `customers` | 0.9847 (n 392) | 0.9598 (n 199) |
+
+`musique` is low because a question needs all 2 to 4 supporting paragraphs in the first 5 results. `medical` is
+near its ceiling. The `music` questions are made from the page text, not written by people, so read them as a
+retrieval check and not as a quality measure of answers.
