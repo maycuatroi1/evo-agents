@@ -35963,6 +35963,12 @@ export interface components {
              * @default false
              */
             account_pool: boolean;
+            /**
+             * Owner Setup
+             * @description true for a run of its project's default agent in pool mode: the agent of a claude-code run keeps the owner's Claude Code setup (CLAUDE.md, settings, skills, agents, commands, plugins) in its config dir of its own, never the owner's login
+             * @default false
+             */
+            owner_setup: boolean;
             /** @description the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it */
             origin?: components["schemas"]["RunOrigin"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */

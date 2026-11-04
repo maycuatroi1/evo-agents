@@ -616,8 +616,9 @@ by id, never by name or value.
 A run of an agent leases model accounts from the agent's pool alone, chosen by weight,
 priority and cooldown as any account is. When none is usable the run waits in the queue: it does not take the
 dispatcher's account and does not use a login stored on the node. On the worker, a pool-mode run never authenticates with
-the machine's login and never copies the owner's `~/.claude` (spec field `account_pool`, additive: a daemon that does
-not know it keeps its behaviour). Dispatching, or mentioning in chat, an agent that has no account pool is refused with
+the machine's login and never copies the owner's `~/.claude` login (spec field `account_pool`, additive: a daemon that
+does not know it keeps its behaviour). The project's default agent still gets the rest of the owner's setup, its
+`CLAUDE.md`, skills, agents and plugins (spec field `owner_setup`, [docs/workers.md](workers.md#the-config-dir-of-an-agents-run)). Dispatching, or mentioning in chat, an agent that has no account pool is refused with
 a message saying an admin must attach one; in chat, that message is the reply. `local` runs and worker protocol v1 are unchanged.
 
 ### Provider accounts

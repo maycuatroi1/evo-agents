@@ -149,6 +149,7 @@ def test_a_run_of_an_agent_in_pool_mode_leases_the_pools_account_never_the_dispa
     run_id = dispatch(client, hub["owner"]).json()[0]["id"]
     spec = claim(client, worker)
     assert spec["id"] == run_id and spec["account_pool"] is True and spec["own_home"] is True
+    assert "owner_setup" not in spec, "@auditor is not the project's default agent: none of the owner's setup"
     leases = by_name(leased(client, worker, run_id))
     assert [(lease["name"], lease["env_var"], lease["value"]) for lease in leases.values()] == [
         ("@pool.main:pooled", VAR, pooled)

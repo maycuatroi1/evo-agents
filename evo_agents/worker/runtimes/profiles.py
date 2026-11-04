@@ -70,6 +70,7 @@ from pathlib import Path
 from evo_agents.hub import profiles as rules
 from evo_agents.worker import packs
 from evo_agents.worker.adapter import RunContext
+from evo_agents.worker.runtimes import claude_home
 from evo_agents.worker.runtimes.common import run_setting
 
 WORDS = tuple(rules.TOOLS)  # read, edit, bash, web, agent
@@ -88,6 +89,7 @@ CLAUDE_TOOLS = {
 CLAUDE_ALWAYS = ("TodoWrite", "ToolSearch")
 CLAUDE_SKILL = "Skill"
 SETTING_SOURCES = ["user", "project", "local"]  # Claude Code's own, which the SDK narrows when it sets skills
+POOL_MODEL = "opus"  # a pooled claude-code run's model when nothing names one (``pooled_model``)
 # opencode's permissions of each word: ``edit`` covers its write, patch and apply_patch tools too.
 OPENCODE_PERMISSIONS = {
     "read": ("read", "glob", "grep", "list", "lsp"),
@@ -241,10 +243,21 @@ def model_refusal(profile: Profile | None, run: Mapping) -> str | None:
     return None
 
 
+def pooled_model(context: RunContext, runtime: str) -> str | None:
+    """POOL_MODEL for a claude-code run of an agent in pool mode whose login is a lease's CLAUDE_CODE_OAUTH_TOKEN, as
+    Claude Code picked on the owner's Max login before pool mode: from that token alone it cannot read the account's
+    plan and starts on Sonnet (runs #1490 and #1526 of evo-agents against #1426); None for any other run."""
+    if runtime != claude_home.RUNTIME or not claude_home.pooled(context.run):
+        return None
+    leased = claude_home.OAUTH_TOKEN in context.leased and bool(context.env.get(claude_home.OAUTH_TOKEN))
+    return POOL_MODEL if leased else None
+
+
 def session_model(context: RunContext, runtime: str) -> str | None:
-    """The model of the agent session: the run's, else the daemon's setting (``run_setting``), as before; for a
-    profile that limits models, the first of those that it allows, else the first of its allowlist."""
-    chosen = run_setting(context, runtime, "model")
+    """The model of the agent session: the run's, else the daemon's setting (``run_setting``), as before, else the
+    model of a pooled run's leased token (``pooled_model``); for a profile that limits models, the first of those that
+    it allows, else the first of its allowlist."""
+    chosen = run_setting(context, runtime, "model") or pooled_model(context, runtime)
     profile = Profile.of(context.run)
     allow = profile.allowed("model") if profile is not None else None
     if allow is None or chosen in allow:

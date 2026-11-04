@@ -1148,7 +1148,8 @@ version, name, instructions, permissions), null for a run from before schema 003
 allows only environments of plugins is claimed only by a daemon that listed `environments` and whose owner accepted
 the plugin of one; the answer has `environment`, the declaration of the environment the claim picked ([Environments
 of plugins](#environments-of-plugins)), null for the worker's host. `own_home` is true for a run under a profile
-that is not its project's default, and `origin` names the person who dispatched the run (`login`, `github_id`), from
+that is not its project's default or of an agent in pool mode, `owner_setup` for a run of the project's default agent
+in pool mode, and `origin` names the person who dispatched the run (`login`, `github_id`), from
 which the run's commits take their co-author ([The config dir of an agent's run](#the-config-dir-of-an-agents-run)). A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
@@ -2233,6 +2234,16 @@ directory: a resumed session, a move to another account, a chat continuation or 
 and the terminal UI of an interactive run or a takeover all use it. It sits under `.evo-run`, which no commit takes,
 and holds a `.gitignore` of `*`. A run under the default profile, and a run without a profile, keep the owner's
 `~/.claude` as before.
+
+A run of an agent in pool mode (the claim's `account_pool`, [docs/credentials.md](credentials.md)) runs in such a dir
+too, whatever its profile, so that its login is the lease's alone. When it is its project's default agent (the claim's
+`owner_setup`), the dir links the owner's `CLAUDE.md`, `settings.json`, `skills`, `agents`, `commands`, `plugins`,
+`output-styles` and `rules` (`claude_home.OWNER_SETUP`), never the credentials file: the agent works with the owner's
+setup as before pool mode. Plugins add their skills, agents and hooks; their MCP servers stay out under
+`--strict-mcp-config`, so the hub's server comes once. Without the links, runs #1490 and #1526 of evo-agents had no
+`execute-plan` skill, no `plan-step` agent and no `CLAUDE.md`. A pooled claude-code run that names no model, with no
+`EVO_WORKER_CLAUDE_CODE_MODEL`, starts on `opus` (`profiles.POOL_MODEL`): from a leased `CLAUDE_CODE_OAUTH_TOKEN` alone
+Claude Code cannot read the account's plan and picks Sonnet, where the owner's Max login gave Opus.
 
 Before each agent starts, the worker writes the dir's `.claude.json` (onboarding done, and the hub's MCP server
 `evo-hub` when the profile allows it) and its login, in this order:

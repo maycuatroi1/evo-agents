@@ -64,6 +64,7 @@ from evo_agents.hub.server.runs.service import browsers, overlap, plugin_environ
 from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
     own_home,
+    owner_setup,
     pick_runtime,
     run_origin,
     run_packs,
@@ -904,6 +905,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
         account_pool=await pool_accounts.is_pooled(conn, run_id),
+        owner_setup=await owner_setup(conn, run_id),
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
         autonomy=autonomy,
