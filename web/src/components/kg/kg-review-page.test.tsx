@@ -55,7 +55,7 @@ const item = (fingerprint: string, extra: Partial<ReviewItem> = {}): ReviewItem 
 });
 
 const counts = (open: Partial<Record<ReviewItem["rule"], number>>) =>
-  (["dangling_mention", "unmentioned_document", "cluster_without_knowledge", "possible_duplicate", "ambiguous_match", "bulk_noise"] as const).map((rule) => ({
+  (["dangling_mention", "unmentioned_document", "cluster_without_knowledge", "possible_duplicate", "ambiguous_match", "bulk_noise", "conflicting_claim"] as const).map((rule) => ({
     rule,
     open: open[rule] ?? 0,
     dismissed: 0,
@@ -101,6 +101,23 @@ describe("KgReviewPage", () => {
     expect(screen.getByTestId("kg-review-rule-unmentioned_document")).toHaveAttribute("href", "/p/demo/kg/review?rule=unmentioned_document");
     expect(screen.getByTestId("kg-review-state-all")).toHaveAttribute("href", "/p/demo/kg/review?state=all");
     expect(screen.queryByTestId("kg-review-group-bulk_noise")).toBeNull();
+  });
+
+  it("shows a conflicting claim with its subject, both objects, both documents and the relation", () => {
+    const nodes = [
+      { id: "entity:Service:search", kind: "Service", name: "Search" },
+      { id: "entity:Host:alpha", kind: "Host", name: "Alpha" },
+      { id: "entity:Host:beta", kind: "Host", name: "Beta" },
+      { id: "docs:doc:guide", kind: "Document", name: "Guide" },
+      { id: "docs:doc:ops", kind: "Document", name: "Ops" },
+    ];
+    const conflict = item("r:00000000000000d4", { rule: "conflicting_claim", action: "check_claims", nodes, detail: { count: 5, rel: "runs_on", claims: [] } });
+    withQueries(<KgReviewPage project="demo" filter={OPEN} error={null} />, { ...QUEUE, counts: counts({ conflicting_claim: 1 }), items: [conflict] });
+    const group = screen.getByTestId("kg-review-group-conflicting_claim");
+    expect(group).toHaveTextContent("Khẳng định mâu thuẫn");
+    expect(group).toHaveTextContent("Xem khẳng định nào đúng");
+    expect(group).toHaveTextContent("hai tài liệu nói khác nhau về runs_on");
+    expect(screen.getByTestId("kg-review-rule-conflicting_claim")).toHaveAttribute("href", "/p/demo/kg/review?rule=conflicting_claim");
   });
 
   it("lets a writer dismiss an item with a reason and asks the queue again", async () => {

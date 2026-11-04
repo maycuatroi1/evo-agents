@@ -700,9 +700,9 @@ def test_three_builds_queued_in_a_row_never_run_two_at_once_and_queue_at_most_on
     assert push(hub, laptop).ok
     original = hub_kg_build.build_graph
 
-    def slow_build(project):
+    def slow_build(project, **entities):
         time.sleep(1.5)
-        return original(project)
+        return original(project, **entities)
 
     monkeypatch.setattr(hub_kg_build, "build_graph", slow_build)
     seen: list[tuple[int, int]] = []
@@ -1426,10 +1426,10 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
     original = hub_kg_build.build_graph
     building, stopped_build = threading.Event(), threading.Event()
 
-    def build_until_stopped(project):
+    def build_until_stopped(project, **entities):
         building.set()
         stopped_build.wait(60)
-        return original(project)
+        return original(project, **entities)
 
     monkeypatch.setattr(hub_kg_build, "build_graph", build_until_stopped)
 

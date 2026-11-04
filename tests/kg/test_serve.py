@@ -327,6 +327,16 @@ def test_impact_follows_no_proposed_edge(tmp_path, kg_env):
     assert "app:file:docs/guide.md#guide" in docs and "harness:file:CLUSTER.md#demo" not in docs
 
 
+def test_impact_follows_no_extracted_edge(tmp_path, kg_env):
+    project = built(tmp_path, kg_env)
+    # What the entities step states (kg.entity_links): an entity a model named, linked to the code its name names.
+    add_edge(project, "entity:Concept:search", "refers_to", SEARCH, "extracted")
+    add_edge(project, RANK, "calls", SEARCH, "extracted")
+    got = impacted(Session(project, "agent").call("kg_impact", {"id": SEARCH, "depth": 2}))
+    assert got[HANDLE] == (1, "calls", "resolved")
+    assert RANK not in got and "entity:Concept:search" not in got
+
+
 def test_impact_and_path_do_not_expand_hubs(tmp_path, kg_env, monkeypatch):
     project = built(tmp_path, kg_env)
     session = Session(project, "agent")

@@ -6,14 +6,17 @@ import pytest
 import yaml
 
 from evo_agents.cli import main
+from evo_agents.kg import claude_code, entities, init_run, strategy
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg import strategy
 from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
+from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import make_project, write
+from tests.kg.test_entities_claude_code import fake_claude  # noqa: F401 (a fixture)
+from tests.kg.test_extract_entities import entity_nodes
 
-BUILT_IN = {"code", "documents", "records", "conversation", "media-metadata"}
+BUILT_IN = {"code", "documents", "records", "conversation", "media-metadata", "multi-hop"}
 
 
 def own(root, name="mine", **extra):
@@ -158,3 +161,85 @@ def test_the_command_lists_shows_and_applies_with_a_dry_run(tmp_path, kg_env, ca
     assert main(["kg", "strategy", "apply", "documents", "--project", root, "--json"]) == 0
     assert kg_settings.read(project.root).strategy == "documents"
     assert main(["kg", "strategy", "apply", "nothing", "--project", root]) == 2
+
+
+def test_multi_hop_holds_the_documents_keys_the_entities_step_on_claude_code_and_the_walk():
+    found = strategy.builtins()
+    hop, docs = found["multi-hop"], found["documents"]
+    assert hop.suits == ("prose",) and hop.steps == ("entities",)
+    assert {k: hop.settings[k] for k in docs.settings} == docs.settings, "every key of documents, same values"
+    tuning = kg_settings.of(hop.settings)
+    assert tuning.walk is not None and tuning.walk["context"] is True, "the walk is on with its defaults"
+    mapping = tuning.entities
+    assert mapping["model"] == "claude-haiku-5-5" and claude_code.uses(mapping["command"])
+    assert mapping["sink"] == "llm", "Claude Code sends the text off the machine: the mapping names the sink"
+    kinds, rels = hop.ontology["node_kinds"], hop.ontology["relations"]
+    assert set(mapping["node_kinds"]) == set(kinds) and set(mapping["relations"]) == set(rels)
+    assert not set(kinds) & set(HUB_KINDS) and not set(rels) & set(HUB_RELATIONS), "a shared ontology of its own"
+
+
+def test_the_commands_list_show_and_apply_multi_hop_and_name_the_keys_to_build_again(tmp_path, kg_env, capsys):
+    project = make_project(tmp_path, kg_env)
+    root = str(project.harness.root)
+    assert main(["kg", "strategy", "list", "--project", root]) == 0
+    assert "multi-hop" in capsys.readouterr().out
+    assert main(["kg", "strategy", "show", "multi-hop", "--json"]) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["steps"] == ["entities"] and shown["settings"]["entities"]["sink"] == "llm"
+    assert main(["kg", "strategy", "apply", "multi-hop", "--project", root, "--dry-run", "--json"]) == 0
+    planned = json.loads(capsys.readouterr().out)
+    assert planned["applied"] is False and not (project.root / kg_settings.SETTINGS_FILE).exists()
+    assert {"strategy", "entities", "passage_chars", "semantic_mode", "ontology"} <= set(planned["needs_rebuild"])
+    assert "walk" not in planned["needs_rebuild"] and "walk" in planned["changed"], "the walk is a query key"
+    assert planned["adds_ontology"]["node_kinds"] == ["Concept", "Actor", "Organization", "Place", "Event", "Work"]
+    assert main(["kg", "strategy", "apply", "multi-hop", "--project", root, "--dry-run"]) == 0
+    text = capsys.readouterr().out
+    assert "would change passage_chars: 1500 -> 1800" in text and "takes effect with the next build: " in text
+    assert main(["kg", "strategy", "apply", "multi-hop", "--project", root, "--json"]) == 0
+    applied = json.loads(capsys.readouterr().out)
+    assert applied["needs_rebuild"] == planned["needs_rebuild"]
+    project = load_project_at(project.harness.root, kg_env)
+    tuning = kg_settings.read(project.root)
+    assert tuning.strategy == "multi-hop" and tuning.walk is not None
+    assert entities.enabled(tuning, project.harness.root) == tuning.entities, "the step runs under this strategy"
+    assert set(project.ontology["node_kinds"]) >= {"Concept", "Actor", "Work"}
+
+
+def test_multi_hop_sends_nothing_until_the_project_declares_the_llm_sink(tmp_path, kg_env, fake_claude):  # noqa: F811
+    calls, _ = fake_claude
+    project = make_project(tmp_path, kg_env)
+    strategy.apply(strategy.builtins()["multi-hop"], project)
+    kg_settings.write(project.root, kg_settings.of({"semantic_mode": "off"}, kg_settings.read(project.root)))
+    project = load_project_at(project.harness.root, kg_env)
+    assert all(r.ok for r in sync_project(project))
+    report = build_project(project)
+    assert report.ok, report.errors
+    cov = report.coverage["entities"]
+    assert calls() == [] and cov["calls"] == 0 and cov["refused_count"] >= 1
+    assert "sink 'llm' is not declared" in cov["refused"][0]["reason"]
+    data = yaml.safe_load(project.knowledge_path.read_text())
+    data["policy"]["sinks"].append({"id": "llm", "kind": "llm-backend", "clearance": {"level": "internal"}})
+    project.knowledge_path.write_text(yaml.safe_dump(data, sort_keys=False))
+    project = load_project_at(project.harness.root, kg_env)
+    report = build_project(project)
+    assert report.ok, report.errors
+    cov = report.coverage["entities"]
+    assert cov["calls"] == len(calls()) >= 1 and cov["model"] == "claude-haiku-5-5" and cov["sink"] == "llm"
+    assert {"entity:Concept:search", "entity:Concept:server"} <= {r[0] for r in entity_nodes(project)}
+
+
+def test_kg_init_offers_multi_hop_for_a_project_made_of_prose():
+    pool = strategy.builtins()
+    prose = {"lines": 1000, "classes": {"prose": {"lines": 900}, "code": {"lines": 100}}}
+    assert "multi-hop" in init_run.suits(prose, pool)
+    assert "multi-hop" not in init_run.suits({"lines": 1000, "classes": {"code": {"lines": 1000}}}, pool)
+    lines = init_run.prompt_lines(
+        project="demo",
+        why=[],
+        profile_text="",
+        coverage=None,
+        strategies=[s.to_json() for s in pool.values()],
+        measures=None,
+        settings={},
+    )
+    assert any(line.startswith("- multi-hop (built-in)") for line in lines)

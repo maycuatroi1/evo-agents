@@ -462,7 +462,7 @@ def register(sub) -> None:
     hook = ksub.add_parser("hook", help="Claude Code hook entry points")
     add_hooks(hook.add_subparsers(dest="hook_name", required=True))
 
-    from evo_agents.kg import cli_bench, cli_graph, cli_links, cli_prune, cli_rank, cli_scrub
+    from evo_agents.kg import claude_code, cli_bench, cli_graph, cli_links, cli_prune, cli_rank, cli_scrub
 
     cli_graph.register(ksub, with_project)
     cli_scrub.register(ksub)
@@ -470,3 +470,4 @@ def register(sub) -> None:
     cli_bench.register(ksub)
     cli_rank.register(ksub)
     cli_links.register(ksub)
+    claude_code.register(ksub)

@@ -133,6 +133,7 @@ function Detail({ item }: { item: ReviewItem }) {
   }
   if (typeof detail.path === "string") parts.push(detail.path);
   if (typeof detail.where === "string" && detail.where) parts.push(detail.where);
+  if (item.rule === "conflicting_claim" && typeof detail.rel === "string") parts.push(t("claims", { rel: detail.rel }));
   if (item.weight > 0) parts.push(t("edges", { count: item.weight }));
   return parts.length > 0 ? <span className="text-xs break-all text-muted-foreground">{parts.join(", ")}</span> : null;
 }

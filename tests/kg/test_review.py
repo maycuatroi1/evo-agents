@@ -1,4 +1,4 @@
-"""The review queue of a build (``evo_agents.kg.review``): the six rules, stable fingerprints, the store, what a
+"""The review queue of a build (``evo_agents.kg.review``): the seven rules, stable fingerprints, the store, what a
 reader sees."""
 
 from evo_agents.kg import review
@@ -265,4 +265,148 @@ def test_the_passages_of_a_long_section_are_searched_but_never_review_items(tmp_
     assert items and all(PASSAGE_MARK not in i["fingerprint"] for i in items)
     assert all(PASSAGE_MARK not in e for i in items for e in i["evidence"])
     assert all(set(i["evidence"]) <= store.alive_ids("nodes", report.build_id) for i in items)
+    store.close()
+
+
+def claim(graph: Graph, src: str, rel: str, dst: str, item: str, conf: float = 0.6, **extra) -> str:
+    """An edge the entity step extracted from ``item``, with the words the model quoted."""
+    link(graph, src, rel, dst)
+    eid = edge_id(src, rel, dst)
+    graph.edges[eid].update(status="extracted", conf=conf, props={"model": "m", "item": item, "evidence": "q", **extra})
+    return eid
+
+
+def claims() -> Graph:
+    """``queue()`` with entities two documents state: where the search service runs, by two answers."""
+    graph = queue()
+    node(graph, "doc:ops.md", "Document", "Ops", path="docs/ops.md")
+    graph.clusters.members["doc:ops.md"] = ("c1", None)
+    for nid, name in (
+        ("entity:service:search", "Search"),
+        ("entity:host:alpha", "Alpha"),
+        ("entity:host:beta", "Beta"),
+    ):
+        node(graph, nid, "Service" if "service" in nid else "Host", name)
+    claim(graph, "entity:service:search", "runs_on", "entity:host:alpha", "doc:guide.md")
+    claim(graph, "entity:service:search", "runs_on", "entity:host:beta", "doc:ops.md")
+    return graph
+
+
+def test_conflicting_claim_opens_an_item_with_both_edges_and_their_documents():
+    graph = claims()
+    (item,) = by_rule(review.compute(graph))["conflicting_claim"]
+    assert item["evidence"] == [
+        "entity:service:search",
+        "entity:host:alpha",
+        "entity:host:beta",
+        "doc:guide.md",
+        "doc:ops.md",
+    ]
+    assert item["action"] == "check_claims" and item["detail"]["rel"] == "runs_on" and "fix" not in item["detail"]
+    alpha, beta = item["detail"]["claims"]
+    assert (alpha["dst"], alpha["item"], alpha["evidence"]) == ("entity:host:alpha", "doc:guide.md", "q")
+    assert (beta["dst"], beta["item"], beta["edge"]) == (
+        "entity:host:beta",
+        "doc:ops.md",
+        edge_id("entity:service:search", "runs_on", "entity:host:beta"),
+    )
+    key = "entity:service:search\x1fruns_on\x1fentity:host:alpha\x1fentity:host:beta"
+    assert item["fingerprint"] == review.fingerprint("conflicting_claim", key)
+    assert review.counts(review.compute(graph))["conflicting_claim"] == 1
+
+
+def test_conflicting_claim_needs_two_documents_extracted_edges_over_the_conf_and_no_decision():
+    one = claims()  # both objects stated by one document: an answer that lists two, no conflict
+    claim(one, "entity:service:search", "runs_on", "entity:host:beta", "doc:guide.md")
+    assert not by_rule(review.compute(one))["conflicting_claim"]
+    low = claims()
+    claim(low, "entity:service:search", "runs_on", "entity:host:beta", "doc:ops.md", conf=review.CLAIM_CONF - 0.01)
+    assert not by_rule(review.compute(low))["conflicting_claim"]
+    parsed = claims()
+    parsed.edges[edge_id("entity:service:search", "runs_on", "entity:host:beta")]["status"] = "parsed"
+    assert not by_rule(review.compute(parsed))["conflicting_claim"]
+    for rel in sorted(review.CLAIM_SKIP):  # what the entity step joins itself states no claim
+        own = queue()
+        for nid in ("entity:a", "entity:b", "entity:c"):
+            node(own, nid, "Thing", nid)
+        claim(own, "entity:a", rel, "entity:b", "doc:guide.md")
+        claim(own, "entity:a", rel, "entity:c", "doc:lonely.md")
+        assert not by_rule(review.compute(own))["conflicting_claim"], rel
+    gone = claims()
+    deprecate(gone, "entity:host:beta")
+    assert not by_rule(review.compute(gone))["conflicting_claim"]
+    retired = claims()
+    retired.edges[edge_id("entity:service:search", "runs_on", "entity:host:alpha")]["props"]["deprecated"] = {
+        "decision": 3
+    }
+    assert not by_rule(review.compute(retired))["conflicting_claim"]
+
+
+def test_conflicting_claim_reads_the_documents_of_every_derivation_and_caps_the_pairs():
+    graph = claims()
+    beta = edge_id("entity:service:search", "runs_on", "entity:host:beta")
+    graph.edges[beta]["props"]["item"] = "doc:guide.md"  # the props of one answer; the derivations name both
+    graph.units = {u: {"item_id": i} for u, i in (("doc:guide.md#", "doc:guide.md"), ("doc:ops.md#", "doc:ops.md"))}
+    graph.derivations[beta] = [{"units": ["doc:guide.md#"], "needs": []}, {"units": ["doc:ops.md#"], "needs": []}]
+    (item,) = by_rule(review.compute(graph))["conflicting_claim"]
+    assert item["evidence"][3:] == ["doc:guide.md", "doc:ops.md"]
+    assert "evidence" not in item["detail"]["claims"][1]  # the quote of guide.md is not one of ops.md
+    many = queue()
+    node(many, "entity:s", "Service", "S")
+    for i in range(10):
+        node(many, f"entity:h{i}", "Host", f"h{i}")
+        node(many, f"doc:{i}.md", "Document", f"D{i}", path=f"docs/{i}.md")
+        claim(many, "entity:s", "runs_on", f"entity:h{i}", f"doc:{i}.md")
+    assert len(by_rule(review.compute(many))["conflicting_claim"]) == review.CLAIM_PAIRS
+
+
+def test_conflicting_claim_keeps_its_fingerprint_across_builds():
+    first = {i["fingerprint"] for i in by_rule(review.compute(claims()))["conflicting_claim"]}
+    graph = claims()
+    graph.edges = dict(reversed(graph.edges.items()))  # another build: another order, another document added
+    node(graph, "doc:new.md", "Document", "New", path="docs/new.md")
+    graph.clusters.clusters["c9"] = graph.clusters.clusters.pop("c2")
+    graph.clusters.members["lib:b.py"] = ("c9", None)
+    assert {i["fingerprint"] for i in by_rule(review.compute(graph))["conflicting_claim"]} == first and first
+
+
+def test_conflicting_claim_shows_only_to_a_reader_who_sees_every_node_of_it():
+    graph = claims()
+    (item,) = by_rule(review.compute(graph))["conflicting_claim"]
+    labels = {nid: (n["label"].level, 0, "U", None) for nid, n in graph.nodes.items()}
+    shown = review.visible_item(item, labels, visible_to_internal)
+    assert shown["evidence"] == item["evidence"] and shown["detail"]["claims"] == item["detail"]["claims"]
+    for hidden in item["evidence"]:
+        cut = {**labels, hidden: (2, 0, "U", None)}
+        assert review.visible_item(item, cut, visible_to_internal) is None, hidden
+
+
+@needs_engine
+def test_a_build_reads_the_conflicting_claims_after_folding_and_keeps_their_fingerprint(tmp_path, kg_env):
+    from tests.kg.test_entity_links import node_of
+    from tests.kg.test_entity_links import setup as entity_setup
+
+    answers = {  # two documents, one subject in two spellings, two objects of depends_on
+        "Intro": {
+            "nodes": [node_of("Concept", "Search Server"), node_of("Concept", "Postgres")],
+            "edges": [{"src": "Search Server", "rel": "depends_on", "dst": "Postgres", "evidence": "it needs pg"}],
+        },
+        "Obsolete": {
+            "nodes": [node_of("Concept", "search servers"), node_of("Concept", "SQLite")],
+            "edges": [{"src": "search servers", "rel": "depends_on", "dst": "SQLite"}],
+        },
+    }
+    project = entity_setup(tmp_path, kg_env, answers)
+    report = build_project(project)
+    assert report.ok, report.errors
+    assert report.coverage["review"]["conflicting_claim"] == 1
+    store = Store.for_project(project)
+    (item,) = [i for i in store.review_items(report.build_id) if i["rule"] == "conflicting_claim"]
+    store.close()
+    subject, *objects = item["evidence"][:3]
+    assert subject == "entity:Concept:search-server" and objects == ["entity:Concept:postgres", "entity:Concept:sqlite"]
+    assert set(item["evidence"][3:]) == {"app:file:docs/guide.md", "app:file:docs/old.md"}
+    again = build_project(project, force=True)
+    store = Store.for_project(project)
+    assert item["fingerprint"] in {i["fingerprint"] for i in store.review_items(again.build_id)}
     store.close()
