@@ -34,6 +34,7 @@ from evo_agents.hub.server.security import (
     WWW_AUTHENTICATE,
     CurrentUser,
     Principal,
+    bind_admin,
     delete_session_cookie,
     issue_token,
     revoke_token,
@@ -178,6 +179,7 @@ async def upsert_user(conn: AsyncConnection, user: GitHubUser) -> tuple[int, str
 async def sign_in(conn: AsyncConnection, config: HubConfig, user: GitHubUser, kind: str, host: str | None) -> SignedIn:
     """A new token of ``kind`` for the GitHub ``user``, with its audit row, in the caller's transaction."""
     user_id, login = await upsert_user(conn, user)
+    admin_as = await bind_admin(conn, config.admins, user_id, login)  # the account keeps the role through a rename
     issued = await issue_token(conn, user_id, kind, host)
     target = f"machine:{host}" if kind == MACHINE else "web"
     await audit.record(conn, actor_id=user_id, token_id=issued.token_id, action=audit.LOGIN, target=target)
@@ -186,7 +188,7 @@ async def sign_in(conn: AsyncConnection, config: HubConfig, user: GitHubUser, ki
         token=issued.token,
         token_id=issued.token_id,
         login=login,
-        admin=config.is_admin(login),
+        admin=config.is_admin(admin_as),
         expires_at=issued.expires_at,
     )
 

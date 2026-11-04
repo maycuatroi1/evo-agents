@@ -156,3 +156,88 @@ def test_the_hubs_own_404_ends_the_sending_and_drops_the_events(tmp_path, caplog
     assert hub.firsts == [1] and hub.stored == [], "the hub's own 404 is not sent again"
     dropped = [record for record in caplog.records if "dropping them" in record.message]
     assert [(record.status, record.dropped) for record in dropped] == [(404, 3)]
+
+
+def proxy_forbidden() -> web.Response:
+    """What an auth gateway or a WAF in front of the hub answers: an HTML page, not the hub's error body."""
+    return web.Response(status=403, text="<html><body>403 Forbidden</body></html>", content_type="text/html")
+
+
+def hub_unauthorized() -> web.Response:
+    return web.json_response({"error": "unauthorized", "message": "the worker token was revoked"}, status=401)
+
+
+def test_proxy_refusal_403_keeps_the_events_in_the_spool_and_does_not_stop_the_daemon(tmp_path, caplog):
+    hub = EventsHub([proxy_forbidden, proxy_forbidden])
+
+    async def script(sender: Sender, spool: Spool) -> None:
+        for number in range(1, 4):
+            spool.append("agent_message_chunk", {"text": f"chunk {number}"}, AT)
+        sender.poke()
+        await eventually(lambda: spool.ack_seq == 3, "the events to be acknowledged after the proxy let them by")
+
+    with caplog.at_level(logging.INFO, logger="evo_agents.worker"):
+        sender, fatals = asyncio.run(send(tmp_path, hub, script))
+
+    assert sender.gave_up is None and not fatals, "a proxy's 403 says nothing of the worker's token"
+    assert hub.firsts == [1, 1, 1] and hub.stored == [1, 2, 3]
+    statuses = [getattr(record, "status", None) for record in caplog.records if "wait in the spool" in record.message]
+    assert statuses == [403, 403]
+
+
+def test_proxy_refusal_is_not_the_hubs_own_401_which_stops_the_daemon(tmp_path):
+    hub = EventsHub([hub_unauthorized])
+
+    async def script(sender: Sender, spool: Spool) -> None:
+        spool.append("agent_message_chunk", {"text": "chunk"}, AT)
+        sender.poke()
+        await eventually(lambda: sender.settled, "the sending to give up")
+
+    sender, fatals = asyncio.run(send(tmp_path, hub, script))
+    assert [problem.status for problem in fatals] == [401] and sender.gave_up == "the worker token was revoked"
+
+
+@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize("own", [True, False])
+def test_proxy_refusal_of_any_call_is_unreachable_unless_the_hub_said_it(status, own):
+    from evo_agents.worker.hubapi import Refused, Unreachable
+
+    hub = WorkerHub("https://hub.example.org", "evw_" + "f" * 43, None)  # type: ignore[arg-type]
+    payload = {"error": "forbidden", "message": "no"} if own else None
+    problem = hub._problem("POST", "/v1/worker/heartbeat", status, payload, None)
+    assert type(problem) is (Refused if own else Unreachable) and problem.status == status
+
+
+@pytest.mark.parametrize(
+    ("header", "seconds"),
+    [("12", 12.0), ("-3", 0.0), ("86400", 300.0), ("1e308", 300.0), ("inf", None), ("nan", None), ("soon", None)],
+)
+def test_retry_after_cap_is_300_seconds_and_a_value_not_finite_is_left_out(header, seconds):
+    from evo_agents.worker.hubapi import _retry_after
+
+    assert _retry_after(header) == seconds
+
+
+def test_retry_after_cap_holds_for_an_answer_of_the_hub(tmp_path):
+    async def go():
+        async def busy(request: web.Request) -> web.Response:
+            return web.Response(status=503, text="busy", headers={"Retry-After": "999999"})
+
+        app = web.Application()
+        app.router.add_post("/v1/worker/heartbeat", busy)
+        runner = web.AppRunner(app, access_log=None)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        url = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        try:
+            async with aiohttp.ClientSession() as session:
+                await WorkerHub(url, "evw_" + "f" * 43, session).call("POST", "/v1/worker/heartbeat", {})
+        finally:
+            await runner.cleanup()
+
+    from evo_agents.worker.hubapi import Unreachable
+
+    with pytest.raises(Unreachable) as caught:
+        asyncio.run(go())
+    assert caught.value.retry_after == 300.0

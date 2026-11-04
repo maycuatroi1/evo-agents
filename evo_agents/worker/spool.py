@@ -16,6 +16,7 @@ is dropped and counted, never given a seq, so the seq stays without a gap; once 
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 from dataclasses import dataclass
@@ -64,6 +65,22 @@ def encode_event(seq: int, kind: str, body: dict, at: datetime) -> bytes:
     fitted, _ = runs.fit_event_body(body)
     event = {"seq": seq, "at": _iso(at), "kind": kind, "body": fitted}
     return json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"
+
+
+def _write_all(fd: int, line: bytes, offset: int) -> None:
+    """Append ``line`` to ``fd`` whole, however many bytes each ``os.write`` takes. A write that takes none (a full
+    disk) or fails cuts the file back to ``offset`` and raises OSError, so no half line stays before the next one."""
+    view = memoryview(line)
+    try:
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError(errno.ENOSPC, f"wrote {len(line) - len(view)} of {len(line)} bytes of an event")
+            view = view[written:]
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.ftruncate(fd, offset)
+        raise
 
 
 class Spool:
@@ -151,10 +168,14 @@ class Spool:
         if not self.budget.take(len(line)):
             return False
         seq = self.last_seq + 1
-        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, FILE_MODE)
+        try:
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, FILE_MODE)
+        except OSError:
+            self.budget.give(len(line))
+            raise
         try:
             offset = os.fstat(fd).st_size
-            os.write(fd, line)
+            _write_all(fd, line, offset)
         except OSError:
             self.budget.give(len(line))
             raise

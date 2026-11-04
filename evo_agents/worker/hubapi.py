@@ -3,8 +3,10 @@ worker token as a Bearer header (the join has no token: the pairing code is its 
 
 A call answers the decoded JSON, or raises:
 
-- ``Unreachable`` when no answer came (refused, reset, timed out) or the hub answered 5xx or 429: the call may be
-  sent again later, and ``Backoff`` says when (1 second, doubling up to 60, with a little jitter).
+- ``Unreachable`` when no answer came (refused, reset, timed out), the hub answered 5xx or 429, or a 401 or 403
+  came without the hub's own error body (``HubProblem.from_hub``): a proxy in front of the hub refused the call, which
+  says nothing of the worker's token. The call may be sent again later, and ``Backoff`` says when (1 second, doubling
+  up to 60, with a little jitter); a ``Retry-After`` counts up to RETRY_AFTER_MOST seconds.
 - ``Refused`` for any other 4xx, with the status, the hub's error code and message, and ``Retry-After``. A 4xx
   without the hub's own error body (``HubProblem.from_hub``) came from a proxy in front of it, which answers 404 for a
   moment while the hub is redeployed.
@@ -17,6 +19,7 @@ loopback address (``evo_agents.hub.client.check_url``).
 from __future__ import annotations
 
 import json
+import math
 import random
 from collections.abc import Callable
 from urllib.parse import quote
@@ -36,6 +39,7 @@ CHUNK_BYTES = 256 * 1024
 USER_AGENT = f"evo-agents-worker/{__version__}"
 FIRST_DELAY = 1.0
 MOST_DELAY = 60.0
+RETRY_AFTER_MOST = 300.0  # seconds: a longer Retry-After, a proxy's or a broken hub's, holds a call no longer
 
 
 class HubProblem(Exception):
@@ -102,10 +106,14 @@ def _judge_key(key: str | None) -> dict:
 
 
 def _retry_after(value: str | None) -> float | None:
+    """The seconds of a ``Retry-After`` header, within 0 and RETRY_AFTER_MOST; none for a date, a word, inf or nan."""
     try:
-        return max(0.0, float(value)) if value else None
+        seconds = float(value) if value else None
     except ValueError:
         return None
+    if seconds is None or not math.isfinite(seconds):
+        return None
+    return min(RETRY_AFTER_MOST, max(0.0, seconds))
 
 
 class WorkerHub:
@@ -163,6 +171,10 @@ class WorkerHub:
         text = str(message or f"the hub at {self.url} answered HTTP {status} to {method} {path}")
         if status >= 500 or status == 429:
             problem: HubProblem = Unreachable(text, status, code, payload)
+        elif status in (401, 403) and not (isinstance(code, str) and isinstance(message, str)):  # not from_hub
+            # A proxy's refusal (an auth gateway, a WAF, a page while the hub is redeployed): only the hub's own
+            # 401 or 403 says the worker or its token was revoked, which stops the daemon.
+            problem = Unreachable(text, status, code, payload)
         elif status == 426:
             problem = Outdated(
                 f"the hub at {self.url} does not take worker protocol {PROTOCOL_VERSION}: upgrade evo-agents ({text})",

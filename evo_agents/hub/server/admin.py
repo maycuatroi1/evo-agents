@@ -60,7 +60,7 @@ from evo_agents.hub.server import audit, kg_scrub, org_store, route_autonomy
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.security import AdminUser, admin
+from evo_agents.hub.server.security import AdminUser, admin, admin_login
 from evo_agents.kg.policy import Policy
 
 PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as the projects table accepts it
@@ -246,6 +246,7 @@ def _users():
     return select(
         users.c.id,
         users.c.login,
+        admin_login(users).label("admin_login"),
         users.c.github_id.is_not(None).label("signed_in"),
         users.c.created_at,
         users.c.last_seen_at,
@@ -291,7 +292,7 @@ async def users(request: Request, page: Paging = WHOLE) -> list[UserRow]:
     return [
         UserRow(
             login=row.login,
-            admin=config.is_admin(row.login),
+            admin=config.is_admin(row.admin_login),
             signed_in=row.signed_in,
             created_at=row.created_at,
             last_seen_at=row.last_seen_at,

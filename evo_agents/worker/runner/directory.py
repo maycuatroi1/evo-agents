@@ -148,12 +148,18 @@ class RunDirectory:
         return [(name, workspace.worktree, workspace.base) for name, workspace in self.workspaces.items()]
 
     async def diff(self) -> bytes:
-        """The diffs of every repo of the run, each under its folder (a/<repo>/...)."""
+        """The diffs of every repo of the run, each under its folder (a/<repo>/...), within gitops.DIFF_BYTES together:
+        the repo whose diff passes what is left is cut, and the repos after it left out."""
         parts = []
+        room = gitops.DIFF_BYTES
         for workspace in self.workspaces.values():
-            if workspace.worktree.is_dir():
+            if workspace.worktree.is_dir() and room > 0:
                 with contextlib.suppress(gitops.GitError, OSError, asyncio.TimeoutError):
-                    parts.append(await gitops.diff(workspace.worktree, workspace.base, prefix=workspace.worktree.name))
+                    part = await gitops.diff(
+                        workspace.worktree, workspace.base, prefix=workspace.worktree.name, limit=room
+                    )
+                    parts.append(part)
+                    room -= len(part)
         return b"".join(parts)
 
     async def release(self) -> None:

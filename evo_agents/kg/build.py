@@ -51,7 +51,7 @@ from evo_agents.kg.pipeline.stages import (
     missing_graphify,
     structure_item,
 )
-from evo_agents.kg.policy import Label, Policy, any_of, join_all
+from evo_agents.kg.policy import Label, Policy, any_of, audience_below, join_all
 from evo_agents.kg.profile import PROFILE_VERSION, build_profile, item_stats
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -181,7 +181,7 @@ def run_pipeline(
         for i in project.knowledge.get("identifiers") or []
     ]
     identifiers_digest = sha256(canonical_json(identifiers))
-    records = [r for r in corpus.items() if r.source in sources]
+    records = [r for r in corpus.read_state() if r.source in sources]
 
     # Units and their labels.
     graph = Graph()
@@ -267,6 +267,7 @@ def run_pipeline(
     nodes: dict[str, dict] = {}
     edges: dict[tuple, dict] = {}
     derivs: dict[str, list[dict]] = defaultdict(list)
+    props_of: dict[str, list[tuple[dict, dict]]] = defaultdict(list)  # node id -> (derivation, the props it stated)
     where: dict[str, set] = defaultdict(set)
     same: list[dict] = []  # identities, and the deprecations a curation item declared
     notes: dict[str, list[str]] = defaultdict(list)  # node id -> descriptions and docstrings, for search
@@ -292,6 +293,7 @@ def run_pipeline(
                 else:
                     _strongest(nodes[f["id"]], f)
                 derivs[f["id"]].append({"units": f["units"], "needs": f["needs"]})
+                props_of[f["id"]].append((derivs[f["id"]][-1], f["props"]))
                 where[f["id"]].update(tuple(w) for w in f.get("where", []))
             elif t == "edge":
                 key = (f["src"], f["rel"], f["dst"])
@@ -338,6 +340,7 @@ def run_pipeline(
             merged_nodes[target] = dict(nodes[target])
         if target != nid:
             derivs[target] = derivs[target] + derivs.pop(nid)
+            props_of[target] += props_of.pop(nid, [])
             where[target] |= where.pop(nid, set())
 
     def remap(x: str) -> str:
@@ -378,6 +381,10 @@ def run_pipeline(
     for item_id, found in item_mentions.items():
         graph.mentions.setdefault(remap(item_id), found)
     for nid, n in merged_nodes.items():
+        # The props of the first derivation the node's label reads, so a node a public item also states shows none
+        # of what a restricted item said of it.
+        readable = (p for d, p in props_of[nid] if _reads(node_label[nid], _deriv_label(d, unit_labels, node_label)))
+        n = {**n, "props": next(readable, {})}
         graph.nodes[nid] = {**n, "label": node_label[nid], "aliases": sorted(aliases.get(nid, []))}
         graph.derivations[nid] = _dedupe(derivs[nid])
         graph.where[nid] = sorted(where[nid])
@@ -600,6 +607,15 @@ def _deriv_label(d: dict, unit_labels: dict[str, Label], node_label: dict[str, L
     return join_all(parts)
 
 
+def _reads(reader: Label, label: Label) -> bool:
+    """Whether a reader of ``reader``'s level, location and audience reads what is labelled ``label``."""
+    return (
+        label.level <= reader.level
+        and label.location <= reader.location
+        and audience_below(label.audience, reader.audience)
+    )
+
+
 def memo_path(project: Project) -> Path:
     if project.policy.memo == "shared":
         return project.home / "_shared" / "memo.sqlite"
@@ -779,7 +795,7 @@ def _build(
             store = Store.staging(target) if report.rebuilt_from else Store(target)
         b = store.write(
             graph,
-            state_digest=corpus.state_digest(),
+            state_digest=corpus.read_digest,
             coverage=coverage,
             stats={"memo": report.memo, "inputs": build_inputs(project, corpus)},
             policy=project.policy,
@@ -802,8 +818,7 @@ def _build(
         if own_memo:
             memo.close()
         corpus.close()
-    report.seconds = round(time.monotonic() - started, 3)
-    return None
+        report.seconds = round(time.monotonic() - started, 3)
 
 
 def add_curation(graph: Graph, coverage: dict) -> None:
@@ -907,22 +922,27 @@ def verify_build(
     if warm is _FIND:
         warm = warm_start_of(project, expected)
     tmp = Path(tempfile.mkdtemp(prefix="evo-kg-verify-"))
+    opened: list = []  # closed whatever happens: an open memo holds its lock, an open corpus its file
     try:
         store = Store(tmp / "graph.sqlite")
+        opened.append(store)
         memo = Memo(None) if cold else Memo(memo_path(project))
+        opened.append(memo)
+        entity_memo = Memo(memo_path(project)) if cold else None
+        if entity_memo is not None:
+            opened.append(entity_memo)
         corpus = project.corpus()
-        graph, coverage, errors, _ = run_pipeline(
-            project, corpus, memo, entity_memo=Memo(memo_path(project)) if cold else None, offline=True
-        )
+        opened.append(corpus)
+        graph, coverage, errors, _ = run_pipeline(project, corpus, memo, entity_memo=entity_memo, offline=True)
         if errors:
             return {"match": False, "errors": errors[:10]}
         add_curation(graph, coverage)
         add_clusters(project, graph, coverage, warm)
         add_review(graph, coverage)
-        b = store.write(graph, state_digest=corpus.state_digest(), coverage=coverage, stats={}, policy=project.policy)
+        b = store.write(graph, state_digest=corpus.read_digest, coverage=coverage, stats={}, policy=project.policy)
         got = store.build_row(b)["content_hash"]
-        store.close()
-        memo.close()
         return {"match": got == expected, "expected": expected, "rebuilt": got, "cold": cold}
     finally:
+        for opener in reversed(opened):
+            opener.close()
         shutil.rmtree(tmp, ignore_errors=True)

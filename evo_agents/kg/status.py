@@ -170,6 +170,9 @@ def render_status(status: dict, *, brief: bool = False) -> str:
     lines.append("")
     lines.append(f"{'source':<22}{'connector':<12}{'items':>7}{'deleted':>9}  {'last run':<9}{'age':>6}  notes")
     for s in status["sources"]:
+        if s.get("withheld"):  # above the clearance of the sink that asked (``serve``)
+            lines.append(f"{s['id']:<22}withheld: above the clearance of this sink")
+            continue
         last = s["last_run"]
         state = last["status"] if last else "never"
         notes = []

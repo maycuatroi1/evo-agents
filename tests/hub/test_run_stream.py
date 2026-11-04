@@ -470,6 +470,33 @@ def test_a_body_over_64_kib_is_cut_and_marked_truncated(hub):
     assert third["body"]["cut"].startswith('{"0":0,"1":1,') and third["body"]["cut"].endswith(CUT)
 
 
+def test_a_lone_surrogate_in_a_body_is_stored_as_a_replacement_character_and_the_batch_goes_in(hub):
+    worker, run_id = running(hub)
+    broken = {**event(1), "body": {"text": "half \ud83d of a pair, \ud83d\ude00 whole", "k\udc00": ["\udfff"]}}
+    big = {**event(2), "body": {"text": "\ud800" + "x" * 70_000}}  # cut as well
+    payload = json.dumps({"events": [broken, big, event(3)]})  # ASCII, with the surrogates as \\u escapes
+    headers = {**worker["headers"], "Content-Type": "application/json"}
+    response = hub.client.post(f"/v1/worker/runs/{run_id}/events", content=payload, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"ack_seq": 3, "stored": 3}
+    first, second, third = read_events(hub, run_id, after=2)["events"]
+    assert first["body"] == {"text": "half \ufffd of a pair, \U0001f600 whole", "k\ufffd": ["\ufffd"]}
+    assert first["truncated"] is False
+    assert second["truncated"] is True and second["body"]["text"].startswith("\ufffdxxx")
+    assert third["body"] == event(3)["body"]
+
+
+def test_lone_surrogate_fit_event_body_replaces_it_and_never_raises():
+    body = {"text": "a\ud800b", "list": ["\udc00", {"\udbff": 1}], "pair": "\U0001f600"}
+    fitted, cut = runs.fit_event_body(body)
+    assert fitted == {"text": "a\ufffdb", "list": ["\ufffd", {"\ufffd": 1}], "pair": "\U0001f600"} and not cut
+    assert body["text"] == "a\ud800b"  # the caller's body is left alone
+    fitted, cut = runs.fit_event_body({"text": "\ud800" * 40_000})
+    assert cut and fitted["text"].startswith("\ufffd" * 100)
+    clean = {"text": "plain"}
+    assert runs.fit_event_body(clean) == (clean, False)
+
+
 def test_a_nul_in_a_body_is_stored_as_a_replacement_character_and_the_batch_goes_in(hub):
     worker, run_id = running(hub)
     binary = {**event(1), "body": {"text": "ELF\x00\x01\x00rest", "k\x00": ["\x00"]}}  # a tool's binary output

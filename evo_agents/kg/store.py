@@ -376,6 +376,7 @@ class Store:
         """Read as a reader with no audience until ``reader`` is set: rows with one are left out (fail closed)."""
         self.reader: frozenset[str] = frozenset()
         self.asked_clearance: tuple[int, int] | None = None  # the (level, location) of node_asked rows read; None: none
+        self.ceiling: tuple[int, int] | None = None  # the (level, location) edges_of reads up to; None: every label
         self._asked: bool | None = None  # whether the file has the asked tables, once looked up
         self.tuning = kg_settings.DEFAULT  # what the project is tuned by at query time (``evo_agents.kg.settings``)
         self.asked_weight: float | None = None  # the weight of the asked rows to use in place of the file's (an eval)
@@ -1035,10 +1036,15 @@ class Store:
         return out
 
     def edges_of(self, node_id: str, b: int, direction: str = "both", limit: int = 200) -> list[dict]:
+        """The live edges of a node, within ``ceiling`` and the reader's audience, filtered before the limit."""
         clauses = {"out": "src = :id", "in": "dst = :id", "both": "(src = :id OR dst = :id)"}[direction]
+        params = {"id": node_id, "b": b, "lim": limit}
+        if self.ceiling is not None:
+            clauses += " AND label_lvl <= :lvl AND label_loc <= :loc"
+            params.update(lvl=self.ceiling[0], loc=self.ceiling[1])
         rows = self.db.execute(
             f"SELECT {EDGE_COLUMNS} FROM edges WHERE {clauses} AND {LIVE} AND {SEEN} ORDER BY rel, src, dst LIMIT :lim",
-            {"id": node_id, "b": b, "lim": limit},
+            params,
         )
         return [_edge_row(r) for r in rows]
 

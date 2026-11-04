@@ -11,11 +11,11 @@ hook of the evo-hub plugin sends it to the hub. In this order:
    way), hub tokens, web sessions and worker tokens (``evh_``, ``evs_``, ``evw_``), worker pairing codes, GitHub
    tokens of every kind, Bearer credentials, the signature and keys of an S3 request, and credential query parameters;
 4. SECRET_PATTERNS: Anthropic keys (API keys and OAuth tokens), OpenAI keys, AWS access key ids, Slack tokens, Google
-   API keys, Basic credentials of an Authorization header, and the value of a variable or key whose name says it holds
-   a secret, unless an earlier step replaced it already. That last one is how the value of a lease shows in a
-   session: ``evo-agents worker env`` prints a lease of kind env as ``export NAME='value'``, and the environment of a
-   run as ``GITHUB_TOKEN=...``; it also takes an AWS secret key (``AWS_SECRET_ACCESS_KEY=``,
-   ``aws_secret_access_key =``) and keys such as ``"client_secret": "..."``.
+   API keys and OAuth access tokens, Stripe live keys, GitLab, Hugging Face and npm tokens, Basic credentials of an
+   Authorization header, and the value of a variable or key whose name says it holds a secret, unless an earlier
+   step replaced it already. That last one is how the value of a lease shows in a session: ``evo-agents worker env``
+   prints a lease of kind env as ``export NAME='value'``, and the environment of a run as ``GITHUB_TOKEN=...``; it
+   also takes an AWS secret key (``AWS_SECRET_ACCESS_KEY=``, ``aws_secret_access_key =``) and keys such as ``"client_secret": "..."``.
 
 It errs on the side of removing: a value that only looks like a secret goes too. The PEM and key patterns are shared
 with the knowledge graph (``evo_agents.secret_patterns``). Standard library only: the hook runs on a core install.
@@ -31,10 +31,15 @@ from evo_agents.hub.log import MASK, MIN_SECRET_LENGTH, scrub
 from evo_agents.secret_patterns import (
     ANTHROPIC_KEY,
     AWS_ACCESS_KEY_ID,
+    GITLAB_TOKEN,
     GOOGLE_API_KEY,
+    GOOGLE_OAUTH_TOKEN,
+    HUGGING_FACE_TOKEN,
+    NPM_TOKEN,
     OPENAI_KEY,
     PEM_PRIVATE_KEY,
     SLACK_TOKEN,
+    STRIPE_KEY,
 )
 
 # Names of variables and keys that hold a secret: an environment variable in upper case with one of these words in
@@ -62,10 +67,16 @@ SECRET_PATTERNS = (
     (OPENAI_KEY, r"\g<head>" + MASK),
     # AWS access key ids: long-term (AKIA), temporary (ASIA) and the others of the family
     (AWS_ACCESS_KEY_ID, MASK),
-    # Slack tokens: bot, user, app, refresh
+    # Slack tokens: bot, user, app, refresh, app-level
     (SLACK_TOKEN, r"\g<head>" + MASK),
-    # Google API keys
+    # Google API keys and OAuth access tokens
     (GOOGLE_API_KEY, MASK),
+    (GOOGLE_OAUTH_TOKEN, r"\g<head>" + MASK),
+    # Stripe secret and restricted keys, GitLab, Hugging Face and npm tokens
+    (STRIPE_KEY, r"\g<head>" + MASK),
+    (GITLAB_TOKEN, r"\g<head>" + MASK),
+    (HUGGING_FACE_TOKEN, r"\g<head>" + MASK),
+    (NPM_TOKEN, r"\g<head>" + MASK),
     # Basic credentials of an Authorization header
     (re.compile(r"(?P<head>\bAuthorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
     # The value of a variable or key named as a secret

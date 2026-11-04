@@ -73,6 +73,8 @@ TIMEOUT = 120.0
 NETWORK_TIMEOUT = 600.0  # fetch and push
 CLONE_TIMEOUT = 1800.0  # a clone of a repo a run needs and the worker has no checkout of
 MAX_MESSAGE = 2000
+DIFF_BYTES = 8 * 1024 * 1024  # the most of a run's diff read (``diff``), what the hub's run-diff blob takes
+DIFF_CHUNK = 64 * 1024
 PROTECTED = ("main", "master")  # never pushed, whatever the remote's default branch is
 SIDE_BRANCH = "evo-run/{id}"  # the remote branch a plan run's commits go to when they do not go on top of its default
 REPLAY_TRIES = 3  # replays of a run's commits onto a default branch the remote keeps moving on before the push lands
@@ -487,9 +489,13 @@ async def diffstat(cwd: Path, base: str, head: str = "HEAD") -> dict:
     return {"files": files, "insertions": insertions, "deletions": deletions}
 
 
-async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = None) -> bytes:
+async def diff(
+    cwd: Path, base: str, head: str = "HEAD", prefix: str | None = None, *, limit: int = DIFF_BYTES
+) -> bytes:
     """The binary diff from ``base`` to ``head``; with ``prefix``, its paths are under that directory (a/<prefix>/...),
-    so the diffs of a plan run's repos read as one."""
+    so the diffs of a plan run's repos read as one. Read as git writes it, never more than ``limit`` bytes: a longer
+    diff stops git and is cut at a line, with a last line that says so (``cut_diff``). Git that gives no answer
+    within TIMEOUT seconds is killed (GitError)."""
     where = [f"--src-prefix=a/{prefix}/", f"--dst-prefix=b/{prefix}/"] if prefix else []
     proc = await asyncio.create_subprocess_exec(
         "git",
@@ -504,11 +510,46 @@ async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = No
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
         env=_env(),
+        start_new_session=True,
     )
-    out, _ = await asyncio.wait_for(proc.communicate(), TIMEOUT)
+    try:
+        out, cut = await asyncio.wait_for(_read_up_to(proc, limit), TIMEOUT)
+    except TimeoutError:
+        raise GitError(f"git diff gave no answer within {TIMEOUT:g}s") from None
+    finally:
+        if proc.returncode is None:  # cut, timed out or cancelled: git stops here, with what it still has to write
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            await proc.wait()
+    if cut:
+        return cut_diff(out, limit)
     if proc.returncode != 0:
         raise GitError(f"git diff failed ({proc.returncode})")
     return out
+
+
+async def _read_up_to(proc: asyncio.subprocess.Process, limit: int) -> tuple[bytes, bool]:
+    """What ``proc`` writes, until it ends (then it is waited for) or passes ``limit`` bytes; whether it passed."""
+    assert proc.stdout is not None
+    chunks: list[bytes] = []
+    size = 0
+    while chunk := await proc.stdout.read(DIFF_CHUNK):
+        chunks.append(chunk)
+        size += len(chunk)
+        if size > limit:
+            return b"".join(chunks)[: limit + 1], True
+    await proc.wait()
+    return b"".join(chunks), False
+
+
+def cut_diff(data: bytes, limit: int) -> bytes:
+    """``data``, a diff over ``limit`` bytes, cut after its last whole line that leaves room for a line that says so:
+    at most ``limit`` bytes."""
+    note = f"[cut by the worker: the diff is over {limit} bytes]\n".encode()
+    if limit < len(note):
+        return b""
+    keep = data[: limit - len(note)]
+    return keep[: keep.rfind(b"\n") + 1] + note
 
 
 def _own_branches(kind: str) -> tuple[str, str, str, Callable[[str], bool]] | None:

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import sys
 import time
 import uuid
@@ -48,7 +49,7 @@ from evo_agents.kg.budget import (
 from evo_agents.kg.explore import MARK, POOL, Explorer
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
-from evo_agents.kg.policy import Label, audience_below
+from evo_agents.kg.policy import Label, audience_below, audience_of
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
 from evo_agents.kg.search import CODE_LEAD, SNIPPET_KINDS, code_words, query_words, with_mentions
@@ -63,6 +64,7 @@ CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude 
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
 FULL_LINES = 5  # the results kg_search shows whole; those past them show their id alone (kg_node reads one)
+SEARCH_REACH = 2000  # how many candidates kg_search reads, at most, to fill a page the clearance thinned
 REPO_POOL = 12  # with a repo, kg_search ranks this many candidates per result asked, since most are of other repos
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
@@ -183,6 +185,7 @@ class Session:
         top = store.top_label(b)
         within = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
         self.sees_all = within and audience_below(store.top_audience(b), self.audience)
+        store.ceiling = None if self.sees_all else self.clearance  # edges above it are left out before the limit
         return store, b
 
     def _graph(self) -> tuple[Store, int]:
@@ -217,8 +220,10 @@ class Session:
             text, data = handler(**args)
         except (ToolError, UnknownArgument) as exc:
             return _error(str(exc))
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             return _error(f"bad arguments for {name}: {exc}")
+        except sqlite3.Error as exc:
+            return _error(f"the graph could not be read: {type(exc).__name__}: {exc}")
         finally:
             for store in self._opened:
                 store.close()
@@ -344,6 +349,15 @@ class Session:
             ids = [named["id"], *(i for i in ids if i != named["id"])]
         found = store.nodes(ids, b)
         hits = [found[i] for i in ids if i in found and self.seen(found[i]) and in_repo(found[i], repo)]
+        if not self.sees_all and len(hits) < limit:  # the clearance may have left out results: read further
+            more = self._seen_beyond(
+                store,
+                b,
+                ids,
+                limit - len(hits),
+                lambda want: store.search(query, b, limit=want, kinds=kinds, deprecated=self.deprecated, vector=vector),
+            )
+            hits += [n for n in more if in_repo(n, repo)]
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
@@ -418,6 +432,10 @@ class Session:
             ids = store.plain_search(query, limit * 4, kinds)
         found = store.nodes(ids, b)
         results = [found[i] for i in ids if i in found and self.seen(found[i])][:limit]
+        if not self.sees_all and len(results) < limit and not self.plain_files:
+            results += self._seen_beyond(
+                store, b, ids, limit - len(results), lambda want: store.plain_search(query, want, kinds)
+            )
         matched = store.matched(
             [n["id"] for n in results], query, {n["id"] for n in results if n["kind"] in SNIPPET_KINDS}
         )
@@ -431,6 +449,22 @@ class Session:
             "matched": matched,
             "summary": f"{len(results)} results",
         }
+
+    def _seen_beyond(self, store: Store, b: int, ids: list[str], wanted: int, search) -> list[dict]:
+        """Up to ``wanted`` nodes the reader sees that ``search(n)`` ranks past ``ids``, reading 4 times as many
+        candidates each round, up to SEARCH_REACH: the label filter runs before the cut, not after it."""
+        known, out = set(ids), []
+        want = max(len(ids), wanted) * 4
+        while len(out) < wanted:
+            ranked = search(want)
+            extra = [i for i in ranked if i not in known]
+            known.update(extra)
+            found = store.nodes(extra, b)
+            out += [found[i] for i in extra if i in found and self.seen(found[i])]
+            if not extra or want >= SEARCH_REACH:
+                break
+            want = min(want * 4, SEARCH_REACH)
+        return out[:wanted]
 
     def _with_code(
         self, store: Store, b: int, query: str, results: list[dict], limit: int, repo: str | None
@@ -1131,6 +1165,7 @@ class Session:
         from evo_agents.kg.status import project_status, render_status
 
         status = project_status(self.project)
+        self._clear_status(status)
         clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
         text = f"sink {self.sink}: clearance {clr[0]}/{clr[1]}\n" + render_status(status)
         status["sink"] = {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}}
@@ -1140,6 +1175,32 @@ class Session:
             status["session"] = {k: v for k, v in session.items() if k != "v"}
         status["summary"] = status["project"]
         return text, status
+
+    def _clear_status(self, status: dict) -> None:
+        """Keep in ``status`` what the sink's clearance reads, as the other tools do, and raise the session's label by
+        it: a source above the clearance shows its id alone; a build whose highest label is above it shows its counts,
+        not its coverage, warnings or reads, which name items."""
+        for entry in status["sources"]:
+            label = self.policy.source_label(entry["id"])
+            shown = (label.level, label.location, label.integrity)
+            if self.visible(shown):
+                self._saw(shown)
+            else:
+                sid = entry["id"]
+                entry.clear()
+                entry.update(id=sid, withheld=True)
+        graph = status.get("graph") or {}
+        stats = graph.get("stats") or {}
+        top = stats.get("top_label")
+        if not graph.get("ready") or not isinstance(top, list) or len(top) != 2:
+            return
+        shown = (top[0], top[1], "U", audience_of(stats.get("top_audience") or []))
+        if self.visible(shown):
+            self._saw(shown)
+            return
+        for key in ("coverage", "stats"):
+            graph.pop(key, None)
+        status.update(warnings=[], multiple_definitions=None, reads=[])
 
     def tool_kg_more(self, handle: str) -> tuple[str, dict]:
         now = time.monotonic()
@@ -1203,13 +1264,22 @@ def make_session(project: str | None, sink: str) -> Session:
     return Session(bound, sink)
 
 
-def handle(session: Session, message: dict) -> dict | None:
+def _rpc_error(mid, code: int, message: str) -> dict:
+    return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
+
+
+def handle(session: Session, message) -> dict | None:
+    if not isinstance(message, dict):  # a batch or a bare value: JSON-RPC's invalid request
+        return _rpc_error(None, -32600, "invalid request: a message is one JSON object")
     method = message.get("method")
     mid = message.get("id")
     if mid is None:
         return None  # notification
+    params = message.get("params") or {}
+    if not isinstance(params, dict):
+        return _rpc_error(mid, -32602, "invalid params: params is an object")
     if method == "initialize":
-        requested = (message.get("params") or {}).get("protocolVersion")
+        requested = params.get("protocolVersion")
         version = requested if requested in SUPPORTED_VERSIONS else SUPPORTED_VERSIONS[-1]
         result = {
             "protocolVersion": version,
@@ -1222,12 +1292,14 @@ def handle(session: Session, message: dict) -> dict | None:
     elif method == "tools/list":
         result = {"tools": TOOLS}
     elif method == "tools/call":
-        params = message.get("params") or {}
-        result = session.call(params.get("name", ""), params.get("arguments") or {})
+        name, args = params.get("name", ""), params.get("arguments") or {}
+        if not isinstance(name, str) or not isinstance(args, dict):
+            return _rpc_error(mid, -32602, "invalid params: name is a string and arguments an object")
+        result = session.call(name, args)
         if not wants_data(params.get("_meta")):
             result = for_model(result)
     else:
-        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"method not found: {method}"}}
+        return _rpc_error(mid, -32601, f"method not found: {method}")
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
@@ -1241,10 +1313,14 @@ def serve_stdio(project: str | None = None, sink: str = "claude-code@anthropic",
             continue
         try:
             message = json.loads(line)
-        except json.JSONDecodeError:
-            reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
+        except (ValueError, RecursionError):  # not JSON, an integer past Python's digit limit, nesting too deep
+            reply = _rpc_error(None, -32700, "parse error")
         else:
-            reply = handle(session, message)
+            try:
+                reply = handle(session, message)
+            except Exception as exc:  # one message that breaks a tool does not stop the server
+                mid = message.get("id") if isinstance(message, dict) else None
+                reply = _rpc_error(mid, -32603, f"internal error: {type(exc).__name__}: {exc}"[:500])
         if reply is not None:
             sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
             sys.stdout.flush()

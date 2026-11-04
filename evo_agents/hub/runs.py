@@ -479,6 +479,9 @@ WORKER_EVENT_KINDS = ACP_EVENT_KINDS + ("system", "output")  # the hub alone wri
 EVENT_CUT_MARK = "\n[cut by the hub: the event was over {limit} bytes]"
 MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps the start of the body's JSON instead
 NUL_STAND_IN = "�"  # what a NUL character of an event body is stored as: Postgres keeps NUL out of jsonb
+NUL = re.compile("\0")
+SURROGATE = re.compile("[\ud800-\udfff]")  # a lone one: JSON decodes a pair to one character
+SURROGATE_STAND_IN = "\ufffd"  # what a lone surrogate of an event body is stored as: UTF-8 cannot encode one
 
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
@@ -616,7 +619,9 @@ def fit_event_body(body: dict, limit: int = MAX_EVENT_BODY_BYTES) -> tuple[dict,
     """``body`` and False when its JSON takes at most ``limit`` bytes of UTF-8. Otherwise a cut copy and True: its
     longest strings end early with EVENT_CUT_MARK, so the keys of the body stay and the web shows the start of the
     text; and when cutting strings is not enough (a body of many short values), ``{"cut": ...}`` with the start of
-    the body's JSON as text."""
+    the body's JSON as text. A lone UTF-16 surrogate, which JSON's ``\\ud800`` escapes decode to and UTF-8 cannot
+    encode, comes back as U+FFFD first (``without_surrogates``)."""
+    body = without_surrogates(body)
     if _json_size(body) <= limit:
         return body, False
     copy = json.loads(json.dumps(body))
@@ -628,26 +633,43 @@ def fit_event_body(body: dict, limit: int = MAX_EVENT_BODY_BYTES) -> tuple[dict,
     return fallback, True
 
 
-def without_nul(body: dict) -> dict:
-    """``body`` when none of its keys and strings holds a NUL character; else a copy with each NUL as NUL_STAND_IN.
-    Postgres refuses a jsonb value with a NUL in it, so one tool's binary output would fail its whole batch, again at
-    each resend. A walk with a stack of its own, as ``_longest_string``."""
-    if "\\u0000" not in json.dumps(body):
-        return body
+def _mended(body: dict, bad: re.Pattern, stand_in: str) -> dict:
+    """A copy of ``body`` with each match of ``bad`` in its keys and strings as ``stand_in``. A walk with a stack of
+    its own, as ``_longest_string``."""
     copy = json.loads(json.dumps(body))
     stack = [copy]
     while stack:
         node = stack.pop()
         if isinstance(node, dict):
-            for key in [key for key in node if "\0" in key]:
-                node[key.replace("\0", NUL_STAND_IN)] = node.pop(key)
+            for key in [key for key in node if bad.search(key)]:
+                node[bad.sub(stand_in, key)] = node.pop(key)
         items = list(node.items() if isinstance(node, dict) else enumerate(node))
         for key, child in items:
             if isinstance(child, str):
-                node[key] = child.replace("\0", NUL_STAND_IN)
+                node[key] = bad.sub(stand_in, child)
             elif isinstance(child, (dict, list)):
                 stack.append(child)
     return copy
+
+
+def without_nul(body: dict) -> dict:
+    """``body`` when none of its keys and strings holds a NUL character; else a copy with each NUL as NUL_STAND_IN.
+    Postgres refuses a jsonb value with a NUL in it, so one tool's binary output would fail its whole batch, again at
+    each resend."""
+    if "\\u0000" not in json.dumps(body):
+        return body
+    return _mended(body, NUL, NUL_STAND_IN)
+
+
+def without_surrogates(body: dict) -> dict:
+    """``body`` when its keys and strings encode to UTF-8; else a copy with each lone UTF-16 surrogate as U+FFFD. JSON
+    decodes a pair of surrogate escapes to the one character they make, so a surrogate left is a lone one, which
+    neither UTF-8 nor Postgres takes: one tool's broken output would fail its whole batch, again at each resend."""
+    try:
+        json.dumps(body, ensure_ascii=False).encode()
+    except UnicodeEncodeError:
+        return _mended(body, SURROGATE, SURROGATE_STAND_IN)
+    return body
 
 
 def step_title(step: dict) -> str | None:

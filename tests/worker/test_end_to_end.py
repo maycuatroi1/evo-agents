@@ -351,6 +351,23 @@ class Machine:
                 proc.kill()
                 proc.wait(30)
 
+    def wait_heartbeats(self, count: int) -> None:
+        """Wait until the hub has ``count`` more heartbeats of this worker than it has now."""
+        worker_id = json.loads((self.state / "config.json").read_text(encoding="utf-8"))["worker_id"]
+
+        def last() -> str | None:
+            shown = self.world.client.get(f"/v1/workers/{worker_id}", headers=self.world.owner)
+            return shown.json()["last_heartbeat_at"]
+
+        seen = [last()]
+
+        def beat() -> bool:
+            if (now := last()) != seen[-1]:
+                seen.append(now)
+            return len(seen) > count
+
+        wait_until(beat, f"{count} heartbeats of {self.name}", WAIT, self.output)
+
     def output(self) -> str:
         return self.daemon_log.read_text(encoding="utf-8", errors="replace") if self.daemon_log.exists() else ""
 
@@ -880,7 +897,9 @@ def assert_step_done(world: World, key: int, run_id: int, attempt: int = 1) -> N
     assert re.fullmatch(VERIFY_LINE, verified), step["evidence"]
 
 
-def test_a_plan_run_does_three_steps_over_two_repos_and_goes_on_once_the_owner_answers_its_decision(world):
+def test_waits_for_event_a_plan_run_does_three_steps_over_two_repos_and_goes_on_once_the_owner_answers_its_decision(
+    world,
+):
     world.push_plan(two_repos_plan())
     scenarios = {
         f"plan:{TWO_REPOS}": [
@@ -921,7 +940,7 @@ def test_a_plan_run_does_three_steps_over_two_repos_and_goes_on_once_the_owner_a
     assert [option["key"] for option in decision["options"]] == ["yes", "no"] and decision["recommended"] == "no"
     asked = [item for item in world.notifications("decision") if item["decision_id"] == decision["id"]]
     assert len(asked) == 1 and asked[0]["run_id"] == run_id and asked[0]["decision_state"] == "open"
-    time.sleep(2)  # a few heartbeats: the run keeps waiting, and no agent starts
+    mac.wait_heartbeats(2)  # the run keeps waiting, and no agent starts
     assert world.run(run_id)["state"] == "waiting" and len(mac.starts()) == 1
     answered = world.answer(decision["id"], option="yes", text="Staging only, as the option says.")
     assert (answered["state"], answered["answer_option"], answered["answer_run_id"]) == ("answered", "yes", run_id)

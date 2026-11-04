@@ -28,24 +28,27 @@ When the Builder ends done with every step of the plan done (``builder_ended``),
 request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitLab, where the push opened the merge
 request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
 its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
-The job ``curator.changes`` (``advance``) opens the pull request with the workers' App, reads its files and
-runs ``judge.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those files also
-give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request really
-changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by key, which
-only ever raises it), so a proposal of docs whose pull request changes code is tier 1 from then on. A list of files
-GitHub cuts short is a sign too. A judge run reads what it needs with GET /v1/worker/runs/{id}/judge, the hidden checks
-of the charter and the checks of knowledge.yaml included (``change_tiers.judge_knowledge``), and posts its verdict with
-POST /v1/worker/runs/{id}/verdict, those checks' results among its verify results. Both take, besides the worker's
-token, the run's own key (``judge.JUDGE_KEY_HEADER``), which the hub makes when the run is claimed, hands the daemon in
-the claim alone and keeps as a SHA-256 (``issue_judge_key``): the worker token, which code on the worker's machine can
-read, neither reads a hidden check nor writes a verdict. The hub passes the change only as ``judge.final_verdict``
-says, and a sign of the worker's detector puts the proposal at tier 3 too; the paths the worker read in the diff give
-the proposal its tier again. A judge run that ends without a verdict queues another, JUDGE_ATTEMPTS in all, then leaves
-the change open. The job then writes the Judge's check run on the pull request with the workers' App, and merges it
-when ``judge.merge_decision`` says so, reading everything again from GitHub first (the ruleset with the Curator's App,
-the files and the tier they give, the checks the ruleset requires and the head commit's message), and merging a change
-of a tier the charter's ``auto_merge`` names (tier 0 alone unless it names more, up to 3) at the head the Judge passed;
-anything else, a tier the charter does not name, a sign or a protected path, stays open for its owner with the reason.
+The job ``curator.changes`` (``advance``), one pass at a time, opens the pull request with the workers' App, reads its
+files and runs ``judge.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
+files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
+really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
+key, which only ever raises it), so a proposal of docs whose pull request changes code is tier 1 from then on. A list of
+files GitHub cuts short is a sign too. A judge run reads what it needs with GET /v1/worker/runs/{id}/judge, the hidden
+checks of the charter and the checks of knowledge.yaml included (``change_tiers.judge_knowledge``), and posts its
+verdict with POST /v1/worker/runs/{id}/verdict, those checks' results among its verify results. Both take, besides the
+worker's token, the run's own key (``judge.JUDGE_KEY_HEADER``), which the hub makes when the run is claimed, hands the
+daemon in the claim alone and keeps as a SHA-256 (``issue_judge_key``): the worker token, which code on the worker's
+machine can read, neither reads a hidden check nor writes a verdict. The hub passes the change only as
+``judge.final_verdict`` says, and a sign of the worker's detector puts the proposal at tier 3 too; the paths the worker
+read in the diff give the proposal its tier again. A judge run that ends without a verdict queues another,
+JUDGE_ATTEMPTS in all, then leaves the change open. The job then writes the Judge's check run on the pull request with
+the workers' App, and merges it when ``judge.merge_decision`` says so, reading everything again from GitHub first (the
+ruleset with the Curator's App, the files and the tier they give, the checks the ruleset requires and the head commit's
+message), and merging a change of a tier the charter's ``auto_merge`` names (tier 0 alone unless it names more, up to 3)
+at the head the Judge passed; anything else, a tier the charter does not name, a sign or a protected path, stays open
+for its owner with the reason.
+Before it merges or leaves a change open it reads the change again under its row lock (``_unchanged``): one a person
+closed or an agent merged while the pass read GitHub is left as it is (MOVED).
 CI must be green, or, when the charter has ``merge_without_ci``, may be none at all or, with a ruleset that requires no
 check, what ran: a check that ran and failed still leaves the change open, and one still running makes it wait. A
 change of a harness alone whose replays won merges as tier 0 (``change_tiers.merge_tier``), and the merge of one
@@ -143,6 +146,7 @@ JudgeKey = Annotated[
 ]
 ChangeId = Annotated[int, Path(ge=1, le=MAX_ID)]
 PAUSED = "the night shift of the project is paused: the hub merges nothing while it is"
+MOVED = "moved"  # the outcome of a change closed, merged or judged again while a pass of curator.changes read it
 
 
 # Models
@@ -1324,10 +1328,22 @@ async def _left_for_owner(conn: AsyncConnection, change_id: int) -> None:
     await on_left_open(conn, change_id)
 
 
+async def _unchanged(conn: AsyncConnection, change) -> bool:
+    """Whether ``change`` is still as this pass read it, in the same state at the same head, its row locked until the
+    caller's transaction ends: a person may have closed it, or an agent merged it, since."""
+    c = tables.curator_changes
+    query = select(c.c.state, c.c.head_sha).where(c.c.id == change.id).with_for_update()
+    row = (await conn.execute(query)).first()
+    return row is not None and (row.state, row.head_sha) == (change.state, change.head_sha)
+
+
 async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None) -> str:
     """Leave a judged change open for a person, saying ``why``; with ``kept``, the outcome of a change left as it is for
-    a later pass (its night shift paused, its principal asked)."""
+    a later pass (its night shift paused, its principal asked). MOVED, and nothing written, for a change that moved on
+    since the pass read it."""
     async with engine.begin() as conn:
+        if not await _unchanged(conn, change):
+            return MOVED
         if kept is None:
             await _set(conn, change.id, state="open", reason=why)
             await _left_for_owner(conn, change.id)
@@ -1625,6 +1641,8 @@ async def _merge(
     decided, reasons = judge.merge_decision(read.facts)
     if decided == "wait":
         async with engine.begin() as conn:
+            if not await _unchanged(conn, change):
+                return MOVED
             verdict_at = change.updated_at  # when the verdict, then its check run, was written
             if verdict_at is not None and await _older_than(conn, verdict_at, CI_WAIT):
                 await _set(
@@ -1645,6 +1663,8 @@ async def _merge(
         return await _reopen(engine, change, reason_line("; ".join(reasons)))
 
     async with engine.begin() as conn:
+        if not await _unchanged(conn, change):  # closed or merged while the hub read GitHub
+            return MOVED
         paused = paused or await night_paused(conn, change.project_id)  # paused while the hub read GitHub
         act = merge_act(change, read)
         said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
@@ -1657,6 +1677,10 @@ async def _merge(
     except GitHubRefused as exc:
         return await _reopen(engine, change, reason_line(f"GitHub refused the merge: {exc}"))
     async with engine.begin() as conn:
+        c = tables.curator_changes
+        state = select(c.c.state).where(c.c.id == change.id).with_for_update()
+        if (await conn.execute(state)).scalar_one_or_none() == "merged":  # an agent recorded its merge meanwhile
+            return MOVED
         await record_merge(conn, change, merged, read, act)
     log.info("curator change merged", extra={"change_id": change.id, "sha": merged})
     return "merged"
@@ -1845,6 +1869,9 @@ async def advance(
                 if change.state == "judged":  # open, or handed to the merge queue when its policy says so
                     outcome, why = await merge_gate.curator_judged(engine, change)
                     async with engine.begin() as conn:
+                        if not await _unchanged(conn, change):
+                            outcomes[MOVED] += 1
+                            continue
                         await _set(conn, change.id, state="open", reason=reason_line(why))
                     outcomes[outcome] += 1
                 continue

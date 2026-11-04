@@ -9,6 +9,7 @@ plugin's metadata holds as stubs, are not the plugin's to migrate.
 
 from alembic import context
 
+from evo_agents.hub.migrate import limit_revision
 from evo_agents.hub.plugin_schema import own_names
 
 config = context.config
@@ -18,11 +19,13 @@ if connection is None or chain is None or context.is_offline_mode():
     raise RuntimeError("core plugin migrations run through `evo-agents hub migrate`, not the alembic command")
 
 applied = config.attributes.get("applied")
+limit_revision(connection)  # lock_timeout and statement_timeout of every revision (migrate.REVISION_TIMEOUTS)
 metadata = config.attributes["metadata"]
 owned = set(own_names(metadata))
 
 
 def record(ctx, step, heads, run_args) -> None:
+    limit_revision(connection)  # the next revision starts with the same limits, whatever this one set
     if applied is not None and step.up_revision_id:
         applied.append(step.up_revision_id)
 

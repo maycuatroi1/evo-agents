@@ -57,7 +57,7 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.plugin_tokens import revoke_tokens
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, admin_login
 from evo_agents.plugins import compat, signing
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
 from evo_agents.plugins.environment import MAX_PLUGIN_ID
@@ -571,7 +571,7 @@ async def hub_admin_ids(conn: AsyncConnection, admins: frozenset[str]) -> list[i
     """The ids of the hub admins (EVO_HUB_ADMINS) who have signed in, by id."""
     users = tables.users
     logins = literal(sorted(admins), ARRAY(Text))
-    query = select(users.c.id).where(func.lower(users.c.login) == any_(logins)).order_by(users.c.id)
+    query = select(users.c.id).where(admin_login(users) == any_(logins)).order_by(users.c.id)
     return list((await conn.execute(query)).scalars())
 
 

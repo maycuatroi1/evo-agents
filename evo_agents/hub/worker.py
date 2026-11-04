@@ -1,7 +1,9 @@
 """``evo-agents hub worker``: the process that runs the hub's background jobs, from the same image as the api.
 
 The worker migrates the database like the api (under the advisory lock), then takes jobs from the procrastinate
-queue in Postgres, ``concurrency`` at a time, until SIGTERM or SIGINT. On the first signal it takes no new job and
+queue in Postgres, ``concurrency`` at a time, until SIGTERM or SIGINT. A second procrastinate worker in the same
+process takes only the queue ``jobs.LEASE`` (recovering runs, delivering notifications), one job at a time, so those
+run every minute even while long jobs fill the ``concurrency`` slots. On the first signal it takes no new job and
 waits up to SHUTDOWN_GRACE for the running ones; procrastinate aborts what is still running after that, and a second
 signal kills the process. Stopped by a signal, it exits 0; stopped by anything else, such as losing Postgres, it
 exits 1, so the container is restarted and the failure shows. It needs the blob store: what it builds lives in R2,
@@ -48,7 +50,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   the project, counted once without any model, and its review run; and the deferred proposals whose time has passed
   open again (``evo_agents.hub.server.collect``).
 - ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
-  takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
+  takes the minute, queued once at a time, the minutes a late pass missed in the last hour caught up; ``hub.plugin_job``
+  runs it (``evo_agents.hub.plugin_jobs``).
 - ``hub.value_check``: deferred with each batch of a project's signals that stored any (``evo_agents.hub.signals``),
   one at a time per project and at most one waiting: the plugins' jobs named value_check of that project, for it alone
   (``evo_agents.hub.plugin_jobs.run_on_signals``).
@@ -99,10 +102,11 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``); on Monday, for a charter that runs
   probes, the weekly report of their ISO week just ended too, once a week (``evo_agents.hub.server.probe_report``).
-- ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
-  written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
-  hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits for at the next
-  pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``, ``.protection``).
+- ``curator.changes``, every minute, one pass at a time: the Curator's changes move on: their pull requests opened,
+  the Judge's check runs written, the tier 0 ones merged when everything allows it, the others left open for their
+  owner and read again hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits
+  for at the next pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``,
+  ``.protection``).
 - ``hub.merge_queue``, every minute, one pass at a time: the merge queue on GitLab of each project whose autonomy
   policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
   until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
@@ -164,6 +168,7 @@ PING_MAX_SECONDS = 30.0
 JOB_RETENTION = timedelta(days=14)
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 SIDE_CONNECTIONS = 3  # the pool serves the jobs plus procrastinate's fetching, heartbeat and periodic deferrer
+LEASE_CONCURRENCY = 1  # jobs the worker on jobs.LEASE runs at a time, beside the ``concurrency`` of the others
 
 queue = App(connector=PsycopgConnector())  # never opened as is: ``run`` swaps in a connector with the DSN
 
@@ -326,7 +331,7 @@ async def prune_kg_artifacts(context: JobContext, timestamp: int | None = None) 
 
 
 @queue.periodic(cron="* * * * *")
-@queue.task(name=jobs.RECOVER_RUNS, pass_context=True, queueing_lock=jobs.RECOVER_RUNS)
+@queue.task(name=jobs.RECOVER_RUNS, pass_context=True, queueing_lock=jobs.RECOVER_RUNS, queue=jobs.LEASE)
 async def recover_runs(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.run_state import recover_runs as recover
 
@@ -341,7 +346,9 @@ async def recover_runs(context: JobContext, timestamp: int | None = None) -> dic
 
 
 @queue.periodic(cron="* * * * *")
-@queue.task(name=jobs.DELIVER_NOTIFICATIONS, pass_context=True, queueing_lock=jobs.DELIVER_NOTIFICATIONS)
+@queue.task(
+    name=jobs.DELIVER_NOTIFICATIONS, pass_context=True, queueing_lock=jobs.DELIVER_NOTIFICATIONS, queue=jobs.LEASE
+)
 async def deliver_notifications(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.notifications import deliver_notifications as deliver
 
@@ -377,7 +384,7 @@ async def curator_brief(context: JobContext, timestamp: int | None = None) -> di
 
 
 @queue.periodic(cron="* * * * *")
-@queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, queueing_lock=jobs.CURATOR_CHANGES)
+@queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, lock=jobs.CURATOR_CHANGES, queueing_lock=jobs.CURATOR_CHANGES)
 async def curator_changes(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.changes import advance
 
@@ -616,11 +623,11 @@ async def prune_jobs(context: JobContext, timestamp: int | None = None) -> None:
 
 
 def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
-    """A connector whose pool procrastinate opens and closes, sized for ``concurrency`` jobs."""
+    """A connector whose pool procrastinate opens and closes, sized for ``concurrency`` jobs and the lease worker's."""
     return PsycopgConnector(
         conninfo=config.dsn,
         min_size=1,
-        max_size=max(config.pool_max_size, concurrency + SIDE_CONNECTIONS),
+        max_size=max(config.pool_max_size, concurrency + LEASE_CONCURRENCY + 2 * SIDE_CONNECTIONS),
         timeout=config.pool_timeout,
         kwargs={"application_name": APPLICATION_NAME, "connect_timeout": CONNECT_TIMEOUT},
         name="evo-hub-worker",
@@ -628,11 +635,40 @@ def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
     )
 
 
+async def workers(**options) -> None:
+    """Two procrastinate workers on the one App: one with ``options``, and one on jobs.LEASE alone, so recovering
+    runs and delivering notifications never wait behind a long job. A worker whose ``queues`` leave out the default
+    queue (``--queue kg``) runs the first alone. Both stop when either does, the error of the one that stopped first
+    raised; cancelled, both stop and wait for their running jobs."""
+    queues = options.get("queues")
+    if queues and jobs.DEFAULT_QUEUE not in queues:
+        await queue.run_worker_async(install_signal_handlers=False, **options)
+        return
+    lease = {
+        **options,
+        "name": f"{options.get('name') or 'worker'}-{jobs.LEASE}",
+        "queues": [jobs.LEASE],
+        "concurrency": LEASE_CONCURRENCY,
+    }
+    running = [
+        asyncio.ensure_future(queue.run_worker_async(install_signal_handlers=False, **each))
+        for each in (options, lease)
+    ]
+    try:
+        done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for each in running:
+            each.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
+    for each in done:
+        each.result()
+
+
 async def work(**options) -> bool:
-    """Run jobs until SIGTERM or SIGINT (True) or until the worker stops by itself (False). procrastinate's own
+    """Run jobs until SIGTERM or SIGINT (True) or until the workers stop by themselves (False). procrastinate's own
     signal handlers are left out: they cannot tell the two apart."""
     loop = asyncio.get_running_loop()
-    task = asyncio.ensure_future(queue.run_worker_async(install_signal_handlers=False, **options))
+    task = asyncio.ensure_future(workers(**options))
     received: list[str] = []
 
     def stop(signum: int) -> None:

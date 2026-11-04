@@ -19,6 +19,7 @@ import asyncio
 import json
 import os
 import secrets
+import time
 from datetime import UTC, datetime
 from importlib.metadata import EntryPoint
 from types import SimpleNamespace
@@ -32,7 +33,7 @@ if not pg.DSN:
 
 import httpx
 from fastapi.testclient import TestClient
-from sqlalchemy import column, func, insert, select, table, update
+from sqlalchemy import column, delete, func, insert, select, table, update
 
 from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub import plugin_calls, plugin_events, plugin_jobs, runs, tables
@@ -367,6 +368,32 @@ def test_plugin_mcp_tool_shows_to_a_run_agent_only_when_its_profile_tool_axis_al
 # Jobs
 
 
+def test_plugin_cron_catch_up_queues_each_missed_minute_of_the_last_hour_once(client, hub, hub_db, fake):
+    install(hub_db, sample_manifest(id="nightly", contributes={"jobs": [{"name": "sweep", "cron": "30 2 * * *"}]}))
+    enable(client, hub["owner"])  # sample: tick, 0 * * * *
+    enable(client, hub["owner"], "nightly")
+
+    def fire(at: datetime) -> dict:
+        async def one(app):
+            return await plugin_jobs.fire(app.state.engine, app.state.jobs._manager, int(at.timestamp()))
+
+        found = on_hub(client, one)
+        live.sql(hub_db, delete(JOBS).where(JOBS.c.task_name == "hub.plugin_job"))  # run: none waits any more
+        return found
+
+    assert fire(datetime(2026, 10, 17, 1, 59, tzinfo=UTC)) == {"deferred": [], "minutes": 1}
+    # the worker was down from 02:00 to 02:45: the pass after catches up 02:00 (tick) and 02:30 (sweep), once each
+    late = fire(datetime(2026, 10, 17, 2, 45, 30, tzinfo=UTC))
+    assert sorted(late["deferred"]) == ["nightly:sweep", "sample:tick"] and late["minutes"] == 46
+    assert fire(datetime(2026, 10, 17, 2, 45, tzinfo=UTC)) == {"deferred": [], "minutes": 0}  # each minute once
+    assert fire(datetime(2026, 10, 17, 2, 46, tzinfo=UTC)) == {"deferred": [], "minutes": 1}
+    # down from 02:47 to 05:10: the last 60 minutes only, 04:11 to 05:10, so 03:00 and 04:00 are not run again
+    behind = fire(datetime(2026, 10, 17, 5, 10, tzinfo=UTC))
+    assert behind == {"deferred": ["sample:tick"], "minutes": 60}
+    (through,) = live.sql(hub_db, select(tables.plugin_cron.c.fired_through))
+    assert through == (datetime(2026, 10, 17, 5, 10, tzinfo=UTC),)
+
+
 def test_plugin_job_is_queued_by_its_cron_through_the_job_queue_once_at_a_time(client, hub, hub_db, fake):
     install(hub_db, sample_manifest(id="nightly", contributes={"jobs": [{"name": "sweep", "cron": "30 2 * * *"}]}))
     hourly = datetime(2026, 10, 17, 5, 0, tzinfo=UTC)
@@ -385,7 +412,8 @@ def test_plugin_job_is_queued_by_its_cron_through_the_job_queue_once_at_a_time(c
         return first, again
 
     first, again = on_hub(client, fire)
-    assert first == {"deferred": ["sample:tick"]} and again == {"deferred": []}  # one waits already
+    assert first == {"deferred": ["sample:tick"], "minutes": 1}  # the first pass: its own minute
+    assert again == {"deferred": [], "minutes": 0}  # that minute is done
     queued = select(func.count()).select_from(JOBS).where(JOBS.c.task_name == "hub.plugin_job")
     assert live.sql(hub_db, queued) == [(1,)]
 
@@ -484,6 +512,41 @@ def test_plugin_event_is_delivered_at_least_once_retried_and_checked_again_at_de
     errors = {row[0] for row in live.sql(hub_db, select(d.c.last_error).where(d.c.state == "failed"))}
     assert errors == {"project evo-agents does not enable plugin sample any more"}
     assert len(fake.calls) == 2
+
+
+def test_plugin_host_hung_costs_one_timeout_a_pass_and_holds_no_row_lock_while_it_waits(
+    client, hub, hub_db, fake, monkeypatch
+):
+    enable(client, hub["owner"])
+    for _ in range(5):
+        on_hub(client, _notify_owner)
+    assert len(deliveries(hub_db)) == 5
+    monkeypatch.setattr(plugin_events, "TIMEOUT", 0.5)
+    d = tables.plugin_deliveries
+    seen = []
+
+    async def hung(plugin, method, params, timeout=30.0):
+        fake.calls.append(SimpleNamespace(plugin=plugin, method=method, params=params))
+        # While the host does not answer, the pass holds no lock on the delivery: another connection takes it at once.
+        async with client.app.state.engine.begin() as conn:
+            query = select(d.c.id, d.c.next_at > func.now()).where(d.c.id == params["delivery"])
+            seen.append(tuple((await conn.execute(query.with_for_update(nowait=True))).one()))
+        await asyncio.sleep(timeout)
+        raise PluginHostUnavailable("the plugin host did not answer: ReadTimeout")
+
+    fake.call = hung
+    started = time.monotonic()
+    report = deliver(client)
+    assert time.monotonic() - started < 5
+    assert (report["retried"], report["skipped"], report["delivered"]) == (1, 4, 0)
+    assert len(fake.calls) == 1  # the host was silent: no other call this pass
+    assert seen == [(fake.calls[0].params["delivery"], True)]  # claimed: not due again while it is tried
+    states = [(state, attempts) for _, _, state, attempts in deliveries(hub_db)]
+    assert sorted(states) == [("pending", 0)] * 4 + [("pending", 1)]
+
+    # The next pass tries again; past PASS_SECONDS it starts no call at all.
+    monkeypatch.setattr(plugin_events, "PASS_SECONDS", 0.0)
+    assert deliver(client)["skipped"] == 4 and len(fake.calls) == 1
 
 
 def test_plugin_channel_of_an_isolated_plugin_gets_the_project_notifications_without_their_text(

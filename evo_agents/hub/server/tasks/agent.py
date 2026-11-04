@@ -34,7 +34,7 @@ from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import Principal, member_principal
 from evo_agents.hub.server.tasks import links, store, writes
 from evo_agents.hub.server.tasks.settings import Settings, TasksError, number_of, settings
 from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX
@@ -84,9 +84,7 @@ async def _person(conn: AsyncConnection, params: dict, context: CoreContext) -> 
                 )
     if user_id is None:
         raise TasksError(403, "the caller is no member of the hub")
-    login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
-    admin = context.config is not None and context.config.is_admin(login)
-    return Principal(user_id, login, admin, None, MACHINE, ""), splitting
+    return await member_principal(conn, user_id, context.config), splitting
 
 
 async def _access(conn: AsyncConnection, person: Principal, project: str) -> ProjectAccess:

@@ -136,6 +136,7 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         Column("listing_id", BigInteger, nullable=False),
         Column("buyer_hub", Text, nullable=False),
         Column("buyer_url", Text),
+        Column("buyer_address", Text),  # 0203: where the order came from (workers.client_address), null before
         Column("buyer_name", Text, nullable=False),
         Column("buyer_email", Text, nullable=False),
         Column("months", Integer, nullable=False),
@@ -158,6 +159,7 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         UniqueConstraint("number", name="market_orders_number_key"),
         UniqueConstraint("license_id", name="market_orders_license_id_key"),
         Index("market_orders_hub_idx", "buyer_hub", "listing_id"),
+        Index("market_orders_address_idx", "buyer_address", "state"),  # 0203
     )
     payouts = Table(
         "market_payouts",

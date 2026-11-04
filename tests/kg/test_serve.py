@@ -224,7 +224,8 @@ def test_a_client_gets_the_text_alone_unless_it_asks_for_the_data(tmp_path, kg_e
     assert tool(2, "kg_node", {"id": "plan:demo"}, {serve.DATA_META: True}) == full
     assert tool(3, "kg_node", {"id": "plan:demo"}, {serve.DATA_META: "yes"}) == shown  # only true asks
     status = tool(4, "kg_status", {})
-    assert list(status) == ["content"] and "_meta" not in status["content"][0]  # reveals no element
+    assert list(status) == ["content"]
+    assert status["content"][0]["_meta"][READ_META]["label"]["level"] == "internal"  # the sources it describes
     missing = tool(5, "kg_node", {"id": "nope"})
     assert missing == {"content": missing["content"], "isError": True}
 

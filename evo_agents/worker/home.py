@@ -31,6 +31,7 @@ one. Standard library only.
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import shutil
@@ -191,10 +192,20 @@ class WorkerHome:
         return self.worktrees_dir / f"{project}-{int(run_id)}"
 
     def save_run(self, record: dict) -> None:
+        """Write the record of a run. When the atomic write fails (a full disk has no room for the temporary file),
+        the record is written over the one there in place, as compact JSON, which fits the blocks the old one holds:
+        the end of a run (``finished_at``) is kept even then."""
         directory = self.run_dir(record["id"])
         directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
+        path = directory / "run.json"
         data = json.dumps(record, indent=2, ensure_ascii=False, default=str).encode() + b"\n"
-        write_atomic(directory / "run.json", data, FILE_MODE)
+        try:
+            write_atomic(path, data, FILE_MODE)
+        except OSError:
+            if not path.is_file():
+                raise
+            compact = json.dumps(record, ensure_ascii=False, separators=(",", ":"), default=str).encode() + b"\n"
+            _write_in_place(path, compact)
 
     def load_runs(self) -> list[dict]:
         records = []
@@ -383,3 +394,20 @@ class PidLock:
             os.ftruncate(self.fd, 0)
         os.close(self.fd)  # closing drops the lock
         self.fd = None
+
+
+def _write_in_place(path: Path, data: bytes) -> None:
+    """Write ``data`` over ``path`` from its start and cut what follows: no new file, so no new inode or directory
+    entry, which a full disk may refuse. Not atomic: only for when ``write_atomic`` could not be."""
+    fd = os.open(path, os.O_WRONLY)
+    try:
+        view = memoryview(data)
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError(errno.ENOSPC, f"wrote {len(data) - len(view)} of {len(data)} bytes of {path.name}")
+            view = view[written:]
+        os.ftruncate(fd, len(data))
+        os.fsync(fd)
+    finally:
+        os.close(fd)

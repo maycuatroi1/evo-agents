@@ -284,12 +284,17 @@ def test_a_worker_of_the_queue_kg_takes_the_kg_jobs_and_leaves_the_others(hub_db
     migrate(hub_db.dsn)
 
     async def defer(job_queue, pool):
-        return await job_queue.defer(jobs.PING, note="default"), await job_queue.defer_kg(jobs.PING, "alpha")
+        return (
+            await job_queue.defer(jobs.PING, note="default"),
+            await job_queue.defer_kg(jobs.PING, "alpha"),
+            await job_queue.defer(jobs.RECOVER_RUNS, queueing_lock=jobs.RECOVER_RUNS, timestamp=int(time.time())),
+        )
 
-    plain, kg = asyncio.run(with_queue(hub_db, defer))
+    plain, kg, lease = asyncio.run(with_queue(hub_db, defer))
     with running_worker(hub_db, tmp_path, s3, "--queue", "kg") as worker:
         wait_for(lambda: job(hub_db, kg)["status"] == "succeeded", what="the kg job")
         assert job(hub_db, plain)["status"] == "todo"
+        assert job(hub_db, lease)["status"] == "todo"  # the lease worker runs beside the default queue only
         assert worker.stop() == 0, worker.log()
     (starting,) = [line for line in pg.log_lines(worker.log()) if line["msg"] == "worker starting"]
     assert starting["queues"] == [jobs.KG_QUEUE]
@@ -307,6 +312,39 @@ def test_sigterm_lets_the_running_job_finish_before_the_worker_exits(hub_db, tmp
     messages = worker.messages()
     assert messages.index("ping") < messages.index("worker stopped, connection pool closed")
     assert query(hub_db, select(func.count()).select_from(procrastinate_workers)) == [(0,)]  # it unregistered itself
+
+
+def test_lease_recovery_not_starved_by_a_long_job_holding_every_slot(hub_db, tmp_path, s3):
+    migrate(hub_db.dsn)
+    j = procrastinate_jobs.c
+
+    async def defer_all(job_queue, pool):
+        long_job = await job_queue.defer(jobs.PING, seconds=25)
+        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS):
+            await job_queue.defer(task, queueing_lock=task, timestamp=int(time.time()))
+        return long_job
+
+    with running_worker(hub_db, tmp_path, s3) as worker:  # concurrency 1: the ping takes the one slot
+        long_job = asyncio.run(with_queue(hub_db, defer_all))
+        wait_for(lambda: job(hub_db, long_job)["status"] == "doing", what="the long job starting")
+        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS):
+            done = select(cast(j.status, Text)).where(j.task_name == task)
+            wait_for(lambda done=done: ("succeeded",) in query(hub_db, done), timeout=20, what=f"{task} running")
+        assert job(hub_db, long_job)["status"] == "doing"  # they ran beside it, not after it
+        worker.proc.kill()
+    queues = select(j.task_name, column("queue_name")).select_from(procrastinate_jobs).distinct()
+    assert {
+        jobs.RECOVER_RUNS: jobs.LEASE,
+        jobs.DELIVER_NOTIFICATIONS: jobs.LEASE,
+        jobs.PING: "default",
+    }.items() <= dict(query(hub_db, queues)).items()
+
+
+def test_lease_recovery_not_starved_its_jobs_alone_go_to_the_lease_queue():
+    assert {name for name, task in queue.tasks.items() if task.queue == jobs.LEASE} == jobs.LEASE_JOBS
+    hub_tasks = {name: task for name, task in queue.tasks.items() if task.queue != "builtin"}  # procrastinate's own
+    assert {task.queue for name, task in hub_tasks.items() if name not in jobs.LEASE_JOBS} == {"default", jobs.KG_QUEUE}
+    assert all(jobs.queue_of(name) == task.queue for name, task in hub_tasks.items())
 
 
 def test_a_worker_that_loses_postgres_exits_nonzero_so_it_is_restarted(hub_db, tmp_path, s3):

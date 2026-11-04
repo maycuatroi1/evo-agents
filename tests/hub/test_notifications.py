@@ -17,7 +17,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import extract, func, insert, select, update
+from sqlalchemy import Integer, extract, func, insert, literal, select, update
 
 from evo_agents.hub import jobs, tables
 from evo_agents.hub.server import notifications
@@ -295,6 +295,51 @@ def test_the_fifth_failure_fails_a_delivery_and_a_channel_without_a_class_fails_
             DELIVERIES.c.notification_id == notification, DELIVERIES.c.channel_id == channel
         ),
     ) == [("failed", "the channel was turned off before the notification went out")]
+
+
+class BrokenChannel(notifications.Channel):
+    """Its ``prepare`` runs a statement the database refuses."""
+
+    async def prepare(self, conn, notification):
+        await conn.execute(select(literal(1) / literal(0)))
+        return notification
+
+    async def send(self, notification, config):
+        raise AssertionError("never sent: its prepare failed")
+
+
+def test_notification_db_error_fails_its_own_delivery_and_the_pass_goes_on(client, hub, hub_db, fake, monkeypatch):
+    monkeypatch.setitem(notifications.CHANNELS, "broken", BrokenChannel)
+    add_channel(hub_db, OWNER, "broken")
+    add_channel(hub_db, OWNER, "fake")
+    worker, run = started(client, hub)
+    alert(client, worker, run["id"])
+    # prepare's statement fails in a savepoint: its delivery is tried again, the web and the fake one go out
+    assert deliver(client) == {"delivered": 2, "retried": 1, "failed": 0}
+    web, broken, sent = deliveries(hub_db)
+    assert (web[:2], sent[:2]) == (("web", "delivered"), ("fake", "delivered"))
+    assert broken[:3] == ("broken", "pending", 1) and "DivisionByZero" in broken[3]
+
+    # a database error outside any savepoint ends the delivery's transaction: that delivery alone fails its try
+    alert(client, worker, run["id"])
+    real = notifications._deliver_one
+    first = []
+
+    async def failing(conn, delivery_id, instances, config):
+        if not first:
+            first.append(delivery_id)  # the broken channel's delivery of the first notice, due again
+            await conn.execute(select(func.cast(literal("x"), Integer)))
+        return await real(conn, delivery_id, instances, config)
+
+    monkeypatch.setattr(notifications, "_deliver_one", failing)
+    due_now(hub_db)
+    report = deliver(client)
+    assert report["delivered"] == 2 and report["retried"] == 2  # the web and fake ones of the second notice
+    (state, attempts, error), *_ = sql(
+        hub_db,
+        select(DELIVERIES.c.state, DELIVERIES.c.attempts, DELIVERIES.c.last_error).where(DELIVERIES.c.id == first[0]),
+    )
+    assert (state, attempts) == ("pending", 2) and "InvalidTextRepresentation" in error
 
 
 async def _notify(engine, member: int) -> int:

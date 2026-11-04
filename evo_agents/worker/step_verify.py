@@ -16,10 +16,11 @@ import sys
 import time
 from pathlib import Path
 
-from evo_agents.worker import verify_jobs
+from evo_agents.worker import untrusted, verify_jobs
 from evo_agents.worker.home import WorkerStateError
 
 OUTPUT_TAIL = 4000  # characters of a failed verify command's output printed
+OUTPUT_GRACE = 5.0  # seconds the output of a verify command may take to end once it and what it left are gone
 EXIT_FAILED = 1
 
 
@@ -55,19 +56,29 @@ async def verify_env(venv: object, name: str, path: Path) -> dict[str, str] | No
 
 async def verify(path: Path, commands: list[str], env: dict[str, str] | None = None) -> list[dict]:
     """Run each command with /bin/sh in ``path``, in ``env`` (this process's when None), every one even after a
-    failure; each one's exit code."""
+    failure; each one's exit code. Once a command exits, every process it left (a server started in the background,
+    holding a port and the output) is killed: each carries the command's marker in its environment
+    (``untrusted.kill_leftovers``). The commands stay in the job's process group, which ``verify_jobs.stop`` kills."""
     results = []
     for command in commands:
         started = time.monotonic()
+        marker = untrusted.new_marker()
         proc = await asyncio.create_subprocess_shell(
             command,
             cwd=str(path),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
-            env=env,
+            env={**(os.environ if env is None else env), untrusted.MARKER_VARIABLE: marker},
         )
-        output, _ = await proc.communicate()
+        assert proc.stdout is not None
+        reader = asyncio.create_task(proc.stdout.read())
+        await proc.wait()
+        await untrusted.kill_leftovers(proc.pid, marker)
+        try:
+            output = await asyncio.wait_for(reader, OUTPUT_GRACE)
+        except TimeoutError:  # a process that cleared its environment still holds the output
+            output = b""
         duration_ms = int((time.monotonic() - started) * 1000)
         results.append({"command": command, "exit_code": proc.returncode, "duration_ms": duration_ms})
         print(f"verify: `{command}` exited {proc.returncode} after {duration_ms} ms", flush=True)

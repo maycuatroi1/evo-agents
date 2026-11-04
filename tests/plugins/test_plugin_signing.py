@@ -285,3 +285,31 @@ def test_plugin_signing_sigstore_verifier_keeps_the_claims_and_says_what_failed(
     ):
         SigstoreVerifier(factory=unreachable)(DATA, {})
     assert signing.default_sigstore() is signing.default_sigstore()
+
+
+def test_plugin_signing_takes_a_run_at_a_tag_or_on_the_default_branch_only_signing_ref():
+    trusted = publishers(f"acme=sigstore:{WORKFLOW}")
+    check = FakeSigstore()
+    for ref in ("refs/heads/main", "refs/tags/v1.2.0"):
+        identity = SIGNER.replace("refs/heads/main", ref)
+        assert (
+            verify(DATA, sigstore_signature(DATA, identity=identity), PUBLISHER, trusted, check).signed_by == identity
+        )
+    for ref in ("refs/heads/feature/x", "refs/pull/7/merge", "refs/heads/main-old", "refs/tags/"):
+        identity = SIGNER.replace("refs/heads/main", ref)
+        message = refused(
+            "untrusted", verify, DATA, sigstore_signature(DATA, identity=identity), PUBLISHER, trusted, check
+        )
+        assert f"at {ref} (only a tag, refs/tags/..., or refs/heads/main may sign)" in message, message
+
+
+def test_plugin_signing_an_entry_names_a_default_branch_other_than_main_signing_ref():
+    (acme,) = parse_publishers(f"acme=sigstore:{WORKFLOW}@trunk")
+    assert acme.sigstore == (SigstoreIdentity("acme/evo-plugin-sandbox", ".github/workflows/release.yml", "trunk"),)
+    assert acme.identities() == [f"sigstore:{WORKFLOW}@trunk"]
+    assert parse_publishers(f"acme=sigstore:{WORKFLOW}")[0].identities() == [f"sigstore:{WORKFLOW}"]
+    check = FakeSigstore()
+    trunk = SIGNER.replace("refs/heads/main", "refs/heads/trunk")
+    assert verify(DATA, sigstore_signature(DATA, identity=trunk), PUBLISHER, (acme,), check).signed_by == trunk
+    message = refused("untrusted", verify, DATA, sigstore_signature(DATA), PUBLISHER, (acme,), check)
+    assert "at refs/heads/main (only a tag, refs/tags/..., or refs/heads/trunk may sign)" in message

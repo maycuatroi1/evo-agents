@@ -56,13 +56,16 @@ removes the file for an empty digest. Its environment names the file in `EVO_GUA
 
 - the daemon's own pushes (`gitops._send`, beside the lease check of floor S3) are refused when the remote is guarded
   and a commit they send holds a name, in its message, a path or an added line (`PushRefused`, which fails the run with
-  the reason);
+  the reason). A commit counts as sent unless the remote the push goes to has it (one only another remote has is
+  read too), and a push whose commits git could not read, because it failed or ran out of time, is refused as well;
 - the run's git hooks (`authorship.hook_script`, the `core.hooksPath` the run's git configuration names) run
   `python -I -m evo_agents.guard_check hook` for `commit-msg` and `pre-push`, then the checkout's own hook with what git
   gave it;
 - a `gh` shim (`<worker home>/guard/bin/gh`) comes first on the agent's PATH: `gh pr|issue|release` commands that write
-  text and `gh api repos/OWNER/REPO/...` calls with fields or `--input`, to a guarded repo, are refused when the text
-  (flags, `--body-file`, standard input) holds a name; anything else runs the real `gh` unchanged.
+  text, `gh api repos/OWNER/REPO/...` calls with fields or `--input` (`repos/{owner}/{repo}/...` reads as the
+  checkout's repo, as gh fills it) and `gh api graphql` mutations (the query and its variables; the repo of their
+  `owner` and `name` fields, else the checkout's), to a guarded repo, are refused when the text (flags, `--body-file`,
+  standard input) holds a name; anything else runs the real `gh` unchanged.
 
 A run in a container of an environment gets neither the hooks nor the shim: its git and PATH are the image's.
 
