@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import runs
 from evo_agents.worker import figures
 from evo_agents.worker.runner import access, verify
-from evo_agents.worker.runner.common import RunFailed, log
+from evo_agents.worker.runner.common import log
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
 
@@ -30,7 +30,7 @@ WORKTREE_FIGURES = "worktree-figures.json"  # in .evo-run/ of a review run's dir
 
 
 class ReviewRun:
-    """A review run: a worktree of each of its repos, detached at the commit origin's default branch has, the agent
+    """A review run: a worktree of each of its repos (none for the KG init of a project with no repo), detached at the commit origin's default branch has, the agent
     reading in their directory and writing findings and proposals through ``evo-agents worker finding|propose``, and
     nothing committed or pushed at its end."""
 
@@ -54,13 +54,12 @@ class ReviewRun:
         )
         cls = run.agent.runtime_class()
         run.agent.check_interactive(cls)
-        if not repos:
-            raise RunFailed("the review run names no repo to read")
         names = [entry.get("repo") for entry in repos]
-        await access.take_credentials(run, names)
-        run.check()
-        await access.check(run, names, path=access.run_path(run))
-        run.check()
+        if names:  # with none, the KG init of a project fed by uploads alone: the agent reads the hub's graph only
+            await access.take_credentials(run, names)
+            run.check()
+            await access.check(run, names, path=access.run_path(run))
+            run.check()
         await self.directory.prepare_detached(repos)
         run.check()
         await self.count_figures()

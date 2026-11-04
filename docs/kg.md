@@ -769,6 +769,11 @@ A strategy the Curator made keeps its settings and holds its identifiers, ontolo
 Sources, KG code and dependencies go through the proposal flow (`kg_propose`, the Judge, the auto-merge). Nobody waits
 for a person. `--status --json` prints the runs with their decisions and reports.
 
+A project made by an upload has no repo. Its kg_init run, and its questions run, are review runs with no repo
+(migration 0202 lets `runs.repos` of a review be null). The agent works in an empty directory and reads the hub's graph
+alone. Only a daemon whose heartbeat names the feature `repoless_review` takes such a run; the kg_init run's notes name
+an older node of the pool, which needs an update.
+
 ### Starter questions written by an agent
 
 Data with no commit history, such as an uploaded archive, gives no starter questions. Before a kg_init run measures,
