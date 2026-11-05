@@ -10,9 +10,11 @@ import { Segmented } from "@/components/data/segmented";
 
 import { useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState } from "@/components/states/states";
+import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { parseDepth, parseLimit } from "@/lib/kg/entity-params";
+import { entityGraphQuery } from "@/lib/kg/entity-queries";
 import { parseScope, type Scope, scopeKey, withScope } from "@/lib/kg/explorer";
 import { cleanQuery, kgBuildsQuery, kgClusterSummaryQuery, kgGraphQuery } from "@/lib/kg/queries";
 import type { KgNode } from "@/lib/kg/types";
@@ -38,12 +40,18 @@ export type KgExplorerErrors = {
  * shared; the search too (`?q=`). The kinds hidden and the layout last for the visit. Read-only.
  *
  * `?view=entities` shows the Entities view instead (./entity-view.tsx): the entities and relations a model read from
- * the documents, drawn with sigma.js, its focus, depth and node count in `?entity=`, `?depth=` and `?limit=`.
+ * the documents, drawn with sigma.js, its focus, depth and node count in `?entity=`, `?depth=` and `?limit=`. A URL
+ * that names no view, scope or search opens on the Entities view when the graph has entities the reader can see, and
+ * on the clusters otherwise; once the reader picks the clusters, `?view=clusters` keeps them, back on the overview too.
  */
 type View = "clusters" | "entities";
 // The Entities view, its rail, inspector and graphology, loads when it is opened, not with the clusters.
 const EntityView = dynamic(() => import("./entity-view").then((module) => module.EntityView));
 const ENTITY_PARAMS = ["entity", "depth", "limit"];
+
+function askedView(value: string | null): View | null {
+  return value === "entities" || value === "clusters" ? value : null;
+}
 
 export function KgExplorer({ project, errors }: { project: string; errors: KgExplorerErrors }) {
   const tStates = useTranslations("states");
@@ -52,11 +60,17 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   const scope = useMemo(() => parseScope(params), [params]);
   const query = cleanQuery(params.get("q") ?? undefined);
   const kind = cleanQuery(params.get("kind") ?? undefined);
-  const view: View = params.get("view") === "entities" ? "entities" : "clusters";
   const entityState = useMemo<EntityViewState>(
     () => ({ focus: params.get("entity")?.trim() || null, depth: parseDepth(params.get("depth")), limit: parseLimit(params.get("limit")) }),
     [params],
   );
+  const asked = askedView(params.get("view"));
+  // No view, scope or search in the URL: the entity graph (the Entities view's own first read, so it is read once)
+  // says which view opens.
+  const undecided = asked === null && scope.kind === "overview" && !query;
+  const entities = useHubQuery({ ...entityGraphQuery(browserApi, project, entityState.limit), enabled: undecided }, null);
+  const view: View = asked ?? (undecided && entities.status === "success" && entities.data.total_nodes > 0 ? "entities" : "clusters");
+  const choosing = undecided && entities.status === "loading";
   const tExplorer = useTranslations("kg.explorer");
   const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(new Set());
   const [chosen, setChosen] = useState<ExplorerLayout>("force");
@@ -75,7 +89,15 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
     },
     [pathname],
   );
-  const navigate = useCallback((next: Scope) => write(withScope(params, next), true), [params, write]);
+  const navigate = useCallback(
+    (next: Scope) => {
+      const search = withScope(params, next);
+      // Back on the overview the clusters stay: without a view it would open on the entities.
+      if (next.kind === "overview") search.set("view", "clusters");
+      write(search, true);
+    },
+    [params, write],
+  );
   const commitQuery = (text: string) => {
     const next = new URLSearchParams(params.toString());
     if (text) next.set("q", text);
@@ -84,8 +106,8 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   };
   const switchView = (next: View) => {
     const search = withScope(params, { kind: "overview" });
-    if (next === "entities") search.set("view", "entities");
-    else for (const name of ["view", ...ENTITY_PARAMS]) search.delete(name);
+    search.set("view", next);
+    if (next === "clusters") for (const name of ENTITY_PARAMS) search.delete(name);
     write(search, true);
   };
   const changeEntities = (next: Partial<EntityViewState>) => {
@@ -159,7 +181,9 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
           { value: "entities", label: tExplorer("views.entities"), icon: Waypoints, testId: "kg-view-entities" },
         ]}
       />
-      {view === "entities" ? (
+      {choosing ? (
+        <Skeleton className="h-[62vh] w-full rounded-md lg:h-auto lg:flex-1" />
+      ) : view === "entities" ? (
         <EntityView
           project={project}
           state={entityState}

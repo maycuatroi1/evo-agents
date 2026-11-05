@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { EntityGraphData, WorkingSet } from "@/lib/kg/entity-graph";
+import { entityKeys } from "@/lib/kg/entity-queries";
 import type { ExplorerElement } from "@/lib/kg/explorer";
 import { EXPAND_GROUP } from "@/lib/kg/explorer-working";
 import { kgKeys } from "@/lib/kg/queries";
@@ -52,6 +54,19 @@ vi.mock("./explorer-canvas", () => ({
             {String(element.data.label)}
           </button>
         ))}
+    </div>
+  ),
+}));
+
+// The Entities view draws with sigma on WebGL, which jsdom has not: a list of its entities stands in.
+vi.mock("./entity-canvas", () => ({
+  default: ({ set }: { set: WorkingSet }) => (
+    <div data-testid="kg-entity-canvas">
+      {set.nodes.map((node) => (
+        <span key={node.id} data-testid="stub-entity">
+          {node.name}
+        </span>
+      ))}
     </div>
   ),
 }));
@@ -132,8 +147,18 @@ const detailOf = (id: string, name: string, kind: string): NodeDetail => ({
   incoming: id === "requirement:KB-01" ? [{ rel: "mentions", node: "docs:doc:runbook#sổ-tay", kind: "Section", name: "Sổ tay", status: "parsed", conf: 1 }] : [],
 });
 
-function withQueries(ui: ReactElement) {
+const NO_ENTITIES: EntityGraphData = { graph, limit: 150, nodes: [], edges: [], total_nodes: 0, total_edges: 0, truncated: false };
+const ENTITIES: EntityGraphData = {
+  ...NO_ENTITIES,
+  nodes: [
+    { id: "entity:Person:ada", kind: "Person", name: "Ada Lovelace", type: "person", description: null, docs: 3, degree: 0, status: "inferred", conf: 0.9, model: "anthropic/claude-haiku-5.5", label },
+  ],
+  total_nodes: 1,
+};
+
+function withQueries(ui: ReactElement, entities: EntityGraphData = NO_ENTITIES) {
   const client = makeQueryClient();
+  client.setQueryData(entityKeys.graph("demo", 150), entities);
   client.setQueryData(kgKeys.builds("demo"), BUILDS);
   client.setQueryData(kgKeys.graph("demo"), SUMMARY);
   client.setQueryData(kgKeys.clusterSummary("demo"), MAP);
@@ -180,6 +205,25 @@ describe("knowledge graph explorer", () => {
     expect(screen.getByTestId("kg-explorer-counts")).toHaveTextContent("2 cụm, 1 liên kết");
   });
 
+  it("opens on the Entities view when the graph has entities and the URL names no view, scope or search", async () => {
+    withQueries(<KgExplorer project="demo" errors={errors} />, ENTITIES);
+    expect(screen.getByTestId("kg-view-entities")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByTestId("kg-cluster-row")).toBeNull();
+    // an entity without relations is listed in the rail, not drawn
+    expect((await screen.findAllByTestId("kg-entity-isolated-row")).map((row) => row.textContent)).toEqual([expect.stringContaining("Ada Lovelace")]);
+    await userEvent.click(screen.getByTestId("kg-view-clusters"));
+    expect(pushed.at(-1)).toBe("/p/demo/kg?view=clusters");
+  });
+
+  it("keeps the clusters a URL names, by view, scope or search, though the graph has entities", () => {
+    for (const search of ["view=clusters", "cluster=c:0", "q=runbook"]) {
+      params.current = new URLSearchParams(search);
+      const { unmount } = withQueries(<KgExplorer project="demo" errors={errors} />, ENTITIES);
+      expect(screen.getByTestId("kg-view-clusters")).toHaveAttribute("aria-pressed", "true");
+      unmount();
+    }
+  });
+
   it("selects a cluster from the list into the inspector, and opens it in the URL", async () => {
     withQueries(<KgExplorer project="demo" errors={errors} />);
     await userEvent.click(screen.getAllByTestId("kg-cluster-row")[0]!);
@@ -220,7 +264,7 @@ describe("knowledge graph explorer", () => {
     await userEvent.dblClick(screen.getAllByTestId("stub-node")[0]!);
     expect(pushed.at(-1)).toBe("/p/demo/kg?cluster=c%3A0.0");
     await userEvent.click(within(screen.getByTestId("kg-trail")).getByRole("button", { name: "Tổng quan" }));
-    expect(pushed.at(-1)).toBe("/p/demo/kg");
+    expect(pushed.at(-1)).toBe("/p/demo/kg?view=clusters");
   });
 
   it("draws a part's members, and a member explores from there", async () => {
