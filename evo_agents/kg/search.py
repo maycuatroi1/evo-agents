@@ -494,16 +494,20 @@ def _mentioned(store, b: int, hit: dict, listed: set[str], visible, kinds) -> li
 
 ENTITY_DOCS = 3  # source documents one matched entity brings, at most
 ENTITY_SPREAD = 20  # an entity more nodes mention than this brings only the sources the search ranked itself
+ENTITY_CODE = 3  # code nodes one matched entity brings after its documents, at most, under entity_code
+ENTITY_CODE_RELS = ("implemented_by", "refers_to")  # an entity to its code (kg.entity_map, kg.entity_links)
 
 
 def through_entities(
-    store, b: int, hits: list[dict], visible: Callable[[dict], bool]
+    store, b: int, hits: list[dict], visible: Callable[[dict], bool], code: bool = False
 ) -> tuple[list[dict], dict[str, list[str]]]:
     """``hits`` (visible nodes, best first) with each entity node (one the entities step stated) giving its place to
     up to ENTITY_DOCS visible nodes that mention it (its source documents), the entities themselves after every other
     hit; and for each source so reached, the ids of the entities that brought it. A matched entity thus never takes the
     slot of a document: it is the reason its documents rank where it did. Hits without an entity come back as they are
-    (a graph built without the entities step ranks as before)."""
+    (a graph built without the entities step ranks as before). With ``code`` (the project's ``entity_code`` setting)
+    each entity also brings, after its documents, up to ENTITY_CODE visible nodes it points to through ENTITY_CODE_RELS
+    (the code that implements it), which count among its sources."""
     from evo_agents.kg.ppr import is_entity
 
     if not any(is_entity(h["id"]) for h in hits):
@@ -520,7 +524,10 @@ def through_entities(
                 listed.add(hit["id"])
             continue
         entities.append(hit)
-        for source in _sources(store, b, hit, rank, visible):
+        reached = _sources(store, b, hit, rank, visible)
+        if code:
+            reached += _code_of(store, b, hit, rank, visible)
+        for source in reached:
             why.setdefault(source["id"], []).append(hit["id"])
             if source["id"] not in listed:
                 out.append(source)
@@ -544,3 +551,19 @@ def _sources(store, b: int, entity: dict, rank: dict[str, int], visible) -> list
         ranked += sorted((i for i in conf if i not in rank), key=lambda i: (-conf[i], i))
     nodes = store.nodes(ranked, b)
     return [nodes[i] for i in ranked if i in nodes and visible(nodes[i])][:ENTITY_DOCS]
+
+
+def _code_of(store, b: int, entity: dict, rank: dict[str, int], visible) -> list[dict]:
+    """Up to ENTITY_CODE visible non-entity nodes ``entity`` points to through visible ENTITY_CODE_RELS edges: those the
+    search ranked, best first, then the others by the edge's confidence."""
+    from evo_agents.kg.ppr import is_entity
+
+    edges = store.edges_of(entity["id"], b, "out", limit=500)
+    conf: dict[str, float] = {}
+    for e in edges:
+        if e["rel"] in ENTITY_CODE_RELS and visible(e) and not is_entity(e["dst"]):
+            conf[e["dst"]] = max(conf.get(e["dst"], 0.0), e["conf"] or 0.0)
+    ranked = sorted((i for i in conf if i in rank), key=rank.__getitem__)
+    ranked += sorted((i for i in conf if i not in rank), key=lambda i: (-conf[i], i))
+    nodes = store.nodes(ranked, b)
+    return [nodes[i] for i in ranked if i in nodes and visible(nodes[i])][:ENTITY_CODE]

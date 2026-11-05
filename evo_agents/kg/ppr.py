@@ -54,7 +54,10 @@ REL_WEIGHTS = {
     "part_of": 0.4,
     "in_source": 0.0,  # every node of a source shares it: a hub that says nothing of the question
     "in_repo": 0.0,  # the same of a repo
+    "implemented_by": 0.0,  # an entity to its code (kg.entity_map): ENTITY_CODE_WEIGHT under entity_code, else none
 }
+ENTITY_CODE_REL = "implemented_by"
+ENTITY_CODE_WEIGHT = 0.8  # implemented_by's weight when the project's entity_code setting is on
 STATUS_WEIGHTS = {
     "declared": 1.0,
     "parsed": 1.0,
@@ -83,6 +86,7 @@ class Walk:
     keep: int = 60  # nodes the walk reached beyond the text matches that kg_search lists
     conf_floor: float = 0.5  # an edge of a lower confidence carries no walk
     context: bool = True  # kg_context fills its budget past its seeds by the walk, not by hops from them
+    entity_code: bool = False  # the entity_code setting, not a key of walk (of)
 
 
 _RANGES = {
@@ -97,7 +101,7 @@ _RANGES = {
     "keep": (0, 500),
     "conf_floor": (0.0, 1.0),
 }
-KEYS = tuple(f.name for f in fields(Walk))
+KEYS = tuple(f.name for f in fields(Walk) if f.name != "entity_code")  # entity_code is a KG setting of its own
 
 
 def check(value) -> dict | None:
@@ -134,10 +138,11 @@ def check(value) -> dict | None:
     return {k: getattr(walk, k) for k in sorted(KEYS)}
 
 
-def of(value) -> Walk | None:
-    """The ``Walk`` of a ``walk`` setting (as ``check`` holds it), None when off."""
+def of(value, entity_code: bool = False) -> Walk | None:
+    """The ``Walk`` of a ``walk`` setting (as ``check`` holds it), None when off; ``entity_code`` (the KG setting of
+    that name) gives ``implemented_by`` its weight."""
     held = check(value)
-    return None if held is None else Walk(**held)
+    return None if held is None else Walk(**held, entity_code=bool(entity_code))
 
 
 def is_entity(node_id: str) -> bool:
@@ -204,7 +209,11 @@ def weight(e: dict, walk: Walk) -> float:
     conf = 1.0 if status in SURE else float(e.get("conf") or 0.0)
     if conf < walk.conf_floor:
         return 0.0
-    return REL_WEIGHTS.get(e["rel"], DEFAULT_REL) * STATUS_WEIGHTS.get(status, 0.0) * conf
+    if e["rel"] == ENTITY_CODE_REL and walk.entity_code:
+        rel = ENTITY_CODE_WEIGHT
+    else:
+        rel = REL_WEIGHTS.get(e["rel"], DEFAULT_REL)
+    return rel * STATUS_WEIGHTS.get(status, 0.0) * conf
 
 
 def subgraph(reader: Reader, seeds: dict[str, float], walk: Walk) -> dict[str, dict[str, float]]:

@@ -319,6 +319,23 @@ evo-agents hub kg entity-map --project P --post FILE [--json]   # send a map (a 
 The routes are `POST /v1/kg/{project}/entity-map/run` and `GET .../entity-map/runs`, `.../outline` and
 `.../changed`. A run is done when it posted a map, and failed otherwise.
 
+**kg_search and the code of an entity: `entity_code`.** A query key of the KG settings, off by default. Off, kg_search
+and kg_context rank on a graph with code links exactly as they ranked before the links existed: an entity the question
+matches gives its place to the documents that mention it, and the walk gives `implemented_by` no weight. On, the same
+entity then brings up to three code nodes it points to (`implemented_by`, then `refers_to`; those the search ranked
+first, the others by the edge's confidence), each naming the entity as its reason, and the walk weighs
+`implemented_by` 0.8 (`ppr.ENTITY_CODE_WEIGHT`). The reader's clearance applies to every edge and node, as anywhere
+else. The view and `kg_node` show the code links either way.
+
+```
+evo-agents kg settings --project P --set entity_code=true --reason "..."
+evo-agents hub kg settings --project P --set entity_code=true --reason "..."
+evo-agents hub kg measure --project P --settings candidate.json   # {"entity_code": true}: on against off, same build
+evo-agents kg bench run ... --settings candidate.json
+```
+
+Being a query key, it takes effect at once, and on the hub it can be measured on the newest build before it is kept.
+
 ## The Curator and prose
 
 A kg_init run whose data profile is mostly prose (`class:prose` a major part) starts with the entities step on: the
