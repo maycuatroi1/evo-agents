@@ -2,7 +2,8 @@
 
 Bug reports, documentation fixes and code changes are welcome. For a bug, include the command you ran, the
 version, what you expected and the error output. Remove credentials and private project data before posting an
-[issue](https://github.com/maycuatroi1/evo-agents/issues).
+[issue](https://github.com/maycuatroi1/evo-agents/issues). Report a vulnerability privately instead, as
+[SECURITY.md](SECURITY.md) describes.
 
 ## Development setup
 
