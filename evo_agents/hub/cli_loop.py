@@ -26,7 +26,7 @@ from evo_agents.hub.cli_client import client_command, print_json, signed_in, whe
 from evo_agents.hub.cli_policy import PROJECT_HELP
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.mirror import harness_project, harness_root
+from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES
 
 # The keys of the hub's answer these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -61,18 +61,6 @@ ADOPT_KEYS = ("project", "goal", "plan", "item", "state", "reason", "use_cases",
 SHOWN_EVIDENCE = 3  # lines of evidence printed under a use case
 
 
-def _project(args) -> str:
-    if args.project:
-        return args.project
-    try:
-        root = harness_root(None)
-    except HubError:
-        raise HubError(
-            "which project? pass --project, or run this inside a harness whose harness.yaml has hub.project"
-        ) from None
-    return harness_project(root)
-
-
 def _path(project: str, rest: str = "") -> str:
     return f"/v1/projects/{quote(project, safe='')}/loop{rest}"
 
@@ -98,7 +86,7 @@ def _lines(found: dict) -> list[str]:
 @client_command
 def cmd_status(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _path(_project(args)))
+    found = hub.call("GET", _path(project_of_args(args)))
     if args.json:
         print_json(found)
     else:
@@ -109,7 +97,7 @@ def cmd_status(args) -> int:
 @client_command
 def cmd_resume(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("POST", _path(_project(args), "/resume"))
+    found = hub.call("POST", _path(project_of_args(args), "/resume"))
     if args.json:
         print_json(found)
     else:
@@ -157,7 +145,7 @@ def _baseline_lines(found: dict) -> list[str]:
 @client_command
 def cmd_baseline(args) -> int:
     hub, _ = signed_in()
-    project = _project(args)
+    project = project_of_args(args)
     path = f"/v1/projects/{quote(project, safe='')}/goals/{quote(args.goal, safe='')}/baseline"
     body = {
         "codes": _fixes(args.set, "--set"),
@@ -180,7 +168,7 @@ def cmd_baseline(args) -> int:
 @client_command
 def cmd_adopt(args) -> int:
     hub, _ = signed_in()
-    project = _project(args)
+    project = project_of_args(args)
     body = {"plan": args.plan, "goal": args.goal, "use_cases": args.use_cases}
     found = hub.call("POST", _path(project, "/adopt"), body)
     if args.json:

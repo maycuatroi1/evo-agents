@@ -34,7 +34,7 @@ from evo_agents.hub import cli_memory, tables
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
 from evo_agents.hub.server import memory_upkeep, run_audience
 from evo_agents.hub.server.change_tiers import GraphView
-from evo_agents.hub.server.runs.service import claims
+from evo_agents.hub.server.runs.service import run_specs
 from tests.hub import live
 from tests.hub.test_kg_audience import A, data, done, on_hub
 from tests.hub.test_kg_audience import agent as run_tool
@@ -53,7 +53,7 @@ NOW = datetime.now(UTC)
 
 
 def prompt(hub, run_id: int) -> str:
-    return on_hub(hub, lambda conn: claims._run_spec(conn, run_id)).prompt
+    return on_hub(hub, lambda conn: run_specs.run_spec(conn, run_id)).prompt
 
 
 def index(hub, run_id: int, room: int = memory_upkeep.INDEX_BYTES) -> str:
@@ -201,7 +201,7 @@ def test_the_daily_upkeep_archives_an_agent_memory_nobody_opened_for_30_days_and
     not_agent = hub.client.post(f"/v1/memories/{shared}/restore", headers=hub.alice)
     assert not_agent.status_code == 422, not_agent.text
     member = InProcessHub(hub.client, hub.alice)
-    monkeypatch.setattr(cli_memory, "_signed_in", lambda: (member, None))
+    monkeypatch.setattr(cli_memory, "signed_in", lambda: (member, None))
     assert cli_memory.cmd_memory_restore(SimpleNamespace(id=old["id"], json=False)) == 0
     assert "is active" in capsys.readouterr().out
     restored = state(hub, old["id"])

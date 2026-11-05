@@ -67,10 +67,10 @@ from datetime import datetime
 
 from evo_agents.hub.chats import DIRECT as DIRECT_KIND
 from evo_agents.hub.chats import SETTLE as SETTLE_KIND
+from evo_agents.hub.run_prompts import OUTPUTS_RULE
 from evo_agents.hub.runs import (
     MAX_MESSAGE_BYTES,
     MAX_PROMPT_BYTES,
-    OUTPUTS_RULE,
     RESULT_DIR,
     RESULT_FILE,
     clip,

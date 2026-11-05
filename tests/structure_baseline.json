@@ -1,133 +1,18 @@
 {
   "about": "Frozen exceptions to the budgets of tests/structure.py (1000 lines a module; 50 statements and a complexity of 15 a function; no private name imported across modules). Entries only shrink: `python -m tests.structure tighten` lowers them; see docs/structure.md.",
-  "modules": {
-    "evo_agents/hub/judge.py": 1047,
-    "evo_agents/hub/memory.py": 1124,
-    "evo_agents/hub/server/changes.py": 1559,
-    "evo_agents/hub/server/curator.py": 1319,
-    "evo_agents/worker/cli.py": 1087,
-    "evo_agents/worker/interactive.py": 1329
-  },
+  "modules": {},
   "functions": {
-    "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 16},
-    "evo_agents/hub/cli_client.py::register_client": {"statements": 80},
-    "evo_agents/hub/contract.py::check_words": {"complexity": 20, "statements": 53},
-    "evo_agents/hub/curator_cli.py::register_curator": {"statements": 52},
-    "evo_agents/hub/judge.py::ci_state": {"complexity": 18},
-    "evo_agents/hub/judge.py::hack_signs": {"complexity": 23, "statements": 54},
-    "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 18},
-    "evo_agents/hub/run_cli.py::_describe": {"complexity": 21, "statements": 58},
-    "evo_agents/hub/run_cli.py::register_runs": {"statements": 58},
-    "evo_agents/hub/server/app.py::create_app": {"statements": 94},
-    "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
-    "evo_agents/hub/server/changes.py::_merge": {"statements": 57},
-    "evo_agents/hub/server/kg.py::push_run": {"statements": 59},
-    "evo_agents/hub/server/run_state.py::write_step": {"complexity": 16},
     "evo_agents/kg/build.py::run_pipeline": {"complexity": 48, "statements": 155},
     "evo_agents/kg/pipeline/binding.py::binding_item": {"complexity": 16},
     "evo_agents/kg/pipeline/link.py::Linker.scan": {"complexity": 37, "statements": 104},
-    "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21},
-    "evo_agents/schema.py::Validator._check_node": {"complexity": 24},
-    "evo_agents/worker/cli.py::register": {"statements": 71},
-    "evo_agents/worker/daemon.py::Daemon._beat": {"complexity": 20, "statements": 52},
-    "evo_agents/worker/interactive.py::claude_transcript_events": {"complexity": 17},
-    "evo_agents/worker/runtimes/claude_code.py::events_of": {"complexity": 17}
+    "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21}
   },
   "private_imports": {
-    "evo_agents/hub/cli_memory.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/cli_secrets.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/cli_skills.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/contract.py": [
-      "evo_agents.hub.cli._missing_extra",
-      "evo_agents.hub.cli._positive",
-      "evo_agents.hub.cli._server_command"
-    ],
-    "evo_agents/hub/curator_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._project_path",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
-      "evo_agents.hub.plan_cli._project"
-    ],
-    "evo_agents/hub/decision_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._project_path",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
-      "evo_agents.hub.plan_cli._plan_id",
-      "evo_agents.hub.plan_cli._project"
-    ],
     "evo_agents/hub/kg_cli.py": [
-      "evo_agents.hub.cli._positive",
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
       "evo_agents.kg.serve._error"
-    ],
-    "evo_agents/hub/openapi.py": [
-      "evo_agents.hub.cli._missing_extra",
-      "evo_agents.hub.cli._server_command"
-    ],
-    "evo_agents/hub/plan_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when"
-    ],
-    "evo_agents/hub/run_cli.py": [
-      "evo_agents.hub.cli_client._client_command",
-      "evo_agents.hub.cli_client._print_json",
-      "evo_agents.hub.cli_client._project_path",
-      "evo_agents.hub.cli_client._signed_in",
-      "evo_agents.hub.cli_client._table",
-      "evo_agents.hub.cli_client._when",
-      "evo_agents.hub.client._OPENER",
-      "evo_agents.hub.client._json",
-      "evo_agents.hub.client._origin",
-      "evo_agents.hub.plan_cli._plan_id",
-      "evo_agents.hub.plan_cli._project"
-    ],
-    "evo_agents/hub/server/brief.py": [
-      "evo_agents.hub.server.curator._due",
-      "evo_agents.hub.server.curator._owner_access"
-    ],
-    "evo_agents/hub/server/collect.py": [
-      "evo_agents.hub.server.curator._due"
-    ],
-    "evo_agents/hub/server/ledger.py": [
-      "evo_agents.hub.server.proposals._reader"
     ],
     "evo_agents/hub/server/mcp.py": [
-      "evo_agents.hub.plan_cli._check_retry",
       "evo_agents.kg.serve._error"
-    ],
-    "evo_agents/hub/server/outcomes.py": [
-      "evo_agents.hub.server.curator._owner_access"
     ],
     "evo_agents/kg/cli_graph.py": [
       "evo_agents.kg.cli._print_json",

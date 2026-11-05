@@ -9,9 +9,9 @@ their workers, as a plan run that does every step not done yet and asks the memb
 (see [Plan runs](#plan-runs)). The worker always calls the hub over HTTPS and never opens a port on the machine.
 
 This page describes version 1 of the worker protocol. `evo_agents/hub/runs.py` holds the model it rests on: the run
-kinds and states and who may change them, a worker's status, the event kinds, which steps are ready, the prompts a
-run gives its agent, and the decisions and notices of a plan run. It needs only the standard library, so the api and
-the daemon share it. Schema 0009 holds the tables, and 0010 adds plan runs, decisions and notifications, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
+kinds and states and who may change them, a worker's status, the event kinds, which steps are ready, and the
+decisions and notices of a plan run; `evo_agents/hub/run_prompts.py` builds the prompts a run gives its agent. It needs
+only the standard library, so the api and the daemon share it. Schema 0009 holds the tables, and 0010 adds plan runs, decisions and notifications, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
 direct registration, list, drain, undrain, revoke). The package `evo_agents/hub/server/runs` holds the queue: ready
 steps, dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover
 and handback, as routes over a service over models (docs/structure.md); `evo_agents/hub/server/run_state.py` moves
@@ -478,7 +478,7 @@ part of `ready_steps`.
 
 ## The prompt
 
-`build_prompt(plan, step, repo)` gives the agent, in this order: rules, the repo and branch, the plan's goal and its
+`run_prompts.build_prompt(plan, step, repo)` gives the agent, in this order: rules, the repo and branch, the plan's goal and its
 context (shortened), the step's title, `what`, `verify` and `note`, and the title and evidence of each step it
 depends on. The rules tell the agent to:
 
@@ -2786,7 +2786,7 @@ with the run's two judge routes (`X-Evo-Judge-Key`). The daemon takes its leases
 reads only), fetches origin, and makes a worktree of the change's repo detached at that commit (on GitLab, at the tip
 of the change's branch), with no hook or fsmonitor of the checkout, and reads the diff from the merge base with
 origin's default branch before any code of the change runs (no textconv or external diff of the repo; a diff longer
-than 8 MiB is a sign, never read in part). It runs `evo_agents.hub.judge.hack_signs` on that diff, reads from the hub
+than 8 MiB is a sign, never read in part). It runs `evo_agents.hub.diff_signs.hack_signs` on that diff, reads from the hub
 what the Judge reads (`GET /v1/worker/runs/{id}/judge`: the proposal, the verify of each step of the plan, the
 protected paths and the project's hidden checks, which stay in the daemon's memory alone; the daemon reads them first,
 right after its leases, and its preflight looks for the program of each verify command and hidden check before

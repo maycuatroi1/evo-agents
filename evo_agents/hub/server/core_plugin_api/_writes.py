@@ -56,7 +56,7 @@ async def emit_event(conn: AsyncConnection, plugin: Plugin, project: str, name: 
 # Signals
 
 
-async def _pusher(conn: AsyncConnection, plugin: Plugin, project: str, project_id: int) -> signals.Pusher:
+async def plugin_pusher(conn: AsyncConnection, plugin: Plugin, project: str, project_id: int) -> signals.Pusher:
     """The pusher of the ingest key named after the plugin, made on first use with a token nobody reads, owned by the
     project's first admin."""
     k, g = tables.signal_ingest_keys, tables.grants
@@ -113,7 +113,7 @@ async def push_signal(
             key=key, value=value, text=text, source=plugin.id, measured_at=measured_at, tenant=tenant,
             external_id=external_id,
         )  # fmt: skip
-    pusher = await _pusher(conn, plugin, project, project_id)
+    pusher = await plugin_pusher(conn, plugin, project, project_id)
     with refusing():
         try:
             done = await signals.push(conn, pusher, [item], days)

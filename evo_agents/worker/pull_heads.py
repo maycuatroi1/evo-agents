@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from evo_agents.hub import approval_heads
-from evo_agents.worker.command_classes import API_MERGE, _option, simple_commands
+from evo_agents.worker.command_classes import API_MERGE, option_of, simple_commands
 
 GH_TIMEOUT = 15.0  # seconds gh may take to read a pull request
 FIELDS = "number,headRefOid,files,body,url"
@@ -85,7 +85,7 @@ def merge_target(command: str) -> tuple[str | None, str | None] | None:
                 ref = word
                 break
             index += 1
-        return ref, _option(rest, "--repo", "-R")
+        return ref, option_of(rest, "--repo", "-R")
     return None
 
 
@@ -111,7 +111,7 @@ def merge_ref(command: str) -> dict | None:
             continue
         if words[1:3] == ["pr", "merge"]:
             found = merge_target(command)
-            return {"how": "pr", "ref": found[0], "repo": found[1], "pin": _option(words, "--match-head-commit")}
+            return {"how": "pr", "ref": found[0], "repo": found[1], "pin": option_of(words, "--match-head-commit")}
         if words[1:2] == ["api"]:
             endpoint = next((API_MERGE.search(word) for word in words[2:] if API_MERGE.search(word)), None)
             if endpoint is None:

@@ -80,7 +80,7 @@ from evo_agents.hub.cli_bindings import (
     where_cell,
     where_text,
 )
-from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in, table, when
 from evo_agents.hub.cli_provider_accounts import print_gateway, provider_text, register_provider_accounts
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import (
@@ -196,7 +196,7 @@ def _workers_text(secret: dict) -> str:
     return where_text(secret)
 
 
-@_client_command
+@client_command
 def cmd_set(args) -> int:
     try:
         check_name(args.name)
@@ -214,7 +214,7 @@ def cmd_set(args) -> int:
             body["expires_at"] = expires_at(args.expires)
     except Refused as exc:
         return _usage_error(str(exc))
-    hub, _ = _signed_in()  # before the value is asked for: not signed in costs no paste
+    hub, _ = signed_in()  # before the value is asked for: not signed in costs no paste
     try:
         value = read_value(args.name)
         check_value(args.kind, value)
@@ -222,7 +222,7 @@ def cmd_set(args) -> int:
         return _usage_error(str(exc))
     written = hub.call("PUT", secret_path(args.name), {**body, "value": value})
     verb = "Created" if written["created"] else "Replaced"
-    ends = f"; it ends {_when(written['expires_at'])} UTC" if written["expires_at"] else ""
+    ends = f"; it ends {when(written['expires_at'])} UTC" if written["expires_at"] else ""
     if written["projects"]:
         where = f"for project(s) {', '.join(written['projects'])}, {_workers_text(written)}"
     else:
@@ -234,27 +234,27 @@ def cmd_set(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_list(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = hub.call("GET", "/v1/secrets")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found:
         print("You keep no secret on this hub; `evo-agents hub secret set` adds one.")
         return 0
-    _table(SECRET_COLUMNS, [secret_row(s) for s in found])
+    table(SECRET_COLUMNS, [secret_row(s) for s in found])
     return 0
 
 
-@_client_command
+@client_command
 def cmd_delete(args) -> int:
     try:
         check_name(args.name)
     except Refused as exc:
         return _usage_error(str(exc))
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     hub.call("DELETE", secret_path(args.name))
     print(
         f"Deleted secret {args.name}: its value and bindings are gone from the hub, and its leases still out are "
@@ -404,21 +404,21 @@ def _account_line(account: dict) -> str:
 def _change_account(args, body: dict) -> int:
     if not SECRET_NAME.fullmatch(args.name):
         return _usage_error(f"{args.name!r} is not a secret's name")
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     account = hub.call("PATCH", _account_path(args.name), body)
     if args.json:
-        _print_json(account)
+        print_json(account)
     else:
         print(_account_line(account))
     return 0
 
 
-@_client_command
+@client_command
 def cmd_account_list(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     found = hub.call("GET", "/v1/accounts")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     if not found:
         print("You keep no env secret on this hub; `evo-agents hub secret set --kind env` adds one.")
@@ -432,7 +432,7 @@ def cmd_account_list(args) -> int:
             a["state"],
             a["weight"],
             a["priority"],
-            _when(a["cooldown_until"]),
+            when(a["cooldown_until"]),
             _usage_text(a["last_usage"]),
             f"{a['runs_24h']}/{a['runs_7d']}",
             "-" if a["cost_7d_usd"] is None else money(a["cost_7d_usd"]),
@@ -455,7 +455,7 @@ def cmd_account_list(args) -> int:
         "RUNS 24H/7D",
         "COST 7D",
     )
-    _table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
+    table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
     now = datetime.now(UTC)
     reminders = []
     for a in found:
@@ -481,17 +481,17 @@ def _expiry(account: dict, now: datetime) -> tuple[str, bool]:
     RENEW_WITHIN_DAYS days, or has ended."""
     if not account["expires_at"]:
         return "never", False
-    when = f"{_when(account['expires_at'])} UTC"
+    until = f"{when(account['expires_at'])} UTC"
     if account.get("auth") == "oauth":  # the end of its access token, which its refresh token replaces
-        return f"access token until {when}", False
+        return f"access token until {until}", False
     left = datetime.fromisoformat(account["expires_at"]) - now
     if left > timedelta(days=RENEW_WITHIN_DAYS):
-        return when, False
+        return until, False
     renew = f"renew it with {_renew_command(account)}"
     if left <= timedelta(0):
-        return f"{when}, already past, so no run takes it: {renew}", True
+        return f"{until}, already past, so no run takes it: {renew}", True
     days = f"in {left.days} day(s)" if left.days else "in less than a day"
-    return f"{when}, {days}: {renew}", True
+    return f"{until}, {days}: {renew}", True
 
 
 def _percent(share) -> str:
@@ -512,25 +512,25 @@ def _usage_text(usage: dict | None) -> str:
 def _state_text(account: dict) -> str:
     state = account["state"]
     if state == "cooling":
-        return f"cooling until {_when(account['cooldown_until'])} UTC ({account['cooldown_reason'] or 'usage limit'})"
+        return f"cooling until {when(account['cooldown_until'])} UTC ({account['cooldown_reason'] or 'usage limit'})"
     if state == "paused":
-        return f"paused since {_when(account['paused_at'])} UTC"
+        return f"paused since {when(account['paused_at'])} UTC"
     if state == "expired":
-        return f"expired at {_when(account['expires_at'])} UTC"
+        return f"expired at {when(account['expires_at'])} UTC"
     if state == "needs-relogin":
         return f"needs a new sign-in: run `evo-agents hub account oauth-login {account['name']}`"
     return "ready"
 
 
-@_client_command
+@client_command
 def cmd_account_show(args) -> int:
     if not SECRET_NAME.fullmatch(args.name):
         return _usage_error(f"{args.name!r} is not a secret's name")
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     owner = getattr(args, "owner", None)
     a = hub.call("GET", _account_path(args.name) + (f"?owner={quote(owner, safe='')}" if owner else ""))
     if args.json:
-        _print_json(a)
+        print_json(a)
     else:
         _print_account(a)
     return 0
@@ -540,7 +540,7 @@ def _print_account(a: dict) -> None:
     """An account as ``account show`` prints it."""
     held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
     usage = _usage_text(a["last_usage"])
-    reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
+    reported = f", reported {when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
     print_gateway(a)
     if a.get("auth") == "oauth":
@@ -550,7 +550,7 @@ def _print_account(a: dict) -> None:
     )
     print(f"  Projects: {', '.join(a['projects']) or '-'}; {where}.")
     print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
-    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
+    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {when(a['last_leased_at'])} UTC.")
     print(f"  Last usage: {usage}{reported}.")
     if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
         print(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
@@ -563,7 +563,7 @@ def _print_account(a: dict) -> None:
         print(f" ({money(row['cost_month_usd'])}), {row['runs_7d']} in 7 days ({money(row['cost_7d_usd'])}).")
 
 
-@_client_command
+@client_command
 def cmd_account_set(args) -> int:
     body = {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
     if not body:
@@ -573,33 +573,33 @@ def cmd_account_set(args) -> int:
     return _change_account(args, body)
 
 
-@_client_command
+@client_command
 def cmd_account_pause(args) -> int:
     return _change_account(args, {"paused": True})
 
 
-@_client_command
+@client_command
 def cmd_account_resume(args) -> int:
     return _change_account(args, {"paused": False})
 
 
 def _print_policy(policy: dict) -> None:
     failover = f"on, at most {policy['max_failovers']} time(s)" if policy["failover"] else "off"
-    origin = f"set {_when(policy['updated_at'])} UTC" if policy["updated_at"] else "the defaults"
+    origin = f"set {when(policy['updated_at'])} UTC" if policy["updated_at"] else "the defaults"
     print(
         f"Project {policy['project']} ({origin}): strategy {policy['strategy']}, cooldown "
         f"{policy['cooldown_seconds']} s, failover {failover}."
     )
 
 
-@_client_command
+@client_command
 def cmd_account_policy(args) -> int:
     given = {key: getattr(args, key) for key in POLICY_FLAGS if getattr(args, key) is not None}
     if args.reset and given:
         return _usage_error("--reset drops the policy: give it alone")
     if (refusal := _out_of_bounds(given)) is not None:
         return _usage_error(refusal)
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     path = _policy_path(args.project)
     if args.reset:
         hub.call("DELETE", path)
@@ -610,7 +610,7 @@ def cmd_account_policy(args) -> int:
     else:
         policy = hub.call("GET", path)
     if args.json:
-        _print_json(policy)
+        print_json(policy)
     else:
         _print_policy(policy)
     return 0
@@ -708,7 +708,7 @@ def login_token(value: str) -> str:
 def _login_intro(name: str, existing: dict | None, body: dict) -> str:
     projects = ", ".join(body["projects"])
     where = where_text(body)
-    ends = f"{_when(body['expires_at'])} UTC"
+    ends = f"{when(body['expires_at'])} UTC"
     if existing is None:
         return f"Adding account {name} ({body['env_var']}) for project(s) {projects}, {where}; it ends {ends}."
     return (
@@ -734,14 +734,14 @@ def _login_value(name: str, claude: str | None) -> str:
     return read_value(name, prompt=prompt, missing=NO_TOKEN)
 
 
-@_client_command
+@client_command
 def cmd_account_login(args) -> int:
     try:
         check_name(args.name)
         ends = login_ends(args.expires, datetime.now(UTC))
     except Refused as exc:
         return _usage_error(str(exc))
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     claude = None
     if not args.paste and sys.stdin is not None and sys.stdin.isatty():
         claude = shutil.which("claude")
@@ -759,7 +759,7 @@ def cmd_account_login(args) -> int:
     written = hub.call("PUT", secret_path(args.name), {**body, "value": token})
     account = hub.call("GET", _account_path(args.name))
     if args.json:
-        _print_json(account)
+        print_json(account)
         return 0
     if written["created"]:
         print(f"Created account {args.name}. The hub keeps its token sealed and never shows it again.")
@@ -799,13 +799,13 @@ def _oauth_code(name: str, pkce: claude_oauth.Pkce, args) -> str:
     return claude_oauth.parse_code(pasted, pkce.state)
 
 
-@_client_command
+@client_command
 def cmd_account_oauth_login(args) -> int:
     try:
         check_name(args.name)
     except Refused as exc:
         return _usage_error(str(exc))
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     existing = next((s for s in hub.call("GET", "/v1/secrets") if s["name"] == args.name), None)
     try:
         body = login_body(args, existing, "")
@@ -829,7 +829,7 @@ def cmd_account_oauth_login(args) -> int:
     written = hub.call("PUT", secret_path(args.name), {**body, "value": tokens.access_token, "oauth": oauth})
     account = hub.call("GET", _account_path(args.name))
     if args.json:
-        _print_json(account)
+        print_json(account)
         return 0
     if written["created"]:
         print(f"Created account {args.name} (OAuth). The hub keeps its tokens sealed and never shows them again.")

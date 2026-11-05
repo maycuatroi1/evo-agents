@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
-from evo_agents.hub.memory import FRONTMATTER
+from evo_agents.hub.memory_files import FRONTMATTER
 
 KIND = "skill-bundle"  # the blob kind of a bundle in the blob store
 MiB = 1024 * 1024

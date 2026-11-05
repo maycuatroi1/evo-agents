@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from evo_agents.hub import judge, runs
+from evo_agents.hub import judge, run_prompts, runs
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
@@ -309,7 +309,7 @@ class PlanRun:
         if all(name == folder for name, folder in folders.items()) and self.run.spec.get("prompt"):
             return self.run.spec["prompt"]
         autonomy = self.run.spec.get("autonomy")  # the card of the run's autonomy, from a hub that sends one
-        return runs.build_plan_prompt(self.plan_body(), self.run.spec.get("repos") or [], folders, autonomy)
+        return run_prompts.build_plan_prompt(self.plan_body(), self.run.spec.get("repos") or [], folders, autonomy)
 
     # The end
 

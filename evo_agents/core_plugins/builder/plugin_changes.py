@@ -1,6 +1,6 @@
 """The proposals of @builder of an action (plan plugin-market, criterion a8): a plugin a member asked @builder to make
-for an industry, installing its release on the hub, and listing it on a market. ``proposals`` calls these for the three
-kinds, as it calls ``opportunity_changes`` for an opportunity.
+for an industry, installing its release on the hub, and listing it on a market. ``KIND`` is the ``kinds.Kind`` of the
+three kinds, which ``proposals`` maps them to, as it maps an opportunity to ``opportunity_changes.KIND``.
 
 Their target is empty and their fields are in ``set``; none unsets a field, and none is versioned: proposing keeps
 version 0, and approving does the action once, as applied version 1, which never rolls back.
@@ -35,6 +35,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
+from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.self_managed import ProjectScope, own_signer
@@ -193,6 +194,27 @@ async def check(conn: AsyncConnection, access: ProjectAccess, kind: str, sets: M
         raise ProposalError(
             409, f"project {access.name} has a repo {repo} already: name the new one otherwise; {NOTHING}"
         )
+
+
+async def _target(conn: AsyncConnection, access: ProjectAccess, change: Change, lock: bool) -> Target:
+    return Target(title(change.kind, change.sets, access.name), 0)
+
+
+async def _check(
+    conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
+) -> None:
+    await check(conn, access, change.kind, change.sets)
+
+
+async def _done_once(w: Writing) -> int:
+    """An action is done once when approved (``apply``), never as the next version of a setting, and never rolls
+    back."""
+    raise ProposalError(
+        409, f"{w.change.kind.replace('_', ' ')} is an action, done once, which never rolls back; {NOTHING}"
+    )
+
+
+KIND = Kind(_target, _check, _done_once, _done_once)
 
 
 # Approving

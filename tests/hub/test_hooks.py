@@ -32,7 +32,9 @@ from evo_agents.hub import client as hub_client
 from evo_agents.hub import hooks, local_sync
 from evo_agents.hub import memory as hub_memory
 from evo_agents.hub.mcp_tools import TOOLS
-from evo_agents.hub.memory import INDEX, MemorySync, slug
+from evo_agents.hub.memory import MemorySync
+from evo_agents.hub.memory_files import INDEX, MAX_BODY
+from evo_agents.hub.memory_places import slug
 from evo_agents.hub.mirror import export, read_plan, render
 from evo_agents.schema import errors
 from tests.hub import live, pg
@@ -182,7 +184,7 @@ def test_pending_counts_changed_and_new_files_only(own_home):
     (directory / INDEX).write_text("index", encoding="utf-8")
     (directory / ".hidden.md").write_text("hidden", encoding="utf-8")
     (directory / "x.conflict-host.md").write_text("copy", encoding="utf-8")
-    (directory / "big.md").write_bytes(b"x" * (hub_memory.MAX_BODY + 1))
+    (directory / "big.md").write_bytes(b"x" * (MAX_BODY + 1))
     (directory / "link.md").symlink_to(own_home / "outside.md")
     (own_home / "outside.md").write_text("outside", encoding="utf-8")
     assert sync.pending(session) is False  # none of these is ever pushed

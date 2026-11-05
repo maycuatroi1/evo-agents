@@ -365,6 +365,13 @@ def register_problems(hsub) -> None:
     problem = hsub.add_parser("problem", help="the problems of a project: what hurts, who, when, and the workaround")
     psub = problem.add_subparsers(dest="problem_command", required=True)
 
+    _register_reading(psub)
+    _register_writing(psub)
+    _register_evidence(psub)
+
+
+def _register_reading(psub) -> None:
+    """``problem list`` and ``problem show``."""
     listed = psub.add_parser("list", help="the project's problems by rank")
     listed.add_argument("--status", choices=problems.STATUSES, help="those of this status alone")
     listed.add_argument("--project", help=PROJECT_HELP)
@@ -389,6 +396,9 @@ def register_problems(hsub) -> None:
     )
     shown.set_defaults(func=cmd_show)
 
+
+def _register_writing(psub) -> None:
+    """``problem set`` and ``problem close``."""
     written = psub.add_parser(
         "set", help="make a problem, or write a problem's next revision (the writer role on the project)"
     )
@@ -410,6 +420,9 @@ def register_problems(hsub) -> None:
     json_option(closed, returns_object(*PROBLEM_KEYS, "changed", schema="ProjectProblemWritten"))
     closed.set_defaults(func=cmd_close)
 
+
+def _register_evidence(psub) -> None:
+    """``problem evidence list|add|confirm``."""
     evidence = psub.add_parser("evidence", help="the evidence of a problem: lines of sources that show it hurts")
     esub = evidence.add_subparsers(dest="evidence_command", required=True)
 

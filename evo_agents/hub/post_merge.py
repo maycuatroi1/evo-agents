@@ -42,7 +42,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from evo_agents.hub import judge
+from evo_agents.hub import diff_signs
 
 RESULTS = ("passed", "failed", "none")
 SAMPLE_RESULTS = ("ok", "faulty")
@@ -186,7 +186,7 @@ def newest_first(commits: Iterable, head: str | None) -> list[str]:
     return order + [commit.id for commit in listed if commit.id not in order]
 
 
-def _sides(diff: judge.FileDiff) -> tuple[str | None, str | None]:
+def _sides(diff: diff_signs.FileDiff) -> tuple[str | None, str | None]:
     if diff.status == "added":
         return None, diff.path
     if diff.status == "removed":
@@ -194,7 +194,7 @@ def _sides(diff: judge.FileDiff) -> tuple[str | None, str | None]:
     return diff.old_path or diff.path, diff.path
 
 
-def _patch(files: Iterable[judge.FileDiff], *, undone: bool) -> list:
+def _patch(files: Iterable[diff_signs.FileDiff], *, undone: bool) -> list:
     key = []
     for diff in files:
         before, after = _sides(diff)
@@ -203,7 +203,7 @@ def _patch(files: Iterable[judge.FileDiff], *, undone: bool) -> list:
     return sorted(key, key=repr)
 
 
-def undo_problem(revert: list[judge.FileDiff], merged: list[judge.FileDiff]) -> str | None:
+def undo_problem(revert: list[diff_signs.FileDiff], merged: list[diff_signs.FileDiff]) -> str | None:
     """Why the diff ``revert`` does not undo exactly the diff ``merged`` (each file's lines added and removed, swapped,
     and its path before and after, swapped); None when it does."""
     if not merged:

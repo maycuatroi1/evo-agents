@@ -290,10 +290,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None  # urllib then raises HTTPError with the 3xx status, handled below
 
 
-_OPENER = urllib.request.build_opener(_NoRedirect)
+OPENER = urllib.request.build_opener(_NoRedirect)
 
 
-def _origin(url: str) -> str:
+def origin(url: str) -> str:
     parts = urllib.parse.urlsplit(url)
     return f"{parts.scheme}://{parts.netloc}"
 
@@ -301,17 +301,17 @@ def _origin(url: str) -> str:
 def _send(method: str, url: str, headers: dict, data: bytes | None, timeout: float) -> tuple[int, bytes]:
     request = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
-        with _OPENER.open(request, timeout=timeout) as response:
+        with OPENER.open(request, timeout=timeout) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         with exc:
             return exc.code, exc.read()
     except urllib.error.URLError as exc:
         refused = isinstance(exc.reason, ConnectionRefusedError)
-        raise Unreachable(f"cannot reach {_origin(url)}: {exc.reason}", refused) from None
+        raise Unreachable(f"cannot reach {origin(url)}: {exc.reason}", refused) from None
     except (TimeoutError, OSError, http.client.HTTPException) as exc:
         reason = f"no answer within {timeout:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
-        raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+        raise Unreachable(f"cannot reach {origin(url)}: {reason}") from None
 
 
 @functools.lru_cache(maxsize=32)
@@ -412,7 +412,7 @@ class Connections:
                     conn, reused = None, False
                     continue
                 refused = isinstance(exc, ConnectionRefusedError)
-                raise Unreachable(f"cannot reach {_origin(url)}: {exc}", refused) from None
+                raise Unreachable(f"cannot reach {origin(url)}: {exc}", refused) from None
         try:
             response = conn.getresponse()
             body = response.read()
@@ -421,7 +421,7 @@ class Connections:
             reason = (
                 f"no answer within {timeout:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
             )
-            raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+            raise Unreachable(f"cannot reach {origin(url)}: {reason}") from None
         if response.will_close:
             conn.close()
         else:
@@ -432,7 +432,7 @@ class Connections:
 CONNECTIONS = Connections()  # the process's kept-alive connections to hubs
 
 
-def _json(raw: bytes):
+def json_body(raw: bytes):
     try:
         return json.loads(raw) if raw else None
     except ValueError:
@@ -451,7 +451,7 @@ def put_presigned(url: str, path: Path, timeout: float = TIMEOUT) -> None:
     with open(path, "rb") as handle:
         status, _ = _send("PUT", url, headers, handle, timeout)
     if not 200 <= status < 300:
-        raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
+        raise HubError(f"the blob store at {origin(url)} answered HTTP {status} to an upload", status)
 
 
 class _Slice:
@@ -480,7 +480,7 @@ def put_presigned_part(url: str, path: Path, offset: int, size: int, timeout: fl
     with open(path, "rb") as handle:
         status, _ = _send("PUT", url, headers, _Slice(handle, offset, size), timeout)
     if not 200 <= status < 300:
-        raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
+        raise HubError(f"the blob store at {origin(url)} answered HTTP {status} to an upload", status)
 
 
 def get_presigned(url: str, path: Path, size: int, timeout: float = TIMEOUT) -> str:
@@ -491,27 +491,27 @@ def get_presigned(url: str, path: Path, size: int, timeout: float = TIMEOUT) -> 
     digest = hashlib.sha256()
     written = 0
     try:
-        with _OPENER.open(request, timeout=timeout) as response, open(path, "wb") as handle:
+        with OPENER.open(request, timeout=timeout) as response, open(path, "wb") as handle:
             while chunk := response.read(1024 * 1024):
                 written += len(chunk)
                 if written > size:
-                    raise HubError(f"the blob store at {_origin(url)} sent more than the {size} bytes asked for")
+                    raise HubError(f"the blob store at {origin(url)} sent more than the {size} bytes asked for")
                 digest.update(chunk)
                 handle.write(chunk)
     except urllib.error.HTTPError as exc:
         exc.close()
         path.unlink(missing_ok=True)
-        raise HubError(f"the blob store at {_origin(url)} answered HTTP {exc.code} to a download", exc.code) from None
+        raise HubError(f"the blob store at {origin(url)} answered HTTP {exc.code} to a download", exc.code) from None
     except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
         path.unlink(missing_ok=True)
         reason = exc.reason if isinstance(exc, urllib.error.URLError) else str(exc) or type(exc).__name__
-        raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+        raise Unreachable(f"cannot reach {origin(url)}: {reason}") from None
     except HubError:
         path.unlink(missing_ok=True)
         raise
     if written != size:
         path.unlink(missing_ok=True)
-        raise HubError(f"the blob store at {_origin(url)} sent {written} of the {size} bytes asked for")
+        raise HubError(f"the blob store at {origin(url)} sent {written} of the {size} bytes asked for")
     return digest.hexdigest()
 
 
@@ -563,7 +563,7 @@ class Hub:
         return raw
 
     def _answer(self, status: int, raw: bytes):
-        payload = _json(raw)
+        payload = json_body(raw)
         if 300 <= status < 400:
             raise HubError(f"the hub at {self.url} answered {status} with a redirect, which is not followed", status)
         if status >= 400:
@@ -597,7 +597,7 @@ def _github_post(base: str, path: str, form: dict) -> tuple[int, dict]:
         "User-Agent": f"evo-agents/{__version__}",
     }
     status, raw = _send("POST", base + path, headers, urllib.parse.urlencode(form).encode(), TIMEOUT)
-    payload = _json(raw)
+    payload = json_body(raw)
     if status >= 500 or not isinstance(payload, dict):
         raise HubError(f"GitHub at {base} answered HTTP {status} to {path}; try again shortly", status)
     return status, payload

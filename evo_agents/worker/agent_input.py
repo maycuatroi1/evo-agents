@@ -193,6 +193,6 @@ def probe_file(source: str) -> dict:
 
 def promotion_file(source: str) -> dict:
     """The promotion of a proposal of kind memory (``worker propose --promote-file``): its target and its body."""
-    from evo_agents.hub.memory import MAX_BODY
+    from evo_agents.hub.memory_files import MAX_BODY
 
     return _mapping_file(source, "promotion", 2 * MAX_BODY, "a promotion is a mapping with target and body")

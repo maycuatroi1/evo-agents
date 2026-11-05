@@ -359,7 +359,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
 
 
 def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():
-    from evo_agents.hub.runs import build_plan_prompt
+    from evo_agents.hub.run_prompts import build_plan_prompt
 
     plan = {"id": "fleet", "repos": [{"repo": "evo-agents"}], "steps": [{"id": 1, "what": "x", "repo": "evo-agents"}]}
     prompt = build_plan_prompt(plan, [{"repo": "evo-agents", "branch": None}])

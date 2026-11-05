@@ -38,8 +38,8 @@ from evo_agents.hub.server.core_plugin_api._types import (
     refusing,
 )
 from evo_agents.hub.server.profile_store import by_handle
-from evo_agents.hub.server.proposals import ProposalAnswer as ProposalAnswerIn
-from evo_agents.hub.server.proposals import answer_proposal_as
+from evo_agents.hub.server.proposal_models import ProposalAnswer as ProposalAnswerIn
+from evo_agents.hub.server.proposal_reads import answer_proposal_as
 from evo_agents.hub.server.security import Principal
 
 READS, WRITES = "chats:read", "chats:write"
@@ -57,25 +57,25 @@ def _via(member: Member, via: str | None) -> str:
     return via
 
 
-async def _feature_on(conn: AsyncConnection, user: Principal, feature_id: str, project: str | None = None) -> None:
+async def feature_on(conn: AsyncConnection, user: Principal, feature_id: str, project: str | None = None) -> None:
     """404, as FeatureGate answers the feature's routes, when ``feature_id`` is off (in ``project``)."""
     message = await hub_settings.refusal(conn, user, features.BY_ID[feature_id], project)
     if message is not None:
         raise Refused(404, message)
 
 
-async def _granting(conn: AsyncConnection, plugin: str, project: str, permission: str) -> None:
+async def granting(conn: AsyncConnection, plugin: str, project: str, permission: str) -> None:
     if not await project_grants(conn, plugin, project, permission):
         raise Refused(403, NOT_GRANTED.format(project=project, plugin=plugin, permission=permission))
 
 
-async def _chat_grants(conn: AsyncConnection, plugin: str, chat: ChatAccess, permission: str) -> None:
+async def chat_grants(conn: AsyncConnection, plugin: str, chat: ChatAccess, permission: str) -> None:
     """403 unless the project of every agent of the chat grants the plugin ``permission``; a chat without agents
     belongs to no project that could."""
     if not chat.projects:
         raise Refused(403, NO_PROJECT.format(chat=chat.chat_id, plugin=plugin, permission=permission))
     for project in chat.projects:
-        await _granting(conn, plugin, project.name, permission)
+        await granting(conn, plugin, project.name, permission)
 
 
 # Decisions and proposals
@@ -134,7 +134,7 @@ async def answer_proposal(
         project = await member_channels.answerable_project(
             conn, member.user_id, "proposal", proposal_id, cleared.level, cleared.location, cleared.below
         )
-        await _feature_on(conn, user, "curator", project)
+        await feature_on(conn, user, "curator", project)
         body = ProposalAnswerIn(action=action, defer_days=defer_days, note=note)
         proposal = await answer_proposal_as(conn, user, project, proposal_id, body, via=said)
     return ProposalAnswer(proposal.id, action, proposal.state)
@@ -151,10 +151,10 @@ async def open_direct_chat(conn: AsyncConnection, member: Member, handle: str) -
     own_member(member)
     user = principal_of(member)
     with refusing():
-        await _feature_on(conn, user, "chats")
+        await feature_on(conn, user, "chats")
         profile = await by_handle(conn, handle) if isinstance(handle, str) else None
         if profile is not None and await _holds_grant(conn, member.user_id, profile.project_id):
-            await _granting(conn, member.plugin, profile.project, WRITES)
+            await granting(conn, member.plugin, profile.project, WRITES)
         chat_id, made = await direct_chat(conn, user, handle)
     return DirectChat(chat_id, made)
 
@@ -176,10 +176,10 @@ async def send_message(
     own_member(member)
     user = principal_of(member)
     with refusing():
-        await _feature_on(conn, user, "chats")
+        await feature_on(conn, user, "chats")
         message = ChatMessageIn(body=body, reply_to=reply_to)
         chat = await chat_access(conn, user, chat_id)
-        await _chat_grants(conn, member.plugin, chat, WRITES)
+        await chat_grants(conn, member.plugin, chat, WRITES)
         message_id = await deliver_message(conn, chat, user, message)
         (row,) = await message_rows(conn, chat.chat_id, [message_id])
     return SentMessage(row.id, row.seq, row.thread_root_id)
@@ -196,9 +196,9 @@ async def read_message(
     own_clearance(cleared)
     user = principal_of(member)
     with refusing():
-        await _feature_on(conn, user, "chats")
+        await feature_on(conn, user, "chats")
         chat = await chat_access(conn, user, chat_id)
-        await _chat_grants(conn, member.plugin, chat, READS)
+        await chat_grants(conn, member.plugin, chat, READS)
         for project in chat.projects:
             if telegram.restricted_for(
                 project.clearance,
@@ -226,7 +226,7 @@ async def agents(conn: AsyncConnection, member: Member) -> list[AgentRef]:
     project then the default first; 404 while the feature chats is off."""
     own_member(member)
     with refusing():
-        await _feature_on(conn, principal_of(member), "chats")
+        await feature_on(conn, principal_of(member), "chats")
     ap, p, g = tables.agent_profiles, tables.projects, tables.grants
     writers = [role for role in access.ROLES if access.has_role(role, "writer")]
     query = (

@@ -56,7 +56,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.mirror import render
-from evo_agents.hub.server import run_state
+from evo_agents.hub.server import run_reaper
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.worker import doctor, list_cli
@@ -976,7 +976,7 @@ def reap(stack: Stack) -> dict:
         config = HubConfig(dsn=stack.server.config.dsn, data_dir=stack.tmp, pool_min_size=1, pool_max_size=1)
         pool = await open_pool(config)
         try:
-            return await run_state.recover_runs(make_engine(pool))
+            return await run_reaper.recover_runs(make_engine(pool))
         finally:
             await pool.close()
 

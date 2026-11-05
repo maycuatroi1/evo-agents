@@ -3,13 +3,13 @@ won (``evo_agents.hub.replay.verdict``: at least MIN_HOLDOUT holdout tasks with 
 passing more of them, or as many with a mean cost or turns at least MIN_SAVING lower), what edits a harness alone
 (``replay.harness_only``), the tier 0 a change of a harness alone gets once its replays won (``tiers.replay_tier``),
 and the sign of score hacking of an instruction to test or verify weakened in a skill, an AGENTS.md or a CLAUDE.md
-(``judge.weakened``, ``judge.hack_signs``)."""
+(``diff_signs.weakened``, ``diff_signs.hack_signs``)."""
 
 from __future__ import annotations
 
 import pytest
 
-from evo_agents.hub import judge, replay, tiers
+from evo_agents.hub import diff_signs, replay, tiers
 from tests.hub.test_judge import file_diff, kinds, signs_of
 
 HEAD = "b" * 40
@@ -138,7 +138,7 @@ def test_tier_a_change_keeps_its_tier_without_replays_that_won_on_a_harness_alon
 )
 def test_judge_sign_an_instruction_of_a_harness_to_test_or_verify_weakened(path, lines):
     assert "instruction_weakened" in kinds(signs_of(file_diff(path, *lines)))
-    assert judge.SIGN_KINDS["instruction_weakened"].startswith("an instruction of a skill")
+    assert diff_signs.SIGN_KINDS["instruction_weakened"].startswith("an instruction of a skill")
 
 
 @pytest.mark.parametrize(
@@ -155,8 +155,10 @@ def test_judge_no_sign_for_an_instruction_kept_reworded_or_outside_a_harness(pat
 
 
 def test_judge_a_harness_file_whose_diff_cannot_be_read_is_a_sign():
-    unreadable = judge.FileDiff(path="skills/demo/SKILL.md", readable=False)
-    found = judge.hack_signs([unreadable], repo="evo-agents", protected=[])
+    unreadable = diff_signs.FileDiff(path="skills/demo/SKILL.md", readable=False)
+    found = diff_signs.hack_signs([unreadable], repo="evo-agents", protected=[])
     assert kinds(found) == ["diff_unreadable"]
-    docs = judge.FileDiff(path="docs/guide.md", readable=False)
-    assert judge.hack_signs([docs], repo="evo-agents", protected=[]) == []  # documentation elsewhere stays readable
+    docs = diff_signs.FileDiff(path="docs/guide.md", readable=False)
+    assert (
+        diff_signs.hack_signs([docs], repo="evo-agents", protected=[]) == []
+    )  # documentation elsewhere stays readable

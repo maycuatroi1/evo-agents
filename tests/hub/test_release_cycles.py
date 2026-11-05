@@ -33,7 +33,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
-from evo_agents.hub import judge, release_ci, release_runs, releases, runs, tables
+from evo_agents.hub import diff_signs, release_ci, release_runs, releases, runs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.release_check import release_pass
 from evo_agents.hub.server.release_watch import watch_releases
@@ -308,7 +308,7 @@ def patch(path: str, *lines: str, status: str = "modified") -> dict:
 
 def test_the_hacking_signs_of_a_fix_spare_importorskip_and_a_platform_skip_with_its_reason():
     def signs(*files: dict) -> list[str]:
-        return [item["kind"] for item in release_ci.release_signs(judge.from_github_files(list(files)), REPO)]
+        return [item["kind"] for item in release_ci.release_signs(diff_signs.from_github_files(list(files)), REPO)]
 
     assert signs(patch("tests/test_x.py", " def test_x():", "-    assert f() == 1", "+    assert True")) == [
         "assert_removed"

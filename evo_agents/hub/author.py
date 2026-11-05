@@ -48,6 +48,8 @@ rules of a chat alone, so an older daemon's agent never runs a command its worke
 
 from __future__ import annotations
 
+from typing import Literal, get_args
+
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, SHORT_BYTES, clip
 
 AUTHOR_SKILL = "create-exec-plan"  # the global skill the agent writes the plan with
@@ -56,7 +58,8 @@ AUTHOR_RUNTIMES = ("claude-code",)  # opencode and codex take no author run yet
 # the runtime would make up is not the member's. The worker turns them off for the run's agent.
 QUESTION_TOOLS = ("AskUserQuestion",)
 MAX_REQUEST_BYTES = 16 * 1024  # the member's request, as UTF-8
-AUTHOR_TIMEOUT_CHOICES = (1, 2, 4)  # hours of agent time an author run may take
+AuthorTimeout = Literal[1, 2, 4]
+AUTHOR_TIMEOUT_CHOICES: tuple[int, ...] = get_args(AuthorTimeout)  # hours of agent time an author run may take
 DEFAULT_TIMEOUT_H = 2
 SKILLS_DIR = ".claude/skills"  # under the run's directory, the agent's working directory: where the skill is written
 PUT_COMMAND = "evo-agents worker put"  # the agent's command that puts the plan it wrote on the hub

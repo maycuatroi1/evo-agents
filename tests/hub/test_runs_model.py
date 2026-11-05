@@ -19,8 +19,9 @@ from pathlib import Path
 import pytest
 
 from evo_agents.harness import load_schema, load_yaml
-from evo_agents.hub import runs
+from evo_agents.hub import run_prompts, runs
 from evo_agents.hub.plans import step_key
+from evo_agents.hub.run_prompts import OUTPUTS_RULE, build_plan_prompt, build_prompt
 from evo_agents.hub.runs import (
     ACTIVE_STATES,
     ACTORS,
@@ -28,13 +29,10 @@ from evo_agents.hub.runs import (
     EVENT_KINDS,
     HELD_STATES,
     MAX_PROMPT_BYTES,
-    OUTPUTS_RULE,
     RUN_STATES,
     TERMINAL_STATES,
     TRANSITIONS,
     TransitionRefused,
-    build_plan_prompt,
-    build_prompt,
     can_transition,
     check_transition,
     clip,
@@ -533,7 +531,7 @@ def test_a_long_context_is_cut_with_a_mark(plan):
     assert f"of {total} bytes left out" in prompt
     assert step(plan, 2)["what"] in prompt and "Rules for this run:" in prompt  # the rest survives
     head, _, _ = prompt.partition("\n[cut by the hub")
-    assert size(head[head.index("# Context of the plan, shortened") :]) <= runs.CONTEXT_BYTES
+    assert size(head[head.index("# Context of the plan, shortened") :]) <= run_prompts.CONTEXT_BYTES
 
 
 def test_the_prompt_stays_within_32_kib_whatever_the_plan_holds(plan):
@@ -598,7 +596,7 @@ def step_prompts() -> dict[str, str]:
 
 
 def test_the_prompt_of_a_step_run_is_the_one_0_3_0_gave():
-    """Byte for byte, but for the one line added since: the rule of the run's outputs (``runs.OUTPUTS_RULE``)."""
+    """Byte for byte, but for the one line added since: the rule of the run's outputs (``run_prompts.OUTPUTS_RULE``)."""
     golden = json.loads(STEP_PROMPTS_030.read_text(encoding="utf-8"))
     made = step_prompts()
     assert set(made) == set(golden)
@@ -659,7 +657,7 @@ def test_a_plan_run_prompt_of_60_steps_lists_every_open_step_and_stays_under_32_
     # a title over its budget is cut on its own line
     (line,) = [line for line in prompt.splitlines() if line.startswith("- 30 [pending] ")]
     assert line.endswith("... (repo lumen-kb-service; after 27, 28, 29)")
-    assert size(line[len("- 30 [pending] ") : line.index(" (repo")]) <= runs.LIST_TITLE_BYTES
+    assert size(line[len("- 30 [pending] ") : line.index(" (repo")]) <= run_prompts.LIST_TITLE_BYTES
     assert plan["steps"][20]["what"][:200] not in prompt  # what, verify and note stay in the plan file
     assert plan["steps"][20]["note"][:100] not in prompt
     assert f"- northwind-harness: branch main, worktree {WORKTREES}/northwind-harness" in prompt
@@ -808,7 +806,7 @@ def test_the_steps_a_plan_run_still_has_to_do_leave_out_blocked_descoped_and_wai
 def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff(plan):
     target = step(plan, 2)
     worktrees = {entry["repo"]: entry["repo"] for entry in plan.get("repos") or []}
-    bare = runs.build_step_session_prompt(plan, target, plan.get("repos") or [], worktrees)
+    bare = run_prompts.build_step_session_prompt(plan, target, plan.get("repos") or [], worktrees)
     key = step_key(target, plan["steps"].index(target))
     assert bare.startswith(f"You are running step {key} of the plan {plan['id']} from the evo-agents hub")
     for text in (
@@ -826,19 +824,19 @@ def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff
     assert "Do not record progress in the plan" not in bare, "a step run's rules are not a step session's"
     assert "# Goal of the plan" not in bare, "the handoff carries the goal"
     handoff = "# Handoff of plan x\n" + "evidence line\n" * 10
-    whole = runs.build_step_session_prompt(plan, target, plan.get("repos") or [], worktrees, handoff)
+    whole = run_prompts.build_step_session_prompt(plan, target, plan.get("repos") or [], worktrees, handoff)
     assert whole == bare + "\n" + handoff, "the handoff closes the prompt, whole"
 
 
 def test_a_plan_run_step_session_prompt_fits_a_handoff_of_its_room_whole():
     body = {"id": "big", "context": "c" * 10_000, "steps": [{"id": 1, "what": "w" * 20_000, "note": "n" * 5_000}]}
-    bare = runs.build_step_session_prompt(body, body["steps"][0], [], {})
-    room = runs.handoff_room(bare)
+    bare = run_prompts.build_step_session_prompt(body, body["steps"][0], [], {})
+    room = run_prompts.handoff_room(bare)
     assert 0 < room < MAX_PROMPT_BYTES - len(bare.encode())
     handoff = "# Handoff\n" + "đ" * ((room - 10) // 2)
-    whole = runs.build_step_session_prompt(body, body["steps"][0], [], {}, handoff)
+    whole = run_prompts.build_step_session_prompt(body, body["steps"][0], [], {}, handoff)
     assert size(whole) <= MAX_PROMPT_BYTES and whole.endswith(handoff.strip() + "\n"), "not cut"
-    over = runs.build_step_session_prompt(body, body["steps"][0], [], {}, handoff + "đđ")
+    over = run_prompts.build_step_session_prompt(body, body["steps"][0], [], {}, handoff + "đđ")
     assert size(over) <= MAX_PROMPT_BYTES and "cut by the hub" in over
 
 
@@ -847,7 +845,7 @@ def test_a_plan_run_step_session_prompt_stays_within_32_kib_whatever_the_plan_ho
     plan["context"] = plan["id"] = huge
     plan["steps"] = [{"id": huge[:300], "title": huge, "what": huge, "verify": huge, "note": huge}]
     repos = [{"repo": f"{n}{huge[:500]}", "branch": huge} for n in range(100)]
-    prompt = runs.build_step_session_prompt(plan, plan["steps"][0], repos, {}, huge)
+    prompt = run_prompts.build_step_session_prompt(plan, plan["steps"][0], repos, {}, huge)
     assert size(prompt) <= MAX_PROMPT_BYTES and "�" not in prompt
     assert "Rules for this session:" in prompt and "more repos, which .evo-run/plan.yaml lists" in prompt
 

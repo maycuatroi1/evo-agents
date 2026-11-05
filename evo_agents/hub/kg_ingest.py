@@ -98,8 +98,6 @@ def _source_problems(source: dict) -> list[str]:
 
 def config_problems(project: str, levels: list[str], locations: list[str], config: dict) -> list[str]:
     """Why the hub cannot build ``project`` (registered with ``levels`` and ``locations``) from ``config``."""
-    from evo_agents.kg.schema import validate_ontology
-
     knowledge, ontology = config.get("knowledge"), config.get("ontology")
     if not isinstance(knowledge, dict):
         return ["knowledge must be an object"]
@@ -108,6 +106,16 @@ def config_problems(project: str, levels: list[str], locations: list[str], confi
         problems.append(f"the config is larger than {MAX_CONFIG_BYTES} bytes")
     if knowledge.get("project") != project:
         problems.append(f"knowledge.yaml names project {knowledge.get('project')!r}, not {project}")
+    problems += _policy_problems(knowledge, levels, locations)
+    problems += _sources_problems(knowledge)
+    problems += _identifier_problems(knowledge)
+    problems += _ontology_problems(knowledge, ontology)
+    return problems
+
+
+def _policy_problems(knowledge: dict, levels: list[str], locations: list[str]) -> list[str]:
+    """Why the policy of ``knowledge`` does not match the levels and locations the project was registered with."""
+    problems = []
     policy = knowledge.get("policy") or {}
     if not isinstance(policy, dict):
         problems.append("policy must be an object")
@@ -119,6 +127,12 @@ def config_problems(project: str, levels: list[str], locations: list[str], confi
                 f"policy.{key} {list(found)} differ from the registered {list(registered)}: run "
                 "`evo-agents hub project register` from the harness first"
             )
+    return problems
+
+
+def _sources_problems(knowledge: dict) -> list[str]:
+    """Why the sources of ``knowledge`` cannot be built: the list, their ids, each source."""
+    problems = []
     sources = knowledge.get("sources")
     if not isinstance(sources, list) or not all(isinstance(s, dict) for s in sources):
         problems.append("sources must be a list of objects")
@@ -130,10 +144,15 @@ def config_problems(project: str, levels: list[str], locations: list[str], confi
         problems.append("a source id is declared twice")
     for source in sources:
         problems += _source_problems(source)
+    return problems
+
+
+def _identifier_problems(knowledge: dict) -> list[str]:
+    """Why the identifiers of ``knowledge`` cannot be used: each needs a kind and a pattern that compiles."""
     identifiers = knowledge.get("identifiers") or []
     if not isinstance(identifiers, list):
-        problems.append("identifiers must be a list")
-        identifiers = []
+        return ["identifiers must be a list"]
+    problems = []
     for entry in identifiers:
         pattern = entry.get("pattern") if isinstance(entry, dict) else None
         if not isinstance(pattern, str) or not isinstance(entry.get("kind"), str):
@@ -143,15 +162,22 @@ def config_problems(project: str, levels: list[str], locations: list[str], confi
             re.compile(pattern)
         except re.error as exc:
             problems.append(f"identifier {entry['kind']}: pattern does not compile ({exc})")
+    return problems
+
+
+def _ontology_problems(knowledge: dict, ontology) -> list[str]:
+    """Why ``ontology`` and the file ``knowledge`` names for it do not go together, and its errors."""
+    from evo_agents.kg.schema import validate_ontology
+
     if (ontology is None) != (knowledge.get("ontology") is None):
-        problems.append("knowledge.ontology and the ontology must be given together")
-    elif ontology is not None:
-        if knowledge.get("ontology") != ONTOLOGY_FILE:
-            problems.append(f"knowledge.ontology must be {ONTOLOGY_FILE!r}")
-        issues = validate_ontology(ontology)
-        problems += [
-            f"ontology: {': '.join(filter(None, (i.path, i.message)))}" for i in issues if i.severity == "error"
-        ]
+        return ["knowledge.ontology and the ontology must be given together"]
+    if ontology is None:
+        return []
+    problems = []
+    if knowledge.get("ontology") != ONTOLOGY_FILE:
+        problems.append(f"knowledge.ontology must be {ONTOLOGY_FILE!r}")
+    issues = validate_ontology(ontology)
+    problems += [f"ontology: {': '.join(filter(None, (i.path, i.message)))}" for i in issues if i.severity == "error"]
     return problems
 
 

@@ -375,6 +375,6 @@ def test_attachment_names_show_in_hub_run_chat(monkeypatch, capsys, tmp_path):
     said["attachments"] = [{"id": 1, "name": "notes.txt", "media_type": "text/plain", "size": 3}]
     chat = {"run_id": 12, "state": "running", "status": "working", "plan_id": None, "plan_revision": None}
     chat |= {"messages": [said], "more": False, "owner": "owner"}
-    monkeypatch.setattr(run_cli, "_signed_in", lambda: (SimpleNamespace(call=lambda *a, **k: chat), None))
+    monkeypatch.setattr(run_cli, "signed_in", lambda: (SimpleNamespace(call=lambda *a, **k: chat), None))
     shown = ok(cli(monkeypatch, capsys, home, "hub", "run", "chat", "12", "--project", "demo")).out
     assert "(files: notes.txt (3 bytes))" in shown

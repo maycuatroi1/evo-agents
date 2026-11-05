@@ -537,7 +537,7 @@ async def _store(
     step not done, is a 422 (``plans.unrunnable_verify``): every write of a plan comes through here, so here each step
     whose status the write sets or changes emits ``plan.step`` (``evo_agents.hub.plan_step_status``). ``run_id`` is
     the run that writes it, an author run's, recorded on the revision."""
-    from evo_agents.hub.server.changes import plan_write_refusal  # it reads plans through this module
+    from evo_agents.hub.server.change_views import plan_write_refusal  # it reads plans through this module
 
     unrunnable = unrunnable_verify(None if held is None else held.body, body)
     if unrunnable:

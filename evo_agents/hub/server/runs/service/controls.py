@@ -367,7 +367,7 @@ async def let_run_as_owner(conn: AsyncConnection, user: Principal, access, proje
         return False
     check_dispatcher(access)
     await check_seat(conn, user, "letting a run run as you")
-    from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes of this package
+    from evo_agents.hub.server.change_views import curator_policy  # it reads runs through the routes of this package
 
     curator = await curator_policy(conn, access.project_id, row.kind, row.plan_id) is not None
     refusal = run_access.may_run_as_owner(row.kind, curator)

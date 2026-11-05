@@ -280,7 +280,7 @@ class ReplayRun:
             "harness_sha": plan["refs"][arm],
             "harness_paths": plan["paths"][: replay.MAX_PATHS],
             "verify": checks,
-            "cost_usd": _cost(usage),
+            "cost_usd": usage_cost(usage),
             "turns": figures.turns,
             "tool_calls": len(figures.calls),
             "tool_errors": len(figures.failed),
@@ -336,7 +336,8 @@ class ReplayRun:
         return None  # it checks out no branch of a checkout
 
 
-def _cost(usage) -> float | None:
+def usage_cost(usage) -> float | None:
+    """The cost in USD a runtime reported in ``usage`` (``total_cost_usd`` or ``cost``), None when it reported none."""
     for key in ("total_cost_usd", "cost"):
         value = (usage or {}).get(key)
         if isinstance(value, (int, float)) and not isinstance(value, bool):

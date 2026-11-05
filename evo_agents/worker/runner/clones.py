@@ -3,7 +3,7 @@ or fails for want of a checkout a person would have to make by hand.
 
 The hub hands a run to a daemon of ``runs.CLONES_CHECKOUTS`` whatever checkouts it has. Once the run's leases are taken
 (``access.take_credentials``), each repo of the run with no checkout here is set up, several at a time
-(``parallel.each``), under the lock of where it goes (``WorkerDaemon.repo_lock``), so two runs never clone one repo at
+(``parallel.each``), under the lock of where it goes (``RunHost.repo_lock``), so two runs never clone one repo at
 once:
 
 - where: the path the hub registered for the repo, placed in the project's workspace as ``evo-agents hub registry
@@ -18,7 +18,7 @@ once:
   (``RunCredentials.reach``); a clone git cannot make fails the run, with cause credentials when the remote refused
   the credential, else checkout. A chat run or a task run (``best_effort``) goes on without the repo instead, noted.
 
-Each checkout set up is the daemon's from then on (``WorkerDaemon.add_checkout``): in its checkouts, which the next
+Each checkout set up is the daemon's from then on (``RunHost.add_checkout``): in its checkouts, which the next
 heartbeat reports, and in ``checkouts`` of config.json.
 """
 

@@ -1,7 +1,9 @@
 """The Curator's changes on the hub: an accepted proposal's plan, its Builder, its pull request, its Judge and its
 merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the model,
 ``evo_agents.hub.server.proposal_plans`` how an accepted proposal becomes the Curator's plan and its change, and
-``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch.
+``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch. This module
+holds the job, its pull requests and merges; ``change_views`` the models and the reading of a change, ``change_shift``
+the night shift's side, ``change_routes`` the routes and ``change_watch`` what the job reads again.
 
 Accepting a proposal of a tier the charter's ``planned_tiers`` names (tiers 0 to 2 unless it names others,
 ``judge.planned_tiers``) makes its draft the Curator's plan ``curator-<proposal>-<slug>``, on the branch
@@ -29,7 +31,7 @@ request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitL
 request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
 its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
 The job ``curator.changes`` (``advance``), one pass at a time, opens the pull request with the workers' App, reads its
-files and runs ``judge.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
+files and runs ``diff_signs.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
 files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
 really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
 key, which only ever raises it), so a proposal of docs whose pull request changes code is tier 1 from then on. A list of
@@ -58,7 +60,7 @@ may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head
 hub's own merge uses too). While the project's night shift is paused the hub merges nothing: a judged change waits for
 it. Every WATCH_EVERY it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at
 which commit), closed without a merge, ``closed`` (``_settle``). A branch merged by hand outside the hub is read the same way
-(``_settle_by_branch``): when GitHub refuses to open the pull request of a change (no commits between the default
+(``settle_by_branch``): when GitHub refuses to open the pull request of a change (no commits between the default
 branch and its branch, say), and every WATCH_EVERY for a planned change whose plan has no step ready to run, the job
 looks for a pull request of the change's branch in any state, and a merged one, else a closed one, settles the change,
 which names it from then on. It also checks rulesets (``protection.check_rulesets``): the one of a repo a planned
@@ -75,1086 +77,38 @@ pull request closes when its pull request does.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
-import secrets
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
-from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Path, Request, Response
-from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, curator, findings, guard, judge, runs, security_pass, tables, tiers
-from evo_agents.hub.access import has_role
-from evo_agents.hub.plans import step_key
+from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
-from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
+from evo_agents.hub.server.change_watch import settle_by_branch, watch_pass
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.protection import (
     Target,
     check_rulesets,
     github_target,
-    need_reader,
     reason_line,
-    ruleset_wait,
     store_check,
 )
-from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
-from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId, VerifyResult
-from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.run_state import write_event
 
 log = logging.getLogger(__name__)
 
-BUILD = "curator.build"  # the night shift queued a change's Builder: "<project>/<plan> run:<id> change:<id>"
-JUDGE = "curator.judge"  # the night shift queued a change's judge run: "<project>/<plan> run:<id> change:<id> ..."
 PULL = "curator.pull"  # the hub opened a change's pull request: "<project>/<plan> change:<id> pr=<url>"
 MERGE = "curator.merge"  # the hub merged a change's pull request: "<project>/<plan> change:<id> pr=<url> sha=<sha>"
-CLOSE = "curator.close"  # an admin closed a change with no pull request: "<project> change:<id> proposal:<id>"
 CI_WAIT = timedelta(hours=6)  # CI still running this long after the verdict leaves the pull request open
-WATCH_EVERY = timedelta(hours=1)  # how often the job reads a pull request left open for its owner
-MAX_WATCH = 20  # pull requests left open one pass of the job reads
-MAX_LIST = 200
 NIGHT_SHIFT = "night_shift"
-
-router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-
-JudgeKey = Annotated[
-    str | None,
-    Header(
-        alias=judge.JUDGE_KEY_HEADER,
-        max_length=200,
-        description="the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
-    ),
-]
-ChangeId = Annotated[int, Path(ge=1, le=MAX_ID)]
 PAUSED = "the night shift of the project is paused: the hub merges nothing while it is"
 MOVED = "moved"  # the outcome of a change closed, merged or judged again while a pass of curator.changes read it
-
-
-# Models
-
-
-class Change(BaseModel):
-    """What an accepted proposal of tier 0 to 2 became, and where it stands."""
-
-    id: int
-    project: str
-    proposal_id: int
-    plan_id: str | None = Field(description="the Curator's plan on the hub; null when the draft could not become one")
-    repo: str | None
-    branch: str | None = Field(description="curator/..., the one branch its runs push")
-    forge: Literal[judge.FORGES] | None
-    tier: int = Field(ge=0, le=3, description="its proposal's tier; 3 once a sign of score hacking showed")
-    state: Literal[judge.CHANGE_STATES]
-    reason: str | None = Field(description="why it stays as it is, such as why its pull request stays open")
-    builder_run_id: int | None
-    judge_run_id: int | None
-    pr_number: int | None
-    pr_url: str | None
-    base_branch: str | None
-    head_sha: str | None = Field(description="the commit the Judge judges, and the hub merges")
-    passed: bool | None = Field(description="the Judge's verdict; null before it")
-    verdict: dict | None = Field(description="the verdict: the Judge's reasons, the checks run, the signs found")
-    merged_at: datetime | None
-    merge_sha: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class ChangeList(BaseModel):
-    project: str
-    changes: list[Change] = Field(description="newest first")
-
-
-class ChangeClose(BaseModel):
-    reason: str = Field(min_length=1, max_length=2000, description="why it is closed: its reason and ledger say it")
-
-
-class JudgeInputs(BaseModel):
-    """What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,
-    and the project's hidden checks, which no other run reads."""
-
-    change_id: int
-    repo: str
-    branch: str
-    base_branch: str | None
-    head_sha: str | None = Field(description="the commit to judge; null on GitLab: the branch's tip")
-    proposal: dict = Field(description="id, title, kind, tier, summary, paths")
-    verify: list[str] = Field(description="the verify of each step of the plan, as the Builder had them")
-    protected_paths: list[str]
-    hidden_checks: list[str] = Field(description="commands run in the worktree; never logged, never shown")
-    knowledge: dict | None = Field(
-        None,
-        description="a change of kind kg_source whose pull request changed knowledge.yaml: its files, the sources it "
-        "edits and the checks the worker runs for it besides the verify (harness validate, a trial sync of each "
-        "source), whose results the verdict's verify carries under those names; null for any other change",
-    )
-
-
-class HiddenResult(BaseModel):
-    index: int = Field(ge=1, le=curator.MAX_HIDDEN_CHECKS, description="the check's place in the charter, from 1")
-    exit_code: int
-    duration_ms: int | None = Field(None, ge=0)
-
-
-class Sign(BaseModel):
-    kind: Literal[tuple(judge.SIGN_KINDS)]
-    path: str = Field(min_length=1, max_length=1000)
-    line: int | None = Field(None, ge=0)
-    text: str = Field("", max_length=judge.MAX_SIGN_TEXT)
-
-
-class SecurityFinding(BaseModel):
-    """A vulnerability the security pass kept after its filter."""
-
-    path: str | None = Field(None, max_length=findings.MAX_PATH_CHARS)
-    line: int | None = Field(None, ge=1)
-    text: str = Field(min_length=1, max_length=findings.MAX_TEXT_CHARS)
-
-
-class SecurityPass(BaseModel):
-    """What the security pass of a Judge run (``evo_agents.hub.security_pass``) said of the change, and what it cost:
-    the dimension ``security``, its findings with path and line, and the turns the pass took."""
-
-    verdict: Literal[judge.VERDICTS]
-    reason: str = Field("", max_length=2000)
-    findings: list[SecurityFinding] = Field(default_factory=list, max_length=findings.MAX_NEW)
-    candidates: int = Field(0, ge=0, description="the findings the first turn raised, before the filter")
-    turns: int = Field(0, ge=0, description="agent turns the pass took: one that finds, one for each candidate")
-    cost_usd: float | None = Field(None, ge=0, description="what those turns cost, when the runtime reports it")
-
-
-def security_dimension(security: SecurityPass | None) -> dict:
-    """The dimension ``security`` of a verdict from the pass; a verdict without the pass fails it."""
-    if security is None:
-        return {"verdict": "fail", "reason": "the security pass gave no result"}
-    return {"verdict": security.verdict, "reason": security.reason}
-
-
-def security_findings(security: SecurityPass | None) -> list[dict]:
-    """The findings of the pass as ``findings.read_new`` reads them."""
-    found = [] if security is None else [item.model_dump() for item in security.findings]
-    return findings.read_new([{**item, "dimension": security_pass.DIMENSION} for item in found])
-
-
-class VerdictIn(BaseModel):
-    verdict: Literal[judge.VERDICTS] | None = Field(description="the Judge agent's; null when it gave none")
-    security: SecurityPass | None = Field(
-        None, description="the security pass of the run: a verdict without it fails the dimension security"
-    )
-    reasons: str | None = Field(None, max_length=judge.MAX_REASONS_CHARS)
-    head_sha: str = Field(pattern=OBJECT_NAME, description="the commit the worktree was at")
-    base_sha: str | None = Field(None, pattern=OBJECT_NAME)
-    verify: list[VerifyResult] = Field(default_factory=list, max_length=50)
-    hidden: list[HiddenResult] = Field(default_factory=list, max_length=curator.MAX_HIDDEN_CHECKS)
-    signs: list[Sign] = Field(default_factory=list, max_length=judge.MAX_SIGNS)
-    paths: list[Annotated[str, Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)]] = Field(
-        default_factory=list,
-        max_length=judge.MAX_PATHS,
-        description="every path the diff judged touches; they give the proposal its tier again, which only raises it",
-    )
-
-
-# Reading changes
-
-
-def _changes():
-    c, p = tables.curator_changes, tables.projects
-    return select(
-        c.c.id,
-        p.c.name.label("project"),
-        c.c.proposal_id,
-        c.c.plan_id,
-        c.c.repo,
-        c.c.branch,
-        c.c.forge,
-        c.c.tier,
-        c.c.state,
-        c.c.reason,
-        c.c.builder_run_id,
-        c.c.judge_run_id,
-        c.c.pr_number,
-        c.c.pr_url,
-        c.c.base_branch,
-        c.c.head_sha,
-        c.c.passed,
-        c.c.verdict,
-        c.c.merged_at,
-        c.c.merge_sha,
-        c.c.created_at,
-        c.c.updated_at,
-    ).join_from(c, p, p.c.id == c.c.project_id)
-
-
-async def change_of_plan(conn: AsyncConnection, project_id: int, plan_id: str | None, *, lock: bool = False):
-    """The change whose plan is ``plan_id`` in the project, or None: a plan is the Curator's when it has one."""
-    if not plan_id:
-        return None
-    c = tables.curator_changes
-    query = select(c).where(c.c.project_id == project_id, c.c.plan_id == plan_id)
-    if lock:
-        query = query.with_for_update()
-    return (await conn.execute(query)).one_or_none()
-
-
-async def change_with_origin(conn: AsyncConnection, project_id: int, change_id: int, *, lock: bool = False):
-    """Change ``change_id`` of the project with its repo's origin, as the job reads a change it moves on, or None."""
-    c, pr = tables.curator_changes, tables.project_repos
-    query = (
-        select(c, pr.c.origin)
-        .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
-        .where(c.c.id == change_id, c.c.project_id == project_id)
-    )
-    if lock:
-        query = query.with_for_update(of=c)
-    return (await conn.execute(query)).one_or_none()
-
-
-async def change_view(conn: AsyncConnection, change_id: int) -> Change:
-    row = (await conn.execute(_changes().where(tables.curator_changes.c.id == change_id))).one()
-    return Change(**row._mapping)
-
-
-async def _set(conn: AsyncConnection, change_id: int, *, ledger_extra: dict | None = None, **values) -> None:
-    """Set ``values`` on change ``change_id``; a move to another state adds its lines to the proposal's ledger
-    (``ledger.change_moved``, with ``ledger_extra``)."""
-    c = tables.curator_changes
-    old = None
-    if "state" in values:
-        old = (await conn.execute(select(c.c.state).where(c.c.id == change_id).with_for_update())).scalar_one()
-    await conn.execute(update(c).values(**values, updated_at=func.now()).where(c.c.id == change_id))
-    if old is not None and old != values["state"]:
-        await ledger_lines.change_moved(conn, change_id, old, values["state"], ledger_extra)
-
-
-async def _charter(conn: AsyncConnection, project_id: int) -> dict:
-    c = tables.charters
-    query = select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
-    return (await conn.execute(query)).scalar_one_or_none() or {}
-
-
-# The Curator's plans
-
-
-async def plan_write_refusal(
-    conn: AsyncConnection,
-    project_id: int,
-    plan_id: str,
-    old_body: dict | None,
-    new_body: dict,
-    *,
-    made_by_curator: bool = False,
-) -> str | None:
-    """Why a write of plan ``plan_id`` is refused: a new plan whose id is one of the Curator's, unless the hub makes it
-    from a proposal (``made_by_curator``); and for a Curator's plan, another repo or branch, a step in another repo,
-    or a change of anything but the progress of its steps and its status (``judge.progress_free``). None for any other
-    plan, and for a write that keeps them."""
-    if old_body is None and not made_by_curator and judge.is_curator_plan_id(plan_id):
-        return (
-            f"plan ids that start with {judge.CURATOR_PLAN_PREFIX} belong to the Curator: the hub makes such a plan "
-            "from an accepted proposal alone; give the plan another id. Nothing was written"
-        )
-    change = await change_of_plan(conn, project_id, plan_id)
-    if change is None:
-        return None
-    why = (
-        f"plan {plan_id} is the Curator's: it works on {change.branch} of {change.repo} alone, never on another branch "
-        "or repo and least of all on a default branch, and a write of it changes the status, done_at, evidence and "
-        "note of its steps and its status alone, its what, goal, context, verify and acceptance staying as the hub "
-        "made them; nothing was written"
-    )
-    repos = new_body.get("repos")
-    if not isinstance(repos, list) or len(repos) != 1 or not isinstance(repos[0], dict):
-        return why
-    if repos[0].get("repo") != change.repo or repos[0].get("branch") != change.branch:
-        return why
-    steps = new_body.get("steps") if isinstance(new_body.get("steps"), list) else []
-    if any(isinstance(step, dict) and step.get("repo") not in (None, change.repo) for step in steps):
-        return why
-    if old_body is not None and judge.progress_free(old_body) != judge.progress_free(new_body):
-        return why
-    return None
-
-
-async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id: str) -> None:
-    """409 when plan ``plan_id`` is the Curator's: the night shift alone runs it, at any hour."""
-    if await change_of_plan(conn, project_id, plan_id) is not None:
-        raise HTTPException(
-            409,
-            f"plan {plan_id} is the Curator's: the night shift runs it itself, at any hour; POST .../curator/plans/"
-            f"{plan_id}/build (Run plan on its page) queues its Builder at once; nothing was dispatched",
-        )
-
-
-# What a run of the Curator gets
-
-
-@dataclass(frozen=True)
-class CuratorPolicy:
-    """A run of the Curator, and what its charter lets it have: its role, the owner's git secret it uses on other
-    forges than GitHub, the env secrets it gets, and the charter's protected paths."""
-
-    role: str  # reviewer, builder, judge or replay
-    git_secret: str | None
-    env_secrets: tuple[str, ...]
-    protected: tuple[str, ...]
-    change_id: int | None = None
-
-
-async def curator_policy(
-    conn: AsyncConnection, project_id: int, kind: str, plan_id: str | None
-) -> CuratorPolicy | None:
-    """The policy of a run of ``kind`` on ``plan_id`` when it is a run of the Curator (a review run, a judge run, a
-    replay run, a history run, a probe run, or any run of a Curator's plan); None for any other run."""
-    roles = {"review": "reviewer", "judge": "judge", "replay": "replay", "history": "history", "probe": "probe"}
-    role = roles.get(kind, "builder")
-    change = None if kind == "review" else await change_of_plan(conn, project_id, plan_id)
-    if change is None and (role == "builder" or (role == "judge" and not plan_id)):  # no plan: the merge queue's
-        return None
-    charter = await _charter(conn, project_id)
-    secret = charter.get("git_secret")
-    return CuratorPolicy(
-        role=role,
-        git_secret=secret if isinstance(secret, str) and secret else None,
-        env_secrets=tuple(name for name in charter.get("env_secrets") or [] if isinstance(name, str)),
-        protected=tuple(path for path in charter.get("protected_paths") or [] if isinstance(path, str)),
-        change_id=None if change is None else change.id,
-    )
-
-
-async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | None:
-    """What the claim of run ``view`` (a ``runs.Run``) tells its worker of the Curator: its role, the charter's
-    protected paths its watchdog compares the worktree with, and for a Builder, a Judge or a replay the change, its
-    branch and forge, for a Judge, a replay and a probe the change's head, for a replay its task and its own key
-    (``replays.replay_claim``), and for a probe run its probe and its own key (``probe_runs.probe_claim``). None for
-    any other run."""
-    from evo_agents.hub.server.probe_runs import probe_claim  # it reads the changes of this module
-    from evo_agents.hub.server.replays import replay_claim  # it reads the changes of this module
-
-    policy = await curator_policy(conn, project_id, view.kind, view.plan_id or None)
-    if policy is None:
-        return None
-    found, change = {"role": policy.role, "protected_paths": list(policy.protected)}, None
-    if policy.change_id is not None:
-        change = (
-            await conn.execute(select(tables.curator_changes).where(tables.curator_changes.c.id == policy.change_id))
-        ).one()
-        found.update(
-            change_id=change.id,
-            branch=change.branch,
-            forge=change.forge,
-            base_branch=change.base_branch,
-            head_sha=change.head_sha if policy.role in ("judge", "replay", "probe") else None,
-            pr_url=change.pr_url,
-        )
-        if policy.role == "judge" and change.state == "judging" and change.judge_run_id == view.id:
-            found["judge_key"] = await issue_judge_key(conn, change.id)
-        if policy.role == "replay":
-            found.update(await replay_claim(conn, change, view.id))
-    if policy.role == "probe":  # a run of a plugin's probe has no change
-        found.update(await probe_claim(conn, change, view.id))
-    return found
-
-
-def _key_digest(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
-
-
-async def issue_judge_key(conn: AsyncConnection, change_id: int) -> str:
-    """A new key of the judge run of change ``change_id``, which the run's claim hands its daemon: the hub keeps its
-    SHA-256 alone, and a key issued before it no longer counts."""
-    key = secrets.token_urlsafe(32)
-    c = tables.curator_changes
-    await conn.execute(update(c).values(judge_key=_key_digest(key)).where(c.c.id == change_id))
-    return key
-
-
-async def judge_prompt(conn: AsyncConnection, view) -> str:
-    """The prompt of judge run ``view``: ``judge.build_judge_prompt`` over its change, its proposal and the plan at
-    the revision the run was queued at."""
-    r, pr, rev = tables.runs, tables.proposals, tables.plan_revisions
-    project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == view.id))).scalar_one()
-    change = await change_of_plan(conn, project_id, view.plan_id)
-    if change is None:
-        return judge.build_judge_prompt(
-            view.project, {}, {}, "", branch="", base="the default branch", head=None, pr_url=None
-        )
-    proposal = (
-        await conn.execute(
-            select(pr.c.id, pr.c.title, pr.c.kind, pr.c.tier, pr.c.summary).where(pr.c.id == change.proposal_id)
-        )
-    ).one()
-    body = (
-        await conn.execute(
-            select(rev.c.body).where(
-                rev.c.project_id == project_id, rev.c.plan_id == view.plan_id, rev.c.revision == view.plan_revision
-            )
-        )
-    ).scalar_one_or_none() or {}
-    base = f"origin/{change.base_branch}" if change.base_branch else "origin/HEAD"
-    return judge.build_judge_prompt(
-        view.project,
-        dict(proposal._mapping),
-        body,
-        change.repo,
-        branch=change.branch,
-        base=base,
-        head=change.head_sha,
-        pr_url=change.pr_url,
-    )
-
-
-# The night shift
-
-
-async def _owner_secret(conn: AsyncConnection, owner_id: int, project_id: int, name: str | None) -> bool:
-    """Whether the owner has a live git secret ``name`` bound to the project."""
-    if not name:
-        return False
-    s, b = tables.secrets, tables.secret_bindings
-    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id)
-    query = select(
-        exists().where(
-            s.c.owner_id == owner_id,
-            s.c.name == name,
-            s.c.kind == "git",
-            s.c.deleted_at.is_(None),
-            (s.c.expires_at.is_(None)) | (s.c.expires_at > func.now()),
-            bound,
-        )
-    )
-    return bool((await conn.execute(query)).scalar_one())
-
-
-def _run_values(due, gate, *, kind: str, plan_id: str, revision: int, title: str, runtime: str, model, repos) -> dict:
-    budget = gate.budget
-    return {
-        "kind": kind,
-        "project_id": due.project_id,
-        "plan_id": plan_id,
-        "title": title,
-        "plan_revision": revision,
-        "dispatched_by": due.owner_id,
-        "dispatched_via": "schedule",
-        **gate.duty.columns(),
-        "requested_runtime": runtime,
-        "runtime": runtime,
-        "model": model,
-        "mode": "headless",
-        "approval": "auto",
-        "timeout_s": budget["max_seconds"] + curator.BUDGET_GRACE_SECONDS,
-        "repos": repos,
-        "schedule_id": due.id,
-        "schedule_night": gate.night,
-        "budget": budget,
-    }
-
-
-def _caps(budget: dict) -> str:
-    return (
-        f"cost cap {curator.money(budget['max_usd'])}, {budget['max_turns']} turns, "
-        f"{budget['max_seconds'] // 60} minutes of agent time"
-    )
-
-
-async def _waits(conn: AsyncConnection, change, why: str) -> str:
-    """Keep ``why`` as the reason of planned ``change``, which the night shift passed over, written only when its
-    reason says something else; the line the job's log names it by."""
-    text = reason_line(why)
-    if change.reason != text:
-        c = tables.curator_changes
-        await conn.execute(
-            update(c)
-            .values(reason=text, updated_at=func.now())
-            .where(c.c.id == change.id, c.c.state == "planned", c.c.reason.is_distinct_from(text))
-        )
-    return f"{change.plan_id}: {why}"
-
-
-async def _git_secret_wait(conn: AsyncConnection, due, change) -> str | None:
-    """Why the Builder of ``change``, on GitLab, waits for the owner's git secret; None once the charter names one the
-    owner has, live and bound to the project."""
-    name = due.body.get("git_secret")
-    if await _owner_secret(conn, due.owner_id, due.project_id, name):
-        return None
-    what = f"repo {change.repo} is on GitLab, where a Builder pushes with the owner's git secret the charter names"
-    if not name:
-        return f"{what}, and the charter names none (git_secret)"
-    return f"{what}, and {due.owner} has no live git secret {name} bound to project {due.project}"
-
-
-def _unready(body) -> list[tuple[str, str | None]]:
-    """(the key, why it is not ready to run or None) of each step of plan ``body``."""
-    steps = body.get("steps") if isinstance(body, dict) and isinstance(body.get("steps"), list) else []
-    return [(step_key(step, index), runs.unready_reason(body, step)) for index, step in enumerate(steps)]
-
-
-async def _run_wait(conn: AsyncConnection, project_id: int, change, held) -> str | None:
-    """Why the Builder of ``change`` waits for its plan ``held``: a run of the plan or a judge run of the change still
-    active, or no step ready to run; None when the night shift may queue it. Takes the plan's lock."""
-    await lock_plan(conn, project_id, change.plan_id)
-    activity = await plan_activity(conn, project_id, change.plan_id)
-    r = tables.runs
-    judging = (
-        await conn.execute(
-            select(
-                exists().where(
-                    r.c.project_id == project_id,
-                    r.c.plan_id == change.plan_id,
-                    r.c.kind == "judge",
-                    r.c.state.in_(runs.ACTIVE_STATES),
-                )
-            )
-        )
-    ).scalar_one()
-    if activity.plan_run is not None or activity.steps or judging:
-        return f"a run of its plan {change.plan_id} is still active: the night shift builds it once that run ends"
-    unready = _unready(held.body)
-    if any(why is None for _, why in unready):
-        return None
-    shown = "; ".join(f"step {key}: {why}" for key, why in unready[:3]) or "it has no step"
-    last = f"; its last Builder was run #{change.builder_run_id}" if change.builder_run_id else ""
-    return f"its plan {change.plan_id} has no step ready to run ({shown}){last}"
-
-
-async def _build_wait(conn: AsyncConnection, due, gate, change, runtime: str, *, curator_app: bool):
-    """(the plan held, None) when the night shift may queue the Builder of planned ``change`` now; else (None, why)."""
-    access = gate.access
-    held = await plan_routes._held(conn, access, change.plan_id)
-    if held is None or not access.visible(held.label, plan_routes._sink(access, None)):
-        return (
-            None,
-            f"its plan {change.plan_id} is not on the hub, or {due.owner}, the night shift's owner, may not read it",
-        )
-    why = None
-    if change.forge == "github":
-        why = await ruleset_wait(conn, due.project_id, change.repo, curator_app=curator_app)
-    elif change.forge == "gitlab":
-        why = await _git_secret_wait(conn, due, change)
-    why = why or await _run_wait(conn, due.project_id, change, held)
-    problems = [] if why else gate.duty.unfit(due.project, "plan", [change.repo], runtime)
-    if problems:
-        why = f"{gate.duty.where} on duty cannot build it: {'; '.join(problems)}"
-    return (None, why) if why else (held, None)
-
-
-async def _builder_queued(conn: AsyncConnection, due, gate, change, run_id: int) -> None:
-    await _set(conn, change.id, builder_run_id=run_id, reason=None)
-    text = (
-        f"Queued by the night shift of project {due.project} as the Builder of the Curator's change #{change.id} "
-        f"(proposal #{change.proposal_id}, tier {change.tier}), as {due.owner} on {gate.duty.where}, on "
-        f"{change.branch} of {change.repo} alone: {_caps(gate.budget)}."
-    )
-    await write_event(conn, run_id, {"text": text, "change_id": change.id, **gate.budget})
-    await notify_queued(conn, run_id)
-    await audit.record(
-        conn,
-        actor_id=due.owner_id,
-        token_id=None,
-        action=BUILD,
-        target=f"{due.project}/{change.plan_id} run:{run_id} change:{change.id}",
-        project_id=due.project_id,
-    )
-    log.info("curator builder queued", extra={"project": due.project, "run_id": run_id, "change_id": change.id})
-
-
-async def queue_builder(conn: AsyncConnection, due, gate, *, curator_app: bool, only: int | None = None) -> int | None:
-    """Queue the Builder of the oldest planned change of the project the night shift may build now, or of change
-    ``only`` alone (``build_now``); its run's id, or None (see the module's docstring). Each planned change it passes
-    over keeps why as its reason (``_waits``). ``curator_app``: whether this hub has the Curator's App. Called under the
-    schedule's row lock."""
-    c = tables.curator_changes
-    query = select(c).where(c.c.project_id == due.project_id, c.c.state == "planned")
-    planned = (await conn.execute((query.where(c.c.id == only) if only else query).order_by(c.c.id))).all()
-    if not planned:
-        return None
-    builder = due.body.get("builder") or {}
-    runtime = builder.get("runtime") or curator.DEFAULT_RUNTIME
-    skipped = []
-    for change in planned:
-        held, why = await _build_wait(conn, due, gate, change, runtime, curator_app=curator_app)
-        if held is not None:
-            values = _run_values(
-                due,
-                gate,
-                kind="plan",
-                plan_id=change.plan_id,
-                revision=held.revision,
-                title=runs.step_title(held.body),
-                runtime=runtime,
-                model=builder.get("model"),
-                repos=[{"repo": change.repo, "branch": change.branch}],
-            )
-            try:
-                run_id = await insert_run(conn, values)
-            except IntegrityError:  # another run of the plan got in first
-                why = f"a run of its plan {change.plan_id} got in first: the night shift builds it once that run ends"
-            else:
-                await _builder_queued(conn, due, gate, change, run_id)
-                return run_id
-        skipped.append(await _waits(conn, change, why))
-    log.info("no curator change to build", extra={"project": due.project, "why": "; ".join(skipped)})
-    return None
-
-
-async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
-    """Queue the judge run of the oldest change of the project that waits for one; its id, or None. The Judge runs on
-    Codex when the project's policy clears Codex for the change's label and the worker on duty has it, else on Claude
-    Code with a model other than the Builder's (``judge.judge_runtime``). Called under the schedule's row lock."""
-    c, p = tables.curator_changes, tables.proposals
-    waiting = (
-        await conn.execute(
-            select(c, p.c.label.label("proposal_label"), p.c.title.label("proposal_title"))
-            .join_from(c, p, p.c.id == c.c.proposal_id)
-            .where(c.c.project_id == due.project_id, c.c.state == "judge_pending")
-            .order_by(c.c.id)
-            .limit(1)
-        )
-    ).one_or_none()
-    if waiting is None:
-        return None
-    access, duty, charter = gate.access, gate.duty, due.body
-    held = await plan_routes._held(conn, access, waiting.plan_id)
-    if held is None:
-        await _set(conn, waiting.id, state="open", reason="its plan is no longer on the hub")
-        return None
-    await lock_plan(conn, due.project_id, waiting.plan_id)
-    activity = await plan_activity(conn, due.project_id, waiting.plan_id)
-    if activity.plan_run is not None or activity.steps:
-        return None  # a Builder of the change still runs: never both at once
-    usable = {name for name in runs.RUNTIMES if duty.runtime(name) is not None}
-    cleared = judge.codex_cleared(access.rules, waiting.proposal_label)
-    runtime, model, why = judge.judge_runtime(
-        charter.get("judge") or {}, charter.get("builder") or {}, codex_allowed=cleared, worker_runtimes=usable
-    )
-    problems = duty.unfit(due.project, "judge", [waiting.repo], runtime)
-    if problems:
-        log.info("no judge run yet", extra={"project": due.project, "why": "; ".join(problems)})
-        return None
-    values = _run_values(
-        due,
-        gate,
-        kind="judge",
-        plan_id=waiting.plan_id,
-        revision=held.revision,
-        title=f"Judge of the Curator's change #{waiting.id}: {waiting.proposal_title}"[:200],
-        runtime=runtime,
-        model=model,
-        repos=[{"repo": waiting.repo, "branch": waiting.branch}],
-    )
-    values["max_attempts"] = 1  # a judge run that ends without a verdict is tried again by the change, not the reaper
-    try:
-        run_id = await insert_run(conn, values)
-    except IntegrityError:  # another judge run of the project is active
-        return None
-    await _set(conn, waiting.id, state="judging", judge_run_id=run_id, reason=None)
-    head = waiting.head_sha[:12] if waiting.head_sha else f"the tip of {waiting.branch}"
-    text = (
-        f"Queued by the night shift of project {due.project} as the Judge of the Curator's change #{waiting.id} "
-        f"(proposal #{waiting.proposal_id}, tier {waiting.tier}) at {head}, on {runtime}"
-        f"{f' ({model})' if model else ''}: {why}. It reads the proposal, the diff, the plan's verify and the "
-        f"project's hidden checks, never the Builder's transcript: {_caps(gate.budget)}."
-    )
-    await write_event(conn, run_id, {"text": text, "change_id": waiting.id, **gate.budget})
-    await notify_queued(conn, run_id)
-    await audit.record(
-        conn,
-        actor_id=due.owner_id,
-        token_id=None,
-        action=JUDGE,
-        target=f"{due.project}/{waiting.plan_id} run:{run_id} change:{waiting.id} runtime={runtime}",
-        project_id=due.project_id,
-    )
-    log.info("curator judge queued", extra={"project": due.project, "run_id": run_id, "change_id": waiting.id})
-    return run_id
-
-
-# When a run of a change ends
-
-
-def _all_done(body) -> bool:
-    steps = body.get("steps") if isinstance(body, dict) else None
-    return (
-        isinstance(steps, list)
-        and bool(steps)
-        and all(isinstance(step, dict) and step.get("status") == "done" for step in steps)
-    )
-
-
-async def builder_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
-    """What the end of plan run ``found`` does to its change, when its plan is the Curator's: done with every step
-    of the plan done, the change waits for its pull request (GitHub) or its Judge (GitLab); otherwise it stays
-    planned, with why."""
-    if new not in runs.TERMINAL_STATES or found.project_id is None:
-        return
-    change = await change_of_plan(conn, found.project_id, found.plan_id, lock=True)
-    if change is None or change.state != "planned" or old == "parked":
-        return
-    pl = tables.plans
-    body = (
-        await conn.execute(select(pl.c.body).where(pl.c.project_id == found.project_id, pl.c.plan_id == found.plan_id))
-    ).scalar_one_or_none()
-    if new == "done" and _all_done(body):
-        state = "pr_pending" if change.forge == "github" else "judge_pending"
-        await _set(conn, change.id, state=state, builder_run_id=found.run_id, reason=None)
-        what = (
-            "the hub opens its pull request"
-            if state == "pr_pending"
-            else "its merge request is open; its Judge comes next"
-        )
-        await write_event(
-            conn, found.run_id, {"text": f"The Curator's change #{change.id} is built: {what}.", "change_id": change.id}
-        )
-        return
-    why = found.error or reason if new != "done" else "its plan has steps not done"
-    await _set(
-        conn,
-        change.id,
-        builder_run_id=found.run_id,
-        reason=reason_line(f"Builder run #{found.run_id} ended {new}: {why}"),
-    )
-    if new == "failed":
-        await ledger_lines.build_failed(conn, change, found.run_id, new, why)
-
-
-async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
-    """What the end of judge run ``found`` does: a run that ends without the verdict of its change queues another
-    (the change waits for a Judge again), JUDGE_ATTEMPTS in all, then leaves the change open; a failure sends the
-    owner the notice run_failed."""
-    if new not in runs.TERMINAL_STATES or found.project_id is None:
-        return
-    from evo_agents.hub.server.notifications import notify, run_link
-
-    if new == "failed":
-        error = found.error or reason
-        await notify(
-            conn,
-            user_id=found.dispatcher_id,
-            kind="notice",
-            notice_kind="run_failed",
-            project_id=found.project_id,
-            run_id=found.run_id,
-            title=await merge_gate.judge_run_title(conn, found.run_id, found.plan_id),
-            body=error,
-            details={"run_kind": "judge", "plan_id": found.plan_id, "error": error},
-            link=run_link(found.project, found.run_id),
-        )
-    change = await change_of_plan(conn, found.project_id, found.plan_id, lock=True)
-    if change is None or change.state != "judging" or change.judge_run_id != found.run_id:
-        return
-    attempts = change.judge_attempts + 1
-    why = found.error or reason
-    if attempts >= judge.JUDGE_ATTEMPTS:
-        await _set(
-            conn,
-            change.id,
-            state="open",
-            judge_attempts=attempts,
-            reason=reason_line(f"{attempts} judge runs ended without a verdict, the last {new}: {why}"),
-        )
-        return
-    await _set(
-        conn,
-        change.id,
-        state="judge_pending",
-        judge_attempts=attempts,
-        reason=reason_line(f"judge run #{found.run_id} ended {new} without a verdict ({why}): another one comes"),
-    )
-
-
-# The judge run's side
-
-
-async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
-    """(run row, change row) of the judge run ``run_id`` the worker of ``user`` holds, whose change waits for its
-    verdict, asked with the key the run's claim handed its daemon; 404 for any other run, 409 for a change that waits
-    for no verdict of it, 403 without the key."""
-    worker_id = (await worker_of(conn, user))[0]
-    r = tables.runs
-    row = (
-        await conn.execute(
-            select(r.c.id, r.c.state, r.c.worker_id, r.c.kind, r.c.project_id, r.c.plan_id, r.c.plan_revision)
-            .where(r.c.id == run_id)
-            .with_for_update()
-        )
-    ).one_or_none()
-    if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
-        raise HTTPException(404, NOT_HELD.format(id=run_id))
-    if row.kind != "judge":
-        raise HTTPException(404, f"run {run_id} is not a judge run: only a judge run reads what a Judge reads")
-    change = await change_of_plan(conn, row.project_id, row.plan_id, lock=True)
-    if change is None or change.state != "judging" or change.judge_run_id != run_id:
-        raise HTTPException(409, f"run {run_id} judges no change that waits for its verdict")
-    if not key or change.judge_key is None or not hmac.compare_digest(_key_digest(key), change.judge_key):
-        raise HTTPException(
-            403,
-            f"run {run_id} is a judge run: what it reads and its verdict take the run's own key "
-            f"({judge.JUDGE_KEY_HEADER}), which its claim handed the daemon; the worker token alone reads no hidden "
-            "check and writes no verdict",
-        )
-    return row, change
-
-
-async def _plan_verify(conn: AsyncConnection, row) -> list[str]:
-    rev = tables.plan_revisions
-    body = (
-        await conn.execute(
-            select(rev.c.body).where(
-                rev.c.project_id == row.project_id, rev.c.plan_id == row.plan_id, rev.c.revision == row.plan_revision
-            )
-        )
-    ).scalar_one_or_none()
-    return judge.verify_commands(body or {})
-
-
-@worker_router.get("/runs/{run_id}/judge", response_model=JudgeInputs, responses=REFUSALS)
-async def judge_inputs(
-    request: Request, run_id: RunId, user: CurrentUser, response: Response, judge_key: JudgeKey = None
-) -> JudgeInputs:
-    """What the judge run this worker holds reads: its change, its proposal, the plan's verify commands, the
-    charter's protected paths and the project's hidden checks; with the run's own key."""
-    async with request.app.state.engine.begin() as conn:
-        row, change = await _held_judge(conn, user, run_id, judge_key)
-        charter = await _charter(conn, row.project_id)
-        hidden = [item for item in (charter.get("judge") or {}).get("hidden_checks") or [] if isinstance(item, str)]
-        await _set(conn, change.id, hidden_count=len(hidden))
-        pr = tables.proposals
-        proposal = (
-            await conn.execute(
-                select(pr.c.id, pr.c.title, pr.c.kind, pr.c.tier, pr.c.summary, pr.c.paths).where(
-                    pr.c.id == change.proposal_id
-                )
-            )
-        ).one()
-        verify = await _plan_verify(conn, row)
-        knowledge = change_tiers.judge_knowledge(change)
-        checks = f", {len(knowledge['checks'])} check(s) of knowledge.yaml" if knowledge else ""
-        await write_event(
-            conn,
-            run_id,
-            {
-                "text": f"The Judge read its inputs: {len(verify)} verify command(s) of the plan{checks} and "
-                f"{len(hidden)} hidden check(s) of the project, which only this run reads.",
-                "change_id": change.id,
-            },
-        )
-    response.headers.update(NO_STORE)
-    log.info("judge inputs read", extra={"run_id": run_id, "change_id": change.id, "hidden": len(hidden)})
-    return JudgeInputs(
-        change_id=change.id,
-        repo=change.repo,
-        branch=change.branch,
-        base_branch=change.base_branch,
-        head_sha=change.head_sha,
-        proposal=dict(proposal._mapping),
-        verify=verify,
-        protected_paths=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
-        hidden_checks=hidden,
-        knowledge=knowledge,
-    )
-
-
-async def _raise_tier(conn: AsyncConnection, change, signs: list[dict]) -> None:
-    """Put the change's proposal at tier 3, with the reason, once a diff of it shows signs."""
-    pr = tables.proposals
-    reasons = (await conn.execute(select(pr.c.tier_reasons).where(pr.c.id == change.proposal_id))).scalar_one()
-    reason = judge.raised_reason(signs)
-    kept = list(reasons or [])
-    if reason not in kept:
-        kept.append(reason)
-    await conn.execute(update(pr).values(tier=3, tier_reasons=kept).where(pr.c.id == change.proposal_id))
-
-
-@worker_router.post("/runs/{run_id}/verdict", response_model=Change, responses=REFUSALS)
-async def record_verdict(
-    request: Request, run_id: RunId, body: VerdictIn, user: CurrentUser, judge_key: JudgeKey = None
-) -> Change:
-    """The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
-    ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again."""
-    async with request.app.state.engine.begin() as conn:
-        row, change = await _held_judge(conn, user, run_id, judge_key)
-        expected = await _plan_verify(conn, row) + change_tiers.judge_checks(change)
-        hidden_count = change.hidden_count
-        if hidden_count is None:
-            charter = await _charter(conn, row.project_id)
-            hidden_count = len((charter.get("judge") or {}).get("hidden_checks") or [])
-        signs = [sign.model_dump() for sign in body.signs]
-        head = change.head_sha or body.head_sha  # GitLab: the tip the Judge read is the one judged
-        verify = [item.model_dump(exclude_none=True) for item in body.verify]
-        hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
-        passed, failures = judge.final_verdict(
-            agent=body.verdict,
-            verify=verify,
-            expected_verify=expected,
-            hidden=hidden,
-            hidden_count=hidden_count,
-            signs=signs,
-            head_matches=body.head_sha == head,
-        )
-        dimension = security_dimension(body.security)
-        ledger = findings.supersede(
-            findings.ledger_of(change.verdict), security_pass.DIMENSION, run_id=run_id, head=body.head_sha
-        )
-        ledger, _ = findings.record_round(
-            ledger,
-            names=[security_pass.DIMENSION],
-            marks={},
-            new=security_findings(body.security),
-            dimensions={security_pass.DIMENSION: dimension},
-            run_id=run_id,
-            head=body.head_sha,
-        )
-        if dimension["verdict"] != "pass" and not signs:  # with signs the Judge did not start, nor the pass
-            passed = False
-            failures.append(f"the Judge failed {security_pass.DIMENSION}: {dimension['reason']}")
-        verdict = {
-            "run_id": run_id,
-            "agent": body.verdict,
-            "reasons": body.reasons,
-            "dimensions": {security_pass.DIMENSION: dimension},
-            "security": body.security.model_dump(exclude={"findings"}) if body.security else None,
-            "findings": ledger,
-            "head_sha": body.head_sha,
-            "base_sha": body.base_sha,
-            "verify": verify,
-            "hidden": hidden,
-            "signs": signs,
-            "failures": failures,
-            "source": "judge",
-        }
-        values = {
-            "state": "judged",
-            "passed": passed,
-            "verdict": verdict,
-            "head_sha": head,
-            "reason": None,
-            "judge_key": None,
-        }
-        if signs:
-            await _raise_tier(conn, change, signs)
-            values["tier"] = 3
-        elif body.paths:
-            charter = await _charter(conn, row.project_id)
-            state = request.app.state
-            reader = change_tiers.GraphReader(state.blobs, state.kg_graphs)
-            facts = await change_tiers.verdict_facts(state.engine, change, body.paths, reader)
-            values["tier"] = await change_tiers.retier(conn, change, facts, charter)
-        await _set(conn, change.id, **values)
-        text = f"The Judge {'passed' if passed else 'failed'} the Curator's change #{change.id}"
-        text += "." if passed else f": {'; '.join(failures)}."
-        await write_event(conn, run_id, {"text": text, "change_id": change.id, "passed": passed})
-        view = await change_view(conn, change.id)
-    log.info("verdict recorded", extra={"run_id": run_id, "change_id": change.id, "passed": passed})
-    return view
-
-
-# Reading
-
-
-@router.get("/{project}/curator/changes", response_model=ChangeList, responses=REFUSALS)
-async def list_changes(request: Request, project: ProjectName, user: CurrentUser) -> ChangeList:
-    """The project's Curator changes, newest first, with the plans the caller may read."""
-    c, pr = tables.curator_changes, tables.proposals
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        need_reader(access)
-        query = (
-            _changes()
-            .add_columns(pr.c.label.label("proposal_label"))
-            .join(pr, pr.c.id == c.c.proposal_id)
-            .where(c.c.project_id == access.project_id)
-            .order_by(c.c.id.desc())
-            .limit(MAX_LIST)
-        )
-        rows = (await conn.execute(query)).all()
-        from evo_agents.hub.server.runs.service.views import visible_plans
-
-        readable = set(await visible_plans(conn, access, None))
-    through = plan_routes._sink(access, None)
-    shown = [
-        Change(**{key: value for key, value in row._mapping.items() if key != "proposal_label"})
-        for row in rows
-        if access.visible(row.proposal_label, through) and (row.plan_id is None or row.plan_id in readable)
-    ]
-    return ChangeList(project=access.name, changes=shown)
-
-
-# Closing by hand
-
-
-@router.post("/{project}/curator/changes/{change_id}/close", response_model=Change, responses=REFUSALS)
-async def close_change(
-    request: Request, project: ProjectName, change_id: ChangeId, body: ChangeClose, user: CurrentUser
-) -> Change:
-    """Close a change left open with no pull request, saying why; the admins of the project alone may."""
-    c, pr = tables.curator_changes, tables.proposals
-    why = reason_line(body.reason)
-    if why is None:
-        raise HTTPException(422, "say why the change is closed: the reason is empty")
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        need_reader(access)
-        if not has_role(access.role, "admin"):
-            raise HTTPException(
-                403, f"closing a change of project {access.name} needs the admin role on it; you hold {access.role}"
-            )
-        query = (
-            select(c, pr.c.label.label("proposal_label"))
-            .join_from(c, pr, pr.c.id == c.c.proposal_id)
-            .where(c.c.id == change_id, c.c.project_id == access.project_id)
-            .with_for_update(of=c)
-        )
-        row = (await conn.execute(query)).one_or_none()
-        from evo_agents.hub.server.runs.service.views import visible_plans
-
-        if (
-            row is None
-            or not access.visible(row.proposal_label, plan_routes._sink(access, None))
-            or (row.plan_id is not None and row.plan_id not in set(await visible_plans(conn, access, None)))
-        ):
-            raise HTTPException(404, f"no change #{change_id} of the Curator in project {access.name} you may read")
-        if row.state != "open":
-            raise HTTPException(
-                409, f"change #{change_id} is {row.state}: only a change left open is closed by hand; nothing changed"
-            )
-        if row.pr_number is not None:
-            raise HTTPException(
-                409,
-                f"change #{change_id} has pull request {row.pr_url or row.pr_number}: close that on GitHub and the "
-                "hub closes the change when it reads it again; nothing changed",
-            )
-        await _set(
-            conn, change_id, state="closed", reason=why, ledger_extra={"actor_id": user.user_id, "login": user.login}
-        )
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=CLOSE,
-            target=f"{access.name} change:{change_id} proposal:{row.proposal_id}",
-            project_id=access.project_id,
-        )
-        view = await change_view(conn, change_id)
-    log.info("curator change closed by hand", extra={"change_id": change_id, "login": user.login})
-    return view
 
 
 # The job
@@ -1188,14 +142,25 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
     )
 
 
-async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
-    from evo_agents.hub.server import pull_trailers, pulls
+def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[dict]:
+    """``diff_signs.hack_signs`` of a pull request's files, and first, so the cap on signs never drops it, the sign of a
+    list of files GitHub did not give whole (``cut``)."""
+    signs = diff_signs.hack_signs(
+        diff,
+        repo=change.repo,
+        protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
+        verify_commands=judge.verify_commands(body),
+    )
+    if cut is not None:
+        signs.insert(0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": cut})
+    return signs
 
-    target = github_target(change.origin)
-    if target is None:
-        async with engine.begin() as conn:
-            await _set(conn, change.id, state="open", reason="its repo has no origin on GitHub")
-        return "open"
+
+async def _pull_inputs(engine: AsyncEngine, change) -> tuple[str, str, dict, str, dict]:
+    """(its proposal's title, the project, the charter, the trailers the Builder's run signs it with, the plan's body)
+    of a change whose pull request the hub opens."""
+    from evo_agents.hub.server import pull_trailers
+
     async with engine.begin() as conn:
         pr, p = tables.proposals, tables.projects
         title, project = (
@@ -1205,13 +170,62 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
                 .where(pr.c.id == change.proposal_id)
             )
         ).one()
-        charter = await _charter(conn, change.project_id)
+        charter = await charter_of(conn, change.project_id)
         rev, signed = tables.plans, await pull_trailers.block(conn, change.builder_run_id)
         body = (
             await conn.execute(
                 select(rev.c.body).where(rev.c.project_id == change.project_id, rev.c.plan_id == change.plan_id)
             )
         ).scalar_one_or_none() or {}
+    return title, project, charter, signed, body
+
+
+async def _pull_opened(engine: AsyncEngine, change, project: str, made: dict, base: str, signs, facts, charter) -> str:
+    """Keep pull request ``made`` the hub opened for ``change``: the change waits for its Judge, or with ``signs`` fails
+    at once and puts its proposal at tier 3; its outcome, or "moved" for a change no longer waiting for it."""
+    head, url = (made.get("head") or {}).get("sha"), made.get("html_url")
+    async with engine.begin() as conn:
+        locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
+        if locked is None or locked.state != "pr_pending":
+            return "moved"
+        values = {"pr_number": made["number"], "pr_url": url, "base_branch": base, "head_sha": head, "reason": None}
+        values.update(tier=await change_tiers.retier(conn, locked, facts, charter), knowledge=facts.knowledge)
+        if signs:
+            _, failures = judge.final_verdict(
+                agent=None, verify=[], expected_verify=[], hidden=[], hidden_count=0, signs=signs, head_matches=True
+            )
+            verdict = {"signs": signs, "failures": failures[:1], "source": "hub", "head_sha": head}
+            await raise_tier(conn, locked, signs)
+            values.update(state="judged", passed=False, verdict=verdict, tier=3)
+        else:
+            values["state"] = "judge_pending"
+        await set_change(conn, change.id, **values)
+        if change.builder_run_id is not None:
+            await write_event(
+                conn,
+                change.builder_run_id,
+                {"text": f"The hub opened pull request {url} of the Curator's change #{change.id}.", "pr": url},
+            )
+        await audit.record(
+            conn,
+            actor_id=None,
+            token_id=None,
+            action=PULL,
+            target=f"{project}/{change.plan_id} change:{change.id} pr={url}",
+            project_id=change.project_id,
+        )
+    return "signs" if signs else "opened"
+
+
+async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
+    from evo_agents.hub.server import pulls
+
+    target = github_target(change.origin)
+    if target is None:
+        async with engine.begin() as conn:
+            await set_change(conn, change.id, state="open", reason="its repo has no origin on GitHub")
+        return "open"
+    title, project, charter, signed, body = await _pull_inputs(engine, change)
 
     async def opened(token: str) -> dict:
         async with engine.connect() as conn:  # the names of the guard leave the title and body on a published repo
@@ -1240,63 +254,25 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
     try:
         found = await pulls.with_token(app, target.owner, target.name, "open", opened)
     except GitHubRefused as exc:
-        settled = await _settle_by_branch(engine, app, change, target)
+        settled = await settle_by_branch(engine, app, change, target)
         if settled is not None:  # its branch was merged, or its pull request closed, by hand
             return settled
         async with engine.begin() as conn:
-            await _set(conn, change.id, reason=reason_line(f"the pull request could not be opened: {exc}"))
+            await set_change(conn, change.id, reason=reason_line(f"the pull request could not be opened: {exc}"))
         return "refused"
-    made, base = found["pull"], found["base"]
-    head = (made.get("head") or {}).get("sha")
-    number, url = made.get("number"), made.get("html_url")
-    if not judge.is_sha(head) or type(number) is not int:
+    made = found["pull"]
+    number = made.get("number")
+    if not judge.is_sha((made.get("head") or {}).get("sha")) or type(number) is not int:
         raise GitHubUnavailable("GitHub answered without the pull request's number and head")
 
     async def read(token: str) -> tuple[list[dict], str | None]:
         return await _files_of(app, token, target, number, made.get("changed_files"))
 
     files, cut = await pulls.with_token(app, target.owner, target.name, "read", read)
-    diff = judge.from_github_files(files)
-    signs = judge.hack_signs(
-        diff,
-        repo=change.repo,
-        protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
-        verify_commands=judge.verify_commands(body),
-    )
-    if cut is not None:  # first, so the cap on signs never drops it
-        signs.insert(0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": cut})
-    facts = await change_tiers.pull_facts(engine, app, change, target, judge.changed_paths(diff), made, reader)
-    async with engine.begin() as conn:
-        locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
-        if locked is None or locked.state != "pr_pending":
-            return "moved"
-        values = {"pr_number": number, "pr_url": url, "base_branch": base, "head_sha": head, "reason": None}
-        values.update(tier=await change_tiers.retier(conn, locked, facts, charter), knowledge=facts.knowledge)
-        if signs:
-            _, failures = judge.final_verdict(
-                agent=None, verify=[], expected_verify=[], hidden=[], hidden_count=0, signs=signs, head_matches=True
-            )
-            verdict = {"signs": signs, "failures": failures[:1], "source": "hub", "head_sha": head}
-            await _raise_tier(conn, locked, signs)
-            values.update(state="judged", passed=False, verdict=verdict, tier=3)
-        else:
-            values["state"] = "judge_pending"
-        await _set(conn, change.id, **values)
-        if change.builder_run_id is not None:
-            await write_event(
-                conn,
-                change.builder_run_id,
-                {"text": f"The hub opened pull request {url} of the Curator's change #{change.id}.", "pr": url},
-            )
-        await audit.record(
-            conn,
-            actor_id=None,
-            token_id=None,
-            action=PULL,
-            target=f"{project}/{change.plan_id} change:{change.id} pr={url}",
-            project_id=change.project_id,
-        )
-    return "signs" if signs else "opened"
+    diff = diff_signs.from_github_files(files)
+    signs = _signs_of(diff, change, charter, body, cut)
+    facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), made, reader)
+    return await _pull_opened(engine, change, project, made, found["base"], signs, facts, charter)
 
 
 async def _files_of(app: GitHubApp, token: str, target: Target, number: int, expected) -> tuple[list[dict], str | None]:
@@ -1345,7 +321,7 @@ async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None
         if not await _unchanged(conn, change):
             return MOVED
         if kept is None:
-            await _set(conn, change.id, state="open", reason=why)
+            await set_change(conn, change.id, state="open", reason=why)
             await _left_for_owner(conn, change.id)
         else:
             c = tables.curator_changes
@@ -1382,7 +358,7 @@ async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
 
     check_id = await pulls.with_token(app, target.owner, target.name, "check", write)
     async with engine.begin() as conn:
-        await _set(conn, change.id, check_run_id=check_id)
+        await set_change(conn, change.id, check_run_id=check_id)
     return "checked"
 
 
@@ -1441,11 +417,11 @@ async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dic
 async def _tier_again(engine: AsyncEngine, app: GitHubApp, change, target: Target, diff, pull: dict, charter, reader):
     """The tier of a judged change from its pull request's files as GitHub lists them now (``change_tiers.retier``),
     kept on the change when it rose."""
-    facts = await change_tiers.pull_facts(engine, app, change, target, judge.changed_paths(diff), pull, reader)
+    facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), pull, reader)
     async with engine.begin() as conn:
         tier = await change_tiers.retier(conn, change, facts, charter)
         if tier != change.tier:
-            await _set(conn, change.id, tier=tier)
+            await set_change(conn, change.id, tier=tier)
     return tier
 
 
@@ -1493,17 +469,8 @@ async def merge_read(
     ruleset = await _ruleset_now(engine, curator_app, change, target)
     seen = await pulls.with_token(app, target.owner, target.name, "read", partial(_read_merge, app, target, change))
     found = seen["pull"]
-    diff = judge.from_github_files(seen["files"])
-    signs = judge.hack_signs(
-        diff,
-        repo=change.repo,
-        protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
-        verify_commands=judge.verify_commands(body),
-    )
-    if seen["cut"] is not None:  # first, so the cap on signs never drops it
-        signs.insert(
-            0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": seen["cut"]}
-        )
+    diff = diff_signs.from_github_files(seen["files"])
+    signs = _signs_of(diff, change, charter, body, seen["cut"])
     tier = change.tier
     if reader is not None:
         tier = await _tier_again(engine, app, change, target, diff, found, charter, reader)
@@ -1540,7 +507,7 @@ async def merge_read(
 
 def merge_act(change, read: MergeRead) -> dict:
     """The act of merging ``change``'s pull request at the head the Judge passed, as the gate K5 names it."""
-    scope = approval_heads.scope_of(judge.changed_paths(read.diff), read.pull.get("body"))
+    scope = approval_heads.scope_of(diff_signs.changed_paths(read.diff), read.pull.get("body"))
     return autonomy_gates.pull_act(change.repo, change.pr_number, change.base_branch, change.head_sha, scope)
 
 
@@ -1569,7 +536,9 @@ async def record_merge(
     extra = {"before_sha": (read.pull.get("base") or {}).get("sha")}  # the default branch it merged into
     if by is not None:
         extra.update(actor="user", actor_id=by.user_id, login=by.login, agent=by.agent, chat_run=by.chat_run_id)
-    await _set(conn, change.id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None, ledger_extra=extra)
+    await set_change(
+        conn, change.id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None, ledger_extra=extra
+    )
     project = (
         await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
     ).scalar_one()
@@ -1622,7 +591,7 @@ async def _merge(
         failures = (change.verdict or {}).get("failures") or []
         return await _reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
     async with engine.begin() as conn:
-        charter = await _charter(conn, change.project_id)
+        charter = await charter_of(conn, change.project_id)
         tier, waits = await change_tiers.merge_tier(conn, change)
         body = (
             await conn.execute(
@@ -1645,7 +614,7 @@ async def _merge(
                 return MOVED
             verdict_at = change.updated_at  # when the verdict, then its check run, was written
             if verdict_at is not None and await _older_than(conn, verdict_at, CI_WAIT):
-                await _set(
+                await set_change(
                     conn,
                     change.id,
                     state="open",
@@ -1690,169 +659,39 @@ async def _older_than(conn: AsyncConnection, moment: datetime, span: timedelta) 
     return bool((await conn.execute(select(func.now() - span > moment))).scalar_one())
 
 
-async def _left_open(engine: AsyncEngine) -> list:
-    """The changes left open for their owner with a pull request on GitHub, not read for WATCH_EVERY."""
-    c, pr = tables.curator_changes, tables.project_repos
+async def _judged_elsewhere(engine: AsyncEngine, change) -> str:
+    """A judged change off GitHub: left open, or handed to the merge queue when its policy says so
+    (``merge_gate.curator_judged``); MOVED for a change that moved on since the pass read it."""
+    outcome, why = await merge_gate.curator_judged(engine, change)
     async with engine.begin() as conn:
-        query = (
-            select(c, pr.c.origin)
-            .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
-            .where(
-                c.c.state == "open",
-                c.c.forge == "github",
-                c.c.pr_number.is_not(None),
-                c.c.updated_at < func.now() - WATCH_EVERY,
-            )
-            .order_by(c.c.updated_at)
-            .limit(MAX_WATCH)
-        )
-        return (await conn.execute(query)).all()
+        if not await _unchanged(conn, change):
+            return MOVED
+        await set_change(conn, change.id, state="open", reason=reason_line(why))
+    return outcome
 
 
-def _github_time(text) -> datetime | None:
-    try:
-        return datetime.fromisoformat(str(text).replace("Z", "+00:00")) if text else None
-    except ValueError:
-        return None
-
-
-async def _member_of(conn: AsyncConnection, login: str | None) -> int | None:
-    if not login:
-        return None
-    u = tables.users
-    return (await conn.execute(select(u.c.id).where(func.lower(u.c.login) == login.lower()))).scalar_one_or_none()
-
-
-async def _watch(engine: AsyncEngine, app: GitHubApp, change) -> str:
-    """Read a pull request left open for its owner: merged by hand, the change is merged (and its figures will be
-    counted again); closed, it is closed; else it is read again after WATCH_EVERY."""
-    from evo_agents.hub.server import pulls
-
-    target = github_target(change.origin)
-
-    async def read(token: str) -> dict:
-        return await pulls.pull(app, token, target.owner, target.name, change.pr_number)
-
-    try:
-        if target is None:
-            raise GitHubRefused(f"repo {change.repo} has no origin on GitHub")
-        found = await pulls.with_token(app, target.owner, target.name, "read", read)
-    except GitHubRefused as exc:  # read again after WATCH_EVERY, not at every pass
-        async with engine.begin() as conn:
-            await _set(conn, change.id)
-        log.warning("a pull request left open could not be read", extra={"change_id": change.id, "why": str(exc)})
-        return "refused"
-    async with engine.begin() as conn:
-        locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
-        if locked is None or locked.state != "open":
-            return "moved"
-        settled = await _settle(conn, locked, found)
-        if settled is None:
-            await _set(conn, change.id)  # read again after WATCH_EVERY
-    return settled or "still_open"
-
-
-async def _settle(conn: AsyncConnection, change, found: dict) -> str | None:
-    """What pull request ``found`` of ``change`` (a row of curator_changes, locked), as GitHub reads it whole, makes of
-    the change: merged by hand, ``merged`` (when, by whom, at which commit); closed without a merge, ``closed``; None
-    while it is open. A change that named no pull request yet names this one."""
-    values = {}
-    if change.pr_number is None and type(found.get("number")) is int:
-        base, head = found.get("base") or {}, (found.get("head") or {}).get("sha")
-        values.update(pr_number=found["number"], pr_url=found.get("html_url"), base_branch=base.get("ref"))
-        if change.head_sha is None and judge.is_sha(head):
-            values["head_sha"] = head
-    if found.get("merged") is True:
-        login = (found.get("merged_by") or {}).get("login")
-        sha = found.get("merge_commit_sha")
-        extra = {
-            "actor": "user",
-            "actor_id": await _member_of(conn, login),
-            "login": login,
-            "before_sha": (found.get("base") or {}).get("sha"),
-        }
-        await _set(
-            conn,
-            change.id,
-            **values,
-            state="merged",
-            merged_at=_github_time(found.get("merged_at")) or func.now(),
-            merge_sha=sha if judge.is_sha(sha) else None,
-            reason=None,
-            ledger_extra=extra,
-        )
-        return "merged_by_hand"
-    if found.get("state") == "closed":
-        await _set(conn, change.id, **values, state="closed", reason="its pull request was closed without a merge")
-        return "closed"
-    return None
-
-
-async def _settle_by_branch(engine: AsyncEngine, app: GitHubApp, change, target: Target | None) -> str | None:
-    """Look on GitHub for a pull request of ``change``'s branch, in any state, when the hub cannot open one or its plan
-    has no step left: one merged, else the newest when it is closed, settles the change as ``_settle`` does (its branch
-    merged, or its pull request closed, by hand). The outcome, or None when no pull request settles it or GitHub
-    refuses."""
-    from evo_agents.hub.server import pulls
-
-    if target is None or not change.branch:
-        return None
-
-    async def read(token: str) -> dict | None:
-        listed = await pulls.branch_pulls(app, token, target.owner, target.name, change.branch)
-        chosen = next((item for item in listed if item.get("merged_at")), listed[0] if listed else None)
-        if chosen is None or chosen.get("state") != "closed" or type(chosen.get("number")) is not int:
-            return None
-        return await pulls.pull(app, token, target.owner, target.name, chosen["number"])
-
-    try:
-        found = await pulls.with_token(app, target.owner, target.name, "read", read)
-    except GitHubRefused as exc:
-        log.warning(
-            "the pull requests of a change's branch could not be read", extra={"change_id": change.id, "why": str(exc)}
-        )
-        return None
-    if found is None:
-        return None
-    async with engine.begin() as conn:
-        locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
-        if locked is None or locked.state != change.state:
-            return None
-        return await _settle(conn, locked, found)
-
-
-async def _stalled(engine: AsyncEngine) -> list:
-    """The planned changes on GitHub whose plan has no step ready to run, not read for WATCH_EVERY, MAX_WATCH of
-    them: a branch merged by hand leaves its change so."""
-    c, pr, pl = tables.curator_changes, tables.project_repos, tables.plans
-    async with engine.begin() as conn:
-        query = (
-            select(c, pr.c.origin, pl.c.body.label("plan_body"))
-            .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
-            .join(pl, (pl.c.project_id == c.c.project_id) & (pl.c.plan_id == c.c.plan_id))
-            .where(
-                c.c.state == "planned",
-                c.c.forge == "github",
-                c.c.branch.is_not(None),
-                c.c.updated_at < func.now() - WATCH_EVERY,
-            )
-            .order_by(c.c.updated_at)
-        )
-        rows = (await conn.execute(query)).all()
-    return [row for row in rows if all(why is not None for _, why in _unready(row.plan_body))][:MAX_WATCH]
-
-
-async def _watch_planned(engine: AsyncEngine, app: GitHubApp, change) -> str:
-    """Read the pull requests of the branch of a planned ``change`` whose plan has no step ready (``_settle_by_branch``);
-    unsettled, it is read again after WATCH_EVERY."""
-    settled = await _settle_by_branch(engine, app, change, github_target(change.origin))
-    if settled is None:
-        async with engine.begin() as conn:
-            c = tables.curator_changes
-            await conn.execute(
-                update(c).values(updated_at=func.now()).where(c.c.id == change.id, c.c.state == "planned")
-            )
-    return settled or "still_planned"
+async def _move_on(
+    engine: AsyncEngine,
+    github_app: GitHubApp | None,
+    curator_app: GitHubApp | None,
+    change,
+    reader: change_tiers.GraphReader,
+    outcomes: Counter,
+) -> None:
+    """Move one due change on, counting its outcome in ``outcomes``."""
+    if change.forge != "github":
+        if change.state == "judged":
+            outcomes[await _judged_elsewhere(engine, change)] += 1
+        return
+    if github_app is None:
+        outcomes["no_app"] += 1
+        return
+    if change.state == "pr_pending":
+        outcomes[await _open_pull(engine, github_app, change, reader)] += 1
+        return
+    if change.check_run_id is None and judge.is_sha(change.head_sha) and github_target(change.origin) is not None:
+        outcomes[await _write_check(engine, github_app, change)] += 1
+    outcomes[await _merge(engine, github_app, curator_app, change, reader)] += 1
 
 
 async def advance(
@@ -1865,29 +704,7 @@ async def advance(
     reader = change_tiers.GraphReader.at(blobs, data_dir)
     for change in await _due_changes(engine):
         try:
-            if change.forge != "github":
-                if change.state == "judged":  # open, or handed to the merge queue when its policy says so
-                    outcome, why = await merge_gate.curator_judged(engine, change)
-                    async with engine.begin() as conn:
-                        if not await _unchanged(conn, change):
-                            outcomes[MOVED] += 1
-                            continue
-                        await _set(conn, change.id, state="open", reason=reason_line(why))
-                    outcomes[outcome] += 1
-                continue
-            if github_app is None:
-                outcomes["no_app"] += 1
-                continue
-            if change.state == "pr_pending":
-                outcomes[await _open_pull(engine, github_app, change, reader)] += 1
-                continue
-            if (
-                change.check_run_id is None
-                and judge.is_sha(change.head_sha)
-                and github_target(change.origin) is not None
-            ):
-                outcomes[await _write_check(engine, github_app, change)] += 1
-            outcomes[await _merge(engine, github_app, curator_app, change, reader)] += 1
+            await _move_on(engine, github_app, curator_app, change, reader, outcomes)
         except GitHubUnavailable as exc:
             log.warning("a curator change waits for GitHub", extra={"change_id": change.id, "why": str(exc)})
             outcomes["github"] += 1
@@ -1895,27 +712,7 @@ async def advance(
             log.exception("a curator change failed", extra={"change_id": change.id})
             outcomes["failed"] += 1
     if github_app is not None:
-        for change in await _left_open(engine):
-            try:
-                found = await _watch(engine, github_app, change)
-                if found in ("merged_by_hand", "closed"):
-                    outcomes[found] += 1
-            except GitHubUnavailable as exc:
-                why = {"change_id": change.id, "why": str(exc)}
-                log.warning("a pull request left open waits for GitHub", extra=why)
-            except Exception:  # one change failing leaves the others their turn
-                log.exception("reading a pull request left open failed", extra={"change_id": change.id})
-        for change in await _stalled(engine):
-            try:
-                found = await _watch_planned(engine, github_app, change)
-                if found in ("merged_by_hand", "closed"):
-                    outcomes[found] += 1
-            except GitHubUnavailable as exc:
-                log.warning(
-                    "a planned change's branch waits for GitHub", extra={"change_id": change.id, "why": str(exc)}
-                )
-            except Exception:  # one change failing leaves the others their turn
-                log.exception("reading a planned change's branch failed", extra={"change_id": change.id})
+        await watch_pass(engine, github_app, outcomes)
     await skill_release.release(engine, github_app, blobs, outcomes)
     await check_rulesets(engine, curator_app, outcomes)
     return dict(sorted(outcomes.items()))

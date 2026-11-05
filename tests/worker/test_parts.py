@@ -475,7 +475,7 @@ def test_rmtree_off_loop_the_cleanup_removes_worktrees_and_run_directories_in_a_
     import shutil
     import threading
 
-    from evo_agents.worker import daemon as daemon_module
+    from evo_agents.worker import daemon_cleanup
     from evo_agents.worker import home as home_module
     from evo_agents.worker.daemon import Daemon
 
@@ -490,7 +490,7 @@ def test_rmtree_off_loop_the_cleanup_removes_worktrees_and_run_directories_in_a_
         threads.append(threading.current_thread().name)
         return real(path, *args, **kwargs)
 
-    monkeypatch.setattr(daemon_module.shutil, "rmtree", rmtree)
+    monkeypatch.setattr(daemon_cleanup.shutil, "rmtree", rmtree)
     monkeypatch.setattr(home_module.shutil, "rmtree", rmtree)
     config = WorkerConfig(url="https://hub.example.org", worker_id=1, name="mac", projects=["demo"])
     daemon = Daemon(home, config, "evw_x", adapters={})
@@ -502,13 +502,13 @@ def test_rmtree_off_loop_the_cleanup_removes_worktrees_and_run_directories_in_a_
 
 def test_task_error_logged_when_a_background_task_of_the_daemon_fails(caplog):
     pytest.importorskip("aiohttp")
-    from evo_agents.worker import daemon as daemon_module
+    from evo_agents.worker import background
 
     async def broken():
         raise RuntimeError("the heartbeat broke")
 
     async def go():
-        task = daemon_module.spawn(broken(), "heartbeat")
+        task = background.spawn(broken(), "heartbeat")
         await asyncio.wait([task])
         await asyncio.sleep(0)  # the done callback runs on the next turn of the loop
 

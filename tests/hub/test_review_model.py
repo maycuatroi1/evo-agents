@@ -2,6 +2,7 @@
 evidence, the causes the night's figures name and the prompt of a review run (``evo_agents.hub.review``)."""
 
 import re
+import typing
 from datetime import date, timedelta
 
 import pytest
@@ -13,6 +14,14 @@ PROTECTED = ["curator.yaml", ".github/workflows/**", "evo-agents:evo_agents/hub/
 
 
 # The tier rules
+
+
+def test_a_change_kind_is_a_key_of_the_tier_rules():
+    assert typing.get_args(tiers.ChangeKind) == tuple(tiers.CHANGE_KINDS)
+
+
+def test_a_lens_is_a_key_of_the_lenses():
+    assert typing.get_args(review.Lens) == tuple(review.LENSES)
 
 
 @pytest.mark.parametrize(

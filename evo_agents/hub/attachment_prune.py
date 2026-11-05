@@ -1,7 +1,7 @@
 """Deleting files people attached to messages (``evo_agents.hub.attachments``): one its uploader deletes before sending
 it (``evo_agents.hub.server.attachments``), those no message took within STALE_AFTER (the job hub.cleanup_uploads),
 and those of the messages to runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, which go with the runs' events (the
-job hub.prune_run_events, through ``evo_agents.hub.server.run_state.prune_run_events``). The files of chat messages
+job hub.prune_run_events, through ``evo_agents.hub.server.run_reaper.prune_run_events``). The files of chat messages
 stay with the chat.
 
 ``drop`` deletes the rows a condition selects, holding the blob lock exclusively, and ``blob_gc.forget`` records each

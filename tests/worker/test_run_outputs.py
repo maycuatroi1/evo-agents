@@ -26,7 +26,7 @@ from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import WorkerHome
 from evo_agents.worker.output_queue import OutputQueue
 from evo_agents.worker.runner.outputs import SENT_FILE, outputs_files, redacted
-from evo_agents.worker.runtimes import claude_code
+from evo_agents.worker.runtimes import claude_code, claude_events
 from tests.worker.fake_hub import FakeHub
 from tests.worker.test_plan_runs import PLAN, machine, plan_body, run_repos, wait_for, with_daemon  # noqa: F401
 
@@ -104,9 +104,9 @@ def test_an_image_that_does_not_decode_is_left_out_and_no_result_shows_base64():
     assert event.files == () and "content" not in event.body
     only_image = claude_code.tool_result("toolu_3", "completed", [image_block(PNG)])
     assert [item["content"]["type"] for item in only_image.body["content"]] == ["resource_link"]
-    assert claude_code._text_of([image_block(PNG)]) is None
+    assert claude_events.text_of([image_block(PNG)]) is None
     assert (
-        claude_code._text_of([{"type": "tool_reference", "tool_name": "x"}])
+        claude_events.text_of([{"type": "tool_reference", "tool_name": "x"}])
         == "[{'type': 'tool_reference', 'tool_name': 'x'}]"
     )
     assert claude_code.tool_result("toolu_4", "failed", "plain text").body == {

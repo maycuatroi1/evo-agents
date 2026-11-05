@@ -13,7 +13,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import JsonOutput, json_option, returns_object
 
 TAKE = ("deprecate", "merge", "link")
@@ -38,10 +38,10 @@ def _list(hub, args) -> int:
     query = f"?{urlencode({'state': args.state})}" if args.state else ""
     found = hub.call("GET", _base(args.project) + query)
     if args.json:
-        _print_json(found["decisions"])
+        print_json(found["decisions"])
         return 0
     if found["decisions"]:
-        _table(
+        table(
             ("N", "KIND", "STATE", "WHAT", "WHY"),
             [(d["number"], d["kind"], d["state"], _what(d), d["history"][0]["reason"]) for d in found["decisions"]],
         )
@@ -62,7 +62,7 @@ def _write(hub, args) -> int:
         body = {"kind": args.action, "src": args.target, "rel": args.rel, "dst": args.to}
         found = hub.call("POST", _base(args.project), {**body, "reason": args.reason, "base_rev": base_rev})
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     print(f"decision {found['number']} of project {args.project} is {found['state']}: {_what(found)}")
     return 0
@@ -88,13 +88,13 @@ def _problem(args) -> str | None:
     return None
 
 
-@_client_command
+@client_command
 def cmd_decisions(args) -> int:
     problem = _problem(args)
     if problem:
         print(problem, file=sys.stderr)
         return 2
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     return _list(hub, args) if args.action is None else _write(hub, args)
 
 

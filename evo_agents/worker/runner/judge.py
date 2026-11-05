@@ -11,8 +11,8 @@ program of each on PATH: one missing fails the run with missing_tool and no verd
 number alone, so the hub has the change judged again. Its worktree is detached at the commit it judges (the pull
 request's head, else the tip of the change's branch on origin), made and read with no hook of the checkout; the worker
 reads the diff from the merge base with origin's default branch before any code of the change runs, finds the signs
-of score hacking in it (``evo_agents.hub.judge.hack_signs``; a diff longer than the worker reads is a sign too), and
-runs the hidden checks, then the verify commands, in the worktree as code it does not trust
+of score hacking in it (``evo_agents.hub.diff_signs.hack_signs``; a diff longer than the worker reads is a sign too),
+and runs the hidden checks, then the verify commands, in the worktree as code it does not trust
 (``evo_agents.worker.untrusted``): each one on the standard input of ``/bin/sh -s``, in a session of its own, with an
 environment that holds neither the worker's home nor the run's id nor a credential, the worktree put back at the
 commit judged before it, and every process it left killed after it. For a change of knowledge.yaml the inputs name
@@ -38,7 +38,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import judge, knowledge_diff, merge_gate, runs, security_pass
+from evo_agents.hub import diff_signs, judge, knowledge_diff, merge_gate, runs, security_pass
 from evo_agents.worker import gitops, untrusted, venvs
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
@@ -142,7 +142,7 @@ class JudgeRun:
             "verify": checks,
             "hidden": results,
             "signs": signs,
-            "paths": judge.changed_paths(files)[: judge.MAX_PATHS],
+            "paths": diff_signs.changed_paths(files)[: judge.MAX_PATHS],
             "security": security,
         }
         if self.merge:
@@ -280,8 +280,8 @@ class JudgeRun:
         diff, too_long = await gitops.diff_text(
             workspace.worktree, self.merge_base, self.head, env=gitops.without_hooks(run.daemon.env)
         )
-        files = judge.parse_diff(diff)
-        signs = judge.hack_signs(files, repo=name, protected=protected, verify_commands=verify_commands)
+        files = diff_signs.parse_diff(diff)
+        signs = diff_signs.hack_signs(files, repo=name, protected=protected, verify_commands=verify_commands)
         if too_long:  # first, so the cap on signs never drops it
             cut_sign = {
                 "kind": "diff_unreadable",
@@ -289,7 +289,7 @@ class JudgeRun:
                 "line": None,
                 "text": f"the diff is longer than the {gitops.DIFF_TEXT_LIMIT} characters the worker reads",
             }
-            signs = [cut_sign, *signs][: judge.MAX_SIGNS]
+            signs = [cut_sign, *signs][: diff_signs.MAX_SIGNS]
         if signs:
             kinds = ", ".join(sorted({item["kind"] for item in signs}))
             run.note(

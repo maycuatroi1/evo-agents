@@ -16,7 +16,7 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import client as hub_client
-from evo_agents.hub import hooks, local_account, local_sync, plan_cli
+from evo_agents.hub import hooks, local_account, local_store, local_sync, plan_cli
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.memory import MemorySync
 from tests.hub import live, pg
@@ -443,17 +443,17 @@ def test_the_sweep_leaves_alone_a_session_refused_lately_one_too_old_and_one_who
         "0199a3c1-0000-7000-8000-0000000000e3": {"run_id": 53},
     }
     for sid, fields in sessions.items():
-        rec = local_sync.Store(sid, URL).fresh(str(own_home / "x"))
+        rec = local_store.Store(sid, URL).fresh(str(own_home / "x"))
         rec |= {"project": "demo", "resolved": True, "sent": "running", "wanted": "idle", "touched": now, **fields}
         (left / f"{sid}.json").write_text(json.dumps(rec), encoding="utf-8")
-    held = local_sync.Store("0199a3c1-0000-7000-8000-0000000000e3", URL).lock
-    with local_sync.locked(held, 0.0) as got:
+    held = local_store.Store("0199a3c1-0000-7000-8000-0000000000e3", URL).lock
+    with local_store.locked(held, 0.0) as got:
         assert got
         fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
         fire("stop", payload(own_home), monkeypatch, capsys)
     assert runs.run_of(SESSION)["state"] == "idle"
     # Without fcntl (Windows) locked() always holds, so no hook holds a file and the sweep sends what 53 left.
-    left_alone = ("51", "52", "53") if local_sync.fcntl is not None else ("51", "52")
+    left_alone = ("51", "52", "53") if local_store.fcntl is not None else ("51", "52")
     assert not [path for _, path in runs.calls if path.split("/")[0] in left_alone]
 
 

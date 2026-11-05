@@ -1,16 +1,18 @@
 """Runs and workers as the hub models them: the states of a run and who may move a run between them, a worker's
-status as its heartbeats show it, the kinds of a run's events, which steps of a plan are ready to run, the prompt a
-run hands its agent, and the decisions and notices a plan run or an author run sends its owner. Pure functions over
-JSON values and datetimes, standard library only, so the api and the worker daemon share them. ``docs/workers.md``
-describes the protocol built on them, and ``docs/notifications.md`` how decisions and notices reach the owner.
+status as its heartbeats show it, the kinds of a run's events, which steps of a plan are ready to run, and the
+decisions and notices a plan run or an author run sends its owner. Pure functions over JSON values and datetimes,
+standard library only, so the api and the worker daemon share them; the prompt a run hands its agent is built in
+``evo_agents.hub.run_prompts``. ``docs/workers.md`` describes the protocol built on them, and ``docs/notifications.md``
+how decisions and notices reach the owner.
 
 A run is of one of RUN_KINDS. A ``step`` run is one attempt at one plan step on one worker. A ``plan`` run is one long
 session on one worker that does every step of a plan that is not done yet, in the order ``depends_on`` allows, and
-reports each step as it goes (``build_plan_prompt`` tells its agent how); dispatched with ``session_per_step``, its
-worker starts a new agent session for each step instead, in the same order (``next_session_step``), whose prompt is the
-step's with the handoff of the plan (``build_step_session_prompt``, ``evo_agents.hub.handoff``). A ``review`` run is the
-Curator's Reviewer of one night of a project's charter: it works on no plan, reads the project and writes findings and
-proposals, and changes no code (``evo_agents.hub.review``). A ``judge`` run is the Curator's Judge of one change its
+reports each step as it goes (``run_prompts.build_plan_prompt`` tells its agent how); dispatched with
+``session_per_step``, its worker starts a new agent session for each step instead, in the same order
+(``next_session_step``), whose prompt is the step's with the handoff of the plan
+(``run_prompts.build_step_session_prompt``, ``evo_agents.hub.handoff``). A ``review`` run is the Curator's Reviewer
+of one night of a project's charter: it works on no plan, reads the project and writes findings and proposals, and
+changes no code (``evo_agents.hub.review``). A ``judge`` run is the Curator's Judge of one change its
 Builder made: it reads the change at the head of its pull request, runs the plan's verify and the project's hidden
 checks, and says whether the change passes, without reading the Builder's transcript and without changing anything
 (``evo_agents.hub.judge``). An ``author`` run writes an execution plan from a member's request with the create-exec-plan
@@ -73,16 +75,12 @@ import math
 import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
+from typing import Literal, get_args
 
 from evo_agents.hub.autonomy_card import DECISION_CATEGORIES as DECISION_CATEGORIES
 from evo_agents.hub.autonomy_card import DECISION_CATEGORY_TEXT as DECISION_CATEGORY_TEXT
 from evo_agents.hub.autonomy_card import PROMPTED_DECISION_CATEGORIES as PROMPTED_DECISION_CATEGORIES
-from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, ships, with_card
-from evo_agents.hub.decision_asks import ASK_RULE
-from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.proofs import criteria, prompt_lines, result_how, worker_how
-from evo_agents.hub.record_rule import record_rule
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
 PROTOCOL_VERSION = "1"
@@ -136,7 +134,7 @@ MAX_EVENT_BODY_BYTES = 64 * 1024  # one event's body as JSON; a longer one is cu
 MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
 MAX_RUN_REPOS = 50  # the repos of one run (runs.repos, as schema 0010 bounds it)
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
-MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
+MAX_PROMPT_BYTES = 32 * 1024  # the prompt each builder of run_prompts returns
 # Turns in a row the worker sends a plan run's agent back to its plan (``RunSpec.keep_going``) when a turn ends with
 # steps to do and no decision open, before the run fails with steps_left; a turn after which fewer are left resets it.
 KEEP_GOING_TURNS = 3
@@ -149,7 +147,7 @@ KEEP_GOING_TURNS = 3
 # the identity's Chromium with no agent (``hub.browser_login``); the weekly probe of a change of the Curator, k sessions
 # with its rule on and k with it off (``hub.probes``). A session on a member's own machine, which no worker
 # runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
-RUN_KINDS = (
+RunKind = Literal[
     "step",
     "plan",
     "review",
@@ -163,9 +161,11 @@ RUN_KINDS = (
     "release",
     "question",
     "browser",
-)
+]
+RUN_KINDS: tuple[str, ...] = get_args(RunKind)
 LOCAL_KIND = "local"
-SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
+ShownKind = Literal[RunKind, "local"]
+SHOWN_KINDS: tuple[str, ...] = get_args(ShownKind)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 # the kinds only the night shift queues, and the Builder
 CURATOR_KINDS = ("review", "judge", "replay", "history", "probe")
@@ -254,7 +254,8 @@ WORKER_FEATURES = (
     REPOLESS_REVIEW,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
-RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
+Runtime = Literal["claude-code", "opencode", "codex"]
+RUNTIMES: tuple[str, ...] = get_args(Runtime)  # the runtimes of the core; a plugin's is <plugin>/<name>
 # A runtime's name, any included: one of RUNTIMES, or a plugin's <plugin>/<name> (evo_agents.plugins.runtimes). The hub
 # takes a run of a runtime registered in its project (evo_agents.hub.server.runs.service.plugin_runtimes), not every
 # name of this shape; schema 0039 holds runs to it.
@@ -262,8 +263,10 @@ RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
-MODES = ("headless", "interactive")
-APPROVALS = ("auto", "review")
+Mode = Literal["headless", "interactive"]
+MODES: tuple[str, ...] = get_args(Mode)
+Approval = Literal["auto", "review"]
+APPROVALS: tuple[str, ...] = get_args(Approval)
 # What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal, park or end
 # an author run's chat (finish), how many inbox messages and open decisions it has; for the worker, whether to drain.
 CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish", "inbox", "decisions", "drain")
@@ -276,12 +279,19 @@ RESUME_KINDS = ("plan", "author", "chat")  # the kinds of run that wait for thei
 # the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id); a chat run that
 # waits for nothing ends done with its turn, and its next turn is a new run too (``evo_agents.hub.chat_runs``)
 SESSION_KINDS = RESUME_KINDS
-PLAN_TIMEOUT_CHOICES = (2, 4, 8, 24)  # hours of agent time a plan run may take; waiting and parked do not count
+PlanTimeout = Literal[2, 4, 8, 24]
+PLAN_TIMEOUT_CHOICES: tuple[int, ...] = get_args(
+    PlanTimeout
+)  # hours of agent time a plan run may take; waiting and parked do not count
 
-HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a worker holds the run, extends its lease
-ACTIVE_STATES = ("queued", *HELD_STATES, "review", "parked")  # at most one run of a step, or plan run of a plan
-TERMINAL_STATES = ("done", "failed", "lost", "cancelled")
-RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
+HeldState = Literal["leased", "running", "interactive", "verifying", "waiting"]
+HELD_STATES: tuple[str, ...] = get_args(HeldState)  # a worker holds the run, extends its lease
+ActiveState = Literal["queued", HeldState, "review", "parked"]
+ACTIVE_STATES: tuple[str, ...] = get_args(ActiveState)  # at most one run of a step, or plan run of a plan
+TerminalState = Literal["done", "failed", "lost", "cancelled"]
+TERMINAL_STATES: tuple[str, ...] = get_args(TerminalState)
+RunState = Literal[ActiveState, TerminalState]
+RUN_STATES: tuple[str, ...] = get_args(RunState)
 # A ``local`` run (``evo_agents.hub.server.local_runs``) is a Claude Code session on a member's machine, which the
 # hub only watches: no worker holds it, so it has no lease, no slot and no attempts, and the moves above are not its
 # own. Its state is the session's: running (a turn is under way), waiting (the agent asked a decision and waits for
@@ -290,8 +300,10 @@ RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
 # ``running`` and ``waiting`` are states of RUN_STATES; idle and ended are only a local run's, and ended is final
 # until the session registers again.
 LOCAL_STATES = ("running", "waiting", "idle", "ended")
-LOCAL_ONLY_STATES = ("idle", "ended")
-SHOWN_STATES = RUN_STATES + LOCAL_ONLY_STATES  # every state a run may be shown in, local runs included
+LocalOnlyState = Literal["idle", "ended"]
+LOCAL_ONLY_STATES: tuple[str, ...] = get_args(LocalOnlyState)
+ShownState = Literal[RunState, LocalOnlyState]
+SHOWN_STATES: tuple[str, ...] = get_args(ShownState)  # every state a run may be shown in, local runs included
 LOCAL_SILENT_SECONDS = 24 * 3600  # a local run that sent nothing for this long is ended; the session may register again
 MAX_LOCAL_FIELD = 500  # a local run's machine, cwd and account, one line each
 # The time a run spends in these counts toward its timeout; waiting for an answer, parked, queued and review do not.
@@ -488,29 +500,9 @@ RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "su
 PLAN_FILE = f"{RESULT_DIR}/plan.yaml"  # a plan run's plan as it was claimed, written by the daemon
 
 OUTPUT_COMMAND = "evo-agents worker output"  # the agent of any run sends files to the run's outputs
-# Said to the agent of a run of one step, a plan run, a step's session, a chat run and a review run.
-OUTPUTS_RULE = (
-    "- To show the people who read this run a file you made (a screenshot, a video, a report), send it with "
-    f"`{OUTPUT_COMMAND} FILE --caption TEXT` (several files at once if you like), or leave it in {OUTPUTS_DIR}/ "
-    "under the current directory, which the worker sends at each step you report and when the run ends. The run's "
-    "page on the hub shows them; the images of your tools' results may get there by themselves."
-)
-ATTACH_RULE = "  Add `--attach FILE` for a screenshot or a file the owner should see with the question."
 
 TRUNCATION_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; the plan on the hub has the full text]"
 SHORT_BYTES = 200  # a plan id, step key, title, repo or branch in the prompt
-GOAL_BYTES = 2 * 1024
-CONTEXT_BYTES = 4 * 1024
-WHAT_BYTES = 10 * 1024
-VERIFY_BYTES = 3 * 1024
-NOTE_BYTES = 2 * 1024
-ACCEPTANCE_BYTES = 4 * 1024  # the criteria a step names, with the plan's words, and how to prove each
-EVIDENCE_BYTES = 1536  # the evidence of one step this one depends on
-DEPENDENCIES_BYTES = 5 * 1024  # all of it
-LIST_TITLE_BYTES = 120  # the title of a step in a plan run's list of steps
-LIST_DEPENDS_BYTES = 120  # and its depends_on
-STEP_LIST_BYTES = 13 * 1024  # the whole list; the steps past it are counted, and the plan file has them
-REPOS_BYTES = 3 * 1024  # a plan run's repos with their branches and worktrees
 
 
 class RunProblem(ValueError):
@@ -677,7 +669,7 @@ def step_title(step: dict) -> str | None:
     title = step.get("title") if isinstance(step, dict) else None
     if title is None:
         return None
-    text = " ".join("".join(ch if ch.isprintable() else " " for ch in _text(title)).split())
+    text = " ".join("".join(ch if ch.isprintable() else " " for ch in text_of(title)).split())
     return text[:SHORT_BYTES] or None
 
 
@@ -715,12 +707,14 @@ def version_text(version: tuple[int, ...]) -> str:
 # Which steps are ready
 
 
-def _steps(body: dict) -> list:
+def plan_steps(body: dict) -> list:
+    """The steps of the plan ``body``; none when it has no list of them."""
     steps = body.get("steps")
     return steps if isinstance(steps, list) else []
 
 
-def _status(step: dict):
+def step_status(step: dict):
+    """The status of ``step``; pending when it has none."""
     status = step.get("status")
     return "pending" if status is None else status
 
@@ -729,17 +723,17 @@ def unready_reason(body: dict, step) -> str | None:
     """Why ``step``, one of the steps of ``body``, is not ready to run; None when it is."""
     if not isinstance(step, dict):
         return "it is a bare string, not a mapping, so it has no status"
-    if _status(step) != "pending":
-        return f"its status is {_status(step)}, not pending"
+    if step_status(step) != "pending":
+        return f"its status is {step_status(step)}, not pending"
     depends_on = step.get("depends_on")
     if depends_on is None:
         return None
     if not isinstance(depends_on, list):
         return "its depends_on is not a list of step ids"
     statuses: dict[str, object] = {}
-    for index, other in enumerate(_steps(body)):
+    for index, other in enumerate(plan_steps(body)):
         if isinstance(other, dict):
-            statuses.setdefault(step_key(other, index), _status(other))
+            statuses.setdefault(step_key(other, index), step_status(other))
     waiting = []
     for dep in depends_on:
         key = str(dep)
@@ -752,7 +746,7 @@ def unready_reason(body: dict, step) -> str | None:
 
 def ready_steps(body: dict) -> list[dict]:
     """The steps of the plan ``body`` that are ready to run, in plan order (see the module's docstring)."""
-    return [step for step in _steps(body) if unready_reason(body, step) is None]
+    return [step for step in plan_steps(body) if unready_reason(body, step) is None]
 
 
 def next_session_step(body: dict, skip: Collection[str] = ()) -> tuple[str, dict] | None:
@@ -760,8 +754,8 @@ def next_session_step(body: dict, skip: Collection[str] = ()) -> tuple[str, dict
     in ``skip`` (the steps that had a session in the run already), whose status is pending or in_progress (a step an
     earlier session or run left started, since the plan run alone works on the plan), and whose depends_on names only
     steps done. Its key and the step; None when no step is left to start."""
-    for index, step in enumerate(_steps(body)):
-        if not isinstance(step, dict) or _status(step) not in ("pending", "in_progress"):
+    for index, step in enumerate(plan_steps(body)):
+        if not isinstance(step, dict) or step_status(step) not in ("pending", "in_progress"):
             continue
         key = step_key(step, index)
         if key not in skip and unready_reason(body, {**step, "status": "pending"}) is None:
@@ -775,9 +769,9 @@ def steps_to_go(body: dict) -> list[str]:
     not done, is not among them."""
     return [
         step_key(step, index)
-        for index, step in enumerate(_steps(body))
+        for index, step in enumerate(plan_steps(body))
         if isinstance(step, dict)
-        and _status(step) in ("pending", "in_progress")
+        and step_status(step) in ("pending", "in_progress")
         and unready_reason(body, {**step, "status": "pending"}) is None
     ]
 
@@ -793,14 +787,24 @@ def open_verify(body: dict) -> list[tuple[str, str]]:
     """(step key, verify command) of every step of the plan ``body`` not done yet, in plan order, each command once:
     what a plan run's worker checks before its agent starts, naming the step a problem comes from."""
     found: list[tuple[str, str]] = []
-    for index, step in enumerate(_steps(body)):
+    for index, step in enumerate(plan_steps(body)):
         if isinstance(step, dict) and step.get("status") != "done":
             key = step_key(step, index)
             found += [(key, command) for command in verify_of(step) if all(command != had for _, had in found)]
     return found
 
 
-# The prompt
+def plan_repo(plan: dict, step: dict) -> dict | None:
+    """The entry of the plan's ``repos`` for the repo ``step`` names; the plan's only repo when the step names none.
+    A repo the step names but the plan does not list gets an entry without a branch."""
+    repos = [entry for entry in plan.get("repos") or [] if isinstance(entry, dict)]
+    name = step.get("repo")
+    if name is None:
+        return repos[0] if len(repos) == 1 else None
+    return next((entry for entry in repos if entry.get("repo") == name), {"repo": name})
+
+
+# Texts cut to a budget
 
 
 def clip(text: str, limit: int) -> str:
@@ -816,391 +820,10 @@ def clip(text: str, limit: int) -> str:
     return head + TRUNCATION_MARK.format(omitted=len(data) - len(head.encode()), total=len(data))
 
 
-def _text(value) -> str:
+def text_of(value) -> str:
+    """``value`` as text: a string stripped, nothing for None, anything else as JSON."""
     if value is None:
         return ""
     if isinstance(value, str):
         return value.strip()
     return json.dumps(value, ensure_ascii=False)
-
-
-def _short(value, missing: str) -> str:
-    text = " ".join(_text(value).split())
-    return clip(text, SHORT_BYTES) if text else missing
-
-
-def plan_repo(plan: dict, step: dict) -> dict | None:
-    """The entry of the plan's ``repos`` for the repo ``step`` names; the plan's only repo when the step names none.
-    A repo the step names but the plan does not list gets an entry without a branch."""
-    repos = [entry for entry in plan.get("repos") or [] if isinstance(entry, dict)]
-    name = step.get("repo")
-    if name is None:
-        return repos[0] if len(repos) == 1 else None
-    return next((entry for entry in repos if entry.get("repo") == name), {"repo": name})
-
-
-def _rules(branch: str) -> list[str]:
-    return [
-        "Rules for this run:",
-        "- Do this one step and nothing else. The other steps of the plan get runs of their own.",
-        "- Do not record progress in the plan: do not call the hub's plan_step tool, `evo harness step` or "
-        "`evo-agents hub plan`. The hub writes this step's status and evidence from what this run reports.",
-        f"- Work in the current directory and commit there, on the branch it is on ({branch}). Do not switch "
-        "branches, merge or push: the worker pushes the branch when the run ends.",
-        f"- Before you finish, write {RESULT_FILE} as a JSON object with two keys, and keep {RESULT_DIR}/ out of "
-        "your commits:",
-        '  "verify_commands": the shell commands you ran to check this step, each one a string;',
-        '  "summary": what you changed, how you checked it, and anything left undone.',
-        "  The worker runs every verify command again in this directory, and the step counts as verified only when "
-        "each one exits 0.",
-        OUTPUTS_RULE,
-    ]
-
-
-def _dependencies(plan: dict, step: dict) -> list[str]:
-    depends_on = step.get("depends_on")
-    if not isinstance(depends_on, list) or not depends_on:
-        return []
-    by_key: dict[str, dict] = {}
-    for index, other in enumerate(_steps(plan)):
-        if isinstance(other, dict):
-            by_key.setdefault(step_key(other, index), other)
-    parts = []
-    for dep in depends_on:
-        other = by_key.get(str(dep))
-        if other is None:
-            parts.append(f"## Step {_short(dep, '?')}\nThe plan has no such step.")
-            continue
-        evidence = clip(_text(other.get("evidence")) or "No evidence recorded.", EVIDENCE_BYTES)
-        parts.append(f"## Step {_short(dep, '?')}: {_short(other.get('title'), 'untitled')}\n{evidence}")
-    return ["# Evidence from the steps this one depends on", clip("\n\n".join(parts), DEPENDENCIES_BYTES)]
-
-
-def _step_lines(step: dict, key: str, plan: dict | None = None, how: str = "") -> list[str]:
-    """The step's title, what, verify, the criteria of ``plan``'s acceptance it names with ``how`` the agent proves
-    each (none when it names none), and its note, each cut to its own budget, as the prompt of a run of one step has
-    them."""
-    lines = ["", f"# Step {key}: {_short(step.get('title'), 'untitled')}"]
-    for heading, value, budget in (
-        ("## What to do", step.get("what"), WHAT_BYTES),
-        ("## How the step is verified", step.get("verify"), VERIFY_BYTES),
-    ):
-        if _text(value):
-            lines += ["", heading, clip(_text(value), budget)]
-    wanted = prompt_lines(criteria(plan, step), how)
-    if wanted:
-        lines += ["", clip("\n".join(wanted), ACCEPTANCE_BYTES)]
-    if _text(step.get("note")):
-        lines += ["", "## Note", clip(_text(step.get("note")), NOTE_BYTES)]
-    return lines
-
-
-def build_prompt(plan: dict, step: dict, repo: dict | None) -> str:
-    """The prompt of a run of ``step``, one of the steps of ``plan``, in the checkout of ``repo`` (an entry of the
-    plan's ``repos``, as ``plan_repo`` finds it): what the agent must and must not do, the plan's goal and its
-    context, shortened, the step's what, verify and note, and the evidence of the steps it depends on. Each part is
-    cut to its own budget, and the whole to MAX_PROMPT_BYTES, with TRUNCATION_MARK where something was cut."""
-    index = next((position for position, other in enumerate(_steps(plan)) if other is step), 0)
-    key = _short(step_key(step, index), "?")
-    repo = repo or {}
-    branch = _short(repo.get("branch"), "the branch checked out")
-    lines = [
-        f"You are running step {key} of the plan {_short(plan.get('id'), 'without an id')} from the evo-agents hub.",
-        "",
-        *_rules(branch),
-        "",
-        f"Repository: {_short(repo.get('repo'), 'not named by the plan')}. Branch: {branch}.",
-    ]
-    for heading, value, budget in (
-        ("# Goal of the plan", plan.get("goal"), GOAL_BYTES),
-        ("# Context of the plan, shortened", plan.get("context"), CONTEXT_BYTES),
-    ):
-        if _text(value):
-            lines += ["", heading, clip(_text(value), budget)]
-    lines += _step_lines(step, key, plan, result_how())
-    dependencies = _dependencies(plan, step)
-    if dependencies:
-        lines += ["", *dependencies]
-    return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
-
-
-# The prompt of a plan run
-
-
-def _push_rule(autonomy) -> str:
-    """The rule of a plan run on its pushes and merges. The merge of a pull request the run opened into a repo's
-    default branch is K5: the agent's with no question when merging is its own (``autonomy_card.ships``), and as its
-    card says when it is not; run #820 asked its owner twice whether it might merge its own pull request, at A5. Runs
-    #1404, #1414 and #1415 asked their owner to merge release pull requests gh called blocked: the workers' App is an
-    "Always allow" bypass actor of evo-agents' main ruleset, which gh shows it as BLOCKED until it merges with
-    ``--admin``."""
-    if ships((autonomy or {}).get("modes")):
-        merge = (
-            ", and merge a pull request you opened into that repo's default branch with no question to the owner: "
-            "merging is yours."
-        )
-    else:
-        merge = "; a pull request you opened merges into that repo's default branch only as your autonomy card says."
-    return (
-        "- Commit in each repo's worktree, on the branch it is on. You may push, and merge into, the branch the plan "
-        f"names for a repo, even when it is the repo's default branch{merge} Never push to a branch the plan does not "
-        "name for that repo, never merge into any other branch, never force-push, and never rewrite history you "
-        "pushed. After each push or merge into a repo's default branch that you make yourself (the pushes of "
-        "`evo-agents worker step` send their own notice), run `evo-agents worker notify --kind push_default_branch "
-        "--title TEXT --body TEXT`, or `--kind merge_default_branch`, naming the repo, the branch and the commits. "
-        "In a repo whose policy has the merge check on, check first and merge after: `evo-agents worker merge-check "
-        "REPO` has the hub judge your pull request at its head (end your turn while it waits), and only a passed "
-        "verdict opens `gh pr merge N --match-head-commit HEAD` (or `gh api -X PUT repos/OWNER/NAME/pulls/N/merge -f "
-        "sha=HEAD`) with that same head; the hook refuses a merge without it, and a push after the verdict needs a new "
-        "check. The hub reads the merge afterwards and tells the owner when it was at another head or off the base. "
-        "When gh answers that the base branch policy prohibits the merge, run the same `gh pr merge` again with "
-        "`--admin`: a ruleset that lets the hub's GitHub App bypass it as Always allow still shows the pull "
-        "request as blocked to the App, and GitHub refuses `--admin` to an actor it does not let bypass. Ask the owner "
-        "to merge only when GitHub refuses that too."
-    )
-
-
-# A decision the agent of a plan run must not ask: one that only asks the owner to answer another (run #820 asked its
-# owner to answer the hub's release decision #462, which the owner had in the Inbox already).
-RELAY_RULE = (
-    "- Never ask the owner to answer another open decision (one the hub asked, such as a stopped release cycle's, or "
-    "one of another run): they have it already. Wait for what it brings instead, with `evo-agents worker wait "
-    "--until +30m`, then look again."
-)
-
-
-# How the agent of a plan run waits for a time or an event of the hub (``server.run_waits``) instead of asking.
-WAIT_RULE = (
-    "- When the work waits for a time, or for something that happens on the hub (a step of another plan done, a "
-    "baseline of a canvas approved, a claim or a task changing, signals posted), wait for it rather than ask the owner "
-    "to tell you when it came: `evo-agents worker wait --reason TEXT --until TIME --on KIND --contains KEY=VALUE "
-    f"--step {{step}}`, then end your turn. TIME is 2026-10-30T09:00Z or a span such as +6h, at most {MAX_WAIT_DAYS} "
-    "days ahead; KIND is plan.step, canvas.baseline, canvas.claim, tasks.status, signal.posted or "
-    "srs.version.approved, and each --contains a key of the event's payload with its value: a step of another plan "
-    "done is `--on plan.step --contains plan=PLAN --contains step=STEP --contains status=done`, which wakes as soon "
-    "as it is done. Give --until, --on or both. The hub wakes this session with a message naming "
-    "the wait when the first of them comes. An option of a decision that only means not yet goes with `--wait-option "
-    "KEY` of `evo-agents worker ask`: choosing it leaves the decision open, and you hear nothing until a real answer."
-    "\n- Something elsewhere that takes more than a few minutes (the CI of a commit, a pull request or a tag, a package "
-    "on an index, a build or a run on the hub, a deploy) is waited for the same way: `evo-agents worker wait --reason "
-    f"TEXT --until +15m --step {{step}}`, then end your turn; when it wakes, look once and wait again if it has not "
-    "come. Never wait for it in this session (no Monitor, no loop that sleeps, no long sleep, no `gh run watch`): the "
-    "session holds the worker's slot while it waits, and only a wait parks the run."
-)
-
-
-# How the agent of a plan run asks for a credential it lacks (``credential_requests``), rather than asking the owner to
-# sign in on the worker's machine or to run `evo cred` there (plan owner-run-access).
-CREDENTIAL_RULE = (
-    "- When a command lacks a credential, a variable such as an API key or a sign-in to the hub (`evo-agents hub` "
-    "says not signed in), never ask the owner to sign in on this machine or to put it into `evo cred` here: ask for "
-    "it with `evo-agents worker ask --category credential --question TEXT --env-var NAME --hub-account --step "
-    "{step}`, --env-var for the variable, --hub-account for the owner's account on the hub, or both in one decision. "
-    'The hub gives the decision its options. Once the owner answered, read what it gave with `eval "$(evo-agents '
-    'worker env --run "$EVO_RUN_ID")"` before the command that needs it.'
-)
-
-
-def _plan_rules(autonomy) -> list[str]:
-    fewest, most = DECISION_OPTIONS
-    return [
-        "Rules for this plan run:",
-        "- If your runtime has the execute-plan skill, use it: it knows how to work inside a worker's plan run "
-        "(EVO_RUN_KIND=plan). Without it, follow these rules yourself.",
-        f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
-        "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
-        checkpoint_rule(autonomy),
-        record_rule("KEY", "a step"),
-        *decision_lines("its step", autonomy),
-        "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
-        f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --recommended-reason TEXT --step KEY`, with {fewest} to "
-        f"{most} options. It prints the decision's id. Go on with the work that does not depend on the answer; when "
-        "none is left, end your turn. The answer comes back in this session as a message naming the decision's id, "
-        "and the time you wait does not count toward the run's timeout.",
-        ASK_RULE,
-        WAIT_RULE.format(step="KEY"),
-        CREDENTIAL_RULE.format(step="KEY"),
-        RELAY_RULE,
-        ATTACH_RULE,
-        "- A step blocked by what only the owner can change (a permission of the GitHub App, access to a service, a "
-        "push the remote refuses; a credential it lacks is asked as above) is a scope decision, not a stop: ask it, "
-        "naming what the owner must do, with a way around the block among the options when there is one, and end "
-        "your turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
-        _push_rule(autonomy),
-        OUTPUTS_RULE,
-        f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
-        "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
-        f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
-        "you finished, what you decided yourself, and what is left and why. The worker runs no verify command at "
-        "the end of a plan run: `evo-agents worker step` ran each step's.",
-    ]
-
-
-def _line(value, limit: int, missing: str) -> str:
-    """``value`` as one line of at most ``limit`` UTF-8 bytes: blanks collapsed, and a longer one cut on a character
-    boundary and ended with "...", since a list keeps one line per entry; ``missing`` when it is empty. Only the start
-    of a long value is read, so a list of many long values costs little."""
-    text = value.lstrip() if isinstance(value, str) else _text(value)
-    head = 4 * limit  # characters enough to fill the line, unless the value is mostly blanks
-    cut = len(text) > head
-    text = " ".join("".join(ch if ch.isprintable() else " " for ch in text[:head]).split())
-    if not text:
-        return missing
-    data = text.encode()
-    if len(data) <= limit and not cut:
-        return text
-    return data[: max(0, limit - 3)].decode("utf-8", "ignore").rstrip() + "..."
-
-
-def _packed(lines: list[str], budget: int, rest: str) -> list[str]:
-    """As many of ``lines`` as fit in ``budget`` bytes, whole, then ``rest`` formatted with how many were left out."""
-    kept, used = [], 0
-    for shown, line in enumerate(lines):
-        if used + len(line.encode()) + 1 > budget:
-            return [*kept, rest.format(left=len(lines) - shown)]
-        kept.append(line)
-        used += len(line.encode()) + 1
-    return kept
-
-
-def _repo_lines(repos: list, worktrees: dict) -> list[str]:
-    lines = []
-    for entry in repos:
-        entry = entry if isinstance(entry, dict) else {"repo": entry}
-        name = _text(entry.get("repo"))
-        branch = _line(entry.get("branch"), SHORT_BYTES, "the branch checked out")
-        worktree = _line(worktrees.get(name, name), SHORT_BYTES, "not made yet")
-        lines.append(f"- {_line(name, SHORT_BYTES, 'unnamed')}: branch {branch}, worktree {worktree}")
-    if not lines:
-        return ["- none named; the plan file says which repos the steps are in"]
-    return _packed(lines, REPOS_BYTES, f"- and {{left}} more repos, which {PLAN_FILE} lists")
-
-
-def _step_line(step, index: int) -> str:
-    if not isinstance(step, dict):
-        return f"- {index} [pending] {_line(step, LIST_TITLE_BYTES, 'untitled')}"
-    repo = _line(step.get("repo"), SHORT_BYTES, "")
-    facts = [f"repo {repo}"] if repo else []
-    depends_on = step.get("depends_on")
-    if isinstance(depends_on, list) and depends_on:
-        names, used = [], 0
-        for dep in depends_on:  # as many as the line shows, and one more so that it ends with "..."
-            names.append(_line(dep, SHORT_BYTES, "?"))
-            used += len(names[-1].encode()) + 2
-            if used > LIST_DEPENDS_BYTES:
-                break
-        facts.append("after " + _line(", ".join(names), LIST_DEPENDS_BYTES, "?"))
-    tail = f" ({'; '.join(facts)})" if facts else ""
-    key = _line(step_key(step, index), SHORT_BYTES, "?")
-    status = _line(_status(step), SHORT_BYTES, "pending")
-    return f"- {key} [{status}] {_line(step.get('title'), LIST_TITLE_BYTES, 'untitled')}{tail}"
-
-
-def _step_list(plan: dict) -> list[str]:
-    steps = _steps(plan)
-    open_steps = [
-        (index, step) for index, step in enumerate(steps) if not isinstance(step, dict) or _status(step) != "done"
-    ]
-    lines = [
-        f"# Steps not done yet: {len(open_steps)} of {len(steps)}",
-        f"{PLAN_FILE} has each step's what, verify and note; the steps not listed here are done.",
-    ]
-    listed = [_step_line(step, index) for index, step in open_steps]
-    return lines + _packed(listed, STEP_LIST_BYTES, f"- and {{left}} more steps not done, which {PLAN_FILE} lists")
-
-
-def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, autonomy=None) -> str:
-    """The prompt of a plan run of ``plan`` over ``repos`` (the run's repos, each ``{"repo", "branch"}`` as the
-    plan's ``repos`` names them), each checked out in the directory ``worktrees`` maps its name to (the repo's name,
-    under the agent's directory, when it maps none): what the agent must and must not do, the repos, the plan's goal
-    and its context, shortened, and a line for each step not done yet. The steps' what, verify and note stay in
-    PLAN_FILE, which the daemon writes, so the prompt stays within MAX_PROMPT_BYTES however long the plan is. The
-    autonomy card of the run (``autonomy``, ``autonomy_card.Card.spec``) opens it and says what the agent asks."""
-    worktrees = worktrees or {}
-    lines = [
-        f"You are running the plan {_line(plan.get('id'), SHORT_BYTES, 'without an id')} from the evo-agents hub, as "
-        "one plan run on a worker: do every step of it that is not done yet, in the order their depends_on allows.",
-        "",
-        *_plan_rules(autonomy),
-        "",
-        "Repositories of this run, each in a worktree of its own under the current directory:",
-        *_repo_lines(repos if isinstance(repos, list) else [], worktrees),
-    ]
-    for heading, value, budget in (
-        ("# Goal of the plan", plan.get("goal"), GOAL_BYTES),
-        ("# Context of the plan, shortened", plan.get("context"), CONTEXT_BYTES),
-    ):
-        if _text(value):
-            lines += ["", heading, clip(_text(value), budget)]
-    lines += ["", *_step_list(plan)]
-    return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
-
-
-# The prompt of a step's session in a plan run with a session per step
-
-
-def _step_session_rules(key: str, autonomy) -> list[str]:
-    fewest, most = DECISION_OPTIONS
-    return [
-        "Rules for this session:",
-        f"- Do step {key} and nothing else. This plan run starts a new agent session for each step, in the order "
-        "their depends_on allows, so the steps after this one get sessions of their own: do not run the plan, with "
-        "the execute-plan skill or otherwise.",
-        f"- {PLAN_FILE} holds the whole plan as this run was claimed, and `evo-agents worker plan` prints it as the "
-        "hub holds it now. The handoff at the end of this prompt says what the sessions and runs before this one did; "
-        "read the plan for what it left out.",
-        record_rule(key, "the step"),
-        *decision_lines("the step", autonomy),
-        "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
-        f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --recommended-reason TEXT --step {key}`, with {fewest} "
-        f"to {most} options. It prints the decision's id. Go on with the work of the step that does not depend on the "
-        "answer; when none is left, end your turn. The answer comes back in this session as a message naming the "
-        "decision's id, and the time you wait does not count toward the run's timeout.",
-        ASK_RULE,
-        WAIT_RULE.format(step=key),
-        CREDENTIAL_RULE.format(step=key),
-        RELAY_RULE,
-        ATTACH_RULE,
-        _push_rule(autonomy),
-        OUTPUTS_RULE,
-        f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because the step is done or because you cannot go "
-        f'on, write {RESULT_FILE} as a JSON object whose "summary" says what you did of step {key}, what you decided '
-        "yourself, and what is left and why. The worker runs no verify command at the end of the session: "
-        "`evo-agents worker step` ran the step's. When this session ends with the step not done, the plan run ends "
-        "with it.",
-    ]
-
-
-def build_step_session_prompt(
-    plan: dict, step: dict, repos: list, worktrees: dict | None = None, handoff: str | None = None, autonomy=None
-) -> str:
-    """The prompt of the session a plan run with a session per step gives ``step``, one of the steps of ``plan``,
-    over ``repos`` checked out in ``worktrees`` (as ``build_plan_prompt`` takes them): what the agent must and must not
-    do in that session, the repos, the plan's context, shortened, the step's what, verify and note as the prompt of a
-    run of one step has them, and ``handoff``, the handoff of the plan for the step (``evo_agents.hub.handoff``), which
-    holds the plan's goal and what the steps before it did. The whole within MAX_PROMPT_BYTES; the worker builds the
-    handoff in the room the rest leaves it (``handoff_room``)."""
-    index = next((position for position, other in enumerate(_steps(plan)) if other is step), 0)
-    key = _short(step_key(step, index), "?")
-    lines = [
-        f"You are running step {key} of the plan {_line(plan.get('id'), SHORT_BYTES, 'without an id')} from the "
-        "evo-agents hub, in an agent session of its own: this plan run gives each step not done yet a new session, "
-        "with the handoff of the plan instead of the sessions before it.",
-        "",
-        *_step_session_rules(key, autonomy),
-        "",
-        "Repositories of this run, each in a worktree of its own under the current directory:",
-        *_repo_lines(repos if isinstance(repos, list) else [], worktrees or {}),
-    ]
-    if _text(plan.get("context")):
-        lines += ["", "# Context of the plan, shortened", clip(_text(plan.get("context")), CONTEXT_BYTES)]
-    lines += _step_lines(step, key, plan, worker_how())
-    if handoff and handoff.strip():
-        lines += ["", handoff.strip()]
-    return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
-
-
-def handoff_room(prompt: str) -> int:
-    """The UTF-8 bytes a handoff may take in the prompt ``prompt``, built by build_step_session_prompt without one,
-    so that the prompt with it stays within MAX_PROMPT_BYTES whole."""
-    return max(0, MAX_PROMPT_BYTES - len(prompt.encode()) - 2)

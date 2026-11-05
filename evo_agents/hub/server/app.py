@@ -123,90 +123,13 @@ class RequestContext:
 
 def create_app(config: HubConfig) -> FastAPI:
     """The hub over the Postgres at ``config.dsn``. Nothing connects until the lifespan starts."""
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        target = redact_dsn(config.dsn)
-        log.info(
-            "hub starting",
-            extra={
-                "version": __version__,
-                "db": target,
-                "data_dir": str(config.data_dir),
-                "pool": {"min": config.pool_min_size, "max": config.pool_max_size, "timeout_s": config.pool_timeout},
-            },
-        )
-        github_app = curator_app = None
-        try:
-            github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
-            curator_app = GitHubApp.from_config(config, curator=True)
-            config.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-            result = await asyncio.to_thread(migrate, config.dsn)
-            pool = await open_pool(config)
-        except Exception as exc:
-            log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
-            for opened in (github_app, curator_app):
-                if opened is not None:
-                    await opened.aclose()
-            raise
-        app.state.pool, app.state.engine = pool, make_engine(pool)  # the engine is disposed of before the pool closes
-        app.state.github = GitHub(config)
-        app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
-        app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
-        app.state.blobs = BlobStore.from_config(config)
-        app.state.jobs = await JobQueue.open(pool)
-        app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
-        app.state.kg_handles = Handles()  # kg_more continuations, per user and project
-        if app.state.blobs is None:
-            log.warning(
-                "blob store not configured: the blob routes answer 503",
-                extra={"missing": config.blob_store_missing()},
-            )
-        await _check_plugins(app, config)
-        await security.bind_admins(app.state.engine, config.admins)  # EVO_HUB_ADMINS to the accounts that hold them
-        app.state.gateway_run = await gateway_sync.start(app, config)  # off without EVO_HUB_GATEWAY_SECRET
-        log.info(
-            "hub ready",
-            extra={
-                "schema": ",".join(result.after),
-                "applied": list(result.applied),
-                "admins": len(config.admins),
-                "device_login": bool(config.github_client_id),
-                "web_login_missing": config.web_login_missing(),
-                "blob_bucket": config.s3_bucket,
-                "credentials_missing": config.credentials_missing(),
-                "github_app_missing": config.github_app_missing(),
-                "curator_app_missing": config.curator_app_missing(),
-                "telegram_missing": config.telegram_missing(),
-                "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
-                "plugin_host_missing": config.plugin_host_missing(),
-                "gateway_missing": config.gateway_missing(),
-            },
-        )
-        try:
-            async with app.state.mcp.session_manager.run():  # a mounted app's own lifespan does not run
-                yield
-        finally:
-            await app.state.terminals.close_all()
-            await app.state.browser_views.close_all()
-            await app.state.listener.close()
-            await app.state.github.aclose()
-            for opened in (app.state.gateway_run, app.state.github_app, app.state.curator_app, app.state.plugin_host):
-                if opened is not None:
-                    await opened.aclose()
-            if app.state.blobs is not None:
-                app.state.blobs.close()
-            await app.state.engine.dispose()
-            await pool.close()
-            log.info("hub stopped, connection pool closed")
-
     app = FastAPI(
         title="evo-agents hub",
         version=__version__,
         openapi_url="/v1/openapi.json",
         docs_url=None,
         redoc_url=None,
-        lifespan=lifespan,
+        lifespan=_lifespan(config),
         dependencies=[Depends(bridge_gate)],  # a plugin's page, through the web's bridge, gets what it was granted
     )
     app.state.config = config
@@ -217,6 +140,125 @@ def create_app(config: HubConfig) -> FastAPI:
     app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
+    _include_account_routes(app)
+    _include_kg_routes(app)
+    _include_run_routes(app, config)
+    _include_curator_routes(app)
+    from evo_agents.hub.server import plugin_routes
+
+    # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
+    app.state.core_plugins = plugin_routes.include(app)
+
+    _include_websockets(app)
+    _include_member_routes(app)
+    from evo_agents.hub.server.sealing import Sealer
+
+    app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
+    # The release plugins are checked against (a test starts a hub of another one), the checker of the Sigstore
+    # signatures of their bundles, and the client to the plugin host that runs the backends of isolated plugins.
+    app.state.hub_version, app.state.plugin_sigstore, app.state.plugin_host = (
+        __version__,
+        default_sigstore(),
+        PluginHostClient(config.plugin_host_url, config.plugin_host_token),
+    )
+    return app
+
+
+def _lifespan(config: HubConfig):
+    """The lifespan of the app: it opens what the hub serves with, runs the MCP session manager, and closes it all."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        pool = await _open(app, config)
+        try:
+            async with app.state.mcp.session_manager.run():  # a mounted app's own lifespan does not run
+                yield
+        finally:
+            await _close(app, pool)
+
+    return lifespan
+
+
+async def _open(app: FastAPI, config: HubConfig):
+    """Migrate, open the pool, the engine and the clients on ``app.state``, and return the pool; a failure stops the
+    start."""
+    target = redact_dsn(config.dsn)
+    log.info(
+        "hub starting",
+        extra={
+            "version": __version__,
+            "db": target,
+            "data_dir": str(config.data_dir),
+            "pool": {"min": config.pool_min_size, "max": config.pool_max_size, "timeout_s": config.pool_timeout},
+        },
+    )
+    github_app = curator_app = None
+    try:
+        github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
+        curator_app = GitHubApp.from_config(config, curator=True)
+        config.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        result = await asyncio.to_thread(migrate, config.dsn)
+        pool = await open_pool(config)
+    except Exception as exc:
+        log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
+        for opened in (github_app, curator_app):
+            if opened is not None:
+                await opened.aclose()
+        raise
+    app.state.pool, app.state.engine = pool, make_engine(pool)  # the engine is disposed of before the pool closes
+    app.state.github = GitHub(config)
+    app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
+    app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
+    app.state.blobs = BlobStore.from_config(config)
+    app.state.jobs = await JobQueue.open(pool)
+    app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
+    app.state.kg_handles = Handles()  # kg_more continuations, per user and project
+    if app.state.blobs is None:
+        log.warning(
+            "blob store not configured: the blob routes answer 503",
+            extra={"missing": config.blob_store_missing()},
+        )
+    await _check_plugins(app, config)
+    await security.bind_admins(app.state.engine, config.admins)  # EVO_HUB_ADMINS to the accounts that hold them
+    app.state.gateway_run = await gateway_sync.start(app, config)  # off without EVO_HUB_GATEWAY_SECRET
+    log.info(
+        "hub ready",
+        extra={
+            "schema": ",".join(result.after),
+            "applied": list(result.applied),
+            "admins": len(config.admins),
+            "device_login": bool(config.github_client_id),
+            "web_login_missing": config.web_login_missing(),
+            "blob_bucket": config.s3_bucket,
+            "credentials_missing": config.credentials_missing(),
+            "github_app_missing": config.github_app_missing(),
+            "curator_app_missing": config.curator_app_missing(),
+            "telegram_missing": config.telegram_missing(),
+            "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
+            "plugin_host_missing": config.plugin_host_missing(),
+            "gateway_missing": config.gateway_missing(),
+        },
+    )
+    return pool
+
+
+async def _close(app: FastAPI, pool) -> None:
+    """Close what ``_open`` opened, the engine before the pool."""
+    await app.state.terminals.close_all()
+    await app.state.browser_views.close_all()
+    await app.state.listener.close()
+    await app.state.github.aclose()
+    for opened in (app.state.gateway_run, app.state.github_app, app.state.curator_app, app.state.plugin_host):
+        if opened is not None:
+            await opened.aclose()
+    if app.state.blobs is not None:
+        app.state.blobs.close()
+    await app.state.engine.dispose()
+    await pool.close()
+    log.info("hub stopped, connection pool closed")
+
+
+def _include_account_routes(app: FastAPI) -> None:
     for routes in (
         health.router,
         auth.router,
@@ -245,9 +287,12 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(skills.router)
     app.include_router(skills.worker_router)  # the skill sync of worker pool nodes
 
-    from evo_agents.hub.server import kg
+
+def _include_kg_routes(app: FastAPI) -> None:
+    from evo_agents.hub.server import kg, kg_config
 
     app.include_router(kg.router)
+    app.include_router(kg_config.router)
 
     from evo_agents.hub.server import kg_web
 
@@ -306,6 +351,8 @@ def create_app(config: HubConfig) -> FastAPI:
 
     app.include_router(admin_console.router)
 
+
+def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     from evo_agents.hub.server import worker_join, worker_pools, workers
 
     app.include_router(workers.router)
@@ -335,7 +382,6 @@ def create_app(config: HubConfig) -> FastAPI:
         attachments,
         curator,
         decisions,
-        digests,
         doc_versions,
         kg_worker,
         local_runs,
@@ -343,6 +389,7 @@ def create_app(config: HubConfig) -> FastAPI:
         output_content,
         output_notices,
         overview,
+        proposal_reads,
         proposals,
         push,
         release_claims,
@@ -367,6 +414,7 @@ def create_app(config: HubConfig) -> FastAPI:
         curator.router,
         proposals.router,
         proposals.worker_router,
+        proposal_reads.router,  # reading findings and proposals, and answering one
         releases.router,  # the daily release of a project (evo_agents.hub.releases)
         release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
         run_outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
@@ -381,12 +429,15 @@ def create_app(config: HubConfig) -> FastAPI:
     ):
         app.include_router(routes)
 
+
+def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
         autonomy_page,
         autonomy_routes,
         autonomy_stops,
         build_now,
-        changes,
+        change_routes,
+        digests,
         earlier,
         history,
         history_search,
@@ -407,11 +458,11 @@ def create_app(config: HubConfig) -> FastAPI:
     )
 
     for routes in (
-        changes.router,
+        change_routes.router,
         build_now.router,  # Run plan on a Curator's plan: its Builder now
         protection.router,
         proposal_plans.router,
-        changes.worker_router,
+        change_routes.worker_router,
         ledger.router,
         digests.router,
         transcripts.router,
@@ -438,13 +489,8 @@ def create_app(config: HubConfig) -> FastAPI:
     ):
         app.include_router(routes)
 
-    from evo_agents.hub.server import plugin_routes
 
-    # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
-    app.state.core_plugins = plugin_routes.include(app)
-
-    _include_websockets(app)
-
+def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
         account_pools,
         account_views,
@@ -465,6 +511,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_agents,
         chat_bridges,
         chat_direct,
+        chat_events,
         chat_images,
         chat_labels,
         chat_members,
@@ -514,7 +561,6 @@ def create_app(config: HubConfig) -> FastAPI:
         triage_actions,
         worker_autonomy,
     )
-    from evo_agents.hub.server.sealing import Sealer
 
     for routes in (
         secrets.router,
@@ -599,15 +645,6 @@ def create_app(config: HubConfig) -> FastAPI:
         merge_check.worker_router,
     ):
         app.include_router(routes)
-    app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
-    # The release plugins are checked against (a test starts a hub of another one), the checker of the Sigstore
-    # signatures of their bundles, and the client to the plugin host that runs the backends of isolated plugins.
-    app.state.hub_version, app.state.plugin_sigstore, app.state.plugin_host = (
-        __version__,
-        default_sigstore(),
-        PluginHostClient(config.plugin_host_url, config.plugin_host_token),
-    )
-    return app
 
 
 def _include_websockets(app: FastAPI) -> None:

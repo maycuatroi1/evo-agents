@@ -33,7 +33,8 @@ from sqlalchemy import delete, func, select, update
 from evo_agents.hub import judge, runs, tables
 from evo_agents.hub.curator_cli import CHANGE_KEYS
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.changes import JudgeInputs, advance
+from evo_agents.hub.server.change_views import JudgeInputs
+from evo_agents.hub.server.changes import advance
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
@@ -782,21 +783,21 @@ def test_judge_the_pull_request_opens_and_the_judge_reads_the_change_and_its_hid
 def queue_now(world, which: str):
     """``changes.queue_builder`` or ``queue_judge`` called as the night shift calls them, past the schedule's own
     gate (which waits while any run of the schedule is queued or held), so their own rule is what answers."""
-    from evo_agents.hub.server import changes as change_routes
+    from evo_agents.hub.server import change_shift
     from evo_agents.hub.server.collect import Gate
-    from evo_agents.hub.server.curator import _due, _writer_access
+    from evo_agents.hub.server.curator_shift import due_schedules, writer_access
     from evo_agents.hub.server.night_duty import on_duty
 
     async def go():
         async with world.app.state.engine.begin() as conn:
-            (due,) = (await conn.execute(_due(NIGHT))).all()
-            access = await _writer_access(conn, due)
+            (due,) = (await conn.execute(due_schedules(NIGHT))).all()
+            access = await writer_access(conn, due)
             duty, _ = await on_duty(conn, due)
             budget = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}
             gate = Gate(night=THE_NIGHT, figures=None, budget=budget, access=access, duty=duty)
             if which == "builder":
-                return await change_routes.queue_builder(conn, due, gate, curator_app=True)
-            return await change_routes.queue_judge(conn, due, gate)
+                return await change_shift.queue_builder(conn, due, gate, curator_app=True)
+            return await change_shift.queue_judge(conn, due, gate)
 
     return world.client.portal.call(go)
 

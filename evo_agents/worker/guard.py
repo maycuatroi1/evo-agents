@@ -4,8 +4,8 @@ the guards of ``evo_agents.guard_check`` in front of every run.
 - The heartbeat answer's ``settings.guard`` is the digest of the hub's policy, empty when it guards nothing. When it
   differs from the policy the worker holds, the daemon fetches GET /v1/worker/guard/policy and writes it to
   ``<home>/guard/policy.json`` (``take``), or removes the file for an empty digest. The daemon's environment names the
-  file in EVO_GUARD_POLICY from its start, so its own pushes (``gitops._send``) and every run's agent read it.
-- ``check_push`` refuses a push of the daemon's own (``gitops._send``) that sends a name to a guarded repo.
+  file in EVO_GUARD_POLICY from its start, so its own pushes (``gitops.send``) and every run's agent read it.
+- ``check_push`` refuses a push of the daemon's own (``gitops.send``) that sends a name to a guarded repo.
 - ``agent_env`` gives a run's agent, while the policy guards something, the ``gh`` shim in front of its PATH
   (``<home>/guard/bin/gh``), and ``authorship.hook_script`` has the run's git hooks check commit messages and pushes.
   A run in a container of an environment gets neither: its git and PATH are the image's.
@@ -136,7 +136,7 @@ async def _fetch(hub, root: Path, digest: str) -> None:
 def check_push(cwd: Path, source: str, branch: str, remote: str, env: Mapping[str, str] | None) -> None:
     """``gitops.PushRefused`` when the remote is a repo the policy EVO_GUARD_POLICY of ``env`` guards and a commit
     ``source`` would send holds a private name, in its message, a path or a line it adds: every push of the daemon
-    goes through it (``gitops._send``)."""
+    goes through it (``gitops.send``)."""
     from evo_agents import guard_check
     from evo_agents.worker.gitops import PushRefused
 

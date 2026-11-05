@@ -165,6 +165,18 @@ export function runHaystack(run: {
     .join(" ");
 }
 
+/** A run's title as Home writes it: the plan's for a plan run, the step's for a run of one step. */
+export function runTitle(run: {
+  kind: string;
+  title: string | null;
+  step_key: string | null;
+  plan_id: string;
+  plan_title?: string | null;
+}): string {
+  if (run.kind === "plan" || run.step_key === null) return run.plan_title ?? run.title ?? run.plan_id;
+  return run.title ?? run.step_key ?? run.plan_id;
+}
+
 /** Plans in the order the palette lists them: active first, then by the last change, newest first. */
 export function orderPlans<T extends Pick<PlanSummary, "area" | "updated_at">>(plans: readonly T[]): T[] {
   return [...plans].sort((a, b) => (a.area === b.area ? b.updated_at.localeCompare(a.updated_at) : a.area === "active" ? -1 : 1));

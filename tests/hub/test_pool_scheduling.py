@@ -184,7 +184,7 @@ def test_a_selector_run_goes_only_to_a_worker_with_every_label(client, hub, hub_
 
 def test_a_tainted_worker_takes_only_runs_that_tolerate_its_taints_or_are_pinned_to_it(client, hub, hub_db):
     """A run of no agent; a node of an agent's pool takes the runs of its agent whatever its own taints (the claim's
-    placement gate passes a run of the node's own agent: ``claims._gates``)."""
+    placement gate passes a run of the node's own agent: ``claim_rules._gates``)."""
     box = add_worker(client, hub["owner"], "box", slots=2, pool=None)
     answer = tainted(client, hub["owner"], box, "Dedicated", "dedicated")
     assert answer["taints"] == ["dedicated"]

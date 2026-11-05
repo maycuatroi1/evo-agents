@@ -113,7 +113,7 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
     """Count the figures of merged change ``change_id`` again and record its outcome, in the caller's transaction; a
     word for the job's summary."""
     from evo_agents.hub.server.collect import compute_figures  # it queues runs through modules that import this one
-    from evo_agents.hub.server.curator import _owner_access
+    from evo_agents.hub.server.curator_shift import owner_access
 
     c, lg, p = tables.curator_changes, tables.curator_ledger, tables.proposals
     change = (await conn.execute(select(c).where(c.c.id == change_id).with_for_update(skip_locked=True))).one_or_none()
@@ -131,7 +131,7 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
     project = (
         await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
     ).scalar_one()
-    access = None if owner is None else await _owner_access(conn, owner.owner_id, owner.login, project)
+    access = None if owner is None else await owner_access(conn, owner.owner_id, owner.login, project)
     if access is None:
         log.info("outcome waits for an owner who reads the project", extra={"change_id": change_id})
         return "owner"
@@ -341,7 +341,7 @@ def _named(items: list[str]) -> str:
 
 
 async def check_circuit(conn: AsyncConnection, due, night: date, since: datetime) -> bool:
-    """Trip the circuit breaker of schedule ``due`` (a row of ``curator._due``, its row locked) for ``night`` when the
+    """Trip the circuit breaker of schedule ``due`` (a row of ``curator_shift.due_schedules``, its row locked) for ``night`` when the
     night's last jobs since ``since`` went wrong in a row as often as the charter allows (see the module's docstring):
     pause the project's schedules, cancel what they queued, tell their owners. Whether it tripped."""
     breaker = due.body.get("circuit_breaker") or {}

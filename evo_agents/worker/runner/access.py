@@ -255,40 +255,11 @@ async def opens_pull(run: Run, name: str) -> preflight.Problem | None:
     if found is None:
         return None
     url, owner, repo = found
-    env = run.agent.env()
-    held = run.credentials
     tokens: list[tuple[str, str]] = []  # (what the token is, as a message names it; its value)
     none: list[str] = []  # why the agent holds no token of a kind
     unclear: list[str] = []
-    login = not claude_home.wanted(run.spec, run.runtime, held.gateway is not None)
-    try:
-        value, source = await preflight.gh_token(env, login=login)
-    except preflight.Unclear as exc:
-        unclear.append(f"this machine's gh: {exc}")
-    else:
-        if value is None:
-            none.append(source)
-        elif source == "gh":
-            tokens.append(("this machine's own gh login", value))
-        elif source in held.agent_vars:
-            tokens.append((f"the {source} the hub leased the run", value))
-        else:
-            tokens.append((f"this machine's {source}", value))
-    lease = None
-    if name not in held.unleased:
-        lease = next(
-            filter(None, (credentials.covering(held.leases, item) for item in held.origins.get(name) or [])), None
-        )
-    if lease is None:
-        reason = held.unleased.get(name)
-        none.append(
-            f"the hub leased the run no credential for it: {reason}" if reason else "no lease of the run covers it"
-        )
-    elif all(lease.value != value for _, value in tokens):
-        if lease.provider == "github-app":
-            tokens.append((f"the GitHub App token the hub leased the run ({lease.name})", lease.value))
-        else:
-            tokens.append((f"the git secret {lease.name} the hub leased the run", lease.value))
+    await _gh_token(run, tokens, none, unclear)
+    _lease_token(run, name, tokens, none)
     refusals: list[str] = []
     for what, value in tokens:
         try:
@@ -314,3 +285,44 @@ async def opens_pull(run: Run, name: str) -> preflight.Problem | None:
         "credentials",
         f"the run holds no credential to open a pull request in {name} at {url} with: {'; '.join(none)}",
     )
+
+
+async def _gh_token(run: Run, tokens: list[tuple[str, str]], none: list[str], unclear: list[str]) -> None:
+    """Add the token gh takes in the agent's environment to ``tokens`` (``opens_pull``), or why there is none to
+    ``none``, or why it is not known to ``unclear``."""
+    held = run.credentials
+    login = not claude_home.wanted(run.spec, run.runtime, held.gateway is not None)
+    try:
+        value, source = await preflight.gh_token(run.agent.env(), login=login)
+    except preflight.Unclear as exc:
+        unclear.append(f"this machine's gh: {exc}")
+        return
+    if value is None:
+        none.append(source)
+    elif source == "gh":
+        tokens.append(("this machine's own gh login", value))
+    elif source in held.agent_vars:
+        tokens.append((f"the {source} the hub leased the run", value))
+    else:
+        tokens.append((f"this machine's {source}", value))
+
+
+def _lease_token(run: Run, name: str, tokens: list[tuple[str, str]], none: list[str]) -> None:
+    """Add the run's git lease that covers the origin of repo ``name`` to ``tokens`` when it is not there yet
+    (``opens_pull``), or why the run holds none to ``none``."""
+    held = run.credentials
+    lease = None
+    if name not in held.unleased:
+        lease = next(
+            filter(None, (credentials.covering(held.leases, item) for item in held.origins.get(name) or [])), None
+        )
+    if lease is None:
+        reason = held.unleased.get(name)
+        none.append(
+            f"the hub leased the run no credential for it: {reason}" if reason else "no lease of the run covers it"
+        )
+    elif all(lease.value != value for _, value in tokens):
+        if lease.provider == "github-app":
+            tokens.append((f"the GitHub App token the hub leased the run ({lease.name})", lease.value))
+        else:
+            tokens.append((f"the git secret {lease.name} the hub leased the run", lease.value))

@@ -19,7 +19,7 @@ worker could not self-update while it was held.
 The refusal tells the agent to wait with ``evo-agents worker wait`` and end its turn. Work on the machine (tests, a
 build) still runs in the background as before. The thresholds are a reading of the commands such waits use, not a
 boundary: a poll kept in a script, or a sleep under another name, gets past the hook, so the plan run's prompt
-(``runs.WAIT_RULE``) and the execute-plan skill say the same.
+(``run_prompts.WAIT_RULE``) and the execute-plan skill say the same.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
-from evo_agents.worker.command_classes import SHELLS, _shell_script, simple_commands
+from evo_agents.worker.command_classes import SHELLS, shell_script, simple_commands
 
 SLEEP_LIMIT = 120  # seconds one sleep may last before it is a wait
 LOOP_SLEEP = 5  # seconds a sleep inside a loop may last before the loop is a poll
@@ -109,7 +109,7 @@ def waiting(command: str, depth: int = 0) -> str | None:
             continue
         name = PurePosixPath(words[0]).name
         if name in SHELLS and depth < 3:
-            script = _shell_script(words)
+            script = shell_script(words)
             found = waiting(script, depth + 1) if script else None
             if found:
                 return found

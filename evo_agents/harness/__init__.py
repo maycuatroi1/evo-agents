@@ -296,46 +296,11 @@ def _git_source_issues(src: dict, where: str, repo_names: set | None) -> list[Is
 def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | None = None) -> list[Issue]:
     """Checks a schema cannot express: references between sources, labels and the policy, and, given
     the path of knowledge.yaml, the ontology it points at."""
-    issues: list[Issue] = []
     policy = data.get("policy") or {}
     levels = policy.get("levels") or []
     locations = policy.get("locations") or ["any"]
-    repo_names = {r.get("name") for r in (manifest or {}).get("repos") or []}
-    known = available_connectors()
-
-    seen: set[str] = set()
-    for i, src in enumerate(data.get("sources") or []):
-        if not isinstance(src, dict):
-            continue
-        where = f"sources[{i}]"
-        sid = src.get("id")
-        if sid in seen:
-            issues.append(Issue(f"{where}.id", f"duplicate source id {sid!r}"))
-        seen.add(sid)
-        connector = src.get("connector")
-        if connector and connector not in known and not connector.startswith("python:"):
-            issues.append(Issue(f"{where}.connector", f"unknown connector {connector!r}"))
-        if connector == "exec" and not src.get("command"):
-            issues.append(Issue(f"{where}.command", "an exec connector needs a command"))
-        if connector == "git":
-            issues += _git_source_issues(src, where, repo_names if manifest is not None else None)
-        label = src.get("label")
-        if not label:
-            issues.append(Issue(f"{where}.label", "no label: treated as the highest level with integrity U", "warning"))
-        else:
-            if label.get("level") and levels and label["level"] not in levels:
-                issues.append(Issue(f"{where}.label.level", f"{label['level']!r} is not in policy.levels"))
-            if label.get("location") and label["location"] not in locations:
-                issues.append(Issue(f"{where}.label.location", f"{label['location']!r} is not in policy.locations"))
-
-    for i, sink in enumerate(policy.get("sinks") or []):
-        clr = (sink or {}).get("clearance") or {}
-        if clr.get("level") and levels and clr["level"] not in levels:
-            issues.append(Issue(f"policy.sinks[{i}].clearance.level", f"{clr['level']!r} is not in policy.levels"))
-        if clr.get("location") and clr["location"] not in locations:
-            issues.append(
-                Issue(f"policy.sinks[{i}].clearance.location", f"{clr['location']!r} is not in policy.locations")
-            )
+    issues = _sources_semantics(data, manifest, levels, locations)
+    issues += _sink_clearance_issues(policy, levels, locations)
     issues += _hub_semantics(data, manifest)
 
     for i, ident in enumerate(data.get("identifiers") or []):
@@ -345,6 +310,62 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(Issue(f"identifiers[{i}].pattern", f"invalid regex: {exc}"))
     if path is not None:
         issues += _ontology_semantics(data, path)
+    return issues
+
+
+def _sources_semantics(data: dict, manifest: dict | None, levels: list, locations: list) -> list[Issue]:
+    """The sources: ids once each, known connectors, what a connector needs, and labels in the policy."""
+    issues: list[Issue] = []
+    repo_names = {r.get("name") for r in (manifest or {}).get("repos") or []} if manifest is not None else None
+    known = available_connectors()
+    seen: set[str] = set()
+    for i, src in enumerate(data.get("sources") or []):
+        if not isinstance(src, dict):
+            continue
+        where = f"sources[{i}]"
+        sid = src.get("id")
+        if sid in seen:
+            issues.append(Issue(f"{where}.id", f"duplicate source id {sid!r}"))
+        seen.add(sid)
+        issues += _connector_issues(src, where, known, repo_names)
+        issues += _source_label_issues(src.get("label"), where, levels, locations)
+    return issues
+
+
+def _connector_issues(src: dict, where: str, known, repo_names: set | None) -> list[Issue]:
+    issues: list[Issue] = []
+    connector = src.get("connector")
+    if connector and connector not in known and not connector.startswith("python:"):
+        issues.append(Issue(f"{where}.connector", f"unknown connector {connector!r}"))
+    if connector == "exec" and not src.get("command"):
+        issues.append(Issue(f"{where}.command", "an exec connector needs a command"))
+    if connector == "git":
+        issues += _git_source_issues(src, where, repo_names)
+    return issues
+
+
+def _source_label_issues(label, where: str, levels: list, locations: list) -> list[Issue]:
+    if not label:
+        return [Issue(f"{where}.label", "no label: treated as the highest level with integrity U", "warning")]
+    issues: list[Issue] = []
+    if label.get("level") and levels and label["level"] not in levels:
+        issues.append(Issue(f"{where}.label.level", f"{label['level']!r} is not in policy.levels"))
+    if label.get("location") and label["location"] not in locations:
+        issues.append(Issue(f"{where}.label.location", f"{label['location']!r} is not in policy.locations"))
+    return issues
+
+
+def _sink_clearance_issues(policy: dict, levels: list, locations: list) -> list[Issue]:
+    """The clearance of each sink, in the policy's levels and locations."""
+    issues: list[Issue] = []
+    for i, sink in enumerate(policy.get("sinks") or []):
+        clr = (sink or {}).get("clearance") or {}
+        if clr.get("level") and levels and clr["level"] not in levels:
+            issues.append(Issue(f"policy.sinks[{i}].clearance.level", f"{clr['level']!r} is not in policy.levels"))
+        if clr.get("location") and clr["location"] not in locations:
+            issues.append(
+                Issue(f"policy.sinks[{i}].clearance.location", f"{clr['location']!r} is not in policy.locations")
+            )
     return issues
 
 

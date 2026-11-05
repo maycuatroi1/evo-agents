@@ -8,7 +8,7 @@ import pytest
 
 from evo_agents.cli import WORKER_ON_WINDOWS, main
 from evo_agents.hub import hooks
-from evo_agents.hub.memory import LeftAlone, read_memory
+from evo_agents.hub.memory_files import LeftAlone, read_memory
 from evo_agents.kg import grep_command
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="what only Windows does")

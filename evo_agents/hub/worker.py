@@ -250,7 +250,7 @@ async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> 
 @queue.periodic(cron="5 * * * *")
 @queue.task(name=jobs.EXPIRE_SEATS, pass_context=True, queueing_lock=jobs.EXPIRE_SEATS)
 async def expire_seats(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.run_state import expire_seats as expire
+    from evo_agents.hub.server.run_reaper import expire_seats as expire
 
     found = hub(context)
     return await expire(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
@@ -299,7 +299,7 @@ async def market_signals(context: JobContext, timestamp: int | None = None) -> d
 @queue.periodic(cron="47 * * * *")
 @queue.task(name=jobs.REAP_POOL_NODES, pass_context=True, queueing_lock=jobs.REAP_POOL_NODES)
 async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.run_state import reap_pool_nodes as reap
+    from evo_agents.hub.server.run_reaper import reap_pool_nodes as reap
 
     found = hub(context)
     return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
@@ -333,7 +333,7 @@ async def prune_kg_artifacts(context: JobContext, timestamp: int | None = None) 
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.RECOVER_RUNS, pass_context=True, queueing_lock=jobs.RECOVER_RUNS, queue=jobs.LEASE)
 async def recover_runs(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.run_state import recover_runs as recover
+    from evo_agents.hub.server.run_reaper import recover_runs as recover
 
     found = hub(context)
     return await recover(
@@ -359,7 +359,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.FIRE_SCHEDULES, pass_context=True, queueing_lock=jobs.FIRE_SCHEDULES)
 async def fire_schedules(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.curator import fire_schedules as fire
+    from evo_agents.hub.server.curator_shift import fire_schedules as fire
 
     found = hub(context)
     return await fire(found.engine, curator_app=getattr(found, "curator_app", None) is not None)
@@ -526,7 +526,7 @@ async def loop_tick(context: JobContext, project_id: int) -> dict:
 @queue.periodic(cron="13 4 * * *")
 @queue.task(name=jobs.PRUNE_RUN_EVENTS, pass_context=True, queueing_lock=jobs.PRUNE_RUN_EVENTS)
 async def prune_run_events(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.run_state import prune_run_events as prune
+    from evo_agents.hub.server.run_reaper import prune_run_events as prune
 
     found = hub(context)
     return await prune(found.engine, found.config.run_log_days, found.blobs)

@@ -39,7 +39,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeVar
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -69,6 +69,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
+T = TypeVar("T")
 
 MAX_ITEMS = 1000
 UPLOAD_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 413, 422, 503)}
@@ -340,71 +341,16 @@ async def commit_uploads(
     store = blob_store(request)
     engine = request.app.state.engine
     ids = sorted(set(upload_ids))
-    async with engine.begin() as conn:
-        access = await holder(conn, user, project, "committing")
-        rows = (await conn.execute(_pending(ids, access.project_id, user.user_id))).all()
-        uploads = [Upload(**row._mapping) for row in rows if kinds is None or row.kind in kinds]
-    unknown = sorted(set(ids) - {upload.upload_id for upload in uploads})
-    if unknown:
-        raise HTTPException(
-            422,
-            f"unknown uploads {', '.join(unknown)}: an upload is committed once, in its project, by whoever asked "
-            "for it, within 24 hours; nothing was committed",
-        )
-    try:
-        verdicts = await asyncio.to_thread(store.seal_all, uploads)
-    except BlobStoreUnavailable:
-        raise HTTPException(503, UNAVAILABLE) from None
-    problems = [
-        {"upload_id": v.upload.upload_id, "sha256": v.upload.sha256, "problem": v.problem}
-        for v in verdicts
-        if v.problem
-    ]
-    if problems:
-        async with engine.begin() as conn:
-            await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
-        await _discard(store, ids)
-        log.warning(
-            "blob commit refused: uploads do not match",
-            extra={"project": access.name, "login": user.login, "uploads": len(ids), "mismatched": problems},
-        )
-        raise Mismatch(problems)
+    access, uploads = await _pending_uploads(engine, user, project, ids, kinds)
+    await _sealed(store, engine, access, user, ids, uploads)
     if inspect is not None:
-        try:
-            await inspect(uploads)
-        except BlobStoreUnavailable:
-            raise HTTPException(503, UNAVAILABLE) from None  # the uploads stay, so the same commit can be sent again
-        except Exception:
-            async with engine.begin() as conn:
-                await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
-            await _discard(store, ids)
-            raise
+        await _inspected(store, engine, ids, uploads, inspect)
     async with engine.begin() as conn:  # the blobs the hub records already: only those are looked for first
         sha256 = tables.blobs.c.sha256
         recorded = select(sha256).distinct().where(blob_gc.hashes_in(sha256, [upload.sha256 for upload in uploads]))
         held = frozenset((await conn.execute(recorded)).scalars())
-    try:
-        written = await asyncio.to_thread(store.publish_all, uploads, held)
-    except BlobStoreUnavailable:
-        raise HTTPException(503, UNAVAILABLE) from None
-    async with engine.begin() as conn:
-        access = await holder(conn, user, project, "committing")  # the grant may have changed while the bytes were read
-        blobs = list({upload.sha256: upload for upload in reversed(uploads)}.values())  # the first upload of a hash
-        # A blob found held above may have lost its object to a deletion since (evo_agents.hub.blob_gc): copy those
-        # sealed bytes again, while the lock keeps any deletion out until the rows are written.
-        await blob_gc.lock_shared(conn)
-        revived = set(await blob_gc.revive(conn, [b.sha256 for b in blobs]))
-        if revived:
-            try:
-                await asyncio.to_thread(store.publish_all, [b for b in blobs if b.sha256 in revived])
-            except BlobStoreUnavailable:
-                raise HTTPException(503, UNAVAILABLE) from None
-        added = len((await conn.execute(_recorded(access.project_id, user.user_id, blobs))).all())
-        await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
-        if added:
-            await audit.record(
-                conn, actor_id=user.user_id, token_id=user.token_id, action=audit.BLOB_COMMIT, target=access.name
-            )
+    written = await _unavailable_as_503(asyncio.to_thread(store.publish_all, uploads, held))
+    access, blobs, added = await _record_blobs(store, engine, user, project, ids, uploads)
     await _discard(store, ids)
     log.info(
         "blobs committed",
@@ -418,6 +364,86 @@ async def commit_uploads(
     )
     blobs.sort(key=lambda upload: upload.sha256)
     return Committed(blobs=[Blob(sha256=b.sha256, size=b.size, kind=b.kind) for b in blobs], added=added)
+
+
+async def _unavailable_as_503(work: Awaitable[T]) -> T:
+    """``work``, with an outage of the blob store answered 503."""
+    try:
+        return await work
+    except BlobStoreUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None
+
+
+async def _pending_uploads(engine, user: Principal, project: str | None, ids: list[str], kinds: frozenset[str] | None):
+    """The project's access and the pending uploads of ``ids``; 422 when one is not the caller's to commit."""
+    async with engine.begin() as conn:
+        access = await holder(conn, user, project, "committing")
+        rows = (await conn.execute(_pending(ids, access.project_id, user.user_id))).all()
+        uploads = [Upload(**row._mapping) for row in rows if kinds is None or row.kind in kinds]
+    unknown = sorted(set(ids) - {upload.upload_id for upload in uploads})
+    if unknown:
+        raise HTTPException(
+            422,
+            f"unknown uploads {', '.join(unknown)}: an upload is committed once, in its project, by whoever asked "
+            "for it, within 24 hours; nothing was committed",
+        )
+    return access, uploads
+
+
+async def _drop_uploads(store: BlobStore, engine, ids: list[str]) -> None:
+    async with engine.begin() as conn:
+        await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
+    await _discard(store, ids)
+
+
+async def _sealed(store: BlobStore, engine, access, user: Principal, ids: list[str], uploads: list[Upload]) -> None:
+    """Seal every upload; when one does not match what was declared, discard them all and raise Mismatch."""
+    verdicts = await _unavailable_as_503(asyncio.to_thread(store.seal_all, uploads))
+    problems = [
+        {"upload_id": v.upload.upload_id, "sha256": v.upload.sha256, "problem": v.problem}
+        for v in verdicts
+        if v.problem
+    ]
+    if problems:
+        await _drop_uploads(store, engine, ids)
+        log.warning(
+            "blob commit refused: uploads do not match",
+            extra={"project": access.name, "login": user.login, "uploads": len(ids), "mismatched": problems},
+        )
+        raise Mismatch(problems)
+
+
+async def _inspected(store: BlobStore, engine, ids: list[str], uploads: list[Upload], inspect) -> None:
+    """Await ``inspect``: whatever it raises discards every upload, except an outage of the store (503), after which
+    the same commit can be sent again."""
+    try:
+        await inspect(uploads)
+    except BlobStoreUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None  # the uploads stay, so the same commit can be sent again
+    except Exception:
+        await _drop_uploads(store, engine, ids)
+        raise
+
+
+async def _record_blobs(store: BlobStore, engine, user: Principal, project: str | None, ids, uploads: list[Upload]):
+    """Record the blobs in the project, once a hash, and drop the uploads' rows; returns the access, the blobs and how
+    many were added."""
+    async with engine.begin() as conn:
+        access = await holder(conn, user, project, "committing")  # the grant may have changed while the bytes were read
+        blobs = list({upload.sha256: upload for upload in reversed(uploads)}.values())  # the first upload of a hash
+        # A blob found held above may have lost its object to a deletion since (evo_agents.hub.blob_gc): copy those
+        # sealed bytes again, while the lock keeps any deletion out until the rows are written.
+        await blob_gc.lock_shared(conn)
+        revived = set(await blob_gc.revive(conn, [b.sha256 for b in blobs]))
+        if revived:
+            await _unavailable_as_503(asyncio.to_thread(store.publish_all, [b for b in blobs if b.sha256 in revived]))
+        added = len((await conn.execute(_recorded(access.project_id, user.user_id, blobs))).all())
+        await conn.execute(delete(tables.blob_uploads).where(_uploads_in(ids)))
+        if added:
+            await audit.record(
+                conn, actor_id=user.user_id, token_id=user.token_id, action=audit.BLOB_COMMIT, target=access.name
+            )
+    return access, blobs, added
 
 
 @router.post("/commit", response_model=Committed, responses=COMMIT_REFUSALS)

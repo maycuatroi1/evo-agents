@@ -75,16 +75,16 @@ takes the oldest queued run, ``FOR UPDATE SKIP LOCKED``, that its owner dispatch
 on which the owner still holds writer, asking for a runtime the worker reported (``any`` takes the first of
 runs.RUNTIMES it has), of a repo it has a checkout of, pinned to no other worker, dispatched from a web session when the
 worker's dispatch_from is web, while the worker is neither draining nor revoked and holds fewer runs than its slots;
-a drained worker still takes a run pinned to it that resumes one it held (``claims.resumes_here``), whose session and
+a drained worker still takes a run pinned to it that resumes one it held (``claim_rules.resumes_here``), whose session and
 worktrees no other worker has, and nothing else. The
 next attempt of a run lost on the worker is passed over until the worker is steady (``steady``: heartbeats for
 runs.STEADY_SECONDS, none runs.STEADY_GAP_SECONDS late), so a machine that slept does not take the run again at once;
 any other worker that may take it takes it meanwhile, and Run's ``steady_wait`` names the worker it waits for. A worker
 has one claim waiting at a time: a newer claim answers the older one with no run. The claimed run is leased for
-EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by default) and comes with its prompt (``runs.build_prompt`` over the plan
-revision it was dispatched from). A plan run needs a checkout of every repo in its repos and a daemon of
-runs.PLAN_RUN_AGENT or later, and comes with ``runs.build_plan_prompt`` and the plan at the hub's current revision,
-which the daemon writes to ``runs.PLAN_FILE``. A dispatch pinned to a worker whose last heartbeat says it could never
+EVO_HUB_RUN_LEASE_SECONDS (LEASE_SECONDS by default) and comes with its prompt (``run_prompts.build_prompt`` over the
+plan revision it was dispatched from). A plan run needs a checkout of every repo in its repos and a daemon of
+runs.PLAN_RUN_AGENT or later, and comes with ``run_prompts.build_plan_prompt`` and the plan at the hub's current
+revision, which the daemon writes to ``runs.PLAN_FILE``. A dispatch pinned to a worker whose last heartbeat says it could never
 claim the run gets 409 (``_fits``). A claim whose worker hung up (a daemon stopping drops the claim it waits on) takes
 nothing: it ends before it looks at the queue again, and a run it leased in the meantime is rolled back before the
 transaction commits, so the run stays queued for the next claim instead of waiting out a lease nobody holds.

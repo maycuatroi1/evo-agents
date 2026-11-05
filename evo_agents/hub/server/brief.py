@@ -54,7 +54,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server import agent_placement, probe_report, today_digest
 from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server.curator import _due, _owner_access, curator_state, night_figures
+from evo_agents.hub.server.curator import curator_state, night_figures
+from evo_agents.hub.server.curator_shift import due_schedules, owner_access
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.notifications import notify, one_line
@@ -539,7 +540,7 @@ async def _send(conn: AsyncConnection, due) -> str:
     sent = select(b.c.id).where(b.c.project_id == due.project_id, b.c.day == day)
     if (await conn.execute(sent)).first() is not None:
         return "sent"
-    access = await _owner_access(conn, due.owner_id, due.owner, due.project)
+    access = await owner_access(conn, due.owner_id, due.owner, due.project)
     if access is None or access.role is None:
         log.warning("morning brief skipped: its owner holds no grant", extra={"project": due.project})
         return "owner"
@@ -585,7 +586,7 @@ async def send_briefs(engine: AsyncEngine, *, now: datetime | None = None) -> di
     """One pass of ``curator.brief`` over every night_shift schedule, each in a transaction of its own, at ``now``
     (the database's now when None); how many schedules ended in each outcome."""
     async with engine.begin() as conn:
-        found = (await conn.execute(_due(now))).all()
+        found = (await conn.execute(due_schedules(now))).all()
     outcomes: Counter = Counter()
     for due in found:
         try:

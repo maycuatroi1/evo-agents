@@ -33,10 +33,12 @@ from evo_agents.hub.server import audit, probes
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.changes import Change, change_view
+from evo_agents.hub.server.change_views import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.proposals import ItemId, planned_tiers_of, readable_proposal
+from evo_agents.hub.server.proposal_models import ItemId
+from evo_agents.hub.server.proposal_reads import readable_proposal
+from evo_agents.hub.server.proposals import planned_tiers_of
 from evo_agents.hub.server.protection import reason_line, repo_origins
 from evo_agents.hub.server.security import CurrentUser, Principal
 

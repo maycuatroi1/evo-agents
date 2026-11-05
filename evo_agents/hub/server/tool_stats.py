@@ -5,7 +5,7 @@ EVO_HUB_RUN_LOG_DAYS.
 ``record`` reads the run's tool_call and tool_call_update events (``docs/workers.md``, "Event kinds") and replaces the
 run's rows of run_tool_stats with what ``summarize`` makes of them. ``run_state.move_run`` calls it in the transaction
 of every move to an end state; ``run_events.post_events`` calls it again for events that arrive after the end, since a
-worker's spool may send its last ones then; and ``run_state.prune_run_events`` calls it just before it deletes a run's
+worker's spool may send its last ones then; and ``run_reaper.prune_run_events`` calls it just before it deletes a run's
 events, so a run that ended before schema 0013 keeps its figures too.
 
 A call is a tool_call event, matched to its updates by ``toolCallId``. It failed when an update says ``failed``, and

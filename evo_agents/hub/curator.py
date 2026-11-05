@@ -51,11 +51,20 @@ import math
 import re
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta
+from typing import Literal, get_args
 
-SCHEDULE_KINDS = ("night_shift",)  # the schedules a charter makes; later kinds join this tuple
-TIERS = (0, 1, 2, 3)  # of a change the Curator proposes, from what merges by itself to what the owner alone merges
+ScheduleKind = Literal["night_shift"]
+SCHEDULE_KINDS: tuple[str, ...] = get_args(ScheduleKind)  # the schedules a charter makes; later kinds join this tuple
+Tier = Literal[0, 1, 2, 3]
+TIERS: tuple[int, ...] = get_args(
+    Tier
+)  # of a change the Curator proposes, from what merges by itself to what the owner alone merges
+AutoMergeTier = Tier
 AUTO_MERGE_TIERS = TIERS  # the tiers a charter may let the hub merge (auto_merge); none unless it names them
-ANSWERERS = ("owner", "agent")  # who answers the proposals (answer_by): an admin, or the project's agent
+Answerer = Literal["owner", "agent"]
+ANSWERERS: tuple[str, ...] = get_args(
+    Answerer
+)  # who answers the proposals (answer_by): an admin, or the project's agent
 DEFAULT_RUNTIME = "claude-code"
 
 TIME_OF_DAY = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"  # HH:MM, 24 hours

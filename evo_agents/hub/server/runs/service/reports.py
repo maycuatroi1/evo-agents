@@ -32,7 +32,8 @@ from evo_agents.hub.server.runs.models import (
     WorkerSettings,
 )
 from evo_agents.hub.server.runs.service import plugin_runtimes, reroute
-from evo_agents.hub.server.runs.service.claims import resume_waits, worker_of
+from evo_agents.hub.server.runs.service.claim_rules import resume_waits
+from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal

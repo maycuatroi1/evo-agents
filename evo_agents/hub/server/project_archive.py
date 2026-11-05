@@ -16,7 +16,7 @@ What an archived project refuses or leaves out, until it is unarchived:
   local run of a Claude Code session (``local_runs``) is refused the same way;
 - a kg push (POST /v1/kg/{project}/runs) and a build a member asks for (POST /v1/kg/{project}/builds), 409; every
   other build (a plugin's change, a stalled build, a graph of an older schema) is skipped by ``kg_build.queue_build``;
-- the Curator's night shift (``curator._due``), the Loop's ticks (``loop_jobs``) and the plugins' jobs
+- the Curator's night shift (``curator_shift.due_schedules``), the Loop's ticks (``loop_jobs``) and the plugins' jobs
   (``plugin_jobs``), which leave it out.
 
 Everything the project holds reads as before. GET /v1/projects lists the live projects alone unless ``archived`` is

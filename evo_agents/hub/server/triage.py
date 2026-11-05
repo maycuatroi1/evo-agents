@@ -719,7 +719,7 @@ async def on_stale(conn: AsyncConnection, found: RunStep) -> Thread | None:
 
 
 async def open_stale(engine: AsyncEngine, batch: int = STALE_BATCH) -> int:
-    """One pass, of the reaper (``run_state.recover_runs``): a thread for each stale run (``_stale_runs``), each in a
+    """One pass, of the reaper (``run_reaper.recover_runs``): a thread for each stale run (``_stale_runs``), each in a
     transaction of its own that locks the run and checks again; a run has one thread, so it is opened once. How many
     were opened."""
     r = tables.runs

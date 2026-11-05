@@ -698,7 +698,7 @@ def test_lease_values_are_masked_in_the_log_and_in_events_while_a_run_holds_them
         assert credentials.scrub(f"{token} {shared} {oauth}") == f"{token} {shared} {oauth}"
 
     asyncio.run(go())
-    assert all(value not in credentials._held for value in (token, oauth, shared))
+    assert all(value not in credentials.held_values() for value in (token, oauth, shared))
     assert repr(RunCredentials(RUN, machine.worker, machine.env, machine.note)).startswith("RunCredentials(run=7")
 
 
@@ -1131,7 +1131,7 @@ def ask_args(**given) -> argparse.Namespace:
 
 
 def test_credential_request_of_worker_ask_is_the_hubs_body_and_refused_as_the_hub_refuses_it():
-    from evo_agents.worker.cli import WorkerStateError, credential_request
+    from evo_agents.worker.agent_cli import WorkerStateError, credential_request
 
     assert credential_request(ask_args()) is None, "a decision of category credential without a request, as before"
     assert credential_request(ask_args(env_var="NORTHWIND_DEPLOY_KEY", hub_account=True)) == {

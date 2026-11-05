@@ -3,9 +3,9 @@ api answers the kg_* tools from the latest build.
 
 Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-agents hub kg push`` does it all):
 
-- PUT /v1/kg/{project}/config sends the knowledge config the build reads (``evo_agents.hub.kg_ingest``). It must
-  keep the registered ladder, and every source the hub holds runs of, pending ones included, must stay cleared by
-  the hub sink.
+- PUT /v1/kg/{project}/config (``kg_config``) sends the knowledge config the build reads (``evo_agents.hub.kg_ingest``).
+  It must keep the registered ladder, and every source the hub holds runs of, pending ones included, must stay
+  cleared by the hub sink.
 - GET /v1/kg/{project}/runs lists the runs the hub has (``ingested``) and those still waiting for blobs.
 - A run is pushed in three steps. (1) The client uploads its log, ``<run_id>.jsonl.gz`` as the corpus wrote it,
   through the blob uploads (kind kg-log) without committing it. (2) POST /v1/kg/{project}/runs {run_id,
@@ -18,9 +18,9 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
   holds every one, then in one transaction writes kg_ingests, an audit row and a queued build. Every step is
   idempotent by run id: a run the hub has answers ``ingested`` and writes nothing.
 - POST /v1/kg/{project}/blobs/check returns the hashes of a list that the project does not hold.
-- DELETE /v1/kg/{project}/sources/{source} (``evo-agents hub kg forget-source``) takes every run of a source off the
-  hub. A source the config no longer declares takes the highest label, so PUT config refuses to drop a source the hub
-  holds runs of and names this command. In one transaction holding the blob lock exclusively
+- DELETE /v1/kg/{project}/sources/{source} (``evo-agents hub kg forget-source``, ``kg_config``) takes every run of a
+  source off the hub. A source the config no longer declares takes the highest label, so PUT config refuses to drop
+  a source the hub holds runs of and names this command. In one transaction holding the blob lock exclusively
   (``evo_agents.hub.blob_gc``) it deletes the source's kg_pending_runs and kg_ingests rows and the project's
   ``blobs`` rows of their logs, records the logs nothing else refers to for deletion (the next prune deletes the
   objects), writes an audit row ``kg.forget`` and queues a build. The blobs the runs refer to stay the project's, as
@@ -60,18 +60,18 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field, model_validator
-from sqlalchemy import Text, cast, delete, exists, func, literal, null, select, union
+from sqlalchemy import Text, cast, delete, exists, func, literal, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_settings, kg_upload_sources, tables
+from evo_agents.hub import kg_settings, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -90,8 +90,6 @@ from evo_agents.hub.kg_graph import (
 from evo_agents.hub.kg_ingest import (
     LogProblem,
     RunLog,
-    config_digest,
-    config_problems,
     read_run_log,
     refusal,
 )
@@ -115,7 +113,7 @@ BUILDS_LIMIT = 100
 GRAPHS_TRIED = 10  # builds holding an artifact a tool call may fall back on when the newest cannot be fetched
 CLI_SINK = "cli"
 LOG_KIND = "kg-log"
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="hex SHA-256")]
 Sink = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[^\x00-\x1f\x7f]+$")]
@@ -125,18 +123,6 @@ SourceId = Annotated[
 ]
 
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}, 404: {"model": ErrorBody}})
-
-
-class KgConfig(BaseModel):
-    knowledge: dict = Field(
-        description="policy, identifiers, ontology file name and sources {id, connector, label, code, repo, ref}"
-    )
-    ontology: dict | None = Field(None, description="the ontology extension knowledge.yaml points at, if any")
-
-
-class ConfigSaved(BaseModel):
-    digest: str
-    changed: bool = Field(description="false when the hub held exactly this config")
 
 
 class Runs(BaseModel):
@@ -220,18 +206,6 @@ class RunCommitted(Queued):
     created: bool = Field(description="false when the run was in the corpus already")
 
 
-class SourceForgotten(Queued):
-    source: str
-    ingested: int = Field(description="runs of the source taken out of the project's corpus")
-    pending: int = Field(description="runs of the source that waited for their blobs, dropped")
-    logs: int = Field(description="their logs nothing else refers to, deleted from the blob store by the next prune")
-    declared: bool = Field(
-        description="whether the knowledge config on the hub still declares the source: a machine holding its runs "
-        "then pushes them again"
-    )
-    uploads: int = Field(0, description="uploaded archives of the source deleted, with their items")
-
-
 class ToolCall(BaseModel):
     arguments: dict = Field(default_factory=dict)
     sink: Sink = AGENT_SINK
@@ -246,17 +220,17 @@ class ToolResult(BaseModel):
 # Access
 
 
-def _member(access: ProjectAccess) -> None:
+def member(access: ProjectAccess) -> None:
     if access.role is None:
         raise HTTPException(403, f"reading the knowledge graph of project {access.name} needs a grant on it")
 
 
-def _writer(access: ProjectAccess, doing: str) -> None:
+def writer(access: ProjectAccess, doing: str) -> None:
     if not has_role(access.role, "writer"):
         raise HTTPException(403, f"{doing} project {access.name} needs the writer role on it")
 
 
-def _hub_ceiling(access: ProjectAccess) -> Label:
+def hub_ceiling(access: ProjectAccess) -> Label:
     """The writer role and a usable hub sink, as for any push; the label the hub sink clears."""
     rules = access.rules
     try:
@@ -279,100 +253,6 @@ async def _config(conn: AsyncConnection, access: ProjectAccess) -> dict:
     return row[0]
 
 
-# The config
-
-
-def _held_sources(project_id: int):
-    """The sources of the runs the hub holds for the project, ingested or pending, each once, by name."""
-    ingests, pending = tables.kg_ingests, tables.kg_pending_runs
-    sources = union(
-        select(ingests.c.source).where(ingests.c.project_id == project_id),
-        select(pending.c.source).where(pending.c.project_id == project_id),
-    )
-    return sources.order_by(sources.selected_columns.source)
-
-
-def forget_command(project: str, sources: list[str]) -> str:
-    """The command that takes every run of ``sources`` off the hub (``forget_source``)."""
-    return f"`evo-agents hub kg forget-source --project {project} " + " ".join(f"--source {s}" for s in sources) + "`"
-
-
-def _declared(knowledge: dict) -> set:
-    return {source.get("id") for source in knowledge.get("sources") or [] if isinstance(source, dict)}
-
-
-def _uncleared_message(project: str, knowledge: dict, uncleared: list[str]) -> str:
-    """Why a config is refused whose ``uncleared`` sources the hub holds runs of: a source the config no longer
-    declares takes the highest label, so dropping one needs its runs taken off the hub first."""
-    declared = _declared(knowledge)
-    dropped = [source for source in uncleared if source not in declared]
-    raised = [source for source in uncleared if source in declared]
-    parts = []
-    if dropped:
-        parts.append(
-            f"the config drops sources {', '.join(dropped)}, but the hub holds runs of them: take them off the hub "
-            f"first with {forget_command(project, dropped)}, then push again"
-        )
-    if raised:
-        parts.append(
-            f"sources {', '.join(raised)} would be labelled above what the hub sink of project {project} clears, but "
-            "the hub holds runs of them: lower their labels, raise the sink's clearance, or take their runs off the "
-            f"hub with {forget_command(project, raised)}"
-        )
-    return "; ".join(parts)
-
-
-@router.put("/{project}/config", response_model=ConfigSaved, responses=REFUSALS)
-async def put_config(request: Request, project: ProjectName, body: KgConfig, user: CurrentUser) -> ConfigSaved:
-    """Save the knowledge config the project's graph is built with."""
-    config = body.model_dump()
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        ceiling = _hub_ceiling(access)
-        access.push_label(None)  # the config is the harness source's: its label must leave the machine too
-        problems = config_problems(project, access.rules.levels, access.rules.locations, config)
-        if problems:
-            raise HTTPException(
-                422, f"the knowledge config of project {project} cannot be used: " + "; ".join(problems)
-            )
-        policy = Policy(project, config["knowledge"])
-        held_sources = await conn.execute(_held_sources(access.project_id))
-        uncleared = [source for source in held_sources.scalars() if not policy.source_label(source).below(ceiling)]
-        if uncleared:
-            raise HTTPException(422, _uncleared_message(project, config["knowledge"], uncleared))
-        digest = config_digest(config)
-        configs = tables.kg_configs
-        held = (
-            await conn.execute(
-                select(configs.c.digest).where(configs.c.project_id == access.project_id).with_for_update()
-            )
-        ).one_or_none()
-        if held is not None and held[0] == digest:
-            return ConfigSaved(digest=digest, changed=False)
-        saved = pg_insert(configs).values(
-            project_id=access.project_id,
-            digest=digest,
-            knowledge=config["knowledge"],
-            ontology=null() if config["ontology"] is None else config["ontology"],  # SQL NULL, not JSON null
-            updated_by=user.user_id,
-        )
-        await conn.execute(
-            saved.on_conflict_do_update(
-                index_elements=[configs.c.project_id],
-                set_={
-                    "digest": saved.excluded.digest,
-                    "knowledge": saved.excluded.knowledge,
-                    "ontology": saved.excluded.ontology,
-                    "updated_by": saved.excluded.updated_by,
-                    "updated_at": func.now(),
-                },
-            )
-        )
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.KG_CONFIG, target=project)
-    log.info("kg config saved", extra={"project": project, "login": user.login, "digest": digest})
-    return ConfigSaved(digest=digest, changed=True)
-
-
 # Runs
 
 
@@ -380,7 +260,7 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
 async def list_runs(request: Request, project: ProjectName, user: CurrentUser) -> Runs:
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _member(access)
+        member(access)
         ingested = (await conn.execute(_run_ids(tables.kg_ingests, access.project_id))).scalars().all()
         pending = (await conn.execute(_run_ids(tables.kg_pending_runs, access.project_id))).scalars().all()
     return Runs(ingested=list(ingested), pending=list(pending))
@@ -406,7 +286,7 @@ async def check_blobs(request: Request, project: ProjectName, body: BlobCheck, u
     """The hashes of ``sha256`` the project does not hold."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _writer(access, "pushing to")
+        writer(access, "pushing to")
         return MissingBlobs(missing=await _missing(conn, access.project_id, body.sha256))
 
 
@@ -466,6 +346,54 @@ def _held_log(runs, project_id: int, run_id: uuid.UUID, *columns):
     return select(*columns).where(runs.c.project_id == project_id, runs.c.run_id == run_id)
 
 
+async def _pushed_before(request: Request, user, project_id: int, body: RunPush, ingested, pending) -> RunState:
+    """The state of a run the hub holds already, once the upload it no longer needs is deleted. Raises 409 for another
+    log than the one held."""
+    run_id = str(body.run_id)
+    declared = await _discard_upload(request, user, project_id, body.log_upload_id) or body.log_sha256
+    held = (ingested or pending)[0]
+    if declared is not None and declared != held:
+        raise HTTPException(409, f"the hub holds another log for run {run_id}: a run's log never changes")
+    if ingested is not None:
+        return RunState(run_id=run_id, status="ingested", log_sha256=held, blobs=0, missing=[])
+    async with request.app.state.engine.begin() as conn:
+        missing = await _missing(conn, project_id, pending[1])
+    return RunState(run_id=run_id, status="pending", log_sha256=held, blobs=len(pending[1]), missing=missing)
+
+
+async def _keep_pending(engine, user, project: str, project_id: int, run_id: uuid.UUID, found: dict) -> RunState:
+    """Keep the checked log in ``found`` as a pending run; its state, with the blobs the project still lacks."""
+    run: RunLog = found["run"]
+    blobs = sorted(run.blobs)
+    pending_runs = tables.kg_pending_runs
+    async with engine.begin() as conn:
+        await conn.execute(
+            pg_insert(pending_runs)
+            .values(
+                project_id=project_id,
+                run_id=run_id,
+                source=run.source,
+                log_sha256=found["sha256"],
+                log_size=found["size"],
+                blobs=blobs,
+                pushed_by=user.user_id,
+            )
+            .on_conflict_do_nothing(index_elements=[pending_runs.c.project_id, pending_runs.c.run_id])
+        )
+        missing = await _missing(conn, project_id, blobs)
+    log.info(
+        "kg run log accepted",
+        extra={
+            "project": project,
+            "login": user.login,
+            "items": run.items,
+            "blobs": len(blobs),
+            "missing": len(missing),
+        },
+    )
+    return RunState(run_id=str(run_id), status="pending", log_sha256=found["sha256"], blobs=len(blobs), missing=missing)
+
+
 @router.post("/{project}/runs", response_model=RunState, responses=REFUSALS)
 async def push_run(request: Request, project: ProjectName, body: RunPush, user: CurrentUser):
     """Check the log of a run and keep it; the blobs it refers to that the project still lacks."""
@@ -474,7 +402,7 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         await project_archive.refuse_archived(conn, access.project_id, "it takes no kg push")
-        ceiling = _hub_ceiling(access)
+        ceiling = hub_ceiling(access)
         knowledge = await _config(conn, access)
         ingests, pending_runs = tables.kg_ingests, tables.kg_pending_runs
         ingested = (
@@ -486,15 +414,7 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
             )
         ).one_or_none()
     if ingested is not None or pending is not None:  # pushed before: the new upload is not needed
-        declared = await _discard_upload(request, user, access.project_id, body.log_upload_id) or body.log_sha256
-        held = (ingested or pending)[0]
-        if declared is not None and declared != held:
-            raise HTTPException(409, f"the hub holds another log for run {run_id}: a run's log never changes")
-        if ingested is not None:
-            return RunState(run_id=run_id, status="ingested", log_sha256=held, blobs=0, missing=[])
-        async with engine.begin() as conn:
-            missing = await _missing(conn, access.project_id, pending[1])
-        return RunState(run_id=run_id, status="pending", log_sha256=held, blobs=len(pending[1]), missing=missing)
+        return await _pushed_before(request, user, access.project_id, body, ingested, pending)
 
     store = blob_store(request)
     policy = Policy(project, knowledge)
@@ -551,41 +471,13 @@ async def push_run(request: Request, project: ProjectName, body: RunPush, user: 
         except BlobStoreUnavailable:
             raise HTTPException(503, "the blob store did not answer; nothing was written, try again shortly") from None
 
-    run: RunLog = found["run"]
-    blobs = sorted(run.blobs)
-    pending_runs = tables.kg_pending_runs
-    async with engine.begin() as conn:
-        await conn.execute(
-            pg_insert(pending_runs)
-            .values(
-                project_id=access.project_id,
-                run_id=body.run_id,
-                source=run.source,
-                log_sha256=found["sha256"],
-                log_size=found["size"],
-                blobs=blobs,
-                pushed_by=user.user_id,
-            )
-            .on_conflict_do_nothing(index_elements=[pending_runs.c.project_id, pending_runs.c.run_id])
-        )
-        missing = await _missing(conn, access.project_id, blobs)
-    log.info(
-        "kg run log accepted",
-        extra={
-            "project": project,
-            "login": user.login,
-            "items": run.items,
-            "blobs": len(blobs),
-            "missing": len(missing),
-        },
-    )
-    return RunState(run_id=run_id, status="pending", log_sha256=found["sha256"], blobs=len(blobs), missing=missing)
+    return await _keep_pending(engine, user, project, access.project_id, body.run_id, found)
 
 
 # Builds
 
 
-async def _builds(
+async def find_builds(
     conn: AsyncConnection,
     project_id: int,
     *,
@@ -629,7 +521,7 @@ async def _builds(
     return builds
 
 
-async def _queue(request: Request, conn, project_id: int, project: str, requested_by: int | None):
+async def queue(request: Request, conn, project_id: int, project: str, requested_by: int | None):
     try:
         return await queue_build(request.app.state.jobs, conn, project_id, project, requested_by)
     except QueueBusy as exc:
@@ -642,7 +534,7 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
     run = str(run_id)
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _hub_ceiling(access)
+        hub_ceiling(access)
         ingests, pending_runs = tables.kg_ingests, tables.kg_pending_runs
         p = pending_runs.c
         pending = (
@@ -685,8 +577,8 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
             delete(pending_runs).where(pending_runs.c.project_id == access.project_id, pending_runs.c.run_id == run_id)
         )
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.KG_INGEST, target=project)
-        build_id, queued = await _queue(request, conn, access.project_id, project, None)
-        build = (await _builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
+        build_id, queued = await queue(request, conn, access.project_id, project, None)
+        build = (await find_builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
     log.info(
         "kg run ingested",
         extra={"project": project, "login": user.login, "blobs": len(blobs), "build_id": build_id, "queued": queued},
@@ -717,8 +609,8 @@ async def list_builds(
     queue."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _member(access)
-        builds = await _builds(conn, access.project_id, status=status, limit=limit)
+        member(access)
+        builds = await find_builds(conn, access.project_id, status=status, limit=limit)
         rows = await conn.execute(_queued_jobs(project))
         jobs = [Job(**row._mapping) for row in rows]
     return Builds(builds=builds, jobs=jobs)
@@ -728,8 +620,8 @@ async def list_builds(
 async def show_build(request: Request, project: ProjectName, build_id: int, user: CurrentUser) -> Build:
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _member(access)
-        found = await _builds(conn, access.project_id, build_id=build_id, limit=1)
+        member(access)
+        found = await find_builds(conn, access.project_id, build_id=build_id, limit=1)
     if not found:
         raise HTTPException(404, f"project {project} has no build {build_id}")
     return found[0]
@@ -740,95 +632,16 @@ async def request_build(request: Request, project: ProjectName, user: CurrentUse
     """Queue a build of the project's graph from the runs the hub holds."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _writer(access, "building")
+        writer(access, "building")
         await project_archive.refuse_archived(conn, access.project_id, "its graph is not built again")
-        build_id, queued = await _queue(request, conn, access.project_id, project, user.user_id)
+        build_id, queued = await queue(request, conn, access.project_id, project, user.user_id)
         if queued:
             await audit.record(
                 conn, actor_id=user.user_id, token_id=user.token_id, action=audit.KG_BUILD, target=project
             )
-        build = (await _builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
+        build = (await find_builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
     log.info("kg build requested", extra={"project": project, "login": user.login, "queued": queued})
     return Queued(build=build, queued=queued)
-
-
-# Forgetting a source
-
-
-async def _drop_source(conn: AsyncConnection, project_id: int, source: str) -> tuple[int, int, int]:
-    """Delete the project's runs of ``source``, pending ones first (a commit in progress finishes before), then
-    ingested ones, and the project's rows of their logs; record the logs nothing else refers to for deletion. In
-    ``conn``'s transaction, which holds the blob lock exclusively. (ingested, pending, logs recorded)."""
-    ingests, pending_runs, blobs = tables.kg_ingests, tables.kg_pending_runs, tables.blobs
-    logs = {}
-    counts = []
-    for runs in (pending_runs, ingests):
-        dropped = await conn.execute(
-            delete(runs)
-            .where(runs.c.project_id == project_id, runs.c.source == source)
-            .returning(runs.c.log_sha256, runs.c.log_size)
-        )
-        rows = dropped.all()
-        logs.update((row.log_sha256, row.log_size) for row in rows)
-        counts.append(len(rows))
-    if logs:  # a log names its run, so no other run of the project refers to it
-        hashes = sorted(logs)
-        await conn.execute(
-            delete(blobs).where(
-                blobs.c.project_id == project_id, blobs.c.kind == LOG_KIND, blob_gc.hashes_in(blobs.c.sha256, hashes)
-            )
-        )
-        recorded = await blob_gc.forget(conn, {sha: (logs[sha], LOG_KIND) for sha in hashes})
-    else:
-        recorded = []
-    return counts[1], counts[0], len(recorded)
-
-
-@router.delete("/{project}/sources/{source}", response_model=SourceForgotten, responses=REFUSALS)
-async def forget_source(request: Request, project: ProjectName, source: SourceId, user: CurrentUser) -> SourceForgotten:
-    """Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the
-    hub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before)."""
-    async with request.app.state.engine.connect() as conn, conn.begin():
-        access = await project_access(conn, user, project)
-        _writer(access, "forgetting a source of")
-        configs = tables.kg_configs
-        knowledge = (
-            await conn.execute(select(configs.c.knowledge).where(configs.c.project_id == access.project_id))
-        ).scalar_one_or_none()
-        declared = source in _declared(knowledge or {})
-        await blob_gc.lock_exclusive(conn)
-        ingested, pending, logs = await _drop_source(conn, access.project_id, source)
-        uploads = await kg_upload_sources.forget(conn, access.project_id, source)
-        build, queued = None, False
-        if ingested or pending or uploads.uploads:
-            await audit.record(
-                conn,
-                actor_id=user.user_id,
-                token_id=user.token_id,
-                action=audit.KG_FORGET,
-                target=f"{project} source={source} runs={ingested + pending}"
-                + (f" uploads={uploads.uploads}" if uploads.uploads else ""),
-                project_id=access.project_id,
-            )
-            build_id, queued = await _queue(request, conn, access.project_id, project, user.user_id)
-            build = (await _builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
-    if uploads.keys or uploads.multiparts:
-        await asyncio.to_thread(kg_upload_sources.release, blob_store(request), uploads)
-    log.info(
-        "kg source forgotten",
-        extra={"project": project, "login": user.login, "runs": ingested + pending, "logs": logs, "queued": queued}
-        | {"uploads": uploads.uploads},
-    )
-    return SourceForgotten(
-        source=source,
-        ingested=ingested,
-        pending=pending,
-        logs=logs,
-        declared=declared,
-        build=build,
-        queued=queued,
-        uploads=uploads.uploads,
-    )
 
 
 # The tools
@@ -875,7 +688,7 @@ async def rebuild_outdated(state, project_id: int, project: str) -> None:
         log.warning("kg graph of an older store schema: a new build is queued", extra={"project": project})
 
 
-def _read_sink(access: ProjectAccess, sink: str) -> str:
+def read_sink(access: ProjectAccess, sink: str) -> str:
     if sink == CLI_SINK and CLI_SINK not in access.rules.policy.sinks and access.rules.hub_sink is not None:
         return access.rules.hub_sink.sink
     return sink
@@ -898,7 +711,7 @@ async def tool_result(
     403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact whose bytes are not the build's."""
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _member(access)
+        member(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
         if graphs and audience is None:
             audience = await reader_audience(conn, user)
@@ -910,7 +723,8 @@ async def tool_result(
         )
         return {"content": [{"type": "text", "text": message}], "isError": True}
     rules = access.rules
-    ceiling = rules.ceiling(access.max_level, _read_sink(access, sink), audience)
+    assert audience is not None  # read above, as there are graphs
+    ceiling = rules.ceiling(access.max_level, read_sink(access, sink), audience)
     try:
         result = await asyncio.to_thread(
             answer,
@@ -959,7 +773,7 @@ async def unknown_refs(
     async with state.engine.begin() as conn:
         try:
             access = await project_access(conn, user, project)
-            _member(access)
+            member(access)
         except HTTPException as exc:
             return UnknownRefs(*every, str(exc.detail))
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
@@ -967,7 +781,7 @@ async def unknown_refs(
     if not graphs:
         return UnknownRefs(*every, f"project {project} has no knowledge graph on the hub yet")
     through = sink or (access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK)
-    ceiling = access.rules.ceiling(access.max_level, _read_sink(access, through), audience)
+    ceiling = access.rules.ceiling(access.max_level, read_sink(access, through), audience)
     looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, ids, paths)
     try:
         return await asyncio.to_thread(unknown, *looked)
@@ -990,7 +804,7 @@ async def delivery_evidence(
     async with state.engine.begin() as conn:
         try:
             access = await project_access(conn, user, project)
-            _member(access)
+            member(access)
         except HTTPException as exc:
             return None, str(exc.detail)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
@@ -998,7 +812,7 @@ async def delivery_evidence(
     if not graphs:
         return None, f"project {project} has no knowledge graph on the hub yet"
     through = access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK
-    ceiling = access.rules.ceiling(access.max_level, _read_sink(access, through), audience)
+    ceiling = access.rules.ceiling(access.max_level, read_sink(access, through), audience)
     looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, codes)
     try:
         return await asyncio.to_thread(mentioning, *looked), None

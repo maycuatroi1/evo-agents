@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub import hooks, local_outputs, local_sync, outputs
+from evo_agents.hub import hooks, local_outputs, local_store, local_sync, outputs
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.client import (
     FILE_MODE,
@@ -165,7 +165,7 @@ def stage(queue: Queue, item: dict, token: str) -> tuple[str, int]:
 def _local_run(session_id: str, url: str) -> tuple[str, int] | str:
     """(project, run id) of the session's local run, or why there is none to send to: NO_RUN (a directory of no hub
     project: there never will be), REFUSED (the hub refused the session lately), UNREGISTERED (not yet)."""
-    rec = local_sync.Store(session_id, url).load()
+    rec = local_store.Store(session_id, url).load()
     if rec is not None and rec.get("resolved") and rec.get("project") is None:
         return NO_RUN
     refused = rec.get("refused_at") if rec else None

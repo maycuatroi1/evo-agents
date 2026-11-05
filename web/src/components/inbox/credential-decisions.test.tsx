@@ -10,7 +10,8 @@ import { queryKeys } from "@/lib/queries";
 import { renderVi } from "@/test/render";
 
 import { credentialOption, footWords, MAX_SECRET_BYTES, sendWords, valueProblem } from "./credential-model";
-import { AnswerFields, DecisionCard, useAnswerForm } from "./decision-view";
+import { AnswerFields } from "./answer-form";
+import { DecisionCard, useAnswerForm } from "./decision-view";
 import type { Decision } from "./queries";
 
 const api = vi.hoisted(() => ({

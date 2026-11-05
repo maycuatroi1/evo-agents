@@ -459,7 +459,7 @@ def _unpushed(places, known: dict, swept: dict, skip, since: float, settled: flo
     """``(mtime, session id, transcript, project, [size, mtime])`` of each session's own transcript under the
     projects directories of Claude Code changed in [since, settled), in a directory of a hub project that is not a
     worker's run, with no entry in ``known`` and not noted in ``swept`` as it is now; the newest first."""
-    from evo_agents.hub.memory import SLUG, slug
+    from evo_agents.hub.memory_places import SLUG, slug
     from evo_agents.hub.transcripts import claude_roots
 
     runs = slug(worker_worktrees())

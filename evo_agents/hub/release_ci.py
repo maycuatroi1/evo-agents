@@ -22,10 +22,10 @@ ci-ok of ci.yml, whose log names no test and gives the result of each job it nee
 job is, so its id and its log count only when every failed job is a gate (``summary``): else two unrelated failures
 share its id, and its log hides a fault of the infrastructure.
 
-A fix the hub lands must show no sign of test hacking (``release_signs``): of the signs ``judge.hack_signs`` reads, a
-test removed, an assertion removed or loosened (an assertion of a test changed in any way but its numbers, an assert
-made always true among them) and a skip or an xfail added, but for ``pytest.importorskip`` and a skip on one platform
-that gives its reason (``allowed_skip``).
+A fix the hub lands must show no sign of test hacking (``release_signs``): of the signs ``diff_signs.hack_signs``
+reads, a test removed, an assertion removed or loosened (an assertion of a test changed in any way but its numbers, an
+assert made always true among them) and a skip or an xfail added, but for ``pytest.importorskip`` and a skip on one
+platform that gives its reason (``allowed_skip``).
 
 STOP_CAUSES are why a cycle stops; a stopped cycle waits for its owner's decision (STOP_OPTIONS) and goes on with
 nothing until then.
@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import re
 
-from evo_agents.hub import judge
+from evo_agents.hub import diff_signs
 from evo_agents.hub.releases import CONTROL
 
 CI_STATES = ("pending", "running", "passed", "failed", "timeout")  # of a tag the cycle follows
@@ -102,7 +102,7 @@ INFRA_RULES = (
         ),
     ),
 )
-RELEASE_SIGNS = ("test_removed", "assert_removed", "skip_added")  # of judge.SIGN_KINDS, what stops a fix
+RELEASE_SIGNS = ("test_removed", "assert_removed", "skip_added")  # of diff_signs.SIGN_KINDS, what stops a fix
 PLATFORM = re.compile(r"\bsys\.platform\b|\bos\.name\b|\bplatform\.system\s*\(|\bprocess\.platform\b")
 REASON = re.compile(r"\breason\s*=\s*[rbuf]*['\"]\s*\S|,\s*['\"`][^'\"`]{3,}['\"`]\s*\)")
 OTHER_SKIP = re.compile(r"\b(?:skip|skipif|xfail|skipTest|SkipTest)\b|\.(?:skip|only|fixme|todo)\s*\(")
@@ -244,10 +244,10 @@ def allowed_skip(text: str) -> bool:
     return bool(PLATFORM.search(text) and REASON.search(text))
 
 
-def release_signs(files: list[judge.FileDiff], repo: str) -> list[dict]:
+def release_signs(files: list[diff_signs.FileDiff], repo: str) -> list[dict]:
     """The signs of test hacking in the diff ``files`` of a release run's change (see the module), each
-    ``{kind, path, line, text}`` as ``judge.hack_signs`` gives them."""
-    signs = judge.hack_signs(files, repo=repo, protected=[])
+    ``{kind, path, line, text}`` as ``diff_signs.hack_signs`` gives them."""
+    signs = diff_signs.hack_signs(files, repo=repo, protected=[])
     return [
         sign
         for sign in signs
@@ -260,6 +260,6 @@ def signs_text(signs: list[dict], limit: int = 5) -> str:
     shown = []
     for sign in signs[:limit]:
         where = f"{sign['path']}:{sign['line']}" if sign.get("line") else sign["path"]
-        shown.append(f"{judge.SIGN_KINDS.get(sign['kind'], sign['kind'])} at {where}")
+        shown.append(f"{diff_signs.SIGN_KINDS.get(sign['kind'], sign['kind'])} at {where}")
     more = f" and {len(signs) - limit} more" if len(signs) > limit else ""
     return "; ".join(shown) + more

@@ -1,6 +1,6 @@
 """Deleting outputs of runs (``evo_agents.hub.outputs``): one a member deletes (``evo_agents.hub.server.run_outputs``),
 and those of source tool that go with their run's events (the job hub.prune_run_events, through
-``evo_agents.hub.server.run_state.prune_run_events``).
+``evo_agents.hub.server.run_reaper.prune_run_events``).
 
 ``drop`` deletes the outputs a condition selects, their links to questions and chat messages with them. The project's
 blobs of kind run-output that no output of the project names any longer lose their ``blobs`` row, and

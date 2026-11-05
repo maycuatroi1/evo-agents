@@ -29,10 +29,11 @@ log = logging.getLogger("evo_agents.hub")
 EXTRA_HINT = "python -m pip install 'evo-ak[hub-server]'"
 EXIT_FAILED = 1
 EXIT_USAGE = 2
+_DSN_HELP = "Postgres DSN (default: $EVO_HUB_DSN; prefer the variable, a command line is visible to ps)"
 OWN_COMMANDS: set[str] = set()  # the hub commands of the CLI itself, the plugins' left out (cli_plugin_commands)
 
 
-def _server_command(func):
+def server_command(func):
     """Configure JSON logging first, and turn every failure of ``func`` into a log line and an exit code."""
 
     @functools.wraps(func)
@@ -59,7 +60,7 @@ def _config_error(exc) -> int:
     return EXIT_USAGE
 
 
-def _missing_extra(exc: ImportError, args) -> int:
+def missing_extra(exc: ImportError, args) -> int:
     log.error(
         f"hub {args.hub_command} needs the hub-server extra (missing module {exc.name}): {EXTRA_HINT}",
         extra={"missing_module": exc.name},
@@ -67,7 +68,7 @@ def _missing_extra(exc: ImportError, args) -> int:
     return EXIT_USAGE
 
 
-@_server_command
+@server_command
 def cmd_serve(args) -> int:
     from evo_agents.hub.config import ConfigError, load_config
 
@@ -80,7 +81,7 @@ def cmd_serve(args) -> int:
 
         from evo_agents.hub.server.app import create_app, init_sentry
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     init_sentry(config)
     # A failed start (Postgres unreachable, migration refused) makes uvicorn exit with status 3.
     uvicorn.run(
@@ -97,7 +98,7 @@ def cmd_serve(args) -> int:
     return 0
 
 
-@_server_command
+@server_command
 def cmd_worker(args) -> int:
     from evo_agents.hub.config import ConfigError, load_config
 
@@ -113,7 +114,7 @@ def cmd_worker(args) -> int:
         from evo_agents.hub import worker
         from evo_agents.hub.server.app import init_sentry, loop_tick, memory_upkeep, release_pass
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     init_sentry(config)
     return worker.main(
         config,
@@ -125,12 +126,12 @@ def cmd_worker(args) -> int:
     )
 
 
-@_server_command
+@server_command
 def cmd_plugin_host(args) -> int:
     try:
         from evo_agents.hub.plugin_host_service import load_host_config, run_service
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     try:
         config = load_host_config(args)
     except ValueError as exc:
@@ -156,7 +157,7 @@ def _storage_stores(args, *paths: str | None):
     try:
         from evo_agents.hub.blob_migrate import store_from_env
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     stores = []
     try:
         for path in paths:
@@ -173,7 +174,7 @@ def _storage_stores(args, *paths: str | None):
     return stores
 
 
-@_server_command
+@server_command
 def cmd_storage_check(args) -> int:
     stores = _storage_stores(args, args.env)
     if isinstance(stores, int):
@@ -192,7 +193,7 @@ def cmd_storage_check(args) -> int:
     return 0 if steps and all(step.ok for step in steps) else EXIT_FAILED
 
 
-@_server_command
+@server_command
 def cmd_storage_migrate(args) -> int:
     import json
 
@@ -229,7 +230,7 @@ def cmd_storage_migrate(args) -> int:
     return EXIT_FAILED if report.failed else 0
 
 
-def _positive(value: str) -> int:
+def positive(value: str) -> int:
     try:
         number = int(value)
     except ValueError:
@@ -239,7 +240,7 @@ def _positive(value: str) -> int:
     return number
 
 
-@_server_command
+@server_command
 def cmd_migrate(args) -> int:
     from evo_agents.hub.config import ConfigError, load_dsn
     from evo_agents.hub.log import redact_dsn
@@ -254,7 +255,7 @@ def cmd_migrate(args) -> int:
 
         from evo_agents.hub.migrate import MigrationError, migrate, status
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     try:
         if getattr(args, "status", False):
             return _print_status(status(dsn))
@@ -290,6 +291,12 @@ def _print_status(chains) -> int:
 
 def _register_client_commands(hsub) -> None:
     """The command groups of the client, each registered by its own module, imported only when the parser is built."""
+    _register_workspace_commands(hsub)
+    _register_steering_commands(hsub)
+
+
+def _register_workspace_commands(hsub) -> None:
+    """The client's groups from hub login to hub emails."""
     from evo_agents.hub.cli_client import register_client
 
     register_client(hsub)
@@ -342,6 +349,9 @@ def _register_client_commands(hsub) -> None:
 
     register_emails(hsub)
 
+
+def _register_steering_commands(hsub) -> None:
+    """The client's groups from hub release to hub inbox."""
     from evo_agents.hub.release_cli import register_release
 
     register_release(hsub)
@@ -397,10 +407,32 @@ def _register_client_commands(hsub) -> None:
 def register(sub) -> None:
     hub = sub.add_parser("hub", help="team hub for memories, plans, skills and knowledge graphs")
     hsub = hub.add_subparsers(dest="hub_command", required=True)
-    dsn_help = "Postgres DSN (default: $EVO_HUB_DSN; prefer the variable, a command line is visible to ps)"
+    _register_serve(hsub)
+    _register_worker(hsub)
+    _register_migrate(hsub)
+    _register_plugin_host(hsub)
+    _register_storage(hsub)
 
+    _register_client_commands(hsub)
+
+    from evo_agents.hub.openapi import register as register_openapi
+
+    register_openapi(hsub)
+
+    from evo_agents.hub.contract import register as register_contract
+
+    register_contract(hsub)
+    OWN_COMMANDS.clear()
+    OWN_COMMANDS.update(hsub.choices)
+
+    from evo_agents.hub.cli_plugin_commands import register_plugin_commands
+
+    register_plugin_commands(hsub)  # last: a plugin whose id is a command of the CLI's own is left out
+
+
+def _register_serve(hsub) -> None:
     serve = hsub.add_parser("serve", help="run the hub server (needs the hub-server extra and Postgres)")
-    serve.add_argument("--dsn", help=dsn_help)
+    serve.add_argument("--dsn", help=_DSN_HELP)
     serve.add_argument(
         "--data-dir",
         help="cache directory, rebuilt from Postgres and the blob store when lost "
@@ -410,16 +442,18 @@ def register(sub) -> None:
     serve.add_argument("--port", type=int, help="port to listen on (default: $EVO_HUB_PORT or 8080)")
     serve.set_defaults(func=cmd_serve)
 
+
+def _register_worker(hsub) -> None:
     worker = hsub.add_parser(
         "worker", help="run background jobs from the queue in Postgres (needs the hub-server extra, Postgres and R2)"
     )
-    worker.add_argument("--dsn", help=dsn_help)
+    worker.add_argument("--dsn", help=_DSN_HELP)
     worker.add_argument(
         "--data-dir",
         help="cache directory, rebuilt from Postgres and the blob store when lost "
         "(default: $EVO_HUB_DATA_DIR or ~/.evo/hub-server/cache)",
     )
-    worker.add_argument("--concurrency", type=_positive, default=1, help="jobs run at the same time (default: 1)")
+    worker.add_argument("--concurrency", type=positive, default=1, help="jobs run at the same time (default: 1)")
     worker.add_argument(
         "--queue",
         action="append",
@@ -430,8 +464,10 @@ def register(sub) -> None:
     )
     worker.set_defaults(func=cmd_worker)
 
+
+def _register_migrate(hsub) -> None:
     migrate = hsub.add_parser("migrate", help="bring the hub database to this release's schema, then exit")
-    migrate.add_argument("--dsn", help=dsn_help)
+    migrate.add_argument("--dsn", help=_DSN_HELP)
     which = migrate.add_mutually_exclusive_group()
     which.add_argument(
         "--plugin",
@@ -445,6 +481,8 @@ def register(sub) -> None:
     )
     migrate.set_defaults(func=cmd_migrate)
 
+
+def _register_plugin_host(hsub) -> None:
     plugin_host = hsub.add_parser(
         "plugin-host",
         help="run the backends of isolated plugins, apart from the hub, holding none of its secrets (hub-server extra)",
@@ -462,6 +500,8 @@ def register(sub) -> None:
     )
     plugin_host.set_defaults(func=cmd_plugin_host)
 
+
+def _register_storage(hsub) -> None:
     storage = hsub.add_parser(
         "storage", help="check the blob store, or copy its blobs to another S3 store (hub-server extra)"
     )
@@ -485,24 +525,8 @@ def register(sub) -> None:
         required=True,
         help="an environment file of EVO_HUB_S3_* variables describing the target store",
     )
-    move.add_argument("--parallel", type=_positive, default=8, help="blobs copied at the same time (default: 8)")
+    move.add_argument("--parallel", type=positive, default=8, help="blobs copied at the same time (default: 8)")
     move.add_argument("--dry-run", action="store_true", help="count what would be copied, and copy nothing")
     move.add_argument("--verify", action="store_true", help="hash the target's copies too, and copy a wrong one again")
     move.add_argument("--scratch", metavar="DIR", help="where each blob waits on its way (default: the temp directory)")
     move.set_defaults(func=cmd_storage_migrate)
-
-    _register_client_commands(hsub)
-
-    from evo_agents.hub.openapi import register as register_openapi
-
-    register_openapi(hsub)
-
-    from evo_agents.hub.contract import register as register_contract
-
-    register_contract(hsub)
-    OWN_COMMANDS.clear()
-    OWN_COMMANDS.update(hsub.choices)
-
-    from evo_agents.hub.cli_plugin_commands import register_plugin_commands
-
-    register_plugin_commands(hsub)  # last: a plugin whose id is a command of the CLI's own is left out

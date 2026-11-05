@@ -31,7 +31,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.credentials import GITHUB_TOKEN_REFRESH_SECONDS, Lease
-from evo_agents.hub.server import run_state
+from evo_agents.hub.server import run_reaper
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.credentials import GITHUB_GIT_USERNAME
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
@@ -314,7 +314,7 @@ def count_leases(db, *where) -> list[tuple]:
 
 def reap(client) -> dict:
     state = client.app.state
-    reaper = functools.partial(run_state.recover_runs, state.engine, sealer=state.sealer, github_app=state.github_app)
+    reaper = functools.partial(run_reaper.recover_runs, state.engine, sealer=state.sealer, github_app=state.github_app)
     return client.portal.call(reaper)
 
 
@@ -748,7 +748,7 @@ def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github,
             issued_at=func.now() - timedelta(hours=2), expires_at=func.now() - timedelta(hours=1)
         ),
     )
-    report_ = client.portal.call(run_state.prune_run_events, client.app.state.engine, 30)
+    report_ = client.portal.call(run_reaper.prune_run_events, client.app.state.engine, 30)
     assert report_ == {
         "deleted": 0,
         "days": 30,

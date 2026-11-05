@@ -13,9 +13,9 @@ from __future__ import annotations
 from urllib.parse import quote, urlencode
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli_loop import _project
 from evo_agents.hub.cli_policy import PROJECT_HELP
 from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.plan_cli import project_of_args
 
 ANSWER_KEYS = ("project", "enabled", "since", "until", "weeks")
 
@@ -23,7 +23,7 @@ ANSWER_KEYS = ("project", "enabled", "since", "until", "weeks")
 @client_command
 def cmd_answers(args) -> int:
     hub, _ = signed_in()
-    project = _project(args)
+    project = project_of_args(args)
     query = urlencode({"weeks": args.weeks}) if args.weeks else ""
     found = hub.call("GET", f"/v1/projects/{quote(project, safe='')}/context-answers" + (f"?{query}" if query else ""))
     if args.json:

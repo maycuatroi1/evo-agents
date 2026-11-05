@@ -45,12 +45,12 @@ def render(spec: dict) -> str:
 
 
 def cmd_openapi(args) -> int:
-    from evo_agents.hub.cli import _missing_extra
+    from evo_agents.hub.cli import missing_extra
 
     try:
         text = render(document())
     except ImportError as exc:
-        return _missing_extra(exc, args)
+        return missing_extra(exc, args)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
         log.info("openapi document written", extra={"path": args.output})
@@ -60,8 +60,8 @@ def cmd_openapi(args) -> int:
 
 
 def register(hsub) -> None:
-    from evo_agents.hub.cli import _server_command
+    from evo_agents.hub.cli import server_command
 
     parser = hsub.add_parser("openapi", help="print the hub API's OpenAPI document (needs the hub-server extra)")
     parser.add_argument("--output", "-o", help="write the document to this file instead of stdout")
-    parser.set_defaults(func=_server_command(cmd_openapi))
+    parser.set_defaults(func=server_command(cmd_openapi))

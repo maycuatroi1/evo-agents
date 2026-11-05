@@ -19,7 +19,7 @@ added later included. DEFAULT_INTERRUPTS are the kinds whose default is interrup
 is not after the start), in their time zone (an IANA name, the hub's EVO_HUB_WEB_TIME_ZONE until they choose one).
 The job hub.deliver_notifications asks ``held_until`` before it pushes to a device: inside the quiet hours a push waits
 until they end, a decision's too. Its run parked meanwhile costs nothing: the hub parks every run that waits
-(``run_state.park_waiting``), and the answer resumes it in its session. The check runs at the delivery, not when the
+(``run_reaper.park_waiting``), and the answer resumes it in its session. The check runs at the delivery, not when the
 notification is stored, so quiet hours set or changed meanwhile hold. A push of a decision that is no longer open by
 then is not sent (``closed``).
 

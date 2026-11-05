@@ -34,7 +34,7 @@ from evo_agents.hub import jobs, tables
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.blobs import blob_key
 from evo_agents.hub.config import ConfigError, load_config
-from evo_agents.hub.memory import slug
+from evo_agents.hub.memory_places import slug
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.transcript_prune import prune_transcripts
 from evo_agents.hub.worker import queue

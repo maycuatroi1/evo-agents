@@ -93,86 +93,97 @@ class Step:
 def check(store: BlobStore, *, create_bucket: bool = False) -> list[Step]:
     """The steps of one object's round trip through ``store`` (module docstring), each ok or not; the first step that
     fails ends the check, after the cleanup."""
-    steps: list[Step] = []
-    data = secrets.token_bytes(CHECK_BYTES)
-    upload = Upload(new_upload_id(), hashlib.sha256(data).hexdigest(), len(data), "check")
+    trip = _RoundTrip(store, create_bucket)
+    try:
+        for name, func in trip.stages():
+            if not trip.step(name, func):
+                break
+    finally:
+        if trip.steps and trip.steps[0].ok:
+            trip.step("delete" + (" (DeleteObjects)" if store.batch_delete else " (DeleteObject)"), trip.cleanup)
+    return trip.steps
 
-    def step(name: str, func: Callable[[], str | None]) -> bool:
+
+class _RoundTrip:
+    """The stages of ``check`` on one object of random bytes; each returns None when it went well, else the problem."""
+
+    def __init__(self, store: BlobStore, create_bucket: bool):
+        self.store = store
+        self.create_bucket = create_bucket
+        self.steps: list[Step] = []
+        self.data = secrets.token_bytes(CHECK_BYTES)
+        self.upload = Upload(new_upload_id(), hashlib.sha256(self.data).hexdigest(), len(self.data), "check")
+
+    def stages(self) -> list[tuple[str, Callable[[], str | None]]]:
+        return [
+            ("HeadBucket", self.bucket),
+            ("presigned PUT", self.put),
+            ("seal (CopyObject, GetObject)", self.seal),
+            ("publish (CopyObject)", self.publish),
+            ("presigned GET", self.get),
+            ("ranged GetObject", self.ranged),
+            ("ListObjectsV2", self.listed),
+        ]
+
+    def step(self, name: str, func: Callable[[], str | None]) -> bool:
         started = time.monotonic()
         try:
             problem = func()
         except (BlobStoreUnavailable, OSError, ValueError) as exc:
             problem = str(exc) or type(exc).__name__
-        steps.append(Step(name, problem is None, round((time.monotonic() - started) * 1000), problem or ""))
+        self.steps.append(Step(name, problem is None, round((time.monotonic() - started) * 1000), problem or ""))
         return problem is None
 
-    def bucket() -> str | None:
-        if create_bucket and store.ensure_bucket():
-            steps.append(Step("CreateBucket", True, 0, f"created {store.bucket}"))
-        store.check()
+    def bucket(self) -> str | None:
+        if self.create_bucket and self.store.ensure_bucket():
+            self.steps.append(Step("CreateBucket", True, 0, f"created {self.store.bucket}"))
+        self.store.check()
         return None
 
-    def put() -> str | None:
+    def put(self) -> str | None:
         request = urllib.request.Request(
-            store.presign_put(upload.upload_id, upload.size),
-            data=data,
+            self.store.presign_put(self.upload.upload_id, self.upload.size),
+            data=self.data,
             method="PUT",
             headers={"Content-Type": "application/octet-stream"},
         )
         with urllib.request.urlopen(request, timeout=CHECK_TIMEOUT) as response:
             return None if 200 <= response.status < 300 else f"HTTP {response.status}"
 
-    def seal() -> str | None:
-        return store.seal(upload).problem
+    def seal(self) -> str | None:
+        return self.store.seal(self.upload).problem
 
-    def publish() -> str | None:
-        store.publish(upload)
-        return None if store.has_blob(upload.sha256) else "the blob is not there after the copy"
+    def publish(self) -> str | None:
+        self.store.publish(self.upload)
+        return None if self.store.has_blob(self.upload.sha256) else "the blob is not there after the copy"
 
-    def get() -> str | None:
-        with urllib.request.urlopen(store.presign_get(upload.sha256, filename="check.bin"), timeout=CHECK_TIMEOUT) as r:
+    def get(self) -> str | None:
+        url = self.store.presign_get(self.upload.sha256, filename="check.bin")
+        with urllib.request.urlopen(url, timeout=CHECK_TIMEOUT) as r:
             body = r.read()
             disposition = r.headers.get("Content-Disposition") or ""
-        if body != data:
-            return f"{len(body)} bytes came back, not the {len(data)} written"
+        if body != self.data:
+            return f"{len(body)} bytes came back, not the {len(self.data)} written"
         if "check.bin" not in disposition:
             return "the store ignored the download name (ResponseContentDisposition)"
         return None
 
-    def ranged() -> str | None:
-        opened = store.open_range(upload.sha256, 10, 19)
+    def ranged(self) -> str | None:
+        opened = self.store.open_range(self.upload.sha256, 10, 19)
         if opened is None:
             return "the blob is missing"
         chunks, count = opened
         body = b"".join(chunks)
-        return None if body == data[10:20] and count == 10 else "the store did not answer the range asked for"
+        return None if body == self.data[10:20] and count == 10 else "the store did not answer the range asked for"
 
-    def listed() -> str | None:
-        keys = [key for key, _ in store.list_keys(upload_key(upload.upload_id))]
-        return None if upload_key(upload.upload_id) in keys else "the upload is missing from the listing"
+    def listed(self) -> str | None:
+        keys = [key for key, _ in self.store.list_keys(upload_key(self.upload.upload_id))]
+        return None if upload_key(self.upload.upload_id) in keys else "the upload is missing from the listing"
 
-    try:
-        for name, func in (
-            ("HeadBucket", bucket),
-            ("presigned PUT", put),
-            ("seal (CopyObject, GetObject)", seal),
-            ("publish (CopyObject)", publish),
-            ("presigned GET", get),
-            ("ranged GetObject", ranged),
-            ("ListObjectsV2", listed),
-        ):
-            if not step(name, func):
-                break
-    finally:
-
-        def cleanup() -> str | None:
-            store.discard([upload.upload_id])
-            store.delete([blob_key(upload.sha256)])
-            return None if not store.has_blob(upload.sha256) else "the blob is still there after the delete"
-
-        if steps and steps[0].ok:
-            step("delete" + (" (DeleteObjects)" if store.batch_delete else " (DeleteObject)"), cleanup)
-    return steps
+    def cleanup(self) -> str | None:
+        self.store.discard([self.upload.upload_id])
+        self.store.delete([blob_key(self.upload.sha256)])
+        return None if not self.store.has_blob(self.upload.sha256) else "the blob is still there after the delete"
 
 
 # migrate

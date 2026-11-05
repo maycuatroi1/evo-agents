@@ -15,7 +15,7 @@ from datetime import datetime
 from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 
-from evo_agents.hub.memory import MAX_BODY
+from evo_agents.hub.memory_files import MAX_BODY
 
 MAX_REQUEST = 6 * MAX_BODY + 64 * 1024  # a body escaped as JSON at worst (\u0001 for every byte), and the rest
 MAX_ID = 2**63 - 1

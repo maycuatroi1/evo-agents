@@ -377,13 +377,13 @@ def test_a_claim_whose_worker_hung_up_while_it_waited_leaves_the_next_run_queued
 def test_a_claim_whose_worker_hangs_up_while_it_leases_a_run_rolls_the_lease_back(hub, monkeypatch):
     worker = add_worker(hub.client, hub.headers["owner"], "mac-mini")
     run_id = dispatched(hub.client, hub.headers["owner"], [2])[0]["id"]
-    spec_of = run_claims._run_spec
+    spec_of = run_claims.run_spec
 
     async def slow_spec(conn, leased_id, features=()):
         await asyncio.sleep(1.5)  # the run is leased in the claim's transaction; the worker hangs up meanwhile
         return await spec_of(conn, leased_id, features)
 
-    monkeypatch.setattr(run_claims, "_run_spec", slow_spec)
+    monkeypatch.setattr(run_claims, "run_spec", slow_spec)
     hang_up_claim(hub, worker, wait=0, after=0.5)
     wait_for(lambda: worker["id"] not in claims_waiting(hub), what="the abandoned claim to end")
     r, e = tables.runs, tables.run_events
@@ -392,7 +392,7 @@ def test_a_claim_whose_worker_hangs_up_while_it_leases_a_run_rolls_the_lease_bac
     ], "the lease, its state event and its seq were rolled back"
     assert sql(hub.db, select(func.count()).select_from(e).where(e.c.run_id == run_id)) == [(0,)]
 
-    monkeypatch.setattr(run_claims, "_run_spec", spec_of)
+    monkeypatch.setattr(run_claims, "run_spec", spec_of)
     assert claim(hub.client, worker)["id"] == run_id
     assert [(e["seq"], e["body"]["to"]) for e in read_events(hub, run_id)["events"]] == [(1, "leased")]
 

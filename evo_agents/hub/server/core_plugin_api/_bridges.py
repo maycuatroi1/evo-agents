@@ -21,7 +21,7 @@ from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.chat_access import agent_projects, channel_cleared, chat_access
 from evo_agents.hub.server.chat_views import message_rows, profiles_by_id
 from evo_agents.hub.server.chats import ChatMessageIn, deliver_message
-from evo_agents.hub.server.core_plugin_api._acts import NO_PROJECT, READS, WRITES, _chat_grants, _feature_on, _granting
+from evo_agents.hub.server.core_plugin_api._acts import NO_PROJECT, READS, WRITES, chat_grants, feature_on, granting
 from evo_agents.hub.server.core_plugin_api._base import Context, transaction
 from evo_agents.hub.server.core_plugin_api._types import (
     Bridge,
@@ -184,7 +184,7 @@ async def _going_out(conn: AsyncConnection, plugin: Plugin, bridge_id: int, mess
     if not projects:
         raise Refused(403, NO_PROJECT.format(chat=row.chat_id, plugin=plugin.id, permission=READS))
     for project in projects:
-        await _granting(conn, plugin.id, project.name, READS)
+        await granting(conn, plugin.id, project.name, READS)
     if not await channel_cleared(conn, message.label, row.kind):
         return None
     author_kind, author = "hub", None
@@ -298,10 +298,10 @@ async def bridge_send(
     answered = None if reply_to is None else await chat_bridges.hub_message(conn, row.id, _external(reply_to))
     user = principal_of(member)
     with refusing():
-        await _feature_on(conn, user, "chats")
+        await feature_on(conn, user, "chats")
         message = ChatMessageIn(body=body, reply_to=answered, attachment_ids=list(attachment_ids))
         chat = await chat_access(conn, user, row.chat_id)
-        await _chat_grants(conn, member.plugin, chat, WRITES)
+        await chat_grants(conn, member.plugin, chat, WRITES)
         message_id = await deliver_message(conn, chat, user, message, via=row.kind, via_bridge=row.id)
         (sent,) = await message_rows(conn, chat.chat_id, [message_id])
     await chat_bridges.carry(conn, row.id, message_id, "in", group_message)
@@ -331,7 +331,7 @@ async def bridge_attach(
         row = await _member_bridge(conn, member, bridge_id)
         with refusing():
             chat = await chat_access(conn, user, row.chat_id)
-            await _chat_grants(conn, member.plugin, chat, WRITES)
+            await chat_grants(conn, member.plugin, chat, WRITES)
         return row.chat_id
 
     async with engine.begin() as conn:

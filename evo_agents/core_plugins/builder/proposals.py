@@ -41,6 +41,10 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   hands @builder its task in the proposal's thread for the member who approved it, an install installs the release.
   The logic is ``builder.plugin_changes``.
 
+What each kind does (where its change applies, how it is checked, applied and rolled back) is its ``kinds.Kind``,
+which ``KINDS`` maps it to: ``setting_changes`` for branding, features, plugin_config, agent and policy,
+``problem_changes``, ``goal_changes``, ``opportunity_changes`` and ``plugin_changes`` for the others.
+
 Proposing checks the change against the setting as it is now, as its route would, and keeps the setting's version
 (``base_version``): nothing is written to the setting. Approving applies the change as the setting's next version
 only while the setting is still at that version, through the hub's own functions (the audit row of the change
@@ -54,57 +58,58 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from sqlalchemy import ARRAY, Text, any_, func, insert, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS, opportunity_changes, plugin_changes
+from evo_agents.core_plugins.builder import (
+    MAX_FIELDS,
+    MAX_SUMMARY_CHARS,
+    goal_changes,
+    opportunity_changes,
+    plugin_changes,
+    problem_changes,
+    setting_changes,
+)
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
-from evo_agents.hub import autonomy, branding, chats, features, goals, tables
-from evo_agents.hub import problems as problem_model
-from evo_agents.hub.access import has_role
-from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.self_managed import SelfManaged, state_of
-from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs, problem_evidence
-from evo_agents.hub.server import goals as project_goals
-from evo_agents.hub.server import problems as project_problems
-from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
-from evo_agents.hub.server.agent_profiles import AgentEdit, new_version, profile_changes
-from evo_agents.hub.server.plugin_grants import installed_row
-from evo_agents.hub.server.profile_store import Profile, by_handle, version_rules
-from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal, admin_login
-from evo_agents.hub.tables_settings import PROPOSAL_KINDS, PROPOSAL_STATES
-from evo_agents.plugins import config as plugin_config
-
-log = logging.getLogger(__name__)
-
-(
+from evo_agents.core_plugins.builder.kinds import (
+    AGENT,
     BRANDING,
     FEATURES,
-    PLUGIN_CONFIG,
-    AGENT,
-    POLICY,
-    PROBLEM,
     GOAL,
     OPPORTUNITY,
     PLUGIN,
+    PLUGIN_CONFIG,
     PLUGIN_INSTALL,
     PLUGIN_LISTING,
-) = PROPOSAL_KINDS
+    POLICY,
+    PROBLEM,
+    Change,
+    Kind,
+    Target,
+    Writing,
+)
+from evo_agents.hub import chats, goals, tables
+from evo_agents.hub import problems as problem_model
+from evo_agents.hub.access import has_role
+from evo_agents.hub.self_managed import SelfManaged, state_of
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import Principal, admin_login
+from evo_agents.hub.tables_settings import PROPOSAL_KINDS, PROPOSAL_STATES
+
+log = logging.getLogger(__name__)
+
 PENDING, APPLIED, REJECTED, FAILED, ROLLED_BACK = PROPOSAL_STATES
 HUB_WIDE = (BRANDING, FEATURES, PLUGIN_INSTALL)  # a hub admin decides them; an admin of the project the others
 ACTIONS = plugin_changes.ACTIONS  # done once when approved, never rolled back
 BY_WRITERS = (PROBLEM, OPPORTUNITY)  # but these, which a writer of the project decides
 APPROVE, REJECT, ROLLBACK = "approve", "reject", "rollback"
-BRANDING_FIELDS = tuple(name for name in branding.FIELDS if name not in branding.ASSETS)
-AGENT_FIELDS = ("name", "description", "instructions", "packs")
 LAYERS = ("hub", "project")  # target.layer of a proposal of features
 TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
     BRANDING: ((), ()),
@@ -124,45 +129,6 @@ MAX_SHOWN_BYTES = 3000  # of the values a proposal sets, in its message in the t
 NOTICE = "builder_proposal"  # evo_agents.hub.runs.NOTICE_KINDS
 AUDIT_PROPOSE = "builder.propose"  # the agent of a run proposed a change, for the run's dispatcher
 AUDIT_DECIDE = "builder.decide"  # an admin approved, rejected or rolled back a proposal
-
-
-@dataclass(frozen=True)
-class Change:
-    """What a proposal changes: its kind, where (``target``), the fields it sets and those it unsets."""
-
-    kind: str
-    target: dict
-    sets: dict
-    unset: tuple[str, ...]
-    summary: str = ""
-    evidence: tuple[dict, ...] = ()  # lines of evidence of a problem, as ``ProblemEvidenceWrite`` dumps them
-
-    def stored(self) -> dict:
-        kept = {"set": self.sets, "unset": list(self.unset)}
-        return kept | ({"evidence": list(self.evidence)} if self.evidence else {})
-
-    @property
-    def evidence_only(self) -> bool:
-        """A proposal of a problem that carries lines of evidence and changes no field of the problem."""
-        return self.kind in (PROBLEM, OPPORTUNITY) and bool(self.evidence) and not self.sets and not self.unset
-
-
-@dataclass(frozen=True)
-class Target:
-    """Where a change applies, as it is now: how to name it, its version, and what each kind needs to write it."""
-
-    title: str
-    version: int
-    held: dict = field(default_factory=dict)  # the values it sets now; a profile's fields for an agent
-    settings: hub_settings.Place | None = None
-    config: plugin_configs.Place | None = None
-    schema: dict | None = None
-    profile: Profile | None = None
-    policy: dict | None = None  # the body of the policy's revision now, for a policy
-    goal: dict | None = None  # the fields of the goal now as its route names them, {} for a new one, for a goal
-    problem: dict | None = None  # the same of the problem now, for a problem
-    opportunity: dict | None = None  # the same of the opportunity now, for an opportunity
-    names: dict = field(default_factory=dict)  # what the hub adds to the target it keeps: a goal's or problem's code
 
 
 class BuilderProposal(BaseModel):
@@ -343,17 +309,7 @@ def _evidence_of(kind: str, given: object) -> tuple[list[dict], list[str]]:
         return [], []
     if kind not in (PROBLEM, OPPORTUNITY):
         return [], ["evidence belongs to a problem or opportunity proposal"]
-    if kind == OPPORTUNITY:
-        return opportunity_changes.evidence_of(given)
-    if not isinstance(given, list) or len(given) > problem_model.MAX_PROPOSED_EVIDENCE:
-        return [], [f"evidence is a list of at most {problem_model.MAX_PROPOSED_EVIDENCE} lines"]
-    lines, wrong = [], []
-    for at, item in enumerate(given, start=1):
-        try:
-            lines.append(problem_evidence.ProblemEvidenceWrite.model_validate(item).model_dump())
-        except ValidationError as exc:
-            wrong.append(f"evidence {at}: {_said_by_pydantic(exc, 'evidence')}")
-    return lines, wrong
+    return opportunity_changes.evidence_of(given) if kind == OPPORTUNITY else problem_changes.evidence_of(given)
 
 
 def change_of(arguments: Mapping) -> Change:
@@ -399,417 +355,34 @@ def change_of(arguments: Mapping) -> Change:
     return Change(kind, dict(target), dict(sets), tuple(unset), summary, tuple(lines))
 
 
-# Where a change applies
+# What each kind does
 
 
-async def _settings_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
-    if change.kind == BRANDING:
-        place = hub_settings.Place(hub_settings.BRANDING)
-    elif change.target["layer"] == "hub":
-        place = hub_settings.Place(hub_settings.FEATURES)
-    else:
-        place = hub_settings.Place(hub_settings.FEATURES, access.project_id, access.name)
-    row = await hub_settings.current(conn, place)
-    held = dict(row.plain) if row is not None else {}
-    return Target(place.title(), 0 if row is None else row.version, held, settings=place)
-
-
-async def _profile(conn: AsyncConnection, access: ProjectAccess, handle: str, *, lock: bool = False) -> Profile:
-    profile = await by_handle(conn, handle, lock=lock)
-    if profile is None or profile.project_id != access.project_id or profile.deleted_at is not None:
-        raise ProposalError(
-            404,
-            f"project {access.name} has no agent @{handle}: see `evo-agents hub agent list --project {access.name}`",
-        )
-    return profile
-
-
-async def _config_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
-    name, handle = change.target["plugin"], change.target.get("agent")
-    plugin = await enabled_in(conn, name, access.project_id)
-    if plugin is None:
-        raise ProposalError(409, f"plugin {name} is not enabled in project {access.name}, or it is turned off")
-    place = plugin_configs.place_of(plugin, "project", project_id=access.project_id, project=access.name)
-    title = f"the config of plugin {name} in project {access.name}"
-    if handle is not None:
-        profile = await _profile(conn, access, handle)
-        place = plugin_configs.place_of(
-            plugin, "agent", project_id=access.project_id, project=access.name, profile_id=profile.id, handle=handle
-        )
-        title = f"the config of plugin {name} for @{handle} in project {access.name}"
-    row = await plugin_configs.current(conn, place)
-    held = {**dict.fromkeys(row.secrets), **row.plain} if row is not None else {}
-    return Target(title, 0 if row is None else row.version, held, config=place, schema=plugin.manifest.get("config"))
-
-
-async def _agent_target(conn: AsyncConnection, access: ProjectAccess, change: Change, *, lock: bool) -> Target:
-    profile = await _profile(conn, access, change.target["agent"], lock=lock)
-    if profile.is_default:
-        raise ProposalError(
-            422, f"@{profile.handle} is the default agent of project {access.name}, which @builder does not change"
-        )
-    return Target(
-        f"agent @{profile.handle} of project {access.name}", profile.version, profile.snapshot(), profile=profile
-    )
-
-
-async def _policy_target(conn: AsyncConnection, access: ProjectAccess) -> Target:
-    row = await autonomy_policies.newest(conn, access.project_id)
-    body = {} if row is None else dict(row.body)
-    title = f"the autonomy policy of project {access.name}"
-    return Target(title, 0 if row is None else row.revision, autonomy.flat(body), policy=body)
-
-
-async def _goal_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
-    """Goal ``target.goal`` as it is now, or a new goal under the next code when the target names none or that one."""
-    await project_goals.adopt_charter_goals(conn, access.project_id, access.name)
-    ref = change.target.get("goal")
-    row = await project_goals.found(conn, access.project_id, ref) if ref is not None else None
-    if row is None:
-        code = await project_goals.next_code(conn, access.project_id)
-        if ref is not None and ref != code:
-            raise ProposalError(404, f"project {access.name} has no goal {ref}; a new goal takes the code {code}")
-        return Target(f"a new goal {code} of project {access.name}", 0, {}, goal={}, names={"goal": code})
-    code, fields = goals.code(row.number), project_goals.fields_of(row)
-    held = {name: value for name, value in fields.items() if value is not None}
-    return Target(f"goal {code} of project {access.name}", row.revision, held, goal=fields, names={"goal": code})
-
-
-async def _problem_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
-    """Problem ``target.problem`` as it is now, or a new problem under the next code when the target names none or
-    that one."""
-    ref = change.target.get("problem")
-    row = await project_problems.found(conn, access.project_id, ref) if ref is not None else None
-    if row is None:
-        code = await project_problems.next_code(conn, access.project_id)
-        if ref is not None and ref != code:
-            raise ProposalError(404, f"project {access.name} has no problem {ref}; a new problem takes the code {code}")
-        return Target(f"a new problem {code} of project {access.name}", 0, {}, problem={}, names={"problem": code})
-    code, fields = problem_model.code(row.number), project_problems.fields_of(row)
-    held = {name: value for name, value in fields.items() if value is not None}
-    return Target(
-        f"problem {code} of project {access.name}", row.revision, held, problem=fields, names={"problem": code}
-    )
-
-
-async def _opportunity_target(conn: AsyncConnection, access: ProjectAccess, change: Change) -> Target:
-    title, version, held, fields, code = await opportunity_changes.locate(conn, access, change.target)
-    return Target(title, version, held, opportunity=fields, names={"opportunity": code})
+KINDS: dict[str, Kind] = {  # kind -> where its change applies, how it is checked, applied and rolled back
+    BRANDING: setting_changes.SETTINGS,
+    FEATURES: setting_changes.SETTINGS,
+    PLUGIN_CONFIG: setting_changes.CONFIG,
+    AGENT: setting_changes.AGENT_PROFILE,
+    POLICY: setting_changes.AUTONOMY_POLICY,
+    PROBLEM: problem_changes.KIND,
+    GOAL: goal_changes.KIND,
+    OPPORTUNITY: opportunity_changes.KIND,
+    **dict.fromkeys(ACTIONS, plugin_changes.KIND),
+}
 
 
 async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *, lock: bool = False) -> Target:
-    """Where ``change`` applies, as it is now; ProposalError when the project has no such place."""
-    if change.kind in ACTIONS:
-        return Target(plugin_changes.title(change.kind, change.sets, access.name), 0)
-    if change.kind in HUB_WIDE:
-        return await _settings_target(conn, access, change)
-    if change.kind == PLUGIN_CONFIG:
-        return await _config_target(conn, access, change)
-    if change.kind == POLICY:
-        return await _policy_target(conn, access)
-    if change.kind == GOAL:
-        return await _goal_target(conn, access, change)
-    if change.kind == PROBLEM:
-        return await _problem_target(conn, access, change)
-    if change.kind == OPPORTUNITY:
-        return await _opportunity_target(conn, access, change)
-    return await _agent_target(conn, access, change, lock=lock)
-
-
-# Checking a change
-
-
-def _values(change: Change) -> dict:
-    return branding.normalized(change.sets) if change.kind == BRANDING else change.sets
-
-
-def _layer_problems(change: Change, target: Target) -> list[str]:
-    """Each field ``change`` unsets that the layer does not set, or that it changes nothing."""
-    problems = [
-        f"{name}: the layer does not set it, so there is nothing to unset"
-        for name in change.unset
-        if name not in target.held
-    ]
-    same = all(target.held.get(name) == value for name, value in _values(change).items())
-    if not problems and not change.unset and same:
-        problems.append(f"{target.title} has these values already: it changes nothing")
-    return problems
-
-
-def _branding_problems(change: Change, target: Target) -> list[str]:
-    images = sorted(set(change.sets) & set(branding.ASSETS))
-    if images:
-        return [f"{name}: an image, which an admin uploads; @builder may unset it, never set it" for name in images]
-    values = _values(change)
-    after = {name: value for name, value in target.held.items() if name not in change.unset} | values
-    return branding.problems(values, after)
-
-
-def _features_problems(change: Change, target: Target) -> list[str]:
-    return features.problems(change.sets, features.INSTANCE if target.settings.project_id is None else features.PROJECT)
-
-
-def _config_problems(change: Change, target: Target) -> list[str]:
-    secret = plugin_config.fields(target.schema)
-    secrets = sorted(name for name in change.sets if secret.get(name))
-    if secrets:
-        return [
-            f"{name}: a secret, which @builder never sets, since it would see its value; an admin sets it with "
-            "`evo-agents hub plugin config`"
-            for name in secrets
-        ]
-    return plugin_config.check_values(target.schema, change.sets)
-
-
-async def _agent_changes(
-    conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
-) -> dict:
-    """The columns ``change`` sets on the profile of ``target``, checked as an edit of the profile is."""
-    extra = sorted(set(change.sets) - set(AGENT_FIELDS))
-    if extra or change.unset:
-        raise ProposalError(
-            422,
-            f"an agent proposal sets {', '.join(AGENT_FIELDS)} and unsets nothing; {', '.join(extra or change.unset)}",
-        )
-    try:
-        body = AgentEdit.model_validate(change.sets)
-    except ValidationError as exc:
-        said = "; ".join(f"{'.'.join(map(str, error['loc']))}: {error['msg']}" for error in exc.errors())
-        raise ProposalError(422, said) from None
-    try:
-        packs = await pinned(conn, access.project_id, access.name, body.packs, hub_version)
-        changes = profile_changes(target.profile, body, packs)
-    except HTTPException as exc:
-        raise ProposalError(exc.status_code, str(exc.detail)) from None
-    if not changes:
-        raise ProposalError(422, f"{target.title} has these values already: it changes nothing")
-    return changes
-
-
-async def _policy_body(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> dict:
-    """The policy ``change`` makes of the revision ``target`` holds, checked as a write of the policy is."""
-    body, problems = autonomy.with_changes(target.policy, change.sets, change.unset)
-    if not problems:
-        problems = _layer_problems(change, target)
-    if not problems:
-        problems = autonomy.problems(body, await autonomy_policies.project_repos(conn, access.project_id))
-    if problems:
-        raise ProposalError(422, f"{'; '.join(problems)}; {NOTHING}")
-    return body
-
-
-def _said_by_pydantic(exc: ValidationError, what: str = "goal") -> str:
-    return "; ".join(f"{'.'.join(map(str, error['loc'])) or what}: {error['msg']}" for error in exc.errors())
-
-
-def _goal_body(change: Change, target: Target) -> project_goals.ProjectGoalWrite:
-    """The goal ``change`` makes of the one ``target`` holds, as a write of its route; ProposalError (422) naming
-    what is wrong with its shape."""
-    problems = [f"{name}: a goal has no such field" for name in sorted(set(change.sets) - set(goals.FIELDS))]
-    problems += [f"{name}: a goal always has one" for name in change.unset if name not in goals.CLEARABLE]
-    if problems:
-        raise ProposalError(422, f"{'; '.join(problems)}; {NOTHING}")
-    fields = {**target.goal, **change.sets, **dict.fromkeys(change.unset)}
-    if change.sets.get("status", goals.CLOSED) != goals.CLOSED and "close_reason" not in change.sets:
-        fields["close_reason"] = None  # opened again
-    try:
-        return project_goals.ProjectGoalWrite.model_validate(fields)
-    except ValidationError as exc:
-        raise ProposalError(422, f"{_said_by_pydantic(exc)}; {NOTHING}") from None
-
-
-async def _goal_problems(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> list[str]:
-    body = _goal_body(change, target)
-    problems = _layer_problems(change, target) if target.version else []
-    try:
-        return problems + await project_goals.check(conn, access, target.names["goal"], body)
-    except HTTPException as exc:
-        raise ProposalError(exc.status_code, str(exc.detail)) from None
-
-
-def _problem_body(change: Change, target: Target) -> project_problems.ProjectProblemWrite:
-    """The problem ``change`` makes of the one ``target`` holds, as a write of its route; ProposalError (422) naming
-    what is wrong with its shape."""
-    wrong = [f"{name}: a problem has no such field" for name in sorted(set(change.sets) - set(problem_model.FIELDS))]
-    wrong += [f"{name}: a problem always has one" for name in change.unset if name not in problem_model.CLEARABLE]
-    if wrong:
-        raise ProposalError(422, f"{'; '.join(wrong)}; {NOTHING}")
-    fields = {**target.problem, **change.sets, **dict.fromkeys(change.unset)}
-    if change.sets.get("status") == problem_model.OPEN and "close_reason" not in change.sets:
-        fields["close_reason"] = None  # opened again
-    try:
-        return project_problems.ProjectProblemWrite.model_validate(fields)
-    except ValidationError as exc:
-        raise ProposalError(422, f"{_said_by_pydantic(exc, 'problem')}; {NOTHING}") from None
-
-
-async def _evidence_wrong(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> list[str]:
-    """What is wrong with the lines of evidence ``change`` carries as additions to the problem ``target`` holds (none
-    yet for a new problem)."""
-    if not change.evidence:
-        return []
-    held = await project_problems.found(conn, access.project_id, target.names["problem"]) if target.version else None
-    lines = [problem_evidence.ProblemEvidenceWrite.model_validate(line) for line in change.evidence]
-    return await problem_evidence.wrong_lines(conn, None if held is None else held.id, lines)
-
-
-async def _problem_wrong(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> list[str]:
-    wrong = await _evidence_wrong(conn, access, change, target)
-    if change.evidence_only:
-        return wrong
-    body = _problem_body(change, target)
-    wrong += _layer_problems(change, target) if target.version else []
-    try:
-        return wrong + await project_problems.check(conn, access, target.names["problem"], body)
-    except HTTPException as exc:
-        raise ProposalError(exc.status_code, str(exc.detail)) from None
-
-
-CHECKS: dict[str, Callable[[Change, Target], list[str]]] = {
-    BRANDING: _branding_problems,
-    FEATURES: _features_problems,
-    PLUGIN_CONFIG: _config_problems,
-}
+    """Where ``change`` applies, as it is now; ProposalError when the project has no such place. ``lock``: for a
+    write."""
+    return await KINDS[change.kind].locate(conn, access, change, lock)
 
 
 async def check(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str) -> None:
     """ProposalError (422) naming what is wrong with ``change`` as the next version of ``target``."""
-    if change.kind in ACTIONS:
-        await plugin_changes.check(conn, access, change.kind, change.sets)
-        return
-    if change.kind == AGENT:
-        await _agent_changes(conn, access, change, target, hub_version)
-        return
-    if change.kind == POLICY:
-        await _policy_body(conn, access, change, target)
-        return
-    if change.kind == GOAL:
-        problems = await _goal_problems(conn, access, change, target)
-    elif change.kind == PROBLEM:
-        problems = await _problem_wrong(conn, access, change, target)
-    elif change.kind == OPPORTUNITY:
-        code = target.names["opportunity"]
-        problems = await opportunity_changes.wrong(conn, access, change, code, target.version, target.opportunity)
-    else:
-        problems = CHECKS[change.kind](change, target) or _layer_problems(change, target)
-    if problems:
-        raise ProposalError(422, f"{'; '.join(problems)}; {NOTHING}")
+    await KINDS[change.kind].check(conn, access, change, target, hub_version)
 
 
 # Applying and rolling back
-
-
-def _no_problems(sets: dict, after: dict) -> list[str]:
-    return []
-
-
-async def _apply_settings(conn: AsyncConnection, user: Principal, change: Change, target: Target, base: int) -> int:
-    def checked(sets: dict, after: dict) -> list[str]:
-        return CHECKS[change.kind](change, target)
-
-    place = target.settings
-    return (await hub_settings.apply(conn, user, place, _values(change), list(change.unset), base, checked)).version
-
-
-async def _apply_config(conn: AsyncConnection, user: Principal, change: Change, target: Target, base: int) -> int:
-    body = plugin_configs.PluginConfigWrite(values=change.sets, unset=list(change.unset), if_version=base)
-    return (await plugin_configs.write_layer(conn, user, target.config, target.schema, body, None)).version
-
-
-async def _write_profile(conn: AsyncConnection, user: Principal, access: ProjectAccess, profile, changes: dict) -> int:
-    version = await new_version(conn, profile, changes, user.user_id)
-    target = f"{access.name}/@{profile.handle} v{version} fields={','.join(sorted(changes))}"
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=audit.AGENT_UPDATE,
-        target=target,
-        project_id=access.project_id,
-    )
-    return version
-
-
-async def _write_policy(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, body: dict, base: int, note: str, via: str
-) -> int:
-    """Write ``body`` as the policy's next revision while it is at revision ``base``; that revision."""
-    revision, written = await autonomy_policies.write(conn, user, access, body, note=note, if_revision=base, via=via)
-    if not written:
-        raise ProposalError(409, f"the autonomy policy of project {access.name} is this already; {NOTHING}")
-    return revision
-
-
-async def _write_goal(
-    conn: AsyncConnection,
-    user: Principal,
-    access: ProjectAccess,
-    target: Target,
-    body: project_goals.ProjectGoalWrite,
-    base: int,
-    note: str,
-    via: str,
-) -> int:
-    """Write ``body`` as the next revision of the goal of ``target`` while it is at revision ``base``; that one."""
-    ref = target.names["goal"]
-    body = body.model_copy(update={"note": note[: goals.MAX_NOTE_CHARS], "if_revision": base})
-    try:
-        shown, written = await project_goals.write(conn, user, access, ref, body, via=via)
-    except HTTPException as exc:
-        raise ProposalError(exc.status_code, str(exc.detail)) from None
-    if not written:
-        raise ProposalError(409, f"goal {ref} of project {access.name} is this already; {NOTHING}")
-    return shown.revision
-
-
-async def _write_problem(
-    conn: AsyncConnection,
-    user: Principal,
-    access: ProjectAccess,
-    target: Target,
-    body: project_problems.ProjectProblemWrite,
-    base: int,
-    note: str,
-    via: str,
-) -> int:
-    """Write ``body`` as the next revision of the problem of ``target`` while it is at revision ``base``; that one."""
-    ref = target.names["problem"]
-    body = body.model_copy(update={"note": note[: problem_model.MAX_NOTE_CHARS], "if_revision": base})
-    try:
-        shown, written = await project_problems.write(conn, user, access, ref, body, via=via)
-    except HTTPException as exc:
-        raise ProposalError(exc.status_code, str(exc.detail)) from None
-    if not written:
-        raise ProposalError(409, f"problem {ref} of project {access.name} is this already; {NOTHING}")
-    return shown.revision
-
-
-async def _apply_problem(
-    conn: AsyncConnection,
-    user: Principal,
-    access: ProjectAccess,
-    change: Change,
-    target: Target,
-    base: int,
-    proposal_id: int,
-) -> int:
-    """Write the problem ``change`` makes (unless it carries lines of evidence alone), then the lines it carries with
-    the proposal's id; the problem's revision."""
-    note = f"proposal {proposal_id} of @builder: {change.summary}"
-    ref, version = target.names["problem"], base
-    if change.evidence_only:
-        await project_problems._lock(conn, access.project_id)
-    else:
-        body = _problem_body(change, target)
-        version = await _write_problem(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
-    if change.evidence:
-        held = await project_problems.found(conn, access.project_id, ref)
-        lines = [problem_evidence.ProblemEvidenceWrite.model_validate(line) for line in change.evidence]
-        try:
-            await problem_evidence.add_lines(conn, user, access, held.id, lines, proposal_id=proposal_id)
-        except HTTPException as exc:
-            raise ProposalError(exc.status_code, str(exc.detail)) from None
-    return version
 
 
 def _still_at(target: Target, version: int, doing: str) -> None:
@@ -830,137 +403,9 @@ async def apply(
 ) -> int:
     """Write ``change`` (of proposal ``proposal_id``) as the next version of its setting, which must still be at
     version ``base``; that version."""
-    if change.kind == PLUGIN_CONFIG:
-        await installed_row(conn, access, change.target["plugin"], lock=True)  # one write of its config at a time
     target = await locate(conn, access, change, lock=True)
     _still_at(target, base, "it changed since the proposal, so propose the change again")
-    if change.kind == AGENT:
-        changes = await _agent_changes(conn, access, change, target, hub_version)
-        return await _write_profile(conn, user, access, target.profile, changes)
-    if change.kind == POLICY:
-        body = await _policy_body(conn, access, change, target)
-        note = f"proposal {proposal_id} of @builder: {change.summary}"
-        return await _write_policy(conn, user, access, body, base, note, f" proposal={proposal_id}")
-    if change.kind == GOAL:
-        note = f"proposal {proposal_id} of @builder: {change.summary}"
-        body = _goal_body(change, target)
-        return await _write_goal(conn, user, access, target, body, base, note, f" proposal={proposal_id}")
-    if change.kind == PROBLEM:
-        return await _apply_problem(conn, user, access, change, target, base, proposal_id)
-    if change.kind == OPPORTUNITY:
-        code = target.names["opportunity"]
-        return await opportunity_changes.apply(conn, user, access, change, code, target.opportunity, base, proposal_id)
-    await check(conn, access, change, target, hub_version)
-    if change.kind == PLUGIN_CONFIG:
-        return await _apply_config(conn, user, change, target, base)
-    return await _apply_settings(conn, user, change, target, base)
-
-
-async def _roll_back_layer(conn: AsyncConnection, user: Principal, target: Target, applied: int) -> int:
-    """The next version of the layer of ``target``, a copy of version ``applied - 1``; version 0 is no layer."""
-    before = applied - 1
-    if target.settings is not None:
-        if before >= 1:
-            body = hub_settings.SettingsRollback(version=before, if_version=applied)
-            return (await hub_settings.rollback_layer(conn, user, target.settings, body)).version
-        layer = await hub_settings.apply(conn, user, target.settings, {}, sorted(target.held), applied, _no_problems)
-        return layer.version
-    if before >= 1:
-        body = plugin_configs.PluginConfigRollback(version=before, if_version=applied)
-        return (await plugin_configs.rollback_layer(conn, user, target.config, body)).version
-    body = plugin_configs.PluginConfigWrite(unset=sorted(target.held), if_version=applied)
-    return (await plugin_configs.write_layer(conn, user, target.config, target.schema, body, None)).version
-
-
-async def _roll_back_profile(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, change: Change, target: Target, hub_version: str
-) -> int:
-    profile = target.profile
-    before = await version_rules(conn, profile.id, profile.version - 1)
-    if before is None:
-        raise ProposalError(409, f"{target.title} has no version {profile.version - 1}; {NOTHING}")
-    wanted = {name: before[name] for name in change.sets if name != "packs"}
-    if "packs" in change.sets:
-        pins = [AgentPackPin(**item) for item in before["packs"] or ()]
-        try:
-            wanted["packs"] = await pinned(conn, access.project_id, access.name, pins, hub_version)
-        except HTTPException as exc:
-            raise ProposalError(exc.status_code, str(exc.detail)) from None
-    now = profile.snapshot()
-    changes = {name: value for name, value in wanted.items() if now[name] != value}
-    if not changes:
-        raise ProposalError(409, f"{target.title} is as it was before the proposal already; {NOTHING}")
-    return await _write_profile(conn, user, access, profile, changes)
-
-
-async def _roll_back_policy(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, applied: int, proposal_id: int
-) -> int:
-    """The policy's next revision, a copy of revision ``applied - 1``; revision 0 is no policy."""
-    before = applied - 1
-    body = await autonomy_policies.body_at(conn, access.project_id, before)
-    if body is None:
-        raise ProposalError(409, f"the autonomy policy of project {access.name} has no revision {before}; {NOTHING}")
-    note = f"rollback of proposal {proposal_id} of @builder: a copy of revision {before}"
-    return await _write_policy(conn, user, access, body, applied, note, f" proposal={proposal_id} copy-of={before}")
-
-
-async def _roll_back_goal(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, target: Target, applied: int, proposal_id: int
-) -> int:
-    """The goal's next revision, a copy of revision ``applied - 1``; a goal the proposal made is closed (dropped)."""
-    ref, before = target.names["goal"], applied - 1
-    row = await project_goals.found(conn, access.project_id, ref, before or None)
-    if row is None:
-        raise ProposalError(409, f"goal {ref} of project {access.name} has no revision {before}; {NOTHING}")
-    if before == 0:
-        body = project_goals.closing(row, "dropped", None, applied)
-        note = f"rollback of proposal {proposal_id} of @builder: the goal it made, closed"
-    else:
-        body = project_goals.ProjectGoalWrite.model_validate(project_goals.fields_of(row))
-        note = f"rollback of proposal {proposal_id} of @builder: a copy of revision {before}"
-    via = f" proposal={proposal_id} copy-of={before}"
-    return await _write_goal(conn, user, access, target, body, applied, note, via)
-
-
-async def _roll_back_problem(
-    conn: AsyncConnection,
-    user: Principal,
-    access: ProjectAccess,
-    change: Change,
-    target: Target,
-    applied: int,
-    proposal_id: int,
-) -> int:
-    """The problem's next revision, a copy of revision ``applied - 1``; a problem the proposal made is dropped. The
-    lines of evidence it made are taken away; a proposal of lines alone writes no revision."""
-    if change.evidence_only:
-        await project_problems._lock(conn, access.project_id)
-        held = await project_problems.found(conn, access.project_id, target.names["problem"])
-        await problem_evidence.remove_proposed(conn, user, access, held.id, proposal_id)
-        return applied
-    version = await _roll_back_problem_revision(conn, user, access, target, applied, proposal_id)
-    held = await project_problems.found(conn, access.project_id, target.names["problem"])
-    await problem_evidence.remove_proposed(conn, user, access, held.id, proposal_id)
-    return version
-
-
-async def _roll_back_problem_revision(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, target: Target, applied: int, proposal_id: int
-) -> int:
-    ref, before = target.names["problem"], applied - 1
-    row = await project_problems.found(conn, access.project_id, ref, before or None)
-    if row is None:
-        raise ProposalError(409, f"problem {ref} of project {access.name} has no revision {before}; {NOTHING}")
-    if before == 0:
-        reason = f"rollback of proposal {proposal_id} of @builder"
-        body = project_problems.closing(row, problem_model.DROPPED, reason, None, applied)
-        note = f"rollback of proposal {proposal_id} of @builder: the problem it made, dropped"
-    else:
-        body = project_problems.ProjectProblemWrite.model_validate(project_problems.fields_of(row))
-        note = f"rollback of proposal {proposal_id} of @builder: a copy of revision {before}"
-    via = f" proposal={proposal_id} copy-of={before}"
-    return await _write_problem(conn, user, access, target, body, applied, note, via)
+    return await KINDS[change.kind].apply(Writing(conn, user, access, change, target, base, hub_version, proposal_id))
 
 
 async def roll_back(
@@ -974,22 +419,11 @@ async def roll_back(
 ) -> int:
     """Make the next version of the setting ``change`` (of proposal ``proposal_id``) made version ``applied`` of a
     copy of the one before, while it is still at ``applied``; that version."""
-    if change.kind == PLUGIN_CONFIG:
-        await installed_row(conn, access, change.target["plugin"], lock=True)
     target = await locate(conn, access, change, lock=True)
     _still_at(target, applied, "it changed since the proposal was applied, so roll it back by hand")
-    if change.kind == AGENT:
-        return await _roll_back_profile(conn, user, access, change, target, hub_version)
-    if change.kind == POLICY:
-        return await _roll_back_policy(conn, user, access, applied, proposal_id)
-    if change.kind == GOAL:
-        return await _roll_back_goal(conn, user, access, target, applied, proposal_id)
-    if change.kind == PROBLEM:
-        return await _roll_back_problem(conn, user, access, change, target, applied, proposal_id)
-    if change.kind == OPPORTUNITY:
-        code = target.names["opportunity"]
-        return await opportunity_changes.roll_back(conn, user, access, change, code, applied, proposal_id)
-    return await _roll_back_layer(conn, user, target, applied)
+    return await KINDS[change.kind].roll_back(
+        Writing(conn, user, access, change, target, applied, hub_version, proposal_id)
+    )
 
 
 # Deciding

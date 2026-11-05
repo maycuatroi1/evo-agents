@@ -25,7 +25,7 @@ workers and those shared with them, every worker for a hub admin; GET /v1/worker
 claims, undrain resumes them, and revoke ends the worker and its token at once. Each of them but GET answers 404 for
 another member's worker, shared or not, so an id tells nothing about workers one does not own; a hub admin may see,
 drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking releases the runs the worker
-holds as the reaper would (``run_state.release_runs``): a run whose cancel was asked for is cancelled, a run pinned to
+holds as the reaper would (``run_reaper.release_runs``): a run whose cancel was asked for is cancelled, a run pinned to
 this worker or on its last attempt fails, and any other becomes lost with a new attempt queued for the same step; the
 steps of the runs that ended go back to pending in their plans. Every lease of the worker's runs is given back with
 them, and their GitHub tokens are revoked once the revocation commits (``credentials``). Revoking a worker's token
@@ -89,7 +89,7 @@ from evo_agents.hub.server import audit, browser_install, credentials, update_no
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.run_state import release_runs
+from evo_agents.hub.server.run_reaper import release_runs
 from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
 from evo_agents.hub.server.security import (
     MACHINE,

@@ -32,7 +32,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     refusing,
     session_principal,
 )
-from evo_agents.hub.server.core_plugin_api._writes import SIGNAL_DAYS, _pusher
+from evo_agents.hub.server.core_plugin_api._writes import SIGNAL_DAYS, plugin_pusher
 from evo_agents.hub.server.loop import view
 from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.server.signals import SignalIn
@@ -413,7 +413,7 @@ async def push_signals(
             )  # fmt: skip
             for p in points
         ]
-    pusher = await _pusher(conn, plugin, project, project_id)
+    pusher = await plugin_pusher(conn, plugin, project, project_id)
     with refusing():
         try:
             done = await signals.push(conn, pusher, items, days)

@@ -152,7 +152,7 @@ def sha256_of(data: bytes) -> str:
 # The publishers an operator trusts
 
 
-def _public_key(text: str) -> bytes:
+def decode_public_key(text: str) -> bytes:
     altchars = b"-_" if "-" in text or "_" in text else None  # base64url, as some tools print keys
     try:
         key = base64.b64decode(text + "=" * (-len(text) % 4), altchars=altchars, validate=True)
@@ -185,7 +185,7 @@ def parse_publishers(text: str | None) -> tuple[Publisher, ...]:
             identity = SigstoreIdentity(workflow[1], workflow[2], workflow[3] or DEFAULT_BRANCH)
             current = replace(current, sigstore=(*current.sigstore, identity))
         else:
-            current = replace(current, ed25519=(*current.ed25519, _public_key(value)))
+            current = replace(current, ed25519=(*current.ed25519, decode_public_key(value)))
         found[publisher_id] = current
     return tuple(found.values())
 

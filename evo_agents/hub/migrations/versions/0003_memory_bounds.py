@@ -21,7 +21,7 @@ down_revision = "0002"
 branch_labels = None
 depends_on = None
 
-MAX_BODY = 256 * 1024  # bytes, as evo_agents.hub.memory.MAX_BODY
+MAX_BODY = 256 * 1024  # bytes, as evo_agents.hub.memory_files.MAX_BODY
 NO_SEPARATORS = r"'[/\\\x01-\x1f\x7f]'"  # a slash, a backslash or a control character
 
 UPGRADE = (

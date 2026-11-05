@@ -2,7 +2,7 @@
 it, and the warning a dispatch answers with): each worker that could take it, with whether it can now and why not, the
 agent pools of the project, and, when no worker can, one line that says why with the command that fixes it.
 
-The hub reads each worker as its claim does (``claims.read_claimer``) and checks the run against each condition of
+The hub reads each worker as its claim does (``claim_rules.read_claimer``) and checks the run against each condition of
 that claim on its own (``Claimer.stops`` and ``Claimer.conditions``, the parts of ``_dispatcher_clause`` for whose
 runs it takes), so what it says is what the claim does, with no second set of rules to drift from it. The workers it
 reads are those of the run's owner and those shared in the run's project, the worker the run is pinned to, or, for a
@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import agent_placement, worker_placement
 from evo_agents.hub.server.profile_store import profile_of, profile_select
-from evo_agents.hub.server.runs.service import claims, overlap
+from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
 from evo_agents.hub.server.runs.service.candidates import PoolCandidate, RerunCandidates, WorkerCandidate
 from evo_agents.hub.server.runs.service.worker_fit import OFFLINE, worker_problems
 
@@ -34,7 +34,7 @@ class Verdict:
     for (``waiting``)."""
 
     row: object
-    claimer: claims.Claimer
+    claimer: claim_rules.Claimer
     blocking: list[str] = field(default_factory=list)
     waiting: list[str] = field(default_factory=list)
 
@@ -110,7 +110,7 @@ def _workers(run, home: agent_placement.Home | None):
     )
 
 
-async def _failed(conn: AsyncConnection, run_id: int, conditions: list[tuple[str, object]]) -> list[str]:
+async def _failed(conn: AsyncConnection, run_id: int, conditions: list[claim_rules.Condition]) -> list[str]:
     """The keys of ``conditions`` that run ``run_id`` does not meet, read on ``conn`` with no lock."""
     if not conditions:
         return []
@@ -132,9 +132,9 @@ def _owners_command(row, run, command: str) -> str:
     return f"`{command}`" if row.owner_id == run.dispatched_by else f"its owner {row.owner} runs `{command}`"
 
 
-def _stop_reasons(key: str, row, run, claimer: claims.Claimer) -> tuple[str, bool]:
+def _stop_reasons(key: str, row, run, claimer: claim_rules.Claimer) -> tuple[str, bool]:
     """(why, whether it waits) for the stop ``key`` of ``Claimer.stops``."""
-    version = row.agent_version or "of an unknown version"
+    version = _version(row)
     if key == "unready":
         return f"is not ready: {claimer.node.unready}", False
     if key == "full":
@@ -152,7 +152,7 @@ async def _dispatcher_reasons(conn: AsyncConnection, row, run) -> list[tuple[str
     """Why the worker takes none of the runs of the run's owner: the parts of ``_dispatcher_clause`` the run fails."""
     if not row.shared:
         return [(f"takes only the runs of its owner {row.owner}, and is shared with nobody", False)]
-    parts = claims.dispatcher_parts(row.id, row.owner_id, row.shared)
+    parts = claim_rules.dispatcher_parts(row.id, row.owner_id, row.shared)
     failed = set(await _failed(conn, run.id, list(parts.items())))
     found = []
     if "own" in failed:
@@ -175,101 +175,132 @@ async def _dispatcher_reasons(conn: AsyncConnection, row, run) -> list[tuple[str
     return found
 
 
+def _project_reason(row, run, profile, home) -> tuple[str, bool]:
+    project = run.project
+    if not row.serves:
+        command = f"evo-agents worker projects --worker {row.name} --add {project}"
+        return f"does not serve project {project}: {_owners_command(row, run, command)}", False
+    return (
+        f"serves project {project}, but its owner {row.owner} holds no writer role there, and a worker takes only "
+        "the runs of projects its owner writes in",
+        False,
+    )
+
+
+def _pinned_reason(row, run, profile, home) -> tuple[str, bool]:
+    return f"the run is pinned to worker #{run.pinned_worker_id}", False
+
+
+def _runtime_reason(row, run, profile, home) -> tuple[str, bool]:
+    asked = run.requested_runtime or "any"
+    if asked == "any":
+        return "reports no runtime of the core available (claude-code, codex, ...)", False
+    return f"does not report {asked} available, which the run asks for", False
+
+
+def _checkout_reason(row, run, profile, home) -> tuple[str, bool]:
+    repos = [entry.get("repo") for entry in run.repos or () if isinstance(entry, dict)] or [run.repo]
+    names = ", ".join(f"{run.project}/{repo}" for repo in repos if repo)
+    return (
+        f"has no checkout of {names or 'the run repo'}, and its daemon (evo-agents {_version(row)}) does not clone "
+        "what it lacks: update its daemon",
+        False,
+    )
+
+
+def _profile_reason(row, run, profile, home) -> tuple[str, bool]:
+    handle = getattr(profile, "handle", None)
+    problems = []
+    if profile is not None:
+        via = run.dispatched_via or "machine"
+        problems = worker_problems(row, profile, via, "chat", run.requested_runtime or "any")
+    detail = [why for why in problems if (handle and f"@{handle}" in why) or "agent profiles" in why]
+    said = f": it {'; it '.join(detail)}" if detail else ""
+    return (
+        f"is not one the run's agent profile{f' @{handle}' if handle else ''} or its autonomy lets take it{said}",
+        False,
+    )
+
+
+def _browser_reason(row, run, profile, home) -> tuple[str, bool]:
+    if runs.BROWSER not in (row.features or ()):
+        return "starts no browser, and the run asks for a Chromium of its own", False
+    return "has no free browser, or another run holds the run's browser identity: it takes the run then", True
+
+
+def _agent_pool_reason(row, run, profile, home) -> tuple[str, bool]:
+    if home is not None:
+        return f"is not a node of pool {home.pool}, where the runs of @{home.handle} go", False
+    return "is a node of the pool of another agent, which takes that agent's runs alone", False
+
+
+def _pool_accounts_reason(row, run, profile, home) -> tuple[str, bool]:
+    handle = getattr(profile, "handle", None)
+    return (
+        f"the account pool of @{handle or 'the agent'} has no account the run can use now: add one, or wait "
+        "for one to cool down",
+        False,
+    )
+
+
+def _placement_reason(row, run, profile, home) -> tuple[str, bool]:
+    node = worker_placement.Placement.of(row)
+    pinned = run.pinned_worker_id == row.id
+    problems = node.problems(run.selector or (), run.tolerations or (), pinned=pinned, readiness=False)
+    return "; ".join(problems) or "its labels or taints do not fit the run", False
+
+
+def _version(row) -> str:
+    return row.agent_version or "of an unknown version"
+
+
+_FIXED_REASONS = {  # the conditions whose reason reads nothing of the worker or the run
+    "draining": (
+        "is draining, and takes only the runs that resume one it parked: on its machine, "
+        "`evo-agents worker drain --resume`",
+        False,
+    ),
+    "web_only": ("takes only runs dispatched from the web, as its owner set it, and this one was not", False),
+    "task_worker": ("is not one of the workers the run's agent type names", False),
+    "lost_here": ("lost an earlier attempt of the run and is not steady yet: it takes the run once it is", True),
+}
+_DAEMON_REASONS = {  # the conditions a newer daemon passes: {version} is the worker's, {kind} the run's
+    "plan_runs": f"runs evo-agents {{version}}, and a plan run needs {runs.version_text(runs.PLAN_RUN_AGENT)} or "
+    "later: update its daemon",
+    "step_sessions": "its daemon (evo-agents {version}) runs no plan run with a session per step: update it",
+    "kinds": "its daemon (evo-agents {version}) does not say it runs {kind} runs: update it",
+    "gateway": "runs evo-agents {version}, which takes no run of the model gateway: update its daemon",
+    "merge_judge": "its daemon (evo-agents {version}) does not say it judges merge requests: update it and restart it",
+    "repoless_review": "its daemon (evo-agents {version}) runs no review with no repo: update it and restart it",
+}
+_REASONS = {
+    "project": _project_reason,
+    "pinned": _pinned_reason,
+    "runtime": _runtime_reason,
+    "checkout": _checkout_reason,
+    "profile": _profile_reason,
+    "browser": _browser_reason,
+    "agent_pool": _agent_pool_reason,
+    "pool_accounts": _pool_accounts_reason,
+    "placement": _placement_reason,
+}
+
+
 def _condition_reason(key: str, row, run, profile, home) -> tuple[str, bool]:
     """(why, whether it waits) for the condition ``key`` of ``Claimer.conditions`` the run fails on worker ``row``."""
-    version = row.agent_version or "of an unknown version"
-    project, handle = run.project, getattr(profile, "handle", None)
-    if key == "draining":
-        return (
-            "is draining, and takes only the runs that resume one it parked: on its machine, "
-            "`evo-agents worker drain --resume`",
-            False,
-        )
-    if key == "project":
-        if not row.serves:
-            command = f"evo-agents worker projects --worker {row.name} --add {project}"
-            return f"does not serve project {project}: {_owners_command(row, run, command)}", False
-        return (
-            f"serves project {project}, but its owner {row.owner} holds no writer role there, and a worker takes only "
-            "the runs of projects its owner writes in",
-            False,
-        )
-    if key == "pinned":
-        return f"the run is pinned to worker #{run.pinned_worker_id}", False
-    if key == "runtime":
-        asked = run.requested_runtime or "any"
-        if asked == "any":
-            return "reports no runtime of the core available (claude-code, codex, ...)", False
-        return f"does not report {asked} available, which the run asks for", False
-    if key == "checkout":
-        repos = [entry.get("repo") for entry in run.repos or () if isinstance(entry, dict)] or [run.repo]
-        names = ", ".join(f"{project}/{repo}" for repo in repos if repo)
-        return (
-            f"has no checkout of {names or 'the run repo'}, and its daemon (evo-agents {version}) does not clone what "
-            "it lacks: update its daemon",
-            False,
-        )
-    if key == "web_only":
-        return "takes only runs dispatched from the web, as its owner set it, and this one was not", False
-    if key == "plan_runs":
-        return (
-            f"runs evo-agents {version}, and a plan run needs {runs.version_text(runs.PLAN_RUN_AGENT)} or later: "
-            "update its daemon",
-            False,
-        )
-    if key == "step_sessions":
-        return f"its daemon (evo-agents {version}) runs no plan run with a session per step: update it", False
-    if key == "kinds":
-        return f"its daemon (evo-agents {version}) does not say it runs {run.kind} runs: update it", False
-    if key == "task_worker":
-        return "is not one of the workers the run's agent type names", False
-    if key == "lost_here":
-        return "lost an earlier attempt of the run and is not steady yet: it takes the run once it is", True
-    if key == "profile":
-        problems = []
-        if profile is not None:
-            via = run.dispatched_via or "machine"
-            problems = worker_problems(row, profile, via, "chat", run.requested_runtime or "any")
-        detail = [why for why in problems if (handle and f"@{handle}" in why) or "agent profiles" in why]
-        said = f": it {'; it '.join(detail)}" if detail else ""
-        return (
-            f"is not one the run's agent profile{f' @{handle}' if handle else ''} or its autonomy lets take it{said}",
-            False,
-        )
-    if key == "browser":
-        if runs.BROWSER not in (row.features or ()):
-            return "starts no browser, and the run asks for a Chromium of its own", False
-        return "has no free browser, or another run holds the run's browser identity: it takes the run then", True
-    if key == "gateway":
-        return f"runs evo-agents {version}, which takes no run of the model gateway: update its daemon", False
-    if key == "merge_judge":
-        return (
-            f"its daemon (evo-agents {version}) does not say it judges merge requests: update it and restart it",
-            False,
-        )
-    if key == "repoless_review":
-        return f"its daemon (evo-agents {version}) runs no review with no repo: update it and restart it", False
-    if key == "agent_pool":
-        if home is not None:
-            return f"is not a node of pool {home.pool}, where the runs of @{home.handle} go", False
-        return "is a node of the pool of another agent, which takes that agent's runs alone", False
-    if key == "pool_accounts":
-        return (
-            f"the account pool of @{handle or 'the agent'} has no account the run can use now: add one, or wait "
-            "for one to cool down",
-            False,
-        )
-    if key == "placement":
-        node = worker_placement.Placement.of(row)
-        pinned = run.pinned_worker_id == row.id
-        problems = node.problems(run.selector or (), run.tolerations or (), pinned=pinned, readiness=False)
-        return "; ".join(problems) or "its labels or taints do not fit the run", False
-    return f"fails the claim's condition {key}", False
+    if key in _FIXED_REASONS:
+        return _FIXED_REASONS[key]
+    if key in _DAEMON_REASONS:
+        return _DAEMON_REASONS[key].format(version=_version(row), kind=run.kind), False
+    reason = _REASONS.get(key)
+    if reason is None:
+        return f"fails the claim's condition {key}", False
+    return reason(row, run, profile, home)
 
 
 async def _verdict(conn: AsyncConnection, run, row, profile, home) -> Verdict:
     """What keeps worker ``row`` from the queued ``run`` now, as its claim counts it."""
-    claimer = await claims.read_claimer(conn, row, worker_placement.Placement.of(row))
+    claimer = await claim_rules.read_claimer(conn, row, worker_placement.Placement.of(row))
     verdict = Verdict(row=row, claimer=claimer)
 
     def add(reason: tuple[str, bool]) -> None:

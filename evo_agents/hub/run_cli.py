@@ -49,10 +49,10 @@ from evo_agents import __version__
 from evo_agents.hub.attach_cli import describe
 from evo_agents.hub.author import MAX_REQUEST_BYTES
 from evo_agents.hub.chats import chat_link
-from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
-from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
+from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
+from evo_agents.hub.client import OPENER, HubError, Unreachable, json_body, origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.plan_cli import _plan_id, _project
+from evo_agents.hub.plan_cli import checked_plan_id, project_of_args
 from evo_agents.hub.run_cli_access import register_access
 from evo_agents.hub.run_cli_candidates import register_candidates
 from evo_agents.hub.run_cli_keys import RUN_KEYS
@@ -116,7 +116,7 @@ LABEL_WIDTH = max(len(label) for label in KIND_LABELS.values())
 
 
 def _runs_path(project: str, run_id: int | None = None, action: str | None = None) -> str:
-    path = f"{_project_path(project)}/runs"
+    path = f"{project_path(project)}/runs"
     if run_id is not None:
         path += f"/{run_id}"
     return path + (f"/{action}" if action else "")
@@ -267,19 +267,19 @@ def open_stream(hub, path: str, last_event_id: int | None = None) -> Iterator[It
         headers["Last-Event-ID"] = str(last_event_id)
     request = urllib.request.Request(hub.url + path, headers=headers)
     try:
-        response = _OPENER.open(request, timeout=STREAM_TIMEOUT)
+        response = OPENER.open(request, timeout=STREAM_TIMEOUT)
     except urllib.error.HTTPError as exc:
         with exc:
-            payload = _json(exc.read())
+            payload = json_body(exc.read())
         raise _refusal(hub, exc.code, payload) from None
     except urllib.error.URLError as exc:
         refused = isinstance(exc.reason, ConnectionRefusedError)
-        raise Unreachable(f"cannot reach {_origin(hub.url)}: {exc.reason}", refused) from None
+        raise Unreachable(f"cannot reach {origin(hub.url)}: {exc.reason}", refused) from None
     except (TimeoutError, OSError, http.client.HTTPException) as exc:
         reason = (
             f"no answer within {STREAM_TIMEOUT:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
         )
-        raise Unreachable(f"cannot reach {_origin(hub.url)}: {reason}") from None
+        raise Unreachable(f"cannot reach {origin(hub.url)}: {reason}") from None
     with response:
         kind = response.headers.get("Content-Type", "")
         if not kind.startswith("text/event-stream"):
@@ -337,7 +337,7 @@ def follow(
                 raise
             reason = str(exc)
         except (OSError, http.client.HTTPException) as exc:  # a read that timed out, or a connection cut mid-stream
-            reason = f"the stream from {_origin(hub.url)} broke off ({exc or type(exc).__name__})"
+            reason = f"the stream from {origin(hub.url)} broke off ({exc or type(exc).__name__})"
         if received:  # a stream that brought something, a ping at least, starts the count again
             tries = 0
         if tries >= RECONNECTS:
@@ -364,14 +364,14 @@ def _runtime(run: dict) -> str:
     return run["requested_runtime"] + (f" (model {run['model']})" if run.get("model") else "")
 
 
-@_client_command
+@client_command
 def cmd_dispatch(args) -> int:
     refused = _model_check(args)
     if refused:
         return usage_error(refused)
-    hub, _ = _signed_in()
-    project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args)}
+    hub, _ = signed_in()
+    project = project_of_args(args)
+    body = {"plan_id": checked_plan_id(args.plan), "steps": args.steps, **browser_body(args)}
     body.update(as_me_body(args))
     chosen = {
         "runtime": args.runtime,
@@ -384,7 +384,7 @@ def cmd_dispatch(args) -> int:
     body.update({key: value for key, value in {**chosen, "profile": args.agent}.items() if value is not None})
     queued = hub.call("POST", _runs_path(project), body)
     if args.json:
-        _print_json(queued)
+        print_json(queued)
         return 0
     for run in queued:
         pinned = f", on worker #{run['pinned_worker_id']} only" if run["pinned_worker_id"] else ""
@@ -397,21 +397,21 @@ def cmd_dispatch(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_plan(args) -> int:
     refused = _model_check(args)
     if refused:
         return usage_error(refused)
-    hub, _ = _signed_in()
-    project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), **browser_body(args), **as_me_body(args)}
+    hub, _ = signed_in()
+    project = project_of_args(args)
+    body = {"plan_id": checked_plan_id(args.plan), **browser_body(args), **as_me_body(args)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in {**chosen, "session_per_step": each}.items() if value is not None})
-    run = hub.call("POST", f"{_project_path(project)}/plan-runs", body)
+    run = hub.call("POST", f"{project_path(project)}/plan-runs", body)
     if args.json:
-        _print_json(run)
+        print_json(run)
         return 0
     pinned = f", on worker #{run['pinned_worker_id']} only" if run["pinned_worker_id"] else ""
     each = ", each in a new session" if run.get("session_per_step") else ""
@@ -428,7 +428,7 @@ def cmd_plan(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_author(args) -> int:
     text = sys.stdin.read() if args.request == "-" else args.request
     if not text.strip():
@@ -437,15 +437,15 @@ def cmd_author(args) -> int:
         return usage_error(
             f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes",
         )
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     body = {"request": text}
     chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in chosen.items() if value is not None})
-    run = hub.call("POST", f"{_project_path(project)}/author-runs", body)
+    run = hub.call("POST", f"{project_path(project)}/author-runs", body)
     if args.json:
-        _print_json(run)
+        print_json(run)
         return 0
     print(
         f"Queued author run #{run['id']}: {_step(run)}, {_author_on(run)} over {_repos(run)}; "
@@ -456,13 +456,13 @@ def cmd_author(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_list(args) -> int:
-    hub, credentials = _signed_in()
-    project = _project(args)
+    hub, credentials = signed_in()
+    project = project_of_args(args)
     query = [("state", state) for state in args.state or ()]
     if args.plan is not None:
-        query.append(("plan_id", _plan_id(args.plan)))
+        query.append(("plan_id", checked_plan_id(args.plan)))
     if args.worker is not None:
         query.append(("worker_id", _worker_id(hub, credentials.login, args.worker)))
     given = {
@@ -477,7 +477,7 @@ def cmd_list(args) -> int:
     query += [(key, value) for key, value in given.items() if value is not None]
     listed = hub.call("GET", _runs_path(project) + (f"?{urlencode(query)}" if query else ""))
     if args.json:
-        _print_json(listed)
+        print_json(listed)
         return 0
     rows = [
         (
@@ -490,12 +490,12 @@ def cmd_list(args) -> int:
             run["runtime"],
             run["worker"] or "-",
             run["dispatched_by"],
-            _when(run["queued_at"]),
+            when(run["queued_at"]),
         )
         for run in listed["runs"]
     ]
     if rows:
-        _table(("RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED (UTC)"), rows)
+        table(("RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED (UTC)"), rows)
     counts = ", ".join(f"{count} {state}" for state, count in listed["counts"].items() if count)
     shown = len(rows)
     print(f"{shown} of {listed['total']} run(s) of project {project}" + (f"; by state: {counts}" if counts else ""))
@@ -515,7 +515,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
     if kind == "review":
         lines.append(("project", run["project"]))
     if kind == "chat":
-        link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
+        link = origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
         lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
         lines.append(("message", link))
     if kind not in ("review", "author", "chat", "task", "local", "judge") or run.get("plan_id"):
@@ -531,13 +531,13 @@ def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
         ("machine", where),
         ("account", run["claude_email"] + (f" ({run['claude_profile']})" if run["claude_profile"] else "")),
     ]
-    lines.append(("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC"))
+    lines.append(("dispatched", f"by {run['dispatched_by']} at {when(run['queued_at'])} UTC"))
     if run["last_activity_at"]:
-        lines.append(("last activity", f"{_when(run['last_activity_at'])} UTC"))
+        lines.append(("last activity", f"{when(run['last_activity_at'])} UTC"))
     if run["finished_at"]:
-        lines.append(("ended", f"{_when(run['finished_at'])} UTC"))
+        lines.append(("ended", f"{when(run['finished_at'])} UTC"))
     if run["waiting_since"] and run["state"] == "waiting":
-        lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+        lines.append(("waiting", f"since {when(run['waiting_since'])} UTC, for the answer to a decision"))
     if run.get("overlap_wait") and run["state"] == "queued":
         wait = run["overlap_wait"]
         who = ", ".join(f"#{number}" for number in wait["run_ids"])
@@ -550,13 +550,22 @@ def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
 
 def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs; ``_describe_local`` says those of a local run."""
-    plan_run = run["kind"] != "step"  # every other kind has repos, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"), *_what(run, hub_url)]
+    lines += _placement(run)
+    lines += _moves(run)
+    lines += _results(run)
+    lines.append(("events", f"{run['last_seq']}"))
+    return lines
+
+
+def _placement(run: dict) -> list[tuple[str, str]]:
+    """Where and how the run works: its repos or repo with the commit, its worker, its runtime, who dispatched it."""
+    plan_run = run["kind"] != "step"  # every other kind has repos, and no step
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
     if plan_run:
-        lines.append(("repos", (_repos(run) or "none") + commit))
+        lines = [("repos", (_repos(run) or "none") + commit)]
     else:
-        lines.append(("repo", run["repo"] + (f", branch {run['branch']}" if run["branch"] else "") + commit))
+        lines = [("repo", run["repo"] + (f", branch {run['branch']}" if run["branch"] else "") + commit)]
     worker = f"{run['worker']} (#{run['worker_id']})" if run["worker_id"] else "none yet"
     if run["pinned_worker_id"]:
         worker += f", pinned to worker #{run['pinned_worker_id']}"
@@ -565,26 +574,32 @@ def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
     )
     runtime += f", model {run['model']}" if run["model"] else ""
     approval = "" if plan_run else f", approval {run['approval']}"
-    lines += [
+    return lines + [
         ("worker", worker),
         ("runtime", f"{runtime}, {run['mode']}{approval}, timeout {_timeout(run)}"),
-        ("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC{_as_owner(run)}"),
+        ("dispatched", f"by {run['dispatched_by']} at {when(run['queued_at'])} UTC{_as_owner(run)}"),
     ]
+
+
+def _moves(run: dict) -> list[tuple[str, str]]:
+    """How the run went so far: its agent time and times, waits, lease, the owner's asks, the run it retries, its
+    session."""
+    lines = []
     if run["run_seconds"]:
         lines.append(("agent time", f"{run['run_seconds'] // 60} min used of {_timeout(run)}"))
     times = [(name, run[f"{name}_at"]) for name in ("leased", "started", "finished") if run[f"{name}_at"]]
     if times:
-        lines.append(("times (UTC)", ", ".join(f"{name} {_when(value)}" for name, value in times)))
+        lines.append(("times (UTC)", ", ".join(f"{name} {when(value)}" for name, value in times)))
     if run["waiting_since"] and run["state"] == "waiting":
-        lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+        lines.append(("waiting", f"since {when(run['waiting_since'])} UTC, for the answer to a decision"))
     if run["parked_at"]:
-        lines.append(("parked", f"at {_when(run['parked_at'])} UTC, for want of an answer"))
+        lines.append(("parked", f"at {when(run['parked_at'])} UTC, for want of an answer"))
     if run["resume_of_run_id"]:
         lines.append(("resumes", f"run #{run['resume_of_run_id']}, in its session and worktrees"))
     if run["lease_expires_at"] and run["state"] not in TERMINAL_STATES:
-        lines.append(("lease until", f"{_when(run['lease_expires_at'])} UTC"))
+        lines.append(("lease until", f"{when(run['lease_expires_at'])} UTC"))
     asks = [(name, run[f"{name}_requested_at"]) for name in ("cancel", "takeover", "handback")]
-    asked = [f"{name} at {_when(value)} UTC" for name, value in asks if value]
+    asked = [f"{name} at {when(value)} UTC" for name, value in asks if value]
     if asked:
         lines.append(("asked", ", ".join(asked)))
     if run["parent_run_id"]:
@@ -593,31 +608,32 @@ def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
         lines.append(("waits for", _steady_wait(run)))
     if run["session_id"]:
         lines.append(("session", run["session_id"]))
+    return lines
+
+
+def _verify_text(result) -> str:
+    if isinstance(result, dict):
+        return f"exit {result.get('exit_code')}: {result.get('command')}"
+    return json.dumps(result, ensure_ascii=False)
+
+
+def _results(run: dict) -> list[tuple[str, str]]:
+    """What the run left: its diffstat, verify results, usage, error and cause, evidence, request and uploads."""
+    lines = []
     stat = run["diffstat"]
     if isinstance(stat, dict):
         parts = [f"{stat[key]} {key}" for key in ("files", "insertions", "deletions") if key in stat]
         lines.append(("diffstat", ", ".join(parts) or json.dumps(stat)))
     for index, result in enumerate(run["verify"] or ()):
-        text = (
-            f"exit {result.get('exit_code')}: {result.get('command')}"
-            if isinstance(result, dict)
-            else json.dumps(result, ensure_ascii=False)
-        )
-        lines.append(("verify" if index == 0 else "", text))
+        lines.append(("verify" if index == 0 else "", _verify_text(result)))
     if run["usage"]:
         lines.append(("usage", _clip(json.dumps(run["usage"], ensure_ascii=False, separators=(",", ":")), RAW_CHARS)))
-    if run["error"]:
-        lines.append(("error", run["error"]))
-    if run.get("failure_cause"):
-        lines.append(("cause", run["failure_cause"]))
-    if run["evidence"]:
-        lines.append(("evidence", run["evidence"]))
-    if run.get("request"):
-        lines.append(("request", run["request"]))
+    texts = [("error", run["error"]), ("cause", run.get("failure_cause")), ("evidence", run["evidence"])]
+    texts.append(("request", run.get("request")))
+    lines += [(label, text) for label, text in texts if text]
     blobs = [f"{name} {run[f'{name}_sha256'][:12]}" for name in ("log", "diff") if run[f"{name}_sha256"]]
     if blobs:
         lines.append(("uploaded", ", ".join(blobs)))
-    lines.append(("events", f"{run['last_seq']}"))
     return lines
 
 
@@ -631,21 +647,21 @@ def _steady_wait(run: dict) -> str:
     wait = run["steady_wait"]
     worker = f"worker {wait['worker']} (#{wait['worker_id']}), which lost run #{run['parent_run_id']}, to be steady"
     rule = f"once its heartbeats have come for {STEADY_SECONDS} s, none more than {STEADY_GAP_SECONDS} s late"
-    when = f"from {_clock(wait['steady_at'])} UTC if they go on" if wait.get("steady_at") else "it sends none now"
+    steady = f"from {_clock(wait['steady_at'])} UTC if they go on" if wait.get("steady_at") else "it sends none now"
     if run["pinned_worker_id"] == wait["worker_id"]:
         others = "the run is pinned to that worker, so no other takes it"
     else:
         others = "any other worker that may take it takes it now"
-    return f"{worker}\nit takes this attempt only {rule}: {when}\n{others}"
+    return f"{worker}\nit takes this attempt only {rule}: {steady}\n{others}"
 
 
-@_client_command
+@client_command
 def cmd_show(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     run = hub.call("GET", _runs_path(project, args.run))
     if args.json:
-        _print_json(run)
+        print_json(run)
         return 0
     print(f"Run #{run['id']}")
     lines = (_describe_local if run["kind"] == "local" else _describe)(run, hub.url)
@@ -662,13 +678,13 @@ def cmd_show(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_logs(args) -> int:
     if args.json and args.follow:
         print("error: --json prints the events read as one object, so it does not go with --follow", file=sys.stderr)
         return EXIT_USAGE
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     after = args.after or 0
     if args.follow:
         ended = follow(hub, project, args.run, after, kinds=frozenset(args.kind or ()))
@@ -676,7 +692,7 @@ def cmd_logs(args) -> int:
         return 0
     page = read_events(hub, project, args.run, after, args.kind or ())
     if args.json:
-        _print_json(page)
+        print_json(page)
         return 0
     for event in page["events"]:
         print_event(event)
@@ -694,18 +710,18 @@ CHAT_STATUS_WORDS = {
 }
 
 
-@_client_command
+@client_command
 def cmd_chat(args) -> int:
-    hub, _ = _signed_in()
-    chat = hub.call("GET", _runs_path(_project(args), args.run, "chat"))
+    hub, _ = signed_in()
+    chat = hub.call("GET", _runs_path(project_of_args(args), args.run, "chat"))
     if args.json:
-        _print_json(chat)
+        print_json(chat)
         return 0
     if chat["more"]:
         print("(older messages left out)")
     for message in chat["messages"]:
         who = "agent" if message["author"] == "agent" else message["login"] or "owner"
-        print(f"[{_when(message['at'])}] {who} (run #{message['run_id']}):")
+        print(f"[{when(message['at'])}] {who} (run #{message['run_id']}):")
         print(message["text"].rstrip())
         if message.get("attachments"):
             print(f"(files: {describe(message['attachments'])})")
@@ -719,7 +735,7 @@ def cmd_chat(args) -> int:
 def _lease_state(lease: dict, now: datetime) -> str:
     """``revoked YYYY-MM-DD HH:MM`` (UTC), ``expired``, or ``out`` for a lease the run still holds."""
     if lease["revoked_at"]:
-        return f"revoked {_when(lease['revoked_at'])}"
+        return f"revoked {when(lease['revoked_at'])}"
     try:
         ends = datetime.fromisoformat(lease["expires_at"]) if lease["expires_at"] else None
     except ValueError:
@@ -729,12 +745,12 @@ def _lease_state(lease: dict, now: datetime) -> str:
     return "out"
 
 
-@_client_command
+@client_command
 def cmd_credentials(args) -> int:
-    hub, _ = _signed_in()
-    leases = hub.call("GET", _runs_path(_project(args), args.run, "credentials"))
+    hub, _ = signed_in()
+    leases = hub.call("GET", _runs_path(project_of_args(args), args.run, "credentials"))
     if args.json:
-        _print_json(leases)
+        print_json(leases)
         return 0
     if not leases:
         print(f"Run #{args.run} got no lease: its worker asked for none, or the hub had nothing for it.")
@@ -746,13 +762,13 @@ def cmd_credentials(args) -> int:
             lease["provider"],
             lease["target"],
             lease["worker"],
-            _when(lease["issued_at"]),
-            _when(lease["expires_at"]),
+            when(lease["issued_at"]),
+            when(lease["expires_at"]),
             _lease_state(lease, now),
         )
         for lease in leases
     ]
-    _table(("NAME", "PROVIDER", "TARGET", "WORKER", "ISSUED (UTC)", "EXPIRES (UTC)", "STATE"), rows)
+    table(("NAME", "PROVIDER", "TARGET", "WORKER", "ISSUED (UTC)", "EXPIRES (UTC)", "STATE"), rows)
     out = sum(row[-1] == "out" for row in rows)
     print(
         f"{len(leases)} lease(s) of run #{args.run}, "
@@ -814,12 +830,12 @@ CONTROLS = {
 
 
 def _control(action: str, said: Callable[[dict], str]):
-    @_client_command
+    @client_command
     def command(args) -> int:
-        hub, _ = _signed_in()
-        run = hub.call("POST", _runs_path(_project(args), args.run, action), rerun_body(args))
+        hub, _ = signed_in()
+        run = hub.call("POST", _runs_path(project_of_args(args), args.run, action), rerun_body(args))
         if args.json:
-            _print_json(run)
+            print_json(run)
             return 0
         print(said(run))
         return 0
@@ -828,7 +844,52 @@ def _control(action: str, said: Callable[[dict], str]):
     return command
 
 
-def _register_author(rsub, with_project) -> None:
+def _project_option(parser) -> None:
+    parser.add_argument("--project", help=PROJECT_HELP)
+
+
+def _run_argument(parser) -> None:
+    parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
+    _project_option(parser)
+
+
+def _model_option(parser) -> None:
+    parser.add_argument(
+        "--model",
+        help="the model, as the runtime names it (opencode: provider/model); needs --runtime with that runtime "
+        "(default: the runtime's own choice)",
+    )
+
+
+def _register_dispatch(rsub) -> None:
+    dispatch = rsub.add_parser(
+        "dispatch",
+        help="queue a run of each step named for the pool of its agent, all of them or none (needs writer)",
+    )
+    dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
+    dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
+    _project_option(dispatch)
+    dispatch_options(dispatch)
+    _model_option(dispatch)
+    account_option(dispatch)
+    json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
+    dispatch.set_defaults(func=cmd_dispatch)
+
+
+def _register_plan(rsub) -> None:
+    plan = rsub.add_parser(
+        "plan",
+        help="queue a plan run: one run, on the pool of its agent, that does every step of the plan "
+        "not done yet (needs writer)",
+    )
+    plan.add_argument("plan", metavar="PLAN", help="the plan's id")
+    _project_option(plan)
+    plan_options(plan, _model_option)
+    json_option(plan, RUN)
+    plan.set_defaults(func=cmd_plan)
+
+
+def _register_author(rsub) -> None:
     authored = rsub.add_parser(
         "author",
         help="queue an author run: a plan written from your request with the create-exec-plan skill, on the pool of "
@@ -839,74 +900,30 @@ def _register_author(rsub, with_project) -> None:
         metavar="REQUEST",
         help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
     )
-    with_project(authored)
+    _project_option(authored)
     author_options(authored)
     json_option(authored, RUN)
     authored.set_defaults(func=cmd_author)
 
 
-def register_runs(hsub) -> None:
-    run = hsub.add_parser(
-        "run",
-        help="dispatch plan steps, or a whole plan, to the pool of their agent, and follow, steer and end their runs",
-    )
-    rsub = run.add_subparsers(dest="run_command", required=True)
-
-    def with_project(parser) -> None:
-        parser.add_argument("--project", help=PROJECT_HELP)
-
-    def with_run(parser) -> None:
-        parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
-        with_project(parser)
-
-    def with_model(parser) -> None:
-        parser.add_argument(
-            "--model",
-            help="the model, as the runtime names it (opencode: provider/model); needs --runtime with that runtime "
-            "(default: the runtime's own choice)",
-        )
-
-    dispatch = rsub.add_parser(
-        "dispatch",
-        help="queue a run of each step named for the pool of its agent, all of them or none (needs writer)",
-    )
-    dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
-    dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
-    with_project(dispatch)
-    dispatch_options(dispatch)
-    with_model(dispatch)
-    account_option(dispatch)
-    json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
-    dispatch.set_defaults(func=cmd_dispatch)
-
-    plan = rsub.add_parser(
-        "plan",
-        help="queue a plan run: one run, on the pool of its agent, that does every step of the plan "
-        "not done yet (needs writer)",
-    )
-    plan.add_argument("plan", metavar="PLAN", help="the plan's id")
-    with_project(plan)
-    plan_options(plan, with_model)
-    json_option(plan, RUN)
-    plan.set_defaults(func=cmd_plan)
-
-    _register_author(rsub, with_project)
-
+def _register_list_and_show(rsub) -> None:
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
-    with_project(listed)
+    _project_option(listed)
     list_options(listed)
     json_option(listed, returns_object(*RUN_LIST_KEYS, schema="RunList"))
     listed.set_defaults(func=cmd_list)
 
     show = rsub.add_parser("show", help="one run: state, step, worker, commit, verify results, evidence")
-    with_run(show)
+    _run_argument(show)
     json_option(show, RUN)
     show.set_defaults(func=cmd_show)
 
+
+def _register_logs(rsub) -> None:
     logs = rsub.add_parser(
         "logs", help="a run's events: what its agent said and did, and its moves; --follow prints them as they come"
     )
-    with_run(logs)
+    _run_argument(logs)
     logs.add_argument(
         "-f", "--follow", action="store_true", help="keep reading the run's live stream until the run ends"
     )
@@ -925,12 +942,12 @@ def register_runs(hsub) -> None:
     )
     logs.set_defaults(func=cmd_logs)
 
-    register_send(rsub, with_run, _project)
 
+def _register_chat_and_credentials(rsub) -> None:
     chat = rsub.add_parser(
         "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"
     )
-    with_run(chat)
+    _run_argument(chat)
     json_option(chat, returns_object(*CHAT_KEYS, schema="RunChat"))
     chat.set_defaults(func=cmd_chat)
 
@@ -939,17 +956,35 @@ def register_runs(hsub) -> None:
         help="the leases a run got: secret or GitHub App, target, worker, when issued, ending and revoked; never the "
         "value (owner only)",
     )
-    with_run(credentials)
+    _run_argument(credentials)
     json_option(credentials, returns_array(*LEASE_KEYS, schema="RunLease"))
     credentials.set_defaults(func=cmd_credentials)
 
-    register_candidates(rsub, with_run, _project)
-    register_outputs(rsub, with_run, _project)
-    register_access(rsub, with_run, _project, RUN)
+
+def _register_controls(rsub) -> None:
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
-        with_run(parser)
+        _run_argument(parser)
         if action == "rerun":
             rerun_options(parser)
         json_option(parser, RUN)
         parser.set_defaults(func=_control(action, said))
+
+
+def register_runs(hsub) -> None:
+    run = hsub.add_parser(
+        "run",
+        help="dispatch plan steps, or a whole plan, to the pool of their agent, and follow, steer and end their runs",
+    )
+    rsub = run.add_subparsers(dest="run_command", required=True)
+    _register_dispatch(rsub)
+    _register_plan(rsub)
+    _register_author(rsub)
+    _register_list_and_show(rsub)
+    _register_logs(rsub)
+    register_send(rsub, _run_argument, project_of_args)
+    _register_chat_and_credentials(rsub)
+    register_candidates(rsub, _run_argument, project_of_args)
+    register_outputs(rsub, _run_argument, project_of_args)
+    register_access(rsub, _run_argument, project_of_args, RUN)
+    _register_controls(rsub)

@@ -646,7 +646,7 @@ def _manager_of(args) -> Manager:
 
 @_command
 def cmd_install(args) -> int:
-    from evo_agents.worker.cli import EXTRA_HINT
+    from evo_agents.worker.cli_support import EXTRA_HINT
 
     home = WorkerHome()
     service = _manager_of(args)

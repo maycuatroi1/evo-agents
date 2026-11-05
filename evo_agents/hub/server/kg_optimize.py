@@ -309,9 +309,9 @@ async def link_agent_run(conn: AsyncConnection, found, run_id: int) -> None:
 async def _gate(conn: AsyncConnection, ctx):
     """(due, word, gate) of the night shift of ``ctx``'s project for a run asked for now: at any hour, beside the
     schedule's other runs."""
-    from evo_agents.hub.server.curator import _due, gate_of  # it imports collect, which imports this module
+    from evo_agents.hub.server.curator_shift import due_schedules, gate_of  # it imports collect, which imports this
 
-    due = (await conn.execute(_due(None).where(tables.schedules.c.project_id == ctx.project_id))).one_or_none()
+    due = (await conn.execute(due_schedules(None).where(tables.schedules.c.project_id == ctx.project_id))).one_or_none()
     if due is None:
         return None, "none", None
     word, gate = await gate_of(conn, due, any_hour=True, beside=True, on_demand=True)

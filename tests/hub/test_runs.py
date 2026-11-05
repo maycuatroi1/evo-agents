@@ -31,8 +31,9 @@ from sqlalchemy import extract, func, insert, literal, select, update
 from evo_agents.harness import plan_digest
 from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, tables
 from evo_agents.hub.config import ConfigError, load_config
-from evo_agents.hub.server import run_state, worker_placement
+from evo_agents.hub.server import run_reaper, run_state, worker_placement
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.runs.service import claim_rules
 from evo_agents.hub.server.runs.service import claims as run_claims
 from evo_agents.hub.worker import queue
 from tests.hub.account_pool_setup import give_account_pool
@@ -259,7 +260,7 @@ def seconds_from_now(db, value: str | None) -> float | None:
 
 
 def recover(client) -> dict:
-    return client.portal.call(run_state.recover_runs, client.app.state.engine)
+    return client.portal.call(run_reaper.recover_runs, client.app.state.engine)
 
 
 def state_of(db, run_id: int) -> str:
@@ -604,12 +605,12 @@ def test_the_claim_query_of_a_worker_whose_shape_did_not_change_is_built_once():
     )  # fmt: skip
     node = worker_placement.Placement(labels=("os:linux",), taints=(), auto=(), unready=None)
     seen = dict(row=row, node=node, holding=0, runtimes=["claude-code"], offered=[], served={1: "evo"})
-    first = run_claims.Claimer(**seen, pairs=[(1, "app")], clones=False, steady=True, environments=[])
-    again = run_claims.Claimer(**seen | {"holding": 1}, pairs=[(1, "app")], clones=False, steady=True, environments=[])
-    unsteady = run_claims.Claimer(**seen, pairs=[(1, "app")], clones=False, steady=False, environments=[])
-    assert run_claims.claim_query(first.shape()) is run_claims.claim_query(again.shape())
+    first = claim_rules.Claimer(**seen, pairs=[(1, "app")], clones=False, steady=True, environments=[])
+    again = claim_rules.Claimer(**seen | {"holding": 1}, pairs=[(1, "app")], clones=False, steady=True, environments=[])
+    unsteady = claim_rules.Claimer(**seen, pairs=[(1, "app")], clones=False, steady=False, environments=[])
+    assert claim_rules.claim_query(first.shape()) is claim_rules.claim_query(again.shape())
     assert "lost_here" not in dict(first.conditions()) and "lost_here" in dict(unsteady.conditions())
-    assert run_claims.claim_query(unsteady.shape()) is not run_claims.claim_query(first.shape())
+    assert claim_rules.claim_query(unsteady.shape()) is not claim_rules.claim_query(first.shape())
 
 
 # Heartbeat and the owner's cancel
@@ -1082,7 +1083,7 @@ def test_a_run_past_its_timeout_and_a_parked_one_cancelled_keep_the_usage_their_
         moved(client, worker, run_id, "running")
         usage_events(client, worker, run_id)
     set_run(hub_db, late, counted_at=func.now() - timedelta(seconds=301))
-    long_ago = func.now() - run_state.PARKED_FOR - timedelta(minutes=1)  # parked by the reaper, then left so
+    long_ago = func.now() - run_reaper.PARKED_FOR - timedelta(minutes=1)  # parked by the reaper, then left so
     set_run(hub_db, parked, state="parked", parked_at=long_ago, lease_expires_at=None, counted_at=None)
     assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 1, "parked": 0}
     assert of_run(hub_db, late, "state", "usage") == [("failed", TOLD)]

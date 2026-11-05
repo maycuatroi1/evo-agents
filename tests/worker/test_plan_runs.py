@@ -32,7 +32,7 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.cli import main as cli_main
-from evo_agents.hub import runs
+from evo_agents.hub import run_prompts, runs
 from evo_agents.hub.credentials import Lease
 from evo_agents.worker import adapter as adapter_module
 from evo_agents.worker import checkouts as checkouts_module
@@ -1672,7 +1672,7 @@ def test_a_plan_run_without_session_per_step_keeps_one_session(machine):
     with_daemon(machine, run_it)
     run_id, hub = found["run"], found["hub"]
     (only,) = machine.starts()
-    assert only["prompt"] == runs.build_plan_prompt(plan_body(), run_repos(plan_body()))
+    assert only["prompt"] == run_prompts.build_plan_prompt(plan_body(), run_repos(plan_body()))
     assert hub.runs[run_id]["summary"] == "Both." and "step_sessions" not in machine.home.load_run(run_id)
 
 

@@ -31,7 +31,8 @@ from evo_agents.hub.decision_asks import MAX_EVIDENCE, MAX_REASON_CHARS, MAX_REF
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
 from evo_agents.hub.intakes import REF as INTAKE_REF
 from evo_agents.hub.intakes import STATUSES as INTAKE_STATUSES
-from evo_agents.hub.memory import MAX_AUDIENCE, TYPES
+from evo_agents.hub.memory import MAX_AUDIENCE
+from evo_agents.hub.memory_files import TYPES
 from evo_agents.hub.opportunities import REF as OPPORTUNITY_REF
 from evo_agents.hub.opportunities import STATUSES as OPPORTUNITY_STATUSES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES

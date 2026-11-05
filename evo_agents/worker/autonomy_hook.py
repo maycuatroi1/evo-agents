@@ -66,7 +66,7 @@ from pathlib import Path
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ASK, AUTO, CLASS_NAMES, DENY, NOTIFY
 from evo_agents.worker import pull_heads
-from evo_agents.worker.command_classes import SHELLS, Hit, _shell_script, classify, repo_slug, simple_commands
+from evo_agents.worker.command_classes import SHELLS, Hit, classify, repo_slug, shell_script, simple_commands
 
 BACKUPS_FILE = "backups.jsonl"
 BACKUP_FRESH = timedelta(hours=24)
@@ -446,7 +446,7 @@ class Floor:
 
     def _command(self, command: str, depth: int = 0) -> tuple[str, str, str] | None:
         for words in simple_commands(command):
-            script = _shell_script(words) if Path(words[0]).name in SHELLS and depth < 3 else None
+            script = shell_script(words) if Path(words[0]).name in SHELLS and depth < 3 else None
             found = self._command(script, depth + 1) if script else None
             if found:
                 return found

@@ -60,6 +60,30 @@ shrinks, the test asks you to lower the number, and once it fits the budget, to 
 Against main, the baseline may add no entry and raise no number. A function moved unchanged to another module is not
 an addition; `tighten` moves its entry. Never raise a number to make the test pass: split the code.
 
+## Type check
+
+basedpyright checks the types of `evo_agents` in standard mode. It is pinned in the `test` extra (a new release finds
+new errors), and `[tool.basedpyright]` in `pyproject.toml` holds its settings. What it found when the check came in
+(2026-11-05, after the fixes of the 2026-11-04 review: 4,418 errors and 1 warning) is frozen in
+`tests/type_baseline.json`, which basedpyright writes and reads itself: an error the baseline holds is not reported,
+any other fails the run.
+
+```sh
+python -m basedpyright                        # the types of evo_agents, against tests/type_baseline.json
+python -m tests.structure tighten-types       # rewrite the baseline once you have fixed errors; never adds one
+python -m pytest -q -m structure tests/test_structure.py -k type_baseline   # the baseline against origin/main
+```
+
+Run it in the environment of a worker's run (`uv sync --frozen` with the extras of `[tool.evo-agents.worker]`): the
+types of a missing optional package are unknown, so another set of packages finds other errors. A run takes about four
+minutes.
+
+The baseline only shrinks. Against main, it may hold no more errors of a rule in a module than main's does. A module
+main's baseline does not name has no entry at all: a new module, and a module split off another, type-checks clean,
+so a split fixes the errors of the code it moves. `tighten-types` runs `basedpyright --writebaseline` and puts the old
+file back when the code has an error the old one did not hold; do not run `--writebaseline` by hand to make a new
+error pass.
+
 ## Splitting a module
 
 Split it one seam at a time. A seam is a group of functions, with the state they share, that call each other far
@@ -72,7 +96,7 @@ more than they call the rest of the module. The sections a module marks with com
 3. Patch where a name is looked up: once the code that calls `name` lives in the new module, a test patches
    `new_module.name` (unittest.mock, "Where to patch").
 4. A private name that the other module now needs gets a public name.
-5. Run the tests and `tighten`, commit, and go on to the next seam. When no caller imports a name through the old
+5. Run the tests, `tighten` and `tighten-types`, commit, and go on to the next seam. When no caller imports a name through the old
    module any more, drop its re-export.
 
 ## Splitting a function

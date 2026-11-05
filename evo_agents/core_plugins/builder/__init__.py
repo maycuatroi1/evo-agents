@@ -32,7 +32,7 @@ Three routes for a change:
   seller's hub (paid). @builder never publishes, installs or sets a secret itself (``plugin_changes``).
 
 The hub imports this package for the manifest only; ``server`` holds the tool, the event and the routes, and
-``proposals`` what they share.
+``proposals`` what they share; ``kinds`` what a proposal changes, and a module ``*_changes`` what each kind does.
 """
 
 SERVER = "evo_agents.core_plugins.builder.server"

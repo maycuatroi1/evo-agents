@@ -17,10 +17,10 @@ import asyncio
 import os
 from types import SimpleNamespace
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import _project
+from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.review import LENSES, MAX_BODY_BYTES, SEVERITIES
 from evo_agents.hub.tiers import CHANGE_KINDS, split_target
 
@@ -71,12 +71,12 @@ def _attest(project: str, evidence: list[dict]) -> None:
     _input(lambda: asyncio.run(attest(evidence, workspaces)))
 
 
-@_client_command
+@client_command
 def cmd_finding(args) -> int:
     from evo_agents.worker.agent_input import evidence_items, read_text
 
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
     if args.body_file:
         text = _input(lambda: read_text(args.body_file, "body", MAX_BODY_BYTES))
@@ -85,9 +85,9 @@ def cmd_finding(args) -> int:
     body["evidence"] = _input(lambda: evidence_items(args.evidence))
     _attest(project, body["evidence"])
     body["run_id"] = session_run(hub, project, args.session, args.run)
-    answer = hub.call("POST", f"{_project_path(project)}/curator/findings", body)
+    answer = hub.call("POST", f"{project_path(project)}/curator/findings", body)
     if args.json:
-        _print_json(answer)
+        print_json(answer)
         return 0
     print(
         f"Finding #{answer.get('id')} recorded in run #{answer.get('run_id')} ({args.lens}, {args.severity}): "
@@ -96,12 +96,12 @@ def cmd_finding(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_propose(args) -> int:
     from evo_agents.worker.agent_input import evidence_items, plan_file, probe_file, promotion_file, read_text
 
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     paths = []
     for text in args.path or []:
         found = split_target(text)
@@ -131,9 +131,9 @@ def cmd_propose(args) -> int:
         body["probe"] = _input(lambda: probe_file(args.probe_file))
     _attest(project, evidence)
     body["run_id"] = session_run(hub, project, args.session, args.run)
-    answer = hub.call("POST", f"{_project_path(project)}/curator/proposals", body)
+    answer = hub.call("POST", f"{project_path(project)}/curator/proposals", body)
     if args.json:
-        _print_json(answer)
+        print_json(answer)
         return 0
     if answer.get("state") == "dropped":
         print(

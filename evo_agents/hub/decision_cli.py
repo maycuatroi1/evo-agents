@@ -32,9 +32,9 @@ import sys
 from urllib.parse import urlencode
 
 from evo_agents.hub import approval_heads, credential_requests
-from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
+from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import _plan_id, _project
+from evo_agents.hub.plan_cli import checked_plan_id, project_of_args
 from evo_agents.hub.runs import DECISION_STATES, NOTIFICATION_KINDS
 
 EXIT_USAGE = 2
@@ -83,7 +83,7 @@ DECISION = returns_object(*DECISION_KEYS, schema="Decision")
 
 
 def _decisions_path(project: str, decision_id: int | None = None, action: str | None = None) -> str:
-    path = f"{_project_path(project)}/decisions"
+    path = f"{project_path(project)}/decisions"
     if decision_id is not None:
         path += f"/{decision_id}"
     return path + (f"/{action}" if action else "")
@@ -111,19 +111,19 @@ def _option_label(decision: dict, key: str | None) -> str | None:
 # Decisions
 
 
-@_client_command
+@client_command
 def cmd_list(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     query: list[tuple[str, object]] = [("state", state) for state in args.state or ()]
     if args.run is not None:
         query.append(("run_id", args.run))
     if args.plan is not None:
-        query.append(("plan_id", _plan_id(args.plan)))
+        query.append(("plan_id", checked_plan_id(args.plan)))
     query += [(key, value) for key, value in (("limit", args.limit), ("offset", args.offset)) if value is not None]
     listed = hub.call("GET", _decisions_path(project) + (f"?{urlencode(query)}" if query else ""))
     if args.json:
-        _print_json(listed)
+        print_json(listed)
         return 0
     rows = [
         (
@@ -135,12 +135,12 @@ def cmd_list(args) -> int:
             decision["step_key"] or "-",
             decision.get("asked_of") or decision["owner"],
             _one_line(decision["question"], QUESTION_CHARS),
-            _when(decision["asked_at"]),
+            when(decision["asked_at"]),
         )
         for decision in listed["decisions"]
     ]
     if rows:
-        _table(("DECISION", "STATE", "CATEGORY", "RUN", "PLAN", "STEP", "ANSWERER", "QUESTION", "ASKED (UTC)"), rows)
+        table(("DECISION", "STATE", "CATEGORY", "RUN", "PLAN", "STEP", "ANSWERER", "QUESTION", "ASKED (UTC)"), rows)
     shown = len(rows)
     print(f"{shown} of {listed['total']} decision(s) of project {project}")
     if listed["offset"] + shown < listed["total"]:
@@ -158,7 +158,7 @@ def _answer_lines(decision: dict) -> list[tuple[str, str]]:
     if decision["state"] != "answered":
         return []
     who = decision["answered_by"] or "the hub, as what it waited for came"
-    lines = [("answered", f"by {who} at {_when(decision['answered_at'])} UTC")]
+    lines = [("answered", f"by {who} at {when(decision['answered_at'])} UTC")]
     if decision["answer_option"]:
         label = _option_label(decision, decision["answer_option"])
         lines.append(("option", decision["answer_option"] + (f", {label}" if label else "")))
@@ -168,7 +168,7 @@ def _answer_lines(decision: dict) -> list[tuple[str, str]]:
     if inbox is not None and inbox != decision["run_id"]:
         lines.append(("resumed", f"as run #{inbox}, whose inbox took the answer"))
     delivered = decision["delivered_at"]
-    lines.append(("delivered", f"to the agent at {_when(delivered)} UTC" if delivered else "not to the agent yet"))
+    lines.append(("delivered", f"to the agent at {when(delivered)} UTC" if delivered else "not to the agent yet"))
     return lines
 
 
@@ -182,9 +182,9 @@ def _wait_lines(decision: dict) -> list[tuple[str, str]]:
         )
         lines.append(("wakes on", f"an event {on['kind']} of the project{contains}"))
     if decision.get("wake_at"):
-        lines.append(("wakes at", f"{_when(decision['wake_at'])} UTC at the latest"))
+        lines.append(("wakes at", f"{when(decision['wake_at'])} UTC at the latest"))
     if decision.get("held_at") and decision["state"] == "open":
-        lines.append(("held", f"at {_when(decision['held_at'])} UTC: not yet, the run waits for a later answer"))
+        lines.append(("held", f"at {when(decision['held_at'])} UTC: not yet, the run waits for a later answer"))
     return lines
 
 
@@ -267,13 +267,13 @@ def _run_line(decision: dict, step: str) -> str:
     return f"{run} of plan {decision['plan_id']}{step}"
 
 
-@_client_command
+@client_command
 def cmd_show(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     decision = hub.call("GET", _decisions_path(project, args.decision))
     if args.json:
-        _print_json(decision)
+        print_json(decision)
         return 0
     print(f"Decision #{decision['id']}: {decision['category']}, {decision['state']}")
     step = f", step {decision['step_key']}" if decision["step_key"] else ""
@@ -281,7 +281,7 @@ def cmd_show(args) -> int:
         ("run", _run_line(decision, step)),
         ("owner", decision["owner"]),
         ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
-        ("asked", f"{_when(decision['asked_at'])} UTC"),
+        ("asked", f"{when(decision['asked_at'])} UTC"),
         *_request_lines(decision),
         *_approval_lines(decision),
         *_reversible_lines(decision),
@@ -307,7 +307,7 @@ def cmd_show(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_answer(args) -> int:
     if args.option is None and args.text is None and not args.secret:
         return _usage_error("an answer names an option with --option KEY, gives words with --text TEXT, or both")
@@ -318,8 +318,8 @@ def cmd_answer(args) -> int:
             f"--secret goes with option {credential_requests.VALUE} or {credential_requests.BOTH}, or with none"
         )
     text = sys.stdin.read() if args.text == "-" else args.text
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     body = {key: value for key, value in (("option", args.option), ("text", text)) if value is not None}
     if args.secret:
         from evo_agents.hub.cli_secrets import Refused, check_value, read_value
@@ -337,7 +337,7 @@ def cmd_answer(args) -> int:
         body["secret"] = value
     decision = hub.call("POST", _decisions_path(project, args.decision, "answer"), body)
     if args.json:
-        _print_json(decision)
+        print_json(decision)
         return 0
     if decision["state"] == "open":  # an option that waits: not yet
         print(
@@ -389,7 +389,7 @@ def _kind(notification: dict) -> str:
     return notification["notice_kind"] or notification["kind"]
 
 
-@_client_command
+@client_command
 def cmd_notifications(args) -> int:
     if args.read is not None:
         given = (
@@ -407,10 +407,10 @@ def cmd_notifications(args) -> int:
         body = _read_body(args.read)
         if body is None:
             return _usage_error(f"--read takes all, or notification ids such as 12,14, not {args.read!r}")
-        hub, _ = _signed_in()
+        hub, _ = signed_in()
         result = hub.call("POST", "/v1/me/notifications/read", body)
         if args.json:
-            _print_json(result)
+            print_json(result)
             return 0
         print(f"Marked {result['read']} notification(s) read; {result['unread']} left unread.")
         return 0
@@ -424,10 +424,10 @@ def cmd_notifications(args) -> int:
         ("offset", args.offset),
     )
     query += [(key, value) for key, value in given if value is not None]
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     listed = hub.call("GET", "/v1/me/notifications" + (f"?{urlencode(query)}" if query else ""))
     if args.json:
-        _print_json(listed)
+        print_json(listed)
         return 0
     rows = [
         (
@@ -437,12 +437,12 @@ def cmd_notifications(args) -> int:
             notification["project"] or "-",
             f"#{notification['run_id']}" if notification["run_id"] else "-",
             _one_line(notification["title"], TITLE_CHARS),
-            _when(notification["created_at"]),
+            when(notification["created_at"]),
         )
         for notification in listed["notifications"]
     ]
     if rows:
-        _table(("ID", "READ", "KIND", "PROJECT", "RUN", "TITLE", "WHEN (UTC)"), rows)
+        table(("ID", "READ", "KIND", "PROJECT", "RUN", "TITLE", "WHEN (UTC)"), rows)
     counts = hub.call("GET", "/v1/me/notifications/count")
     shown = len(rows)
     which = "unread notification(s)" if args.unread else "notification(s)"

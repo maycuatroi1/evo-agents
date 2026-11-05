@@ -52,6 +52,34 @@ def _join(path: str, key) -> str:
     return f"{path}.{key}" if path else str(key)
 
 
+def _check_type(value, schema: dict, path: str, issues: list[Issue]) -> bool:
+    """False, with the issue, when the value is none of the schema's types."""
+    types = schema.get("type")
+    if types is None:
+        return True
+    names = types if isinstance(types, list) else [types]
+    if any(_is_type(value, name) for name in names):
+        return True
+    issues.append(Issue(path, f"expected {' or '.join(names)}, got {type(value).__name__}"))
+    return False
+
+
+def _check_string(value: str, schema: dict, path: str, issues: list[Issue]) -> None:
+    if "pattern" in schema and not re.search(schema["pattern"], value):
+        issues.append(Issue(path, f"does not match pattern {schema['pattern']!r}"))
+    if "minLength" in schema and len(value) < schema["minLength"]:
+        issues.append(Issue(path, f"shorter than {schema['minLength']} characters"))
+    if "maxLength" in schema and len(value) > schema["maxLength"]:
+        issues.append(Issue(path, f"longer than {schema['maxLength']} characters"))
+
+
+def _check_number(value: float, schema: dict, path: str, issues: list[Issue]) -> None:
+    if "minimum" in schema and value < schema["minimum"]:
+        issues.append(Issue(path, f"must be >= {schema['minimum']}"))
+    if "maximum" in schema and value > schema["maximum"]:
+        issues.append(Issue(path, f"must be <= {schema['maximum']}"))
+
+
 class Validator:
     def __init__(self, schema: dict):
         self.root = schema
@@ -81,25 +109,10 @@ class Validator:
         if "$ref" in schema:
             self._check(value, self._resolve(schema["$ref"]), path, issues)
             return
-
-        if "anyOf" in schema or "oneOf" in schema:
-            options = schema.get("anyOf") or schema.get("oneOf")
-            matches = [opt for opt in options if not self._errors_only(value, opt, path)]
-            if not matches:
-                issues.append(Issue(path, "does not match any allowed form"))
-                return
-            if "oneOf" in schema and len(matches) > 1:
-                issues.append(Issue(path, "matches more than one form"))
-                return
-            # Re-run the matching option to collect its warnings.
-            self._check(value, matches[0], path, issues)
-
-        types = schema.get("type")
-        if types is not None:
-            names = types if isinstance(types, list) else [types]
-            if not any(_is_type(value, name) for name in names):
-                issues.append(Issue(path, f"expected {' or '.join(names)}, got {type(value).__name__}"))
-                return
+        if not self._check_forms(value, schema, path, issues):
+            return
+        if not _check_type(value, schema, path, issues):
+            return
 
         if "const" in schema and value != schema["const"]:
             issues.append(Issue(path, f"must equal {schema['const']!r}"))
@@ -108,36 +121,44 @@ class Validator:
             issues.append(Issue(path, f"must be one of {allowed}, got {value!r}"))
 
         if isinstance(value, str):
-            if "pattern" in schema and not re.search(schema["pattern"], value):
-                issues.append(Issue(path, f"does not match pattern {schema['pattern']!r}"))
-            if "minLength" in schema and len(value) < schema["minLength"]:
-                issues.append(Issue(path, f"shorter than {schema['minLength']} characters"))
-            if "maxLength" in schema and len(value) > schema["maxLength"]:
-                issues.append(Issue(path, f"longer than {schema['maxLength']} characters"))
-
+            _check_string(value, schema, path, issues)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            if "minimum" in schema and value < schema["minimum"]:
-                issues.append(Issue(path, f"must be >= {schema['minimum']}"))
-            if "maximum" in schema and value > schema["maximum"]:
-                issues.append(Issue(path, f"must be <= {schema['maximum']}"))
-
+            _check_number(value, schema, path, issues)
         if isinstance(value, list):
             self._check_array(value, schema, path, issues)
-
         if isinstance(value, dict):
-            for key in schema.get("required", []):
-                if key not in value:
-                    issues.append(Issue(_join(path, key), "is required"))
-            props = schema.get("properties", {})
-            extra = schema.get("additionalProperties", True)
-            for key, item in value.items():
-                if key in props:
-                    self._check(item, props[key], _join(path, key), issues)
-                elif isinstance(extra, dict):
-                    self._check(item, extra, _join(path, key), issues)
-                elif extra is False:
-                    severity = "warning" if schema.get("x-unknown") == "warn" else "error"
-                    issues.append(Issue(_join(path, key), "unknown key", severity))
+            self._check_object(value, schema, path, issues)
+
+    def _check_forms(self, value, schema: dict, path: str, issues: list[Issue]) -> bool:
+        """anyOf and oneOf; False when the value matches no form, or more than one form of a oneOf."""
+        if "anyOf" not in schema and "oneOf" not in schema:
+            return True
+        options = schema.get("anyOf") or schema.get("oneOf")
+        matches = [opt for opt in options if not self._errors_only(value, opt, path)]
+        if not matches:
+            issues.append(Issue(path, "does not match any allowed form"))
+            return False
+        if "oneOf" in schema and len(matches) > 1:
+            issues.append(Issue(path, "matches more than one form"))
+            return False
+        # Re-run the matching option to collect its warnings.
+        self._check(value, matches[0], path, issues)
+        return True
+
+    def _check_object(self, value: dict, schema: dict, path: str, issues: list[Issue]) -> None:
+        for key in schema.get("required", []):
+            if key not in value:
+                issues.append(Issue(_join(path, key), "is required"))
+        props = schema.get("properties", {})
+        extra = schema.get("additionalProperties", True)
+        for key, item in value.items():
+            if key in props:
+                self._check(item, props[key], _join(path, key), issues)
+            elif isinstance(extra, dict):
+                self._check(item, extra, _join(path, key), issues)
+            elif extra is False:
+                severity = "warning" if schema.get("x-unknown") == "warn" else "error"
+                issues.append(Issue(_join(path, key), "unknown key", severity))
 
     def _check_array(self, value: list, schema: dict, path: str, issues: list[Issue]) -> None:
         if "minItems" in schema and len(value) < schema["minItems"]:

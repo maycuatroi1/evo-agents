@@ -12,7 +12,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import JsonOutput, json_option, returns_object
 
 MEMBERS_SHOWN = 30  # members a text `show` lists; --json lists them all
@@ -30,12 +30,12 @@ def _summary_row(cluster: dict) -> tuple:
 def _list(hub, args) -> int:
     found = hub.call("GET", f"{_base(args.project)}/clusters?nodes=false")
     if args.json:
-        _print_json(found["clusters"])
+        print_json(found["clusters"])
         return 0
     if not found["clusters"]:
         print(f"project {args.project} shows you no cluster: {found['reason']}")
         return 0
-    _table(("CLUSTER", "SIZE", "SUBS", "LABEL", "KINDS"), [_summary_row(c) for c in found["clusters"]])
+    table(("CLUSTER", "SIZE", "SUBS", "LABEL", "KINDS"), [_summary_row(c) for c in found["clusters"]])
     print(f"{len(found['links'])} links between them")
     return 0
 
@@ -43,29 +43,29 @@ def _list(hub, args) -> int:
 def _show(hub, args) -> int:
     found = hub.call("GET", f"{_base(args.project)}/cluster?{urlencode({'id': args.id})}")
     if args.json:
-        _print_json(found)
+        print_json(found)
         return 0
     cluster = found["cluster"]
     print(f"Cluster {cluster['id']} (level {cluster['level']}): {cluster['label']}")
     print(f"{cluster['size']} members you can see" + (f", in {cluster['parent']}" if cluster["parent"] else ""))
     if found["subclusters"]:
         print("\nSubclusters:")
-        _table(("CLUSTER", "SIZE", "SUBS", "LABEL", "KINDS"), [_summary_row(c) for c in found["subclusters"]])
+        table(("CLUSTER", "SIZE", "SUBS", "LABEL", "KINDS"), [_summary_row(c) for c in found["subclusters"]])
     if found["neighbours"]:
         print("\nNeighbours:")
-        _table(
+        table(
             ("CLUSTER", "EDGES", "SIZE", "LABEL"),
             [(n["id"], n["weight"], n["size"], n["label"]) for n in found["neighbours"]],
         )
     members = found["members"]
     print("\nMembers:")
-    _table(("NODE", "KIND", "NAME"), [(m["id"], m["kind"], m["name"] or "") for m in members[:MEMBERS_SHOWN]])
+    table(("NODE", "KIND", "NAME"), [(m["id"], m["kind"], m["name"] or "") for m in members[:MEMBERS_SHOWN]])
     if len(members) > MEMBERS_SHOWN:
         print(f"... and {len(members) - MEMBERS_SHOWN} more (--json lists them all)")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_clusters(args) -> int:
     if args.action == "show" and not args.id:
         print("error: clusters show needs a cluster ID", file=sys.stderr)
@@ -73,7 +73,7 @@ def cmd_clusters(args) -> int:
     if args.action is None and args.id:
         print("error: give a cluster ID after show: clusters show ID", file=sys.stderr)
         return 2
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     return _show(hub, args) if args.action == "show" else _list(hub, args)
 
 

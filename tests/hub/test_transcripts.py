@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.hub import transcripts
-from evo_agents.hub.memory import slug
+from evo_agents.hub.memory_places import slug
 from evo_agents.hub.transcripts import CLAUDE, CODEX, MAIN, OMITTED, Found, Queue, State, chain, read_part
 from tests.hub.test_digest import SESSION, answered, at, said, session_lines, tool_use
 from tests.hub.test_redact import ANTHROPIC_KEY, HUB_TOKEN

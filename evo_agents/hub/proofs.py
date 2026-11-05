@@ -21,9 +21,11 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Literal, get_args
 
 CRITERION_ID = re.compile(r"a\d+")
-KINDS = ("test", "command", "n/a")
+Kind = Literal["test", "command", "n/a"]
+KINDS: tuple[str, ...] = get_args(Kind)
 NA = "n/a"
 MAX_PROOF_CHARS = 2000  # one proof's locator or reason
 MAX_PROOFS = 50

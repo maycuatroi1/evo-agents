@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from evo_agents.hub.memory import slug
+from evo_agents.hub.memory_places import slug
 from evo_agents.kg.evaluate import SESSION_TYPE
 from evo_agents.kg.redact import redact_file
 

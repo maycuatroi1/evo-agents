@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
@@ -76,7 +76,7 @@ WRITTEN = returns_object(*WRITTEN_KEYS, schema="evo_agents__hub__server__plans__
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 
-def _project(args) -> str:
+def project_of_args(args) -> str:
     if getattr(args, "project", None):
         return args.project
     try:
@@ -88,10 +88,7 @@ def _project(args) -> str:
     return harness_project(root)
 
 
-project_of_args = _project  # the public name, for the client modules written since private names stay in their module
-
-
-def _plan_id(text: str) -> str:
+def checked_plan_id(text: str) -> str:
     if not PLAN_ID.fullmatch(text):
         raise HubError(f"{text!r} is not a plan id (a-z, 0-9 and -)")
     return text
@@ -128,7 +125,7 @@ def write_plan(hub, method: str, path: str, request: dict, project: str):
 def put_file(hub, path: Path, project: str | None = None, if_revision: int | None = None) -> dict:
     """Push the plan in ``path`` and rewrite ``path`` as the hub's copy; the hub's answer."""
     found = read_plan(path)
-    plan_id = _plan_id(str(found.plan_id))
+    plan_id = checked_plan_id(str(found.plan_id))
     if project is None:
         project = harness_project(harness_root(path.parent))
     request = {"body": found.body, "area": found.area or "active"}
@@ -154,7 +151,7 @@ def _identity(item: dict) -> dict:
     return {key: value for key, value in item.items() if key not in UPDATABLE}
 
 
-def _check_retry(base: dict, latest: dict, plan_id: str, section: str, index, step, updates: dict) -> None:
+def check_retry(base: dict, latest: dict, plan_id: str, section: str, index, step, updates: dict) -> None:
     """Raise when retrying on ``latest`` would undo what changed since ``base``: the item moved, or another write
     set one of the keys of ``updates`` to something else."""
     where = f"step {step}" if step is not None else f"{section}[{index}]"
@@ -204,7 +201,7 @@ def patch_item(
             if exc.code != REVISION_CONFLICT or attempt == attempts - 1:
                 raise
         latest = hub.call("GET", path)
-        _check_retry(base, latest, plan_id, section, index, step, updates)
+        check_retry(base, latest, plan_id, section, index, step, updates)
         base = latest
     raise AssertionError("unreachable")
 
@@ -322,12 +319,12 @@ def import_plans(hub, root: Path | str | None, project: str | None = None) -> Im
 # Commands
 
 
-@_client_command
+@client_command
 def cmd_import(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     result = import_plans(hub, args.root, args.project)
     if args.json:
-        _print_json(result.as_json())
+        print_json(result.as_json())
         return 1 if result.failed else 0
     for entry in result.plans:
         revision = f" r{entry['revision']}" if entry["revision"] else ""
@@ -343,14 +340,14 @@ def cmd_import(args) -> int:
     return 1 if result.failed else 0
 
 
-@_client_command
+@client_command
 def cmd_list(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
+    hub, _ = signed_in()
+    project = project_of_args(args)
     path = plans_path(project) + (f"?area={args.area}" if args.area else "")
     plans = hub.call("GET", path)
     if args.json:
-        _print_json(plans)
+        print_json(plans)
         return 0
     rows = [
         (
@@ -358,37 +355,39 @@ def cmd_list(args) -> int:
             p["area"],
             p["revision"],
             f"{p['steps_done']}/{p['steps_total']}",
-            _when(p["updated_at"]),
+            when(p["updated_at"]),
             p["updated_by"],
         )
         for p in plans
     ]
-    _table(("PLAN", "AREA", "REV", "STEPS DONE", "UPDATED (UTC)", "BY"), rows)
+    table(("PLAN", "AREA", "REV", "STEPS DONE", "UPDATED (UTC)", "BY"), rows)
     return 0
 
 
-@_client_command
+@client_command
 def cmd_show(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
-    path = plans_path(project, _plan_id(args.plan))
+    hub, _ = signed_in()
+    project = project_of_args(args)
+    path = plans_path(project, checked_plan_id(args.plan))
     plan = hub.call("GET", f"{path}/revisions/{args.revision}" if args.revision else path)
     if args.json:
-        _print_json(plan)
+        print_json(plan)
         return 0
     sys.stdout.write(render(plan["body"], project, plan["revision"], plan["digest"]))
     return 0
 
 
-@_client_command
+@client_command
 def cmd_handoff(args) -> int:
     if not MIN_BUDGET_TOKENS <= args.budget_tokens <= MAX_BUDGET_TOKENS:
         raise HubError(f"--budget-tokens is {MIN_BUDGET_TOKENS} to {MAX_BUDGET_TOKENS}, not {args.budget_tokens}")
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     query = {"budget_tokens": args.budget_tokens, **({"step": args.step} if args.step is not None else {})}
-    handoff = hub.call("GET", f"{plans_path(_project(args), _plan_id(args.plan))}/handoff?{urlencode(query)}")
+    handoff = hub.call(
+        "GET", f"{plans_path(project_of_args(args), checked_plan_id(args.plan))}/handoff?{urlencode(query)}"
+    )
     if args.json:
-        _print_json(handoff)
+        print_json(handoff)
         return 0
     sys.stdout.write(handoff["text"])
     return 0
@@ -400,26 +399,26 @@ def _by(revision: dict) -> str:
     return revision["actor"] + (f" (run #{run_id})" if run_id else "")
 
 
-@_client_command
+@client_command
 def cmd_history(args) -> int:
-    hub, _ = _signed_in()
-    project = _project(args)
-    revisions = hub.call("GET", f"{plans_path(project, _plan_id(args.plan))}/revisions")
+    hub, _ = signed_in()
+    project = project_of_args(args)
+    revisions = hub.call("GET", f"{plans_path(project, checked_plan_id(args.plan))}/revisions")
     if args.json:
-        _print_json(revisions)
+        print_json(revisions)
         return 0
-    rows = [(r["revision"], r["area"], _when(r["created_at"]), _by(r), r["summary"]) for r in revisions]
-    _table(("REV", "AREA", "WHEN (UTC)", "BY", "SUMMARY"), rows)
+    rows = [(r["revision"], r["area"], when(r["created_at"]), _by(r), r["summary"]) for r in revisions]
+    table(("REV", "AREA", "WHEN (UTC)", "BY", "SUMMARY"), rows)
     return 0
 
 
-@_client_command
+@client_command
 def cmd_put(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     path = Path(args.file).expanduser()
     result = put_file(hub, path, args.project, args.if_revision)
     if args.json:
-        _print_json(result)
+        print_json(result)
         return 0
     plan = f"plan {result['plan_id']} of project {result['project']}"
     if result["created"]:
@@ -455,9 +454,9 @@ def _updates(pairs: list[str]) -> dict:
     return updates
 
 
-@_client_command
+@client_command
 def cmd_patch(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     if (args.index is None) == (args.step is None):
         raise HubError("name the item with exactly one of --index and --step")
     section = args.section or "steps"
@@ -465,8 +464,8 @@ def cmd_patch(args) -> int:
         raise HubError("--step names a step; give --index for an item of another section")
     result = patch_item(
         hub,
-        _project(args),
-        _plan_id(args.plan),
+        project_of_args(args),
+        checked_plan_id(args.plan),
         section,
         _updates(args.set),
         index=args.index,
@@ -474,15 +473,15 @@ def cmd_patch(args) -> int:
         if_revision=args.if_revision,
     )
     if args.json:
-        _print_json(result)
+        print_json(result)
         return 0
     _report(result, "Updated")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_step(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     updates = {"status": args.status}
     if args.status in ("done", "descoped") and not args.no_date:
         updates["done_at" if args.status == "done" else "descoped_at"] = datetime.now().strftime(
@@ -493,21 +492,27 @@ def cmd_step(args) -> int:
     if args.note is not None:
         updates["note"] = args.note
     result = patch_item(
-        hub, _project(args), _plan_id(args.plan), "steps", updates, step=args.step, if_revision=args.if_revision
+        hub,
+        project_of_args(args),
+        checked_plan_id(args.plan),
+        "steps",
+        updates,
+        step=args.step,
+        if_revision=args.if_revision,
     )
     if args.json:
-        _print_json(result)
+        print_json(result)
         return 0
     _report(result, f"Step {args.step} is {args.status} in")
     return 0
 
 
-@_client_command
+@client_command
 def cmd_complete(args) -> int:
-    hub, _ = _signed_in()
-    result = complete_plan(hub, _project(args), _plan_id(args.plan), args.if_revision)
+    hub, _ = signed_in()
+    result = complete_plan(hub, project_of_args(args), checked_plan_id(args.plan), args.if_revision)
     if args.json:
-        _print_json(result)
+        print_json(result)
         return 0
     if result["changed"]:
         print(
@@ -519,12 +524,14 @@ def cmd_complete(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_abandon(args) -> int:
-    hub, _ = _signed_in()
-    result = abandon_plan(hub, _project(args), _plan_id(args.plan), args.reason, args.superseded_by, args.if_revision)
+    hub, _ = signed_in()
+    result = abandon_plan(
+        hub, project_of_args(args), checked_plan_id(args.plan), args.reason, args.superseded_by, args.if_revision
+    )
     if args.json:
-        _print_json(result)
+        print_json(result)
         return 0
     status = result["body"].get("status", "abandoned")
     if result["changed"]:
@@ -537,12 +544,12 @@ def cmd_abandon(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_reopen(args) -> int:
-    hub, _ = _signed_in()
-    result = reopen_plan(hub, _project(args), _plan_id(args.plan), args.if_revision)
+    hub, _ = signed_in()
+    result = reopen_plan(hub, project_of_args(args), checked_plan_id(args.plan), args.if_revision)
     if args.json:
-        _print_json(result)
+        print_json(result)
         return 0
     print(
         f"Reopened plan {result['plan_id']}: revision {result['revision']}. `evo-agents hub plan export` moves "
@@ -551,12 +558,12 @@ def cmd_reopen(args) -> int:
     return 0
 
 
-@_client_command
+@client_command
 def cmd_export(args) -> int:
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     result = export(hub, Path(args.root).expanduser() if args.root else None, args.project, commit=args.commit)
     if args.json:
-        _print_json(result.as_json())
+        print_json(result.as_json())
         return 0
     for entry in result.plans:
         if entry["status"] != "unchanged":

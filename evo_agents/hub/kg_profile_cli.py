@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in
+from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
 
 
@@ -39,17 +39,17 @@ def profile_json(project: str, build_id: int | None, profile: dict) -> dict:
     return {"project": project, "build_id": build_id, "profile": profile}
 
 
-@_client_command
+@client_command
 def cmd_profile(args) -> int:
     from evo_agents.kg.profile import render
 
-    hub, _ = _signed_in()
+    hub, _ = signed_in()
     build_id, profile, why = read_profile(hub, args.project, args.sink)
     if profile is None:
         print(f"error: {why}")
         return 1
     if args.json:
-        _print_json(profile_json(args.project, build_id, profile))
+        print_json(profile_json(args.project, build_id, profile))
     else:
         print(f"project {args.project}, build {build_id}")
         print(render(profile))

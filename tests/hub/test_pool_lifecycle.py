@@ -38,7 +38,7 @@ from tests.hub.test_workers import (  # noqa: F401 - the fixtures of the worker 
 
 def reap(db) -> dict:
     """One pass of the job's work on ``db``, as the hub's worker runs it."""
-    from evo_agents.hub.server.run_state import reap_pool_nodes
+    from evo_agents.hub.server.run_reaper import reap_pool_nodes
 
     async def go():
         engine = create_async_engine(db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))

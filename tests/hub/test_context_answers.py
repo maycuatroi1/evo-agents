@@ -35,7 +35,7 @@ from sqlalchemy import insert, null, select, update
 from evo_agents.hub import jobs, tables
 from evo_agents.hub.contract import commands
 from evo_agents.hub.server import context_answer_reuse, context_answers
-from evo_agents.hub.server.runs.service import claims
+from evo_agents.hub.server.runs.service import run_specs
 from evo_agents.hub.worker import queue
 from tests.hub import live
 from tests.hub.contract_keys import assert_json_keys
@@ -52,7 +52,7 @@ REPO = f"{A}-harness"
 
 
 def prompt(hub, run_id: int) -> str:
-    return on_hub(hub, lambda conn: claims._run_spec(conn, run_id)).prompt
+    return on_hub(hub, lambda conn: run_specs.run_spec(conn, run_id)).prompt
 
 
 def policy(hub, **context) -> dict:

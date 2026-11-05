@@ -25,7 +25,7 @@ others:
    keeps it waiting, at most ``merge.pipeline_minutes``.
 2. the repo of the plan step (``plan_repo_problem``): the merge request is of the repo's GitLab project and from the
    branch the plan (or the task run, or the Curator's change) names for it; a person's has no plan step and passes.
-3. score hacking (``judge.hack_signs`` on the diff GitLab lists, ``files_of``): one sign holds it for a person. An
+3. score hacking (``diff_signs.hack_signs`` on the diff GitLab lists, ``files_of``): one sign holds it for a person. An
    admin of the project passes such a hold with a reason (PASSABLE_GATES, ``pass_refusal``): the queue goes on from
    the gate at the same head, every later gate, the Judges, its turn and its pipeline still to pass; a new push takes
    the pass back.
@@ -67,7 +67,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from evo_agents.hub import autonomy, findings, judge, proofs, security_pass, tiers
+from evo_agents.hub import autonomy, diff_signs, findings, judge, proofs, security_pass, tiers
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 
 SOURCES = ("plan", "task", "builder", "label", "revert")
@@ -377,11 +377,11 @@ def auto_since(revisions: Iterable[tuple[datetime, Mapping | None]], repo: str) 
 # Gate 3: the diff
 
 
-def files_of(diffs: Iterable) -> list[judge.FileDiff]:
+def files_of(diffs: Iterable) -> list[diff_signs.FileDiff]:
     """The files of a merge request's diff as GitLab lists them (``gitlab.FileDiff``: old_path, new_path, diff,
-    new_file, renamed_file, deleted_file, cut), read as ``judge.parse_diff`` reads a unified diff; a patch GitLab left
-    out, or one of a binary file, is unreadable."""
-    files: list[judge.FileDiff] = []
+    new_file, renamed_file, deleted_file, cut), read as ``diff_signs.parse_diff`` reads a unified diff; a patch GitLab
+    left out, or one of a binary file, is unreadable."""
+    files: list[diff_signs.FileDiff] = []
     for item in diffs:
         head = [f"diff --git a/{item.old_path} b/{item.new_path}"]
         if item.new_file:
@@ -395,7 +395,7 @@ def files_of(diffs: Iterable) -> list[judge.FileDiff]:
             old = "/dev/null" if item.new_file else f"a/{item.old_path}"
             new = "/dev/null" if item.deleted_file else f"b/{item.new_path}"
             head += [f"--- {old}", f"+++ {new}"]
-        parsed = judge.parse_diff("\n".join(head) + "\n" + body)
+        parsed = diff_signs.parse_diff("\n".join(head) + "\n" + body)
         for found in parsed:
             if getattr(item, "cut", False):
                 found.readable = False
@@ -403,7 +403,7 @@ def files_of(diffs: Iterable) -> list[judge.FileDiff]:
     return files
 
 
-def patch_fingerprint(files: Iterable[judge.FileDiff]) -> str:
+def patch_fingerprint(files: Iterable[diff_signs.FileDiff]) -> str:
     """What a verdict of the Judge holds for: the sha256 of each file's path, old path, kind of change, readability
     and the lines it adds and removes, without their numbers or the context around them, in path order."""
     key = sorted(
@@ -503,7 +503,7 @@ def read_dimensions(raw) -> dict[str, dict]:
         if not isinstance(name, str) or not isinstance(value, dict) or value.get("verdict") not in judge.VERDICTS:
             continue
         reason = value.get("reason")
-        text = " ".join(reason.split())[: judge.MAX_SIGN_TEXT * 5] if isinstance(reason, str) else ""
+        text = " ".join(reason.split())[: diff_signs.MAX_SIGN_TEXT * 5] if isinstance(reason, str) else ""
         found[name[:64]] = {"verdict": value["verdict"], "reason": text}
     return found
 
