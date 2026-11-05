@@ -1,33 +1,22 @@
 "use client";
 
-import { Keyboard, X } from "lucide-react";
-import type { Route } from "next";
+import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { notify } from "@/components/feedback/toast";
 import { useCanDispatch, useDispatchedToast } from "@/components/runs/hooks";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
-import { Switch } from "@/components/ui/switch";
-import {
-  characterKeyBlocked,
-  comboText,
-  type KeyPart,
-  type ModifierKey,
-  setCharacterKeys,
-  useCharacterKeys,
-  useModifierKey,
-} from "@/lib/keyboard";
+import { useCharacterKeys, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
-import { KeySequence } from "./key-sequence";
-import { type NavLabel, projectHref } from "./nav";
+import { projectHref } from "./nav";
 import { isPageDispatchRegistered, pageDispatch, registerPageDispatch, subscribePageDispatch } from "./page-dispatch";
 import { useCurrentProject, useSelectedProject } from "./project-switcher";
+import { BY_ID, strokeTexts, LEAD_MS, HINT_MS, GO, readKey, type ShortcutId, type GoKey } from "./shortcut-model";
+
+export { LEAD_MS, NAV_SHORTCUTS, readKey, SHORTCUTS, type ShortcutId, shortcutText } from "./shortcut-model";
 
 /**
  * The hub's keyboard shortcuts in one registry, and the shell's own keys. `SHORTCUTS` lists every key the web answers
@@ -41,117 +30,6 @@ import { useCurrentProject, useSelectedProject } from "./project-switcher";
  * typed in a text field, the web terminal, a menu or a dialog (`characterKeyBlocked` in lib/keyboard.ts). The visitor
  * can turn them off in the dialog (WCAG 2.1.4); the shortcuts with Cmd or Ctrl stay.
  */
-
-export type ShortcutId =
-  | "palette" | "search" | "help" | "sidebar" | "close"
-  | "goHome" | "goInbox" | "goPlans" | "goRuns" | "goCurator" | "goWorkers"
-  | "dispatch" | "send" | "chatSend" | "chatLine" | "nextItem" | "previousItem";
-
-type ShortcutGroup = "general" | "goto" | "actions";
-
-export type Shortcut = {
-  id: ShortcutId;
-  group: ShortcutGroup;
-  /** Keys pressed together; a second entry is pressed after the first (G then H). */
-  keys: readonly (readonly KeyPart[])[];
-  /** A key pressed alone: off while the visitor has single-key shortcuts off. */
-  single: boolean;
-  /** Where it works, when that is not every page: said under its name in the dialog. */
-  where?: "project" | "writer" | "chat" | "inbox";
-};
-
-export const SHORTCUTS: readonly Shortcut[] = [
-  { id: "palette", group: "general", keys: [["mod", "k"]], single: false },
-  { id: "search", group: "general", keys: [["/"]], single: true },
-  { id: "help", group: "general", keys: [["?"]], single: true },
-  { id: "sidebar", group: "general", keys: [["mod", "b"]], single: false },
-  { id: "close", group: "general", keys: [["esc"]], single: false },
-  { id: "dispatch", group: "actions", keys: [["d"]], single: true, where: "writer" },
-  { id: "send", group: "actions", keys: [["mod", "enter"]], single: false },
-  { id: "chatSend", group: "actions", keys: [["enter"]], single: false, where: "chat" },
-  { id: "chatLine", group: "actions", keys: [["shift", "enter"]], single: false, where: "chat" },
-  { id: "nextItem", group: "actions", keys: [["j"]], single: true, where: "inbox" },
-  { id: "previousItem", group: "actions", keys: [["k"]], single: true, where: "inbox" },
-  { id: "goHome", group: "goto", keys: [["g"], ["h"]], single: true },
-  { id: "goInbox", group: "goto", keys: [["g"], ["i"]], single: true },
-  { id: "goPlans", group: "goto", keys: [["g"], ["p"]], single: true, where: "project" },
-  { id: "goRuns", group: "goto", keys: [["g"], ["r"]], single: true, where: "project" },
-  { id: "goCurator", group: "goto", keys: [["g"], ["c"]], single: true, where: "project" },
-  { id: "goWorkers", group: "goto", keys: [["g"], ["w"]], single: true },
-];
-
-const BY_ID = Object.fromEntries(SHORTCUTS.map((entry) => [entry.id, entry])) as Record<ShortcutId, Shortcut>;
-
-/** The dialog's groups, in two columns from 768 px: General and Actions, then Go to. */
-const COLUMNS: readonly (readonly ShortcutGroup[])[] = [["general", "actions"], ["goto"]];
-
-/** The keys of a shortcut as one `kbd` each stroke: "⌘K" or "Ctrl K"; "G", "H". */
-function strokeTexts(id: ShortcutId, modifier: ModifierKey | null): string[] {
-  return BY_ID[id].keys.map((stroke) => comboText(stroke, modifier));
-}
-
-/** A chord's keys as the one `kbd` beside its action shows them: "⌘K" on Apple devices, "Ctrl K" elsewhere. */
-export function shortcutText(id: ShortcutId, modifier: ModifierKey | null): string {
-  return strokeTexts(id, modifier).join(" ");
-}
-
-/** The key that starts a "go to" sequence, and how long the second key may take. */
-const LEAD = "g";
-export const LEAD_MS = 1_000;
-/** How long after G the hint of the second keys shows, so a quick G H does not flash it. */
-const HINT_MS = 400;
-
-type GoKey = "h" | "i" | "p" | "r" | "c" | "w";
-
-/** Where each second key goes: a hub page, or a page of the project shown (or the visitor's only project). */
-const GO: Record<GoKey, { id: ShortcutId; label: NavLabel } & ({ href: Route } | { segment: string })> = {
-  h: { id: "goHome", label: "home", href: "/" },
-  i: { id: "goInbox", label: "inbox", href: "/inbox" },
-  p: { id: "goPlans", label: "plans", segment: "plans" },
-  r: { id: "goRuns", label: "runs", segment: "runs" },
-  c: { id: "goCurator", label: "curator", segment: "curator" },
-  w: { id: "goWorkers", label: "workers", href: "/workers" },
-};
-
-/** The sidebar's items that a "go to" sequence opens, for the `kbd` beside each. */
-export const NAV_SHORTCUTS: Partial<Record<NavLabel, ShortcutId>> = Object.fromEntries(
-  Object.values(GO).map((target) => [target.label, target.id]),
-);
-
-function isGoKey(letter: string): letter is GoKey {
-  return letter in GO;
-}
-
-/** The letter on the key: the character typed, or on a layout without Latin letters the key's place (KeyG). */
-function letterOf(event: Pick<KeyboardEvent, "key" | "code">): string | null {
-  if (/^[a-z]$/i.test(event.key)) return event.key.toLowerCase();
-  if (event.key.length === 1 && /^Key[A-Z]$/.test(event.code ?? "")) return event.code.slice(3).toLowerCase();
-  return null;
-}
-
-export type KeyAction = { kind: "lead" } | { kind: "go"; key: GoKey } | { kind: "dispatch" } | { kind: "help" } | null;
-
-type KeyEvent = Pick<
-  KeyboardEvent,
-  "key" | "code" | "shiftKey" | "defaultPrevented" | "isComposing" | "repeat" | "ctrlKey" | "metaKey" | "altKey" | "target"
->;
-
-/**
- * What a key press asks of the shell, `afterLead` being whether G was pressed less than a second ago: nothing when
- * the key belongs to what has focus (`characterKeyBlocked`), `?` with or without Shift (layouts differ), and the
- * letters without Shift.
- */
-export function readKey(event: KeyEvent, afterLead: boolean): KeyAction {
-  if (characterKeyBlocked(event)) return null;
-  if (event.key === "?") return { kind: "help" };
-  if (event.shiftKey) return null;
-  const letter = letterOf(event);
-  if (letter === null) return null;
-  if (afterLead && isGoKey(letter)) return { kind: "go", key: letter };
-  if (letter === LEAD) return { kind: "lead" };
-  if (letter === "d") return { kind: "dispatch" };
-  return null;
-}
 
 type ShortcutsState = {
   /** Opens the shortcuts dialog; focus goes back to `from` (by default what holds focus now) when it closes. */
@@ -191,6 +69,9 @@ const LazyDispatchDialog = dynamic(() => import("@/components/runs/dispatch-dial
   ssr: false,
 });
 
+// The shortcuts dialog's code is fetched when the dialog first opens, not with every page.
+const LazyShortcutsDialog = dynamic(() => import("./shortcuts-dialog").then((module) => module.ShortcutsDialog), { ssr: false });
+
 /**
  * The shell's keys and what they open: the shortcuts dialog, the hint after G, and Dispatch for a page that has no
  * Dispatch of its own (the dialog's code is fetched at the first D).
@@ -205,6 +86,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const dispatched = useDispatchedToast();
 
   const [helpOpen, setHelpOpen] = useState(false);
+  const [helpAsked, setHelpAsked] = useState(false);
   const [hint, setHint] = useState(false);
   const [dispatchIn, setDispatchIn] = useState<string | null>(null);
   const [dispatchOpen, setDispatchOpen] = useState(false);
@@ -233,6 +115,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const openShortcuts = useCallback(
     (from?: HTMLElement | null) => {
       remember(from);
+      setHelpAsked(true);
       setHelpOpen(true);
     },
     [remember],
@@ -307,7 +190,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   return (
     <ShortcutsContext.Provider value={value}>
       {children}
-      <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} onCloseAutoFocus={giveFocusBack} />
+      {helpAsked ? <LazyShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} onCloseAutoFocus={giveFocusBack} /> : null}
       {hint ? <LeadHint /> : null}
       {dispatchIn !== null ? (
         <LazyDispatchDialog
@@ -341,111 +224,6 @@ export function ShortcutKeys({ id, className, keyClassName }: { id: ShortcutId; 
         </Kbd>
       ))}
     </span>
-  );
-}
-
-/**
- * The shortcuts dialog: every key in the registry by group, each in a row with what it does, where it works when not
- * everywhere, and its keys; at the foot, the switch that turns single keys off on this browser.
- */
-function ShortcutsDialog({
-  open,
-  onOpenChange,
-  onCloseAutoFocus,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCloseAutoFocus: (event: Event) => void;
-}) {
-  const t = useTranslations("shortcuts");
-  const ids = useId();
-  const characterKeys = useCharacterKeys();
-  const modifier = useModifierKey() ?? "ctrl";
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton={false}
-        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg md:max-w-3xl"
-        onCloseAutoFocus={onCloseAutoFocus}
-        data-testid="shortcuts-dialog"
-      >
-        <div className="flex items-start gap-3 border-b px-4 pt-4 pb-3 sm:px-5">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-              <Keyboard className="size-5 text-muted-foreground" aria-hidden="true" />
-              {t("title")}
-            </DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
-          </div>
-          <DialogClose asChild>
-            <Button type="button" variant="ghost" size="icon-lg" className="-mt-1 -mr-1 shrink-0" aria-label={t("close")}>
-              <X aria-hidden="true" />
-            </Button>
-          </DialogClose>
-        </div>
-        {/* A region of its own that takes focus, so a keyboard can scroll the list where the screen is short. */}
-        <div
-          role="region"
-          aria-label={t("list")}
-          tabIndex={0}
-          className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-4 py-4 focus-visible:outline-offset-[-2px] sm:px-5 md:grid-cols-2 md:gap-x-8"
-          data-testid="shortcuts-list"
-        >
-          {COLUMNS.map((column) => (
-            <div key={column.join("-")} className="flex min-w-0 flex-col gap-5">
-              {column.map((group) => (
-                <section key={group} aria-labelledby={`${ids}-${group}`} className="flex flex-col gap-1">
-                  <h3 id={`${ids}-${group}`} className="text-xs font-semibold text-muted-foreground">
-                    {t(`groups.${group}`)}
-                  </h3>
-                  <dl className="flex flex-col divide-y">
-                    {SHORTCUTS.filter((entry) => entry.group === group).map((entry) => {
-                      const off = entry.single && !characterKeys;
-                      return (
-                        <div
-                          key={entry.id}
-                          className="flex items-center justify-between gap-4 py-2"
-                          data-testid="shortcut-row"
-                          data-shortcut={entry.id}
-                          data-off={off || undefined}
-                        >
-                          <dt className="flex min-w-0 flex-col text-[13px] leading-[18px]">
-                            <span className="text-foreground">{t(`names.${entry.id}`)}</span>
-                            {entry.where ? <span className="text-xs text-fg-subtle">{t(`where.${entry.where}`)}</span> : null}
-                          </dt>
-                          <dd className="flex shrink-0 items-center gap-2">
-                            {off ? <span className="text-xs text-fg-subtle">{t("off")}</span> : null}
-                            <KeySequence keys={entry.keys} modifier={modifier} />
-                          </dd>
-                        </div>
-                      );
-                    })}
-                  </dl>
-                </section>
-              ))}
-            </div>
-          ))}
-        </div>
-        <div className="flex items-start gap-4 border-t bg-muted/50 px-4 py-3 sm:px-5">
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <label htmlFor={`${ids}-single`} className="cursor-pointer text-sm font-medium">
-              {t("single.label")}
-            </label>
-            <p id={`${ids}-single-hint`} className="text-xs text-muted-foreground">
-              {t("single.hint")}
-            </p>
-          </div>
-          <Switch
-            id={`${ids}-single`}
-            checked={characterKeys}
-            onCheckedChange={setCharacterKeys}
-            aria-describedby={`${ids}-single-hint`}
-            className="mt-0.5"
-            data-testid="shortcuts-single"
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
 

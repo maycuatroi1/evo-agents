@@ -12,10 +12,10 @@ import {
   diffStat,
   openByDefault,
   type ToolItem,
-  toolArgument,
   type TraceEvent,
   type TraceItem,
 } from "./trace-model";
+import { toolArgument } from "./trace-events";
 
 /**
  * The fixtures are events of real runs of the three runtimes' adapters in a scratch repository, and the fake adapter's

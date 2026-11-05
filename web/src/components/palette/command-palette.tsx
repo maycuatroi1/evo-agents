@@ -1,26 +1,10 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  FilePen,
-  FilePlus,
-  FolderKanban,
-  Keyboard,
-  ListChecks,
-  LoaderCircle,
-  type LucideIcon,
-  Play,
-  Plus,
-  RotateCcw,
-  Send,
-  Server,
-  TriangleAlert,
-  X,
-} from "lucide-react";
-import type { Route } from "next";
-import { useRouter } from "next/navigation";
+import { ListChecks, RotateCcw, Server } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
 
 import { useWriteFailure } from "@/components/admin/notice";
 import { RunRef } from "@/components/data/identifier";
@@ -33,14 +17,10 @@ import { DispatchDialog } from "@/components/runs/dispatch-dialog";
 import { useAuthorRunToast, useDispatchedToast, usePlanRunToast } from "@/components/runs/hooks";
 import { PlanRunDialog } from "@/components/runs/plan-run-dialog";
 import { controlRun, type Run, runHref, runKeys, runsQuery } from "@/components/runs/queries";
-import { HOME_NAV, HUB_NAV, PROJECT_NAV, projectHref, useNavShown } from "@/components/shell/nav";
 import { useCurrentProject } from "@/components/shell/project-switcher";
-import { roleLabelKey } from "@/components/shell/role-badge";
-import { NAV_SHORTCUTS, type ShortcutId, ShortcutKeys, useOpenShortcuts } from "@/components/shell/shortcuts";
+import { useOpenShortcuts } from "@/components/shell/shortcuts";
 import { STATUS_LOOKS, useStatusText } from "@/components/status/status-badge";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Kbd } from "@/components/ui/kbd";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { workerView } from "@/components/workers/model";
 import { type Worker, workerHref, workersQuery } from "@/components/workers/queries";
 import { RegisterDialog } from "@/components/workers/register-dialog";
@@ -52,8 +32,6 @@ import type { PlanSummary } from "@/lib/plans";
 import { overviewQuery, queryKeys, whoamiQuery } from "@/lib/queries";
 
 import {
-  canRegister,
-  dispatchProjects,
   grantedProjects,
   IDLE_LIMIT,
   IDLE_PLAN_RUNS,
@@ -61,27 +39,22 @@ import {
   matchesWords,
   orderPlans,
   overviewRuns,
-  planRunOffers,
   QUERY_LIMIT,
-  reviseOffers,
   queryWords,
   rerunCandidate,
   RUN_SEARCH_LIMIT,
   runHaystack,
   runSearchText,
+  runTitle,
   type Scope,
   scopeCycle,
   scopeProjects,
   SEARCH_DEBOUNCE_MS,
   stepScope,
 } from "./model";
-
-/** A dialog the palette opens once it has closed. Each is the one its page opens; the palette adds no form of its own. */
-type PaletteDialog =
-  | { kind: "dispatch"; project: string }
-  | { kind: "planRun"; project: string; planId: string }
-  | { kind: "author"; project: string; planId: string | null }
-  | { kind: "register" };
+import { type After, metaOf, type OpenTarget, type PaletteDialog, useDialogActions, useGotoEntries, useHelpEntries } from "./palette-entries";
+import { type Entry as PaletteEntry, type GroupKey, PaletteView } from "./palette-view";
+import { useDebounced } from "./use-debounced";
 
 type RerunTarget = Pick<OverviewRun, "project" | "id" | "plan_id">;
 
@@ -89,32 +62,9 @@ type RerunTarget = Pick<OverviewRun, "project" | "id" | "plan_id">;
  * What choosing an item does: open a page, open a dialog, rerun a failed run as Home's Rerun does, or open the
  * keyboard shortcuts.
  */
-type Target =
-  | { kind: "page"; href: Route }
-  | { kind: "dialog"; dialog: PaletteDialog }
-  | { kind: "rerun"; run: RerunTarget }
-  | { kind: "shortcuts" };
+type Target = OpenTarget | { kind: "rerun"; run: RerunTarget };
 
-/**
- * After the palette has closed: open the dialog chosen, leave focus to the page opened, give focus back, or give it
- * back and open the shortcuts dialog (which gives it back there in turn).
- */
-type After = { kind: "dialog"; dialog: PaletteDialog } | { kind: "navigate" } | { kind: "stay" } | { kind: "shortcuts" };
-
-type GroupKey = "actions" | "runs" | "plans" | "workers" | "goto" | "help";
-
-type Entry = {
-  /** cmdk's value: unique in the palette, stable while the item stays. */
-  value: string;
-  icon: LucideIcon;
-  label: ReactNode;
-  /** What a query is matched against. */
-  text: string;
-  meta?: string;
-  /** The key that does the same from the page (G P, D), shown at the item's end. */
-  shortcut?: ShortcutId;
-  target: Target;
-};
+type Entry = PaletteEntry<Target>;
 
 type Props = {
   open: boolean;
@@ -267,31 +217,7 @@ function useRerun() {
   });
 }
 
-/** `value`, once it has stopped changing for `delay` ms. */
-function useDebounced<T>(value: T, delay: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return settled;
-}
-
-/** A run's title as Home writes it: the plan's for a plan run, the step's for a run of one step. */
-function runTitle(run: Pick<Run, "kind" | "title" | "step_key" | "plan_id"> & { plan_title?: string | null }): string {
-  if (run.kind === "plan" || run.step_key === null) return run.plan_title ?? run.title ?? run.plan_id;
-  return run.title ?? run.step_key ?? run.plan_id;
-}
-
-/** The meta at an item's end: the project when the palette looks in every project, then what the item says. */
-function metaOf(project: string | null, text: string | null): string {
-  return [project, text].filter(Boolean).join(", ");
-}
-
 const WORKER_ORDER = { busy: 0, idle: 1, draining: 2, offline: 3, revoked: 4 } as const;
-
-/** The keys with which cmdk moves the selection. */
-const MOVE_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
 
 /**
  * The palette's search, groups and footer; mounted each time the palette opens, so it starts empty in the page's
@@ -299,13 +225,10 @@ const MOVE_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
  */
 function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => void; shortcuts: boolean }) {
   const t = useTranslations("palette");
-  const tNav = useTranslations("nav");
-  const tRoles = useTranslations("roles");
   const runStatus = useStatusText("run");
   const workerStatus = useStatusText("worker");
   const format = useFormatter();
   const current = useCurrentProject();
-  const input = useRef<HTMLInputElement>(null);
 
   const { data: me } = useQuery(whoamiQuery(browserApi));
   const grants = useMemo(() => me?.grants ?? [], [me]);
@@ -314,10 +237,6 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
   const [scope, setScope] = useState<Scope>(() => initialScope(current, projects));
   const [query, setQuery] = useState("");
   const search = useDebounced(runSearchText(query), SEARCH_DEBOUNCE_MS);
-  // The first item stays selected while results arrive, until the person moves the selection (cmdk alone keeps the
-  // item it selected first, which may sit second once a group above it has loaded).
-  const [selected, setSelected] = useState("");
-  const [moved, setMoved] = useState(false);
 
   const words = queryWords(query);
   const typed = words.length > 0;
@@ -325,7 +244,6 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
   const scoped = scopeProjects(scope, projects);
   const showProject = scope === null;
   const scopeName = scope ?? t("scope.all");
-  const shown = useNavShown(); // a page whose feature a hub admin turned off is not offered
   const overview = useQuery(overviewQuery(browserApi));
   const plans = useQueries({ queries: scoped.map((project) => plansQuery(browserApi, project)) });
   const workers = useQuery({ ...workersQuery(browserApi), refetchInterval: false });
@@ -352,7 +270,7 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
     return t(lost ? "actions.lostAgo" : "actions.failedAgo", { ago: format.relativeTime(ended, now) });
   };
 
-  const take = (entries: Entry[], cap = limit) => entries.filter((entry) => matchesWords(words, entry.text)).slice(0, cap);
+  const take = <T,>(entries: PaletteEntry<T>[], cap = limit) => entries.filter((entry) => matchesWords(words, entry.text)).slice(0, cap);
 
   const runEntry = (run: Run | OverviewRun): Entry => {
     const title = runTitle(run);
@@ -401,43 +319,7 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
   };
 
   // Actions: only what the grants allow, each opening the dialog its page opens (Rerun reruns, as Home's does).
-  const runPlans: Entry[] = planRunOffers(plansByProject, grants).map((offer) => ({
-    value: `action:plan-run:${offer.project}:${offer.planId}`,
-    icon: Play,
-    label: <span className="truncate">{t("actions.runPlan", { plan: offer.title })}</span>,
-    text: `${t("actions.runPlan", { plan: offer.title })} run plan ${offer.planId} ${offer.project}`,
-    meta: metaOf(showProject ? offer.project : null, t("actions.stepsLeft", { count: offer.left })),
-    target: { kind: "dialog", dialog: { kind: "planRun", project: offer.project, planId: offer.planId } },
-  }));
-  const newPlans: Entry[] = dispatchProjects(scoped, grants).map((project) => {
-    const label = scope === null ? t("actions.newPlanIn", { project }) : t("actions.newPlan");
-    return {
-      value: `action:new-plan:${project}`,
-      icon: FilePlus,
-      label: <span className="truncate">{label}</span>,
-      text: `${label} new plan write author ${project}`,
-      target: { kind: "dialog", dialog: { kind: "author", project, planId: null } },
-    };
-  });
-  const revisions: Entry[] = reviseOffers(plansByProject, grants).map((offer) => ({
-    value: `action:revise:${offer.project}:${offer.planId}`,
-    icon: FilePen,
-    label: <span className="truncate">{t("actions.revise", { plan: offer.title })}</span>,
-    text: `${t("actions.revise", { plan: offer.title })} revise plan with agent author ${offer.planId} ${offer.project}`,
-    meta: showProject ? offer.project : undefined,
-    target: { kind: "dialog", dialog: { kind: "author", project: offer.project, planId: offer.planId } },
-  }));
-  const dispatches: Entry[] = dispatchProjects(scoped, grants).map((project) => {
-    const label = scope === null ? t("actions.dispatchIn", { project }) : t("actions.dispatch");
-    return {
-      value: `action:dispatch:${project}`,
-      icon: Send,
-      label: <span className="truncate">{label}</span>,
-      text: `${label} dispatch step ${project}`,
-      shortcut: project === current ? "dispatch" : undefined,
-      target: { kind: "dialog", dialog: { kind: "dispatch", project } },
-    };
-  });
+  const { runPlans, newPlans, revisions, dispatches, registers } = useDialogActions({ plansByProject, grants, scoped, scope });
   const reruns: Entry[] = failed
     ? [
         {
@@ -452,17 +334,6 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
           text: `${t("actions.rerun", { id: failed.id })} rerun ${runHaystack(failed)}`,
           meta: metaOf(showProject ? failed.project : null, endedText(failed)),
           target: { kind: "rerun", run: failed },
-        },
-      ]
-    : [];
-  const registers: Entry[] = canRegister(grants)
-    ? [
-        {
-          value: "action:register",
-          icon: Plus,
-          label: <span className="truncate">{t("actions.register")}</span>,
-          text: `${t("actions.register")} register worker`,
-          target: { kind: "dialog", dialog: { kind: "register" } },
         },
       ]
     : [];
@@ -488,63 +359,9 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
     .sort((a, b) => WORKER_ORDER[workerView(a)] - WORKER_ORDER[workerView(b)] || a.name.localeCompare(b.name));
   const workerItems = take(workerList.map(workerEntry));
 
-  // Go to: the scope's project pages, the hub's pages, then the projects (while looking in every project, or typing).
-  const projectPages: Entry[] =
-    scope === null
-      ? []
-      : PROJECT_NAV.filter((item) => shown(item, scope)).map((item) => {
-          const label = t("goto.page", { page: tNav(item.label), project: scope });
-          return {
-            value: `goto:${scope}:${item.segment || "overview"}`,
-            icon: item.icon,
-            label: <span className="truncate">{label}</span>,
-            text: label,
-            // G P and G R go to the plans and runs of the page's project.
-            shortcut: scope === current ? NAV_SHORTCUTS[item.label] : undefined,
-            target: { kind: "page", href: projectHref(scope, item.segment) },
-          };
-        });
-  const hubPages: Entry[] = [...HOME_NAV, ...HUB_NAV]
-    .filter((item) => (!item.adminOnly || me?.admin) && shown(item))
-    .map((item) => ({
-      value: `goto:hub:${item.label}`,
-      icon: item.icon,
-      label: <span className="truncate">{tNav(item.label)}</span>,
-      text: tNav(item.label),
-      shortcut: NAV_SHORTCUTS[item.label],
-      target: { kind: "page", href: item.href },
-    }));
-  const projectLinks: Entry[] =
-    scope === null || typed
-      ? grants
-          .filter((grant) => grant.project !== scope)
-          .sort((a, b) => a.project.localeCompare(b.project))
-          .slice(0, typed ? undefined : IDLE_LIMIT)
-          .map((grant) => ({
-            value: `goto:project:${grant.project}`,
-            icon: FolderKanban,
-            label: <span className="truncate">{grant.project}</span>,
-            text: grant.project,
-            meta: tRoles(roleLabelKey(grant.role)),
-            target: { kind: "page", href: projectHref(grant.project) },
-          }))
-      : [];
-  const goto = take([...projectPages, ...hubPages, ...projectLinks], typed ? QUERY_LIMIT : Infinity);
+  const goto = useGotoEntries({ scope, typed, grants, admin: me?.admin ?? false, take, limit: typed ? QUERY_LIMIT : Infinity });
 
-  // Help: the shortcuts dialog, once what is typed names it.
-  const help: Entry[] =
-    shortcuts && typed
-      ? take([
-          {
-            value: "help:shortcuts",
-            icon: Keyboard,
-            label: <span className="truncate">{t("shortcuts")}</span>,
-            text: `${t("shortcuts")} keyboard shortcuts keys help`,
-            shortcut: "help",
-            target: { kind: "shortcuts" },
-          },
-        ])
-      : [];
+  const help = useHelpEntries(shortcuts && typed, take);
 
   const groups: { key: GroupKey; entries: Entry[] }[] = [
     { key: "actions", entries: actions },
@@ -554,145 +371,21 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
     { key: "goto", entries: goto },
     { key: "help", entries: help },
   ];
-  const count = groups.reduce((total, group) => total + group.entries.length, 0);
   const partial = [overview, workers, ...plans, ...(remote ? [found] : [])].some((state) => state.isError);
 
-  const values = groups.flatMap((group) => group.entries.map((entry) => entry.value));
-  const value = moved && values.includes(selected) ? selected : (values[0] ?? "");
-  const changeQuery = (text: string) => {
-    setQuery(text);
-    setMoved(false);
-  };
-  const switchScope = (step: 1 | -1) => {
-    setScope((shown) => stepScope(cycle, shown, step));
-    setMoved(false);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey || cycle.length < 2) return;
-    // Tab switches the project instead of leaving the field (the dialog's focus trap would wrap it otherwise).
-    event.preventDefault();
-    event.stopPropagation();
-    switchScope(event.shiftKey ? -1 : 1);
-  };
-
   return (
-    <Command
-      label={t("label")}
-      shouldFilter={false}
-      loop
-      vimBindings={false}
-      value={value}
-      onValueChange={setSelected}
-      onKeyDown={(event) => {
-        if (MOVE_KEYS.has(event.key)) setMoved(true);
-      }}
-      data-testid="palette-command"
-    >
-      <CommandInput
-        ref={input}
-        value={query}
-        onValueChange={changeQuery}
-        onKeyDown={onKeyDown}
-        placeholder={t("placeholder")}
-        maxLength={200}
-        data-testid="palette-input"
-      >
-        {pending ? <LoaderCircle className="size-4 shrink-0 animate-spin" aria-hidden="true" data-testid="palette-pending" /> : null}
-        <DialogClose asChild>
-          <button
-            type="button"
-            aria-label={t("close")}
-            title={t("close")}
-            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-xs text-fg-subtle transition-colors hover:text-foreground max-md:-mr-2 max-md:size-11 max-md:rounded-sm max-md:hover:bg-accent"
-            data-testid="palette-close"
-          >
-            <Kbd className="max-md:hidden">Esc</Kbd>
-            <X className="size-5 md:hidden" aria-hidden="true" />
-          </button>
-        </DialogClose>
-      </CommandInput>
-      <CommandList
-        label={t("list")}
-        className="max-h-[min(380px,calc(100dvh-11rem))]"
-        onPointerMove={() => setMoved(true)}
-        data-testid="palette-list"
-      >
-        {groups.map((group) =>
-          group.entries.length > 0 ? (
-            <CommandGroup key={group.key} heading={t(`groups.${group.key}`)} data-testid={`palette-group-${group.key}`}>
-              {group.entries.map((entry) => (
-                <CommandItem
-                  key={entry.value}
-                  value={entry.value}
-                  onSelect={() => onChoose(entry.target)}
-                  data-testid="palette-item"
-                  data-item={entry.value}
-                >
-                  <entry.icon aria-hidden="true" />
-                  <span className="flex min-w-0 flex-1 items-center gap-2">{entry.label}</span>
-                  {entry.meta ? (
-                    <CommandShortcut className="max-w-[45%] max-sm:max-w-[40%]">
-                      <span className="truncate">{entry.meta}</span>
-                    </CommandShortcut>
-                  ) : null}
-                  {entry.shortcut ? <ShortcutKeys id={entry.shortcut} className={entry.meta ? undefined : "ml-auto"} /> : null}
-                  <Kbd className="hidden md:group-data-[selected=true]/command-item:inline-flex" aria-hidden="true">
-                    ↵
-                  </Kbd>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          ) : null,
-        )}
-      </CommandList>
-      {count === 0 && typed && !pending ? (
-        <p className="px-4 pt-2 pb-5 text-center text-[13px] text-muted-foreground [overflow-wrap:anywhere]" data-testid="palette-empty">
-          {t("noMatch", { query: query.trim(), scope: scopeName })}
-          {cycle.length > 1 ? <span className="max-md:hidden"> {t("trySwitch")}</span> : null}
-        </p>
-      ) : null}
-      {partial ? (
-        <p className="flex items-center gap-2 border-t px-4 py-2 text-xs text-danger" data-testid="palette-partial">
-          <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-          {t("partial")}
-        </p>
-      ) : null}
-      <p className="sr-only" aria-live="polite" data-testid="palette-count">
-        {pending ? t("searching") : t("results", { count, scope: scopeName })}
-      </p>
-      <div className="flex items-center gap-x-4 gap-y-2 border-t px-4 py-2 text-xs text-fg-subtle max-md:py-0">
-        <span className="inline-flex items-center gap-1.5 max-md:hidden" aria-hidden="true">
-          <Kbd>↑</Kbd>
-          <Kbd>↓</Kbd>
-          {t("hints.move")}
-        </span>
-        <span className="inline-flex items-center gap-1.5 max-md:hidden" aria-hidden="true">
-          <Kbd>↵</Kbd>
-          {t("hints.open")}
-        </span>
-        {cycle.length > 1 ? (
-          <span className="inline-flex items-center gap-1.5 max-md:hidden" aria-hidden="true">
-            <Kbd>Tab</Kbd>
-            {t("hints.scope")}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => {
-            switchScope(1);
-            input.current?.focus();
-          }}
-          disabled={cycle.length < 2}
-          aria-label={t("scope.switch", { scope: scopeName })}
-          title={t("scope.switch", { scope: scopeName })}
-          className="ml-auto inline-flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-xs px-1.5 font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent max-md:-mr-1.5 max-md:h-11"
-          data-testid="palette-scope"
-          data-scope={scope ?? ""}
-        >
-          <FolderKanban className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate">{scopeName}</span>
-        </button>
-      </div>
-    </Command>
+    <PaletteView
+      query={query}
+      onQueryChange={setQuery}
+      pending={pending}
+      groups={groups}
+      typed={typed}
+      partial={partial}
+      scope={scope}
+      scopeName={scopeName}
+      scopes={cycle.length}
+      onSwitchScope={(step) => setScope((shown) => stepScope(cycle, shown, step))}
+      onChoose={onChoose}
+    />
   );
 }

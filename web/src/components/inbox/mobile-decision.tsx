@@ -1,28 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  Bot,
-  ChevronRight,
-  CircleCheck,
-  CircleX,
-  Info,
-  ListChecks,
-  type LucideIcon,
-  MessageSquare,
-  RotateCw,
-  SearchX,
-  User,
-} from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, CircleCheck, CircleX, Info, ListChecks, MessageSquare, RotateCw, SearchX, User } from "lucide-react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, type Ref, type RefObject, useEffect, useMemo, useState } from "react";
 
 import { useLiveQuery } from "@/components/live/live-context";
 import { LiveIndicator } from "@/components/live/live-indicator";
-import { KIND_ICON, useTraceDuration } from "@/components/runs/trace-look";
 import { recentEventsQuery, runHref, runQuery } from "@/components/runs/queries";
+import { KIND_ICON, useTraceDuration } from "@/components/runs/trace-look";
 import { buildTrace } from "@/components/runs/trace-model";
 import { ApiErrorState, LoadingState, StatePanel } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
@@ -30,19 +17,21 @@ import { SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Ago } from "@/components/workers/ago";
 import { browserApi } from "@/lib/api/browser";
-import { cn } from "@/lib/utils";
 
 import { agentDigest, type DigestLine } from "./agent-digest";
-import { DecisionCategoryBadge } from "./badges";
+import { AnswerFields } from "./answer-form";
 import { AnsweredBy } from "./answered-by";
+import { DecisionCategoryBadge, DecisionStatePill } from "./badges";
+import { AnswerHint } from "./credential-decisions";
 import { DecisionGrounds } from "./decision-grounds";
-import { AnswerFields, AnswerHint, AnswerSummary, AskedTiming, DecisionStatePill, DecisionWhere, FoldedContext, useAnswerForm } from "./decision-view";
 import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
 import { OptionList } from "./decision-options";
+import { AnswerSummary, AskedTiming, DecisionWhere, FoldedContext, useAnswerForm } from "./decision-view";
 import { useInboxViewer, useParksAt } from "./hooks";
 import { InboxBell } from "./inbox-bell";
 import { type AnswerAccess, answerAccess, runLinkWords } from "./model";
 import { type Decision, decisionQuery } from "./queries";
+import { DigestItem, type DigestView, ScreenScroll } from "./screen-parts";
 import { TakeOverButton } from "./take-over-button";
 import { type DecisionTarget, useTargetDecision } from "./target-decision";
 
@@ -82,15 +71,6 @@ function ScreenTop({ decision }: { decision: Decision | null }) {
         <LiveIndicator />
         <InboxBell />
       </div>
-    </div>
-  );
-}
-
-/** The middle of the screen, the only part that scrolls. */
-function ScreenScroll({ id, children }: { id: number; children: ReactNode }) {
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-testid="decision-panel" data-decision-id={id}>
-      <div className="flex flex-col gap-4 px-4 pt-4 pb-6">{children}</div>
     </div>
   );
 }
@@ -154,7 +134,7 @@ function useDigestLine(owner: string) {
   const t = useTranslations("runs.detail.trace");
   const duration = useTraceDuration();
   const { login } = useInboxViewer();
-  return (line: DigestLine): { icon: LucideIcon; tone: "danger" | "success" | null; who: string; text: ReactNode; meta: string | null } => {
+  return (line: DigestLine): DigestView => {
     switch (line.type) {
       case "agent":
         return {
@@ -194,30 +174,6 @@ function useDigestLine(owner: string) {
   };
 }
 
-function DigestItem({ line, owner }: { line: DigestLine; owner: string }) {
-  const format = useFormatter();
-  const view = useDigestLine(owner)(line);
-  const Icon = view.icon;
-  const at = new Date(line.at);
-  return (
-    <li className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-x-2.5" data-testid="decision-so-far-item" data-type={line.type}>
-      <Icon
-        className={cn("mt-0.5 size-4", view.tone === "danger" ? "text-danger" : view.tone === "success" ? "text-success" : "text-fg-subtle")}
-        aria-hidden="true"
-      />
-      <p className="line-clamp-2 min-w-0 text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-        {view.who ? <span className="font-medium text-foreground">{view.who}</span> : null}
-        {view.who && view.text ? " " : null}
-        {view.text}
-        {view.meta ? <span className={cn("text-fg-subtle tabular-nums", view.tone === "danger" && "text-danger")}>{`, ${view.meta}`}</span> : null}
-      </p>
-      <time dateTime={line.at} title={format.dateTime(at, { dateStyle: "full", timeStyle: "long" })} className="mt-0.5 font-mono text-xs leading-4 text-fg-subtle tabular-nums">
-        {format.dateTime(at, { timeStyle: "short" })}
-      </time>
-    </li>
-  );
-}
-
 /**
  * "What the agent did so far", folded: opened, it reads the run's latest events and lists the last five things its
  * Trace shows (`agentDigest`), oldest first, then links to the run's page for the whole trace. Nothing is read until it
@@ -226,6 +182,7 @@ function DigestItem({ line, owner }: { line: DigestLine; owner: string }) {
 export function AgentSoFar({ decision }: { decision: Decision }) {
   const t = useTranslations("inbox.screen");
   const [opened, setOpened] = useState(false);
+  const view = useDigestLine(decision.owner);
   const run = useQuery({ ...runQuery(browserApi, decision.project, decision.run_id), enabled: opened });
   const lastSeq = run.data?.last_seq ?? null;
   const events = useQuery({
@@ -242,7 +199,7 @@ export function AgentSoFar({ decision }: { decision: Decision }) {
     body = (
       <ol className="flex flex-col gap-2.5" aria-label={t("soFarList")} data-testid="decision-so-far-list">
         {lines.map((line) => (
-          <DigestItem key={line.key} line={line} owner={decision.owner} />
+          <DigestItem key={line.key} line={line} view={view(line)} />
         ))}
       </ol>
     );

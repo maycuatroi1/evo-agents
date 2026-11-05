@@ -46,9 +46,11 @@ import {
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
+import { StatusBadge } from "@/components/status/status-badge";
 import { cn } from "@/lib/utils";
 
-import type { DecisionCategory, NoticeKind } from "./queries";
+import type { AnswerAccess } from "./model";
+import type { Decision, DecisionCategory, NoticeKind } from "./queries";
 
 export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   deploy: Rocket,
@@ -168,4 +170,12 @@ export function AgentPickTag({ className }: { className?: string }) {
       {t("agentsPick")}
     </Tag>
   );
+}
+
+/** The decision's state as the kit's pill: Waiting for you for the run's owner, Waiting for its owner for anyone else. */
+export function DecisionStatePill({ decision, access, size }: { decision: Decision; access: AnswerAccess; size?: "lg" }) {
+  const t = useTranslations("inbox.decision");
+  const label =
+    decision.state === "open" ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.asked_of }) : undefined) : undefined;
+  return <StatusBadge kind="decision" status={decision.state} label={label} size={size} />;
 }

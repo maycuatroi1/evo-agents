@@ -1,13 +1,12 @@
 "use client";
 
 import type { UseMutationResult } from "@tanstack/react-query";
-import { ArrowLeft, Info, ShieldPlus } from "lucide-react";
+import { Info, ShieldPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
-import { useVisibilityName, VisibilityLevel } from "@/components/data/visibility";
+import { useVisibilityName } from "@/components/data/visibility";
 import type { Notice } from "@/components/feedback/toast";
-import { RoleBadge } from "@/components/shell/role-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,7 +25,8 @@ import type { Project } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
 import { type AdminUser, type GrantInput, LOGIN_NAME, memberHref, putGrant, type Role, ROLES } from "./data";
-import { InlineError, useWriteFailure } from "./notice";
+import { GrantConfirm } from "./grant-confirm";
+import { useWriteFailure } from "./notice";
 import { useAdminWrite } from "./use-admin-write";
 
 /** What the dialog opens with: empty, a user (from their page), or one of their grants (to change it). */
@@ -171,64 +171,20 @@ function GrantSteps({
 
   if (step === "confirm") {
     return (
-      <div className="flex flex-col gap-5" aria-busy={pending || undefined}>
-        <DialogHeader>
-          <DialogTitle asChild>
-            <h2 ref={confirmHeading} tabIndex={-1} className="outline-none">
-              {existing ? t("confirmChangeTitle") : t("confirmTitle")}
-            </h2>
-          </DialogTitle>
-          <DialogDescription>{t("confirmDescription")}</DialogDescription>
-        </DialogHeader>
-        <dl
-          className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2.5 rounded-md border bg-muted/40 px-3 py-3 text-sm"
-          data-testid="grant-summary"
-        >
-          <dt className="text-muted-foreground">{t("summary.login")}</dt>
-          <dd className="min-w-0 font-mono font-medium break-all">{name}</dd>
-          <dt className="text-muted-foreground">{t("summary.project")}</dt>
-          <dd className="min-w-0 font-mono font-medium break-all">{project}</dd>
-          <dt className="text-muted-foreground">{t("summary.role")}</dt>
-          <dd>
-            <RoleBadge role={role} />
-          </dd>
-          <dt className="text-muted-foreground">{t("summary.visibility")}</dt>
-          <dd className="font-medium">
-            <VisibilityLevel level={maxLevel} />
-          </dd>
-          {existing ? (
-            <>
-              <dt className="text-muted-foreground">{t("summary.previous")}</dt>
-              <dd className="text-muted-foreground">{t("previous", { role: roleName(existing.role), level: levelName(existing.max_level) })}</dd>
-            </>
-          ) : null}
-        </dl>
-        {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            onClick={() => {
-              if (!pending) setStep("form");
-            }}
-            aria-disabled={pending || undefined}
-            className="aria-disabled:opacity-50"
-          >
-            <ArrowLeft aria-hidden="true" />
-            {t("back")}
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            onClick={() => void confirm()}
-            busy={pending}
-            data-testid="grant-confirm"
-          >
-            {pending ? t("saving") : t("confirm")}
-          </Button>
-        </DialogFooter>
-      </div>
+      <GrantConfirm
+        heading={confirmHeading}
+        name={name}
+        project={project}
+        role={role}
+        maxLevel={maxLevel}
+        existing={existing}
+        roleName={roleName}
+        levelName={levelName}
+        pending={pending}
+        error={error}
+        onBack={() => setStep("form")}
+        onConfirm={() => void confirm()}
+      />
     );
   }
 

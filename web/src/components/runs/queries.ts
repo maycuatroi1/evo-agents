@@ -4,30 +4,25 @@ import type { Route } from "next";
 import { projectHref } from "@/components/shell/nav";
 import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
-import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 import type { RequestedRuntime } from "@/lib/runtimes";
+
+import type {
+  Approval, AuthorRunRequest, AuthorTimeout, DiffLink, DispatchRequest, PlanRunRequest, PlanTimeout, Run, RunControl,
+  RunList, RunMessage, RunMode, RunQuery, RunState, Schemas,
+} from "./run-types";
 
 /**
  * What the runs pages read and write (docs/workers.md). Any member with a grant on the project lists its runs, of the
  * plans the member may read; dispatching needs the writer role, and a pinned worker must be the caller's own. A hub
  * admin without a grant gets 403 like anyone else: the hub admin role never dispatches.
  */
-type Schemas = components["schemas"];
-export type Run = Schemas["Run"];
-export type RunList = Schemas["RunList"];
-export type RunState = Run["state"];
-export type StateCounts = Schemas["StateCounts"];
-export type ReadySteps = Schemas["ReadySteps"];
-export type StepReadiness = Schemas["StepReadiness"];
-export type DispatchRequest = Omit<Schemas["Dispatch"], "browser" | "identities"> & Partial<Pick<Schemas["Dispatch"], "browser" | "identities">>; // a browser sent only when asked for
-export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step" | "browser" | "identities"> & { session_per_step?: true } & Partial<Pick<Schemas["PlanRunDispatch"], "browser" | "identities">>; // sent only when on
 export type { RequestedRuntime };
-export type RunMode = DispatchRequest["mode"];
-export type Approval = DispatchRequest["approval"];
-export type RunKind = Run["kind"];
-export type ActiveRun = Schemas["ActiveRun"];
-export type PlanTimeout = PlanRunRequest["timeout_h"];
+export type {
+  ActiveRun, Approval, AuthorRunRequest, AuthorTimeout, ChatMessage, ChatStatus, DiffLink, DispatchRequest,
+  PlanRunRequest, PlanTimeout, ReadySteps, Run, RunChat, RunControl, RunEvent, RunEventKind, RunEventPage, RunKind,
+  RunLease, RunList, RunMessage, RunMode, RunQuery, RunState, StateCounts, StepReadiness,
+} from "./run-types";
 
 /** `runs.RUN_STATES` of the API, in its order; `satisfies` keeps the list inside the generated type. */
 export const RUN_STATES = [
@@ -97,22 +92,6 @@ export function hasActiveRuns(list: Pick<RunList, "counts"> | undefined): boolea
 export function refreshInterval(query: { state: { data?: RunList } }): number {
   return hasActiveRuns(query.state.data) ? LIVE_REFRESH_MS : IDLE_REFRESH_MS;
 }
-
-/** The filters of GET /v1/projects/{p}/runs that the pages use. */
-export type RunQuery = {
-  states?: readonly RunState[];
-  planId?: string | null;
-  step?: string | null;
-  workerId?: number | null;
-  /** Only runs of this kind, and only local runs of this Claude account (email). */
-  kind?: RunKind | null;
-  account?: string | null;
-  /** The turns of one chat session (`session_run_id`); `group: "session"` lists each chat session once, its latest turn. */
-  sessionRunId?: number | null; group?: "session" | null;
-  q?: string;
-  limit?: number;
-  offset?: number;
-};
 
 function apiQuery(query: RunQuery) {
   return {
@@ -224,12 +203,6 @@ export function runsHref(project: string): Route {
 
 // One run: its page, its log, the owner's controls and its diff.
 
-export type RunEvent = Schemas["RunEvent"];
-export type RunEventKind = RunEvent["kind"];
-export type RunEventPage = Schemas["RunEvents"];
-export type RunMessage = Schemas["Message"];
-export type DiffLink = Schemas["DiffLink"];
-
 /** `runs.TERMINAL_STATES`: a run in one of these never moves again. */
 export const TERMINAL_STATES = ["done", "failed", "lost", "cancelled"] as const satisfies readonly RunState[];
 /** `runs.TAKEOVER_STATES` and `runs.HANDBACK_STATES`: when the owner may ask for each. */
@@ -288,8 +261,6 @@ export const runQuery = (api: ApiSource, project: string, id: number) =>
     refetchInterval: (query) => (query.state.data && isActiveState(query.state.data.state) ? LIVE_REFRESH_MS : false),
   });
 
-export type RunLease = Schemas["RunLease"];
-
 /** Below the run's own key, so whatever reloads the run (a move the log tells, a control) reloads its leases too. */
 export function runCredentialsKey(project: string, id: number) {
   return [...runKey(project, id), "credentials"] as const;
@@ -333,8 +304,6 @@ export const recentEventsQuery = (api: ApiSource, project: string, id: number, l
     placeholderData: keepPreviousData,
   });
 
-export type RunControl = "cancel" | "takeover" | "handback" | "approve" | "rerun";
-
 /** One of the owner's controls, with the session's CSRF header; rerun answers the new run. */
 export async function controlRun(api: ApiClient, project: string, id: number, action: RunControl): Promise<Run> {
   const headers = await csrfHeaders(api);
@@ -373,12 +342,6 @@ export * from "./decision-queries";
 
 // Author runs: a plan written from a member's request on a worker of theirs, and the chat with its agent
 // (docs/workers.md, Author runs).
-
-export type AuthorRunRequest = Schemas["AuthorRunDispatch"];
-export type AuthorTimeout = AuthorRunRequest["timeout_h"];
-export type RunChat = Schemas["RunChat"];
-export type ChatMessage = Schemas["ChatMessage"];
-export type ChatStatus = RunChat["status"];
 
 /** `author.AUTHOR_RUNTIMES`: the one runtime an author run takes. */
 export const AUTHOR_RUNTIME = "claude-code" as const satisfies RequestedRuntime;
