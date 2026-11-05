@@ -105,7 +105,7 @@ users = Table(
     Column("github_id", BigInteger),
     _stamp("created_at"),
     _when("last_seen_at"),
-    Column("run_reach", ARRAY(Text), nullable=False, server_default="{}"),  # 0193: run_access_rules.REACH_GROUPS
+    Column("run_reach", ARRAY(Text), nullable=False, server_default="{}"),  # 0193, 0208: run_access_rules.REACH_GROUPS
     Column("admin_login", Text),  # 0203: the EVO_HUB_ADMINS login bound to this account (security.admin_login)
     PrimaryKeyConstraint("id", name="users_pkey"),
     UniqueConstraint("github_id", name="users_github_id_key"),

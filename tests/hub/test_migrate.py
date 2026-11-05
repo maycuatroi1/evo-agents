@@ -5719,3 +5719,24 @@ def test_migration_lock_timeout_and_statement_timeout_bound_a_revision_blocked_b
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0203",)]  # the revision rolled back
     assert "plugin_cron" not in tables(hub_db)
     assert hub_migrate.migrate(hub_db.dsn).after == (HEAD,)  # once the holder is gone it goes through
+
+
+def test_migration_0208_lets_releases_into_the_run_reach_and_going_back_takes_it_out(hub_db):
+    move_to(hub_db, "0207")
+    u = hub_tables.users
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        conn.execute(update(u).values(run_reach=["agents", "curator"]).where(u.c.id == ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # not yet a group
+        conn.execute(update(u).values(run_reach=["releases"]).where(u.c.id == ids["user"]))
+    move_to(hub_db, "0208")
+    assert query(hub_db, select(u.c.run_reach).where(u.c.id == ids["user"])) == [(["agents", "curator"],)]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(u).values(run_reach=["agents", "releases"]).where(u.c.id == ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(u).values(run_reach=["releases", "secrets"]).where(u.c.id == ids["user"]))
+    move_to(hub_db, "0207", down=True)
+    assert query(hub_db, select(u.c.run_reach).where(u.c.id == ids["user"])) == [(["agents"],)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(u).values(run_reach=["releases"]).where(u.c.id == ids["user"]))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0208") :]

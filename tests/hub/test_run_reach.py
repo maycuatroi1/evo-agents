@@ -1,9 +1,9 @@
-"""The run reach of a member (``run_access_rules.REACH_GROUPS``, ``users.run_reach``): the groups agents, workers and
-curator, which the tokens of the member's runs that run as them reach once the member opened them.
+"""The run reach of a member (``run_access_rules.REACH_GROUPS``, ``users.run_reach``): the groups agents, workers,
+curator and releases, which the tokens of the member's runs that run as them reach once the member opened them.
 
 Empty, a run's token is refused there as before, with a refusal that says how the owner opens the group. Each group
 opened lets exactly its paths through; the terminal, the live view, takeover and handback of a run, the worker
-protocol, an agent's accounts, secrets, tokens, the run reach itself and every other group stay refused with all three
+protocol, an agent's accounts, secrets, tokens, the run reach itself and every other group stay refused with all four
 open. Only the member reads and sets their own, at GET and PUT /v1/autonomy/run-reach, each change audited
 ``run_access.reach``; the hub reads it with the run's token, so a change holds from the run's next request. The command
 line is ``evo-agents hub autonomy run-reach``."""
@@ -70,6 +70,11 @@ OPTIONAL = {
         ("POST", "/v1/projects/p/curator/plans/rollout/build"),
         ("POST", "/v1/projects/p/curator/proposals/1/answer"),
     ),
+    "releases": (
+        ("POST", "/v1/projects/p/releases/run"),
+        ("PUT", "/v1/projects/p/releases/schedule"),
+        ("POST", "/v1/projects/p/releases/resume"),
+    ),
 }
 # (method, path) refused whatever the owner opened
 FIXED = (
@@ -100,6 +105,7 @@ FIXED = (
     ("PUT", "/v1/admin/projects/p/grants/alice"),
     ("POST", "/v1/projects/p/runs"),
     ("POST", "/v1/projects/p/plan-runs"),
+    ("POST", "/v1/projects/p/runs/9/rerun"),
     ("POST", "/v1/projects/p/decisions/1/answer"),
 )
 
@@ -137,21 +143,28 @@ def test_each_group_opened_lets_exactly_its_own_paths_through(group):
 
 
 @pytest.mark.parametrize(("method", "path"), FIXED)
-def test_the_fixed_groups_stay_refused_with_all_three_open(method, path):
+def test_the_fixed_groups_stay_refused_with_all_four_open(method, path):
     message = refusal(method, path, ALL)
     assert message is not None, (method, path)
     assert "lets their runs reach it" not in message, "a fixed group says no way to open it"
     assert message.endswith("the owner does that with their own sign-in")
 
 
-def test_a_name_outside_the_three_opens_nothing():
+def test_a_name_outside_the_four_opens_nothing():
     names = frozenset({"secrets", "tokens", "terminal", "run access", "autonomy", "runs", "decisions", "grants"})
     for method, path in FIXED:
         assert refusal(method, path, names | ALL) is not None, (method, path)
 
 
-def test_reading_agents_and_the_curator_was_open_and_stays_open():
-    for path in ("/v1/projects/p/agents", "/v1/projects/p/agents/reviewer", "/v1/projects/p/curator/charter"):
+def test_reading_agents_the_curator_and_the_releases_was_open_and_stays_open():
+    paths = (
+        "/v1/projects/p/agents",
+        "/v1/projects/p/agents/reviewer",
+        "/v1/projects/p/curator/charter",
+        "/v1/projects/p/releases",
+        "/v1/projects/p/releases/cycles",
+    )
+    for path in paths:
         assert refusal("GET", path) is None and refusal("GET", path, ALL) is None, path
 
 
@@ -267,7 +280,7 @@ def test_the_store_refuses_the_agent_of_a_run_behind_the_middleware(client, hub,
 def test_allow_parses_a_comma_separated_list_into_the_hubs_order():
     assert reach_groups("curator,agents") == ["agents", "curator"]
     assert reach_groups(" workers , workers ,") == ["workers"]
-    assert reach_groups("agents,workers,curator") == list(REACH_GROUPS)
+    assert reach_groups("releases,agents,workers,curator") == list(REACH_GROUPS)
     for wrong, said in (("", "names one or more"), (",", "names one or more"), ("agents,secrets", "'secrets'")):
         with pytest.raises(Usage) as refused:
             reach_groups(wrong)

@@ -212,6 +212,8 @@ WAIT_RULE = (
     f"TEXT --until +15m --step {{step}}`, then end your turn; when it wakes, look once and wait again if it has not "
     "come. Never wait for it in this session (no Monitor, no loop that sleeps, no long sleep, no `gh run watch`): the "
     "session holds the worker's slot while it waits, and only a wait parks the run."
+    "\n- Start now what you can start rather than wait for a schedule: a release is `evo-agents hub release run "
+    "--project P`. Refused, ask the owner for what the refusal names and end your turn, never a long wait."
 )
 
 

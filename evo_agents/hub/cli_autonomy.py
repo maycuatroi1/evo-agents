@@ -251,7 +251,8 @@ def register_autonomy(hsub) -> None:
 
     reach = asub.add_parser(
         "run-reach",
-        help="what your runs that run as you reach besides what every run's token reaches: agents, workers, curator",
+        help="what your runs that run as you reach besides what every run's token reaches: "
+        + ", ".join(RUN_REACH_GROUPS),
     )
     chosen = reach.add_mutually_exclusive_group()
     chosen.add_argument(

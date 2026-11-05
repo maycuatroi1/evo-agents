@@ -44,6 +44,7 @@ from tests.hub.test_credentials_api import worker_of as credential_worker
 from tests.hub.test_curator import NIGHT, PROJECT, charter_body, grant, home_node, written
 from tests.hub.test_curator import fire as fire_curator
 from tests.hub.test_migrate import move_to
+from tests.hub.test_run_access import as_me_run, as_run, claimable
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
 from tests.hub.test_run_stream import serving
 
@@ -470,6 +471,40 @@ def test_run_now_checks_through_the_same_gates_as_the_daily_check(world):
     assert [row[0] for row in checks(world.db)] == ["manual", "manual", "manual", "schedule", "manual"]
     a = tables.audit
     assert len(sql(world.db, select(a.c.id).where(a.c.action == "release.run"))) == 4
+
+
+def test_a_runs_token_checks_now_once_its_owner_opened_releases_and_the_cut_goes_out_as_the_owner(world):
+    """A plan run that runs as its owner and ends in a release cuts it at once, rather than waiting for the day's
+    check, once its owner opened the run reach releases; without it the run's token is refused and told how."""
+    set_schedule(world, repo=REPO)
+    claimable(world.client)
+    worker = credential_worker(world.client, world.headers["owner"], "mac-mini")
+    _, token = as_me_run(world.client, world.headers, worker)
+    run = as_run(token)
+    refused = world.client.post(path("run"), headers=run)
+    assert refused.status_code == 403, refused.text
+    message = refused.json()["message"]
+    assert "(group releases)" in message and message.endswith("run-reach --allow releases`"), message
+    assert world.client.put(path("schedule"), json={}, headers=run).status_code == 403
+    assert release_runs(world.db) == [] and checks(world.db) == []
+    opened = world.client.put("/v1/autonomy/run-reach", json={"groups": ["releases"]}, headers=world.headers["owner"])
+    assert opened.status_code == 200, opened.text
+    checked = world.client.post(path("run"), headers=run)
+    assert checked.status_code == 200, checked.text
+    assert (checked.json()["outcome"], checked.json()["trigger"], checked.json()["requested_by"]) == (
+        "opened",
+        "manual",
+        OWNER,
+    )
+    (cut,) = release_runs(world.db)
+    assert cut["id"] == checked.json()["run_id"]
+    assert (cut["state"], cut["dispatched_by"]) == ("queued", user_id(world.db, OWNER))  # the schedule's owner
+    # the reach opens the releases alone: the token still starts no run of its own
+    plan_run = world.client.post(f"/v1/projects/{PROJECT}/plan-runs", json={}, headers=run)
+    assert plan_run.status_code == 403 and "(group runs)" in plan_run.json()["message"], plan_run.text
+    a = tables.audit
+    written = sql(world.db, select(a.c.target).where(a.c.action == "run_access.write").order_by(a.c.id))
+    assert any(" POST " + path("run") + " 200" in row[0] for row in written), written
 
 
 def test_the_night_shifts_pause_and_the_releases_leave_each_other_alone(world):
