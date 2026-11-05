@@ -29508,32 +29508,6 @@
                 }
             }
         ],
-        "./evo_agents/kg/cli_bench.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 51,
-                    "endColumn": 56,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 51,
-                    "endColumn": 56,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 46,
-                    "endColumn": 51,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/kg/cli_graph.py": [
             {
                 "code": "reportAttributeAccessIssue",

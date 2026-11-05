@@ -209,6 +209,7 @@ def cmd_run(args) -> int:
         records: dict[str, list[dict]] = {s: [] for s in options.searches}
         with kg_settings.overriding(options.tuning):
             for bench in benches:
+                assert cache is not None  # a bench asked means its cache was named
                 if graph is not None and not corpus.is_corpus(bench):
                     raise datasets.BenchError(f"--strategy asks the graphs of corpus sets, not of {bench}")
                 if corpus.is_corpus(bench):
