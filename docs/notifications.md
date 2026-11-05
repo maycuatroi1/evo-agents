@@ -263,8 +263,9 @@ in its session on the same worker.
 
 `wake_at` is when it wakes at the latest: `--until` (a time with a timezone, or a span such as `+6h`), at most
 `MAX_WAIT_DAYS` (7) days ahead, and that far when only `--on` is given. `wake_on` is the event that wakes it sooner: an
-event of the run's project in hub_events of kind `--on` (`plan.step`, `canvas.claim`, `canvas.baseline`,
-`signal.posted`, `srs.version.approved`, `tasks.status`, or a kind a core plugin records of its own) whose payload
+event of the run's project in hub_events of kind `--on` (`plan.step`, `github.workflow_run`, `canvas.claim`,
+`canvas.baseline`, `signal.posted`, `srs.version.approved`, `tasks.status`, or a kind a core plugin records of its own)
+whose payload
 contains each `--contains` pair (JSONB containment), written after the wait was asked.
 
 `plan.step` is a step's status of a plan set or changed on the hub, whatever wrote it: `evo-agents hub plan step`, the
@@ -279,7 +280,30 @@ evo-agents worker wait --reason "Step 8 of northwind-launch ships the API this s
   --on plan.step --contains plan=northwind-launch --contains step=8 --contains status=done --until +12h --step 3
 ```
 
-The hub reads `plan` and `step` of a `plan.step` wait as text, so `step=8` matches the step whose id is 8. On each pass,
+The hub reads `plan` and `step` of a `plan.step` wait as text, so `step=8` matches the step whose id is 8.
+
+`github.workflow_run` is a run of a GitHub Actions workflow that completed or had a job fail
+(`evo_agents.hub.server.workflow_waits`). GitHub tells the hub nothing of Actions: the hub serves no GitHub webhook and
+its Apps subscribe to no event, so it reads the runs that open waits name, on each pass of the reaper before the waits
+wake, with the workers' App (a token with actions read, as the watch of a release tag's CI uses). A webhook would wake a
+wait seconds sooner but needs a public route, a secret and the App subscribed to `workflow_run` on every installation,
+and still a poll for a delivery GitHub drops; a minute is little beside a CI of twenty. The wait names the run's id (the
+`databaseId` of `gh run list`) and its repo (`owner/name`, the project's name for it, or nothing when the project has
+one GitHub repo); the route refuses with 422 a repo that is not the project's, a run GitHub does not know, a hub
+without the App and an installation that does not grant actions read, so the agent waits with `--until` alone instead.
+The payload holds `repo`, `run_id`, `attempt`, `workflow`, `head_branch`, `head_sha`, `status` and `conclusion` as
+GitHub says them, `failed` (a job of the attempt failed, or the run did), `failed_jobs` (their names) and `url`; the hub
+records one for each attempt when its first job fails while the run goes on, and one when it completes. A wait that
+names the run alone wakes on the first failed job: a tag whose CI job failed publishes nothing, since `build` needs
+`ci` in `release.yml`, and run #1641 slept until 03:37 UTC with ten jobs failed by 03:12, so the agent fixes it forward
+at once. `--contains status=completed` waits for the end alone, `--contains attempt=2` for a later attempt:
+
+```bash
+evo-agents worker wait --reason "CI of v0.58.0: fix forward on a red job, else go on once it published" \
+  --on github.workflow_run --contains repo=maycuatroi1/evo-agents --contains run_id=41959528589 --until +90m --step 14
+```
+
+On each pass,
 every minute, the reaper answers every open wait whose event or time came, before it parks or expires runs: the decision
 is `answered` by nobody (`answered_by` null, which only a wait may be; migration 0140), its `answer_text` the message
 the agent gets, which names the decision, the event with its payload or the time, and the reason. A parked run is

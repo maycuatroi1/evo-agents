@@ -243,7 +243,8 @@ PLAN_WAIT_NOTE = (
     "In this plan run, a command in the background is for work on this machine, such as tests or a build. Never wait "
     "in this session for something elsewhere (the CI of a commit or a tag, a package on an index, a build or a run on "
     "the hub, a deploy): no Monitor, no loop that sleeps, no long sleep, no watch. Wait with `evo-agents worker wait` "
-    "and end your turn: the run parks, holds no worker, and this session goes on when the wait wakes."
+    "(a GitHub Actions run: --on github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID) and end your "
+    "turn: the run parks, holds no worker, and this session goes on when the wait wakes."
 )
 # What the agent is told when its background commands ended and the CLI opened no turn for them.
 FOLLOW_UP = (

@@ -255,7 +255,8 @@ async def recover_runs(
 ) -> dict:
     """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
     whose lease ran out ends as ``end_held`` says, the waits whose time or event came wake their runs
-    (``run_waits.wake_waits``), a run that waited ``decision_wait`` for an answer, or waits only for a time or an
+    (``run_waits.wake_waits``, after ``workflow_waits.poll`` read at GitHub the workflow runs they name with
+    ``github_app``), a run that waited ``decision_wait`` for an answer, or waits only for a time or an
     event of the hub, is parked and one parked for
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
@@ -300,8 +301,9 @@ async def recover_runs(
                     reason=reason,
                 )
             ] += 1
-    from evo_agents.hub.server import run_waits  # it moves runs through this module
+    from evo_agents.hub.server import run_waits, workflow_waits  # it moves runs through this module
 
+    await workflow_waits.poll(engine, github_app, batch)  # the workflow runs waits name, read at GitHub: their events
     await run_waits.wake_waits(engine, batch)  # first, so a wait that came wakes before its run is parked or expires
     await park_waiting(engine, batch, decision_wait, ended)
     await run_waits.resume_answered(engine, batch)  # a run parked in the pass its wait woke, the answer untaken

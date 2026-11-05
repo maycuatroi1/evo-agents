@@ -1,7 +1,9 @@
 """The hub's own events of a project, which the Loop reads by cursor (plan living-lean-canvas, criterion a6; plan
 loop-engine, criterion a3, adds an approved version of an SRS document and a change of a task's status to the same
 table), and on which the wait of a plan run wakes (``evo_agents.hub.server.run_waits``); a step's status of a plan,
-set or changed, joined them so a run can wait on another plan's step (``evo_agents.hub.plan_step_status``).
+set or changed, joined them so a run can wait on another plan's step (``evo_agents.hub.plan_step_status``), and a
+run of a GitHub Actions workflow that completed or had a job fail, which the hub reads for the waits that name it
+(``evo_agents.hub.server.workflow_waits``), so a run can wait on the CI of a tag or a deploy.
 
 The table hub_events (0077) is only ever added to: one row per event, its project, its kind, its payload and when it
 was written, with an id that only grows. ``record`` writes one in the caller's transaction, the transaction that made
@@ -43,6 +45,7 @@ SRS_APPROVED = "srs.version.approved"  # a version of an SRS document, approved 
 SRS_USE_CASE_APPROVED = "srs.use_case.approved"  # one use case of a version in review, approved (core plugin srs)
 TASK_STATUS = "tasks.status"  # a task's status, set or changed (``evo_agents.hub.task_status``)
 PLAN_STEP = "plan.step"  # a step's status of a plan, set or changed (``evo_agents.hub.plan_step_status``)
+WORKFLOW_RUN = "github.workflow_run"  # a run of a GitHub Actions workflow a wait names, completed or with a job failed
 KINDS = (
     CLAIM,
     BASELINE,
@@ -51,6 +54,7 @@ KINDS = (
     TASK_STATUS,
     PLAN_STEP,
     SRS_USE_CASE_APPROVED,
+    WORKFLOW_RUN,
 )  # what this release writes
 KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 OWN_PREFIX = "plugin."  # a kind a core plugin's Loop rule records of its own: plugin.<id, - made _>.<name>
@@ -111,6 +115,7 @@ __all__ = [
     "SRS_APPROVED",
     "SRS_USE_CASE_APPROVED",
     "TASK_STATUS",
+    "WORKFLOW_RUN",
     "HubEvent",
     "OWN_PREFIX",
     "after",
