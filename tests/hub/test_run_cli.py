@@ -791,7 +791,7 @@ def test_dispatch_list_and_show_print_what_the_hub_answered(hub, monkeypatch, ca
 
     table = ok(runs_of(hub, monkeypatch, capsys, "reader", "list", "--limit", "2"))
     lines = table.out.splitlines()
-    header = ["RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED", "(UTC)"]
+    header = ["RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED", "(UTC)", "COST"]
     assert lines[0].split() == header
     assert lines[1].split()[:9] == [f"#{two}", "step", "queued", PLAN, "2", "Queue", "any", "-", OWNER]
     assert lines[2].split()[:9] == [

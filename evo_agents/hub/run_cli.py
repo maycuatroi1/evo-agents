@@ -71,6 +71,7 @@ from evo_agents.hub.run_cli_options import (
 )
 from evo_agents.hub.run_cli_outputs import register_outputs
 from evo_agents.hub.run_cli_send import register_send
+from evo_agents.hub.run_cli_spend import spend_lines, usd
 from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from evo_agents.hub.runs import (
     EVENT_KINDS,
@@ -491,11 +492,13 @@ def cmd_list(args) -> int:
             run["worker"] or "-",
             run["dispatched_by"],
             when(run["queued_at"]),
+            usd((run.get("spend") or {}).get("cost_usd")),
         )
         for run in listed["runs"]
     ]
     if rows:
-        table(("RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED (UTC)"), rows)
+        heads = ("RUN", "KIND", "STATE", "PLAN", "STEP", "TITLE", "RUNTIME", "WORKER", "BY", "QUEUED (UTC)", "COST")
+        table(heads, rows)
     counts = ", ".join(f"{count} {state}" for state, count in listed["counts"].items() if count)
     shown = len(rows)
     print(f"{shown} of {listed['total']} run(s) of project {project}" + (f"; by state: {counts}" if counts else ""))
@@ -626,6 +629,7 @@ def _results(run: dict) -> list[tuple[str, str]]:
         lines.append(("diffstat", ", ".join(parts) or json.dumps(stat)))
     for index, result in enumerate(run["verify"] or ()):
         lines.append(("verify" if index == 0 else "", _verify_text(result)))
+    lines += spend_lines(run.get("spend"))
     if run["usage"]:
         lines.append(("usage", _clip(json.dumps(run["usage"], ensure_ascii=False, separators=(",", ":")), RAW_CHARS)))
     texts = [("error", run["error"]), ("cause", run.get("failure_cause")), ("evidence", run["evidence"])]

@@ -430,7 +430,7 @@ The Loop's own numbers (work items by state and by goal) join the figure once th
 The lens `kg_entity_map` (plan kg-entities-to-code, criterion a3) maps a project's entities to its code for strategy
 `entity-graph-agent` (`docs/kg-strategies.md`). It takes no turn on a night: like `kg_init` and `kg_questions` it is
 on demand (`review.ON_DEMAND_LENSES`), and the hub queues its review run
-(`evo_agents/hub/server/kg_entity_map_run.py`, migration 0210) on the project's default agent pool, under the review
+(`evo_agents/hub/server/kg_entity_map_run.py`, migration 0212) on the project's default agent pool, under the review
 cost cap of the charter (`kg_init.HUB_CAP_USD`), with the pool's login and no API key.
 
 - **When.** The first successful build under the strategy, when the project has had no such run; a writer's call,

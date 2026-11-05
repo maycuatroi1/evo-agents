@@ -27,10 +27,10 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import extract, func, insert, literal, select, table, update
+from sqlalchemy import delete, extract, func, insert, literal, select, table, update
 
 from evo_agents.harness import plan_digest
-from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, tables
+from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, spend_store, tables
 from evo_agents.hub.config import ConfigError, load_config
 from evo_agents.hub.server import run_reaper, run_state, update_now, worker_placement
 from evo_agents.hub.server.app import create_app
@@ -1173,6 +1173,60 @@ def test_a_run_past_its_timeout_and_a_parked_one_cancelled_keep_the_usage_their_
     assert recover(client) == {"lost": 0, "failed": 1, "cancelled": 1, "parked": 0}
     assert of_run(hub_db, late, "state", "usage") == [("failed", TOLD)]
     assert of_run(hub_db, parked, "state", "usage") == [("cancelled", TOLD)]
+
+
+def usage_costs(client, worker: dict, run_id: int, costs: list[float], after: int = 0) -> None:
+    """The worker of ``run_id`` sends a turn of TURNS's first tokens for each of the session's running ``costs``."""
+    events = [
+        {
+            "seq": seq,
+            "at": datetime.now(UTC).isoformat(),
+            "kind": "usage_update",
+            "body": {"usage": TURNS[0][0], "cost": {"amount": cost, "currency": "USD"}},
+        }
+        for seq, cost in enumerate(costs, start=after + 1)
+    ]
+    posted = client.post(f"/v1/worker/runs/{run_id}/events", json={"events": events}, headers=worker["headers"])
+    assert posted.status_code == 200, posted.text
+
+
+def test_a_running_run_shows_what_it_spent_so_far_and_one_that_goes_on_in_its_session_its_own_share(
+    client, hub, hub_db
+):
+    worker = add_worker(client, hub["owner"], "mac-mini", slots=2)
+    first, second = (dispatched(client, hub["owner"], [key])[0]["id"] for key in (2, 4))
+    claim(client, worker)
+    claim(client, worker)
+    moved(client, worker, first, "running", session_id="s-1")
+    usage_events(client, worker, first)
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{first}", headers=hub["owner"]).json()
+    assert shown["state"] == "running" and shown["usage"] is None, "its worker reported no usage yet"
+    spend = shown["spend"]
+    assert spend["cost_usd"] == 2.75 and spend["reported_usd"] == 2.75 and spend["estimated_usd"] is None
+    assert spend["tokens"] == {
+        "input": 14,
+        "output": 250,
+        "cache_read": 21000,
+        "cache_write": 0,
+        "cache_write_1h": 0,
+        "reasoning": 0,
+        "total": 21264,
+    }
+    assert [model["model"] for model in spend["models"]] == [""] and spend["sessions"] == 1
+    states = {"state": ["leased", "running"]}
+    listed = client.get(f"/v1/projects/{PROJECT}/runs", params=states, headers=hub["owner"]).json()
+    assert {run["id"]: (run["spend"] or {}).get("cost_usd") for run in listed["runs"]} == {first: 2.75, second: None}
+    moved(client, worker, second, "running", session_id="s-1")  # it goes on in the first run's session
+    usage_costs(client, worker, second, [3.0, 3.5])
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{second}", headers=hub["owner"]).json()
+    assert shown["spend"]["reported_usd"] == pytest.approx(0.75), "the first run's 2.75 is its own"
+    assert shown["spend"]["tokens"]["input"] == 2 * TURNS[0][0]["input_tokens"]
+    s = tables.run_spend
+    sql(hub_db, delete(s).where(s.c.run_id == first))
+    set_run(hub_db, first, spend_at=None)
+    assert client.portal.call(spend_store.record_pending, client.app.state.engine)["left"] == 0
+    assert sql(hub_db, select(s.c.reported_usd).where(s.c.run_id == first)) == [(2.75,)]
+    assert of_run(hub_db, first, "spend_at")[0][0] is not None
 
 
 def test_a_heartbeat_keeps_when_the_worker_became_stable_and_one_that_comes_late_starts_it_again(client, hub, hub_db):

@@ -4847,7 +4847,8 @@
       "started": "Bắt đầu",
       "duration": "Thời lượng",
       "attempt": "Lần chạy",
-      "cost": "Chi phí"
+      "cost": "Chi phí",
+      "costEstimated": "{cost} (ước tính theo giá niêm yết)"
     },
     "stepLine": "{plan}, bước {step}",
     "stepLineProject": "{project}, {plan}, bước {step}",
@@ -5288,6 +5289,27 @@
         "cacheWrite": "Ghi cache {count}.",
         "noneYet": "Chưa có số liệu",
         "noneEnded": "Runtime không báo số liệu"
+      },
+      "spend": {
+        "title": "Chi phí",
+        "sessions": "{count} phiên",
+        "noCost": "Không có chi phí",
+        "tokens": "{count} token",
+        "split": "{reported} theo runtime báo, {estimated} ước tính theo giá niêm yết",
+        "source": {
+          "reported": "theo runtime báo",
+          "estimated": "ước tính theo giá niêm yết",
+          "mixed": "runtime báo và ước tính",
+          "none": "không có chi phí báo hay ước tính được"
+        },
+        "parts": {
+          "input": "vào {count}",
+          "cacheRead": "đọc cache {count}",
+          "cacheWrite": "ghi cache {count}",
+          "output": "ra {count}"
+        },
+        "note": "Phần run này tự tiêu, theo model: phiên nó chạy tiếp chỉ tính phần của nó.",
+        "noteLive": "Phần run này đã tiêu đến giờ, theo model, cập nhật theo từng báo cáo usage."
       },
       "stepSessions": {
         "title": "Phiên của từng bước",

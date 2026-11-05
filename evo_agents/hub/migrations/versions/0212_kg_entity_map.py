@@ -1,7 +1,7 @@
 """The runs that map a project's entities to its code, and their lens.
 
-Revision ID: 0210
-Revises: 0209
+Revision ID: 0212
+Revises: 0211
 Create Date: 2026-11-06
 
 kg_entity_map_runs holds each run that maps the entities of a project whose strategy is entity-graph-agent to its code
@@ -22,8 +22,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0210"
-down_revision = "0209"
+revision = "0212"
+down_revision = "0211"
 branch_labels = None
 depends_on = None
 

@@ -1270,6 +1270,8 @@ def test_a_run_the_hub_gives_back_after_a_stall_takes_its_leases_again_and_goes_
     async def run_it(hub: FakeHub, daemon: Daemon):
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
         await wait_for(reached.exists, "the agent to start")
+        # the worker reports running after its agent starts, so the agent can get here first on a loaded host
+        assert await hub.wait_state(run_id, "running", timeout=WAIT) == "running"
         asks = hub.credential_calls.count(("ask", run_id))
         hub.lose(run_id)  # the host stalled past the lease
         hub.reattach(run_id)  # and its heartbeat came back soon, its next attempt still queued

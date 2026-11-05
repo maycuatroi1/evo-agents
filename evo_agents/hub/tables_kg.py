@@ -504,7 +504,7 @@ ENTITY_MAP_VIAS = ("first_build", "stale", "manual")  # what asked for an entity
 
 
 def entity_map_runs(metadata: MetaData) -> Table:
-    """kg_entity_map_runs (0210), added to ``metadata``: each run that maps a project's entities to its code
+    """kg_entity_map_runs (0212), added to ``metadata``: each run that maps a project's entities to its code
     (``evo_agents.hub.server.kg_entity_map_run``, lens kg_entity_map). What asked for it (``via``: the first build under
     strategy entity-graph-agent, citations gone stale, a call), the reasons, the build it read, the review run of the
     agent it queued, the maps that run posted, the revision of each item the run's sink read when it was queued

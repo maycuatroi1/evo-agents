@@ -59,7 +59,7 @@ from pydantic import UUID4, AwareDatetime, BaseModel, Field, model_validator
 from sqlalchemy import DateTime, and_, bindparam, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, runs, tables
+from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.blobs import GET_TTL
 from evo_agents.hub.server import attachment_store, audit, tool_stats
 from evo_agents.hub.server import plans as plan_routes
@@ -392,6 +392,8 @@ async def store_events(
     await conn.execute(count.where(r.c.id == run_id))
     if state in runs.TERMINAL_STATES:  # the spool's last events, after the end: the figures take them in
         await tool_stats.record(conn, run_id)
+    if any(event.kind == "usage_update" for event in fresh):  # what the run spent so far, whatever its state
+        await spend_store.record_safely(conn, run_id)
     if any(event.kind == "system" and chat_runs.SETUP_FIELD in event.body for event in fresh):
         await wake_run_chat(conn, run_id)  # a step of a chat run's setup: its thread shows it (chat_progress)
     await notify_events(conn, run_id)

@@ -20,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     SmallInteger,
     Table,
@@ -505,6 +506,8 @@ runs = Table(
     _when("last_activity_at"),
     # The proof of each acceptance criterion its step names, as the worker of a run of one step reported it (0186).
     Column("proofs", JSONB(none_as_null=True)),
+    _when("spend_at"),  # when run_spend last took in its usage reports; NULL: never yet (0210)
+    Column("spend_transcripts", Text),  # a local run's: the transcripts its run_spend was read from (0211)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -601,6 +604,35 @@ run_tool_stats = Table(
     Column("skills", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
     PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
+)
+
+# What each run spent, by agent session and model, from its usage reports (evo_agents.hub.run_spend, 0210)
+
+run_spend = Table(
+    "run_spend",
+    metadata,
+    Column("run_id", BigInteger, nullable=False),
+    Column("session", Text, nullable=False),  # the agent session's id; '' when the run reported none
+    Column("model", Text, nullable=False),  # '' when the runtime named none
+    Column("input_tokens", BigInteger, nullable=False, server_default="0"),
+    Column("output_tokens", BigInteger, nullable=False, server_default="0"),
+    Column("cache_read_tokens", BigInteger, nullable=False, server_default="0"),
+    Column("cache_write_tokens", BigInteger, nullable=False, server_default="0"),
+    Column("cache_write_1h_tokens", BigInteger, nullable=False, server_default="0"),
+    Column("reasoning_tokens", BigInteger, nullable=False, server_default="0"),
+    Column("reported_usd", Numeric(14, 6, asdecimal=False)),  # NULL: the runtime reported no cost
+    Column("estimated_usd", Numeric(14, 6, asdecimal=False)),  # NULL: nothing to price, or no price for the model
+    Column("reports", Integer, nullable=False),
+    Column("ends", JSONB, nullable=False),  # the totals it reported last: where the session stands for its next run
+    _stamp("updated_at"),
+    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_spend_run_id_fkey"),
+    PrimaryKeyConstraint("run_id", "session", "model", name="run_spend_pkey"),
+)
+Index(  # the spend of the latest earlier run of a session (spend_store.bases)
+    "run_spend_session_idx",
+    run_spend.c.session,
+    run_spend.c.run_id.desc(),
+    postgresql_where=run_spend.c.session != "",
 )
 
 # The review runs of the night shift: the night's figures, and what the Reviewer finds and proposes (0014)

@@ -18,7 +18,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
-from evo_agents.hub import guard, proofs, runs, tables
+from evo_agents.hub import guard, proofs, runs, spend_store, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
@@ -303,6 +303,13 @@ def _reported_columns(body: StateReport) -> dict:
     return {name: value for name, value in columns.items() if value is not None}
 
 
+async def _spent(conn, run_id: int, columns: dict) -> None:
+    """Take in what run ``run_id`` spent when a report gave its usage or its session (``spend_store``): a run whose
+    usage reports were not kept counts its usage."""
+    if "usage" in columns or "session_id" in columns:
+        await spend_store.record_safely(conn, run_id)
+
+
 async def apply_state_report(app_state, user: Principal, run_id: int, body: StateReport) -> Run:
     """Move a run this worker holds, as the transition table lets a worker. Once a move out of the held states
     commits, the GitHub tokens of the leases it gave back are revoked, before the answer."""
@@ -317,6 +324,7 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
                 # ended (done, failed, review) keeps what it ended with: a resend after it writes nothing
                 r = tables.runs
                 await conn.execute(update(r).values(**news).where(r.c.id == run_id))
+                await _spent(conn, run_id, news)
             return await run_view(conn, run_id)
         await _check_move(conn, run_id, row, body)
         await _check_answer(conn, run_id, kind, body)
@@ -339,6 +347,7 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
                 columns=columns,
                 token_id=user.token_id,
             )
+        await _spent(conn, run_id, columns)
         if body.state == "waiting" and kind == "author":
             from evo_agents.hub.server import author_chat  # it reads runs through this package
             from evo_agents.hub.server.loop.author_mode import turn_ended

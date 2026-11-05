@@ -4847,7 +4847,8 @@
       "started": "Started",
       "duration": "Duration",
       "attempt": "Attempt",
-      "cost": "Cost"
+      "cost": "Cost",
+      "costEstimated": "{cost} (estimated at list prices)"
     },
     "stepLine": "{plan}, step {step}",
     "stepLineProject": "{project}, {plan}, step {step}",
@@ -5288,6 +5289,27 @@
         "cacheWrite": "Cache write {count}.",
         "noneYet": "Nothing reported yet",
         "noneEnded": "Nothing reported"
+      },
+      "spend": {
+        "title": "Spend",
+        "sessions": "{count, plural, one {# session} other {# sessions}}",
+        "noCost": "No cost",
+        "tokens": "{count} tokens",
+        "split": "{reported} reported, {estimated} estimated at list prices",
+        "source": {
+          "reported": "as reported",
+          "estimated": "estimated at list prices",
+          "mixed": "reported and estimated",
+          "none": "no cost reported or priced"
+        },
+        "parts": {
+          "input": "in {count}",
+          "cacheRead": "cache read {count}",
+          "cacheWrite": "cache write {count}",
+          "output": "out {count}"
+        },
+        "note": "What this run spent itself, by model: a session it went on in counts only its own share.",
+        "noteLive": "What this run spent so far, by model, as its usage reports come."
       },
       "stepSessions": {
         "title": "Step sessions",

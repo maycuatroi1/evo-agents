@@ -69,6 +69,7 @@ RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hu
 RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")  # a chat run's session; null otherwise
 RUN_KEYS += ("principal", "autonomy")  # whom it acts for, and the autonomy snapshot (docs/autonomy.md)
 RUN_KEYS += ("selector", "tolerations")  # where it goes: the labels it asks of its worker, the taints it tolerates
+RUN_KEYS += ("spend",)  # what it spent itself, by model, from its usage reports (evo_agents.hub.run_spend)
 RUN_KEYS += ("plan_progress",)  # a plan run's steps done of its plan; null for any other kind
 RUN_KEYS += ("as_owner", "as_owner_since")  # its owner lets it call the hub as them, since then (server/run_access.py)
 RUN_KEYS += ("model_used", "routing")  # the model its runtime used, and what the model routing did (null: none)
