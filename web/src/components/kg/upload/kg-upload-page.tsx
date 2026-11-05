@@ -15,7 +15,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { uploadLevels } from "@/lib/kg/upload-labels";
-import { initRunFor, kgInitRunsQuery, kgUploadsQuery, uploadMoving } from "@/lib/kg/upload-queries";
+import { initRunFor, kgInitRunsQuery, kgPipelineQuery, kgUploadsQuery, uploadMoving } from "@/lib/kg/upload-queries";
 import {
   forgetUpload,
   type PendingUpload,
@@ -148,6 +148,9 @@ function UploadList({ project, error }: { project: string; error: ApiErrorInfo |
   const list = uploads.status === "success" ? uploads.data.uploads : [];
   const anyBuilt = list.some((upload) => upload.build_id != null);
   const init = useQuery({ ...kgInitRunsQuery(browserApi, project, list.some(uploadMoving)), enabled: anyBuilt });
+  // The newest upload shows its pipeline: its links name the pipeline's own kg_init run (the same read, cached once).
+  const newest = list[0];
+  const flow = useQuery({ ...kgPipelineQuery(browserApi, project, newest?.id ?? 0), enabled: newest != null });
   return (
     <section className="flex flex-col gap-3" aria-labelledby="kg-uploads-title" data-testid="kg-uploads">
       <h2 id="kg-uploads-title" className="text-base font-semibold">
@@ -164,7 +167,7 @@ function UploadList({ project, error }: { project: string; error: ApiErrorInfo |
                   key={upload.id}
                   project={project}
                   upload={upload}
-                  initRun={initRunFor(upload, init.data?.runs)}
+                  initRun={initRunFor(upload, init.data?.runs, index === 0 ? flow.data?.init_id : undefined)}
                   pipeline={index === 0}
                 />
               ))}

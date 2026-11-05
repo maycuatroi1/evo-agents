@@ -9,8 +9,9 @@
   project's admins, through their channels, linking the graph or the Upload data page. A replaced upload is marked
   told with no notice.
 
-The build is the one the upload queued; the kg_init run is the first of the project whose build is that one or later
-(a run takes the newest build as it starts), and the rebuild the one its decision queued. A build whose worker
+The build is the one the upload queued; the kg_init run is the newest of the project whose build is that one or later
+(a run takes the newest build as it starts), so a run asked for again after one failed, or one that followed a later
+build, replaces it and only the newest counts; and the rebuild is the one its decision queued. A build whose worker
 stopped queued the next one of the project (``kg_build.STOPPED``), which the flow follows in its place. Logs name the project and
 the upload, never an item.
 """
@@ -104,12 +105,16 @@ async def _build(conn: AsyncConnection, build_id: int | None, project_id: int) -
 
 
 async def _init(conn: AsyncConnection, project_id: int, build_id: int) -> tuple[dict | None, dict | None]:
-    """(the first kg_init run of the project on build ``build_id`` or later, a run in flight from before)."""
+    """(the newest kg_init run of the project on build ``build_id`` or later, which alone counts; else a run in flight
+    from before)."""
     t = tables.kg_init_runs
     columns = (t.c.id, t.c.state, t.c.build_id, t.c.agent_run_id, t.c.body, t.c.error)
     found = (
         await conn.execute(
-            select(*columns).where(t.c.project_id == project_id, t.c.build_id >= build_id).order_by(t.c.id).limit(1)
+            select(*columns)
+            .where(t.c.project_id == project_id, t.c.build_id >= build_id)
+            .order_by(t.c.id.desc())
+            .limit(1)
         )
     ).first()
     if found is not None:

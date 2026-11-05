@@ -156,7 +156,7 @@ def derive(
     rebuild: Mapping | None = None,
 ) -> dict:
     """The flow of ``upload`` (its state, uploaded_at, files, error, build_id, replaced_by): ``build`` the build it
-    queued, ``init`` the first kg_init run whose build is that one or later, ``waiting`` a kg_init run in flight from
+    queued, ``init`` the newest kg_init run whose build is that one or later, ``waiting`` a kg_init run in flight from
     before when ``init`` is None, ``rebuild`` the build the Curator's decision queued; each a mapping of its row.
     {state, phase, phases, error}: ``phase`` the phase running or failed, None once ready."""
     phases, read = _upload(upload)
