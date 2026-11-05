@@ -39,11 +39,14 @@ class AskHub(FakeHub):
         self.decisions = 100
         self.answered: dict[int, int] = {}  # decision id -> status the machine's report gets
         self.inbox: list[dict] = []
+        self.silent_at: int | None = None  # the decision whose question gets no answer in time
 
     def send(self, method, url, headers, data, timeout):
         path = url.removeprefix(URL)
         body = json.loads(data) if data else None
         if method == "POST" and path == f"{BASE}/decisions":
+            if self.silent_at == self.decisions + 1:
+                raise Unreachable("timed out")
             self.calls.append((method, path, body))
             self.decisions += 1
             self.state = "waiting"
@@ -126,6 +129,23 @@ def test_the_picks_of_a_multiselect_question_are_reported_as_text_and_a_single_p
     reported = [(p, b) for m, p, b in hub.calls if p.endswith("/answered")]
     assert reported == [
         (f"{BASE}/decisions/101/answered", {"text": "SRS, tasks (core); Isolated"}),
+        (f"{BASE}/decisions/102/answered", {"option": "2"}),
+    ]
+
+
+def test_the_questions_the_hub_took_before_one_it_did_not_still_get_their_answers(own_home, monkeypatch, capsys):
+    hub = ask_hub(monkeypatch)
+    hub.silent_at = 103  # the third question gets no answer in time, as the fourth of local run #1624's dialog did
+    questions = [*DIALOG["questions"][:2], {"question": "Ship it?", "options": [{"label": "Now"}, {"label": "Later"}]}]
+    asked = payload(own_home, tool_name="AskUserQuestion", tool_use_id="toolu_ask", tool_input={"questions": questions})
+    assert fire("local-ask", asked, monkeypatch, capsys) == (0, "", "")
+    assert [e["decision"] for e in session_file(own_home)["asks"]["toolu_ask"]] == [101, 102]
+    hub.silent_at = None
+    answers = {f"Which database? {SECRET}": "Postgres", "Run the migration?": "No", "Ship it?": "Now"}
+    assert fire("local-tool", {**asked, "tool_response": {"answers": answers}}, monkeypatch, capsys) == (0, "", "")
+    reported = [(p, b) for m, p, b in hub.calls if p.endswith("/answered")]
+    assert reported == [
+        (f"{BASE}/decisions/101/answered", {"option": "1"}),
         (f"{BASE}/decisions/102/answered", {"option": "2"}),
     ]
 
