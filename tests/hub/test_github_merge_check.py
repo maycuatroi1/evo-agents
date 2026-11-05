@@ -228,6 +228,29 @@ def test_github_merge_check_a_conflict_with_the_base_fails_it_with_needs_a_rebas
     assert woke.state == "answered" and "needs a rebase" in woke.answer_text and "gh pr merge" not in woke.answer_text
 
 
+def test_github_merge_check_passes_signs_its_judge_weighed_and_fails_on_a_hidden_check(world):
+    """Run #1673 failed pull request #462 unjudged on the golden contract additions its plan asked for: in a merge
+    check the Judge weighs the signs, and its pass holds; a failed hidden check still fails it, saying how it ended."""
+    ask(world)
+    checks_pass(world)
+    spec, headers = judge_run(world)
+    sign = {"kind": "golden_changed", "path": "tests/golden/cli-contract.json", "line": None, "text": "golden"}
+    passed = verdict(world, spec, headers, HEAD, signs=[sign])
+    assert passed.status_code == 200, passed.text
+    assert passed.json()["passed"] and passed.json()["state"] == "judging", passed.json()
+
+    moved(world.client, world.worker, spec["id"], "verifying", "done")
+    opened(world, NEWER)
+    ask(world)
+    checks_pass(world)
+    spec, headers = judge_run(world)
+    hidden = [{"index": 1, "exit_code": 2, "duration_ms": 900}]
+    failed = verdict(world, spec, headers, NEWER, signs=[sign], hidden=hidden)
+    assert failed.status_code == 200, failed.text
+    assert (failed.json()["passed"], failed.json()["state"]) == (False, "failed")
+    assert "1 hidden check(s) of the project failed (exit 2 after 0.9 s" in failed.json()["reason"]
+
+
 def test_github_merge_check_refuses_a_repo_left_off_another_branch_and_a_fork(world):
     put_policy(world.client, world.headers["owner"], policy("off"))
     off = ask(world)

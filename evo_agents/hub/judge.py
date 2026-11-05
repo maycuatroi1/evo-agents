@@ -84,6 +84,15 @@ MAX_PLAN_ID_CHARS = 100
 JUDGE_CHECK_NAME = "evo-agents Judge"  # the check run the hub writes on a pull request
 JUDGE_ATTEMPTS = 3  # judge runs of one change that end without a verdict before it is left open
 JUDGE_KEY_HEADER = "X-Evo-Judge-Key"  # a judge run's own credential, which its claim hands the daemon alone
+SETUP_EXITS = frozenset({2, 126, 127})  # what a check that could not set up or start exits with: usage, not found
+SETUP_MS = 5000  # a failed check this fast with one of SETUP_EXITS most likely never reached the change
+# Said to the Judge of a merge check after what the worker ran when the diff showed signs of score hacking.
+WEIGH_SIGNS = (
+    "\nThe signs of score hacking above do not fail the pull request by themselves: weigh each against the plan. "
+    "A sign the plan asks for (an acceptance criterion or a step that changes a golden file, a verify command or a "
+    "test's expectations) is no finding; a sign the plan does not ask for is a finding of its dimension, with the "
+    "path, and fails it.\n"
+)
 Verdict = Literal["pass", "fail"]
 VERDICTS: tuple[str, ...] = get_args(Verdict)
 MAX_REASONS_CHARS = 8000
@@ -274,10 +283,33 @@ def final_verdict(
         reasons.append(f"{hidden_count - len(hidden)} hidden check(s) of the project did not run")
     hidden_failed = [item for item in hidden if item.get("exit_code") != 0]
     if hidden_failed:
-        reasons.append(f"{len(hidden_failed)} hidden check(s) of the project failed")
+        reasons.append(f"{len(hidden_failed)} hidden check(s) of the project failed{hidden_exits(hidden_failed)}")
     if agent != "pass":
         reasons.append("the Judge did not pass it" if agent == "fail" else "the Judge gave no verdict")
     return not reasons, reasons
+
+
+def hidden_exits(failed: list[dict]) -> str:
+    """How the failed hidden checks ``failed`` ended, for the Builder, who never reads what they run: each one's exit
+    code and time, and a word when each failed fast as a check that could not set up does (run #1675 ran the whole
+    suite to find what two checks that exited 2 within a second wanted)."""
+    told = []
+    for item in failed:
+        code, ms = item.get("exit_code"), item.get("duration_ms")
+        took = f" after {ms / 1000:.1f} s" if isinstance(ms, int) and not isinstance(ms, bool) else ""
+        told.append(f"exit {code}{took}")
+    setup = all(
+        item.get("exit_code") in SETUP_EXITS
+        and isinstance(item.get("duration_ms"), int)
+        and item["duration_ms"] < SETUP_MS
+        for item in failed
+    )
+    hint = (
+        ": failing this fast, the checks most likely could not set up, which is not the change's to fix"
+        if setup
+        else ""
+    )
+    return f" ({', '.join(told)}{hint})"
 
 
 def read_verdict(text: str) -> tuple[str | None, str]:

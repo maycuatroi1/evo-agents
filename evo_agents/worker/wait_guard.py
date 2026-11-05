@@ -16,6 +16,9 @@ worker could not self-update while it was held.
   (``while``, ``until``, ``for``) that sleeps LOOP_SLEEP seconds or more, or runs a command that blocks until something
   elsewhere ends (WATCHERS: ``gh run watch``, ``gh pr checks --watch``, ``watch``, ``evo-agents hub run logs --follow``).
 
+It refuses too, through ``evo_agents.worker.broad_tests``, a Bash command that runs a broad test selection (the whole
+suite, a directory, more than ``broad_tests.MAX_FILES`` files, or a ``timeout`` over ``broad_tests.MAX_SECONDS``).
+
 The refusal tells the agent to wait with ``evo-agents worker wait`` and end its turn. Work on the machine (tests, a
 build) still runs in the background as before. The thresholds are a reading of the commands such waits use, not a
 boundary: a poll kept in a script, or a sleep under another name, gets past the hook, so the plan run's prompt
@@ -29,6 +32,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+from evo_agents.worker import broad_tests
 from evo_agents.worker.command_classes import SHELLS, shell_script, simple_commands
 
 SLEEP_LIMIT = 120  # seconds one sleep may last before it is a wait
@@ -149,13 +153,27 @@ class WaitGuard:
             return waiting(given["command"])
         return None
 
+    def too_broad(self, tool_name: str, tool_input) -> str | None:
+        """What in the call of ``tool_name`` is a broad test run (``broad_tests.broad``); None otherwise."""
+        given = tool_input if isinstance(tool_input, Mapping) else {}
+        if tool_name == "Bash" and isinstance(given.get("command"), str):
+            return broad_tests.broad(given["command"])
+        return None
+
     def check(self, tool_name: str, tool_input) -> str | None:
         """Why the call is refused, recorded as an event of the run; None when it goes through. A command the guard
         cannot read goes through: the guard is a second layer, not the boundary."""
         try:
             what = self.refused(tool_name, tool_input)
+            broad = self.too_broad(tool_name, tool_input) if what is None else None
         except Exception:
             return None
+        if broad is not None:
+            self.record(
+                f"Refused {tool_name}: the plan run would run a broad test selection ({broad})",
+                {"tool": tool_name, "what": broad, "verdict": "refused", "run": self.run_id, "rule": "tests"},
+            )
+            return broad_tests.REFUSAL.format(what=broad)
         if what is None:
             return None
         self.record(

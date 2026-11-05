@@ -1657,6 +1657,34 @@ def test_session_per_step_resumes_a_parked_run_in_the_session_of_its_step(machin
     assert hub.runs[resumed]["summary"] == "Step 1: Alpha after the wait.\n\nStep 2: Beta."
 
 
+def test_session_per_step_resumes_a_run_parked_on_a_later_step_in_the_session_of_that_step(machine):
+    """Runs #1664, #1669 and #1675 went on with step 6 in the session of step 1, the one the hub held for the run."""
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [*step_one_done(), {"result": {"summary": "Alpha."}}],
+            f"plan:{PLAN}/2": [{"cli": ["step", "2", "in_progress"]}, ask("2")],
+            f"plan:{PLAN}/resume": [*step_two_done(), {"result": {"summary": "Beta after the wait."}}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        parked = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
+        assert await hub.wait_state(parked, "waiting", "done", "failed") == "waiting", hub.texts(parked)
+        hub.park(parked)
+        await wait_for(lambda: parked not in daemon.runs, "the parked run to free its slot")
+        hub.runs[parked]["session_id"] = machine.starts()[0]["session"]  # as the hub holds it: the first one reported
+        resumed = hub.answer(1, "yes")
+        assert await hub.wait_state(resumed, "done", "failed") == "done", (hub.runs[resumed], hub.texts(resumed))
+        found.update(resumed=resumed)
+
+    with_daemon(machine, run_it)
+    step_one, asked, again = machine.starts()
+    assert asked["session"] != step_one["session"], "step 2 had a session of its own"
+    assert again["run"] == found["resumed"] and again["resume"] == asked["session"], "step 2 goes on in its session"
+    assert "in the session of step 2" in again["prompt"]
+
+
 def test_a_plan_run_without_session_per_step_keeps_one_session(machine):
     machine.scenarios(
         {
