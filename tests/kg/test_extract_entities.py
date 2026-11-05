@@ -17,9 +17,9 @@ from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import make_project, write
 
-MODEL = """import json, sys
+MODEL = """import json, pathlib, sys, uuid
 req = json.load(sys.stdin)
-open(sys.argv[1], "a").write("call\\n")
+pathlib.Path(sys.argv[1], uuid.uuid4().hex).write_text("call")
 name = "Search" if "Intro" in req["text"] else "Obsolete"
 print(json.dumps({
     "nodes": [{"kind": "Concept", "name": name, "evidence": "from the text", "conf": 0.8},
@@ -32,13 +32,15 @@ print(json.dumps({
 
 
 def calls(log: Path) -> int:
-    return len(log.read_text().splitlines()) if log.exists() else 0
+    """The model's calls: a file each, since appends to one file from calls at once lost a line on Windows."""
+    return sum(1 for _ in log.iterdir()) if log.exists() else 0
 
 
 def setup(tmp_path, kg_env, *, sink=None, extra=None, enable=True, level="internal"):
     project = make_project(tmp_path, kg_env)
-    script, log = tmp_path / "model.py", tmp_path / "calls.log"
+    script, log = tmp_path / "model.py", tmp_path / "calls"
     script.write_text(MODEL)
+    log.mkdir()
     mapping = {
         "model": "fake-1",
         "command": [sys.executable, str(script), str(log)],

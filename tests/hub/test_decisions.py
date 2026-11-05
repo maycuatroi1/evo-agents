@@ -782,8 +782,8 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
         client,
         worker,
         parked_id,
-        category="external_send",
-        question="Post the staging link to the team now?",
+        category="architecture",
+        question="Keep the run cache in SQLite?",
         step_key=None,
     )
     park(hub_db, parked_id)
