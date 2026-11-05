@@ -16,6 +16,7 @@ import { PROJECT_NAME, queryKeys } from "@/lib/queries";
 
 import { ArchiveDrop } from "./archive-drop";
 import { FieldError, FieldHint, UploadFields } from "./upload-fields";
+import { UploadPipeline } from "./upload-pipeline";
 import { UploadProgress } from "./upload-progress";
 import { isBusy, type UploadPhase, useUpload } from "./use-upload";
 
@@ -158,6 +159,7 @@ export function NewProjectPage() {
             }
           />
         )}
+        {state.phase === "done" ? <UploadPipeline project={project} upload={state.upload.id} /> : null}
       </form>
     </div>
   );

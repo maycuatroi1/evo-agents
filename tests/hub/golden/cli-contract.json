@@ -11212,6 +11212,51 @@
         }
       }
     },
+    "hub kg pipeline": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--upload"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "upload_id",
+          "project",
+          "state",
+          "phase",
+          "phases",
+          "error",
+          "build_id",
+          "init_id",
+          "rebuild_id",
+          "told_at"
+        ],
+        "schema": "KgPipeline"
+      }
+    },
     "hub kg profile": {
       "positionals": [],
       "options": [
@@ -11707,6 +11752,14 @@
         },
         {
           "flags": [
+            "--no-wait"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -11736,7 +11789,8 @@
           "error",
           "replaced_by",
           "sent",
-          "kept"
+          "kept",
+          "pipeline"
         ],
         "schema": "KgUpload"
       }
@@ -32029,110 +32083,6 @@
           }
         }
       },
-      "/v1/kg/{project}/config": {
-        "put": {
-          "tags": [
-            "kg"
-          ],
-          "summary": "Put Config",
-          "description": "Save the knowledge config the project's graph is built with.",
-          "operationId": "put_config_v1_kg__project__config_put",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KgConfig"
-                }
-              }
-            }
-          },
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ConfigSaved"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Content"
-            },
-            "503": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Service Unavailable"
-            }
-          }
-        }
-      },
       "/v1/kg/{project}/runs": {
         "get": {
           "tags": [
@@ -32770,114 +32720,6 @@
           }
         }
       },
-      "/v1/kg/{project}/sources/{source}": {
-        "delete": {
-          "tags": [
-            "kg"
-          ],
-          "summary": "Forget Source",
-          "description": "Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the\nhub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before).",
-          "operationId": "forget_source_v1_kg__project__sources__source__delete",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "source",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200,
-                "pattern": "^[^\\x00-\\x1f\\x7f/]+$",
-                "description": "a source's id",
-                "title": "Source"
-              },
-              "description": "a source's id"
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SourceForgotten"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Content"
-            },
-            "503": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Service Unavailable"
-            }
-          }
-        }
-      },
       "/v1/kg/{project}/tools/{tool}": {
         "post": {
           "tags": [
@@ -33006,6 +32848,218 @@
                 }
               },
               "description": "Bad Gateway"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/config": {
+        "put": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Put Config",
+          "description": "Save the knowledge config the project's graph is built with.",
+          "operationId": "put_config_v1_kg__project__config_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgConfig"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ConfigSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/sources/{source}": {
+        "delete": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Forget Source",
+          "description": "Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the\nhub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before).",
+          "operationId": "forget_source_v1_kg__project__sources__source__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$",
+                "description": "a source's id",
+                "title": "Source"
+              },
+              "description": "a source's id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SourceForgotten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             }
           }
         }
@@ -35807,6 +35861,92 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/uploads/{upload_id}/pipeline": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Pipeline",
+          "description": "Where the flow after upload ``upload_id`` stands.",
+          "operationId": "pipeline_v1_kg__project__uploads__upload_id__pipeline_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "upload_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the upload, as `hub kg uploads` lists it",
+                "title": "Upload Id"
+              },
+              "description": "the upload, as `hub kg uploads` lists it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgPipeline"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -46654,6 +46794,305 @@
           }
         }
       },
+      "/v1/projects/{project}/curator/figures": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Figures",
+          "description": "The figures curator.collect counted for a night of the project: the latest, or ``night``'s.",
+          "operationId": "show_figures_v1_projects__project__curator_figures_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "night",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the night, the local date its window opened; the latest",
+                "title": "Night"
+              },
+              "description": "the night, the local date its window opened; the latest"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NightFiguresView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/findings": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Finding",
+          "description": "Record a finding of the review run this worker holds, with evidence the hub finds.",
+          "operationId": "record_finding_v1_worker_runs__run_id__findings_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Finding"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/proposals": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Proposal",
+          "description": "Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,\ncomputes its tier and drops it when it repeats a proposal rejected lately.",
+          "operationId": "record_proposal_v1_worker_runs__run_id__proposals_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Proposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/curator/findings/{finding_id}": {
         "get": {
           "tags": [
@@ -46897,305 +47336,6 @@
           },
           "responses": {
             "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/Proposal"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Content"
-            }
-          }
-        }
-      },
-      "/v1/projects/{project}/curator/figures": {
-        "get": {
-          "tags": [
-            "curator"
-          ],
-          "summary": "Show Figures",
-          "description": "The figures curator.collect counted for a night of the project: the latest, or ``night``'s.",
-          "operationId": "show_figures_v1_projects__project__curator_figures_get",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "night",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "date"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "the night, the local date its window opened; the latest",
-                "title": "Night"
-              },
-              "description": "the night, the local date its window opened; the latest"
-            },
-            {
-              "name": "X-Evo-Sink",
-              "in": "header",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Evo-Sink"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/NightFiguresView"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "422": {
-              "description": "Validation Error",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "/v1/worker/runs/{run_id}/findings": {
-        "post": {
-          "tags": [
-            "worker protocol"
-          ],
-          "summary": "Record Finding",
-          "description": "Record a finding of the review run this worker holds, with evidence the hub finds.",
-          "operationId": "record_finding_v1_worker_runs__run_id__findings_post",
-          "parameters": [
-            {
-              "name": "run_id",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "integer",
-                "maximum": 9223372036854775807,
-                "minimum": 1,
-                "title": "Run Id"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FindingIn"
-                }
-              }
-            }
-          },
-          "responses": {
-            "201": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/Finding"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Content"
-            }
-          }
-        }
-      },
-      "/v1/worker/runs/{run_id}/proposals": {
-        "post": {
-          "tags": [
-            "worker protocol"
-          ],
-          "summary": "Record Proposal",
-          "description": "Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,\ncomputes its tier and drops it when it repeats a proposal rejected lately.",
-          "operationId": "record_proposal_v1_worker_runs__run_id__proposals_post",
-          "parameters": [
-            {
-              "name": "run_id",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "integer",
-                "maximum": 9223372036854775807,
-                "minimum": 1,
-                "title": "Run Id"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProposalIn"
-                }
-              }
-            }
-          },
-          "responses": {
-            "201": {
               "description": "Successful Response",
               "content": {
                 "application/json": {
@@ -123662,6 +123802,169 @@
           ],
           "title": "KgPartsAsk"
         },
+        "KgPipeline": {
+          "properties": {
+            "upload_id": {
+              "type": "integer",
+              "title": "Upload Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "running",
+                "ready",
+                "failed",
+                "replaced"
+              ],
+              "title": "State"
+            },
+            "phase": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phase",
+              "description": "the phase running, or the one that failed; null once ready or replaced"
+            },
+            "phases": {
+              "items": {
+                "$ref": "#/components/schemas/KgPipelinePhase"
+              },
+              "type": "array",
+              "title": "Phases",
+              "description": "in the order they run"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the failed phase failed"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build the upload queued"
+            },
+            "init_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Init Id",
+              "description": "the kg_init run of the Curator after that build"
+            },
+            "rebuild_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rebuild Id",
+              "description": "the build the Curator's decision queued"
+            },
+            "told_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Told At",
+              "description": "when the sender and the admins got the notice kg_pipeline"
+            }
+          },
+          "type": "object",
+          "required": [
+            "upload_id",
+            "project",
+            "state",
+            "phase",
+            "phases",
+            "error",
+            "build_id",
+            "init_id",
+            "rebuild_id",
+            "told_at"
+          ],
+          "title": "KgPipeline"
+        },
+        "KgPipelinePhase": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "enum": [
+                "uploading",
+                "extracting",
+                "building",
+                "entities",
+                "questions",
+                "curator"
+              ],
+              "title": "Name"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "running",
+                "done",
+                "skipped",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detail",
+              "description": "what it does or waits for, what it gave, or why it failed or was skipped"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "KgPipelinePhase"
+        },
         "KgPruned": {
           "properties": {
             "dry_run": {
@@ -123704,30 +124007,6 @@
             "pending"
           ],
           "title": "KgPruned"
-        },
-        "KgSharedPoolSet": {
-          "properties": {
-            "owner": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
-              "title": "Owner",
-              "description": "the login of the member who owns the pool"
-            },
-            "pool": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
-              "title": "Pool",
-              "description": "the pool's name"
-            }
-          },
-          "additionalProperties": false,
-          "type": "object",
-          "required": [
-            "owner",
-            "pool"
-          ],
-          "title": "KgSharedPoolSet",
-          "description": "The member's pool to name the shared KG pool."
         },
         "KgSharedPool": {
           "properties": {
@@ -123772,6 +124051,30 @@
           ],
           "title": "KgSharedPool",
           "description": "The shared KG pool of the hub."
+        },
+        "KgSharedPoolSet": {
+          "properties": {
+            "owner": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+              "title": "Owner",
+              "description": "the login of the member who owns the pool"
+            },
+            "pool": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+              "title": "Pool",
+              "description": "the pool's name"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "owner",
+            "pool"
+          ],
+          "title": "KgSharedPoolSet",
+          "description": "The member's pool to name the shared KG pool."
         },
         "KgSyncProject": {
           "properties": {
@@ -131821,7 +132124,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 34,
+              "maxItems": 35,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -164964,7 +165267,8 @@
                 "today",
                 "kg_optimize",
                 "agent_pool_empty",
-                "srs_adopt"
+                "srs_adopt",
+                "kg_pipeline"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -165032,7 +165336,8 @@
                 "today",
                 "kg_optimize",
                 "agent_pool_empty",
-                "srs_adopt"
+                "srs_adopt",
+                "kg_pipeline"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

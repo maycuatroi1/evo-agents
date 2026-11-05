@@ -122,6 +122,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   market_license_expiring: { icon: CalendarClock },
   today: { icon: CalendarDays },
   kg_optimize: { icon: Gauge },
+  kg_pipeline: { icon: DatabaseZap },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */

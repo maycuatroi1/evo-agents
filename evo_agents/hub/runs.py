@@ -420,6 +420,7 @@ NOTICE_KINDS = (
     "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
     "agent_pool_empty",  # a run of an agent in pool mode queued with no node of its pool ready (``agent_placement``)
     "srs_adopt",  # a plan holds use cases of an SRS goal's backlog out of the Loop's builds (``server.loop.notices``)
+    "kg_pipeline",  # the flow after a kg upload ended ready or failed, to its sender and admins (``server.kg_pipeline``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

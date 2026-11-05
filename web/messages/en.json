@@ -6761,7 +6761,8 @@
       "today": "Today's summary",
       "market_install_request": "A project asks for a plugin of the market",
       "market_license_expiring": "The licence of a paid plugin ends soon",
-      "kg_optimize": "The report of a KG optimize run"
+      "kg_optimize": "The report of a KG optimize run",
+      "kg_pipeline": "The knowledge graph of an upload is ready or failed"
     },
     "item": {
       "unread": "Unread",
@@ -11960,6 +11961,31 @@
       "open": "Open the project's uploads",
       "forbidden": "Creating a project takes a hub admin, or a register right you have not used yet.",
       "taken": "A project named {name} already exists. Choose another name."
+    },
+    "pipeline": {
+      "title": "Knowledge graph",
+      "running": "Knowledge graph build in progress: {phase}",
+      "ready": "Knowledge graph ready",
+      "open": "Open the graph",
+      "failed": "Knowledge graph build failed at {phase}",
+      "reason": "Reason",
+      "replaced": "A later upload of this source replaced this one, so it built no graph.",
+      "loadFailed": "Could not read where the build stands: {message}",
+      "phases": {
+        "uploading": "Upload",
+        "extracting": "Read the archive",
+        "building": "Build the graph",
+        "entities": "Entities",
+        "questions": "Starter questions",
+        "curator": "Curator setup"
+      },
+      "states": {
+        "pending": "Waiting",
+        "running": "Running",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
     }
   }
 }

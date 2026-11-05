@@ -12,6 +12,8 @@ import type { KgUpload } from "@/lib/kg/upload";
 import type { KgInitRun } from "@/lib/kg/upload-queries";
 import { buildsHref, initRunHref } from "@/lib/kg/routes";
 
+import { UploadPipeline } from "./upload-pipeline";
+
 const LINK = "rounded-xs text-[13px] font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline max-md:py-3";
 
 /**
@@ -72,8 +74,21 @@ function Counts({ counts, testId }: { counts: Record<string, number>; testId: st
   );
 }
 
-/** One upload's report: what it is, then (read) the files read, skipped and kept without text by reason, and links. */
-export function UploadReport({ project, upload, initRun }: { project: string; upload: KgUpload; initRun: KgInitRun | null }) {
+/**
+ * One upload's report: what it is, then (read) the files read, skipped and kept without text by reason, and links. With
+ * `pipeline`, the flow after it too, phase by phase, until the graph is ready or a phase failed.
+ */
+export function UploadReport({
+  project,
+  upload,
+  initRun,
+  pipeline = false,
+}: {
+  project: string;
+  upload: KgUpload;
+  initRun: KgInitRun | null;
+  pipeline?: boolean;
+}) {
   const t = useTranslations("kgUpload.reports");
   const size = useByteSize();
   const reason = useReason();
@@ -128,6 +143,7 @@ export function UploadReport({ project, upload, initRun }: { project: string; up
           ) : null}
         </span>
       </div>
+      {pipeline ? <UploadPipeline project={project} upload={upload.id} /> : null}
       {upload.state === "failed" && upload.error ? (
         <p className="text-sm text-danger [overflow-wrap:anywhere]" data-testid="kg-upload-error">
           <span className="font-medium">{t("error")}: </span>

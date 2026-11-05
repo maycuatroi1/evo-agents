@@ -503,8 +503,9 @@ def uploads(metadata: MetaData) -> Table:
     """kg_uploads (0200), added to ``metadata``: each archive a writer sends as a source of a project's graph
     (``evo_agents.hub.server.kg_uploads``), by S3 multipart upload to ``object_key``. Its source, label (by names),
     sender, name, size, SHA-256 and part size, the store's multipart id while parts come, its state, what reading it
-    found (``report``) and the build that follows. One upload of the same archive by the same sender to the same source
-    is in flight at a time, so a second call resumes the first."""
+    found (``report``), the build that follows, and when the hub told how the flow after it ended (``told_at``, 0206,
+    ``evo_agents.hub.server.kg_pipeline``). One upload of the same archive by the same sender to the same source is in
+    flight at a time, so a second call resumes the first."""
     name = "kg_uploads"
     table = Table(
         name,
@@ -528,6 +529,7 @@ def uploads(metadata: MetaData) -> Table:
         _stamp("updated_at"),
         _when("uploaded_at"),
         _when("ended_at"),
+        _when("told_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["build_id"], ["kg_builds.id"], ondelete="SET NULL", name=f"{name}_build_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),

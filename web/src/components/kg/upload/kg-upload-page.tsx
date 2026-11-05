@@ -159,8 +159,14 @@ function UploadList({ project, error }: { project: string; error: ApiErrorInfo |
             <EmptyState icon={FileArchive} title={t("emptyTitle")} description={t("emptyDescription")} testId="kg-uploads-empty" />
           ) : (
             <ul className="rounded-md border bg-card shadow-raised">
-              {rows.map((upload) => (
-                <UploadReport key={upload.id} project={project} upload={upload} initRun={initRunFor(upload, init.data?.runs)} />
+              {rows.map((upload, index) => (
+                <UploadReport
+                  key={upload.id}
+                  project={project}
+                  upload={upload}
+                  initRun={initRunFor(upload, init.data?.runs)}
+                  pipeline={index === 0}
+                />
               ))}
             </ul>
           )
@@ -175,7 +181,7 @@ function UploadList({ project, error }: { project: string; error: ApiErrorInfo |
  * shown) and joined; the hub then reads it as the source upload.{name} and builds the graph. A reload mid-way keeps
  * what was sent: the page lists the unfinished uploads, and the same file chosen again sends only what is missing.
  * Under the form, each upload's report: files read, files skipped and kept without text by reason, its build and the
- * kg_init run after it.
+ * kg_init run after it; the newest also shows the flow the hub runs after it, until the graph is ready.
  */
 export function KgUploadPage({ project, errors }: { project: string; errors: KgUploadErrors }) {
   const info = useHubQuery(projectQuery(browserApi, project), errors.project);

@@ -327,6 +327,10 @@ def _include_kg_routes(app: FastAPI) -> None:
 
     app.include_router(kg_uploads.router)
 
+    from evo_agents.hub.server import kg_pipeline
+
+    app.include_router(kg_pipeline.router)
+
     from evo_agents.hub.server import kg_upload_relay
 
     app.include_router(kg_upload_relay.router)

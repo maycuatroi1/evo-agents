@@ -81,6 +81,7 @@ from evo_agents.hub.server import (
     kg_health,
     kg_init,
     kg_optimize,
+    kg_pipeline,
     memory_promotion,
     product_figures,
     runtime_figures,
@@ -915,6 +916,11 @@ async def collect(
         except Exception:  # the night shift goes on without moving its kg_init runs
             log.exception("moving the kg_init runs on failed")
             initiated = {"failed": 1}
+    try:
+        told = await kg_pipeline.tell(engine)
+    except Exception:  # the night shift goes on without telling the end of the uploads' flows
+        log.exception("telling the end of the kg uploads' flows failed")
+        told = {"failed": 1}
     async with engine.begin() as conn:
         due = (await conn.execute(due_schedules(now))).all()
         reopened = await reopen_deferred(conn)
@@ -935,4 +941,6 @@ async def collect(
         found["kg_optimize"] = optimized
     if initiated:
         found["kg_init"] = initiated
+    if told:
+        found["kg_pipeline"] = told
     return found if measured is None else {**found, "graphs": measured}

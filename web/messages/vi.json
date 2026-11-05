@@ -6761,7 +6761,8 @@
       "today": "Tóm tắt Today",
       "market_install_request": "Một dự án xin cài plugin từ market",
       "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn",
-      "kg_optimize": "Báo cáo của một lượt tối ưu KG"
+      "kg_optimize": "Báo cáo của một lượt tối ưu KG",
+      "kg_pipeline": "Knowledge graph của một lượt tải lên đã sẵn sàng hoặc thất bại"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -11960,6 +11961,31 @@
       "open": "Mở các lượt tải lên của dự án",
       "forbidden": "Tạo dự án cần admin hub, hoặc một quyền đăng ký bạn chưa dùng.",
       "taken": "Đã có dự án tên {name}. Hãy chọn tên khác."
+    },
+    "pipeline": {
+      "title": "Knowledge graph",
+      "running": "Đang build knowledge graph: {phase}",
+      "ready": "Knowledge graph đã sẵn sàng",
+      "open": "Mở graph",
+      "failed": "Build knowledge graph thất bại ở bước {phase}",
+      "reason": "Lý do",
+      "replaced": "Một lượt tải lên sau của nguồn này đã thay lượt này, nên lượt này không build graph.",
+      "loadFailed": "Không đọc được tình trạng build: {message}",
+      "phases": {
+        "uploading": "Tải lên",
+        "extracting": "Đọc tệp nén",
+        "building": "Build graph",
+        "entities": "Thực thể",
+        "questions": "Câu hỏi khởi đầu",
+        "curator": "Curator cấu hình"
+      },
+      "states": {
+        "pending": "Đang chờ",
+        "running": "Đang chạy",
+        "done": "Xong",
+        "skipped": "Bỏ qua",
+        "failed": "Thất bại"
+      }
     }
   }
 }
