@@ -2,7 +2,8 @@
 
 ``check`` reads the setting and says what is wrong with it, ``enabled`` gives the mapping a strategy turns on,
 ``Spend`` counts one build's calls, tokens and cost against the ceiling, and ``prompt`` and ``parse_answer`` are the
-question a model gets and the reading of its answer. ``evo_agents.kg.entities`` imports each name it uses from here, so
+question a model gets and the reading of its answer, ``quoted`` and ``quote_line`` the reading of a quote it gives.
+``evo_agents.kg.entities`` imports each name it uses from here, so
 callers keep reading them there.
 """
 
@@ -21,6 +22,11 @@ DEFAULT_MAX_COST = 5.0
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 STYLES = ("closed", "lightrag")
 OTHER = "Other"  # the kind of a lightrag entity whose type is none of the mapping's node kinds
+MAX_EVIDENCE = 200
+QUOTE_JOIN = " … "  # between the quotes of a model that gave its evidence as a list of them
+# How a lightrag answer is read, part of its mapping's digest (``entities.config_digest``): raising it asks the memo's
+# lightrag items again. 2: evidence given as a list of quotes is read as its quotes, not as the list's repr.
+LIGHTRAG_READ = 2
 
 FIELDS = {
     "items",  # record kinds read; the prose kinds when absent
@@ -216,6 +222,29 @@ def parse_answer(text: str) -> dict:
     if not isinstance(data, dict):
         raise EntitiesError("the model's answer is not an object")
     return data
+
+
+def quoted(value) -> tuple[str, list[str]]:
+    """A node's or an edge's ``evidence`` as one quote of at most MAX_EVIDENCE characters, and the quotes it holds. A
+    model may give a list of quotes, one for each passage that names the entity: they are joined by QUOTE_JOIN, never
+    kept as the list's repr. Any other value is read as its text, as before."""
+    if isinstance(value, list):
+        quotes = [v.strip() for v in value if isinstance(v, str) and v.strip()]
+        return QUOTE_JOIN.join(quotes)[:MAX_EVIDENCE], quotes
+    text = str(value or "")[:MAX_EVIDENCE]
+    return text, [text]
+
+
+def quote_line(text: str | None, quotes: list[str]) -> int | None:
+    """The line of ``text`` (from 1) the first of ``quotes`` it holds starts on; None when it holds none of them."""
+    if not text:
+        return None
+    for quote in quotes:
+        words = quote.split()
+        found = re.search(r"\s+".join(map(re.escape, words[:8])), text) if words else None
+        if found:
+            return text.count("\n", 0, found.start()) + 1
+    return None
 
 
 def prompt(text: str, node_kinds: list[str], relations: list[str], style: str | None = "closed") -> str:

@@ -151,6 +151,36 @@ def test_the_closed_style_keeps_its_prompt_digest_and_answers():
     }, "a closed answer gets no lightrag field"
 
 
+def test_a_list_of_quotes_is_read_as_its_quotes_with_the_line_of_the_first_the_text_holds():
+    text = "Lumen Bay\n\nThe ferries between Lumen Bay and North Quay run daily.\nThe harbor master of Lumen Bay chairs it."
+    answer = {
+        "nodes": [
+            {"name": "Lumen Bay", "type": "Place", "evidence": ["not in the text", "ferries between Lumen Bay"]},
+            {"name": "North Quay", "type": "Place", "evidence": ["North Quay", 7, ""]},
+            {"name": "Ferry", "type": "Artifact", "evidence": []},
+        ],
+        "edges": [{"src": "Lumen Bay", "dst": "North Quay", "evidence": ["The harbor master", "ferries between"]}],
+    }
+    got = entities._clean(answer, {"Place", "Artifact"}, ["relates_to"], "lightrag", text)
+    bay, quay, ferry = got["nodes"]
+    assert bay["evidence"] == "not in the text … ferries between Lumen Bay" and bay["line"] == 3
+    assert quay["evidence"] == "North Quay" and quay["line"] == 3, "a value that is not a quote is left out"
+    assert ferry["evidence"] == "" and "line" not in ferry
+    (edge,) = got["edges"]
+    assert edge["evidence"] == "The harbor master … ferries between" and edge["line"] == 4
+    assert not any(n["evidence"].startswith("[") for n in got["nodes"]), "never the list's repr"
+    config = {"model": "m", "style": "lightrag"}
+    assert (
+        entities.config_digest(config, ["Place"], ["relates_to"])
+        != sha256(
+            canonical_json(
+                {"model": "m", "node_kinds": ["Place"], "relations": ["relates_to"]}
+                | {"max_chars": entities.DEFAULT_MAX_CHARS, "style": "lightrag", "version": entities.VERSION}
+            )
+        )[:16]
+    ), "the lightrag answers memoized before lists were read are asked again"
+
+
 def test_the_built_in_strategies_and_the_curator_name_the_lightrag_ones():
     found = strategy.builtins()
     for name, path in (("entity-graph", "command"), ("entity-graph-api", "url")):
