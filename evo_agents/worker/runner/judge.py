@@ -113,6 +113,8 @@ class JudgeRun:
         # run #1673 failed pull request #462 on the golden contract additions its plan's criterion a7 asked for.
         self.weighs_signs = self.merge_result
         self.tested: str | None = None  # the commit the checks run at: the head, or its merge with the base
+        self.at: str | None = None  # the commit ``restore`` put the worktree at last, which the watchdog compares with
+        self.moving = False  # while ``restore`` moves the worktree, which the watchdog then leaves alone
         self.conflicts: list[str] | None = None  # where merging the base into the head conflicts
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
         self.dimensions: dict | None = None  # what the Judge of a merge request said of each dimension
@@ -426,10 +428,14 @@ class JudgeRun:
         """Put the worktree back at the commit judged, or at ``at``: what a command of the change wrote in it before
         goes."""
         run, commit = self.run, at or self.head
+        self.moving = True
         try:
             await gitops.restore(cwd, commit, expected_git_dir=self.git_dir, env=gitops.without_hooks(run.daemon.env))
         except gitops.GitError as exc:
             raise RunFailed(f"the worktree {cwd} could not be put back at {commit[:12]}: {exc}") from None
+        finally:
+            self.moving = False
+        self.at = commit
 
     def environment(self, name: str, worktree: Path) -> None:
         """Read what Python environment the change's repo asks of its worktree (``venvs.wanted``, at the commit the
@@ -536,7 +542,12 @@ class JudgeRun:
     # What the parts every kind shares ask of it
 
     def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
+        """The worktree against the commit ``restore`` put it at last: the head, or for a merge check its merge with
+        the base, whose changes of the base are none of the run's (run #1724 was stopped on a protected file main had
+        changed); none while ``restore`` moves it."""
+        if self.moving:
+            return []
+        return [(repo, path, self.at or base) for repo, path, base in self.directory.watched()]
 
     async def diff(self) -> bytes:
         """A judge run changes nothing: no diff is uploaded."""

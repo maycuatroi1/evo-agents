@@ -176,3 +176,22 @@ def test_github_merge_check_has_its_judge_weigh_the_signs_and_posts_a_verdict_ag
     assert [item["exit_code"] for item in sent["hidden"]] == [0], "a merge check's checks know they run for one"
     (start,) = [item for item in machine.starts() if item["run"] == run_id][:1]
     assert judge.WEIGH_SIGNS.strip() in start["prompt"]
+
+
+def test_github_merge_check_is_not_stopped_by_a_protected_file_the_base_changed(machine):  # noqa: F811
+    """Run #1724, the second Judge of pull request #462, was stopped by the watchdog: main had changed a protected file
+    since the head, and the checks run on the head merged with main. The watchdog compares the worktree with the
+    commit the judge put it at."""
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    base_moved(machine, {"curator.yaml": "changed on main\n"})  # a protected path of the charter
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, ["sleep 1"], ["test -f curator.yaml && sleep 1"]), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
+        claim=CHECK,
+    )
+    (sent,) = found["hub"].verdicts
+    assert sent["verdict"] == "pass" and [item["exit_code"] for item in sent["verify"]] == [0]
+    texts = found["hub"].texts(found["run"])
+    assert not any("watchdog" in text for text in texts), texts

@@ -251,6 +251,53 @@ def test_github_merge_check_passes_signs_its_judge_weighed_and_fails_on_a_hidden
     assert "1 hidden check(s) of the project failed (exit 2 after 0.9 s" in failed.json()["reason"]
 
 
+def comments_pass(world) -> dict:
+    from evo_agents.hub.server import merge_comments
+
+    state = world.client.app.state
+    return world.client.portal.call(
+        partial(merge_comments.post, state.engine, state.github_app, "https://hub.example/")
+    )
+
+
+def test_github_merge_check_comments_its_verdict_on_the_pull_request_once_a_head(world):
+    """The owner asked to read the Judges' verdict on the pull request itself: once a check settles, the hub comments
+    on it once for that head, with the checks by number and time, the signs weighed and its judge run on the hub, and
+    keeps the reasons of the safety and security dimensions on the hub."""
+    for found in world.github.installations.values():  # the workers' App opens pull requests: it writes them too
+        found.permissions["pull_requests"] = "write"
+    ask(world)
+    checks_pass(world)
+    spec, headers = judge_run(world)
+    sign = {"kind": "golden_changed", "path": "tests/golden/cli-contract.json", "line": None, "text": "golden"}
+    said = dimensions()
+    said["safety"] = {**said.get("safety", {"verdict": "pass"}), "reason": "SECRET-DETAIL of the safety reading"}
+    timed = [{"command": VERIFY, "exit_code": 0, "duration_ms": 81890}]
+    passed = verdict(world, spec, headers, HEAD, verify=timed, signs=[sign], dimensions=said)
+    assert passed.status_code == 200 and passed.json()["passed"], passed.text
+    moved(world.client, world.worker, spec["id"], "verifying", "done")
+    assert comments_pass(world) == {}, "no comment while it judges"
+    assert checks_pass(world) == {"checks_passed": 1}
+    assert comments_pass(world) == {"commented": 1}
+    assert comments_pass(world) == {}, "one comment a head"
+    ((comment),) = world.github.comments
+    body = comment["body"]
+    assert (comment["number"], comment["app"]) == (7, "workers")
+    assert body.startswith(merge_comments_mark()) and "## evo-agents merge check: passed" in body
+    assert f"| Verify `{VERIFY}` | exit 0 | 81.9 s |" in body
+    assert "golden_changed" in body and f"(https://hub.example/p/{PROJECT}/runs/{spec['id']})" in body
+    assert f"gh pr merge 7 --match-head-commit {HEAD}" in body and "SECRET-DETAIL" not in body
+    m = tables.merge_checks
+    ((stored,),) = sql(world.db, select(m.c.verdict))
+    assert stored["commented"]["head"] == HEAD and stored["commented"]["id"] == comment["id"]
+
+
+def merge_comments_mark() -> str:
+    from evo_agents.hub.server import merge_comments
+
+    return merge_comments.MARK
+
+
 def test_github_merge_check_refuses_a_repo_left_off_another_branch_and_a_fork(world):
     put_policy(world.client, world.headers["owner"], policy("off"))
     off = ask(world)
@@ -338,7 +385,8 @@ def settle_merges(world) -> dict:
     from evo_agents.hub.server import merge_ancestry
 
     state = world.client.app.state
-    return world.client.portal.call(partial(merge_ancestry.settle, state.engine, state.github_app))
+    found = world.client.portal.call(partial(merge_ancestry.settle, state.engine, state.github_app))
+    return {key: value for key, value in found.items() if not key.startswith("comment")}  # the comments' own test
 
 
 def merge_record(world) -> dict:
