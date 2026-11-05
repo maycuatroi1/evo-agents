@@ -1382,6 +1382,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/entity-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Entity Graph
+         * @description The visible entities the most documents mention and the visible relations between them.
+         */
+        get: operations["entity_graph_v1_kg__project__entity_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity-graph/around": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Entity Neighbourhood
+         * @description The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them.
+         */
+        get: operations["entity_neighbourhood_v1_kg__project__entity_graph_around_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Entity
+         * @description One visible entity with the documents that mention it, quoted, and its relations.
+         */
+        get: operations["show_entity_v1_kg__project__entity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/relation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Relation
+         * @description One visible relation between two visible entities, with the documents it was read from.
+         */
+        get: operations["show_relation_v1_kg__project__relation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/clusters": {
         parameters: {
             query?: never;
@@ -18152,6 +18232,37 @@ export interface components {
              */
             max_failed_in_a_row: number;
         };
+        /** Citation */
+        Citation: {
+            /**
+             * Document
+             * @description the id of the document node
+             */
+            document: string;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string | null;
+            /**
+             * Uri
+             * @description the document at the commit its source read, when it has a link
+             */
+            uri: string | null;
+            /**
+             * Quote
+             * @description the model's quote of the passage
+             */
+            quote: string | null;
+            /**
+             * Line
+             * @description the line of the document the quote starts on
+             */
+            line: number | null;
+            /** Description */
+            description: string | null;
+            /** Model */
+            model: string | null;
+        };
         /** Claim */
         Claim: {
             /** @description null when the wait ended without a run; claim again */
@@ -20523,6 +20634,204 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /** EntityDetail */
+        EntityDetail: {
+            graph: components["schemas"]["GraphRef"];
+            node: components["schemas"]["EntityNode"];
+            /** Aliases */
+            aliases: string[];
+            /**
+             * Citations
+             * @description the documents that mention it, by name, at most 50
+             */
+            citations: components["schemas"]["Citation"][];
+            /**
+             * Documents
+             * @description visible documents that mention it
+             */
+            documents: number;
+            /**
+             * Relations
+             * @description its visible relations, heaviest first
+             */
+            relations: components["schemas"]["EntityEdge"][];
+            /**
+             * Neighbours
+             * @description the entities at the other end of those relations
+             */
+            neighbours: components["schemas"]["EntityNode"][];
+        };
+        /** EntityEdge */
+        EntityEdge: {
+            /** Id */
+            id: string;
+            /** Src */
+            src: string;
+            /**
+             * Rel
+             * @description the relation's type: relates_to for an open relation, else the ontology's
+             */
+            rel: string;
+            /** Dst */
+            dst: string;
+            /** Keywords */
+            keywords: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Weight
+             * @description the sum of the strengths read, else the one strength, else 1.0
+             */
+            weight: number;
+            /** Conf */
+            conf: number | null;
+            /** Status */
+            status: string;
+            /** Model */
+            model: string | null;
+            /**
+             * Sources
+             * @description statements of the relation the weight sums, when more than one
+             */
+            sources: number | null;
+            label: components["schemas"]["NodeLabel"];
+        };
+        /** EntityGraph */
+        EntityGraph: {
+            /** @description null until a build of the project succeeded */
+            graph: components["schemas"]["GraphRef"] | null;
+            /** Limit */
+            limit: number;
+            /**
+             * Nodes
+             * @description the entities the most documents mention, most first
+             */
+            nodes: components["schemas"]["EntityGraphNode"][];
+            /**
+             * Edges
+             * @description the visible relations between two of them
+             */
+            edges: components["schemas"]["EntityEdge"][];
+            /**
+             * Total Nodes
+             * @description visible entities of the graph
+             */
+            total_nodes: number;
+            /**
+             * Total Edges
+             * @description visible relations of the graph
+             */
+            total_edges: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** EntityGraphNode */
+        EntityGraphNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @description the model's type of the entity, its kind when it gave none
+             */
+            type: string;
+            /**
+             * Description
+             * @description the model's summary of what the documents say of it, else their one
+             */
+            description: string | null;
+            /**
+             * Docs
+             * @description visible documents that mention it
+             */
+            docs: number;
+            /**
+             * Degree
+             * @description its visible relations to another visible entity
+             */
+            degree: number;
+            /** Status */
+            status: string;
+            /** Conf */
+            conf: number | null;
+            /**
+             * Model
+             * @description the model that stated it
+             */
+            model: string | null;
+            label: components["schemas"]["NodeLabel"];
+            /**
+             * Hop
+             * @description relations from the entity asked for; null in the overview
+             */
+            hop?: number | null;
+        };
+        /** EntityNeighbourhood */
+        EntityNeighbourhood: {
+            graph: components["schemas"]["GraphRef"];
+            /**
+             * Focus
+             * @description the id of the entity shown, when it was asked for by an alias
+             */
+            focus: string;
+            /** Depth */
+            depth: number;
+            /** Limit */
+            limit: number;
+            /** Nodes */
+            nodes: components["schemas"]["EntityGraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["EntityEdge"][];
+            /**
+             * Left Out
+             * @description visible entities within reach that the limit left out
+             */
+            left_out: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** EntityNode */
+        EntityNode: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @description the model's type of the entity, its kind when it gave none
+             */
+            type: string;
+            /**
+             * Description
+             * @description the model's summary of what the documents say of it, else their one
+             */
+            description: string | null;
+            /**
+             * Docs
+             * @description visible documents that mention it
+             */
+            docs: number;
+            /**
+             * Degree
+             * @description its visible relations to another visible entity
+             */
+            degree: number;
+            /** Status */
+            status: string;
+            /** Conf */
+            conf: number | null;
+            /**
+             * Model
+             * @description the model that stated it
+             */
+            model: string | null;
+            label: components["schemas"]["NodeLabel"];
         };
         /** EntityRequest */
         EntityRequest: {
@@ -34561,6 +34870,23 @@ export interface components {
             /** Conf */
             conf: number | null;
         };
+        /** RelationDetail */
+        RelationDetail: {
+            graph: components["schemas"]["GraphRef"];
+            edge: components["schemas"]["EntityEdge"];
+            src: components["schemas"]["EntityNode"];
+            dst: components["schemas"]["EntityNode"];
+            /**
+             * Citations
+             * @description the documents it was read from, at most 50
+             */
+            citations: components["schemas"]["Citation"][];
+            /**
+             * Documents
+             * @description visible documents it was read from
+             */
+            documents: number;
+        };
         /** ReleaseBranch */
         ReleaseBranch: {
             /** Run Id */
@@ -48406,6 +48732,325 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Neighbourhood"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    entity_graph_v1_kg__project__entity_graph_get: {
+        parameters: {
+            query?: {
+                /** @description most entities shown, at most 1000 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityGraph"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    entity_neighbourhood_v1_kg__project__entity_graph_around_get: {
+        parameters: {
+            query: {
+                /** @description an entity's id or alias */
+                id: string;
+                depth?: number;
+                /** @description most entities shown, at most 1000 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityNeighbourhood"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_entity_v1_kg__project__entity_get: {
+        parameters: {
+            query: {
+                /** @description an entity's id or alias */
+                id: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_relation_v1_kg__project__relation_get: {
+        parameters: {
+            query: {
+                /** @description the relation's edge id */
+                id: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationDetail"];
                 };
             };
             /** @description Unauthorized */

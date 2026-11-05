@@ -32,7 +32,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TypeVar
 
-from evo_agents.hub import kg_decisions, kg_map, kg_review
+from evo_agents.hub import kg_decisions, kg_entity_graph, kg_map, kg_review
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg import freshness
@@ -185,6 +185,91 @@ class WebSession(HubSession):
             return {key: kg_decisions.HIDDEN for key in [*nodes, *edges]}
         store, b = self._visible_store()
         return kg_decisions.subjects(store, b, self.visible, nodes, edges)
+
+    def _entity_view(self, store: Store, b: int) -> kg_entity_graph.EntityView:
+        """The entities, relations and mentions of build b this reader sees (``evo_agents.hub.kg_entity_graph``), kept
+        as ``_map_view`` keeps the clusters; call after ``_visible_store``."""
+        key = (self.project.name, self.graph.sha256, b, self.sees_all, self.clearance, self.audience)
+        return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, b, self.seen))
+
+    def _describe(self, label: tuple) -> dict:
+        self._saw(label)
+        assert self.policy is not None
+        return self.policy.describe(Label.of(label))
+
+    def _entity_graph(self, found: kg_entity_graph.EntityView, picked: dict) -> dict:
+        nodes = [kg_entity_graph.node_json(found, found.nodes[nid], self._describe) for nid in picked["nodes"]]
+        edges = [kg_entity_graph.edge_json(e, self._describe) for e in picked["edges"]]
+        return {**picked, "nodes": nodes, "edges": edges}
+
+    def entities(self, limit: int = kg_entity_graph.TOP_NODES) -> dict:
+        """The visible entities the most documents mention, at most ``limit``, and the relations between them."""
+        if self.error:
+            return {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0, "truncated": False}
+        store, b = self._visible_store()
+        found = self._entity_view(store, b)
+        return self._entity_graph(found, kg_entity_graph.top(found, limit))
+
+    def _entity(self, store: Store, b: int, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
+        n = self._lookup(store, entity_id, b)
+        if n is None or n["id"] not in found.nodes:
+            raise NotVisible(entity_id)
+        return n
+
+    def entities_around(self, entity_id: str, depth: int, limit: int) -> dict:
+        """The visible entities within ``depth`` relations of one, at most ``limit``. Raises NotVisible."""
+        if self.error:
+            raise NotVisible(entity_id)
+        store, b = self._visible_store()
+        found = self._entity_view(store, b)
+        focus = self._entity(store, b, found, entity_id)["id"]
+        picked = kg_entity_graph.around(found, focus, depth, limit)
+        out = self._entity_graph(found, picked)
+        for n in out["nodes"]:
+            n["hop"] = picked["hop"][n["id"]]
+        del out["hop"]
+        return {**out, "focus": focus}
+
+    def entity(self, entity_id: str) -> dict:
+        """One visible entity, the documents that mention it and its relations. Raises NotVisible."""
+        if self.error:
+            raise NotVisible(entity_id)
+        store, b = self._visible_store()
+        found = self._entity_view(store, b)
+        n = self._entity(store, b, found, entity_id)
+        citations, total = kg_entity_graph.entity_citations(store, b, found, n["id"])
+        relations = sorted(
+            (found.relations[eid] for eid in found.adjacent.get(n["id"], ())),
+            key=lambda e: (-kg_entity_graph.weight(e), e["id"]),
+        )
+        others = {e["dst"] if e["src"] == n["id"] else e["src"] for e in relations}
+        return {
+            "node": kg_entity_graph.node_json(found, n, self._describe),
+            "aliases": n["aliases"],
+            "citations": citations,
+            "documents": total,
+            "relations": [kg_entity_graph.edge_json(e, self._describe) for e in relations],
+            "neighbours": [kg_entity_graph.node_json(found, found.nodes[o], self._describe) for o in sorted(others)],
+        }
+
+    def relation(self, edge_id: str) -> dict:
+        """One visible relation between two visible entities, with the documents it was read from. Raises
+        NotVisible."""
+        if self.error:
+            raise NotVisible(edge_id)
+        store, b = self._visible_store()
+        found = self._entity_view(store, b)
+        e = found.relations.get(edge_id)
+        if e is None:
+            raise NotVisible(edge_id)
+        citations, total = kg_entity_graph.relation_citations(store, b, e, self.seen)
+        return {
+            "edge": kg_entity_graph.edge_json(e, self._describe),
+            "src": kg_entity_graph.node_json(found, found.nodes[e["src"]], self._describe),
+            "dst": kg_entity_graph.node_json(found, found.nodes[e["dst"]], self._describe),
+            "citations": citations,
+            "documents": total,
+        }
 
     def _degrees(self, store: Store, ids, b: int) -> dict[str, int]:
         """Visible edges of each node of ``ids``, by the same ceiling ``visible`` compares labels with."""

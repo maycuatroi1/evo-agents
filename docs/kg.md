@@ -696,7 +696,7 @@ or undoing a decision queues a build.
 like `same_as`, links become `declared` edges, and deprecations mark their node or edge once the graph is assembled. A
 decision whose ids the graph does not hold is skipped, never an error. A project with no active decision gets no item.
 
-**Effect on the tools.** `kg_search`, `kg_context`, `kg_path` and the web's node search leave deprecated nodes and
+**Effect on the tools.** `kg_search`, `kg_context`, `kg_path`, the web's node search and its entity graph leave deprecated nodes and
 edges out; `kg_impact` does not follow a deprecated edge; `kg_node` of a deprecated node says `deprecated: <reason>
 (decision N)`. Each of `kg_search`, `kg_context`, `kg_node`, `kg_impact` and `kg_path` takes `deprecated: true` to
 include them. A merged id answers as an alias of the node that stayed.

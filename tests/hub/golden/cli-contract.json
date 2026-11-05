@@ -33862,6 +33862,461 @@
           }
         }
       },
+      "/v1/kg/{project}/entity-graph": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Entity Graph",
+          "description": "The visible entities the most documents mention and the visible relations between them.",
+          "operationId": "entity_graph_v1_kg__project__entity_graph_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "most entities shown, at most 1000",
+                "default": 150,
+                "title": "Limit"
+              },
+              "description": "most entities shown, at most 1000"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityGraph"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entity-graph/around": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Entity Neighbourhood",
+          "description": "The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them.",
+          "operationId": "entity_neighbourhood_v1_kg__project__entity_graph_around_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "id",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "description": "an entity's id or alias",
+                "title": "Id"
+              },
+              "description": "an entity's id or alias"
+            },
+            {
+              "name": "depth",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 3,
+                "minimum": 1,
+                "default": 1,
+                "title": "Depth"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "most entities shown, at most 1000",
+                "default": 150,
+                "title": "Limit"
+              },
+              "description": "most entities shown, at most 1000"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityNeighbourhood"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entity": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Show Entity",
+          "description": "One visible entity with the documents that mention it, quoted, and its relations.",
+          "operationId": "show_entity_v1_kg__project__entity_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "id",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "description": "an entity's id or alias",
+                "title": "Id"
+              },
+              "description": "an entity's id or alias"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/relation": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Show Relation",
+          "description": "One visible relation between two visible entities, with the documents it was read from.",
+          "operationId": "show_relation_v1_kg__project__relation_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "id",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "the relation's edge id",
+                "title": "Id"
+              },
+              "description": "the relation's edge id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RelationDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/clusters": {
         "get": {
           "tags": [
@@ -112324,6 +112779,100 @@
           "type": "object",
           "title": "CircuitBreaker"
         },
+        "Citation": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document",
+              "description": "the id of the document node"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "uri": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uri",
+              "description": "the document at the commit its source read, when it has a link"
+            },
+            "quote": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quote",
+              "description": "the model's quote of the passage"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "the line of the document the quote starts on"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "name",
+            "path",
+            "uri",
+            "quote",
+            "line",
+            "description",
+            "model"
+          ],
+          "title": "Citation"
+        },
         "Claim": {
           "properties": {
             "run": {
@@ -117686,6 +118235,471 @@
             "answers"
           ],
           "title": "EntityAnswers"
+        },
+        "EntityDetail": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "node": {
+              "$ref": "#/components/schemas/EntityNode"
+            },
+            "aliases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Aliases"
+            },
+            "citations": {
+              "items": {
+                "$ref": "#/components/schemas/Citation"
+              },
+              "type": "array",
+              "title": "Citations",
+              "description": "the documents that mention it, by name, at most 50"
+            },
+            "documents": {
+              "type": "integer",
+              "title": "Documents",
+              "description": "visible documents that mention it"
+            },
+            "relations": {
+              "items": {
+                "$ref": "#/components/schemas/EntityEdge"
+              },
+              "type": "array",
+              "title": "Relations",
+              "description": "its visible relations, heaviest first"
+            },
+            "neighbours": {
+              "items": {
+                "$ref": "#/components/schemas/EntityNode"
+              },
+              "type": "array",
+              "title": "Neighbours",
+              "description": "the entities at the other end of those relations"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "node",
+            "aliases",
+            "citations",
+            "documents",
+            "relations",
+            "neighbours"
+          ],
+          "title": "EntityDetail"
+        },
+        "EntityEdge": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "src": {
+              "type": "string",
+              "title": "Src"
+            },
+            "rel": {
+              "type": "string",
+              "title": "Rel",
+              "description": "the relation's type: relates_to for an open relation, else the ontology's"
+            },
+            "dst": {
+              "type": "string",
+              "title": "Dst"
+            },
+            "keywords": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keywords"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "weight": {
+              "type": "number",
+              "title": "Weight",
+              "description": "the sum of the strengths read, else the one strength, else 1.0"
+            },
+            "conf": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conf"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "sources": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sources",
+              "description": "statements of the relation the weight sums, when more than one"
+            },
+            "label": {
+              "$ref": "#/components/schemas/NodeLabel"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "src",
+            "rel",
+            "dst",
+            "keywords",
+            "description",
+            "weight",
+            "conf",
+            "status",
+            "model",
+            "sources",
+            "label"
+          ],
+          "title": "EntityEdge"
+        },
+        "EntityGraph": {
+          "properties": {
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GraphRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null until a build of the project succeeded"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/EntityGraphNode"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "the entities the most documents mention, most first"
+            },
+            "edges": {
+              "items": {
+                "$ref": "#/components/schemas/EntityEdge"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "the visible relations between two of them"
+            },
+            "total_nodes": {
+              "type": "integer",
+              "title": "Total Nodes",
+              "description": "visible entities of the graph"
+            },
+            "total_edges": {
+              "type": "integer",
+              "title": "Total Edges",
+              "description": "visible relations of the graph"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "limit",
+            "nodes",
+            "edges",
+            "total_nodes",
+            "total_edges",
+            "truncated"
+          ],
+          "title": "EntityGraph"
+        },
+        "EntityGraphNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "the model's type of the entity, its kind when it gave none"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description",
+              "description": "the model's summary of what the documents say of it, else their one"
+            },
+            "docs": {
+              "type": "integer",
+              "title": "Docs",
+              "description": "visible documents that mention it"
+            },
+            "degree": {
+              "type": "integer",
+              "title": "Degree",
+              "description": "its visible relations to another visible entity"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "conf": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conf"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model that stated it"
+            },
+            "label": {
+              "$ref": "#/components/schemas/NodeLabel"
+            },
+            "hop": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hop",
+              "description": "relations from the entity asked for; null in the overview"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "type",
+            "description",
+            "docs",
+            "degree",
+            "status",
+            "conf",
+            "model",
+            "label"
+          ],
+          "title": "EntityGraphNode"
+        },
+        "EntityNeighbourhood": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "focus": {
+              "type": "string",
+              "title": "Focus",
+              "description": "the id of the entity shown, when it was asked for by an alias"
+            },
+            "depth": {
+              "type": "integer",
+              "title": "Depth"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "nodes": {
+              "items": {
+                "$ref": "#/components/schemas/EntityGraphNode"
+              },
+              "type": "array",
+              "title": "Nodes"
+            },
+            "edges": {
+              "items": {
+                "$ref": "#/components/schemas/EntityEdge"
+              },
+              "type": "array",
+              "title": "Edges"
+            },
+            "left_out": {
+              "type": "integer",
+              "title": "Left Out",
+              "description": "visible entities within reach that the limit left out"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "focus",
+            "depth",
+            "limit",
+            "nodes",
+            "edges",
+            "left_out",
+            "truncated"
+          ],
+          "title": "EntityNeighbourhood"
+        },
+        "EntityNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "the model's type of the entity, its kind when it gave none"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description",
+              "description": "the model's summary of what the documents say of it, else their one"
+            },
+            "docs": {
+              "type": "integer",
+              "title": "Docs",
+              "description": "visible documents that mention it"
+            },
+            "degree": {
+              "type": "integer",
+              "title": "Degree",
+              "description": "its visible relations to another visible entity"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "conf": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conf"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model that stated it"
+            },
+            "label": {
+              "$ref": "#/components/schemas/NodeLabel"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "type",
+            "description",
+            "docs",
+            "degree",
+            "status",
+            "conf",
+            "model",
+            "label"
+          ],
+          "title": "EntityNode"
         },
         "EntityRequest": {
           "properties": {
@@ -131824,6 +132838,57 @@
           ],
           "title": "MergeSample",
           "description": "A merge request drawn for an audit sample, and an admin's answer."
+        },
+        "MergeTriageIn": {
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "rejudge",
+                "return"
+              ],
+              "title": "Action",
+              "description": "rejudge: judge it again from its first Judge, once the system is fixed; return: hand the failure back to the plan run, which caused it after all"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "action",
+            "reason"
+          ],
+          "title": "MergeTriageIn"
+        },
+        "MergeTriaged": {
+          "properties": {
+            "check_id": {
+              "type": "integer",
+              "title": "Check Id"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "judging again after rejudge, failed after return"
+            },
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "check_id",
+            "state",
+            "message_id"
+          ],
+          "title": "MergeTriaged"
         },
         "MergeVerdict": {
           "properties": {
@@ -149984,6 +151049,45 @@
             "conf"
           ],
           "title": "Relation"
+        },
+        "RelationDetail": {
+          "properties": {
+            "graph": {
+              "$ref": "#/components/schemas/GraphRef"
+            },
+            "edge": {
+              "$ref": "#/components/schemas/EntityEdge"
+            },
+            "src": {
+              "$ref": "#/components/schemas/EntityNode"
+            },
+            "dst": {
+              "$ref": "#/components/schemas/EntityNode"
+            },
+            "citations": {
+              "items": {
+                "$ref": "#/components/schemas/Citation"
+              },
+              "type": "array",
+              "title": "Citations",
+              "description": "the documents it was read from, at most 50"
+            },
+            "documents": {
+              "type": "integer",
+              "title": "Documents",
+              "description": "visible documents it was read from"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graph",
+            "edge",
+            "src",
+            "dst",
+            "citations",
+            "documents"
+          ],
+          "title": "RelationDetail"
         },
         "ReleaseBranch": {
           "properties": {
@@ -171072,57 +172176,6 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
-        },
-        "MergeTriageIn": {
-          "properties": {
-            "action": {
-              "type": "string",
-              "enum": [
-                "rejudge",
-                "return"
-              ],
-              "title": "Action",
-              "description": "rejudge: judge it again from its first Judge, once the system is fixed; return: hand the failure back to the plan run, which caused it after all"
-            },
-            "reason": {
-              "type": "string",
-              "maxLength": 600,
-              "minLength": 1,
-              "title": "Reason",
-              "description": "why, for the Decision: line"
-            }
-          },
-          "type": "object",
-          "required": [
-            "action",
-            "reason"
-          ],
-          "title": "MergeTriageIn"
-        },
-        "MergeTriaged": {
-          "properties": {
-            "check_id": {
-              "type": "integer",
-              "title": "Check Id"
-            },
-            "state": {
-              "type": "string",
-              "title": "State",
-              "description": "judging again after rejudge, failed after return"
-            },
-            "message_id": {
-              "type": "integer",
-              "title": "Message Id",
-              "description": "the Decision: line the hub posted in the thread, in the agent's name"
-            }
-          },
-          "type": "object",
-          "required": [
-            "check_id",
-            "state",
-            "message_id"
-          ],
-          "title": "MergeTriaged"
         }
       }
     }

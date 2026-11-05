@@ -11,6 +11,11 @@
   visible edges first, except the groups ``open`` names, and the second step goes on from those alone.
 - GET /v1/kg/{project}/shape: the graph's shape, how many visible edges join each (source kind, edge type, target
   kind); an edge counts only when it and both its nodes are visible.
+- GET /v1/kg/{project}/entity-graph?limit=: the entities the entities step stated that the most visible documents
+  mention (150 by default, at most 1,000) and the visible relations between them (``evo_agents.hub.kg_entity_graph``).
+- GET /v1/kg/{project}/entity-graph/around?id=&depth=&limit=: the entities within 1 to 3 relations of one.
+- GET /v1/kg/{project}/entity?id= and /relation?id=: one entity or relation with the documents it was read from,
+  each with the model's quote, its line and a link to the document.
 
 The build status the pages show comes from GET /v1/kg/{project}/builds (``evo_agents.hub.server.kg``). Nothing here
 writes, queues a build or goes through /mcp.
@@ -35,6 +40,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from evo_agents.hub.kg_entity_graph import CITATIONS, MAX_DEPTH, MAX_ENTITY_NODES, TOP_NODES
 from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphOutdated, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
@@ -365,4 +371,186 @@ async def show_neighbourhood(
         neighbours=data["neighbours"],
         left_out=data["left_out"],
         truncated=data["truncated"],
+    )
+
+
+# The entity graph (``evo_agents.hub.kg_entity_graph``)
+
+EntityId = Annotated[str, Query(alias="id", min_length=1, max_length=1000, description="an entity's id or alias")]
+EntityLimit = Annotated[
+    int, Query(ge=1, le=MAX_ENTITY_NODES, description=f"most entities shown, at most {MAX_ENTITY_NODES}")
+]
+
+
+class EntityNode(BaseModel):
+    id: str
+    kind: str
+    name: str
+    type: str = Field(description="the model's type of the entity, its kind when it gave none")
+    description: str | None = Field(description="the model's summary of what the documents say of it, else their one")
+    docs: int = Field(description="visible documents that mention it")
+    degree: int = Field(description="its visible relations to another visible entity")
+    status: str
+    conf: float | None
+    model: str | None = Field(description="the model that stated it")
+    label: NodeLabel
+
+
+class EntityGraphNode(EntityNode):
+    hop: int | None = Field(default=None, description="relations from the entity asked for; null in the overview")
+
+
+class EntityEdge(BaseModel):
+    id: str
+    src: str
+    rel: str = Field(description="the relation's type: relates_to for an open relation, else the ontology's")
+    dst: str
+    keywords: str | None
+    description: str | None
+    weight: float = Field(description="the sum of the strengths read, else the one strength, else 1.0")
+    conf: float | None
+    status: str
+    model: str | None
+    sources: int | None = Field(description="statements of the relation the weight sums, when more than one")
+    label: NodeLabel
+
+
+class EntityGraph(BaseModel):
+    graph: GraphRef | None = Field(description="null until a build of the project succeeded")
+    limit: int
+    nodes: list[EntityGraphNode] = Field(description="the entities the most documents mention, most first")
+    edges: list[EntityEdge] = Field(description="the visible relations between two of them")
+    total_nodes: int = Field(description="visible entities of the graph")
+    total_edges: int = Field(description="visible relations of the graph")
+    truncated: bool
+
+
+class EntityNeighbourhood(BaseModel):
+    graph: GraphRef
+    focus: str = Field(description="the id of the entity shown, when it was asked for by an alias")
+    depth: int
+    limit: int
+    nodes: list[EntityGraphNode]
+    edges: list[EntityEdge]
+    left_out: int = Field(description="visible entities within reach that the limit left out")
+    truncated: bool
+
+
+class Citation(BaseModel):
+    document: str = Field(description="the id of the document node")
+    name: str
+    path: str | None
+    uri: str | None = Field(description="the document at the commit its source read, when it has a link")
+    quote: str | None = Field(description="the model's quote of the passage")
+    line: int | None = Field(description="the line of the document the quote starts on")
+    description: str | None
+    model: str | None
+
+
+class EntityDetail(BaseModel):
+    graph: GraphRef
+    node: EntityNode
+    aliases: list[str]
+    citations: list[Citation] = Field(description=f"the documents that mention it, by name, at most {CITATIONS}")
+    documents: int = Field(description="visible documents that mention it")
+    relations: list[EntityEdge] = Field(description="its visible relations, heaviest first")
+    neighbours: list[EntityNode] = Field(description="the entities at the other end of those relations")
+
+
+class RelationDetail(BaseModel):
+    graph: GraphRef
+    edge: EntityEdge
+    src: EntityNode
+    dst: EntityNode
+    citations: list[Citation] = Field(description=f"the documents it was read from, at most {CITATIONS}")
+    documents: int = Field(description="visible documents it was read from")
+
+
+@router.get("/{project}/entity-graph", response_model=EntityGraph)
+async def entity_graph(
+    request: Request, project: ProjectName, user: CurrentUser, limit: EntityLimit = TOP_NODES
+) -> EntityGraph:
+    """The visible entities the most documents mention and the visible relations between them."""
+    data, ref = await read_graph(request, user, project, lambda session: session.entities(limit))
+    data = data or {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0, "truncated": False}
+    return EntityGraph(
+        graph=ref,
+        limit=limit,
+        nodes=[EntityGraphNode(**n) for n in data["nodes"]],
+        edges=[EntityEdge(**e) for e in data["edges"]],
+        total_nodes=data["total_nodes"],
+        total_edges=data["total_edges"],
+        truncated=data["truncated"],
+    )
+
+
+async def _entity_read(request: Request, user, project: str, reader):
+    def guarded(session: WebSession):
+        try:
+            return reader(session)
+        except NotVisible:
+            return None
+
+    data, ref = await read_graph(request, user, project, guarded)
+    if ref is None:
+        raise no_graph(project)
+    if data is None:
+        raise HTTPException(404, f"no entity or relation with that id is visible to you in project {project}")
+    return data, ref
+
+
+@router.get("/{project}/entity-graph/around", response_model=EntityNeighbourhood)
+async def entity_neighbourhood(
+    request: Request,
+    project: ProjectName,
+    entity_id: EntityId,
+    user: CurrentUser,
+    depth: Annotated[int, Query(ge=1, le=MAX_DEPTH)] = 1,
+    limit: EntityLimit = TOP_NODES,
+) -> EntityNeighbourhood:
+    """The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them."""
+    data, ref = await _entity_read(request, user, project, lambda s: s.entities_around(entity_id, depth, limit))
+    return EntityNeighbourhood(
+        graph=ref,
+        focus=data["focus"],
+        depth=data["depth"],
+        limit=data["limit"],
+        nodes=[EntityGraphNode(**n) for n in data["nodes"]],
+        edges=[EntityEdge(**e) for e in data["edges"]],
+        left_out=data["left_out"],
+        truncated=data["truncated"],
+    )
+
+
+@router.get("/{project}/entity", response_model=EntityDetail)
+async def show_entity(request: Request, project: ProjectName, entity_id: EntityId, user: CurrentUser) -> EntityDetail:
+    """One visible entity with the documents that mention it, quoted, and its relations."""
+    data, ref = await _entity_read(request, user, project, lambda s: s.entity(entity_id))
+    return EntityDetail(
+        graph=ref,
+        node=EntityNode(**data["node"]),
+        aliases=data["aliases"],
+        citations=[Citation(**c) for c in data["citations"]],
+        documents=data["documents"],
+        relations=[EntityEdge(**e) for e in data["relations"]],
+        neighbours=[EntityNode(**n) for n in data["neighbours"]],
+    )
+
+
+@router.get("/{project}/relation", response_model=RelationDetail)
+async def show_relation(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    edge_id: Annotated[str, Query(alias="id", min_length=1, max_length=200, description="the relation's edge id")],
+) -> RelationDetail:
+    """One visible relation between two visible entities, with the documents it was read from."""
+    data, ref = await _entity_read(request, user, project, lambda s: s.relation(edge_id))
+    return RelationDetail(
+        graph=ref,
+        edge=EntityEdge(**data["edge"]),
+        src=EntityNode(**data["src"]),
+        dst=EntityNode(**data["dst"]),
+        citations=[Citation(**c) for c in data["citations"]],
+        documents=data["documents"],
     )
