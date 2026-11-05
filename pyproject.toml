@@ -22,7 +22,9 @@ dependencies = ["PyYAML>=6.0", "tzdata>=2024.1"]
 [project.optional-dependencies]
 # import-linter: `lint-imports` checks the package boundaries of [tool.importlinter] below (docs/structure.md).
 # basedpyright: pinned, since a new release finds new errors the committed baseline does not hold ([tool.basedpyright]).
-test = ["pytest>=8", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[server]>=5.1", "import-linter>=2.15", "basedpyright==1.40.2"]
+# pytest 9.2: under 9.1 a test of tests/hub listed after a file right under tests/ lost the fixtures of
+# tests/hub/conftest.py (pytest #14635, tests/test_collection_order.py).
+test = ["pytest>=9.2", "pytest-xdist>=3.6", "ruff>=0.6", "httpx>=0.27", "moto[server]>=5.1", "import-linter>=2.15", "basedpyright==1.40.2"]
 graphify = ["graphifyy==0.9.73"]
 # The entities step of a knowledge graph build (evo_agents.kg.entities): the client of an OpenAI-compatible endpoint. A local
 # command model needs nothing.
