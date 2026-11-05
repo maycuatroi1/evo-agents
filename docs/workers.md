@@ -392,7 +392,8 @@ or busy depending on whether it holds runs.
 The worker holds a run, and extends its lease, while it is `leased`, `running`, `interactive`, `verifying` or
 `waiting`; a waiting run keeps its slot. A run in any state before `done` is active, `parked` included, and a step has
 at most one active run, as a plan has at most one active plan run. `done`, `failed`, `lost` and `cancelled` are final:
-running the step again (rerun, or the next attempt) creates a new run, and so does resuming a parked plan run.
+running the step again (rerun, or the next attempt) creates a new run, and so does resuming a parked plan run. The one
+exception is a lost run re-attached to the worker that comes back for it ([Re-attach](#re-attach)).
 
 Each move has its actors (`TRANSITIONS` in `runs.py`); the hub refuses any other move, and refuses an actor the move
 does not name. The `worker` is the worker that holds the run, the `owner` is the member who dispatched it, and the
@@ -401,7 +402,7 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | From | To | Who |
 | --- | --- | --- |
 | `queued` | `leased` | worker (claim) |
-| `queued` | `cancelled` | owner |
+| `queued` | `cancelled` | owner, or the reaper for the next attempt of a run it re-attached |
 | `queued` | `failed` | reaper, when nobody can claim the run any more, for example because its pinned worker was revoked |
 | `leased` | `running`, `interactive` | worker |
 | `running` | `interactive` (takeover), `verifying` | worker |
@@ -416,6 +417,7 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | `parked` | `cancelled` | owner, or the reaper after 7 days |
 | `leased`, `running`, `interactive`, `verifying`, `waiting` | `failed`, `cancelled` | worker or reaper |
 | `leased`, `running`, `interactive`, `verifying`, `waiting` | `lost` | reaper |
+| `lost` | the held state it was lost in ([Re-attach](#re-attach), outside `TRANSITIONS`) | reaper |
 
 A claim and each heartbeat set a held run's lease to expire 300 seconds later. Every minute the reaper
 (`hub.recover_runs`) looks for held runs whose lease has expired. Such a run becomes `lost`, and the hub queues a
@@ -438,6 +440,21 @@ an attempt pinned to that worker waits for it. Attempts still count: a run is tr
 (`runs.MAX_ATTEMPTS`), the first included. While an attempt waits, the run shows `steady_wait`: the worker, and
 `steady_at`, when it becomes steady if its heartbeats keep coming (null while it sends none). The run page says so
 above its timeline, and `evo-agents hub run show` in its `waits for` line.
+
+### Re-attach
+
+A host that stalls past the lease (every daemon of the machine silent at once, as a VPS short of CPU or memory does)
+loses its runs while their agents go on working. When such a worker's heartbeat names a run it lost less than 10
+minutes ago (`runs.REATTACH_SECONDS`), whose cancel nobody asked and whose next attempt still waits in the queue, the
+hub re-attaches the run instead of answering cancel (`server.run_reattach`): the reaper cancels the next attempt without
+writing the plan, and moves the run back to the held state it was lost in, its lease from now, the stall not counted in
+its agent time. The decisions its agent asked that the loss cancelled are open again, and the browser identities it
+was dispatched with that are still free are its own again. The loss gave back its leases, and the GitHub tokens among
+them were revoked at GitHub, so the answer says `renew: true` once, and the worker takes the run's leases again. The
+hub does this only for a daemon whose heartbeat names the feature `reattach`, which names apart (`orphans`) the runs a
+previous daemon left, whose agent it stops whatever the answer; and only for runs of kinds whose loss moved nothing on
+but their next attempt (not the Curator's review, judge, replay or probe runs). Any other worker, or a heartbeat later
+than that, or one after another worker claimed the next attempt, gets `cancel: true`, as before.
 
 The reaper also ends a held run that ran past its timeout. From 0.4.0 only the time a run spends `leased`, `running`,
 `interactive` or `verifying` counts: the hub adds it up in `run_seconds` at each move and heartbeat, from `counted_at`
@@ -1306,7 +1323,8 @@ slots are claimed at the next turn of the claim loop, without a restart; fewer s
 claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
 as they are now at each claim, whatever the daemon reports. A daemon of 0.13.1 or older ignores `settings`, as it does
 any key it does not know, and a hub before schema 0026 sends none. A run the worker reports but no longer holds (lost, cancelled, or another worker's now) comes back
-with `held: false`, `state: null` and `cancel: true`. A plan run the reaper parked, or one that is done because a new
+with `held: false`, `state: null` and `cancel: true`, unless the hub re-attaches it ([Re-attach](#re-attach)): then it
+comes back held, with `renew: true`. A plan run the reaper parked, or one that is done because a new
 run resumes it, comes back with `held: false`, its state, `cancel: false` and `park: true`: the worker stops the agent
 at the end of its turn, keeps the session and the worktrees, and frees the slot. The heartbeat also settles the agent
 time of each run it extends (`run_seconds`). `takeover` stays true from the owner's ask until the worker reports `interactive`, and `handback`
@@ -3298,6 +3316,14 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
 - A command of a run that the kernel's OOM killer ends fails alone: the systemd unit sets `OOMPolicy=continue`, so
   the unit is not stopped with its daemon, agents and leases when one process of its cgroup is killed. A unit
   installed before gets the line at the next `evo-agents worker service install`.
+- On Linux every worker service of the machine runs in the user slice `evo-agents-workers.slice`, which the install
+  writes beside the unit (`Slice=` in the unit): together they may take 80% of the machine's memory (`MemoryHigh`)
+  before the kernel reclaims theirs and slows them, never more than 90% (`MemoryMax`), at which it kills their biggest
+  process, and they never swap (`MemorySwapMax=0`). A 4-vCPU VPS whose runs ran several `pytest -n auto` beside
+  Postgres swapped until all of its daemons went silent for five minutes, and the hub lost their runs while the agents
+  still worked; the slice keeps such a run from taking the machine down with it. A user's manager gets only the memory
+  and pids controllers on most distributions (`Delegate=pids memory`), so the slice sets no CPU weight. Uninstalling
+  one node leaves the slice to the others. A unit installed before joins the slice at the next install.
 - The daemon, and so its agents, start with umask 077 (launchd `Umask` 63, systemd `UMask=0077`): what a run writes
   is the user's alone.
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state

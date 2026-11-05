@@ -1252,6 +1252,40 @@ def lost_then_next(machine: Machine, lost_of=None) -> dict:
     return found
 
 
+def test_a_run_the_hub_gives_back_after_a_stall_takes_its_leases_again_and_goes_on(machine):
+    reached, go = machine.tmp / "reached", machine.tmp / "go"
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"touch": str(reached)},
+                {"wait_for": str(go)},
+                {"write": {"alpha/a.txt": "alpha\n"}},
+                {"cli": ["step", "1", "done", "--verify", "test -f a.txt"]},
+                {"result": {"summary": "Went on after the stall."}},
+            ],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        await wait_for(reached.exists, "the agent to start")
+        asks = hub.credential_calls.count(("ask", run_id))
+        hub.lose(run_id)  # the host stalled past the lease
+        hub.reattach(run_id)  # and its heartbeat came back soon, its next attempt still queued
+        await wait_for(lambda: hub.credential_calls.count(("ask", run_id)) > asks, "the leases to be taken again")
+        assert run_id in daemon.runs and not daemon.runs[run_id].ended, "the agent was never stopped"
+        go.touch()
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        assert hub.heartbeat_bodies[-1]["orphans"] == [] and runs.REATTACH in hub.last_heartbeat["features"]
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    assert hub.moves(run_id)[:4] == ["leased", "running", "lost", "running"]
+    assert any("gave it back; its leases are taken again" in text for text in hub.texts(run_id))
+
+
 def test_the_next_attempt_of_a_lost_run_goes_on_in_its_session_and_worktrees_on_the_same_worker(machine):
     machine.env["EVO_FAKE_SESSIONS"] = str(machine.tmp / "sessions")
     found = lost_then_next(machine)
@@ -1433,6 +1467,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "doctor_report",
             "browser_install",
             "repoless_review",
+            "reattach",
         ]
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
         assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))

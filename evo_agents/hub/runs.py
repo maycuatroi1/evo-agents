@@ -36,7 +36,9 @@ terminal), re-runs the agent's verify commands (``verifying``), and ends ``done`
 ``review`` until the owner approves it. A run whose worker stops extending its lease is ``lost``, and the hub queues a
 new run for the same step (attempt + 1), or ``failed`` when it was the last of MAX_ATTEMPTS. That next attempt goes to
 the worker that lost the run only once the worker is steady (STEADY_SECONDS of heartbeats, none STEADY_GAP_SECONDS
-late); any other worker that may take it takes it at once.
+late); any other worker that may take it takes it at once. A worker whose host stalled past the lease, its agent still
+working, gets the run back when its heartbeat names it within REATTACH_SECONDS of the loss and the next attempt still
+waits unclaimed: the hub's one move out of an end state (``server.run_reattach``).
 
 A plan run's agent may ask its owner a decision of DECISION_CATEGORIES. When its turn ends with a decision still open,
 the run is ``waiting``: the worker keeps it, with its slot and lease, and hands an answer that comes within
@@ -92,6 +94,9 @@ CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering 
 MAX_SLOTS = 16  # runs a worker holds at once at most (workers.slots, as schema 0026 bounds it); 1 is the least
 MAX_WORKER_PLUGINS = 16  # plugins whose runtimes and environments a worker takes (workers.plugins, schema 0039)
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
+# A run lost this recently goes back to its worker when that worker's heartbeat names it and the next attempt still
+# waits unclaimed (``server.run_reattach``); a later heartbeat is told to stop the agent, as before.
+REATTACH_SECONDS = 600
 # The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
 # come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one
 # that woke for a moment).
@@ -212,6 +217,9 @@ AUTONOMY_RUNTIME = "claude-code"
 # (evo_agents.hub.server.kg_init); the hub queues it only on such a worker and hands it to no other
 REPOLESS_REVIEW = "repoless_review"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
+# a daemon whose heartbeat names apart (``orphans``) the runs a previous daemon left, and that takes a run's leases again
+# when the answer says ``renew``: the hub re-attaches a run it lost for no other (evo_agents.hub.server.run_reattach)
+REATTACH = "reattach"
 # a daemon that installed Chromium (`evo-agents worker browser install`) and starts it for a run dispatched with
 # browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
 BROWSER = "browser"
@@ -252,6 +260,7 @@ WORKER_FEATURES = (
     BROWSER_INSTALL,
     SKILL_SYNC,
     REPOLESS_REVIEW,
+    REATTACH,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 Runtime = Literal["claude-code", "opencode", "codex"]
@@ -317,7 +326,8 @@ _W, _O, _R = frozenset({"worker"}), frozenset({"owner"}), frozenset({"reaper"})
 _HELD_EXITS = {"failed": _W | _R, "cancelled": _W | _R, "lost": _R}  # the worker gives up or stops; the lease ends
 
 TRANSITIONS: dict[str, dict[str, frozenset[str]]] = {
-    "queued": {"leased": _W, "cancelled": _O, "failed": _R},
+    # the reaper cancels the next attempt of a lost run whose worker came back for it (``server.run_reattach``)
+    "queued": {"leased": _W, "cancelled": _O | _R, "failed": _R},
     "leased": {"running": _W, "interactive": _W, **_HELD_EXITS},
     "running": {"interactive": _W, "verifying": _W, "waiting": _W, **_HELD_EXITS},
     "interactive": {"running": _W, "verifying": _W, **_HELD_EXITS},
@@ -539,6 +549,13 @@ def check_transition(old: str, new: str, actor: str) -> None:
     if actor not in allowed:
         who = " or the ".join(name for name in ACTORS if name in allowed)
         raise TransitionRefused(f"the {actor} cannot move a run from {old} to {new}; only the {who} can")
+
+
+def check_reattach(old: str, new: str, actor: str) -> None:
+    """Raise TransitionRefused unless the move re-attaches a lost run: the reaper's, from lost back to a held state
+    (REATTACH_SECONDS, ``server.run_reattach``), the one move out of an end state."""
+    if old != "lost" or new not in HELD_STATES or actor != "reaper":
+        raise TransitionRefused(f"only the reaper re-attaches a run, from lost to a held state, not {old} to {new}")
 
 
 # Time toward the timeout

@@ -3,7 +3,8 @@
 It carries the runtimes, the checkouts, the free slots, the runs the daemon holds and its version. The answer says
 whether to drain (``daemon_state``), and for each run whether to cancel it, whether the hub still holds it for this
 worker, how many messages of the owner wait, and the controls of a person (takeover, handback, terminal_open, inbox,
-park, finish). A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; a token the hub no
+park, finish). The orphans a previous daemon left are named apart (``orphans``), so the hub re-attaches none of them; a
+run the hub lost while this daemon was silent and gave back comes with ``renew``, and its leases are taken again. A call the hub does not answer is sent again with a backoff from 1 to 60 seconds; a token the hub no
 longer takes stops the daemon (``Daemon.fatal``).
 """
 
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from evo_agents import __version__
@@ -54,6 +55,7 @@ def take_control(run: Run, control: dict) -> None:
             "handback": run.request_handback,
             "finish": run.request_finish,
             "terminal_open": run.open_terminal,
+            "renew": run.renew_credentials,
         }
         for key, request in requests.items():
             if control.get(key):
@@ -94,7 +96,7 @@ class Heartbeat:
         await self._look()
         held = self._held()[:MAX_HEARTBEAT_RUNS]
         asked = sorted(daemon.orphans)[: MAX_HEARTBEAT_RUNS - len(held)]
-        answer = await self._send(held + asked)
+        answer = await self._send(held + asked, asked)
         if answer is None:
             return False
         listed = answer.get("runs") if isinstance(answer, dict) else None
@@ -125,11 +127,12 @@ class Heartbeat:
         elif not self._looking.cancelled() and self._looking.exception() is not None:
             log.error("looking at the runtimes and checkouts failed", exc_info=self._looking.exception())
 
-    async def _send(self, reported: list[int]):
-        """The hub's answer to a heartbeat that names the runs ``reported``; None when it was not sent or refused."""
+    async def _send(self, reported: list[int], orphans: list[int]):
+        """The hub's answer to a heartbeat that names the runs ``reported``, ``orphans`` among them; None when it was not
+        sent or refused."""
         assert self.daemon.hub is not None  # made as the daemon starts
         try:
-            answer = await self.daemon.hub.heartbeat(self.body(reported))
+            answer = await self.daemon.hub.heartbeat(self.body(reported, orphans))
         except Unreachable as exc:
             self.failures += 1
             if self.failures <= 3 or self.failures % 20 == 0:
@@ -146,15 +149,16 @@ class Heartbeat:
             self.failures = 0
         return answer
 
-    def body(self, reported: list[int]) -> dict:
-        """What a heartbeat sends: the machine, the runs ``reported``, the install, what the last looks at the graphs
-        found."""
+    def body(self, reported: list[int], orphans: Sequence[int] = ()) -> dict:
+        """What a heartbeat sends: the machine, the runs ``reported`` (``orphans`` among them, the ones a previous
+        daemon left), the install, what the last looks at the graphs found."""
         daemon = self.daemon
         body = {
             "runtimes": daemon.runtimes,
             "checkouts": daemon.checkouts,
             "free_slots": min(daemon.free_slots, runs.MAX_SLOTS),
             "runs": reported,
+            "orphans": list(orphans),  # whose agent this daemon stops, whatever the answer: never re-attached
             "agent_version": __version__,
             # the kinds of runs.RUN_KINDS this daemon has a class for (run.KINDS): the hub hands it no other
             "run_kinds": [kind for kind in runs.RUN_KINDS if kind in KINDS],

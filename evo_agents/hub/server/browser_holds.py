@@ -23,9 +23,14 @@ async def follow(conn: AsyncConnection, run_id: int, new: str) -> None:
     if new not in runs.HELD_STATES:
         await conn.execute(update(b).values(held_by_run=None).where(b.c.held_by_run == run_id))
         return
-    if new != "leased":
-        return
-    r = tables.runs
+    if new == "leased":
+        await take(conn, run_id)
+
+
+async def take(conn: AsyncConnection, run_id: int) -> None:
+    """Give run ``run_id`` the identities it was dispatched with that are still free and live: at its claim, and when
+    the hub re-attaches it after its loss gave them back (``run_reattach``)."""
+    b, r = tables.browser_identities, tables.runs
     ids = (await conn.execute(select(r.c.browser_identities).where(r.c.id == run_id))).scalar_one_or_none()
     if not ids:
         return

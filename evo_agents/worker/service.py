@@ -30,7 +30,17 @@ on macOS and to the user journal on Linux.
 A machine may hold the nodes of several agents, each with a state directory of its own (``EVO_WORKER_HOME``) and a
 service of its own: ``--agent HANDLE`` (or ``EVO_WORKER_AGENT``) names the service ``evo-agents-worker-<handle>.service``
 (Linux) or ``<LABEL>.<handle>`` (macOS) and is written into the service's environment. Without it the names are the
-fixed ones of the one node of a machine, and nothing changes for it. Standard library only.
+fixed ones of the one node of a machine, and nothing changes for it.
+
+On Linux every worker service of the machine runs in the user slice ``evo-agents-workers.slice`` (SLICE), which
+``install`` writes beside the unit: their daemons and agents together may take MEMORY_HIGH of the machine's memory
+before the kernel reclaims theirs and slows their allocations, never more than MEMORY_MAX, at which it kills their
+biggest process (``OOMPolicy=continue`` keeps the daemon), and never swap. A 4-vCPU VPS whose runs ran several
+``pytest -n auto`` beside Postgres swapped until every daemon on it went silent for five minutes, and the hub lost
+their runs while the agents still worked (#1620, #1629); the rest of the machine, sshd and the user's own services
+among them, keeps what the slice leaves. A user's manager gets the memory controller alone on most distributions
+(``Delegate=pids memory``), so the slice sets no CPU weight, which it would ignore. Uninstalling one node leaves the
+slice, which the other nodes may still run in. Standard library only.
 """
 
 from __future__ import annotations
@@ -62,6 +72,9 @@ _HANDLE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,38}$")
 RUN_ARGS = ("worker", "run", "--quiet")
 RESTART_SECONDS = 10
 UMASK = 0o077  # files the daemon and its agents create are the user's alone
+SLICE = "evo-agents-workers.slice"  # the systemd user slice of every worker service of the machine
+MEMORY_HIGH = "80%"  # of the machine's memory: past it the kernel reclaims the slice's memory and slows it
+MEMORY_MAX = "90%"  # never more: the kernel kills the slice's biggest process instead of swapping the host
 STOP_SECONDS = 60
 POLL_SECONDS = 0.5
 START_WAIT_SECONDS = 10.0
@@ -267,9 +280,29 @@ def build_unit(spec: Spec) -> str:
         f"TimeoutStopSec={STOP_SECONDS}",
         # An OOM kill ends the command the kernel picked, not the daemon with its agents and leases.
         "OOMPolicy=continue",
+        # The memory ceiling of every worker service of the machine together (build_slice).
+        f"Slice={SLICE}",
         "",
         "[Install]",
         "WantedBy=default.target",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def build_slice() -> str:
+    """The slice of every worker service of the machine: what they take together, so their runs never swap the host
+    into a stall that silences the daemons (see the module's docstring)."""
+    lines = [
+        "# Written by `evo-agents worker service install`; install again to change it.",
+        "[Unit]",
+        "Description=evo-agents workers: the worker services of this machine and their agents",
+        "Documentation=https://github.com/maycuatroi1/evo-agents/blob/main/docs/workers.md",
+        "",
+        "[Slice]",
+        f"MemoryHigh={MEMORY_HIGH}",
+        f"MemoryMax={MEMORY_MAX}",
+        "MemorySwapMax=0",
         "",
     ]
     return "\n".join(lines)
@@ -482,6 +515,14 @@ class Systemd(Manager):
 
     def render(self, spec: Spec) -> str:
         return build_unit(spec)
+
+    def slice_file(self) -> Path:
+        return self.file().parent / SLICE
+
+    def _write(self, spec: Spec) -> Path:
+        path = super()._write(spec)
+        write_atomic(self.slice_file(), build_slice().encode("utf-8"), FILE_MODE)
+        return path
 
     def _facts(self) -> dict[str, str]:
         proc = self._call("show", self.service, f"--property={','.join(SYSTEMD_PROPERTIES)}")

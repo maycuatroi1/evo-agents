@@ -225,8 +225,12 @@ def test_the_systemd_unit_restarts_on_failure_and_quotes_what_systemd_would_read
         "KillMode=mixed",
         "TimeoutStopSec=60",
         "OOMPolicy=continue",
+        "Slice=evo-agents-workers.slice",
     ):
         assert line in lines
+    ceiling = service.build_slice().splitlines()
+    assert ceiling[ceiling.index("[Slice]") + 1 :] == ["MemoryHigh=80%", "MemoryMax=90%", "MemorySwapMax=0"]
+    assert not any(line.startswith("CPU") for line in ceiling), "a user's manager has no cpu controller to weigh"
     assert "UMask=0077" in lines[lines.index("[Service]") :], "what the daemon and its agents write is the user's alone"
     assert "RestartPreventExitStatus=3" in lines, "a daemon that is no longer a worker is not started again"
     assert not any("EVO_WORKER_REVOKED_EXIT" in line for line in lines), "systemd tells the exit statuses apart"
@@ -320,6 +324,8 @@ def test_install_status_and_uninstall_against_a_fake_systemctl(home, joined, mon
     assert verbs == ["daemon-reload", "enable", "restart", "show", "show"]
     unit = unit_path.read_text(encoding="utf-8")
     assert f"ExecStart={EVO} worker run --quiet" in unit.splitlines()
+    slice_path = unit_path.parent / service.SLICE
+    assert slice_path.read_text(encoding="utf-8") == service.build_slice(), "written before the daemon-reload"
     assert f"EVO_WORKER_HOME={joined.root}" in unit
     assert f"Installed {service.UNIT} (systemd): {unit_path}" in out
     assert "daemon: running, pid 5151" in out
@@ -334,6 +340,7 @@ def test_install_status_and_uninstall_against_a_fake_systemctl(home, joined, mon
     assert main(["worker", "service", "uninstall"]) == 0
     assert [call[0] for call in fake.calls] == ["show", "disable", "daemon-reload", "reset-failed"]
     assert not unit_path.exists()
+    assert slice_path.exists(), "the other nodes of the machine may still run in it"
     assert main(["worker", "service", "status"]) == 0
     assert "evo-agents-worker.service (systemd) is not installed" in capsys.readouterr().out
 
@@ -365,6 +372,7 @@ def test_two_agents_nodes_run_side_by_side_under_one_user_each_with_a_service_of
     assert sorted(path.name for path in units.iterdir()) == [
         "evo-agents-worker-lms.service",
         "evo-agents-worker-sandbox.service",
+        "evo-agents-workers.slice",  # one for both: their memory has one ceiling
     ]
     for handle, state in states.items():
         unit = (units / f"evo-agents-worker-{handle}.service").read_text(encoding="utf-8")

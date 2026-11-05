@@ -230,6 +230,12 @@ class Run:
         self.inbox_arrived.set()
         self.spawn(self.inbox.deliver())
 
+    def renew_credentials(self) -> None:
+        """The heartbeat says the hub lost the run while this worker was silent and gave it back: the leases the loss
+        ended, the GitHub tokens among them revoked, are taken again (``RunCredentials.renew``)."""
+        self.note("The hub lost the run while this worker was silent and gave it back; its leases are taken again.")
+        self.spawn(self.credentials.renew())
+
     def request_park(self) -> None:
         """The heartbeat says the hub parked the run, or that a new run resumes it. A run of a kind that parks stops
         its agent at the end of its turn, and keeps its session and worktrees; another run is no longer this

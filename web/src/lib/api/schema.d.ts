@@ -1852,6 +1852,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/answers/{job_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop
+         * @description Stop a running job: its run is cancelled (a queued one at once, a held one by its worker), its questions without
+         *     an answer get the error that it was stopped, and it ends failed. The same file sent again asks them again.
+         */
+        post: operations["stop_v1_kg__project__answers__job_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/uploads/{upload_id}/parts/{number}": {
         parameters: {
             query?: never;
@@ -21721,6 +21742,11 @@ export interface components {
              * @description the runs the worker holds
              */
             runs?: number[];
+            /**
+             * Orphans
+             * @description of runs, those a previous daemon left, whose agent this one stops whatever the answer: the hub re-attaches none of them. An older daemon names none, and lists them among runs alone
+             */
+            orphans?: number[];
             /** Agent Version */
             agent_version?: string | null;
             /**
@@ -36369,6 +36395,12 @@ export interface components {
              * @default 0
              */
             decisions: number;
+            /**
+             * Renew
+             * @description the hub lost the run while this worker was silent and re-attached it, and the leases it held ended: take the run's credentials again
+             * @default false
+             */
+            renew: boolean;
         };
         /** RunDay */
         RunDay: {
@@ -50401,6 +50433,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KgAnswerReplied"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stop_v1_kg__project__answers__job_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the answer job, as `hub kg answer --status` lists it */
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgAnswerJob"];
                 };
             };
             /** @description Unauthorized */
