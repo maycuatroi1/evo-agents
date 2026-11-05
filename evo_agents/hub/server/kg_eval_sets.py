@@ -29,7 +29,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_eval_starter import ANSWER_KEYS, QUESTION_KEYS, set_digest
 from evo_agents.hub.kg_eval_starter import clean as _clean
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, kg_run_access
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -184,7 +184,7 @@ async def get_eval_set(
         access = await project_access(conn, user, project)
         if access.role is None:
             raise HTTPException(403, f"reading the question set of project {access.name} needs a grant on it")
-        if not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
+        if not access.visible(access.rules.default_label, plan_routes._sink(access, kg_run_access.sink(user, sink))):
             raise HTTPException(404, f"project {project} has no question set you can read")
         row = await latest_row(conn, access.project_id, version)
     if row is None:

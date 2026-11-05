@@ -48,6 +48,8 @@ that finds the token reads with it (``Principal.run_reach``), and every write ma
 audit row naming the run. While it is answered, ``run_access_rules.ACTING_RUN`` names the run, so no run starts from
 it; its principal acts for the run (``Principal.acts_for_run``) as the agent of a run on /mcp does, for the rules of
 the routes open to it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The
+token of a KG run (``kg_run_access``, host ``kg-run:<run id>``) lives the same way without its run running as its
+owner, is never a hub admin, and reaches the routes of ``kg_run_access.ROUTES`` on its run's project alone. The
 gateway route's token of a run (``gateway_leases``) shares the prefix and is a credential of those routes alone: here
 it is unknown.
 
@@ -83,7 +85,7 @@ from starlette.websockets import WebSocketClose
 from evo_agents.hub import tables
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.runs import HELD_STATES, PROTOCOL_HEADER, PROTOCOL_VERSION
-from evo_agents.hub.server import run_access_rules
+from evo_agents.hub.server import kg_run_access, run_access_rules
 from evo_agents.hub.server.errors import error_response
 
 log = logging.getLogger(__name__)
@@ -244,17 +246,20 @@ AUTHENTICATE = _authenticate()
 
 def _live_run_token(match):
     """The live token of a run that ``match`` names, while its lease is out (``run_access``): the lease is not given
-    back, the run is held by the worker it was leased to and its owner lets it run as them, the owner dispatched it and
-    still holds writer on its project, and the worker is not revoked; with the owner's run reach
-    (``run_access_rules.REACH_GROUPS``)."""
-    tokens, users, cl, r, w, g = (
+    back, the run is held by the worker it was leased to and its owner lets it run as them, or the token is a KG run's
+    (``kg_run_access``, its host says so), the owner dispatched it and still holds writer on its project, and the worker
+    is not revoked; with the owner's run reach (``run_access_rules.REACH_GROUPS``), whether it is a KG run's and the
+    run's project."""
+    tokens, users, cl, r, w, g, p = (
         tables.tokens,
         tables.users,
         tables.credential_leases,
         tables.runs,
         tables.workers,
         tables.grants,
+        tables.projects,
     )
+    kg = tokens.c.host == kg_run_access.host_of(r.c.id)
     return (
         select(
             tokens.c.id,
@@ -263,10 +268,13 @@ def _live_run_token(match):
             admin_login(users).label("admin_login"),
             cl.c.run_id,
             users.c.run_reach,
+            kg.label("kg"),
+            p.c.name.label("project"),
         )
         .join_from(tokens, users, users.c.id == tokens.c.user_id)
         .join(cl, cl.c.token_id == tokens.c.id)
         .join(r, r.c.id == cl.c.run_id)
+        .join(p, p.c.id == r.c.project_id)
         .join(w, w.c.id == cl.c.worker_id)
         .join(g, and_(g.c.project_id == r.c.project_id, g.c.user_id == tokens.c.user_id))
         .where(
@@ -275,7 +283,7 @@ def _live_run_token(match):
             tokens.c.revoked_at.is_(None),
             tokens.c.expires_at > func.now(),
             cl.c.revoked_at.is_(None),
-            r.c.as_owner.is_(True),
+            or_(r.c.as_owner.is_(True), kg),
             r.c.state.in_(HELD_STATES),
             r.c.worker_id == cl.c.worker_id,
             r.c.dispatched_by == tokens.c.user_id,
@@ -301,7 +309,16 @@ def _authenticate_run():
         .returning(tokens.c.id)
         .cte("touched")
     )
-    columns = (found.c.id, found.c.user_id, found.c.login, found.c.admin_login, found.c.run_id, found.c.run_reach)
+    columns = (
+        found.c.id,
+        found.c.user_id,
+        found.c.login,
+        found.c.admin_login,
+        found.c.run_id,
+        found.c.run_reach,
+        found.c.kg,
+        found.c.project,
+    )
     return select(*columns).add_cte(touched)
 
 
@@ -352,6 +369,9 @@ class Principal:
     run_reach: frozenset[str] = frozenset()
     # the EVO_HUB_ADMINS login its account answers to (``admin_login``), whatever ``admin`` says of this credential
     admin_login: str | None = None
+    # RUN of a KG run (``kg_run_access``): the one project it reaches, on the routes of ``kg_run_access.ROUTES`` alone;
+    # None for everyone else
+    kg_project: str | None = None
 
     def __repr__(self) -> str:
         run = self.scope.run_id if self.scope is not None else self.run_id
@@ -369,12 +389,13 @@ class Principal:
 
     @property
     def run_project(self) -> str | None:
-        """The one project the agent of a run reaches; None for any other principal, which reaches its grants'."""
-        return None if self.scope is None else self.scope.project
+        """The one project the agent of a run reaches (its scope's on /mcp, a KG run's token's on the REST API); None
+        for any other principal, which reaches its grants'."""
+        return self.kg_project if self.scope is None else self.scope.project
 
     def reaches(self, project: str) -> bool:
-        """Whether a run's scope leaves ``project`` within reach; always, without a scope."""
-        return self.scope is None or self.scope.project == project
+        """Whether a run's scope, or a KG run's token, leaves ``project`` within reach; always, without either."""
+        return self.run_project is None or self.run_project == project
 
 
 @dataclass(frozen=True)
@@ -500,7 +521,9 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
     admin = kind != WORKER and config.is_admin(admin_as)  # a worker acts for its owner on its own routes only
     if not run:
         return Principal(user_id, login, admin, token_id, kind, digest, admin_login=admin_as)
-    run_id, reach = run
+    run_id, reach, kg, project = run
+    if kg:  # a KG run's token: its project's KG routes alone, never as a hub admin (``kg_run_access``)
+        return Principal(user_id, login, False, token_id, kind, digest, run_id=run_id, kg_project=project)
     return Principal(
         user_id, login, admin, token_id, kind, digest, run_id=run_id, run_reach=frozenset(reach), admin_login=admin_as
     )
@@ -626,7 +649,10 @@ class Authenticate:
             return unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}", clear_cookie=kind == WEB)
         request.state.principal = principal
         if kind == RUN:  # after the database: a run's token that is no longer live gets 401 everywhere
-            reason = run_access_rules.refusal(request.method, request.url.path, principal.run_reach)
+            if principal.kg_project is not None:
+                reason = kg_run_access.refusal(request.method, request.url.path, principal.kg_project)
+            else:
+                reason = run_access_rules.refusal(request.method, request.url.path, principal.run_reach)
             if reason is not None:
                 log.warning("a run's token was refused", extra={"run_id": principal.run_id, "method": request.method})
                 return error_response(request, 403, reason)

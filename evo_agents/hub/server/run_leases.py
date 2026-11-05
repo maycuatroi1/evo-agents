@@ -10,7 +10,7 @@ agent (``agent_accounts``) is named ``@<handle>:<name>``, which no secret of the
 account's model (``evo_agents.hub.gateway_runs``) shows provider and kind ``gateway``: its key of the gateway as
 ``gateway:<model>``, and each provider account that key reaches by the account's name, the target being the model. A
 run that runs as its owner shows the lease of its token of the hub as ``run-access:<owner>``, provider run-access and
-kind hub (``run_access``). Each
+kind hub (``run_access``), and a KG run the lease of its own as ``kg-run:<project>`` (``kg_run_access``). Each
 lease names the agent profile and version it was handed out under (``evo_agents.hub.profiles``), null for one from
 before schema 0030.
 """
@@ -26,8 +26,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from evo_agents.hub import tables
-from evo_agents.hub.credentials import HUB_KIND, LEASED_KINDS, PROVIDERS, RUN_ACCESS, agent_lease_name, github_repo
+from evo_agents.hub.credentials import (
+    HUB_KIND,
+    KG_RUN,
+    LEASED_KINDS,
+    PROVIDERS,
+    RUN_ACCESS,
+    agent_lease_name,
+    github_repo,
+)
 from evo_agents.hub.gateway_runs import GATEWAY
+from evo_agents.hub.server import kg_run_access
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -83,7 +92,7 @@ def _run_owner(run_id: int):
 def _run_leases(run_id: int):
     """Every lease of run ``run_id``, with the worker's name and the secret's name and kind (none for a GitHub token),
     in the order they were made."""
-    cl, w, s, ap = tables.credential_leases, tables.workers, tables.secrets, tables.agent_profiles
+    cl, w, s, ap, t = tables.credential_leases, tables.workers, tables.secrets, tables.agent_profiles, tables.tokens
     owner = aliased(tables.agent_profiles)  # the agent that owns the secret, when one does
     return (
         select(
@@ -100,9 +109,11 @@ def _run_leases(run_id: int):
             owner.c.handle.label("agent"),
             cl.c.profile_id,
             cl.c.profile_version,
+            t.c.host.label("token_host"),
         )
         .join_from(cl, w, w.c.id == cl.c.worker_id)
         .outerjoin(s, s.c.id == cl.c.secret_id)
+        .outerjoin(t, t.c.id == cl.c.token_id)
         .outerjoin(ap, ap.c.id == cl.c.profile_id)
         .outerjoin(owner, owner.c.id == s.c.profile_id)
         .where(cl.c.run_id == run_id)
@@ -117,9 +128,11 @@ def _token_name(target: str) -> str:
     return f"github-app:{found[0]}" if found else "github-app"
 
 
-def _lease_name(row, owner: str) -> str:
+def _lease_name(row, owner: str, project: str) -> str:
     if row.provider == GATEWAY:
         return row.secret or f"{GATEWAY}:{row.target}"
+    if row.provider == RUN_ACCESS and (row.token_host or "").startswith(f"{KG_RUN}:"):
+        return kg_run_access.lease_name(project)
     if row.provider == RUN_ACCESS:
         return f"{RUN_ACCESS}:{owner}"
     if row.provider != "secret":
@@ -153,7 +166,7 @@ async def run_credentials(
     return [
         RunLease(
             id=row.id,
-            name=_lease_name(row, owner),
+            name=_lease_name(row, owner, project),
             provider=row.provider,
             kind=_lease_kind(row),
             target=row.target,

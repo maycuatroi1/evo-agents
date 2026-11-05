@@ -1046,6 +1046,27 @@ access RUN --revoke` (Revoke on the run's page), `evo-agents hub run cancel RUN`
 of the token `hub token list` shows with host `run:<id>` (kind Run token on the admin's Tokens page); the audit rows
 `run_access.write` say what it wrote.
 
+## The token of a KG run
+
+A KG run is the review run of lens `kg_questions` or `kg_init` of a kg_init run, or the run of a batch of `hub kg
+answer`: a run of the Curator, so it never runs as its owner. Its prompt tells its agent to run `evo-agents hub kg init
+--questions FILE`, `hub kg init --decide FILE` or `hub kg answer --reply FILE`, so it gets a token of its own instead,
+on the shared KG pool or on its project's pool alike, and the node needs no `hub login`. The lease is of kind `hub`,
+provider `run-access`, named `kg-run:<project>`; its value is a token `evr_...` of the member who dispatched the run,
+with `kg-run:<id>` as its host in `hub token list`. Its worker puts `EVO_HUB_TOKEN` and `EVO_HUB_URL` into the agent's
+environment, though the run is guarded (a daemon of an older release leaves them out). It lives as the token of a run
+that runs as its owner does, and ends with its lease.
+
+It is never a hub admin, starts no run, and every write made with it is a `run_access.write` audit row. It reaches these
+routes of its run's project and nothing else, every other path answering 403 and every other project 404
+(`kg_run_access.py`):
+
+- `GET /v1/kg/{project}/init`, which `hub kg init` reads to find the run in flight;
+- `POST /v1/kg/{project}/init/{id}/questions` and `.../decision`, for its own kg_init run alone;
+- `POST /v1/kg/{project}/answers/{job}/replies`, for the questions of its own batch alone;
+- `POST /v1/kg/{project}/tools/{tool}` and `GET /v1/kg/{project}/eval-set`, read through the agents' sink
+  (`claude-code@anthropic`) whatever the request names.
+
 ## A run that asks for a credential
 
 A run that lacks a credential asks its owner for it with a decision, rather than for a login on the worker's machine

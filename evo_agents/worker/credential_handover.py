@@ -25,6 +25,7 @@ from evo_agents.hub.credentials import (
     HUB_KIND,
     HUB_TOKEN_ENV,
     HUB_URL_ENV,
+    KG_RUN,
     RUN_ACCESS,
     Lease,
     is_ssh_origin,
@@ -139,14 +140,16 @@ def config_env(base: Mapping[str, str], entries: Sequence[tuple[str, str]]) -> d
 def run_access_env(leases: Iterable[Lease], hub_url: str | None, *, guarded: bool) -> tuple[dict[str, str], str | None]:
     """What the lease of kind HUB_KIND, the run's own token of the hub, adds to its agent's environment: the token as
     HUB_TOKEN_ENV and as HUB_URL_ENV the URL this daemon reaches the hub at (``hub_url``), else the lease's own; with
-    why it adds nothing to a run that holds such a lease. ``({}, None)`` for a run that holds none."""
+    why it adds nothing to a run that holds such a lease. ``({}, None)`` for a run that holds none. A ``guarded`` run
+    takes only the token of a KG run (named ``kg-run:<project>``), which reaches its project's KG routes alone, never
+    one that runs as its owner."""
     found = [lease for lease in leases if lease.kind == HUB_KIND]
     if not found:
         return {}, None
     lease = found[-1]
     if lease.provider != RUN_ACCESS or lease.env_var != HUB_TOKEN_ENV or not lease.value:
         return {}, f"the hub sent a lease of kind {HUB_KIND} that is not a run's token of {HUB_TOKEN_ENV}"
-    if guarded:
+    if guarded and not lease.name.startswith(f"{KG_RUN}:"):
         return {}, "a run of the Curator or a release run never runs as its owner"
     try:
         url = check_url(hub_url or lease.base_url or "", HUB_URL_ENV)

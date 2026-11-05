@@ -20,6 +20,7 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.hub import runs
+from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, KG_RUN, RUN_ACCESS, Lease
 from evo_agents.worker import figures
 from evo_agents.worker.runtimes import claude_code
 from tests.worker.test_credentials import env_lease
@@ -333,6 +334,23 @@ def test_a_review_run_with_no_repo_reads_the_hubs_graph_alone(machine):  # noqa:
         assert runs.REPOLESS_REVIEW in hub.last_heartbeat["features"]
 
     with_daemon(machine, body)
+
+
+def test_a_kg_review_with_no_repo_gets_its_token_of_the_hub_though_guarded(machine):  # noqa: F811
+    """A KG run (a review of the Curator with no repo) leased its token of the hub, named kg-run:<project>: the agent
+    gets EVO_HUB_TOKEN and EVO_HUB_URL, which ``evo-agents hub kg init --decide`` signs in with, no login on the node."""
+    seen, token = machine.tmp / "kg-hub-env.json", "evr_" + "k" * 43
+    machine.scenarios({"review": [{"env": str(seen)}, {"result": {"summary": "Decided."}}]})
+
+    async def body(hub, daemon):
+        run_id = hub.queue_review_run([], curator={"role": "reviewer", "protected_paths": []})
+        lease = Lease(1, HUB_KIND, RUN_ACCESS, f"{KG_RUN}:demo", env_var=HUB_TOKEN_ENV, value=token, base_url=hub.url)
+        hub.leases[run_id] = {"leases": [lease.to_json()], "missing": []}
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+
+    with_daemon(machine, body)
+    env = json.loads(seen.read_text(encoding="utf-8"))
+    assert env[HUB_TOKEN_ENV] == token and env[HUB_URL_ENV]
 
 
 def test_a_review_run_with_no_repo_starts_on_the_claude_login_it_is_leased(machine):  # noqa: F811

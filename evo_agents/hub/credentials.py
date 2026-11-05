@@ -58,6 +58,11 @@ HUB_KIND = "hub"
 RUN_ACCESS = "run-access"
 HUB_TOKEN_ENV = "EVO_HUB_TOKEN"
 HUB_URL_ENV = "EVO_HUB_URL"
+# A KG run (a review of lens kg_questions or kg_init, or a batch of an answer job) is leased a token of its own of the
+# same kind and provider, which reaches the KG routes of its run's project alone
+# (``evo_agents.hub.server.kg_run_access``): the lease is named ``kg-run:<project>`` and its token's host is
+# ``kg-run:<run id>``. A guarded run (the Curator's) takes that token, never one that runs as its owner.
+KG_RUN = "kg-run"
 # What a member may let the tokens of their runs reach besides what every run's token reaches (schema 0193,
 # ``users.run_reach``, ``evo_agents.hub.server.run_access_rules``): a project's agent profiles and agent types, workers
 # and their pools, the Curator's writes, a project's release schedule and checking it now (0208); in the order the hub
