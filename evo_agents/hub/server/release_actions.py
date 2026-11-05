@@ -117,17 +117,24 @@ def _run(data: dict) -> WorkflowRun | None:
     )
 
 
+async def run_by_id(app: GitHubApp, token: str, owner: str, repo: str, run_id: int) -> dict | None:
+    """GitHub's answer for workflow run ``run_id`` (GET .../actions/runs/{id}), or None when GitHub knows no such run."""
+    doing = f"reading run {run_id} on {owner}/{repo}"
+    response = await _call(app, token, "GET", _path("repos", owner, repo, "actions", "runs", run_id), doing)
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        raise _refused(response, doing, owner, repo)
+    data = app._json(response, doing)
+    return data if isinstance(data, dict) else None
+
+
 async def tag_run(
     app: GitHubApp, token: str, owner: str, repo: str, *, workflow: str, tag: str, commit: str, run_id: int | None
 ) -> WorkflowRun | None:
     """The run of ``workflow`` for ``tag`` at ``commit`` (see the module), or None before there is one."""
-    if run_id is not None:
-        doing = f"reading run {run_id} of {workflow} on {owner}/{repo}"
-        response = await _call(app, token, "GET", _path("repos", owner, repo, "actions", "runs", run_id), doing)
-        if response.status_code == 200:
-            return _run(app._json(response, doing))
-        if response.status_code != 404:
-            raise _refused(response, doing, owner, repo)
+    if run_id is not None and (data := await run_by_id(app, token, owner, repo, run_id)) is not None:
+        return _run(data)
     doing = f"listing the runs of {workflow} for {tag} on {owner}/{repo}"
     path = _path("repos", owner, repo, "actions", "workflows", workflow, "runs")
     params = {"head_sha": commit, "event": "push", "per_page": RUNS_PAGE}

@@ -1047,9 +1047,12 @@ when the time or the event comes (`docs/notifications.md`, A wait). A step of an
 with `evo-agents worker ask --wait-option KEY`: choosing it leaves the decision open, and the agent hears nothing until
 another answer.
 
-Something elsewhere that takes more than a few minutes (the CI of a commit, a pull request or a tag, a package on an
-index, a build or a run on the hub, a deploy) is waited for the same way, with `evo-agents worker wait --until +15m`,
-and looked at once each time the wait wakes. A wait inside the session parks nothing: Claude Code keeps the session open
+A GitHub Actions run (the CI of a tag or a commit pushed, a deploy) is waited for on the run itself, with
+`evo-agents worker wait --on github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID --until +90m`: the hub
+reads that run every minute and wakes the agent on its first failed job, or when it completes (`docs/notifications.md`,
+A wait). Something else elsewhere that takes more than a few minutes (the checks of a pull request, a package on an
+index, a build or a run on the hub) is waited for the same way with a time, `evo-agents worker wait --until +15m`, and
+looked at once each time the wait wakes. A wait inside the session parks nothing: Claude Code keeps the session open
 while a command the agent started in the background runs, up to the run's time cap, and run #1537 of evo-agents held a
 worker slot for more than seven hours that way, with Monitor watches of a tag's CI, PyPI and builds of the knowledge
 graph, loops that slept and a `sleep 590`. So a claude-code plan run gets a PreToolUse hook of waits
