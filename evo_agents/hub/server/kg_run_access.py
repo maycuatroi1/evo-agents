@@ -27,6 +27,7 @@ run_access.write audit row naming the run, as for any run's token.
 from __future__ import annotations
 
 import re
+from typing import overload
 
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -89,6 +90,10 @@ def refusal(method: str, path: str, project: str) -> str | None:
     return REFUSED.format(project=project)
 
 
+@overload
+def sink(user, asked: str) -> str: ...
+@overload
+def sink(user, asked: str | None) -> str | None: ...
 def sink(user, asked: str | None) -> str | None:
     """The sink a read of ``user`` goes through: the agents' sink for a KG run's token, whatever it asked; ``asked``
     for anyone else."""
