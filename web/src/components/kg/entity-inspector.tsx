@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Expand, ExternalLink, FileText, Telescope } from "lucide-react";
+import { ArrowUpRight, Braces, Code2, Expand, ExternalLink, FileCode2, FileText, Folder, type LucideIcon, Telescope } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
@@ -10,7 +10,15 @@ import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
-import { type Citation, edgeLabel, type EntityDetail, type EntityEdge, type RelationDetail } from "@/lib/kg/entity-graph";
+import {
+  type Citation,
+  type CodeLink,
+  edgeLabel,
+  type EntityDetail,
+  type EntityEdge,
+  groupCode,
+  type RelationDetail,
+} from "@/lib/kg/entity-graph";
 import { entityDetailQuery, relationDetailQuery } from "@/lib/kg/entity-queries";
 import { isWebLink } from "@/lib/kg/format";
 import { nodeHref } from "@/lib/kg/routes";
@@ -22,6 +30,9 @@ import { Frame, Heading, SubTitle } from "./explorer-inspector";
 
 const CITATIONS_SHOWN = 4;
 const RELATIONS_SHOWN = 6;
+const CODE_SHOWN = 8;
+
+const CODE_ICONS: Record<string, LucideIcon> = { Directory: Folder, File: FileCode2, Symbol: Braces };
 
 export type EntityActions = {
   onClose: () => void;
@@ -151,7 +162,7 @@ function Keywords({ text }: { text: string | null }) {
 
 function Figures({ rows }: { rows: [string, ReactNode][] }) {
   return (
-    <dl className="grid grid-cols-3 divide-x rounded-md border">
+    <dl className="grid divide-x rounded-md border" style={{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }}>
       {rows.map(([label, value]) => (
         <div key={label} className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
           <dt className="truncate text-xs text-muted-foreground">{label}</dt>
@@ -159,6 +170,102 @@ function Figures({ rows }: { rows: [string, ReactNode][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** One code node an entity points to: where it is, why it is linked, how sure, and links to the code and its node page. */
+function CodeItem({ project, link }: { project: string; link: CodeLink }) {
+  const t = useTranslations("kg.explorer.entities.inspector");
+  const format = useFormatter();
+  const Icon = CODE_ICONS[link.kind] ?? FileCode2;
+  const href = citationHref(link);
+  const where = link.kind === "Symbol" ? link.path : null;
+  return (
+    <li className="flex flex-col gap-1 rounded-md border bg-muted/40 p-2.5" data-testid="kg-entity-code-link">
+      <div className="flex min-w-0 items-start gap-1.5">
+        <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label={link.kind} />
+        <Link
+          href={nodeHref(project, link.id)}
+          className="min-w-0 font-mono text-[12px] font-medium [overflow-wrap:anywhere] text-foreground underline-offset-4 hover:underline"
+          title={t("codeNodePage", { name: link.path ?? link.name })}
+          data-testid="kg-entity-code-node"
+        >
+          {link.name}
+        </Link>
+        {link.conf === null ? null : (
+          <span className="ml-auto shrink-0 text-[11px] text-fg-subtle tabular-nums" title={t("confidence")}>
+            {format.number(link.conf, { style: "percent", maximumFractionDigits: 0 })}
+          </span>
+        )}
+      </div>
+      {where ? <p className="font-mono text-[11px] text-fg-subtle [overflow-wrap:anywhere]">{link.line ? `${where}:${link.line}` : where}</p> : null}
+      {link.reason ? <p className="text-xs leading-5 [overflow-wrap:anywhere]">{link.reason}</p> : null}
+      {link.name_match ? (
+        <p className="text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{t("codeNameMatch", { name: link.name_match })}</p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-subtle">
+        {link.rels.map((rel) => (
+          <span key={rel} className="rounded-full border px-1.5 py-px font-mono" title={t(rel === "refers_to" ? "codeRefersTo" : "codeImplementedBy")}>
+            {rel}
+          </span>
+        ))}
+        {link.model ? <span className="font-mono">{link.model}</span> : null}
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex cursor-pointer items-center gap-1 text-brand underline-offset-4 hover:underline max-md:min-h-11"
+            data-testid="kg-entity-code-source"
+          >
+            {t("openCode")}
+            <ExternalLink className="size-3" aria-hidden="true" />
+          </a>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+/** The Directories, Files and Symbols the entity points to (implemented_by, refers_to), grouped by repo and package. */
+function CodeLinks({ project, links, total }: { project: string; links: CodeLink[]; total: number }) {
+  const t = useTranslations("kg.explorer.entities.inspector");
+  const [all, setAll] = useState(false);
+  const groups = groupCode(all ? links : links.slice(0, CODE_SHOWN));
+  return (
+    <section className="flex flex-col gap-2" data-testid="kg-entity-code" aria-labelledby="kg-entity-code-title">
+      <SubTitle>
+        <span id="kg-entity-code-title" className="inline-flex items-center gap-1.5">
+          <Code2 className="size-3.5" aria-hidden="true" />
+          {t("code", { count: total })}
+        </span>
+      </SubTitle>
+      {links.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("noCode")}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.map((group) => (
+            <div key={group.key} className="flex flex-col gap-1.5" data-testid="kg-entity-code-package">
+              <p className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                <Folder className="size-3 shrink-0" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">{group.key}</span>
+              </p>
+              <ul className="flex flex-col gap-1.5">
+                {group.links.map((link) => (
+                  <CodeItem key={link.id} project={project} link={link} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {links.length > CODE_SHOWN ? (
+        <Button type="button" variant="ghost" size="sm" className="w-fit cursor-pointer" onClick={() => setAll(!all)}>
+          {all ? t("showFewer") : t("showAll", { count: links.length })}
+        </Button>
+      ) : null}
+      {total > links.length ? <p className="text-[11px] text-fg-subtle">{t("codeMore", { shown: links.length, total })}</p> : null}
+    </section>
   );
 }
 
@@ -248,9 +355,11 @@ function EntityBody({ project, detail, actions }: { project: string; detail: Ent
           [t("documents"), format.number(detail.documents)],
           [t("relationsShort"), format.number(node.degree)],
           [t("neighbours"), format.number(detail.neighbours.length)],
+          [t("codeShort"), format.number(detail.code_links ?? 0)],
         ]}
       />
       <Provenance status={node.status} model={node.model} conf={node.conf} label={node.label} />
+      <CodeLinks project={project} links={detail.code ?? []} total={detail.code_links ?? 0} />
       <Citations project={project} citations={detail.citations} total={detail.documents} />
       <RelationList detail={detail} actions={actions} />
     </>

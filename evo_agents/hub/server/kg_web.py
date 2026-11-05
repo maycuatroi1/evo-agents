@@ -13,9 +13,12 @@
   kind); an edge counts only when it and both its nodes are visible.
 - GET /v1/kg/{project}/entity-graph?limit=: the entities the entities step stated that the most visible documents
   mention (150 by default, at most 1,000) and the visible relations between them (``evo_agents.hub.kg_entity_graph``).
-- GET /v1/kg/{project}/entity-graph/around?id=&depth=&limit=: the entities within 1 to 3 relations of one.
+- GET /v1/kg/{project}/entity-graph/around?id=&depth=&limit=: the entities within 1 to 3 relations of one. Both
+  count each entity's code (``code``) and with ``code=true`` add the visible Directories, Files and Symbols the
+  entities shown point to (``code_nodes``, ``code_edges``, at most 500).
 - GET /v1/kg/{project}/entity?id= and /relation?id=: one entity or relation with the documents it was read from,
-  each with the model's quote, its line and a link to the document.
+  each with the model's quote, its line and a link to the document; an entity also with its code (``code``), each
+  code node with the reason it is linked, its confidence and its link at the commit its source read.
 
 The build status the pages show comes from GET /v1/kg/{project}/builds (``evo_agents.hub.server.kg``). Nothing here
 writes, queues a build or goes through /mcp.
@@ -40,7 +43,14 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.kg_entity_graph import CITATIONS, MAX_DEPTH, MAX_ENTITY_NODES, TOP_NODES
+from evo_agents.hub.kg_entity_graph import (
+    CITATIONS,
+    CODE_LINKS,
+    MAX_CODE_NODES,
+    MAX_DEPTH,
+    MAX_ENTITY_NODES,
+    TOP_NODES,
+)
 from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphOutdated, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
@@ -380,6 +390,10 @@ EntityId = Annotated[str, Query(alias="id", min_length=1, max_length=1000, descr
 EntityLimit = Annotated[
     int, Query(ge=1, le=MAX_ENTITY_NODES, description=f"most entities shown, at most {MAX_ENTITY_NODES}")
 ]
+WithCode = Annotated[
+    bool,
+    Query(description=f"also the code nodes the entities shown point to, at most {MAX_CODE_NODES}"),
+]
 
 
 class EntityNode(BaseModel):
@@ -390,6 +404,9 @@ class EntityNode(BaseModel):
     description: str | None = Field(description="the model's summary of what the documents say of it, else their one")
     docs: int = Field(description="visible documents that mention it")
     degree: int = Field(description="its visible relations to another visible entity")
+    code: int = Field(
+        default=0, description="visible Directories, Files and Symbols it points to (implemented_by, refers_to)"
+    )
     status: str
     conf: float | None
     model: str | None = Field(description="the model that stated it")
@@ -415,6 +432,42 @@ class EntityEdge(BaseModel):
     label: NodeLabel
 
 
+class CodeNode(BaseModel):
+    id: str
+    kind: str = Field(description="Directory, File or Symbol")
+    name: str
+    repo: str | None
+    path: str | None
+    package: str = Field(description="the directory it is in (a Directory's own path), empty at the repo's root")
+    entities: int = Field(description="visible entities that point to it")
+    label: NodeLabel
+
+
+class CodeEdge(BaseModel):
+    src: str = Field(description="the entity")
+    rel: str = Field(description="implemented_by (an agent's entity map) or refers_to (the entity's name names it)")
+    dst: str = Field(description="the code node")
+    conf: float = Field(description="the surest confidence of the links between the two")
+
+
+class CodeLink(BaseModel):
+    id: str = Field(description="the id of the code node, for its page of the graph")
+    kind: str = Field(description="Directory, File or Symbol")
+    name: str
+    repo: str | None
+    path: str | None
+    package: str = Field(description="the directory it is in (a Directory's own path), empty at the repo's root")
+    label: NodeLabel
+    rels: list[str] = Field(description="the relations that link the entity to it: implemented_by, refers_to")
+    reason: str | None = Field(description="why the agent that mapped the entity says this code implements it")
+    name_match: str | None = Field(description="the entity's name that names this code, for refers_to")
+    conf: float | None
+    status: str
+    model: str | None = Field(description="the model or agent that linked them")
+    uri: str | None = Field(description="the code at the commit its source read, when it has a link")
+    line: int | None = Field(description="the line a Symbol starts on in that file")
+
+
 class EntityGraph(BaseModel):
     graph: GraphRef | None = Field(description="null until a build of the project succeeded")
     limit: int
@@ -423,6 +476,9 @@ class EntityGraph(BaseModel):
     total_nodes: int = Field(description="visible entities of the graph")
     total_edges: int = Field(description="visible relations of the graph")
     truncated: bool
+    code_nodes: list[CodeNode] = Field(default_factory=list, description="with code=true, the code they point to")
+    code_edges: list[CodeEdge] = Field(default_factory=list, description="with code=true, entity to code")
+    code_left_out: int = Field(default=0, description=f"code nodes past the first {MAX_CODE_NODES} left out")
 
 
 class EntityNeighbourhood(BaseModel):
@@ -434,6 +490,9 @@ class EntityNeighbourhood(BaseModel):
     edges: list[EntityEdge]
     left_out: int = Field(description="visible entities within reach that the limit left out")
     truncated: bool
+    code_nodes: list[CodeNode] = Field(default_factory=list, description="with code=true, the code they point to")
+    code_edges: list[CodeEdge] = Field(default_factory=list, description="with code=true, entity to code")
+    code_left_out: int = Field(default=0, description=f"code nodes past the first {MAX_CODE_NODES} left out")
 
 
 class Citation(BaseModel):
@@ -455,6 +514,10 @@ class EntityDetail(BaseModel):
     documents: int = Field(description="visible documents that mention it")
     relations: list[EntityEdge] = Field(description="its visible relations, heaviest first")
     neighbours: list[EntityNode] = Field(description="the entities at the other end of those relations")
+    code: list[CodeLink] = Field(
+        default_factory=list, description=f"the code it points to, by repo, package and path, at most {CODE_LINKS}"
+    )
+    code_links: int = Field(default=0, description="visible Directories, Files and Symbols it points to")
 
 
 class RelationDetail(BaseModel):
@@ -468,10 +531,11 @@ class RelationDetail(BaseModel):
 
 @router.get("/{project}/entity-graph", response_model=EntityGraph)
 async def entity_graph(
-    request: Request, project: ProjectName, user: CurrentUser, limit: EntityLimit = TOP_NODES
+    request: Request, project: ProjectName, user: CurrentUser, limit: EntityLimit = TOP_NODES, code: WithCode = False
 ) -> EntityGraph:
-    """The visible entities the most documents mention and the visible relations between them."""
-    data, ref = await read_graph(request, user, project, lambda session: session.entities(limit))
+    """The visible entities the most documents mention and the visible relations between them; with ``code``, the
+    visible code nodes they point to."""
+    data, ref = await read_graph(request, user, project, lambda session: session.entities(limit, code))
     data = data or {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0, "truncated": False}
     return EntityGraph(
         graph=ref,
@@ -481,7 +545,16 @@ async def entity_graph(
         total_nodes=data["total_nodes"],
         total_edges=data["total_edges"],
         truncated=data["truncated"],
+        **_code_graph(data),
     )
+
+
+def _code_graph(data: dict) -> dict:
+    return {
+        "code_nodes": [CodeNode(**n) for n in data.get("code_nodes", ())],
+        "code_edges": [CodeEdge(**e) for e in data.get("code_edges", ())],
+        "code_left_out": data.get("code_left_out", 0),
+    }
 
 
 async def _entity_read(request: Request, user, project: str, reader):
@@ -507,9 +580,11 @@ async def entity_neighbourhood(
     user: CurrentUser,
     depth: Annotated[int, Query(ge=1, le=MAX_DEPTH)] = 1,
     limit: EntityLimit = TOP_NODES,
+    code: WithCode = False,
 ) -> EntityNeighbourhood:
-    """The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them."""
-    data, ref = await _entity_read(request, user, project, lambda s: s.entities_around(entity_id, depth, limit))
+    """The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them; with
+    ``code``, the visible code nodes they point to."""
+    data, ref = await _entity_read(request, user, project, lambda s: s.entities_around(entity_id, depth, limit, code))
     return EntityNeighbourhood(
         graph=ref,
         focus=data["focus"],
@@ -519,12 +594,13 @@ async def entity_neighbourhood(
         edges=[EntityEdge(**e) for e in data["edges"]],
         left_out=data["left_out"],
         truncated=data["truncated"],
+        **_code_graph(data),
     )
 
 
 @router.get("/{project}/entity", response_model=EntityDetail)
 async def show_entity(request: Request, project: ProjectName, entity_id: EntityId, user: CurrentUser) -> EntityDetail:
-    """One visible entity with the documents that mention it, quoted, and its relations."""
+    """One visible entity with the documents that mention it, quoted, its relations and the code it points to."""
     data, ref = await _entity_read(request, user, project, lambda s: s.entity(entity_id))
     return EntityDetail(
         graph=ref,
@@ -534,6 +610,8 @@ async def show_entity(request: Request, project: ProjectName, entity_id: EntityI
         documents=data["documents"],
         relations=[EntityEdge(**e) for e in data["relations"]],
         neighbours=[EntityNode(**n) for n in data["neighbours"]],
+        code=[CodeLink(**c) for c in data["code"]],
+        code_links=data["code_links"],
     )
 
 

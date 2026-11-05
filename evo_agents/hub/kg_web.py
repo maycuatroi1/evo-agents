@@ -197,18 +197,29 @@ class WebSession(HubSession):
         assert self.policy is not None
         return self.policy.describe(Label.of(label))
 
-    def _entity_graph(self, found: kg_entity_graph.EntityView, picked: dict) -> dict:
+    def _entity_graph(self, found: kg_entity_graph.EntityView, picked: dict, code: bool = False) -> dict:
+        """The entities and relations ``picked``, and with ``code`` the code nodes those entities point to."""
         nodes = [kg_entity_graph.node_json(found, found.nodes[nid], self._describe) for nid in picked["nodes"]]
         edges = [kg_entity_graph.edge_json(e, self._describe) for e in picked["edges"]]
-        return {**picked, "nodes": nodes, "edges": edges}
+        drawn = kg_entity_graph.code_of(found, picked["nodes"] if code else ())
+        code_nodes = [kg_entity_graph.code_node_json(found, found.targets[t], self._describe) for t in drawn["nodes"]]
+        return {
+            **picked,
+            "nodes": nodes,
+            "edges": edges,
+            "code_nodes": code_nodes,
+            "code_edges": drawn["edges"],
+            "code_left_out": drawn["left_out"],
+        }
 
-    def entities(self, limit: int = kg_entity_graph.TOP_NODES) -> dict:
-        """The visible entities the most documents mention, at most ``limit``, and the relations between them."""
+    def entities(self, limit: int = kg_entity_graph.TOP_NODES, code: bool = False) -> dict:
+        """The visible entities the most documents mention, at most ``limit``, and the relations between them; with
+        ``code``, the visible code nodes they point to."""
         if self.error:
             return {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0, "truncated": False}
         store, b = self._visible_store()
         found = self._entity_view(store, b)
-        return self._entity_graph(found, kg_entity_graph.top(found, limit))
+        return self._entity_graph(found, kg_entity_graph.top(found, limit), code)
 
     def _entity(self, store: Store, b: int, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
         n = self._lookup(store, entity_id, b)
@@ -216,28 +227,31 @@ class WebSession(HubSession):
             raise NotVisible(entity_id)
         return n
 
-    def entities_around(self, entity_id: str, depth: int, limit: int) -> dict:
-        """The visible entities within ``depth`` relations of one, at most ``limit``. Raises NotVisible."""
+    def entities_around(self, entity_id: str, depth: int, limit: int, code: bool = False) -> dict:
+        """The visible entities within ``depth`` relations of one, at most ``limit``; with ``code``, the visible code
+        nodes they point to. Raises NotVisible."""
         if self.error:
             raise NotVisible(entity_id)
         store, b = self._visible_store()
         found = self._entity_view(store, b)
         focus = self._entity(store, b, found, entity_id)["id"]
         picked = kg_entity_graph.around(found, focus, depth, limit)
-        out = self._entity_graph(found, picked)
+        out = self._entity_graph(found, picked, code)
         for n in out["nodes"]:
             n["hop"] = picked["hop"][n["id"]]
         del out["hop"]
         return {**out, "focus": focus}
 
     def entity(self, entity_id: str) -> dict:
-        """One visible entity, the documents that mention it and its relations. Raises NotVisible."""
+        """One visible entity, the documents that mention it, its relations and the code it points to. Raises
+        NotVisible."""
         if self.error:
             raise NotVisible(entity_id)
         store, b = self._visible_store()
         found = self._entity_view(store, b)
         n = self._entity(store, b, found, entity_id)
         citations, total = kg_entity_graph.entity_citations(store, b, found, n["id"])
+        code, code_total = kg_entity_graph.code_links(store, b, found, n["id"], self.seen, self._describe)
         relations = sorted(
             (found.relations[eid] for eid in found.adjacent.get(n["id"], ())),
             key=lambda e: (-kg_entity_graph.weight(e), e["id"]),
@@ -250,6 +264,8 @@ class WebSession(HubSession):
             "documents": total,
             "relations": [kg_entity_graph.edge_json(e, self._describe) for e in relations],
             "neighbours": [kg_entity_graph.node_json(found, found.nodes[o], self._describe) for o in sorted(others)],
+            "code": code,
+            "code_links": code_total,
         }
 
     def relation(self, edge_id: str) -> dict:

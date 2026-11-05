@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildGraph,
+  type CodeEdge,
+  codeEdgeKey,
+  type CodeLink,
+  type CodeNode,
   DEFAULT_LIMIT,
   edgeLabel,
   edgeSize,
@@ -9,6 +13,8 @@ import {
   type EntityEdge,
   type EntityGraphNode,
   estimateCost,
+  groupCode,
+  isCodeNode,
   kindColour,
   matchEntities,
   mergeGraphs,
@@ -29,6 +35,7 @@ const node = (id: string, kind: string, name: string, docs = 1, hop?: number): E
   description: null,
   docs,
   degree: 1,
+  code: 0,
   status: "inferred",
   conf: 0.9,
   model: "anthropic/claude-haiku-5.5",
@@ -180,5 +187,76 @@ describe("the empty state's estimate", () => {
     expect(perDocument).toBeCloseTo((2000 * 0.1 + 1274 * 0.5) / 1e6, 10);
     expect(total).toBeCloseTo(perDocument * 1000, 10);
     expect(estimateCost(-3).total).toBe(0);
+  });
+});
+
+const code = (id: string, kind: string, path: string, entities = 1): CodeNode => ({
+  id,
+  kind,
+  name: path.split("/").pop() ?? path,
+  repo: "evo-agents",
+  path,
+  package: kind === "Directory" ? path : path.split("/").slice(0, -1).join("/"),
+  entities,
+  label,
+});
+const RELAY = code("evo-agents:evo_agents/hub/relay.py", "File", "evo_agents/hub/relay.py", 2);
+const HUB = code("dir:evo-agents:evo_agents/hub", "Directory", "evo_agents/hub");
+const pointing = (src: string, dst: string, rel = "implemented_by", conf = 0.8): CodeEdge => ({ src, rel, dst, conf });
+
+describe("the code of the entities drawn", () => {
+  it("merges the code nodes of every part once and keeps an edge only between an entity and a code node held", () => {
+    const merged = mergeGraphs([
+      { ...SET, code_nodes: [RELAY], code_edges: [pointing(ADA.id, RELAY.id), pointing("entity:gone", RELAY.id)] },
+      { nodes: [ADA], edges: [], code_nodes: [RELAY, HUB], code_edges: [pointing(ADA.id, RELAY.id, "refers_to"), pointing(ADA.id, HUB.id)] },
+    ]);
+    expect(merged.codeNodes?.map((n) => n.id)).toEqual([RELAY.id, HUB.id]);
+    expect(merged.codeEdges?.map(codeEdgeKey)).toEqual([codeEdgeKey(pointing(ADA.id, RELAY.id)), codeEdgeKey(pointing(ADA.id, HUB.id))]);
+  });
+
+  it("draws an entity whose only link is to code, and drops the code of a hidden kind", () => {
+    const set = { nodes: [LONDON, ADA], edges: [], codeNodes: [RELAY, HUB], codeEdges: [pointing(LONDON.id, RELAY.id), pointing(ADA.id, HUB.id)] };
+    const { linked, isolated } = splitShown(set, new Set(["Person"]));
+    expect(linked.nodes.map((n) => n.id)).toEqual([LONDON.id]);
+    expect(linked.codeNodes?.map((n) => n.id)).toEqual([RELAY.id]);
+    expect(isolated).toEqual([]);
+  });
+
+  it("builds code as square slate nodes with a thin edge from the entity, and counts an entity's code", () => {
+    const g = buildGraph(
+      { nodes: [{ ...ADA, code: 3 }], edges: [], codeNodes: [RELAY], codeEdges: [pointing(ADA.id, RELAY.id)] },
+      { dark: false, edgeColour: "#e4e4e7", codeEdgeColour: "#6b6b73" },
+    );
+    expect(g.getNodeAttribute(ADA.id, "code")).toBe(3);
+    expect(isCodeNode(g.getNodeAttributes(ADA.id))).toBe(false);
+    expect(isCodeNode(g.getNodeAttributes(RELAY.id))).toBe(true);
+    expect(g.getNodeAttribute(RELAY.id, "color")).not.toBe(kindColour("File", false));
+    const key = codeEdgeKey(pointing(ADA.id, RELAY.id));
+    expect(g.getEdgeAttributes(key)).toMatchObject({ code: true, color: "#6b6b73", label: "implemented by" });
+  });
+
+  it("groups an entity's code links by repo and package, the repo's root as /", () => {
+    const link = (id: string, pkg: string): CodeLink => ({
+      id,
+      kind: "File",
+      name: id,
+      repo: "evo-agents",
+      path: `${pkg}/${id}`,
+      package: pkg,
+      label,
+      rels: ["implemented_by"],
+      reason: null,
+      name_match: null,
+      conf: 0.8,
+      status: "extracted",
+      model: null,
+      uri: null,
+      line: null,
+    });
+    const groups = groupCode([link("a.py", "evo_agents/hub"), link("b.py", "evo_agents/hub"), link("README.md", "")]);
+    expect(groups.map((g) => [g.key, g.links.length])).toEqual([
+      ["evo-agents:evo_agents/hub", 2],
+      ["evo-agents:/", 1],
+    ]);
   });
 });
