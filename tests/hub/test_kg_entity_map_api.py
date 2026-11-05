@@ -12,7 +12,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from evo_agents.hub import kg_entity_maps as maps
 from evo_agents.hub import tables
@@ -137,6 +137,28 @@ def test_a_run_s_map_is_checked_kept_as_a_blob_and_read_by_the_next_build(hub, t
     # carol's grant stops at public: she does not see the entity of an internal guide
     hidden_node = call_tool(hub, "kg_node", {"id": "entity:Component:search-engine"}, member="carol").json()
     assert hidden_node["isError"] and "Search engine" not in str(hidden_node)
+
+
+def test_the_first_build_after_switching_to_the_strategy_queues_a_run_and_lets_a_writer_ask_for_one(hub, tmp_path):
+    """kg_builds.coverage keeps entity_map.enabled: the first build under entity-graph-agent queues a run
+    (``kg_entity_map_db.on_build``), and ``hub kg entity-map --run`` finds the latest build of that strategy."""
+    built(hub, tmp_path, strategy=False)
+    got = hub.client.put(
+        f"/v1/kg/{PROJECT}/settings", json={"values": {"strategy": "entity-graph-agent"}}, headers=hub.alice
+    )
+    assert got.status_code == 200, got.text
+    assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    builds = tables.kg_builds
+    ((status, coverage),) = sql(
+        hub.db, select(builds.c.status, builds.c.coverage).order_by(builds.c.id.desc()).limit(1)
+    )
+    assert status == "succeeded" and coverage["entity_map"]["enabled"] is True
+    runs = tables.kg_entity_map_runs
+    assert [r[0] for r in sql(hub.db, select(runs.c.via))] == ["first_build"]
+    sql(hub.db, update(runs).values(state="done"))  # the queued run ended: a writer's call starts a new one
+    asked = hub.client.post(f"/v1/kg/{PROJECT}/entity-map/run", headers=hub.alice)
+    assert asked.status_code == 201, asked.text
 
 
 def test_only_a_run_with_the_writer_role_posts_a_map_and_a_wrong_one_keeps_nothing(hub, tmp_path):
