@@ -15,9 +15,10 @@ messaged, no decision answered and no approval given, and nothing of the Curator
 on a route open to it is the route's to refuse, as for the agent of a run on /mcp: each of those rules tests
 ``Principal.acts_for_run``, which both have.
 
-Three of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
-agent types), ``workers`` (workers, worker pools, their join tokens and labels, and the org chart's workers) and
-``curator`` (the Curator's writes). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach
+Four of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
+agent types), ``workers`` (workers, worker pools, their join tokens and labels, and the org chart's workers),
+``curator`` (the Curator's writes) and ``releases`` (setting a project's release schedule, resuming it and checking it
+now, which may queue the cut of a release as the schedule's owner). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach
 (``evo-agents hub autonomy run-reach --allow ...``), is the set of them the tokens of their runs skip; ``security``
 reads it with the token, so a change holds from the next request of every run. It is empty unless the member chose,
 which refuses as before, and a refusal of one of them says how the owner opens it. Every other group stays refused
@@ -26,7 +27,9 @@ whatever the owner chose.
 While the middleware answers a request of a run's token, ACTING_RUN holds the run's id, and no run is queued whatever
 route the request took: ``refuse_new_run`` is the last word of every place that inserts a run
 (``runs.service.dispatch.insert_run``, the session of a chat run and a parked run's resumption), and
-``new_run_refusal`` the reason a place that refuses with words (a mention in a chat, a core plugin's task) says.
+``new_run_refusal`` the reason a place that refuses with words (a mention in a chat, a core plugin's task) says. The
+one exception is the release check now, which the middleware let through only when the owner opened ``releases``: it
+queues its cut inside ``release_dispatch``, as the schedule's owner, as the daily check would.
 
 ``record_write`` adds the audit row run_access.write of each write made with a run's token, refused or not, once its
 answer started: the run, the method, the path and the status, never a query string, a body or a value; the actor is the
@@ -37,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import contextmanager
 from contextvars import ContextVar
 
 from fastapi import HTTPException
@@ -54,7 +58,7 @@ _PROJECT = r"/v1/projects/[^/]+"
 _RUN = rf"{_PROJECT}/runs/[^/]+"
 # The groups a member may let the tokens of their runs reach (``users.run_reach``), in the order the hub keeps them.
 REACH_GROUPS = RUN_REACH_GROUPS
-AGENTS, WORKERS, CURATOR = REACH_GROUPS
+AGENTS, WORKERS, CURATOR, RELEASES = REACH_GROUPS
 RUN_REACH_PATH = "/v1/autonomy/run-reach"
 # (group, why, path patterns): every method of a path in one of them is refused
 REFUSED = (
@@ -120,7 +124,6 @@ WRITES_REFUSED = (
             rf"{_PROJECT}/author-runs",
             rf"{_RUN}/(?:rerun|messages)",
             rf"{_PROJECT}/local-runs/[^/]+/inbox",
-            rf"{_PROJECT}/releases/(?:run|schedule|resume)",
             r"/v1/x/editorial/[^/]+/posts/[^/]+/run",
         ),
     ),
@@ -141,6 +144,11 @@ WRITES_REFUSED = (
         CURATOR,
         "the Curator's charter, proposals, changes, probes and builds, which judge and change the agents' own work",
         (rf"{_PROJECT}/curator",),
+    ),
+    (
+        RELEASES,
+        "a project's release schedule and checking it now, which may queue the cut of a release",
+        (rf"{_PROJECT}/releases/(?:run|schedule|resume)",),
     ),
 )
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -199,6 +207,18 @@ def refusal(method: str, path: str, reach: frozenset[str] = frozenset()) -> str 
 def new_run_refusal() -> str | None:
     """Why no run may start now: the request being answered carries a run's token (``ACTING_RUN``); None otherwise."""
     return NEW_RUN if ACTING_RUN.get() is not None else None
+
+
+@contextmanager
+def release_dispatch():
+    """While it holds, the request being answered queues runs as though no run's token carried it: the release check
+    now (``releases.run_now``), which the middleware lets a run's token reach only when its owner opened RELEASES, and
+    whose cut is dispatched as the schedule's owner whoever asked."""
+    acting = ACTING_RUN.set(None)
+    try:
+        yield
+    finally:
+        ACTING_RUN.reset(acting)
 
 
 def refuse_new_run() -> None:

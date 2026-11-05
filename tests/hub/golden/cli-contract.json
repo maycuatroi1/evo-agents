@@ -155180,12 +155180,13 @@
                 "enum": [
                   "agents",
                   "workers",
-                  "curator"
+                  "curator",
+                  "releases"
                 ]
               },
               "type": "array",
               "title": "Groups",
-              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose"
+              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes), releases (a project's release schedule and checking it now); empty: none, as for everyone who never chose"
             }
           },
           "type": "object",
@@ -155203,13 +155204,14 @@
                 "enum": [
                   "agents",
                   "workers",
-                  "curator"
+                  "curator",
+                  "releases"
                 ]
               },
               "type": "array",
-              "maxItems": 3,
+              "maxItems": 4,
               "title": "Groups",
-              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose"
+              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes), releases (a project's release schedule and checking it now); empty: none, as for everyone who never chose"
             }
           },
           "additionalProperties": false,
@@ -155233,12 +155235,13 @@
                 "enum": [
                   "agents",
                   "workers",
-                  "curator"
+                  "curator",
+                  "releases"
                 ]
               },
               "type": "array",
               "title": "Groups",
-              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes); empty: none, as for everyone who never chose"
+              "description": "the groups a run's token (evr_...) of the person reaches besides what every run's token reaches: agents (a project's agent profiles and agent types), workers (workers, worker pools, join tokens), curator (the Curator's writes), releases (a project's release schedule and checking it now); empty: none, as for everyone who never chose"
             },
             "previous": {
               "items": {
@@ -155246,7 +155249,8 @@
                 "enum": [
                   "agents",
                   "workers",
-                  "curator"
+                  "curator",
+                  "releases"
                 ]
               },
               "type": "array",

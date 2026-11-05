@@ -953,21 +953,25 @@ These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
 - agent profiles and agent types: `/v1/projects/{p}/agents*` (an agent's placement and account pool among them) and
   `/v1/projects/{p}/agent-types*`, unless the owner's run reach holds `agents`;
 - runs: a dispatch (`POST /v1/projects/{p}/runs`), a plan run, an author run, a rerun, a message to a run or to a
-  local run's inbox, a release run or schedule, an editorial post's run. No run starts from it, with or without
+  local run's inbox, an editorial post's run. No run starts from it, with or without
   `as_me`: the owner's account would go on into work the owner never chose, with the accounts, browser identities or
   worker the request names;
 - decisions: the answer to a decision of any run, a local run's decision marked answered, the approval of a run in
   review, the merge queue's answers, the reset of the Loop's breaker, the answers and rollbacks of `@builder`;
-- the Curator: its charter, proposals, changes, probes and builds, unless the owner's run reach holds `curator`.
+- the Curator: its charter, proposals, changes, probes and builds, unless the owner's run reach holds `curator`;
+- releases: a project's release schedule, its resume and the check now (`evo-agents hub release run`), unless the
+  owner's run reach holds `releases`. The check a run's token makes then queues the cut as the daily check does, as
+  the schedule's owner, so a plan run whose step ends in a release cuts it at once instead of waiting for the day's
+  check.
 
-**The run reach.** Three of those groups are the owner's to open to every run that runs as them: `agents`, `workers`
-and `curator`. The set is per member and hub-wide, empty unless the member chose, which refuses as above; a refusal of
-one of the three says how to open it. Only the member sets their own, with their own sign-in:
+**The run reach.** Four of those groups are the owner's to open to every run that runs as them: `agents`, `workers`,
+`curator` and `releases`. The set is per member and hub-wide, empty unless the member chose, which refuses as above; a
+refusal of one of the four says how to open it. Only the member sets their own, with their own sign-in:
 
 ```sh
-evo-agents hub autonomy run-reach                                # show it
-evo-agents hub autonomy run-reach --allow agents,workers,curator # replace it with these
-evo-agents hub autonomy run-reach --none                         # clear it
+evo-agents hub autonomy run-reach                                         # show it
+evo-agents hub autonomy run-reach --allow agents,workers,curator,releases # replace it with these
+evo-agents hub autonomy run-reach --none                                  # clear it
 ```
 
 That is `GET` and `PUT /v1/autonomy/run-reach` with `{"groups": [...]}`, which replaces the set whole; each change adds

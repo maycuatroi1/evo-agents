@@ -22,6 +22,8 @@ release.resume.
 
 POST .../releases/run (admin) makes a check now, through the same gates as the job's, and answers it; audited as
 release.run. A member without the admin role gets 403 on each write, and a worker token 403 from the guard of /v1.
+A run's token that acts as an admin reaches the schedule, resume and run only when its owner opened the run reach
+``releases`` (``run_access_rules``); its check queues the cut as the daily check does, as the schedule's owner.
 
 GET .../releases/cycles (reader) lists the cycles of the project that ended, published or closed, newest first, a page
 of ``limit`` from ``offset``, each as the status shows the cycle open now: its runs, its tags and their CI, its cost
@@ -43,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, release_ci, release_runs, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, run_access_rules
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import usage_cost
@@ -592,7 +594,8 @@ async def run_now(request: Request, project: ProjectName, user: CurrentUser) -> 
     engine = request.app.state.engine
     async with engine.begin() as conn:
         access, row = await _admin_schedule(conn, user, project, "checking")
-    found = await check(engine, request.app.state.github_app, row.id, trigger="manual", requested_by=user.user_id)
+    with run_access_rules.release_dispatch():  # a run's token got here only with its owner's releases reach
+        found = await check(engine, request.app.state.github_app, row.id, trigger="manual", requested_by=user.user_id)
     if found is None:  # the schedule went in between: nothing was checked
         raise HTTPException(409, f"project {access.name} has no release schedule any more: nothing was checked")
     async with engine.begin() as conn:
