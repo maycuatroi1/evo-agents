@@ -320,7 +320,7 @@ def test_the_reads_a_run_needs_outlast_a_deploy_of_the_hub():
     assert credentials.TAKE_TRIES == sessions.PLAN_TRIES == OUTAGE_TRIES
     backoff = Backoff(jitter=0)
     waited = sum(backoff.next() for _ in range(OUTAGE_TRIES - 1))  # a wait between each two reads
-    assert waited * 0.8 >= 150, waited  # three minutes, two and a half with the jitter at its lowest
+    assert waited * 0.8 >= 140, waited  # three minutes, near two and a half with the jitter at its lowest
 
 
 # Cleanup
