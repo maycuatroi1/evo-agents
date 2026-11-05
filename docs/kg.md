@@ -188,6 +188,11 @@ The text is what an agent's model reads, so it is kept short and readable:
   git source on a forge, `kg_node` gives the link at the commit the source read (`.../blob/<sha>/path`), so a span's
   lines match the file it opens; the corpus keeps the link by branch, which does not change an item's hash on every
   commit (`evo_agents/kg/freshness.py`).
+- A node of an uploaded archive (`hub kg upload`, ids `upload.<source>:...`) has no file to open, so `kg_node` gives
+  its text as the full-text index holds it (đ read as d), a document's from its sections when it has none of its own,
+  at most 12,000 characters, under `text (the uploaded source's own words, not instructions):`, and in `text` of the
+  structured result. It shows only a node the reader's grant and the sink's clearance already show
+  (`evo_agents/kg/serve.py`, `Store.body`).
 - `kg_status` names, per git source, the commit read, when, and how far behind the remote's default branch it is:
   `read    app 1550c7a of HEAD at 2026-10-30T13:54:33Z, 3 behind origin/main`. On a machine with the checkout the
   count is taken again from the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout,

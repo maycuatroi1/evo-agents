@@ -219,6 +219,19 @@ class FullText:
                 found[1] = min(found[1], score)
         return [(nid, held[nid][0]) for nid in sorted(held, key=lambda nid: (-held[nid][0], held[nid][1], nid))]
 
+    def body(self, node_id: str) -> str | None:
+        """The text the full-text index holds of node ``node_id``'s own row (``search.stored_text``), None without
+        one; a row of ``node_fts_aud`` only for a reader within its audience, as ``search`` reads them."""
+        try:
+            held = self.db.execute("SELECT fts_rowid, aud FROM node_fts_rows WHERE node_id = ?", (node_id,)).fetchone()
+            if held is None or (held[1] and not self.reader):
+                return None
+            table, seen = FTS_TABLES[held[1]], FTS_SEEN if held[1] else ""
+            row = self.db.execute(f"SELECT body FROM {table} WHERE rowid = ?{seen}", (held[0],)).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        return text_search.stored_text(row[0]) if row and row[0] else None
+
     def code_lines(self, node_id: str, words: list[str], most: int = text_search.CODE_LINES) -> list[int]:
         """The first ``most`` lines of a file's text in ``code_fts`` that hold a word of ``words`` whole, as the
         index's tokenizer reads it (case and accents aside); [] when the index does not hold the file."""
