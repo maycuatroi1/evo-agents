@@ -763,10 +763,10 @@ def run_corpus(
             for q in asked
         ]
     elif asked:
-        from evo_agents.kg.bench.run import _ensure_vectors, session_of
+        from evo_agents.kg.bench.run import ensure_vectors, session_of
 
         if search == "hybrid":
-            _ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
+            ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
         graphs.warm(lay.project_dir(task))
         with graphs.bench_home(lay.home):
             session = session_of(graphs.project_of(lay, task), search)

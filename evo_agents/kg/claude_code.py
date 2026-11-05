@@ -149,7 +149,7 @@ def answer(
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> dict:
     """The model's answer to ``request`` with its ``usage``. ClaudeStop or ClaudeError when the call fails."""
-    from evo_agents.kg.entities import EntitiesError, _parse_answer, _prompt
+    from evo_agents.kg.entities import EntitiesError, parse_answer, prompt
 
     env = os.environ if env is None else env
     model = request.get("model")
@@ -166,7 +166,7 @@ def answer(
     try:
         done = runner(
             argv(claude, model),
-            input=_prompt(text, kinds, relations),
+            input=prompt(text, kinds, relations),
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
@@ -187,7 +187,7 @@ def answer(
         why = f"{said} {result.get('subtype') or ''} {done.stderr or ''}"
         raise _refusal(why) or ClaudeError(f"claude failed: {_masked(why)}")
     try:
-        data = _parse_answer(said)
+        data = parse_answer(said)
     except EntitiesError as exc:
         raise ClaudeError(str(exc)) from None
     return {"nodes": data.get("nodes") or [], "edges": data.get("edges") or [], "usage": _usage(result)}

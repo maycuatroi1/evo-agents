@@ -167,7 +167,7 @@ class Reader:
 
     def edges(self, ids: list[str], walk: Walk) -> list[tuple[str, str, str, float]]:
         """(src, rel, dst, weight) of the live edges of ``ids``, either way, the reader sees and the walk follows."""
-        from evo_agents.kg.store import LIVE, SEEN, stored_audience
+        from evo_agents.kg.store_filters import LIVE, SEEN, stored_audience
 
         columns = "src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
         out = []

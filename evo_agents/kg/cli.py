@@ -10,11 +10,11 @@ from pathlib import Path
 from evo_agents.kg.project import ProjectError, bind, read_bindings, resolve_project, unbind
 
 
-def _print_json(data) -> None:
+def print_json(data) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
 
 
-def _project(args):
+def project_of(args):
     try:
         return resolve_project(getattr(args, "project", None))
     except ProjectError as exc:
@@ -129,7 +129,7 @@ def _sync_due_all(args) -> int:
             body["push"] = _push_json(*pushed)
         if prune is not None:
             body["prune"] = prune
-        _print_json(body)
+        print_json(body)
     else:
         print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
         for outcome in outcomes:
@@ -149,7 +149,7 @@ def _cmd_sync_due(args) -> int:
     if args.all:
         return _sync_due_all(args)
 
-    project = _project(args)
+    project = project_of(args)
     try:
         outcome = sync_due(project, build=args.build, accept=args.accept_removals, plans=_hub_plans())
     except ProjectError as exc:
@@ -161,7 +161,7 @@ def _cmd_sync_due(args) -> int:
         body = outcome.to_json()
         if pushed is not None:
             body["push"] = _push_json(*pushed)
-        _print_json(body)
+        print_json(body)
     else:
         _print_due(outcome)
         if pushed is not None:
@@ -177,7 +177,7 @@ def cmd_sync(args) -> int:
         return 2
     if args.due:
         return _cmd_sync_due(args)
-    project = _project(args)
+    project = project_of(args)
     results = sync_project(project, args.source or None, accept=args.accept_removals, plans=_hub_plans())
     ok = all(r.ok and not r.held for r in results)
     report = None
@@ -193,7 +193,7 @@ def cmd_sync(args) -> int:
         body = {"project": project.name, "runs": [r.to_json() for r in results]}
         if pushed is not None:
             body["push"] = _push_json(*pushed)
-        _print_json(body)
+        print_json(body)
     else:
         _print_runs(results)
         if report is not None:
@@ -208,10 +208,10 @@ def cmd_sync(args) -> int:
 def cmd_status(args) -> int:
     from evo_agents.kg.status import project_status, render_status
 
-    project = _project(args)
+    project = project_of(args)
     status = project_status(project)
     if args.json:
-        _print_json(status)
+        print_json(status)
     else:
         print(render_status(status, brief=args.brief))
     return 0 if status["ok"] else 1
@@ -227,7 +227,7 @@ def cmd_bind(args) -> int:
     if args.list:
         bindings = read_bindings()
         if args.json:
-            _print_json(bindings)
+            print_json(bindings)
         elif not bindings:
             print("no bindings")
         else:
@@ -240,7 +240,7 @@ def cmd_bind(args) -> int:
             print(f"error: {args.remove} has no binding (see evo-agents kg bind --list)", file=sys.stderr)
             return 1
         if args.json:
-            _print_json({"removed": removed})
+            print_json({"removed": removed})
         else:
             print(f"unbound {removed}")
         return 0
@@ -251,7 +251,7 @@ def cmd_bind(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     if args.json:
-        _print_json({"directory": str(directory), "project": project.name, "harness_root": str(project.harness.root)})
+        print_json({"directory": str(directory), "project": project.name, "harness_root": str(project.harness.root)})
     else:
         print(f"bound {directory}  ->  {project.name}  ({project.harness.root})")
     return 0
@@ -366,7 +366,7 @@ def cmd_connector_test(args) -> int:
     elif args.builtin:
         source = {"id": args.id, "connector": args.builtin, **(json.loads(args.config) if args.config else {})}
     elif args.source:
-        project = _project(args)
+        project = project_of(args)
         harness = project.harness
         source = project.source(args.source)
         try:
@@ -387,7 +387,7 @@ def cmd_connector_test(args) -> int:
         update_golden=args.update_golden,
     )
     if args.json:
-        _print_json(report.to_json())
+        print_json(report.to_json())
     else:
         for check in report.checks:
             print(f"{'PASS' if check.ok else 'FAIL'} {check.name}")

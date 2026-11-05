@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.kg.build import build_project
-from evo_agents.kg.connectors import _git
+from evo_agents.kg.connectors import gitcli
 from evo_agents.kg.connectors import github as github_api
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.store import Store
@@ -126,7 +126,7 @@ def test_the_history_gives_each_commit_its_message(tmp_path):
     commit(app, "First line\n\nSecond paragraph.")
     write(app / "b.txt", "b\n")
     commit(app, "Second")
-    found = _git.history(app, "HEAD")
+    found = gitcli.history(app, "HEAD")
     assert [(c["message"], c["paths"]) for c in found] == [
         ("Second", ["b.txt"]),
         ("First line\n\nSecond paragraph.", ["a.txt"]),

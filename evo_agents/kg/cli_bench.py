@@ -499,25 +499,10 @@ def _selection_args(parser) -> None:
     )
 
 
-def register(ksub) -> None:
+def _run_parser(sub) -> None:
+    """`kg bench run`: ask the selected tasks on their graphs."""
     from evo_agents.kg import evaluate as ev
     from evo_agents.kg.bench import run
-
-    bench = ksub.add_parser(
-        "bench", help="ContextBench, SWE-Explore, LocBench and MuLocBench on graphs of their repos (docs/kg-bench.md)"
-    )
-    sub = bench.add_subparsers(dest="bench_command", required=True)
-
-    fetch = sub.add_parser("fetch", help="download the sets at their pinned revisions into the bench cache")
-    fetch.add_argument("sets", nargs="*", help="code benches (default: all four), non-code sets or noncode")
-    fetch.add_argument("--cache", help="bench cache, outside any repo")
-    fetch.add_argument("--from", dest="mirror", metavar="DIR", help="copy DIR/DATASET/FILE instead of downloading")
-    fetch.add_argument("--force", action="store_true", help="download again what the cache has")
-    fetch.set_defaults(func=cmd_fetch)
-
-    build = sub.add_parser("build", help="build the graph of each repo and base commit the selected tasks need")
-    _selection_args(build)
-    build.set_defaults(func=cmd_build)
 
     go = sub.add_parser("run", help="ask every selected task on its graph, no model called, into a summary JSON")
     _selection_args(go)
@@ -560,6 +545,74 @@ def register(ksub) -> None:
     go.add_argument("--json", action="store_true", help="print the summary")
     go.set_defaults(func=cmd_run)
 
+
+def _show_parser(sub) -> None:
+    """`kg bench show`: print a summary and check it."""
+    show = sub.add_parser("show", help="print a summary and check it")
+    show.add_argument("summary")
+    show.add_argument("--require", metavar="SET,...", help="sets that must have tasks (in --split)")
+    show.add_argument("--split", help="the part the checks read")
+    show.add_argument("--sealed", action="store_true", help="accept a summary with the test part")
+    show.add_argument("--abstain-min", type=_ratio, metavar="R", help="least share abstained on without an answer")
+    show.add_argument("--false-abstain-max", type=_ratio, metavar="R", help="most share abstained on with one")
+    show.add_argument("--precision-min", type=_ratio, metavar="R", help="least mean line precision")
+    show.add_argument("--arms", metavar="ARM,...", help="arms the summary must have run")
+    show.add_argument("--cost-max", type=float, metavar="USD", help="most the run may have cost")
+    show.add_argument(
+        "--curator-agrees",
+        type=int,
+        metavar="N",
+        help="fail unless N of the --require sets have the Curator's config within 2 SE of the best, "
+        "and no Curator input is a file of holdout or test",
+    )
+    show.add_argument("--json", action="store_true", help="machine-readable output")
+    show.set_defaults(func=cmd_show)
+
+
+def _curator_parser(sub) -> None:
+    """`kg bench curator plan|decide|assemble`."""
+    cur = sub.add_parser(
+        "curator", help="the Curator's kg_init run on a set: plan the configs, decide, assemble the file"
+    )
+    csub = cur.add_subparsers(dest="curator_command", required=True)
+    for name, text in (
+        ("plan", "write the configs to rank (and their settings files) under --work"),
+        ("decide", "run the Curator on the set's profile and tune scores in --work, keep inputs and decision"),
+        ("assemble", "join the runs and decisions in --work into the Curator file (curator.json)"),
+    ):
+        one = csub.add_parser(name, help=text)
+        one.add_argument("sets", nargs="+", help="the sets (or noncode)")
+        one.add_argument("--work", required=True, metavar="DIR", help="work directory, SET/plan.json and runs under it")
+        one.set_defaults(func=cmd_curator)
+        if name == "decide":
+            one.add_argument("--cache", help="bench cache, outside any repo")
+            one.add_argument("--skill", metavar="DIR", help="the curator skill (default $EVO_CURATOR_SKILL, ~/.claude)")
+        if name == "assemble":
+            one.add_argument("--out", required=True, metavar="PATH")
+            one.add_argument("--defaults", action="store_true", help="rank for the release defaults: no Curator run")
+            one.add_argument("--note", help="what the file ranked and how, kept in it")
+            one.add_argument("--sampling", help="how the tasks were sampled, kept in it")
+
+
+def register(ksub) -> None:
+    bench = ksub.add_parser(
+        "bench", help="ContextBench, SWE-Explore, LocBench and MuLocBench on graphs of their repos (docs/kg-bench.md)"
+    )
+    sub = bench.add_subparsers(dest="bench_command", required=True)
+
+    fetch = sub.add_parser("fetch", help="download the sets at their pinned revisions into the bench cache")
+    fetch.add_argument("sets", nargs="*", help="code benches (default: all four), non-code sets or noncode")
+    fetch.add_argument("--cache", help="bench cache, outside any repo")
+    fetch.add_argument("--from", dest="mirror", metavar="DIR", help="copy DIR/DATASET/FILE instead of downloading")
+    fetch.add_argument("--force", action="store_true", help="download again what the cache has")
+    fetch.set_defaults(func=cmd_fetch)
+
+    build = sub.add_parser("build", help="build the graph of each repo and base commit the selected tasks need")
+    _selection_args(build)
+    build.set_defaults(func=cmd_build)
+
+    _run_parser(sub)
+
     cmp = sub.add_parser("compare", help="pair two summaries task by task with a bootstrap; gate on the result")
     cmp.add_argument("before")
     cmp.add_argument("after")
@@ -585,44 +638,6 @@ def register(ksub) -> None:
     prof.add_argument("--json", action="store_true", help="machine-readable output")
     prof.set_defaults(func=cmd_profile)
 
-    show = sub.add_parser("show", help="print a summary and check it")
-    show.add_argument("summary")
-    show.add_argument("--require", metavar="SET,...", help="sets that must have tasks (in --split)")
-    show.add_argument("--split", help="the part the checks read")
-    show.add_argument("--sealed", action="store_true", help="accept a summary with the test part")
-    show.add_argument("--abstain-min", type=_ratio, metavar="R", help="least share abstained on without an answer")
-    show.add_argument("--false-abstain-max", type=_ratio, metavar="R", help="most share abstained on with one")
-    show.add_argument("--precision-min", type=_ratio, metavar="R", help="least mean line precision")
-    show.add_argument("--arms", metavar="ARM,...", help="arms the summary must have run")
-    show.add_argument("--cost-max", type=float, metavar="USD", help="most the run may have cost")
-    show.add_argument(
-        "--curator-agrees",
-        type=int,
-        metavar="N",
-        help="fail unless N of the --require sets have the Curator's config within 2 SE of the best, "
-        "and no Curator input is a file of holdout or test",
-    )
-    show.add_argument("--json", action="store_true", help="machine-readable output")
-    show.set_defaults(func=cmd_show)
+    _show_parser(sub)
 
-    cur = sub.add_parser(
-        "curator", help="the Curator's kg_init run on a set: plan the configs, decide, assemble the file"
-    )
-    csub = cur.add_subparsers(dest="curator_command", required=True)
-    for name, text in (
-        ("plan", "write the configs to rank (and their settings files) under --work"),
-        ("decide", "run the Curator on the set's profile and tune scores in --work, keep inputs and decision"),
-        ("assemble", "join the runs and decisions in --work into the Curator file (curator.json)"),
-    ):
-        one = csub.add_parser(name, help=text)
-        one.add_argument("sets", nargs="+", help="the sets (or noncode)")
-        one.add_argument("--work", required=True, metavar="DIR", help="work directory, SET/plan.json and runs under it")
-        one.set_defaults(func=cmd_curator)
-        if name == "decide":
-            one.add_argument("--cache", help="bench cache, outside any repo")
-            one.add_argument("--skill", metavar="DIR", help="the curator skill (default $EVO_CURATOR_SKILL, ~/.claude)")
-        if name == "assemble":
-            one.add_argument("--out", required=True, metavar="PATH")
-            one.add_argument("--defaults", action="store_true", help="rank for the release defaults: no Curator run")
-            one.add_argument("--note", help="what the file ranked and how, kept in it")
-            one.add_argument("--sampling", help="how the tasks were sampled, kept in it")
+    _curator_parser(sub)

@@ -1,5 +1,7 @@
 from evo_agents.kg.build import build_project
-from evo_agents.kg.pipeline.link import Linker, build_index, is_placeholder, looks_like_symbol
+from evo_agents.kg.pipeline.link import Linker
+from evo_agents.kg.pipeline.link_forms import is_placeholder, looks_like_symbol
+from evo_agents.kg.pipeline.link_index import build_index
 from evo_agents.kg.pipeline.stages import map_item
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
@@ -243,14 +245,14 @@ def test_a_url_is_dangling_only_in_a_collection_some_item_is_in():
 
 
 def test_the_collection_of_a_url():
-    from evo_agents.kg.pipeline.link import _url_prefix
+    from evo_agents.kg.pipeline.link_forms import url_prefix
 
-    assert _url_prefix("https://hub.test/chats/30") == "https://hub.test/chats"
-    assert _url_prefix("https://hub.test/p/demo/plans/one") == "https://hub.test/p/demo/plans"
-    assert _url_prefix("https://hub.test") == "https://hub.test"
-    assert _url_prefix("https://github.com/acme/a/pull/1") == "https://github.com/acme/a/pull"
-    assert _url_prefix("https://github.com/acme/a/blob/main/docs/x.md") == "https://github.com/acme/a/blob"
-    assert _url_prefix("https://git.acme.test/g/a/-/merge_requests/3") == "https://git.acme.test/g/a/-/merge_requests"
+    assert url_prefix("https://hub.test/chats/30") == "https://hub.test/chats"
+    assert url_prefix("https://hub.test/p/demo/plans/one") == "https://hub.test/p/demo/plans"
+    assert url_prefix("https://hub.test") == "https://hub.test"
+    assert url_prefix("https://github.com/acme/a/pull/1") == "https://github.com/acme/a/pull"
+    assert url_prefix("https://github.com/acme/a/blob/main/docs/x.md") == "https://github.com/acme/a/blob"
+    assert url_prefix("https://git.acme.test/g/a/-/merge_requests/3") == "https://git.acme.test/g/a/-/merge_requests"
 
 
 def test_a_module_level_upper_case_name_is_a_constant_symbol():

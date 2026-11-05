@@ -5,15 +5,19 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.kg import explore, serve
+from evo_agents.kg import explore, serve, serve_impact, serve_walk
 from evo_agents.kg.build import build_project
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
+from evo_agents.kg.impact import diff_lines
 from evo_agents.kg.refs import readable, stored
-from evo_agents.kg.serve import Session, diff_lines, handle
+from evo_agents.kg.serve import Session, handle
+from evo_agents.kg.serve_search import FULL_LINES, in_repo
+from evo_agents.kg.serve_walk import CHAIN_RELS
 from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.store import Store, edge_id
 from evo_agents.kg.sync import sync_project
+from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT
 from tests.kg.projects import commit, make_project, write
 
 RANK = "symbol:app:app/search.py::rank_results"
@@ -342,7 +346,8 @@ def test_impact_and_path_do_not_expand_hubs(tmp_path, kg_env, monkeypatch):
     project = built(tmp_path, kg_env)
     session = Session(project, "agent")
     assert SERVER_PY in impacted(session.call("kg_impact", {"id": RANK}))
-    monkeypatch.setattr(serve, "HUB_DEGREE", 5)  # app/search.py has six edges, its symbols fewer
+    monkeypatch.setattr(serve_impact, "HUB_DEGREE", 5)  # app/search.py has six edges, its symbols fewer
+    monkeypatch.setattr(serve_walk, "HUB_DEGREE", 5)
     result = session.call("kg_impact", {"id": RANK})
     hubs = [r["node"]["id"] for r in result["structuredContent"]["impacted"] if r["hub"]]
     assert hubs == [SEARCH_PY] and "(hub, not expanded)" in result["content"][0]["text"]
@@ -401,7 +406,7 @@ def test_path_without_to_traces_chains(tmp_path, kg_env):
     edges = {(e["src"], e["rel"], e["dst"]) for e in result["structuredContent"]["edges"]}
     assert ("plan:demo/step:2", "schedules", "usecase:KB-02") in edges
     assert ("plan:demo", "touches", "seam:search-api") in edges
-    assert {rel for _, rel, _ in edges} <= set(serve.CHAIN_RELS)
+    assert {rel for _, rel, _ in edges} <= set(CHAIN_RELS)
     assert "\n    -schedules-> (declared) [usecase:KB-02]" in result["content"][0]["text"]
     short = session.call("kg_path", {"from": "plan:demo", "max_hops": 1})["structuredContent"]
     assert "usecase:KB-02" not in {n["id"] for n in short["nodes"]}
@@ -479,11 +484,11 @@ def test_impact_reads_every_edge_into_a_seed_and_says_when_it_cuts(tmp_path, kg_
     whole = agent.call("kg_impact", {"id": RANK})
     assert whole["structuredContent"]["cut"] == [] and "cut:" not in whole["content"][0]["text"]
 
-    monkeypatch.setattr(serve, "SEED_EDGES", 1)  # a page of one edge: every edge is still read
+    monkeypatch.setattr(serve_impact, "SEED_EDGES", 1)  # a page of one edge: every edge is still read
     assert agent.call("kg_impact", {"id": RANK}) == whole
 
     # RANK has a calls, a defines and a mentions edge the agent sink sees, and a fourth only the wide one does.
-    monkeypatch.setattr(serve, "IMPACT_SEED_EDGES", 1)
+    monkeypatch.setattr(serve_impact, "IMPACT_SEED_EDGES", 1)
     cut = agent.call("kg_impact", {"id": RANK})
     data = cut["structuredContent"]
     assert data["cut"] == [{"seed": RANK, "read": 1, "total": 3}]
@@ -649,14 +654,14 @@ def test_search_lines_say_once_what_every_result_shares_and_when_none_holds_the_
     assert text[2] == "[plan:demo/step:2] PlanStep 'Server' status=pending"  # its number is in its id
     assert "[app:app/server.py::Server] Symbol lines 4-6 words=1/3" in text  # no status, no label: both shared
     shown = [line.removeprefix("  mentions ") for line in text[2:] if line.lstrip().startswith(("[", "mentions ["))]
-    assert len(shown) == 10 and all(" " in line for line in shown[: serve.FULL_LINES])
-    assert all(re.fullmatch(r"\[[^\]]+\]", line) for line in shown[serve.FULL_LINES :])  # past the 5th: the id alone
+    assert len(shown) == 10 and all(" " in line for line in shown[:FULL_LINES])
+    assert all(re.fullmatch(r"\[[^\]]+\]", line) for line in shown[FULL_LINES:])  # past the 5th: the id alone
     weak = session.call("kg_search", {"query": "server search zebra", "limit": 10})
     lines = weak["content"][0]["text"].splitlines()
     assert lines[2] == "no result holds all 3 words of the query"
     assert len(weak["structuredContent"]["results"]) == 10  # none holds the query: still the limit asked
     listed = [line.removeprefix("  mentions ") for line in lines[3:] if line.lstrip().startswith(("[", "mentions ["))]
-    assert len(listed) == 10 and all(re.fullmatch(r"\[[^\]]+\]", line) for line in listed[serve.FULL_LINES :])
+    assert len(listed) == 10 and all(re.fullmatch(r"\[[^\]]+\]", line) for line in listed[FULL_LINES:])
 
     step = {
         "id": "plan:demo/step:3",
@@ -725,7 +730,7 @@ def test_impact_lists_the_first_dependents_of_each_hop_and_counts_the_rest(tmp_p
     project = built_wider(tmp_path, kg_env)
     session = Session(project, "agent")
     whole = session.call("kg_impact", {"id": RANK})["structuredContent"]
-    assert whole["limit"] == serve.IMPACT_LIMIT and whole["left_out"]["hops"] == {}
+    assert whole["limit"] == IMPACT_LIMIT and whole["left_out"]["hops"] == {}
     # Documents are listed a quarter as many: 5 of the 6 that mention what RANK reaches.
     assert (len(whole["documents"]), whole["left_out"]["documents"]) == (6, 1)
     capped = session.call("kg_impact", {"id": RANK, "limit": 1})
@@ -754,9 +759,9 @@ def test_impact_of_store_py_on_a_real_sized_graph_stays_short(tmp_path, kg_env):
     assert build_project(project).ok
     result = Session(project, "agent").call("kg_impact", {"paths": ["app:app/search.py"]})
     text, data = result["content"][0]["text"], result["structuredContent"]
-    assert len(data["impacted"]) > serve.IMPACT_LIMIT
-    assert sum(line.startswith("  [") for line in text.splitlines()) <= 2 * serve.IMPACT_LIMIT + 1 + 5
-    assert f"more at hop 1: raise limit (up to {serve.IMPACT_MAX_LIMIT})" in text
+    assert len(data["impacted"]) > IMPACT_LIMIT
+    assert sum(line.startswith("  [") for line in text.splitlines()) <= 2 * IMPACT_LIMIT + 1 + 5
+    assert f"more at hop 1: raise limit (up to {IMPACT_MAX_LIMIT})" in text
 
 
 def test_tools_take_the_argument_names_agents_guess(tmp_path, kg_env):
@@ -936,7 +941,7 @@ def test_search_keeps_to_the_repo_it_is_given(tmp_path, kg_env):
     assert any(readable(r["id"]).partition(":")[0] != "app" for r in wide)  # steps, seams and the harness too
     for repo in ("app", "APP"):
         only = session.call("kg_search", {"query": "search", "repo": repo})["structuredContent"]["results"]
-        assert only and all(serve.in_repo(r, "app") for r in only)
+        assert only and all(in_repo(r, "app") for r in only)
     none = session.call("kg_search", {"query": "search", "repo": "northwind"})
     assert none["structuredContent"]["results"] == []
     assert "nothing of repo 'northwind' matched" in none["content"][0]["text"]

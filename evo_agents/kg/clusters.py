@@ -38,7 +38,8 @@ from importlib import metadata
 
 from evo_agents.kg.policy import Policy
 from evo_agents.kg.protocol import sha256
-from evo_agents.kg.store import Clusters, Graph
+from evo_agents.kg.store import Graph
+from evo_agents.kg.store_clusters import Clusters
 
 ALGORITHM_VERSION = "1"
 ENGINE = "graspologic-native"
@@ -103,8 +104,8 @@ def shared(node: dict, ceiling: tuple[int, int]) -> bool:
     return not label.audience and label.level <= ceiling[0] and label.location <= ceiling[1]
 
 
-def project(graph: Graph, ceiling: tuple[int, int]) -> dict[tuple[str, str], int]:
-    """The projected graph: per pair of projected node ids (sorted), how many edges join them."""
+def _owners(graph: Graph) -> tuple[dict[str, str], set[str]]:
+    """The File that defines each symbol, and the normal names of plan steps that recur across plans."""
     nodes = graph.nodes
     definer: dict[str, str] = {}
     step_plans: dict[str, set[str]] = defaultdict(set)
@@ -117,7 +118,13 @@ def project(graph: Graph, ceiling: tuple[int, int]) -> dict[tuple[str, str], int
     for nid, n in nodes.items():
         if n["kind"] == "PlanStep":
             names[_normal(n["name"])].update(step_plans.get(nid) or {nid})
-    repeated = {name for name, plans in names.items() if name and len(plans) > 1}
+    return definer, {name for name, plans in names.items() if name and len(plans) > 1}
+
+
+def _projection(graph: Graph, ceiling: tuple[int, int]) -> dict[str, str | None]:
+    """Each node id to the projected node it counts as, None for one left out."""
+    nodes = graph.nodes
+    definer, repeated = _owners(graph)
 
     def keep(nid: str) -> str | None:
         n = nodes.get(nid)
@@ -141,7 +148,12 @@ def project(graph: Graph, ceiling: tuple[int, int]) -> dict[tuple[str, str], int
             return keep(owner) if owner in nodes and nodes[owner]["kind"] != "Section" else None
         return keep(nid)
 
-    projected = {nid: target(nid) for nid in nodes}
+    return {nid: target(nid) for nid in nodes}
+
+
+def project(graph: Graph, ceiling: tuple[int, int]) -> dict[tuple[str, str], int]:
+    """The projected graph: per pair of projected node ids (sorted), how many edges join them."""
+    projected = _projection(graph, ceiling)
     weights: Counter = Counter()
     for e in graph.edges.values():
         if e["rel"] in STRUCTURAL or not shared(e, ceiling):

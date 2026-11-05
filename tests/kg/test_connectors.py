@@ -10,7 +10,7 @@ import pytest
 from evo_agents.harness import Harness, plan_digest
 from evo_agents.kg import retention
 from evo_agents.kg.build import build_project
-from evo_agents.kg.connectors import _files, _git
+from evo_agents.kg.connectors import _files, gitcli
 from evo_agents.kg.connectors import git as git_connector
 from evo_agents.kg.connectors import github as github_api
 from evo_agents.kg.corpus import Corpus
@@ -184,9 +184,9 @@ def clone_behind(tmp_path) -> tuple[Path, Path]:
 def test_git_fetch_reads_the_remote_branch(tmp_path, monkeypatch):
     upstream, clone = clone_behind(tmp_path)
     calls = []
-    real = _git.fetch
+    real = gitcli.fetch
     monkeypatch.setattr(
-        _git,
+        gitcli,
         "fetch",
         lambda repo, remote, branch, **kw: (calls.append((remote, branch)), real(repo, remote, branch, **kw)),
     )
@@ -209,7 +209,7 @@ def cursor_of(messages) -> dict:
 
 def test_git_cursor_names_the_commit_read_and_how_far_behind_the_remote_default_branch(tmp_path, monkeypatch):
     upstream, clone = clone_behind(tmp_path)
-    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched without fetch: true"))
+    monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched without fetch: true"))
     head, tip = sh(clone, "rev-parse", "HEAD").strip(), sh(upstream, "rev-parse", "HEAD").strip()
     assert cursor_of(run_git(clone)) == {"commit": head, "ref": "HEAD", "base": "origin/main", "behind": 0}
     sh(clone, "fetch", "-q", "origin")  # origin/main moves one commit on; HEAD stays
@@ -271,7 +271,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
 
 def test_git_without_fetch_reads_the_ref_as_the_clone_has_it(tmp_path, monkeypatch):
     _, clone = clone_behind(tmp_path)
-    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched without fetch: true"))
+    monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched without fetch: true"))
     msgs = run_git(clone, ref="origin/main")
     assert "docs/new.md" not in items_by_path(msgs)
     assert msgs[-1]["status"] == "ok"
@@ -289,7 +289,7 @@ def test_git_fetch_failure_is_a_warning_and_the_run_stays_ok(tmp_path):
 
 def test_git_fetch_ignores_a_ref_that_is_not_an_origin_branch(tmp_path, monkeypatch):
     _, clone = clone_behind(tmp_path)
-    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched for a local ref"))
+    monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched for a local ref"))
     msgs = run_git(clone, ref="HEAD", fetch=True)
     assert any(m["type"] == "log" and "ignored" in m["message"] for m in msgs)
     assert msgs[-1]["status"] == "ok"
@@ -431,12 +431,12 @@ def test_git_history_gives_each_commit_the_files_it_changed(tmp_path):
 
 
 def test_git_history_reads_a_message_holding_the_byte_that_opens_a_record(tmp_path):
-    from evo_agents.kg.connectors import _git
+    from evo_agents.kg.connectors import gitcli
 
     repo = make_repo(tmp_path / "app")
     (repo / "config.yaml").write_text("name: app2\n")
     sh(repo, "commit", "-qam", "Deprecations\x01\n\n* Improve layout")  # as a commit of ansible/ansible holds
-    newest, older = _git.history(repo, "HEAD")
+    newest, older = gitcli.history(repo, "HEAD")
     assert newest["message"] == "Deprecations\x01\n\n* Improve layout" and newest["paths"] == ["config.yaml"]
     assert older["parents"] == [] and newest["parents"] == [older["sha"]]
 
@@ -492,13 +492,13 @@ def test_commit_author_email_reaches_the_commits_in_the_corpus_at_the_first_sync
     app = tmp_path / "demo-app"
     lumen = commit_as(app, "Lumen <lumen@northwind.test>", "docs/notes.md", "# Notes\n")
     init = git(app, "rev-parse", "HEAD~1").strip()
-    read = _git.history
+    read = gitcli.history
 
     def history_before(*args):
         return [{k: v for k, v in found.items() if k != "author_email"} for found in read(*args)]
 
     with monkeypatch.context() as before:  # the build before this one: no author's email, and its own code digest
-        before.setattr(_git, "history", history_before)
+        before.setattr(gitcli, "history", history_before)
         before.setattr(git_connector, "_code", lambda: "sha256:the build before")
         assert sync_project(project, ["app"])[0].ok
         old = build_project(project)

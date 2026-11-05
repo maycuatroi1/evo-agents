@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 
 from evo_agents.kg.commit_labels import MAX_FILES, MIN_WORDS, commit_label
 from evo_agents.kg.evaluate import FILE_ID
-from evo_agents.kg.store import LIVE, SEEN, Store
+from evo_agents.kg.store import Store
+from evo_agents.kg.store_filters import LIVE, SEEN
 
 COMMIT_TYPE = "commit"
 DEFAULT_LIMIT = 300  # questions a set keeps; the commits whose ids hash lowest, so the same ones on every call

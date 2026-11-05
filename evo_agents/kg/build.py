@@ -31,13 +31,16 @@ from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
 from evo_agents.kg import store as kg_store
+from evo_agents.kg.assembly import Facts, assemble
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.pipeline import curation
 from evo_agents.kg.pipeline.binding import BINDING_VERSION
-from evo_agents.kg.pipeline.link import LINK_VERSION, Held, build_index, index_digest, link_traced
+from evo_agents.kg.pipeline.link import LINK_VERSION, link_traced
+from evo_agents.kg.pipeline.link_index import build_index, index_digest
+from evo_agents.kg.pipeline.link_reads import Held
 from evo_agents.kg.pipeline.stages import (
     DIRECTORY_CONNECTORS,
     MAP_VERSION,
@@ -51,7 +54,7 @@ from evo_agents.kg.pipeline.stages import (
     missing_graphify,
     structure_item,
 )
-from evo_agents.kg.policy import Label, Policy, any_of, audience_below, join_all
+from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.profile import PROFILE_VERSION, build_profile, item_stats
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -59,31 +62,17 @@ from evo_agents.kg.schema import known_kinds, known_relations
 from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
-from evo_agents.kg.store import Clusters, Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
+from evo_agents.kg.store import Graph, StaleSchema, Store
+from evo_agents.kg.store_clusters import Clusters
+from evo_agents.kg.store_filters import label_columns
 from evo_agents.kg.text import split_passages
 
-STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config", "commit", "pr"}
 DEFINITION_SAMPLES = 15
 # Their text reaches node_fts through symbols, docstrings, plans and steps; code and markup reach code_fts whole.
 UNSEARCHED_ITEMS = ("code", "plan", "markup")
 CODE_TEXT_ITEMS = ("code", "markup")  # the items whose text kg_search looks up words in (``kg.search``, code_fts)
-UNSEARCHED_FIELDS = ("title", "verify", "evidence")  # the name already; commands and run output
-STAT_KEYS = (
-    "mentions",
-    "resolved",
-    "ambiguous",
-    "dangling",
-    "refs",
-    "refs_resolved",
-    "refs_ambiguous",
-    "refs_dangling",
-    "calls",
-    "calls_resolved",
-    "calls_ambiguous",
-    "calls_unresolved",
-)
 
 
 @dataclass
@@ -129,24 +118,6 @@ class BuildReport:
         return self.__dict__
 
 
-class _UnionFind:
-    def __init__(self):
-        self.parent: dict[str, str] = {}
-
-    def find(self, x: str) -> str:
-        self.parent.setdefault(x, x)
-        while self.parent[x] != x:
-            self.parent[x] = self.parent[self.parent[x]]
-            x = self.parent[x]
-        return x
-
-    def union(self, a: str, b: str) -> None:
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            lo, hi = sorted((ra, rb))  # the smallest id represents the class: order-independent
-            self.parent[hi] = lo
-
-
 def run_pipeline(
     project: Project,
     corpus: Corpus,
@@ -161,7 +132,6 @@ def run_pipeline(
     (``kg.entities``) keeps what its model said (the build's memo by default); ``offline`` makes that step read it
     without calling the model: how a build is verified. ``entity_outbox`` and ``entity_inbox`` are the step's
     ``outbox`` and ``inbox``: the requests it defers on a machine without ``claude``, the answers given elsewhere."""
-    policy: Policy = project.policy
     try:
         ontology = project.ontology
     except ProjectError as exc:
@@ -170,33 +140,13 @@ def run_pipeline(
     kinds = known_kinds(ontology) if ontology is not None else None
     sources = {s["id"]: s for s in project.sources()}
     backends = {sid: (s.get("code") or {}).get("backend", "auto") for sid, s in sources.items()}
-    explicit = [sid for sid, backend in sorted(backends.items()) if backend == "graphify-ast"]
-    if explicit:
-        from evo_agents.kg.extract import graphify as gfy
-
-        if not gfy.available():
-            return Graph(), {}, [missing_graphify(sid) for sid in explicit], []
-    identifiers = [
-        {"kind": i["kind"], "pattern": i["pattern"], **({"aliases": i["aliases"]} if i.get("aliases") else {})}
-        for i in project.knowledge.get("identifiers") or []
-    ]
-    identifiers_digest = sha256(canonical_json(identifiers))
+    missing = _missing_backends(backends)
+    if missing:
+        return Graph(), {}, missing, []
+    identifiers = identifiers_of(project)
     records = [r for r in corpus.read_state() if r.source in sources]
-
-    # Units and their labels.
     graph = Graph()
-    unit_labels: dict[str, Label] = {}
-    for rec in records:
-        r = rec.record
-        label = policy.source_label(rec.source, r.get("label"))
-        base = {"item_id": rec.item_id, "rev": r.get("rev"), "source": rec.source, **label_columns(label)}
-        graph.units[item_unit(rec.item_id)] = {**base, "anchor": "", "hash": r.get("hash"), "span": None}
-        unit_labels[item_unit(rec.item_id)] = label
-        for f in r.get("fragments", []):
-            uid = frag_unit(rec.item_id, f["anchor"])
-            graph.units[uid] = {**base, "anchor": f["anchor"], "hash": f.get("hash"), "span": f.get("span")}
-            unit_labels[uid] = label
-
+    unit_labels = add_units(graph, records, project.policy)
     texts_cache: dict[str, str | None] = {}
 
     def body(rec) -> str | None:
@@ -204,39 +154,7 @@ def run_pipeline(
             texts_cache[rec.item_id] = corpus.body_text(rec.record)
         return texts_cache[rec.item_id]
 
-    # Map and structure, per item.
-    first: dict[str, list[dict]] = {}
-    structure_out: dict[str, tuple[list[dict], str]] = {}
-    code_items: dict[str, list[tuple[dict, str]]] = defaultdict(list)
-    for rec in records:
-        r = rec.record
-        src = sources[rec.source]
-        backend = backends[rec.source]
-        dirs = src.get("connector") in DIRECTORY_CONNECTORS
-        mapped, _ = memo.run(
-            "map",
-            MAP_VERSION,
-            {"item": rec.item_id, "hash": r["hash"], "rev": r.get("rev", ""), "source": rec.source, "dirs": dirs},
-            lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
-        )
-        if is_structured(r):
-            extractor = code_extractor(r, backend)
-            if r["kind"] == "code":
-                code_items[rec.source].append((r, extractor))
-            inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": extractor}
-            if r["kind"] in ("markdown", "code"):  # a frontmatter id, a comment, is a code only if a pattern says so
-                inputs["identifiers"] = identifiers_digest
-            structured, shash = memo.run(
-                "structure",
-                STRUCTURE_VERSION,
-                inputs,
-                lambda rec=rec, r=r, b=backend: structure_item(r, rec.source, body(rec), b, identifiers),
-            )
-        else:
-            structured, shash = [], "none"
-        structure_out[rec.item_id] = (structured, shash)
-        first[rec.item_id] = mapped + structured
-
+    first, structure_out, code_items = map_items(records, sources, backends, identifiers, memo, body)
     index = build_index(first, identifiers)
     second = link_items(records, structure_out, index, memo, corpus, body)
     tuning = tuning_of(project)
@@ -263,177 +181,115 @@ def run_pipeline(
                 inbox=entity_inbox,
             )
 
-    # Assembly.
-    nodes: dict[str, dict] = {}
-    edges: dict[tuple, dict] = {}
-    derivs: dict[str, list[dict]] = defaultdict(list)
-    props_of: dict[str, list[tuple[dict, dict]]] = defaultdict(list)  # node id -> (derivation, the props it stated)
-    where: dict[str, set] = defaultdict(set)
-    same: list[dict] = []  # identities, and the deprecations a curation item declared
-    notes: dict[str, list[str]] = defaultdict(list)  # node id -> descriptions and docstrings, for search
-    errors: list[str] = []
-    issues: list[str] = []
-    stats: dict[str, dict] = defaultdict(lambda: {"items": 0, "issues": 0, **dict.fromkeys(STAT_KEYS, 0)})
-    samples: dict[str, dict[str, list]] = defaultdict(lambda: {"ambiguous": [], "dangling": [], "calls_unresolved": []})
-    rejected: set[tuple[str, str]] = set()
-    item_mentions: dict[str, dict] = {}  # item id -> its dangling and ambiguous mentions, for the review queue
+    facts = Facts(kinds)
     for rec in records:
-        stats[rec.source]["items"] += 1
-        for f in first[rec.item_id] + second[rec.item_id] + extracted.get(rec.item_id, []):
-            t = f["t"]
-            if t == "node" and kinds is not None and f["kind"] not in kinds:
-                if (rec.item_id, f["kind"]) not in rejected:
-                    rejected.add((rec.item_id, f["kind"]))
-                    errors.append(
-                        f"{rec.item_id}: node {f['id']} has kind {f['kind']!r}, neither a hub kind nor in the ontology"
-                    )
-            elif t == "node":
-                if f["id"] not in nodes:
-                    nodes[f["id"]] = {k: f[k] for k in ("kind", "name", "props", "status", "conf")}
-                else:
-                    _strongest(nodes[f["id"]], f)
-                derivs[f["id"]].append({"units": f["units"], "needs": f["needs"]})
-                props_of[f["id"]].append((derivs[f["id"]][-1], f["props"]))
-                where[f["id"]].update(tuple(w) for w in f.get("where", []))
-            elif t == "edge":
-                key = (f["src"], f["rel"], f["dst"])
-                if key not in edges:
-                    edges[key] = {k: f[k] for k in ("props", "status", "conf")}
-                else:
-                    _strongest(edges[key], f)
-                derivs[key].append({"units": f["units"], "needs": sorted(set(f["needs"]) | {f["src"], f["dst"]})})
-                where[key].update(tuple(w) for w in f.get("where", []))
-            elif t in curation.CURATION_FACTS:
-                same.append(f)
-            elif t in ("text", "doc") and f.get("field") not in UNSEARCHED_FIELDS:
-                notes[f["src"]].append(f["text"])
-            elif t == "error":
-                errors.append(f["message"])
-            elif t == "issue":
-                issues.append(f["message"])
-                stats[rec.source]["issues"] += 1
-            elif t == "stats":
-                for k in STAT_KEYS:
-                    stats[rec.source][k] += f.get(k, 0)
-                if f.get("dangling") or f.get("ambiguous"):
-                    found = item_mentions.setdefault(rec.item_id, {"dangling": 0, "ambiguous": 0, "samples": {}})
-                    for k in ("dangling", "ambiguous"):
-                        found[k] += f.get(k, 0)
-                        found["samples"].setdefault(k, []).extend((f.get("samples") or {}).get(k) or [])
-                for k, values in (f.get("samples") or {}).items():
-                    bucket = samples[rec.source][k]
-                    bucket.extend(v for v in values if len(bucket) < 30 and v not in bucket)
-
-    # Entity resolution: declared identities only, smallest id represents the class.
-    uf = _UnionFind()
-    for a, b in curation.split(same, graph.deprecations):
-        if a in nodes and b in nodes:
-            uf.union(a, b)
-    rep = {n: uf.find(n) for n in nodes}
-    aliases: dict[str, list[str]] = defaultdict(list)
-    merged_nodes: dict[str, dict] = {}
-    for nid in sorted(nodes):
-        target = rep[nid]
-        if target != nid:
-            aliases[target].append(nid)
-        if target not in merged_nodes:
-            merged_nodes[target] = dict(nodes[target])
-        if target != nid:
-            derivs[target] = derivs[target] + derivs.pop(nid)
-            props_of[target] += props_of.pop(nid, [])
-            where[target] |= where.pop(nid, set())
-
-    def remap(x: str) -> str:
-        return rep.get(x, x)
-
-    merged_edges: dict[tuple, dict] = {}
-    edge_derivs: dict[tuple, list[dict]] = defaultdict(list)
-    edge_where: dict[tuple, set] = defaultdict(set)
-    for key in sorted(edges):
-        src, rel, dst = remap(key[0]), key[1], remap(key[2])
-        if src == dst:
-            continue
-        nkey = (src, rel, dst)
-        if nkey not in merged_edges:
-            merged_edges[nkey] = dict(edges[key])
-        else:
-            _strongest(merged_edges[nkey], edges[key])
-        for d in derivs.pop(key):
-            edge_derivs[nkey].append({"units": d["units"], "needs": sorted({remap(n) for n in d["needs"]})})
-        edge_where[nkey] |= where.pop(key, set())
-
-    # Liveness: a node lives on its units; an edge also needs every element it names.
-    alive = set(merged_nodes)
-    dangling = 0
-    for key in list(merged_edges):
-        ds = [d for d in edge_derivs[key] if all(n in alive for n in d["needs"])]
-        if not ds:
-            dangling += 1
-            del merged_edges[key]
-            continue
-        edge_derivs[key] = ds
-
-    # Labels: the meet over derivations (any_of: an audience a reader sees one of whole) of the join over what each
-    # derivation uses.
-    node_label: dict[str, Label] = {}
-    for nid in merged_nodes:
-        node_label[nid] = any_of(_deriv_label(d, unit_labels, node_label) for d in _dedupe(derivs[nid]))
-    for item_id, found in item_mentions.items():
-        graph.mentions.setdefault(remap(item_id), found)
-    for nid, n in merged_nodes.items():
-        # The props of the first derivation the node's label reads, so a node a public item also states shows none
-        # of what a restricted item said of it.
-        readable = (p for d, p in props_of[nid] if _reads(node_label[nid], _deriv_label(d, unit_labels, node_label)))
-        n = {**n, "props": next(readable, {})}
-        graph.nodes[nid] = {**n, "label": node_label[nid], "aliases": sorted(aliases.get(nid, []))}
-        graph.derivations[nid] = _dedupe(derivs[nid])
-        graph.where[nid] = sorted(where[nid])
-    for (src, rel, dst), e in merged_edges.items():
-        eid = edge_id(src, rel, dst)
-        ds = _dedupe(edge_derivs[(src, rel, dst)])
-        label = any_of(_deriv_label(d, unit_labels, node_label) for d in ds)
-        graph.edges[eid] = {"src": src, "rel": rel, "dst": dst, **e, "label": label}
-        graph.derivations[eid] = ds
-        graph.where[eid] = sorted(edge_where[(src, rel, dst)])
-
-    # Keys: a key two nodes would share fails the build, naming the nodes and the sources behind them.
-    for (kind, key), ids in key_conflicts(graph).items():
-        holders = []
-        for nid in ids:
-            srcs = sorted(
-                {graph.units[u]["source"] for d in graph.derivations[nid] for u in d["units"] if u in graph.units}
-            )
-            holders.append(f"{nid} (source {', '.join(srcs)})")
-        errors.append(f"duplicate {kind} key {key}: " + ", ".join(holders))
-
-    cut = search_texts(graph, records, corpus, body, notes, tuning_of(project))
-
+        facts.add_item(rec, first[rec.item_id] + second[rec.item_id] + extracted.get(rec.item_id, []))
+    dangling = assemble(graph, facts, unit_labels)
+    cut = search_texts(graph, records, corpus, body, facts.notes, tuning_of(project))
+    per_source = [_source_coverage(sid, facts, backends[sid], code_items[sid]) for sid in sorted(sources)]
     coverage = {
-        "sources": [],
+        "sources": per_source,
         "dangling_edges": dangling,
-        "issues": issues[:50],
-        "errors": errors[:50],
-        "warnings": [],
+        "issues": facts.issues[:50],
+        "errors": facts.errors[:50],
+        "warnings": [
+            f"source {e['id']}: {e['code']['warning']}" for e in per_source if e.get("code", {}).get("warning")
+        ],
         "multiple_definitions": multiple_definitions(graph, {i["kind"] for i in identifiers}),
         "search": {"cut": len(cut), "max_chars": text_search.MAX_TEXT_CHARS, "samples": cut[:DEFINITION_SAMPLES]},
     }
-    for sid in sorted(sources):
-        s = stats[sid]
-        entry = {
-            "id": sid,
-            **s,
-            "samples": samples[sid],
-            "resolved_ratio": (s["resolved"] / s["mentions"]) if s["mentions"] else 0.0,
-        }
-        if code_items[sid]:
-            entry["code"] = code_coverage(backends[sid], code_items[sid])
-            if entry["code"]["warning"]:
-                coverage["warnings"].append(f"source {sid}: {entry['code']['warning']}")
-        coverage["sources"].append(entry)
     if entities_coverage is not None:
         coverage["entities"] = entities_coverage
-    coverage["profile"] = build_profile(graph, item_rows(records, memo, body), coverage, policy)
-    return graph, coverage, errors, issues
+    coverage["profile"] = build_profile(graph, item_rows(records, memo, body), coverage, project.policy)
+    return graph, coverage, facts.errors, facts.issues
+
+
+def _missing_backends(backends: dict[str, str]) -> list[str]:
+    """The errors of the sources that ask for graphify's backend when graphify is not installed."""
+    explicit = [sid for sid, backend in sorted(backends.items()) if backend == "graphify-ast"]
+    if explicit:
+        from evo_agents.kg.extract import graphify as gfy
+
+        if not gfy.available():
+            return [missing_graphify(sid) for sid in explicit]
+    return []
+
+
+def identifiers_of(project: Project) -> list[dict]:
+    """The identifier patterns of the project's knowledge.yaml, as the structure and link stages read them."""
+    return [
+        {"kind": i["kind"], "pattern": i["pattern"], **({"aliases": i["aliases"]} if i.get("aliases") else {})}
+        for i in project.knowledge.get("identifiers") or []
+    ]
+
+
+def add_units(graph: Graph, records, policy: Policy) -> dict[str, Label]:
+    """Put a unit for each item and each of its fragments in ``graph``; the label of each unit."""
+    unit_labels: dict[str, Label] = {}
+    for rec in records:
+        r = rec.record
+        label = policy.source_label(rec.source, r.get("label"))
+        base = {"item_id": rec.item_id, "rev": r.get("rev"), "source": rec.source, **label_columns(label)}
+        graph.units[item_unit(rec.item_id)] = {**base, "anchor": "", "hash": r.get("hash"), "span": None}
+        unit_labels[item_unit(rec.item_id)] = label
+        for f in r.get("fragments", []):
+            uid = frag_unit(rec.item_id, f["anchor"])
+            graph.units[uid] = {**base, "anchor": f["anchor"], "hash": f.get("hash"), "span": f.get("span")}
+            unit_labels[uid] = label
+    return unit_labels
+
+
+def map_items(
+    records, sources: dict[str, dict], backends: dict[str, str], identifiers: list[dict], memo: Memo, body
+) -> tuple[dict[str, list[dict]], dict[str, tuple[list[dict], str]], dict[str, list[tuple[dict, str]]]]:
+    """Map and structure, per item: the facts of both by item, the structure facts and their hash by item, and the
+    code items of each source with the extractor that read them."""
+    identifiers_digest = sha256(canonical_json(identifiers))
+    first: dict[str, list[dict]] = {}
+    structure_out: dict[str, tuple[list[dict], str]] = {}
+    code_items: dict[str, list[tuple[dict, str]]] = defaultdict(list)
+    for rec in records:
+        r = rec.record
+        backend = backends[rec.source]
+        dirs = sources[rec.source].get("connector") in DIRECTORY_CONNECTORS
+        mapped, _ = memo.run(
+            "map",
+            MAP_VERSION,
+            {"item": rec.item_id, "hash": r["hash"], "rev": r.get("rev", ""), "source": rec.source, "dirs": dirs},
+            lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
+        )
+        if is_structured(r):
+            extractor = code_extractor(r, backend)
+            if r["kind"] == "code":
+                code_items[rec.source].append((r, extractor))
+            inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": extractor}
+            if r["kind"] in ("markdown", "code"):  # a frontmatter id, a comment, is a code only if a pattern says so
+                inputs["identifiers"] = identifiers_digest
+            structured, shash = memo.run(
+                "structure",
+                STRUCTURE_VERSION,
+                inputs,
+                lambda rec=rec, r=r, b=backend: structure_item(r, rec.source, body(rec), b, identifiers),
+            )
+        else:
+            structured, shash = [], "none"
+        structure_out[rec.item_id] = (structured, shash)
+        first[rec.item_id] = mapped + structured
+    return first, structure_out, code_items
+
+
+def _source_coverage(sid: str, facts: Facts, backend: str, code_items: list[tuple[dict, str]]) -> dict:
+    """The coverage of one source: its counts, samples and resolved ratio, and how its code was read."""
+    s = facts.stats[sid]
+    entry = {
+        "id": sid,
+        **s,
+        "samples": facts.samples[sid],
+        "resolved_ratio": (s["resolved"] / s["mentions"]) if s["mentions"] else 0.0,
+    }
+    if code_items:
+        entry["code"] = code_coverage(backend, code_items)
+    return entry
 
 
 def item_rows(records, memo: Memo, body) -> list[tuple[str, str, dict]]:
@@ -509,15 +365,7 @@ def search_texts(
         if node is None:
             continue
         if r.get("fragments") and node["kind"] == "Document":
-            frags = corpus.fragments(r)
-            heads = {f["anchor"]: f for f in frags}
-            for f in frags:
-                sid = f"{r['id']}#{f['anchor']}"
-                target = sid if sid in graph.nodes else r["id"]
-                parts[target].append(f["text"])
-                first = _first_line(f.get("span"))
-                if first is not None and len(f["text"]) > tuning.passage_from:
-                    long.append((target, first, f["text"], [node["name"] or r["id"], *_headings(f, heads)]))
+            _section_texts(graph, r, node, corpus.fragments(r), tuning, parts, long)
         elif r["kind"] not in UNSEARCHED_ITEMS:
             text = body(rec) or ""
             parts[r["id"]].append(text)
@@ -534,6 +382,11 @@ def search_texts(
     for nid, texts in notes.items():
         if nid in graph.nodes:
             parts[nid] += texts
+    return _node_texts(graph, parts)
+
+
+def _node_texts(graph: Graph, parts: dict[str, list[str]]) -> list[str]:
+    """Fill ``graph.paths`` and ``graph.texts`` from ``parts`` and each node's code; the ids of the bodies cut."""
     cut = []
     for nid, n in graph.nodes.items():
         props = n["props"]
@@ -548,6 +401,21 @@ def search_texts(
             if was_cut:
                 cut.append(nid)
     return sorted(cut)
+
+
+def _section_texts(
+    graph: Graph, r: dict, node: dict, frags: list[dict], tuning: Tuning, parts: dict[str, list[str]], long: list
+) -> None:
+    """Add the text of each fragment of a document to its section's body (the document's, without a section node),
+    and to ``long`` a fragment with lines longer than ``passage_from``."""
+    heads = {f["anchor"]: f for f in frags}
+    for f in frags:
+        sid = f"{r['id']}#{f['anchor']}"
+        target = sid if sid in graph.nodes else r["id"]
+        parts[target].append(f["text"])
+        first = _first_line(f.get("span"))
+        if first is not None and len(f["text"]) > tuning.passage_from:
+            long.append((target, first, f["text"], [node["name"] or r["id"], *_headings(f, heads)]))
 
 
 def _first_line(span: str | None) -> int | None:
@@ -585,35 +453,6 @@ def multiple_definitions(graph: Graph, code_kinds: set[str]) -> dict:
 def is_structured(record: dict) -> bool:
     """Whether the structure stage reads an item: one of STRUCTURED_KINDS, or one that declares nodes or edges."""
     return record["kind"] in STRUCTURED_KINDS or declares(record)
-
-
-def _strongest(current: dict, new: dict) -> None:
-    if STATUS_RANK.get(new["status"], 0) > STATUS_RANK.get(current["status"], 0):
-        current["status"] = new["status"]
-    current["conf"] = max(current["conf"], new["conf"])
-
-
-def _dedupe(ds: list[dict]) -> list[dict]:
-    seen = {}
-    for d in ds:
-        key = (tuple(sorted(d["units"])), tuple(sorted(d["needs"])))
-        seen.setdefault(key, {"units": list(key[0]), "needs": list(key[1])})
-    return [seen[k] for k in sorted(seen)]
-
-
-def _deriv_label(d: dict, unit_labels: dict[str, Label], node_label: dict[str, Label]) -> Label:
-    parts = [unit_labels[u] for u in d["units"] if u in unit_labels]
-    parts += [node_label[n] for n in d["needs"] if n in node_label]
-    return join_all(parts)
-
-
-def _reads(reader: Label, label: Label) -> bool:
-    """Whether a reader of ``reader``'s level, location and audience reads what is labelled ``label``."""
-    return (
-        label.level <= reader.level
-        and label.location <= reader.location
-        and audience_below(label.audience, reader.audience)
-    )
 
 
 def memo_path(project: Project) -> Path:

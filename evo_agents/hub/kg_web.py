@@ -37,7 +37,8 @@ from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg import freshness
 from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.serve import HUB_DEGREE, SEED_EDGES, STATUS_RANK, ToolError
+from evo_agents.kg.serve_view import ToolError
+from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
 from evo_agents.kg.store import Store
 
 MAX_HOPS = 2

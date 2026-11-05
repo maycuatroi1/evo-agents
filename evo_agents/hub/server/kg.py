@@ -103,7 +103,7 @@ from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.serve import ToolError
+from evo_agents.kg.serve_view import ToolError
 
 log = logging.getLogger(__name__)
 
