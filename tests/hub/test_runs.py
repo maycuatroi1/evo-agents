@@ -13,6 +13,7 @@ heartbeat's control, cancel and rerun, revoking a pinned worker, and the periodi
 And step 10 of the worker-credentials plan: each run records the credential it was dispatched with, a worker set to
 take runs dispatched from the web only claims no other, and a token pinning a run to it gets 403."""
 
+import logging
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -26,12 +27,12 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import extract, func, insert, literal, select, update
+from sqlalchemy import extract, func, insert, literal, select, table, update
 
 from evo_agents.harness import plan_digest
 from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, tables
 from evo_agents.hub.config import ConfigError, load_config
-from evo_agents.hub.server import run_reaper, run_state, worker_placement
+from evo_agents.hub.server import run_reaper, run_state, update_now, worker_placement
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import claim_rules
 from evo_agents.hub.server.runs.service import claims as run_claims
@@ -684,6 +685,33 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
     final = control(client, hub["owner"], run_id, "cancel")
     assert final.status_code == 409 and "final" in final.json()["message"]
     assert beat(client, worker, runs_held=[run_id])["runs"][0]["held"] is False
+
+
+def test_a_heartbeat_whose_extra_part_fails_still_extends_the_lease(client, hub, hub_db, monkeypatch, caplog):
+    """A part of the answer beside the runs that fails, here a query Postgres refuses, is logged and left out, and the
+    heartbeat still extends the leases: once such a part answered 500 for twenty minutes and the hub reaped runs whose
+    agents were working (#1440, #1471)."""
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    run_id = dispatched(client, hub["owner"], [2])[0]["id"]
+    claim(client, worker)
+    moved(client, worker, run_id, "running", session_id="0199a3c1-0000-7000-8000-00000000000b")
+    set_run(hub_db, run_id, lease_expires_at=func.now() + timedelta(seconds=10))
+
+    async def refused(conn):
+        await conn.execute(select(literal(1)).select_from(table("no_such_table")))
+
+    monkeypatch.setattr(update_now, "nightly_read", refused)
+    with caplog.at_level(logging.ERROR, logger="evo_agents.hub.server.runs"):
+        answer = beat(client, worker, runs_held=[run_id])
+    (held,) = answer["runs"]
+    assert (held["id"], held["held"], held["state"], held["cancel"]) == (run_id, True, "running", False)
+    r = tables.runs
+    (left,) = sql(hub_db, select(extract("epoch", r.c.lease_expires_at - func.now())).where(r.c.id == run_id))[0]
+    assert left > 60
+    assert "nightly" not in answer
+    assert [record.part for record in caplog.records if record.getMessage() == "a part of the heartbeat failed"] == [
+        "nightly"
+    ]
 
 
 def test_cancelling_a_queued_run_ends_it_at_once(client, hub, hub_db):

@@ -26,6 +26,7 @@ log = logging.getLogger("evo_agents.worker")
 
 HEARTBEAT_VARIABLE = "EVO_WORKER_HEARTBEAT_SECONDS"  # for tests: a shorter heartbeat than the protocol's 15 s
 MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
+LOOK_WAIT = 5.0  # seconds a heartbeat waits for the look at the machine before it goes with the last one
 
 
 def heartbeat_seconds(env: Mapping[str, str]) -> float:
@@ -67,6 +68,7 @@ class Heartbeat:
     def __init__(self, daemon: Daemon):
         self.daemon = daemon
         self.failures = 0
+        self._looking: asyncio.Task | None = None
 
     async def loop(self) -> None:
         backoff = Backoff()
@@ -89,10 +91,7 @@ class Heartbeat:
 
     async def beat(self) -> bool:
         daemon = self.daemon
-        try:
-            await daemon.look_at_machine()
-        except Exception:
-            log.exception("looking at the runtimes and checkouts failed")
+        await self._look()
         held = self._held()[:MAX_HEARTBEAT_RUNS]
         asked = sorted(daemon.orphans)[: MAX_HEARTBEAT_RUNS - len(held)]
         answer = await self._send(held + asked)
@@ -113,6 +112,18 @@ class Heartbeat:
             if run is not None and not run.ended:
                 take_control(run, control)
         return True
+
+    async def _look(self) -> None:
+        """Look at the runtimes and checkouts for the heartbeat, waiting LOOK_WAIT at most. A look that takes longer (a
+        runtime whose --version hangs, a slow disk, threads all busy with the runs' git) goes on in the background and
+        the heartbeat goes with the last look: the leases of the runs held never wait for it."""
+        if self._looking is None or self._looking.done():
+            self._looking = asyncio.create_task(self.daemon.look_at_machine())
+        done, _ = await asyncio.wait({self._looking}, timeout=LOOK_WAIT)
+        if not done:
+            log.warning("looking at the machine takes long; the heartbeat goes with the last look")
+        elif not self._looking.cancelled() and self._looking.exception() is not None:
+            log.error("looking at the runtimes and checkouts failed", exc_info=self._looking.exception())
 
     async def _send(self, reported: list[int]):
         """The hub's answer to a heartbeat that names the runs ``reported``; None when it was not sent or refused."""

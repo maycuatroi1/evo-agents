@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from evo_agents.worker import gitops
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, ReportRefused, RunGone, log, wait_or
+from evo_agents.worker.runner.sender import transient
 from evo_agents.worker.runner.transitions import bare_report, end_fields, report_body
 
 if TYPE_CHECKING:
@@ -46,16 +47,12 @@ class Reports:
                 try:
                     answer = await run.daemon.hub.report(run.id, body)
                 except Unreachable as exc:
-                    if run.daemon.hard_stop.is_set() and backoff.failures >= HARD_STOP_TRIES:
-                        raise RunGone(f"the daemon stopped before the hub took the report of {state}") from None
-                    delay = exc.retry_after if exc.retry_after is not None else backoff.next()
-                    log.warning(
-                        "report not sent; trying again",
-                        extra={"run_id": run.id, "state": state, "retry_in_s": round(delay, 1), "error": str(exc)},
-                    )
-                    await wait_or(run.daemon.hard_stop, delay)
+                    await self._resend_later(exc, state, backoff)
                     continue
                 except Refused as exc:
+                    if transient(exc):  # a proxy's 404 while the hub is redeployed: the run may well be ours still
+                        await self._resend_later(exc, state, backoff)
+                        continue
                     if isinstance(exc, Outdated) or exc.status in (401, 403):
                         run.daemon.fatal(exc)
                         raise RunGone(str(exc)) from None
@@ -74,6 +71,19 @@ class Reports:
                 with contextlib.suppress(OSError):
                     run.daemon.home.save_run(run.record)
                 return answer if isinstance(answer, dict) else {}
+
+    async def _resend_later(self, exc: HubProblem, state: str, backoff: Backoff) -> None:
+        """Wait the backoff, or the hub's Retry-After, before the report of ``state`` goes again; give up once the
+        daemon is stopping and the hub has not answered a few times."""
+        run = self.run
+        if run.daemon.hard_stop.is_set() and backoff.failures >= HARD_STOP_TRIES:
+            raise RunGone(f"the daemon stopped before the hub took the report of {state}") from None
+        delay = exc.retry_after if exc.retry_after is not None else backoff.next()
+        log.warning(
+            "report not sent; trying again",
+            extra={"run_id": run.id, "state": state, "retry_in_s": round(delay, 1), "error": str(exc)},
+        )
+        await wait_or(run.daemon.hard_stop, delay)
 
     async def report_running(self, only_from: tuple[str, ...]) -> None:
         adapter = self.run.agent.adapter

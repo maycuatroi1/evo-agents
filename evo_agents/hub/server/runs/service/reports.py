@@ -116,6 +116,46 @@ def _per_run(run_id, *conditions):
     return select(run_id, func.count().label("rows")).where(*conditions).group_by(run_id)
 
 
+async def _optional(conn, part: str, worker_id: int, read, default):
+    """``read()``, a part of the heartbeat answer that extends no lease, inside a savepoint: when it fails it is logged
+    and answered with ``default``, and the heartbeat still extends the leases. One failing part once turned every
+    heartbeat into a 500 for twenty minutes, and the hub reaped runs whose agents were still working (#1440, #1471)."""
+    try:
+        async with conn.begin_nested():
+            return await read()
+    except Exception:
+        log.exception("a part of the heartbeat failed", extra={"part": part, "worker": worker_id})
+        return default
+
+
+async def _extras(conn, worker_id: int, body: HeartbeatRequest, settings: WorkerSettings):
+    """The parts of the heartbeat answer beside the runs: the nightly tag, an update or browser install the owner asked
+    for, the plugin runtimes and the graph duties, each one ``_optional``."""
+    features = body.features or ()
+
+    async def declared():
+        offered = await plugin_runtimes.offered(conn, worker_id, settings.plugins)
+        return [PluginRuntime(**runtime.to_json()) for runtime in offered]
+
+    # the job hub.read_nightly reads GitHub, never a heartbeat
+    nightly = await _optional(conn, "nightly", worker_id, lambda: update_now.nightly_read(conn), None)
+    asked = await _optional(
+        conn, "update_now", worker_id, lambda: update_now.settle(conn, worker_id, body, nightly), None
+    )
+    install = await _optional(
+        conn, "browser_install", worker_id, lambda: browser_install.settle(conn, worker_id, body), None
+    )
+    runtimes = (
+        await _optional(conn, "plugin_runtimes", worker_id, declared, []) if runs.PLUGIN_RUNTIMES in features else []
+    )
+    duties = (
+        await _optional(conn, "kg_sync", worker_id, lambda: kg_duties(conn, worker_id), [])
+        if runs.KG_SYNC in features
+        else []
+    )
+    return nightly, asked, install, runtimes, duties
+
+
 async def record_heartbeat(
     engine, user: Principal, body: HeartbeatRequest, lease: timedelta, terminals
 ) -> HeartbeatAnswer:
@@ -157,16 +197,7 @@ async def record_heartbeat(
         fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's (worker_pools)
         served_names = list((await conn.execute(served)).scalars())
         settings = WorkerSettings(**fields, projects=served_names, guard=guard.digest_of(await guard.policy(conn)))
-        nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
-        asked = await update_now.settle(conn, worker_id, body, nightly)
-        install = await browser_install.settle(conn, worker_id, body)
-        declared = []
-        if runs.PLUGIN_RUNTIMES in (body.features or ()):
-            declared = [
-                PluginRuntime(**runtime.to_json())
-                for runtime in await plugin_runtimes.offered(conn, worker_id, settings.plugins)
-            ]
-        duties = await kg_duties(conn, worker_id) if runs.KG_SYNC in (body.features or ()) else []
+        nightly, asked, install, declared, duties = await _extras(conn, worker_id, body, settings)
         # a drained worker claims the run that resumes one it parked, which no other worker can take
         resuming = drained_at is not None and await resume_waits(conn, worker_id)
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
