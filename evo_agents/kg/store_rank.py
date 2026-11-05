@@ -73,7 +73,7 @@ class Ranking(AskedIndex, FullText):
         hits = self.exact(query, b, want, kinds)
         words = text_search.query_words(query)
         scores, rows = self._by_words(words, hits, want, kinds, any_word)
-        named = text_search.named_words(query)
+        named = self._distinct_names(query, b, kinds)
         self._by_names(query, named, b, (want, kinds), hits, (scores, rows))
         self._by_asked(query, kinds, hits, (scores, rows))
         near = self._semantic_ranked(vector, kinds, set(hits)) if vector is not None else {}
@@ -89,6 +89,18 @@ class Ranking(AskedIndex, FullText):
         # for an exact hit, which comes first whatever it scores, and for every node when a ranking by meaning fused in.
         fused = bool(near)
         return [(h, None if fused or h in hits or h not in scores else -scores[h]) for h in found[:want]]
+
+    def _distinct_names(self, query: str, b: int, kinds: list[str]) -> list[str]:
+        """The words of ``query`` that read as names (``search.named_words``) and name at most ``search.NAMED_SHARED``
+        nodes of ``kinds``, or any such word when it is the whole query: a name many nodes share (PATH) says little of
+        what a query of several words asks for."""
+        whole = query.strip()
+        return [
+            word
+            for word in text_search.named_words(query)
+            if word == whole
+            or len(self.exact(word, b, text_search.NAMED_SHARED + 1, kinds)) <= text_search.NAMED_SHARED
+        ]
 
     def _by_words(
         self, words: list[str], hits: list[str], want: int, kinds: list[str], any_word: bool

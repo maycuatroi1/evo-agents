@@ -313,6 +313,10 @@ def phrases(fts_query: str) -> list[str]:
 # case; a plain word ("hub", "plan") names a directory or a heading of every other page.
 NAMED_WEIGHT = 1.5
 NAMED_LOOKUPS = 8  # the words of a query looked up by name, at most
+# A word that names more than NAMED_SHARED nodes (PATH, TIMEOUT: a constant of every other module) gets neither the
+# lift nor the lookup by name in a query of several words: nine PATH constants would fill the top results ahead of the
+# code the rest of the query describes. A name held by one to NAMED_SHARED nodes (HUB_DEGREE) keeps both.
+NAMED_SHARED = 3
 _EDGE_PUNCT = "\"'`()[]{}<>,;!?*"
 # What a question seldom asks about but a search for its words finds all the same, weighed down by BACKGROUND_WEIGHT
 # unless the query names it (BACKGROUND_WORDS): a test, a migration, a fixture, a JSON file a tool writes (a golden
