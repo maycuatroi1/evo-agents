@@ -55,7 +55,7 @@ class WalkTools(SessionText):
         if not room.nodes:
             raise ToolError("budget_tokens holds none of the seeds: raise it, or pass fewer ids")
         frontier = deque((s, 0) for s in room.nodes)
-        walk = ppr.of(store.tuning.walk)
+        walk = ppr.of(store.tuning.walk, store.tuning.entity_code)
         if walk is not None and walk.context:  # the walk fills the budget past the seeds, not hops from them
             self._context_walk(store, b, query, room, walk)
             frontier.clear()
@@ -99,7 +99,7 @@ class WalkTools(SessionText):
             found = [self._lookup(store, i, b) for i in ids if isinstance(i, str)]
             seeds = {n["id"]: n for n in found if n is not None}
         elif query:
-            walk = ppr.of(store.tuning.walk)
+            walk = ppr.of(store.tuning.walk, store.tuning.entity_code)
             if walk is not None:  # the first five of the walk's order (evo_agents.kg.ppr), as kg_search lists them
                 scored = store.search_scored(query, b, limit=max(walk.seeds, 30), deprecated=self.deprecated)
                 hits = ppr.order(store, b, scored, walk, self.seen)[:40]
@@ -107,7 +107,7 @@ class WalkTools(SessionText):
                 hits = store.search(query, b, limit=5, deprecated=self.deprecated)[:5]
             nodes = store.nodes(hits, b)
             found = [nodes[h] for h in hits if h in nodes and self.seen(nodes[h])]
-            found, stood = through_entities(store, b, found, self.seen)
+            found, stood = through_entities(store, b, found, self.seen, store.tuning.entity_code)
             seeds = {n["id"]: n for n in found[:5]}
             stood = {sid: why for sid, why in stood.items() if sid in seeds}
         else:

@@ -65,7 +65,7 @@ class SearchTools(SessionText):
         hits = self._search_hits(store, b, query, kinds, limit, repo)
         stood: dict[str, list[str]] = {}  # a source document -> the matched entities it stands for
         if not kinds:  # an entity gives its place to the documents that mention it (search.through_entities)
-            hits, stood = through_entities(store, b, hits, self.seen)
+            hits, stood = through_entities(store, b, hits, self.seen, store.tuning.entity_code)
             hits = [n for n in hits if in_repo(n, repo)]
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
@@ -134,7 +134,7 @@ class SearchTools(SessionText):
         """The ids a search of any kind and repo ranks first: by the project's walk, else by locate's reading of the
         text and meaning matches, else in their order."""
         scored = store.search_scored(query, b, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
-        walk = ppr.of(store.tuning.walk)
+        walk = ppr.of(store.tuning.walk, store.tuning.entity_code)
         if walk is not None:  # the project's walk ranks in place of locate's reading (evo_agents.kg.ppr)
             ids = ppr.order(store, b, scored, walk, self.seen)
         else:

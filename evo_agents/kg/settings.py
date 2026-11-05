@@ -7,8 +7,8 @@ kg_context by Personalized PageRank (``walk``, ``evo_agents.kg.ppr``; off unless
 A project that set nothing gets the constants the code has always used, so it ranks as before. ``Tuning`` holds the
 values in effect; a settings file holds only what differs from the default. Two kinds of key:
 
-- query keys (``semantic_weight``, ``bm25_name``, ``bm25_path``, ``bm25_body``, ``walk``, ``semantic_mode`` between
-  index and on) change how ``kg_search`` reads a graph that exists: they take effect at once and can be measured on the newest build;
+- query keys (``semantic_weight``, ``bm25_name``, ``bm25_path``, ``bm25_body``, ``walk``, ``entity_code``,
+  ``semantic_mode`` between index and on) change how ``kg_search`` reads a graph that exists: they take effect at once and can be measured on the newest build;
 - build keys (``passage_from``, ``passage_chars``, ``embed_chars``, ``semantic_model``, ``strategy``, and
   ``semantic_mode`` to or from off) change what a build writes: they take effect with the next build, and measuring one
   needs that build (``rebuild_keys``).
@@ -50,6 +50,7 @@ class Tuning:
     walk: dict | None = (
         None  # the Personalized PageRank walk of kg_search and kg_context (evo_agents.kg.ppr); None: off
     )
+    entity_code: bool = False  # a matched entity also brings the code it points to, and the walk weighs implemented_by
 
     @property
     def bm25(self) -> tuple[float, float, float, float, float]:
@@ -110,6 +111,19 @@ def _walk(value):
         raise SettingsError(str(exc)) from None
 
 
+def _flag(key: str):
+    def check(value):
+        if isinstance(value, bool):
+            return value
+        if value in ("on", "true"):
+            return True
+        if value in ("off", "false", None):
+            return False
+        raise SettingsError(f"{key} must be true or false")
+
+    return check
+
+
 def _strategy(value):
     import re
 
@@ -126,6 +140,7 @@ _CHECKS = {
     "entities": _entities,
     "walk": _walk,
     "strategy": _strategy,
+    "entity_code": _flag("entity_code"),
 }
 
 

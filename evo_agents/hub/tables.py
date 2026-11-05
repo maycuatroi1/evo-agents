@@ -834,6 +834,7 @@ kg_optimize_runs = tables_kg.optimize_runs(metadata)  # each run of the KG optim
 kg_init_runs = tables_kg.init_runs(metadata)  # each kg_init run of the Curator (0197)
 kg_uploads = tables_kg.uploads(metadata)  # each archive sent with `hub kg upload` (0200)
 kg_answer_jobs, kg_answers = tables_kg.answer_tables(metadata)  # the files of `hub kg answer` (0207)
+kg_entity_map_runs = tables_kg.entity_map_runs(metadata)  # each run that maps the entities to the code (0210)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )

@@ -9,33 +9,34 @@ import type { ApiSource } from "@/lib/queries";
  * grant shows.
  */
 export const entityKeys = {
-  graph: (project: string, limit: number) => ["kg", project, "entity-graph", limit] as const,
-  around: (project: string, id: string, depth: number, limit: number) => ["kg", project, "entity-around", id, depth, limit] as const,
+  graph: (project: string, limit: number, code = false) => ["kg", project, "entity-graph", limit, code] as const,
+  around: (project: string, id: string, depth: number, limit: number, code = false) =>
+    ["kg", project, "entity-around", id, depth, limit, code] as const,
   entity: (project: string, id: string) => ["kg", project, "entity", id] as const,
   relation: (project: string, id: string) => ["kg", project, "relation", id] as const,
   search: (project: string, query: string, kinds: readonly string[]) => ["kg", project, "entity-search", query, ...kinds] as const,
   setup: (project: string) => ["kg", project, "entity-setup"] as const,
 };
 
-/** The entities the most documents mention, with the relations between them. */
-export const entityGraphQuery = (api: ApiSource, project: string, limit: number) =>
+/** The entities the most documents mention, with the relations between them; with `code`, the code they point to. */
+export const entityGraphQuery = (api: ApiSource, project: string, limit: number, code = false) =>
   queryOptions({
-    queryKey: entityKeys.graph(project, limit),
+    queryKey: entityKeys.graph(project, limit, code),
     queryFn: ({ signal }) =>
-      call(api().GET("/v1/kg/{project}/entity-graph", { params: { path: { project }, query: { limit } }, signal })),
+      call(api().GET("/v1/kg/{project}/entity-graph", { params: { path: { project }, query: { limit, code } }, signal })),
     staleTime: 60_000,
     // A new limit keeps the last graph on screen until its answer comes.
     placeholderData: (previous) => previous,
   });
 
-/** The entities within `depth` relations of one, heaviest first, at most `limit`. */
-export const entityAroundQuery = (api: ApiSource, project: string, id: string, depth: number, limit: number) =>
+/** The entities within `depth` relations of one, heaviest first, at most `limit`; with `code`, the code they point to. */
+export const entityAroundQuery = (api: ApiSource, project: string, id: string, depth: number, limit: number, code = false) =>
   queryOptions({
-    queryKey: entityKeys.around(project, id, depth, limit),
+    queryKey: entityKeys.around(project, id, depth, limit, code),
     queryFn: ({ signal }) =>
       call(
         api().GET("/v1/kg/{project}/entity-graph/around", {
-          params: { path: { project }, query: { id, depth, limit } },
+          params: { path: { project }, query: { id, depth, limit, code } },
           signal,
         }),
       ),

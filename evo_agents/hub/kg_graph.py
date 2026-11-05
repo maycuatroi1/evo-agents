@@ -335,6 +335,19 @@ class HubSession(Session):
         }
         return "\n".join(lines), status
 
+    def node_kinds(self, ids: list[str]) -> dict[str, tuple[str, str]]:
+        """Of node ``ids``, those a node visible to the session has: each to (its stored id, its kind). A hidden node
+        is left out as a missing one is (``_lookup``). ToolError as ``unknown``."""
+        if self.error:
+            raise ToolError(self.error)
+        store, b = self._store()
+        found = {}
+        for node_id in dict.fromkeys(ids):
+            n = self._lookup(store, node_id, b)
+            if n is not None:
+                found[node_id] = (n["id"], n["kind"])
+        return found
+
     def unknown(self, ids: list[str], paths: list[str]) -> tuple[list[str], list[str], list[str]]:
         """(of node ``ids`` and ``paths``, those no node visible to the session has; the author emails of the newest
         commits of the files and documents they name), as the module says; ToolError when nothing of the project is
@@ -535,6 +548,54 @@ class UnknownRefs:
     paths: tuple[str, ...]
     why: str | None = None
     authors: tuple[str, ...] = ()
+
+
+def node_kinds(
+    cache: GraphCache,
+    store: BlobStore | None,
+    project: str,
+    policy: Policy,
+    ceiling: Label | None,
+    sink: str,
+    graphs: list[BuiltGraph],
+    ids: list[str],
+) -> dict[str, tuple[str, str]]:
+    """``HubSession.node_kinds`` of ``ids`` in the newest graph of ``project`` that can be read, through ``sink`` under
+    ``ceiling``: what an entity map may cite (``evo_agents.kg.entity_map.check``). Blocking. Raises ToolError,
+    GraphUnavailable, ArtifactMismatch."""
+    path, graph = cache.acquire(store, project, graphs)
+    try:
+        opened = open_graph(path, project, graph)
+        try:
+            return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).node_kinds(ids)
+        finally:
+            opened.close()
+    finally:
+        cache.release(path)
+
+
+def read_labelled(
+    cache: GraphCache,
+    store: BlobStore | None,
+    project: str,
+    ceiling: Label | None,
+    graphs: list[BuiltGraph],
+    read,
+):
+    """``read(graph_store, clearance)`` on the newest graph of ``project`` that can be read, its reader the audience of
+    ``ceiling`` and ``clearance`` its (level, location), None when ``ceiling`` is: for a caller that filters the rows
+    itself (``evo_agents.hub.kg_entity_map_run``). Blocking. Raises GraphUnavailable, ArtifactMismatch."""
+    path, graph = cache.acquire(store, project, graphs)
+    try:
+        opened = open_graph(path, project, graph)
+        try:
+            if ceiling is not None:
+                opened.reader = ceiling.audience
+            return read(opened, None if ceiling is None else (ceiling.level, ceiling.location))
+        finally:
+            opened.close()
+    finally:
+        cache.release(path)
 
 
 def unknown(

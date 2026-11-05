@@ -1,6 +1,6 @@
-"""The token of a KG run: what the agent of a review run of lens kg_questions or kg_init, or of a batch of an answer
-job, calls the hub's REST API with, so the commands its prompt names (``evo-agents hub kg init --questions FILE``,
-``hub kg init --decide FILE``, ``hub kg answer --reply FILE``) work on a node with no ``hub login`` of its own.
+"""The token of a KG run: what the agent of a review run of lens kg_questions, kg_init or kg_entity_map, or of a batch
+of an answer job, calls the hub's REST API with, so the commands its prompt names (``evo-agents hub kg init --questions FILE``,
+``hub kg init --decide FILE``, ``hub kg answer --reply FILE``, ``hub kg entity-map --post FILE``) work on a node with no ``hub login`` of its own.
 
 Such a run is the Curator's, so it never runs as its owner (``run_access.may_run_as_owner``). While its worker asks
 for its leases, ``run_access.lease`` hands it instead a token of kind run (``evr_...``) of the member who dispatched it,
@@ -18,7 +18,10 @@ route answers, and ``project_access`` finds no other project for it (``Principal
   (``kg_questions``, ``kg_init``: ``acts_for_run``);
 - POST /v1/kg/{project}/answers/{job}/replies, for the questions of its own batch alone (``kg_answers``);
 - POST /v1/kg/{project}/tools/{tool} and GET /v1/kg/{project}/eval-set, read through the agents' sink whatever the
-  request names (``sink``), as the agents read the graph on /mcp.
+  request names (``sink``), as the agents read the graph on /mcp;
+- POST /v1/kg/{project}/entity-map, the entity map a run of strategy entity-graph-agent made, checked through that
+  sink too (``kg_entity_map``), and GET /v1/kg/{project}/entity-map/outline, .../changed and .../runs, which an
+  entity map run reads through that sink (``kg_entity_map_run``).
 
 It is never a hub admin, starts no run (``run_access_rules.ACTING_RUN``), and each write made with it is a
 run_access.write audit row naming the run, as for any run's token.
@@ -44,10 +47,13 @@ ROUTES = (
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/answers/[0-9]+/replies")),
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/tools/[a-z_]+")),
     ("GET", re.compile(rf"/v1/kg/{_PROJECT}/eval-set")),
+    ("POST", re.compile(rf"/v1/kg/{_PROJECT}/entity-map")),
+    ("GET", re.compile(rf"/v1/kg/{_PROJECT}/entity-map/(outline|changed|runs)")),
 )
 REFUSED = (
     "a KG run's token reaches only the KG routes its run needs on project {project}: reading its kg_init runs, its graph "
-    "and its eval set, sending the run's starter questions, decision or answers"
+    "and its eval set, its entity map's outline and changes, sending the run's starter questions, decision, answers or "
+    "entity map"
 )
 
 
@@ -68,14 +74,15 @@ def lease_name(project: str) -> str:
 
 async def is_kg_run(conn: AsyncConnection, run_id: int, kind: str) -> bool:
     """Whether run ``run_id`` of ``kind`` is a KG run: the review run of a kg_init run, the one that writes its starter
-    questions, or the run of a batch of an answer job."""
+    questions, the review run of an entity map run, or the run of a batch of an answer job."""
     if kind not in KINDS:
         return False
-    t, a = tables.kg_init_runs, tables.kg_answers
+    t, a, m = tables.kg_init_runs, tables.kg_answers, tables.kg_entity_map_runs
     found = select(
         or_(
             exists().where(or_(t.c.agent_run_id == run_id, t.c.questions_run_id == run_id)),
             exists().where(a.c.run_id == run_id),
+            exists().where(m.c.agent_run_id == run_id),
         )
     )
     return bool(await conn.scalar(found))

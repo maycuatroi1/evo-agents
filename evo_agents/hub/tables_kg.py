@@ -498,6 +498,50 @@ def init_runs(metadata: MetaData) -> Table:
     return table
 
 
+ENTITY_MAP_ACTIVE = ("queued", "running")  # the states of an entity map run in flight
+ENTITY_MAP_STATES = (*ENTITY_MAP_ACTIVE, "done", "failed")
+ENTITY_MAP_VIAS = ("first_build", "stale", "manual")  # what asked for an entity map run
+
+
+def entity_map_runs(metadata: MetaData) -> Table:
+    """kg_entity_map_runs (0212), added to ``metadata``: each run that maps a project's entities to its code
+    (``evo_agents.hub.server.kg_entity_map_run``, lens kg_entity_map). What asked for it (``via``: the first build under
+    strategy entity-graph-agent, citations gone stale, a call), the reasons, the build it read, the review run of the
+    agent it queued, the maps that run posted, the revision of each item the run's sink read when it was queued
+    (``revs``, what the next run's ``changed`` compares with), and what it was shown (``body``). One run a project is
+    in flight at a time."""
+    name = "kg_entity_map_runs"
+    table = Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("via", Text, nullable=False),
+        Column("requested_by", BigInteger),
+        Column("state", Text, nullable=False),
+        Column("why", JSONB, nullable=False),
+        Column("build_id", BigInteger),
+        Column("agent_run_id", BigInteger),
+        Column("maps", Integer, nullable=False, server_default="0"),
+        Column("revs", JSONB),
+        Column("body", JSONB, nullable=False),
+        Column("error", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        _when("ended_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
+        ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        CheckConstraint(column("via").in_(ENTITY_MAP_VIAS), name=f"{name}_via_check"),
+        CheckConstraint(column("state").in_(ENTITY_MAP_STATES), name=f"{name}_state_check"),
+        Index(f"{name}_project_idx", "project_id", "id"),
+        Index(f"{name}_agent_run_idx", "agent_run_id"),
+    )
+    Index(f"{name}_active_key", table.c.project_id, unique=True, postgresql_where=table.c.state.in_(ENTITY_MAP_ACTIVE))
+    return table
+
+
 UPLOAD_STATES = ("uploading", "extracting", "extracted", "failed")  # of an archive sent with `hub kg upload`
 
 

@@ -1,0 +1,38 @@
+# Prose and code read as a graph of entities, the entities read by an agent rather than by the build (docs/kg-strategies.md,
+# "entity-graph-agent"). A run of the Curator reads the project's documents, plans and code itself and posts what it
+# found as an entity map (format evo-entity-map/1, evo_agents.kg.entity_map) to the hub, which checks each entry against
+# its latest build under the clearance of the run's sink and keeps the map; the entity_map step of every build turns the
+# maps kept into nodes and edges and calls no model. Its kinds are entity-graph-api's with Component and Feature, the
+# parts and the features of a system that an entity is implemented by (implemented_by, to a Directory, File or Symbol).
+version: 1
+name: entity-graph-agent
+description: Prose and code to look at as a graph of entities and relations, the entities read by an agent run that
+  posts an entity map (evo-entity-map/1) to the hub, each tied to the documents that name it and to the directories,
+  files and symbols that implement it. The build reads the maps and calls no model.
+suits: [prose]
+knowledge:
+  ontology:
+    node_kinds:
+      - Actor          # a person or a role the text names
+      - Creature       # an animal or another living being
+      - Organization   # a company, team, institution or group
+      - Place          # a country, city, site or address
+      - Event          # something that happened or is planned, with a time
+      - Concept        # an idea, term or feature the text defines or uses
+      - Method         # a way, process or technique of doing something
+      - Content        # a document, book, article, film or other work of words, sound or image
+      - Data           # a figure, measure, dataset or record
+      - Artifact       # a product, tool, device or other made thing
+      - NaturalObject  # a thing of nature that is not alive
+      - Component      # a part of a system: a service, module, store or interface
+      - Feature        # something a system does for its users
+      - Other          # an entity of none of these types; its own type is in props.type
+    relations:
+      - relates_to     # two entities the map ties, with keywords, a description and a strength
+settings:
+  passage_from: 2500
+  passage_chars: 1800
+  embed_chars: 3000
+  semantic_mode: index
+  walk: {}
+steps: [entity_map]

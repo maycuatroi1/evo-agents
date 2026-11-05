@@ -516,7 +516,7 @@ def _run_parser(sub) -> None:
     go.add_argument(
         "--settings",
         metavar="FILE",
-        help="ask under these search settings (kg settings keys: semantic_weight, bm25_name, bm25_path, bm25_body)",
+        help="ask under these search settings (kg settings keys: semantic_weight, bm25_name, bm25_path, bm25_body, walk, entity_code)",
     )
     go.add_argument("--method", action="append", choices=ev.METHODS, help="method (repeatable; first is primary)")
     go.add_argument(

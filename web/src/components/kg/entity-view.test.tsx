@@ -24,17 +24,35 @@ vi.mock("@/lib/api/browser", () => ({
     }),
 }));
 
+const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
   usePathname: () => "/p/demo/kg",
   useSearchParams: () => new URLSearchParams(),
 }));
 
 // sigma draws with WebGL, which jsdom has not: a list of buttons stands in for the nodes it draws, a click selecting one
-// and a double click opening its neighbours, as the real canvas calls back.
+// and a double click opening its neighbours, as the real canvas calls back; a code node's button opens its node page.
 vi.mock("./entity-canvas", () => ({
-  default: ({ set, selectedNode, onSelectNode, onExpand }: { set: WorkingSet; selectedNode: string | null; onSelectNode: (id: string) => void; onExpand: (id: string) => void }) => (
+  default: ({
+    set,
+    selectedNode,
+    onSelectNode,
+    onExpand,
+    onOpenCode,
+  }: {
+    set: WorkingSet;
+    selectedNode: string | null;
+    onSelectNode: (id: string) => void;
+    onExpand: (id: string) => void;
+    onOpenCode: (id: string) => void;
+  }) => (
     <div data-testid="kg-entity-canvas" data-selected={selectedNode ?? ""} data-edges={set.edges.length}>
+      {(set.codeNodes ?? []).map((node) => (
+        <button key={node.id} type="button" data-testid="stub-code" data-id={node.id} onClick={() => onOpenCode(node.id)}>
+          {node.name}
+        </button>
+      ))}
       {set.nodes.map((node) => (
         <button key={node.id} type="button" data-testid="stub-entity" data-id={node.id} onClick={() => onSelectNode(node.id)} onDoubleClick={() => onExpand(node.id)}>
           {node.name}
@@ -54,6 +72,7 @@ const node = (id: string, kind: string, name: string, docs: number): EntityGraph
   description: null,
   docs,
   degree: 1,
+  code: 0,
   status: "inferred",
   conf: 0.9,
   model: "anthropic/claude-haiku-5.5",
@@ -81,6 +100,9 @@ const ENTITIES: EntityGraphData = {
   total_nodes: 3,
   total_edges: 1,
   truncated: false,
+  code_nodes: [],
+  code_edges: [],
+  code_left_out: 0,
 };
 const EMPTY: EntityGraphData = { ...ENTITIES, nodes: [], edges: [], total_nodes: 0, total_edges: 0 };
 
@@ -93,7 +115,7 @@ function renderView(data: EntityGraphData, documents: number | null = 1200) {
       <EntityView project="demo" state={{ focus: null, depth: 1, limit: 150 }} documents={documents} onChange={onChange} />
     </QueryClientProvider>,
   );
-  return { onChange };
+  return { onChange, client };
 }
 
 describe("EntityView", () => {
@@ -114,6 +136,29 @@ describe("EntityView", () => {
     expect(artifact.getAttribute("aria-pressed")).toBe("false");
     expect(within(screen.getByTestId("kg-entity-canvas")).queryAllByTestId("stub-entity")).toEqual([]);
     expect(within(screen.getByTestId("kg-entity-isolated")).getByText("Ada Lovelace")).toBeTruthy();
+  });
+
+  it("draws the code of the entities shown with the Code switch, and opens a code node's page", async () => {
+    const user = userEvent.setup();
+    const { client } = renderView(ENTITIES);
+    const relay = { id: "r:evo_agents/hub/relay.py", kind: "File", name: "relay.py", repo: "r", path: "evo_agents/hub/relay.py", package: "evo_agents/hub", entities: 1, label };
+    client.setQueryData(entityKeys.graph("demo", 150, true), {
+      ...ENTITIES,
+      code_nodes: [relay],
+      code_edges: [{ src: "entity:ada", rel: "implemented_by", dst: relay.id, conf: 0.9 }],
+      code_left_out: 4,
+    });
+    await screen.findByTestId("kg-entity-canvas");
+    expect(screen.queryAllByTestId("stub-code")).toEqual([]);
+    const toggle = screen.getByTestId("kg-entity-code-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    const code = await screen.findByTestId("stub-code");
+    expect(toggle.textContent).toContain("1");
+    expect(screen.getByTestId("kg-entity-code-left-out").textContent).toContain("4");
+    await user.click(code);
+    expect(push).toHaveBeenCalledWith(`/p/demo/kg/node?id=${encodeURIComponent(relay.id)}`);
   });
 
   it("selects an entity from the canvas", async () => {

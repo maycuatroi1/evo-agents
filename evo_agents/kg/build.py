@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.kg import audit, entities
+from evo_agents.kg import audit, entities, entity_map, strategy
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
@@ -183,10 +183,21 @@ def run_pipeline(
                 inbox=entity_inbox,
                 keys=entity_keys,
             )
+    mapped: dict[str, list[dict]] = {}
+    map_coverage = None
+    harness_root = getattr(getattr(project, "harness", None), "root", None)
+    if "entity_map" in strategy.steps_of(tuning.strategy, harness_root):
+        maps, map_errors = entity_map.read_maps(project.root)
+        node_kinds = _map_kinds(tuning.strategy, harness_root, kinds)
+        mapped, map_coverage = entity_map.run(maps, records, unit_labels, _nodes_of(first, second), node_kinds)
+        map_coverage["errors"] = map_errors
 
     facts = Facts(kinds)
     for rec in records:
-        facts.add_item(rec, first[rec.item_id] + second[rec.item_id] + extracted.get(rec.item_id, []))
+        facts.add_item(
+            rec,
+            first[rec.item_id] + second[rec.item_id] + extracted.get(rec.item_id, []) + mapped.get(rec.item_id, []),
+        )
     dangling = assemble(graph, facts, unit_labels)
     cut = search_texts(graph, records, corpus, body, facts.notes, tuning_of(project))
     per_source = [_source_coverage(sid, facts, backends[sid], code_items[sid]) for sid in sorted(sources)]
@@ -203,8 +214,29 @@ def run_pipeline(
     }
     if entities_coverage is not None:
         coverage["entities"] = entities_coverage
+    if map_coverage is not None:
+        coverage["entity_map"] = map_coverage
+        coverage.setdefault("entities", {k: map_coverage[k] for k in ("enabled", "style", "model", "nodes", "edges")})
     coverage["profile"] = build_profile(graph, item_rows(records, memo, body), coverage, project.policy)
     return graph, coverage, facts.errors, facts.issues
+
+
+def _map_kinds(name: str | None, harness_root, kinds) -> list[str]:
+    """The kinds an entity of a map may be: the strategy's that the ontology holds, OTHER always."""
+    try:
+        said = list(strategy.available(harness_root)[name].ontology.get("node_kinds") or [])
+    except (KeyError, strategy.StrategyError):
+        said = []
+    found = [k for k in said if kinds is None or k in kinds]
+    return found if entity_map.OTHER in found else [*found, entity_map.OTHER]
+
+
+def _nodes_of(first: dict[str, list[dict]], second: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """The node facts of each item, of the map stage and the link stage: what a map may cite."""
+    return {
+        item: [f for f in first.get(item, []) + second.get(item, []) if f.get("t") == "node"]
+        for item in sorted({*first, *second})
+    }
 
 
 def _missing_backends(backends: dict[str, str]) -> list[str]:
@@ -560,6 +592,11 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
     if "entities" in chosen:  # whether the graph has vectors decides the synonym edges of its entities
         found = _semantic_of(tuning_of(project))
         parts["entity_synonyms"] = [found.model] if found is not None and found.indexes else None
+    maps = entity_map.digest(project.root)
+    if maps and "entity_map" in strategy.steps_of(
+        tuning.get("strategy"), getattr(getattr(project, "harness", None), "root", None)
+    ):
+        parts["entity_maps"] = maps  # the maps an agent posted (kg.entity_map): a new one is a new build
     return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
 
 

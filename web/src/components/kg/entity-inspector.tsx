@@ -12,11 +12,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { type Citation, edgeLabel, type EntityDetail, type EntityEdge, type RelationDetail } from "@/lib/kg/entity-graph";
 import { entityDetailQuery, relationDetailQuery } from "@/lib/kg/entity-queries";
-import { isWebLink } from "@/lib/kg/format";
 import { nodeHref } from "@/lib/kg/routes";
 import type { NodeLabel } from "@/lib/kg/types";
 
 import { LabelBadge } from "./badges";
+import { citationHref, CodeLinks } from "./entity-code";
 import { TypeDot } from "./entity-rail";
 import { Frame, Heading, SubTitle } from "./explorer-inspector";
 
@@ -68,12 +68,6 @@ function Provenance({ status, model, conf, label }: { status: string; model: str
       </dd>
     </dl>
   );
-}
-
-/** The document at the line the quote starts on, where the link is a web page that takes a line anchor. */
-export function citationHref(citation: Pick<Citation, "uri" | "line">): string | null {
-  if (!citation.uri || !isWebLink(citation.uri)) return null;
-  return citation.line && !citation.uri.includes("#") ? `${citation.uri}#L${citation.line}` : citation.uri;
 }
 
 function Citations({ project, citations, total }: { project: string; citations: Citation[]; total: number }) {
@@ -151,7 +145,7 @@ function Keywords({ text }: { text: string | null }) {
 
 function Figures({ rows }: { rows: [string, ReactNode][] }) {
   return (
-    <dl className="grid grid-cols-3 divide-x rounded-md border">
+    <dl className="grid divide-x rounded-md border" style={{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }}>
       {rows.map(([label, value]) => (
         <div key={label} className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
           <dt className="truncate text-xs text-muted-foreground">{label}</dt>
@@ -248,9 +242,11 @@ function EntityBody({ project, detail, actions }: { project: string; detail: Ent
           [t("documents"), format.number(detail.documents)],
           [t("relationsShort"), format.number(node.degree)],
           [t("neighbours"), format.number(detail.neighbours.length)],
+          [t("codeShort"), format.number(detail.code_links ?? 0)],
         ]}
       />
       <Provenance status={node.status} model={node.model} conf={node.conf} label={node.label} />
+      <CodeLinks project={project} links={detail.code ?? []} total={detail.code_links ?? 0} />
       <Citations project={project} citations={detail.citations} total={detail.documents} />
       <RelationList detail={detail} actions={actions} />
     </>

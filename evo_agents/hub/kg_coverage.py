@@ -40,6 +40,19 @@ MENTION_KEYS = ("mentions", "resolved", "ambiguous", "dangling")
 RETRIEVAL_KEYS = ("calls", "lookups", "empty", "searches", "fallbacks", "edited", "in_results", "in_top")
 LABEL_KEYS = ("chains", "grep_after", "queries", "clicked")  # of the facets' kg since FACET_VERSION 3
 READ_KEYS = ("commit", "ref", "base", "behind")
+MAP_COUNTS = (  # what kg_builds.coverage keeps of the entity_map step (``evo_agents.kg.entity_map``)
+    "maps",
+    "nodes",
+    "merged",
+    "relations",
+    "name_links",
+    "code_ambiguous",
+    "mentions",
+    "stale",
+    "cited_items",
+    "uncited_items",
+    "rejected",
+)
 ENTITY_COUNTS = (
     "calls",
     "cache_hits",
@@ -116,6 +129,15 @@ def build_coverage(coverage: Mapping | None, reach: Mapping | None, *, skipped: 
             "sink": entities.get("sink") if isinstance(entities.get("sink"), str) else None,
             "cost": round(float(cost), 6) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else 0.0,
             "stopped": str(entities["stopped"])[:300] if entities.get("stopped") else None,
+        }
+    mapped = coverage.get("entity_map")
+    if isinstance(mapped, Mapping) and mapped.get("enabled"):  # the counts alone: no item id, no wording of a map
+        links = mapped.get("code_links") if isinstance(mapped.get("code_links"), Mapping) else {}
+        found["entity_map"] = {
+            **{key: _int(mapped.get(key)) for key in MAP_COUNTS},
+            "code_links": {str(k): _int(v) for k, v in links.items()},
+            "runs": [r for r in mapped.get("runs") or [] if isinstance(r, int)][:50],
+            "model": mapped.get("model") if isinstance(mapped.get("model"), str) else None,
         }
     return found
 

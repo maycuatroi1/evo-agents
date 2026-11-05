@@ -147,11 +147,11 @@ const detailOf = (id: string, name: string, kind: string): NodeDetail => ({
   incoming: id === "requirement:KB-01" ? [{ rel: "mentions", node: "docs:doc:runbook#sổ-tay", kind: "Section", name: "Sổ tay", status: "parsed", conf: 1 }] : [],
 });
 
-const NO_ENTITIES: EntityGraphData = { graph, limit: 150, nodes: [], edges: [], total_nodes: 0, total_edges: 0, truncated: false };
+const NO_ENTITIES: EntityGraphData = { graph, limit: 150, nodes: [], edges: [], total_nodes: 0, total_edges: 0, truncated: false, code_nodes: [], code_edges: [], code_left_out: 0 };
 const ENTITIES: EntityGraphData = {
   ...NO_ENTITIES,
   nodes: [
-    { id: "entity:Person:ada", kind: "Person", name: "Ada Lovelace", type: "person", description: null, docs: 3, degree: 0, status: "inferred", conf: 0.9, model: "anthropic/claude-haiku-5.5", label },
+    { id: "entity:Person:ada", kind: "Person", name: "Ada Lovelace", type: "person", description: null, docs: 3, degree: 0, code: 0, status: "inferred", conf: 0.9, model: "anthropic/claude-haiku-5.5", label },
   ],
   total_nodes: 1,
 };

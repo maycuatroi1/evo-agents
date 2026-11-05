@@ -1053,8 +1053,9 @@ of the token `hub token list` shows with host `run:<id>` (kind Run token on the 
 
 ## The token of a KG run
 
-A KG run is the review run of lens `kg_questions` or `kg_init` of a kg_init run, or the run of a batch of `hub kg
-answer`: a run of the Curator, so it never runs as its owner. Its prompt tells its agent to run `evo-agents hub kg init
+A KG run is the review run of lens `kg_questions` or `kg_init` of a kg_init run, the review run of lens
+`kg_entity_map` (which also reads `hub kg entity-map --outline` and `--changed` and posts its maps with `--post`), or
+the run of a batch of `hub kg answer`: a run of the Curator, so it never runs as its owner. Its prompt tells its agent to run `evo-agents hub kg init
 --questions FILE`, `hub kg init --decide FILE` or `hub kg answer --reply FILE`, so it gets a token of its own instead,
 on the shared KG pool or on its project's pool alike, and the node needs no `hub login`. The lease is of kind `hub`,
 provider `run-access`, named `kg-run:<project>`; its value is a token `evr_...` of the member who dispatched the run,

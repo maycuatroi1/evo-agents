@@ -588,6 +588,10 @@ def register_kg(hsub) -> None:
     kg_entities_cli.register(ksub)
     kg_answer_cli.register(ksub)
 
+    from evo_agents.hub import kg_entity_map_cli
+
+    kg_entity_map_cli.register(ksub)
+
 
 # The hub backend of kg serve and kg query
 

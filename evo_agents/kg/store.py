@@ -381,6 +381,20 @@ class Store(Ranking, ClusterTables):
         )
         return [_node_row(r) for r in nodes], [_edge_row(r) for r in edges]
 
+    def entity_code(self, b: int, rels, prefix: str = "entity:") -> list[dict]:
+        """The live edges of build b with one of ``rels`` out of a node whose id starts with ``prefix``, each with an
+        audience within ``reader``, by id: an entity's links to the code that implements it or that its name names."""
+        rels = list(rels)
+        bounds = {"b": b, "lo": prefix, "hi": prefix[:-1] + chr(ord(prefix[-1]) + 1)}
+        bounds.update({f"r{i}": r for i, r in enumerate(rels)})
+        marks = ", ".join(f":r{i}" for i in range(len(rels)))
+        rows = self.db.execute(
+            f"SELECT {EDGE_COLUMNS} FROM edges WHERE src >= :lo AND src < :hi AND rel IN ({marks}) AND {LIVE}"
+            f" AND {SEEN} ORDER BY edge_id",
+            bounds,
+        )
+        return [_edge_row(r) for r in rows]
+
     # -- reading --------------------------------------------------------------------------------
 
     def content_hash(self, b: int, searched: str) -> str:

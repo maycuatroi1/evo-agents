@@ -70,6 +70,8 @@ from evo_agents.hub import (
     blob_gc,
     kg_asked,
     kg_coverage,
+    kg_entity_map_db,
+    kg_entity_maps,
     kg_entity_relay,
     kg_eval_starter,
     kg_init_db,
@@ -377,6 +379,7 @@ def build_in_cache(
     answers: list[str] | None = None,
     uploads: list[kg_upload_sources.Held] | None = None,
     keys: dict | None = None,
+    maps: list[str] | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
@@ -389,7 +392,8 @@ def build_in_cache(
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
     items are fetched and held as a plugin's (``kg_upload_sources``). ``keys``: the key of the entities step's url model,
-    in memory (``evo_agents.hub.server.kg_entity_key``). Blocking."""
+    in memory (``evo_agents.hub.server.kg_entity_key``). ``maps``: the hashes of the project's kg-entity-map blobs, put
+where the entity_map step reads them (``kg_entity_maps``). Blocking."""
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
     write_config(data_dir, name, *knowledge_and_ontology(config, sources, tuning))
@@ -400,6 +404,7 @@ def build_in_cache(
     if tuning is not None:
         put_tuning(project.root, tuning)
         semantic = tuning.semantic_settings()
+    kg_entity_maps.write_maps(store, project.root, maps or [])
     inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
     outbox: list[dict] = []
     path, report = build_graph(project, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
@@ -574,6 +579,11 @@ async def record(
                 await kg_init_db.on_build(conn, project_id, build_id, built.coverage)
         except Exception:
             log.exception("a kg init run was not queued", extra={"project_id": project_id, "build_id": build_id})
+        try:  # a run maps the entities to the code (strategy entity-graph-agent); a failure never fails the build
+            async with conn.begin_nested():
+                await kg_entity_map_db.on_build(conn, project_id, build_id, built.coverage)
+        except Exception:
+            log.exception("a kg entity map run was not queued", extra={"project_id": project_id, "build_id": build_id})
     return artifact
 
 
@@ -683,6 +693,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         )
         ingests = [Ingest(**row._mapping) for row in rows]
         answers = await kg_entity_relay.answer_hashes(conn, project_id)
+        maps = await kg_entity_maps.map_hashes(conn, project_id)
     digest = found[0] if found else None
     log.info("kg build started", extra={"project": project, "build_id": build_id, "job_id": job_id})
     try:
@@ -711,6 +722,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             answers,
             uploads,
             keys,
+            maps,
         )
         entities_coverage = (built.coverage or {}).get("entities")
         if key_from is not None and isinstance(entities_coverage, dict):
