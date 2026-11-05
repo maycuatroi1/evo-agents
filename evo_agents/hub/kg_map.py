@@ -27,6 +27,7 @@ import threading
 from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
+from typing import Generic, TypeVar
 
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.store import Store
@@ -37,6 +38,7 @@ NO_VISIBLE = "no cluster of this graph has a member you can read"
 NO_CLUSTERS = "this build has no clusters"
 
 Visible = Callable[[tuple], bool]
+V = TypeVar("V")
 
 
 @dataclass
@@ -91,17 +93,17 @@ def view(store: Store, b: int, visible: Visible) -> View:
     return out
 
 
-class ViewCache:
+class ViewCache(Generic[V]):
     """The last ``kept`` views, by a key that names the artifact read and the reader's view of it (the clearance, the
     audience and whether the build holds nothing above them). A view is never changed once made, so callers share it.
     Two calls missing the same key both count it; the second one's result is kept."""
 
     def __init__(self, kept: int = VIEWS_KEPT):
         self.kept = kept
-        self._views: OrderedDict[Hashable, View] = OrderedDict()
+        self._views: OrderedDict[Hashable, V] = OrderedDict()
         self._lock = threading.Lock()
 
-    def get(self, key: Hashable, make: Callable[[], View]) -> View:
+    def get(self, key: Hashable, make: Callable[[], V]) -> V:
         with self._lock:
             found = self._views.get(key)
             if found is not None:
@@ -120,7 +122,7 @@ class ViewCache:
             self._views.clear()
 
 
-VIEWS = ViewCache()
+VIEWS: ViewCache[View] = ViewCache()
 
 
 def _summary(found: View, cid: str) -> dict:

@@ -192,8 +192,10 @@ def prompt_lines(
 
 ENTITIES_HELP = (
     "## Entities and relations of prose\n"
-    "The data is mostly prose: start with the entities step on, a strategy whose steps name entities "
-    "(multi-hop-api, whose build calls the model itself, on the hub; multi-hop where Claude Code runs). Turn it off "
+    "The data is mostly prose: start with the entities step on, a strategy whose steps name entities: "
+    "entity-graph-api on the hub, whose build calls the model itself, or entity-graph where Claude Code runs, which "
+    "give a graph of entities of open types with descriptions and relations with keywords (as LightRAG), each with "
+    "its source; multi-hop-api and multi-hop ask a closed set of kinds and relations instead. Turn it off "
     "only when the tune questions are answered worse with it: then cite, in the reason of the strategy or the "
     f"settings, the figures {ENTITY_FIGURES[0]} and {ENTITY_FIGURES[1]}, one measure of the tune questions with the "
     "step and without it. A decision that leaves the step off otherwise is refused."
@@ -366,7 +368,7 @@ def entities_kept(decision: Mapping, entities_now: bool, harness_root: Path | No
             if found[off] > found[on]:
                 return []
     return [
-        "the data is mostly prose, so the entities step stays on (strategy multi-hop-api on the hub) unless the tune "
+        "the data is mostly prose, so the entities step stays on (strategy entity-graph-api on the hub) unless the tune "
         f"questions are answered worse with it: cite {on} and {off} in a reason about the strategy or the settings, "
         f"{off} the higher"
     ]

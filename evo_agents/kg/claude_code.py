@@ -5,7 +5,9 @@ A mapping names it as its ``command`` (``["evo-agents", "kg", "claude-entities"]
 ``claude-haiku-5-5``, and a policy sink of kind ``llm-backend``: Claude Code sends the text to Anthropic, so the step
 sends an item only when that sink clears the item's label (``entities.check`` refuses the mapping without a sink).
 
-The command reads one request on stdin, ``{"text", "node_kinds", "relations", "model"}``, runs ``claude -p`` with that
+The command reads one request on stdin, ``{"text", "node_kinds", "relations", "model"}`` and the mapping's ``style``
+when it is not ``closed`` (``entities.prompt``), or a ``task`` of ``entity_merge`` (merge, summary) whose ``text`` is the
+whole prompt, answered with ``{"decisions"}`` or ``{"summary"}`` and the usage; it runs ``claude -p`` with that
 model, no tool, no MCP server and no session kept, and writes one answer on stdout: ``{"nodes", "edges", "usage"}``,
 where ``usage`` holds the tokens in (cache reads and writes included) and out and the cost Claude Code reports
 (``total_cost_usd``; without it the step prices the tokens with the mapping's ``price``). ANTHROPIC_API_KEY and
@@ -96,7 +98,7 @@ def _environment(env: Mapping[str, str]) -> dict[str, str]:
     return {k: v for k, v in env.items() if k not in KEY_VARIABLES}
 
 
-def argv(claude: str, model: str) -> list[str]:
+def argv(claude: str, model: str, system: str = SYSTEM_PROMPT) -> list[str]:
     return [
         claude,
         "-p",
@@ -111,7 +113,7 @@ def argv(claude: str, model: str) -> list[str]:
         "--max-turns",
         "1",
         "--system-prompt",
-        SYSTEM_PROMPT,
+        system,
     ]
 
 
@@ -149,6 +151,7 @@ def answer(
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> dict:
     """The model's answer to ``request`` with its ``usage``. ClaudeStop or ClaudeError when the call fails."""
+    from evo_agents.kg import entity_merge
     from evo_agents.kg.entities import EntitiesError, parse_answer, prompt
 
     env = os.environ if env is None else env
@@ -163,10 +166,13 @@ def answer(
     claude = binary(env)
     if claude is None:
         raise ClaudeError("claude is not installed on this machine (install Claude Code and run claude login)")
+    task = request.get("task")
+    if task is not None and task not in entity_merge.TASKS:
+        raise ClaudeError(f"the request asks for an unknown task {str(task)[:40]!r}")
     try:
         done = runner(
-            argv(claude, model),
-            input=prompt(text, kinds, relations),
+            argv(claude, model, entity_merge.SYSTEM if task else SYSTEM_PROMPT),
+            input=text if task else prompt(text, kinds, relations, request.get("style") or "closed"),
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
@@ -190,6 +196,8 @@ def answer(
         data = parse_answer(said)
     except EntitiesError as exc:
         raise ClaudeError(str(exc)) from None
+    if task:
+        return {**{k: data[k] for k in entity_merge.ANSWER_KEYS if k in data}, "usage": _usage(result)}
     return {"nodes": data.get("nodes") or [], "edges": data.get("edges") or [], "usage": _usage(result)}
 
 

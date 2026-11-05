@@ -15,6 +15,8 @@ hub a strategy is the `strategy` key of the project's KG settings.
 | `media-metadata` | binary files known by metadata or sidecar text | name weight 8, path weight 3, vectors written |
 | `multi-hop` | prose whose answers join facts from several passages | the keys of `documents`, the entities step on Claude Code, the walk |
 | `multi-hop-api` | the same prose, on the hub | `multi-hop` with the entities step calling OpenRouter from the build |
+| `entity-graph` | prose to look at as a graph of entities and relations | the keys of `documents`, the entities step in its `lightrag` style on Claude Code, the walk |
+| `entity-graph-api` | the same prose, on the hub | `entity-graph` with the entities step calling OpenRouter from the build, reasoning off |
 
 The built-in files live in `evo_agents/kg/strategies/`.
 
@@ -182,8 +184,7 @@ holds the sink; a kind the ontology lacks is dropped from the mapping (`coverage
 
 `multi-hop-api` is `multi-hop` with another model: the build calls an OpenAI-compatible endpoint itself, OpenRouter's
 `https://openrouter.ai/api/v1` with `anthropic/claude-haiku-5.5` (`url`, `key_env: OPENROUTER_API_KEY`), so a build on
-the hub states the entities of the items it reads at once, with no nightly run of an agent pool. It is the strategy the
-Curator starts prose with on the hub (see "The Curator and prose" below). Everything else is `multi-hop`'s: the keys of
+the hub states the entities of the items it reads at once, with no nightly run of an agent pool. Everything else is `multi-hop`'s: the keys of
 `documents`, the ontology it adds, the sink `llm`, the walk, and the ceilings of a build (200 calls, 400000 tokens,
 `max_cost` 5), with `price` OpenRouter's of 2026-11-05 (0.10 per million tokens in, 0.50 out) and four calls at once
 (`jobs: 4`).
@@ -199,6 +200,46 @@ key the step calls nothing: `coverage["entities"]["stopped"]` says so and the it
 **The sink.** A project made from an upload (`hub kg upload FILE --new-project P`) has the sink `llm`, kind
 `llm-backend`, with the clearance of its agent sink (`internal`): an item labelled above it is not sent. Any other
 project declares it in its knowledge.yaml as for `multi-hop`.
+
+## The entity-graph strategies
+
+`entity-graph` and `entity-graph-api` read prose as LightRAG does, into a graph a person can look at. Their mapping sets
+`style: lightrag`, and the model is asked (`evo_agents.kg.entities.prompt`) for:
+
+- each entity with its name, a type and a description of one sentence. The node kinds of the mapping are a suggestion
+  (Actor, Creature, Organization, Place, Event, Concept, Method, Content, Data, Artifact, NaturalObject): a type that
+  is none of them is stored as `Other` with the model's word in `props.type`, and LightRAG's Person and Location are
+  read as Actor and Place;
+- each relation between two of them with keywords, a description and a strength from 1 to 10, stored as the one
+  relation `relates_to` with `props.keywords`, `props.description` and `props.strength`.
+
+Each node and edge keeps, as every entity of the step does, the item that stated it (`props.item`), the model
+(`props.model`) and its short quote (`props.evidence`), and `props.line`, the line of the item the quote starts on, when
+the quote is found in the text sent. The sink and label check, the ceilings, the memo by digest (the style is part of
+the digest, so a closed mapping keeps its memo), the Claude Code relay (a request carries `style`) and the url path are
+the entities step's. `relates_to` states no `conflicting_claim` in the review queue: it has no predicate, so two objects
+of one subject are two links, not two answers.
+
+After all items are read, the model merges and summarizes as LightRAG does at merge time
+(`evo_agents/kg/entity_merge.py`; the mapping key `merge`, on by default in the lightrag style only):
+
+- Candidate pairs are `synonym_of` pairs, one name in two kinds, and near names of one kind (the words of one all in the
+  other, or alike by `difflib` at 0.85). The model answers 20 pairs a call whether they are one entity and why; each
+  answer is memoized by the pair and the model. A pair it calls one is one node, with an edge `merged_from` from that
+  node to the document of the name folded in, carrying `reason`. Deprecating that edge with a decision undoes the merge
+  at the next build.
+- A relation stated more than once (in either direction, after merges) gets `weight`, the sum of its strengths, and
+  the union of its `keywords`. Eight descriptions or more, or over 1200 tokens of them, get a `summary` the model writes.
+  Descriptions are grouped by label, so a summary mixes one label only and carries it; each item's `mentions` edge
+  keeps its own group's summary or `descriptions`.
+- These calls use the step's ceiling, sink check and relay. A call past the ceiling waits for a later build; coverage
+  counts `merge` (asked, same, pending, refused, undone) and `summaries` (made, pending, refused).
+
+`entity-graph` asks Claude Code as `multi-hop` does; `entity-graph-api` calls OpenRouter as `multi-hop-api` does, with
+the same model, price and ceilings, and sends `reasoning: {enabled: false}` (the mapping key `reasoning`, sent to a url
+model as the request's reasoning). On 40 MuSiQue paragraphs (seed 7, 2026-11-05, `anthropic/claude-haiku-5.5`), tokens
+out per paragraph were 2,232 for `multi-hop-api`, 2,414 for the lightrag prompt with reasoning and 1,274 without it.
+`entity-graph-api` is the strategy the Curator starts prose with on the hub.
 
 ## The Curator and prose
 

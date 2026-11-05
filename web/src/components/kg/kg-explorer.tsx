@@ -1,17 +1,22 @@
 "use client";
 
+import { Boxes, Waypoints } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
+
+import { Segmented } from "@/components/data/segmented";
 
 import { useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState } from "@/components/states/states";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { parseDepth, parseLimit } from "@/lib/kg/entity-graph";
 import { parseScope, type Scope, scopeKey, withScope } from "@/lib/kg/explorer";
 import { cleanQuery, kgBuildsQuery, kgClusterSummaryQuery, kgGraphQuery } from "@/lib/kg/queries";
 import type { KgNode } from "@/lib/kg/types";
 
+import { EntityView, type EntityViewState } from "./entity-view";
 import { type ExplorerLayout, SCOPE_LAYOUTS } from "./explorer-layout";
 import { RailKinds, RailSearch, RailStats } from "./explorer-rail";
 import { NodeScope } from "./explorer-node-scope";
@@ -30,7 +35,13 @@ export type KgExplorerErrors = {
  * graph's figures, its kinds as filters and a search in the rail, and the inspector for what is selected. The scope
  * lives in the URL (`?cluster=`, `?node=`), so the browser's back and forward walk the exploration and a view can be
  * shared; the search too (`?q=`). The kinds hidden and the layout last for the visit. Read-only.
+ *
+ * `?view=entities` shows the Entities view instead (./entity-view.tsx): the entities and relations a model read from
+ * the documents, drawn with sigma.js, its focus, depth and node count in `?entity=`, `?depth=` and `?limit=`.
  */
+type View = "clusters" | "entities";
+const ENTITY_PARAMS = ["entity", "depth", "limit"];
+
 export function KgExplorer({ project, errors }: { project: string; errors: KgExplorerErrors }) {
   const tStates = useTranslations("states");
   const params = useSearchParams();
@@ -38,6 +49,12 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   const scope = useMemo(() => parseScope(params), [params]);
   const query = cleanQuery(params.get("q") ?? undefined);
   const kind = cleanQuery(params.get("kind") ?? undefined);
+  const view: View = params.get("view") === "entities" ? "entities" : "clusters";
+  const entityState = useMemo<EntityViewState>(
+    () => ({ focus: params.get("entity")?.trim() || null, depth: parseDepth(params.get("depth")), limit: parseLimit(params.get("limit")) }),
+    [params],
+  );
+  const tExplorer = useTranslations("kg.explorer");
   const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(new Set());
   const [chosen, setChosen] = useState<ExplorerLayout>("force");
   const layout = SCOPE_LAYOUTS[scope.kind].includes(chosen) ? chosen : "force";
@@ -61,6 +78,24 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
     if (text) next.set("q", text);
     else next.delete("q");
     write(next, false);
+  };
+  const switchView = (next: View) => {
+    const search = withScope(params, { kind: "overview" });
+    if (next === "entities") search.set("view", "entities");
+    else for (const name of ["view", ...ENTITY_PARAMS]) search.delete(name);
+    write(search, true);
+  };
+  const changeEntities = (next: Partial<EntityViewState>) => {
+    const search = new URLSearchParams(params.toString());
+    const merged = { ...entityState, ...next };
+    if (merged.focus) search.set("entity", merged.focus);
+    else search.delete("entity");
+    if (merged.focus && merged.depth !== 1) search.set("depth", String(merged.depth));
+    else search.delete("depth");
+    if (merged.limit !== parseLimit(null)) search.set("limit", String(merged.limit));
+    else search.delete("limit");
+    // A new focus is a step the browser's back undoes; the depth and the node count only refine the view.
+    write(search, next.focus !== undefined && next.focus !== entityState.focus);
   };
   const pick = (node: KgNode) => navigate({ kind: "node", id: node.id });
   const toggleKind = (name: string) =>
@@ -112,7 +147,23 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   return (
     <div className="flex flex-col gap-4 lg:h-[calc(100dvh-6.25rem)] lg:min-h-[36rem]" data-testid="kg-explorer-page">
       {header}
-      {scope.kind === "overview" ? (
+      <Segmented
+        label={tExplorer("view")}
+        value={view}
+        onChange={switchView}
+        options={[
+          { value: "clusters", label: tExplorer("views.clusters"), icon: Boxes, testId: "kg-view-clusters" },
+          { value: "entities", label: tExplorer("views.entities"), icon: Waypoints, testId: "kg-view-entities" },
+        ]}
+      />
+      {view === "entities" ? (
+        <EntityView
+          project={project}
+          state={entityState}
+          documents={graph.status === "success" ? (graph.data.kinds.find((row) => row.kind === "Document")?.count ?? 0) : null}
+          onChange={changeEntities}
+        />
+      ) : scope.kind === "overview" ? (
         <OverviewScope key={key} {...common} />
       ) : scope.kind === "cluster" ? (
         <ClusterScope key={key} id={scope.id} {...common} />

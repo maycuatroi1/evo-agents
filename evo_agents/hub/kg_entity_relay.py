@@ -40,6 +40,7 @@ MAX_REQUESTS_BYTES = 64 * MiB
 MAX_ANSWERS_BYTES = 8 * MiB  # one post of answers
 REQUESTS_FILE = "entity-requests.json"  # in the project's cache directory
 REQUEST_KEYS = ("key", "item", "text", "node_kinds", "relations", "model")
+OPTIONAL_KEYS = ("style", "task")  # kept only when the request has it: a closed mapping's requests read as they did
 
 
 class RelayError(ValueError):
@@ -53,7 +54,10 @@ def write_requests(root: Path, outbox: list[dict]) -> tuple[Path, str, int, int]
     if not outbox:
         path.unlink(missing_ok=True)
         return None
-    rows = sorted(({k: r.get(k) for k in REQUEST_KEYS} for r in outbox), key=lambda r: str(r["key"]))
+    rows = sorted(
+        ({**{k: r.get(k) for k in REQUEST_KEYS}, **{k: r[k] for k in OPTIONAL_KEYS if r.get(k)}} for r in outbox),
+        key=lambda r: str(r["key"]),
+    )
     data = json.dumps({"version": 1, "requests": rows}, ensure_ascii=False, sort_keys=True).encode()
     if len(data) > MAX_REQUESTS_BYTES:
         raise RelayError(f"the deferred entity requests are {len(data)} bytes, over {MAX_REQUESTS_BYTES}")
@@ -82,7 +86,13 @@ def clean_answers(answers) -> dict[str, dict]:
         if not isinstance(key, str) or not isinstance(answer, dict):
             raise RelayError("each answer is an object under the key of its request")
         usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
+        task = {}  # the answer to a task of entity_merge: the decisions of a merge, or a summary
+        if isinstance(answer.get("decisions"), list):
+            task["decisions"] = [d for d in answer["decisions"] if isinstance(d, dict)]
+        if isinstance(answer.get("summary"), str):
+            task["summary"] = answer["summary"]
         found[key] = {
+            **task,
             "nodes": [n for n in answer.get("nodes") or [] if isinstance(n, dict)],
             "edges": [e for e in answer.get("edges") or [] if isinstance(e, dict)],
             "usage": {

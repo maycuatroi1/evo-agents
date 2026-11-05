@@ -23,8 +23,15 @@ What it does for each item of the kinds the mapping chooses (the prose kinds whe
   committed as it comes, so a build that is killed keeps what it was told, and the ceiling may be passed by the calls
   already running when the token or cost ceiling is reached (at most ``jobs - 1``).
 
+The mapping's ``style`` says what the model is asked (``prompt``). ``closed``, the default, asks for the node kinds and
+relations of the mapping, each node with a conf. ``lightrag`` asks as LightRAG does: each entity with its name, a type
+taken from ``node_kinds`` as a suggestion (one outside them is kept as ``Other``, its own word in ``props.type``) and a
+description; each relation between two of them with keywords, a description and a strength from 1 to 10, stored as the
+first relation of the mapping. Each node and edge keeps its item and the model's short quote; in the lightrag style
+also, when the quote is found in the text sent, the ``line`` of the item it starts on.
+
 A model is one of: ``command``, an argv run on this machine that reads one JSON object on stdin
-(``{"text", "node_kinds", "relations", "model"}``) and writes one on stdout
+(``{"text", "node_kinds", "relations", "model"}``, and ``"style"`` when it is not ``closed``) and writes one on stdout
 (``{"nodes": [{"kind", "name", "evidence", "conf"}], "edges": [{"src", "rel", "dst", "evidence"}], "usage":
 {"input_tokens", "output_tokens", "cost"}}``); or ``url``, an OpenAI-compatible endpoint, reached with the ``openai``
 library of the optional extra ``entities`` (``key_env`` names the variable that holds the key, never the key). The
@@ -55,6 +62,7 @@ from urllib.parse import urlparse
 
 from evo_agents.kg import claude_code
 from evo_agents.kg import entity_links as links
+from evo_agents.kg import entity_merge as merge
 from evo_agents.kg.memo import memo_key
 from evo_agents.kg.protocol import canonical_json, sha256
 
@@ -70,6 +78,12 @@ REFUSED_SAMPLES = 20
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 SLUG = re.compile(r"[^a-z0-9]+")
 MAX_ALIASES = 10
+STYLES = ("closed", "lightrag")
+OTHER = "Other"  # the kind of a lightrag entity whose type is none of the mapping's node kinds
+TYPE_WORDS = {"person": "Actor", "people": "Actor", "location": "Place"}  # LightRAG's words for kinds named otherwise
+MAX_DESCRIPTION = 600
+NODE_EXTRAS = ("description", "type", "line")  # what a lightrag node keeps in its props besides the quote
+EDGE_EXTRAS = ("description", "keywords", "strength", "line")
 STOP_EXIT = claude_code.STOP_EXIT  # a command's exit status that stops the step at the item
 
 FIELDS = {
@@ -88,6 +102,9 @@ FIELDS = {
     "max_chars",  # characters of an item sent
     "synonym_threshold",  # the cosine from which two entities are synonyms, when the graph has vectors (entity_links)
     "jobs",  # calls at once (default 1); not part of what is memoized
+    "style",  # what the model is asked: closed (the default) or lightrag (``prompt``)
+    "reasoning",  # of a url model, sent as the request's ``reasoning`` (OpenRouter's): {"enabled": false} turns it off
+    "merge",  # whether the model merges entities and summarizes descriptions (entity_merge); default: lightrag only
 }
 _INTS = ("max_calls", "max_tokens", "max_chars", "jobs")
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:/-]{0,79}$")
@@ -140,6 +157,10 @@ def _check_names(out: dict) -> None:
         raise EntitiesError("entities.model must name the model (letters, digits, . _ : / -), it is the evidence")
     if not out.get("node_kinds"):
         raise EntitiesError("entities.node_kinds must list the kinds the model may state")
+    if out.get("style", "closed") not in STYLES:
+        raise EntitiesError(f"entities.style must be one of {', '.join(STYLES)}")
+    if out.get("style") == "lightrag" and not out.get("relations"):
+        raise EntitiesError("entities.relations must name the relation a lightrag style stores its relations as")
 
 
 def _check_command(out: dict) -> None:
@@ -188,7 +209,9 @@ def _check_ceiling(out: dict) -> None:
 
 
 def _check_tuning(out: dict) -> None:
-    """The price of a model that reports no cost, and the cosine of a synonym."""
+    """The price of a model that reports no cost, the cosine of a synonym and the reasoning of a url model."""
+    if "reasoning" in out and (not isinstance(out["reasoning"], dict) or "url" not in out):
+        raise EntitiesError("entities.reasoning must be a mapping, sent to a url model as its reasoning")
     if "price" in out:
         p = out["price"]
         if (
@@ -197,6 +220,8 @@ def _check_tuning(out: dict) -> None:
             or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 for v in p.values())
         ):
             raise EntitiesError("entities.price must be {input, output}: cost per million tokens")
+    if "merge" in out and not isinstance(out["merge"], bool):
+        raise EntitiesError("entities.merge must be true or false")
     if "synonym_threshold" in out:
         t = out["synonym_threshold"]
         if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0 < t <= 1:
@@ -226,9 +251,17 @@ def entity_id(kind: str, name: str) -> str:
     return f"entity:{kind}:{slug(name)}"
 
 
+def style_of(config: dict) -> str:
+    return config.get("style") or "closed"
+
+
 def config_digest(config: dict, node_kinds: list[str], relations: list[str]) -> str:
     keep = {"model": config["model"], "node_kinds": node_kinds, "relations": relations}
     keep["max_chars"] = config.get("max_chars", DEFAULT_MAX_CHARS)
+    if style_of(config) != "closed":  # a closed mapping keeps the digest, and the memo, it had before styles
+        keep["style"] = style_of(config)
+    if config.get("reasoning"):
+        keep["reasoning"] = config["reasoning"]
     return sha256(canonical_json({**keep, "version": VERSION}))[:16]
 
 
@@ -263,10 +296,10 @@ class Spend:
             self.cost += tin / 1e6 * float(self.price.get("input", 0)) + tout / 1e6 * float(self.price.get("output", 0))
 
 
-def estimate(text: str, node_kinds: list[str], relations: list[str]) -> dict:
+def estimate(text: str, node_kinds: list[str], relations: list[str], style: str = "closed") -> dict:
     """The usage of a call that reported none, such as one that failed or timed out: the prompt's tokens in (4
     characters a token), none out."""
-    return {"input_tokens": -(-len(prompt(text, node_kinds, relations)) // 4), "output_tokens": 0}
+    return {"input_tokens": -(-len(prompt(text, node_kinds, relations, style)) // 4), "output_tokens": 0}
 
 
 # -- the models ---------------------------------------------------------------------------------------------------
@@ -286,8 +319,22 @@ def parse_answer(text: str) -> dict:
     return data
 
 
-def prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
-    """What a model is asked of ``text``: the entities of ``node_kinds`` and the ``relations`` it says outright."""
+def prompt(text: str, node_kinds: list[str], relations: list[str], style: str | None = "closed") -> str:
+    """What a model is asked of ``text``: the entities of ``node_kinds`` and the ``relations`` it says outright; in the
+    lightrag style, entities of open types with a description, and relations with keywords, a description and a
+    strength."""
+    if style == "lightrag":
+        return (
+            "Read the text and list the entities it names and the relations between them that it states.\n"
+            f"Entity types, a suggestion: {', '.join(k for k in node_kinds if k != OTHER)}; use Other when none fits.\n"
+            'Answer with one JSON object, nothing else: {"nodes": [{"name", "type", "description", "evidence"}], '
+            '"edges": [{"src", "dst", "keywords", "description", "strength", "evidence"}]}. name: as the text writes '
+            "it. description: one short sentence of what the text says of it, not repeating the evidence. src and "
+            "dst: names of your nodes. keywords: two or three words of what ties them. strength: 1 to 10, how "
+            "strongly the text ties them. evidence: the text's own words, at most 8. No line breaks or indentation. "
+            'A node may add "aliases": other names the text gives it. '
+            "Keep the entities the text's facts are about; leave out what it does not say.\n\nTEXT:\n" + text
+        )
     return (
         "Read the text and state the entities and the relations between them that it says outright.\n"
         f"Entity kinds you may use: {', '.join(node_kinds)}.\n"
@@ -301,6 +348,12 @@ def prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
 
 def call_command(config: dict, text: str, node_kinds: list[str], relations: list[str]) -> dict:
     request = {"text": text, "node_kinds": node_kinds, "relations": relations, "model": config["model"]}
+    if style_of(config) != "closed":
+        request["style"] = style_of(config)
+    return _run_command(config, request)
+
+
+def _run_command(config: dict, request: dict) -> dict:
     try:
         done = subprocess.run(
             config["command"],
@@ -350,13 +403,18 @@ CLIENT_FACTORY = _openai_client  # tests replace it
 
 
 def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: list[str], keys=None) -> dict:
+    return _complete(config, prompt(text, node_kinds, relations, style_of(config)), keys)
+
+
+def _complete(config: dict, asked: str, keys=None) -> dict:
     key = key_of(config, keys)
     client = CLIENT_FACTORY(config, key)
     try:
         got = client.chat.completions.create(
             model=config["model"],
-            messages=[{"role": "user", "content": prompt(text, node_kinds, relations)}],
+            messages=[{"role": "user", "content": asked}],
             temperature=0,
+            **({"extra_body": {"reasoning": config["reasoning"]}} if config.get("reasoning") else {}),
         )
     except Exception as exc:  # the library's errors differ by version: a failed call is a failed call
         raise EntitiesError(redact(f"the model endpoint failed: {type(exc).__name__}: {exc}", key)) from None
@@ -382,17 +440,76 @@ def call_model(config: dict, text: str, node_kinds: list[str], relations: list[s
     return call_endpoint(config, text, node_kinds, relations, keys)
 
 
+def call_task(config: dict, task: str, asked: str, keys=None) -> dict:
+    """The answer of the model to a ``task`` of ``entity_merge`` (merge or summary), ``asked`` its whole prompt. A
+    command gets ``{"task", "text": asked, "node_kinds": [], "relations": [], "model"}`` and answers with the object the
+    prompt asks for and its usage."""
+    if "command" in config:
+        request = {"task": task, "text": asked, "node_kinds": [], "relations": [], "model": config["model"]}
+        return _run_command(config, request)
+    return _complete(config, asked, keys)
+
+
 # -- the step -----------------------------------------------------------------------------------------------------
 
 
-def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
+def _kind_of(said, node_kinds: set[str]) -> tuple[str | None, str | None]:
+    """The node kind of a lightrag entity's type, with the type when it is not that kind's name once folded: a kind
+    matched by its folded name or by TYPE_WORDS, else OTHER (None when the mapping has no OTHER)."""
+    word = said.strip()[:80] if isinstance(said, str) else ""
+    folded = links.key(word).replace("-", "")
+    for k in sorted(node_kinds):
+        if links.key(k).replace("-", "") == folded:
+            return k, None
+    k = TYPE_WORDS.get(folded)
+    if k in node_kinds:
+        return k, word
+    return (OTHER, word or None) if OTHER in node_kinds else (None, None)
+
+
+def _line(text: str | None, quote: str) -> int | None:
+    """The line of ``text`` (from 1) the model's ``quote`` starts on; None when the text does not hold it."""
+    words = quote.split()
+    if not text or not words:
+        return None
+    found = re.search(r"\s+".join(map(re.escape, words[:8])), text)
+    return text.count("\n", 0, found.start()) + 1 if found else None
+
+
+def _extras(said: dict, keys: tuple[str, ...]) -> dict:
+    """The description, keywords and strength of a lightrag node or edge, those it gave in a readable form."""
+    out = {}
+    if "description" in keys and isinstance(said.get("description"), str) and said["description"].strip():
+        out["description"] = said["description"].strip()[:MAX_DESCRIPTION]
+    if "keywords" in keys:
+        words = said.get("keywords")
+        words = ", ".join(w for w in words if isinstance(w, str)) if isinstance(words, list) else words
+        if isinstance(words, str) and words.strip():
+            out["keywords"] = words.strip()[:200]
+    if "strength" in keys:
+        try:
+            out["strength"] = min(max(float(said.get("strength")), 0.0), 10.0)
+        except (TypeError, ValueError):
+            out["strength"] = 1.0
+    return out
+
+
+def _clean(
+    answer: dict, node_kinds: set[str], relations: set[str], style: str = "closed", text: str | None = None
+) -> dict:
     """What of a model's answer is within the kinds and relations allowed: nodes and edges, with the counts dropped.
     Names one item gives twice, folded as ``entity_links.key`` folds them, are one node; an edge may name a node by
-    one of its aliases."""
+    one of its aliases. In the lightrag style a node's kind comes from its type (``_kind_of``), every edge is the
+    first of ``relations`` in order, and ``text``, the text sent, gives each quote its line."""
+    lightrag = style == "lightrag"
     nodes, seen, dropped = [], {}, 0
     for n in answer.get("nodes") or []:
         name = n.get("name") if isinstance(n, dict) else None
-        kind = n.get("kind") if isinstance(n, dict) else None
+        kind, said_type = (None, None)
+        if lightrag and isinstance(n, dict):
+            kind, said_type = _kind_of(n.get("type") or n.get("kind"), node_kinds)
+        elif isinstance(n, dict):
+            kind = n.get("kind")
         if not isinstance(name, str) or not name.strip() or kind not in node_kinds or not links.key(name):
             dropped += 1
             continue
@@ -411,13 +528,19 @@ def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
         seen[key] = {"kind": kind, "name": name, "conf": conf, "evidence": str(n.get("evidence") or "")[:200]}
         if aliases:
             seen[key]["aliases"] = aliases
+        if lightrag:
+            seen[key].update(_extras(n, ("description",)), **({"type": said_type} if said_type else {}))
+            _add_line(seen[key], text)
         nodes.append(seen[key])
     by_name = {}
     for n in nodes:
         for name in (n["name"], *n.get("aliases", ())):
             by_name.setdefault(links.key(name), n)
     edges = []
+    stored = relations[0] if lightrag and isinstance(relations, list) and relations else None
     for e in answer.get("edges") or []:
+        if lightrag and isinstance(e, dict) and stored:
+            e = {**e, "rel": stored}
         if not isinstance(e, dict) or e.get("rel") not in relations:
             dropped += 1
             continue
@@ -425,15 +548,23 @@ def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
         if src is None or dst is None or src is dst:
             dropped += 1
             continue
-        edges.append(
-            {
-                "src": entity_id(src["kind"], src["name"]),
-                "rel": e["rel"],
-                "dst": entity_id(dst["kind"], dst["name"]),
-                "evidence": str(e.get("evidence") or "")[:200],
-            }
-        )
+        stated = {
+            "src": entity_id(src["kind"], src["name"]),
+            "rel": e["rel"],
+            "dst": entity_id(dst["kind"], dst["name"]),
+            "evidence": str(e.get("evidence") or "")[:200],
+        }
+        if lightrag:
+            stated.update(_extras(e, ("description", "keywords", "strength")))
+            _add_line(stated, text)
+        edges.append(stated)
     return {"nodes": nodes, "edges": edges, "dropped": dropped}
+
+
+def _add_line(stated: dict, text: str | None) -> None:
+    line = _line(text, stated["evidence"])
+    if line is not None:
+        stated["line"] = line
 
 
 def run(
@@ -473,7 +604,7 @@ def run(
         cov["stopped"] = "no node kind of entities.node_kinds is in the ontology"
         return out, cov
     step = _Step(config, memo, cov, allowed_kinds, allowed_rels, offline=offline, outbox=outbox, inbox=inbox or {})
-    step.keys = keys
+    step.keys, step.policy = keys, project.policy
     if "url" in config and not cov["local"] and config.get("key_env") and key_of(config, keys) is None:
         step.halted.append(f"no key: {config['key_env']} is not set on this machine nor given by a hub secret")
     digest = config_digest(config, allowed_kinds, allowed_rels)
@@ -484,17 +615,17 @@ def run(
         ready = _prefetch(
             config, todo, memo, step.inbox, step.spend, step.halted, allowed_kinds, allowed_rels, jobs, keys
         )
-    answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
+    answers: list[tuple] = []  # item, unit, has a document node, the answer, how public, its label
     for rec, label, text, inputs, key in todo:
         cleaned = step.answer(rec.item_id, text, inputs, key, ready)
         if cleaned is None:
             continue
         has_doc = any(f["t"] == "node" and f["id"] == rec.item_id for f in first.get(rec.item_id, []))
-        answers.append((rec.item_id, item_unit(rec.item_id), has_doc, cleaned, _rank(label)))
+        answers.append((rec.item_id, item_unit(rec.item_id), has_doc, cleaned, _rank(label), label))
         cov["nodes"] += len(cleaned["nodes"])
         cov["edges"] += len(cleaned["edges"])
         cov["rejected"] += cleaned["dropped"]
-    _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline)
+    _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline, step, (records, body))
     spend = step.spend
     cov.update(calls=spend.calls, tokens_in=spend.tokens_in, tokens_out=spend.tokens_out, cost=round(spend.cost, 6))
     return out, cov
@@ -587,6 +718,7 @@ class _Step:
         self.defer = "command" in config and claude_code.uses(config["command"]) and not claude_code.available()
         self.halted: list[str] = []  # why a command asked to stop: no item after it is sent
         self.keys: dict | None = None  # the keys of a url model, held in memory (``key_of``)
+        self.policy = None  # the project's policy: the sink of a task of entity_merge (``allowed``)
 
     def answer(self, item: str, text: str, inputs: dict, key: str, ready: dict) -> dict | None:
         """The cleaned answer of an item, or None when it is skipped or its call failed (counted in coverage)."""
@@ -636,7 +768,7 @@ class _Step:
         given = self.inbox.get(key)
         if isinstance(given, dict):
             self.cov["answered_elsewhere"] += 1
-            cleaned = _clean(given, set(self.kinds), set(self.rels))
+            cleaned = _clean(given, set(self.kinds), self.rels, style_of(self.config), text)
             cleaned["usage"] = given.get("usage") if isinstance(given.get("usage"), dict) else {}
             return cleaned
         if self.halted:
@@ -645,6 +777,8 @@ class _Step:
             self.cov["deferred"] += 1
             if self.outbox is not None:
                 request = {"text": text, "node_kinds": self.kinds, "relations": self.rels}
+                if style_of(self.config) != "closed":
+                    request["style"] = style_of(self.config)
                 self.outbox.append({"key": key, "item": item, **request, "model": self.config["model"]})
             raise BudgetStop("deferred")
         why = self.spend.exhausted()
@@ -656,14 +790,135 @@ class _Step:
             self.halted.append(str(stop))
             raise BudgetStop("halted") from None
         except EntitiesError as exc:  # a failed call, a timeout or JSON that does not read was paid all the same
-            self.spend.add(exc.usage if isinstance(exc.usage, dict) else estimate(text, self.kinds, self.rels))
+            used = exc.usage if isinstance(exc.usage, dict) else None
+            self.spend.add(used or estimate(text, self.kinds, self.rels, style_of(self.config)))
             raise
         given = answer.get("usage")
         usage = given if isinstance(given, dict) else {}
         self.spend.add(usage)
-        cleaned = _clean(answer, set(self.kinds), set(self.rels))
+        cleaned = _clean(answer, set(self.kinds), self.rels, style_of(self.config), text)
         cleaned["usage"] = usage
         return cleaned
+
+    # -- the tasks of entity_merge: one call for many items, within the same ceiling and sink -----------------------
+
+    def allowed(self, label) -> bool:
+        """Whether text of an item of ``label`` may go to the model: a local one, or a sink that clears the label."""
+        sink = self.config.get("sink")
+        if sink is None:
+            return True
+        policy = self.policy
+        return policy is not None and _sink_problem(policy, sink) is None and policy.allows(label, sink)
+
+    def tally(self, what: str, key: str, n: int = 1) -> None:
+        self.cov.setdefault(what, {})
+        self.cov[what][key] = self.cov[what].get(key, 0) + n
+
+    def task(self, task: str, asked: str, key: str) -> dict | None:
+        """The model's answer to a task (``call_task``): the inbox's, else a call; None when offline, halted, deferred
+        (put in the outbox), at the ceiling or failed. The caller memoizes what it reads of it."""
+        if self.offline:
+            return None
+        given = self.inbox.get(key)
+        if isinstance(given, dict):
+            self.cov["answered_elsewhere"] += 1
+            return given
+        if self.halted:
+            return None
+        if self.defer:
+            if self.outbox is not None:
+                request = {"key": key, "item": "", "task": task, "text": asked, "node_kinds": [], "relations": []}
+                self.outbox.append({**request, "model": self.config["model"]})
+            return None
+        why = self.spend.exhausted()
+        if why:
+            self.cov["stopped"] = f"the ceiling of this build was reached ({why}); the rest waits for a later build"
+            return None
+        try:
+            answer = call_task(self.config, task, asked, self.keys)
+        except ModelStop as stop:
+            self.halted.append(str(stop))
+            self.cov["stopped"] = f"the model stopped the step ({stop}); the rest waits for a later build"
+            return None
+        except EntitiesError as exc:
+            used = exc.usage if isinstance(exc.usage, dict) else None
+            self.spend.add(used or {"input_tokens": -(-len(asked) // 4), "output_tokens": 0})
+            errors = self.cov.setdefault("errors", [])
+            if len(errors) < REFUSED_SAMPLES:
+                errors.append({"item": f"({task})", "error": str(exc)[:200]})
+            return None
+        given = answer.get("usage")
+        self.spend.add(given if isinstance(given, dict) else {})
+        return answer
+
+    def merges(self, cands: list[tuple[str, str, str]], seen: dict) -> list[tuple[str, str, str, dict]]:
+        """(a, b, why, {"same", "reason"}) of the candidate pairs the memo or the model decided, MERGE_BATCH a call;
+        the others are counted ``pending`` (or ``refused`` by the sink) and wait for a later build."""
+        model, out, todo = self.config["model"], [], []
+        for a, b, why in cands:
+            inputs = merge.pair_inputs(seen[a], seen[b], model)
+            held = _recall(self.memo, merge.MERGE_STAGE, merge.MERGE_VERSION, inputs)
+            if held is not None:
+                out.append((a, b, why, held))
+            elif not (self.allowed(seen[a].label) and self.allowed(seen[b].label)):
+                self.tally("merge", "refused")
+            else:
+                todo.append((a, b, why, inputs))
+        for start in range(0, len(todo), merge.MERGE_BATCH):
+            chunk = todo[start : start + merge.MERGE_BATCH]
+            key = memo_key(
+                merge.MERGE_STAGE, merge.MERGE_VERSION, {"batch": sha256(canonical_json([c[3] for c in chunk]))}
+            )
+            got = self.task("merge", merge.merge_prompt([(seen[a], seen[b]) for a, b, _, _ in chunk]), key)
+            found = merge.read_decisions(got, len(chunk)) if got else {}
+            for i, (a, b, why, inputs) in enumerate(chunk, 1):
+                if i not in found:
+                    self.tally("merge", "pending")
+                    continue
+                self.memo.run(merge.MERGE_STAGE, merge.MERGE_VERSION, inputs, lambda d=found[i]: d)
+                self.tally("merge", "asked")
+                out.append((a, b, why, found[i]))
+            self.memo.commit()
+        return out
+
+    def summary(self, subject: str, fragments: list[str], label) -> str | None:
+        """The model's summary of ``fragments``, descriptions of ``subject`` by items of ``label``: from the memo, else
+        a call; None when it waits for a later build or the sink refuses the label."""
+        inputs = merge.summary_inputs(subject, fragments, self.config["model"])
+        held = _recall(self.memo, merge.SUMMARY_STAGE, merge.SUMMARY_VERSION, inputs)
+        if held is not None:
+            return held.get("summary")
+        if not self.allowed(label):
+            self.tally("summaries", "refused")
+            return None
+        key = memo_key(merge.SUMMARY_STAGE, merge.SUMMARY_VERSION, inputs)
+        got = self.task("summary", merge.summary_prompt(subject, fragments), key)
+        text = merge.read_summary(got) if got else None
+        if text is None:
+            self.tally("summaries", "pending")
+            return None
+        self.memo.run(merge.SUMMARY_STAGE, merge.SUMMARY_VERSION, inputs, lambda: {"summary": text}, commit=True)
+        self.tally("summaries", "made")
+        return text
+
+
+class _Miss(Exception):
+    pass
+
+
+def _recall(memo, stage: str, version: str, inputs: dict):
+    """What the memo holds for a task, or None; a miss is not counted."""
+    before = memo.misses[stage]
+
+    def missing():
+        raise _Miss
+
+    try:
+        found, _ = memo.run(stage, version, inputs, missing)
+    except _Miss:
+        memo.misses[stage] = before
+        return None
+    return found
 
 
 def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=None) -> dict:
@@ -679,7 +934,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
     running: dict = {}
 
     def take(future) -> None:
-        _rec, _label, _text, inputs, key = running.pop(future)
+        _rec, _label, text, inputs, key = running.pop(future)
         try:
             answer = future.result()
         except ModelStop as stop:
@@ -690,7 +945,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
             return
         usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
         spend.add(usage)
-        cleaned = _clean(answer, set(kinds), set(rels))
+        cleaned = _clean(answer, set(kinds), rels, style_of(config), text)
         cleaned["usage"] = usage
         memo.run("entities", VERSION, inputs, lambda: cleaned)
         memo.commit()
@@ -718,16 +973,27 @@ def _rank(label) -> tuple:
     return (label.level, label.location, len(label.audience))
 
 
-def _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline) -> None:
-    """The facts of every item's answer, its entities folded into one node each, joined to code and to synonyms."""
+def _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline, step=None, source=None):
+    """The facts of every item's answer, its entities folded into one node each, joined to code and to synonyms; with
+    ``step`` and the mapping's ``merge`` on, also merged by the model, the relations and descriptions of each label
+    read together (``entity_merge``). ``source`` is (records, body), where the decisions of the build are read."""
     from evo_agents.kg.pipeline.stages import edge, node
 
     stated = [
-        links.Stated(n["kind"], n["name"], tuple(n.get("aliases") or ()), n["conf"], item, rank)
-        for item, _, _, cleaned, rank in answers
-        for n in cleaned["nodes"]
+        links.Stated(n["kind"], n["name"], tuple(n.get("aliases") or ()), n["conf"], a[0], a[4])
+        for a in answers
+        for n in a[3]["nodes"]
     ]
     groups = links.group(stated)
+    threshold = config.get("synonym_threshold", links.DEFAULT_SYNONYM_THRESHOLD)
+    cache = project.root / links.VECTOR_CACHE if getattr(project, "root", None) is not None else None
+    pairs, status = links.synonyms(groups, semantic_settings, memo, cache, threshold, offline=offline)
+    merging = step is not None and merge.merge_on(config)
+    made: list[tuple[str, dict, list[str]]] = []  # the MERGE_REL edges: (item, the edge's ends and props, units)
+    if merging:
+        before = groups
+        groups, made = _merge(config, answers, stated, groups, pairs, step, source)
+        pairs = _remap_pairs(pairs, before, groups)
     index, code_names = links.code_index(first)
     code: dict[str, tuple[str, float, str]] = {}  # entity id -> (code id, conf, the name that found it)
     ambiguous = 0
@@ -737,44 +1003,34 @@ def _assemble(config, answers, first, out, cov, project, memo, semantic_settings
         if target is not None:
             exact = name.strip().strip("`").removesuffix("()") in (code_names.get(target), target)
             code[nid] = (target, round(groups.conf[nid] * (1.0 if exact else links.CASE_CONF), 4), name)
-    threshold = config.get("synonym_threshold", links.DEFAULT_SYNONYM_THRESHOLD)
-    cache = project.root / links.VECTOR_CACHE if getattr(project, "root", None) is not None else None
-    pairs, status = links.synonyms(groups, semantic_settings, memo, cache, threshold, offline=offline)
     near: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
     for a, b, cos in pairs:
         near[a].append((a, b, cos))
         near[b].append((a, b, cos))
-    model = config["model"]
-    for item, unit, has_doc, cleaned, _ in answers:
-        evidence = {"model": model, "item": item}
+    said = [_said(config, a, groups) for a in answers]
+    shared = _shared(said, groups, step) if merging else {}
+    for item, unit, has_doc, label, nodes, edges in said:
         facts: list[dict] = []
-        old_ids: dict[str, str] = {}
-        own: list[str] = []
-        for n in cleaned["nodes"]:
-            nid = groups.id_of(n["kind"], n["name"])
-            old_ids.setdefault(entity_id(n["kind"], n["name"]), nid)
-            own.append(nid)
-            props = {**evidence, "evidence": n["evidence"]}
-            facts.append(node(nid, n["kind"], groups.name[nid], [unit], props=props, status=STATUS, conf=n["conf"]))
+        for nid, props, conf in nodes:
+            kept = {**props, **shared.get((nid, label), {})}
+            facts.append(node(nid, groups.kind[nid], groups.name[nid], [unit], props=kept, status=STATUS, conf=conf))
             if has_doc:
-                facts.append(edge(item, "mentions", nid, [unit], props=props, status=STATUS, conf=n["conf"]))
-        for n in cleaned["nodes"]:  # the edges of an answer memoized before ``slug`` folded accents
-            old_ids.setdefault(f"entity:{n['kind']}:{_old_slug(n['name'])}", groups.id_of(n["kind"], n["name"]))
-        for e in cleaned["edges"]:
-            src, dst = old_ids.get(e["src"]), old_ids.get(e["dst"])
-            if src is None or dst is None or src == dst:
-                continue
-            props = {**evidence, "evidence": e["evidence"]}
-            facts.append(edge(src, e["rel"], dst, [unit], props=props, status=STATUS, conf=DEFAULT_CONF))
-        for nid in dict.fromkeys(own):
+                facts.append(edge(item, "mentions", nid, [unit], props=kept, status=STATUS, conf=conf))
+        for (src, rel, dst), props in edges:
+            kept = {**props, **shared.get(((src, rel, dst), label), {})}
+            facts.append(edge(src, rel, dst, [unit], props=kept, status=STATUS, conf=DEFAULT_CONF))
+        evidence = {"model": config["model"], "item": item}
+        for nid in dict.fromkeys(n[0] for n in nodes):
             if nid in code:
                 target, conf, name = code[nid]
                 props = {**evidence, "name": name}
                 facts.append(edge(nid, links.CODE_REL, target, [unit], props=props, status=STATUS, conf=conf))
-            for a, b, cos in near.get(nid, ()):
+            for x, y, cos in near.get(nid, ()):
                 props = {"model": semantic_settings.model, "cosine": cos}
-                facts.append(edge(a, links.SYNONYM_REL, b, [unit], props=props, status=STATUS, conf=cos))
+                facts.append(edge(x, links.SYNONYM_REL, y, [unit], props=props, status=STATUS, conf=cos))
         out[item] = facts
+    for item, (src, dst, props), units in made:
+        out.setdefault(item, []).append(edge(src, merge.MERGE_REL, dst, units, props=props, status=STATUS))
     cov.update(
         distinct=len(groups.name),
         merged=groups.merged,
@@ -785,10 +1041,151 @@ def _assemble(config, answers, first, out, cov, project, memo, semantic_settings
     )
 
 
+def _said(config: dict, answer: tuple, groups) -> tuple:
+    """(item, unit, has a document node, label, [(node id, props, conf)], [((src, rel, dst), props)]) of one answer
+    once its names are folded; in the lightrag style a relation's ends are in order, as LightRAG's have no direction."""
+    item, unit, has_doc, cleaned, _r, label = answer
+    evidence = {"model": config["model"], "item": item}
+    old_ids: dict[str, str] = {}
+    nodes = []
+    for n in cleaned["nodes"]:
+        nid = groups.id_of(n["kind"], n["name"])
+        old_ids.setdefault(entity_id(n["kind"], n["name"]), nid)
+        props = {**evidence, "evidence": n["evidence"], **{k: n[k] for k in NODE_EXTRAS if k in n}}
+        nodes.append((nid, props, n["conf"]))
+    for n in cleaned["nodes"]:  # the edges of an answer memoized before ``slug`` folded accents
+        old_ids.setdefault(f"entity:{n['kind']}:{_old_slug(n['name'])}", groups.id_of(n["kind"], n["name"]))
+    edges = []
+    for e in cleaned["edges"]:
+        src, dst = old_ids.get(e["src"]), old_ids.get(e["dst"])
+        if src is None or dst is None or src == dst:
+            continue
+        if style_of(config) == "lightrag" and dst < src:
+            src, dst = dst, src
+        props = {**evidence, "evidence": e["evidence"], **{k: e[k] for k in EDGE_EXTRAS if k in e}}
+        edges.append(((src, e["rel"], dst), props))
+    return item, unit, has_doc, label, nodes, edges
+
+
+def _merge(config, answers, stated, groups, pairs, step, source) -> tuple:
+    """The groups once the pairs the model calls one are folded, but those a decision undid, and the MERGE_REL edge of
+    each merge: (item, (the node that stays, the document of the item of the node folded in, props), units)."""
+    seen: dict[str, merge.Seen] = {}  # node id -> what the model is shown of it: its most public item's
+    for item, _unit, _doc, cleaned, _r, label in sorted(answers, key=lambda a: (a[4], a[0])):
+        for n in cleaned["nodes"]:
+            nid = groups.id_of(n["kind"], n["name"])
+            if nid not in seen:
+                desc = n.get("description") or ""
+                seen[nid] = merge.Seen(groups.kind[nid], groups.name[nid], desc, item, label)
+    docs = {a[0] for a in answers if a[2]}
+    cands = merge.candidates(groups, pairs)
+    decided = step.merges(cands, seen)
+    same = [d for d in decided if d[3]["same"]]
+    step.tally("merge", "candidates", len(cands))
+    step.tally("merge", "same", len(same))
+
+    def joins(chosen):
+        return [
+            ((groups.kind[a], links.key(groups.name[a])), (groups.kind[b], links.key(groups.name[b])))
+            for a, b, _, _ in chosen
+        ]
+
+    def edges_of(chosen, folded) -> list[tuple]:
+        found = []
+        for a, b, why, d in chosen:
+            keep = folded.id_of(groups.kind[a], groups.name[a])
+            units = sorted({f"{seen[a].item}#", f"{seen[b].item}#"})
+            for side, other in ((a, b), (b, a)):
+                if side == keep or seen[side].item not in docs:
+                    continue
+                props = {
+                    "model": config["model"],
+                    "name": seen[side].name,
+                    "kind": seen[side].kind,
+                    "with": seen[other].name,
+                    "why": why,
+                    "reason": d.get("reason") or "",
+                }
+                found.append((seen[side].item, (keep, seen[side].item, props), units))
+        return found
+
+    folded = links.group(stated, joins(same))
+    made = edges_of(same, folded)
+    undid = merge.undone(*source) if source else set()
+    if undid:
+        off = {i for i, (_item, (keep, doc, _p), _u) in enumerate(made) if (keep, doc) in undid}
+        if off:
+            back = {(m[1][0], m[1][1]) for i, m in enumerate(made) if i in off}
+            stay = [d for d in same if not any(e[1][:2] in back for e in edges_of([d], folded))]
+            undone = [m for i, m in enumerate(made) if i in off]
+            for _item, (_keep, _doc, props), _units in undone:
+                props["undone"] = True
+            step.tally("merge", "undone", len(same) - len(stay))
+            folded = links.group(stated, joins(stay))
+            made = edges_of(stay, folded) + undone
+    return folded, made
+
+
+def _remap_pairs(pairs: list, before, after) -> list:
+    """The synonym pairs of the groups ``before`` as ids of ``after``; a pair folded into one node is gone."""
+    out = set()
+    for a, b, cos in pairs:
+        x = after.id_of(before.kind[a], before.name[a])
+        y = after.id_of(before.kind[b], before.name[b])
+        if x and y and x != y:
+            out.add((min(x, y), max(x, y), cos))
+    return [list(p) for p in sorted(out)]
+
+
+def _shared(said: list[tuple], groups, step) -> dict:
+    """What every item of one label shares of a node or a relation, by (node id or (src, rel, dst), label): the
+    ``summary`` of their descriptions, or the ``descriptions`` while there is none; of a relation also the sum of its
+    strengths, ``weight``, and its ``keywords``, each once (``entity_merge``)."""
+    nodes: dict[tuple, list[str]] = defaultdict(list)
+    rels: dict[tuple, list[dict]] = defaultdict(list)
+    for _item, _unit, _doc, label, ns, es in said:
+        for nid, props, _ in ns:
+            if props.get("description"):
+                nodes[(nid, label)].append(props["description"])
+        for key, props in es:
+            rels[(key, label)].append(props)
+    out: dict[tuple, dict] = {}
+    for (nid, label), found in nodes.items():
+        subject = f'the {groups.kind[nid]} "{groups.name[nid]}"'
+        out[(nid, label)] = _described(step, subject, found, label)
+    for (key, label), stated in rels.items():
+        subject = f'the relation between "{groups.name.get(key[0], key[0])}" and "{groups.name.get(key[2], key[2])}"'
+        shared = _described(step, subject, [p["description"] for p in stated if p.get("description")], label)
+        strengths = [p["strength"] for p in stated if isinstance(p.get("strength"), (int, float))]
+        if strengths:
+            shared["weight"] = round(sum(strengths), 4)
+        words = merge.merged_keywords([p["keywords"] for p in stated if p.get("keywords")])
+        if words and len(stated) > 1:
+            shared["keywords"] = words
+        if len(stated) > 1:
+            shared["sources"] = len(stated)
+        out[(key, label)] = shared
+    return {k: v for k, v in out.items() if v}
+
+
+def _described(step, subject: str, said: list[str], label) -> dict:
+    fragments = sorted(set(said))
+    if len(fragments) < 2 and not (fragments and merge.needs_summary(fragments)):
+        return {}
+    if merge.needs_summary(fragments):
+        text = step.summary(subject, fragments, label)
+        if text:
+            step.tally("summaries", "count")
+            return {"summary": text, "sources": len(said)}
+    return {"descriptions": fragments[: merge.MAX_DESCRIPTIONS], "sources": len(said)}
+
+
 def unfinished(coverage: dict) -> bool:
-    """A build whose entity step left items for a later build, or whose calls failed: not the build to skip next time."""
+    """A build whose entity step left items, merges or summaries for a later build, or whose calls failed: not the
+    build to skip next time."""
     found = coverage.get("entities") or {}
-    return bool(found.get("skipped") or found.get("failed")) and not found.get("offline")
+    left = (found.get("merge") or {}).get("pending") or (found.get("summaries") or {}).get("pending")
+    return bool(found.get("skipped") or found.get("failed") or left) and not found.get("offline")
 
 
 def not_enabled(tuning) -> dict:

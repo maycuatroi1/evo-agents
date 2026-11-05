@@ -358,6 +358,29 @@ class Store(Ranking, ClusterTables):
         ).fetchone()
         return _edge_row(row)["label"] if row else None
 
+    def edge(self, edge_id: str, b: int) -> dict | None:
+        """Edge ``edge_id`` live at build b with an audience within ``reader``; None without one."""
+        row = self.db.execute(
+            f"SELECT {EDGE_COLUMNS} FROM edges WHERE edge_id = :id AND {LIVE} AND {SEEN}", {"id": edge_id, "b": b}
+        ).fetchone()
+        return _edge_row(row) if row else None
+
+    def entity_graph(self, b: int, prefix: str = "entity:") -> tuple[list[dict], list[dict]]:
+        """The live nodes of build b whose id starts with ``prefix`` (the entities step's) and the live edges into one
+        of them, each with an audience within ``reader``, by id: the relations between two entities and the
+        ``mentions`` from a document."""
+        bounds = {"b": b, "lo": prefix, "hi": prefix[:-1] + chr(ord(prefix[-1]) + 1)}
+        nodes = self.db.execute(
+            f"SELECT {NODE_COLUMNS} FROM nodes WHERE node_id >= :lo AND node_id < :hi AND {LIVE} AND {SEEN}"
+            " ORDER BY node_id",
+            bounds,
+        )
+        edges = self.db.execute(
+            f"SELECT {EDGE_COLUMNS} FROM edges WHERE dst >= :lo AND dst < :hi AND {LIVE} AND {SEEN} ORDER BY edge_id",
+            bounds,
+        )
+        return [_node_row(r) for r in nodes], [_edge_row(r) for r in edges]
+
     # -- reading --------------------------------------------------------------------------------
 
     def content_hash(self, b: int, searched: str) -> str:

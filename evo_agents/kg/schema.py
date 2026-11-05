@@ -66,6 +66,7 @@ HUB_RELATIONS = {
     "answers": ("Opportunity", "Problem"),  # an opportunity of the hub to a problem of its own project it answers
     "refers_to": ("*", "*"),  # an entity a model stated to the one Symbol or File its name names (kg.entity_links)
     "synonym_of": ("*", "*"),  # two entities of one kind whose names are near in meaning (kg.entity_links)
+    "merged_from": ("*", "*"),  # an entity to the document whose entity a model merged into it (kg.entity_merge)
 }
 
 ITEM_KIND_TO_NODE = {
