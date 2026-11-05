@@ -31,7 +31,7 @@ from evo_agents.kg.schema import validate_ontology
 BUILTIN_DIR = Path(__file__).with_name("strategies")
 CUSTOM_DIR = "strategies"  # under the harness root
 NAME = re.compile(kg_settings.STRATEGY_PATTERN)
-STEPS = ("entities",)  # build steps a strategy may turn on; the step itself is ``kg.extract_entities``
+STEPS = ("entities", "entity_map")  # build steps a strategy may turn on: ``kg.entities``, ``kg.entity_map``
 KEYS = {"version", "name", "description", "suits", "requires", "knowledge", "settings", "steps"}
 REQUIRES = {"connectors", "extras"}
 KNOWLEDGE = {"identifiers", "ontology"}

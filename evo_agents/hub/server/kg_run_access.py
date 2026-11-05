@@ -18,7 +18,9 @@ route answers, and ``project_access`` finds no other project for it (``Principal
   (``kg_questions``, ``kg_init``: ``acts_for_run``);
 - POST /v1/kg/{project}/answers/{job}/replies, for the questions of its own batch alone (``kg_answers``);
 - POST /v1/kg/{project}/tools/{tool} and GET /v1/kg/{project}/eval-set, read through the agents' sink whatever the
-  request names (``sink``), as the agents read the graph on /mcp.
+  request names (``sink``), as the agents read the graph on /mcp;
+- POST /v1/kg/{project}/entity-map, the entity map a run of strategy entity-graph-agent made, checked through that
+  sink too (``kg_entity_map``).
 
 It is never a hub admin, starts no run (``run_access_rules.ACTING_RUN``), and each write made with it is a
 run_access.write audit row naming the run, as for any run's token.
@@ -44,10 +46,11 @@ ROUTES = (
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/answers/[0-9]+/replies")),
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/tools/[a-z_]+")),
     ("GET", re.compile(rf"/v1/kg/{_PROJECT}/eval-set")),
+    ("POST", re.compile(rf"/v1/kg/{_PROJECT}/entity-map")),
 )
 REFUSED = (
     "a KG run's token reaches only the KG routes its run needs on project {project}: reading its kg_init runs, its graph "
-    "and its eval set, sending the run's starter questions, decision or answers"
+    "and its eval set, sending the run's starter questions, decision, answers or entity map"
 )
 
 

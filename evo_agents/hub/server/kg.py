@@ -85,6 +85,7 @@ from evo_agents.hub.kg_graph import (
     UnknownRefs,
     answer,
     mentioning,
+    node_kinds,
     unknown,
 )
 from evo_agents.hub.kg_ingest import (
@@ -790,6 +791,28 @@ async def unknown_refs(
         return UnknownRefs(*every, str(exc))
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return UnknownRefs(*every, str(exc))
+
+
+async def visible_nodes(state, access: ProjectAccess, user: Principal, project: str, sink: str, ids: list[str]):
+    """Of node ``ids``, those the project's latest successful build holds as ``user`` reads it through ``sink``
+    (``unknown_refs``' rule): each to (its stored id, its kind). HTTPException 409 when the graph cannot be read at all
+    (none yet, none readable now, nothing of it visible through ``sink``), 502 for an artifact that does not match."""
+    async with state.engine.begin() as conn:
+        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
+        audience = await reader_audience(conn, user) if graphs else frozenset()
+    if not graphs:
+        raise HTTPException(409, f"project {project} has no knowledge graph on the hub yet: build it first")
+    ceiling = access.rules.ceiling(access.max_level, read_sink(access, sink), audience)
+    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, sink, graphs, ids)
+    try:
+        return await asyncio.to_thread(node_kinds, *looked)
+    except GraphOutdated as exc:
+        await rebuild_outdated(state, access.project_id, project)
+        raise HTTPException(409, str(exc)) from None
+    except (GraphUnavailable, ToolError) as exc:
+        raise HTTPException(409, str(exc)) from None
+    except ArtifactMismatch as exc:
+        raise HTTPException(502, str(exc)) from None
 
 
 async def delivery_evidence(

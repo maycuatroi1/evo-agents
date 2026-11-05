@@ -17,6 +17,7 @@ hub a strategy is the `strategy` key of the project's KG settings.
 | `multi-hop-api` | the same prose, on the hub | `multi-hop` with the entities step calling OpenRouter from the build |
 | `entity-graph` | prose to look at as a graph of entities and relations | the keys of `documents`, the entities step in its `lightrag` style on Claude Code, the walk |
 | `entity-graph-api` | the same prose, on the hub | `entity-graph` with the entities step calling OpenRouter from the build, reasoning off |
+| `entity-graph-agent` | prose and code, on the hub | entities read by an agent run that posts an entity map; the build reads the maps and calls no model |
 
 The built-in files live in `evo_agents/kg/strategies/`.
 
@@ -241,6 +242,64 @@ the same model, price and ceilings, and sends `reasoning: {enabled: false}` (the
 model as the request's reasoning). On 40 MuSiQue paragraphs (seed 7, 2026-11-05, `anthropic/claude-haiku-5.5`), tokens
 out per paragraph were 2,232 for `multi-hop-api`, 2,414 for the lightrag prompt with reasoning and 1,274 without it.
 `entity-graph-api` is the strategy the Curator starts prose with on the hub.
+
+## The entity-graph-agent strategy
+
+`entity-graph-agent` builds the graph `entity-graph-api` builds, but an agent reads the project instead of a model the
+build calls. A run of the project (the Curator's) reads the documents, plans and code itself and posts what it found as
+an entity map. The hub checks the map and keeps it, and the step `entity_map` of every build turns the maps kept into
+nodes and edges (`evo_agents/kg/entity_map.py`). The build calls no model and needs no key. The node kinds are those of
+`entity-graph-api` plus `Component` (a part of a system: a service, module, store or interface) and `Feature`
+(something a system does for its users).
+
+**The map, format `evo-entity-map/1`.** One JSON object:
+
+```json
+{"format": "evo-entity-map/1", "model": "claude-opus-5-5",
+ "entities": [{"kind": "Component", "name": "Entity relay", "type": null, "description": "...",
+               "aliases": ["relay"], "conf": 0.9,
+               "mentions": [{"node": "<Document, Section, Plan or PlanStep id>", "hash": "<the item's hash read>",
+                             "quote": "...", "line": 12}],
+               "code": [{"node": "<Directory, File or Symbol id>", "reason": "...", "conf": 0.8}]}],
+ "relations": [{"src": "Entity relay", "dst": "Build", "keywords": "...", "description": "...", "strength": 7,
+                "mentions": []}]}
+```
+
+- `kind` is one of the strategy's node kinds. Any other word makes the entity `Other`, with the word in `props.type`.
+- A relation names its two entities by a name or an alias of the same map.
+- `hash` is the hash the agent read of the cited item, as `kg_node` shows it. It is optional.
+- The hub sets `run`. A map holds at most 5,000 entities and 20,000 relations; post a larger one in parts.
+
+**What the build states.** Every node and edge is `extracted`, so `kg_impact` never walks it:
+
+- a node `entity:KIND:slug` for each entity, with `description`, `aliases`, `type`, `run` and `model`. Names fold as
+  the entities step folds them (`entity_links.group`), so two maps, or two parts of one, that name one entity make one
+  node;
+- `mentions` from each cited Document, Section, Plan or PlanStep to the entity, with `evidence` (the quote) and `line`.
+  A citation whose `hash` is not the hash the item has now is `stale: true`, because the item changed after the agent
+  read it;
+- `relates_to` between two entities, its ends in order, with `keywords`, `description` and `strength`;
+- `implemented_by` from the entity to each Directory, File or Symbol it names, with `reason`, `conf`, `run`, `model`
+  and `level` (the code's kind). It is a relation of the core schema, as `refers_to` is;
+- `refers_to` when the entity's names name one Symbol or File, as the entities step links names.
+
+The label of an entity and of its `mentions` and `relates_to` edges is the join of the labels of the items it cites
+(the code's items when it cites none). An `implemented_by` edge also joins the label of the code node it reaches.
+
+**The hub.** `POST /v1/kg/{project}/entity-map` takes the map from the agent of a run (a run's token) with the writer
+role; a member's own credential gets 403. The hub reads the cited nodes in its latest build through the run's sink
+(`claude-code@anthropic`). An entry that cites a node the build lacks, or a node above that sink's clearance, is
+rejected with its reason, and the two cases read the same, so the answer never shows that a hidden node exists. A
+mention or a code link is dropped alone. An entity left with nothing cited is dropped, and so is a relation whose end
+was dropped. The answer counts what was kept and lists each rejected entry with its reason. What is kept becomes a
+blob of kind `kg-entity-map`, and the hub queues a build. Every build reads every map the project holds, so the
+worker's cache can still be deleted. Without a graph to check against, the route answers 409.
+
+**Coverage.** `coverage.entity_map` counts the maps and runs, entities (`nodes`, `merged`), relations, `code_links` by
+level (Directory, File, Symbol), `name_links`, `mentions`, `stale`, `cited_items` and `uncited_items` (the Documents,
+Sections, Plans and PlanSteps of the build that no map cites), and the entries `rejected`, with samples. The hub's
+build record keeps the counts alone. `coverage.entities` repeats the node and edge counts with `style: agent`, so the
+pipeline view shows the step.
 
 ## The Curator and prose
 

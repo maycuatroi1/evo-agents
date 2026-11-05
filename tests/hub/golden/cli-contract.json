@@ -38143,6 +38143,110 @@
           }
         }
       },
+      "/v1/kg/{project}/entity-map": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Post Entity Map",
+          "description": "Check a run's entity map against the latest build, keep what passes and queue a build that reads it.",
+          "operationId": "post_entity_map_v1_kg__project__entity_map_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityMap"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MapKept"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runs/{run_id}/cause/restore": {
         "post": {
           "tags": [
@@ -118734,6 +118838,50 @@
           ],
           "title": "EntityGraphNode"
         },
+        "EntityMap": {
+          "properties": {
+            "format": {
+              "type": "string",
+              "title": "Format",
+              "description": "evo-entity-map/1"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model of the agent that read the project"
+            },
+            "entities": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Entities"
+            },
+            "relations": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Relations"
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "format"
+          ],
+          "title": "EntityMap",
+          "description": "A map of format evo-entity-map/1 (``evo_agents.kg.entity_map``); the hub stamps the run itself."
+        },
         "EntityNeighbourhood": {
           "properties": {
             "graph": {
@@ -129580,6 +129728,65 @@
           ],
           "title": "LostAttempt",
           "description": "The attempt before a plan run that the hub lost on the worker claiming the run, whose agent's session the run\nmay go on in."
+        },
+        "MapKept": {
+          "properties": {
+            "entities": {
+              "type": "integer",
+              "title": "Entities",
+              "description": "entities kept"
+            },
+            "relations": {
+              "type": "integer",
+              "title": "Relations",
+              "description": "relations kept"
+            },
+            "mentions": {
+              "type": "integer",
+              "title": "Mentions",
+              "description": "citations of documents, sections, plans and steps kept"
+            },
+            "code_links": {
+              "type": "integer",
+              "title": "Code Links",
+              "description": "links to directories, files and symbols kept"
+            },
+            "rejected": {
+              "items": {
+                "$ref": "#/components/schemas/Rejected"
+              },
+              "type": "array",
+              "title": "Rejected"
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha256",
+              "description": "the blob the map is kept as; None when nothing was kept"
+            },
+            "queued": {
+              "type": "boolean",
+              "title": "Queued",
+              "description": "whether a build was queued to read it; false when one was waiting already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "entities",
+            "relations",
+            "mentions",
+            "code_links",
+            "rejected",
+            "sha256",
+            "queued"
+          ],
+          "title": "MapKept"
         },
         "MapNode": {
           "properties": {
@@ -151120,6 +151327,25 @@
             "harness"
           ],
           "title": "Registration"
+        },
+        "Rejected": {
+          "properties": {
+            "entry": {
+              "type": "string",
+              "title": "Entry",
+              "description": "the entry, as entities[i] (name), relations[i] (src - dst) or a part of one"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "entry",
+            "reason"
+          ],
+          "title": "Rejected"
         },
         "RejectedProposal": {
           "properties": {
