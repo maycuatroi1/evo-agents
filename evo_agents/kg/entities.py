@@ -274,14 +274,14 @@ def _extras(said: dict, keys: tuple[str, ...]) -> dict:
             out["keywords"] = words.strip()[:200]
     if "strength" in keys:
         try:
-            out["strength"] = min(max(float(said.get("strength")), 0.0), 10.0)
+            out["strength"] = min(max(float(said.get("strength", 1.0)), 0.0), 10.0)
         except (TypeError, ValueError):
             out["strength"] = 1.0
     return out
 
 
 def _clean(
-    answer: dict, node_kinds: set[str], relations: set[str], style: str = "closed", text: str | None = None
+    answer: dict, node_kinds: set[str], relations: list[str] | set[str], style: str = "closed", text: str | None = None
 ) -> dict:
     """What of a model's answer is within the kinds and relations allowed: nodes and edges, with the counts dropped.
     Names one item gives twice, folded as ``entity_links.key`` folds them, are one node; an edge may name a node by
@@ -350,7 +350,8 @@ def _conf(said: dict) -> float:
 
 def _aliases(said: dict, key: str) -> list[str]:
     """The other names a node gives, those that fold to a key other than its own ``key``, at most MAX_ALIASES."""
-    raw = said.get("aliases") if isinstance(said.get("aliases"), list) else []
+    raw = said.get("aliases")
+    raw = raw if isinstance(raw, list) else []
     return sorted({a.strip()[:200] for a in raw if isinstance(a, str) and links.key(a) and links.key(a) != key})[
         :MAX_ALIASES
     ]

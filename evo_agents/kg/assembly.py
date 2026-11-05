@@ -51,7 +51,7 @@ class Facts:
     nodes: dict[str, dict] = field(default_factory=dict)
     edges: dict[tuple, dict] = field(default_factory=dict)
     derivs: dict = field(default_factory=lambda: defaultdict(list))  # node id or edge key -> its derivations
-    props_of: dict[str, list[tuple[dict, dict]]] = field(default_factory=lambda: defaultdict(list))  # (deriv, props)
+    props_of: dict = field(default_factory=lambda: defaultdict(list))  # node id or edge key -> [(deriv, props)]
     where: dict = field(default_factory=lambda: defaultdict(set))
     same: list[dict] = field(default_factory=list)  # identities, and the deprecations a curation item declared
     notes: dict[str, list[str]] = field(default_factory=lambda: defaultdict(list))  # descriptions, docstrings
