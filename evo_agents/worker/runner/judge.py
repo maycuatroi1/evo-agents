@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import shlex
 import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -52,6 +53,36 @@ from evo_agents.worker.runner.verify import verify_event
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
+
+# The merge of the base into the head in the object store alone; git before 2.38 (Ubuntu 22.04 ships 2.34) has no
+# --write-tree and answers USAGE with its usage text, so the merge is then made in a worktree of its own.
+WRITE_TREE = ("merge-tree", "--write-tree", "--name-only", "--no-messages")
+USAGE = 129
+IDENTITY = {
+    "GIT_AUTHOR_NAME": "evo-agents judge",
+    "GIT_AUTHOR_EMAIL": "judge@evo-agents.invalid",
+    "GIT_COMMITTER_NAME": "evo-agents judge",
+    "GIT_COMMITTER_EMAIL": "judge@evo-agents.invalid",
+}
+
+
+async def merge_in_worktree(checkout: Path, target: str, head: str, env: dict[str, str]) -> tuple[int, str, str]:
+    """What ``git merge-tree --write-tree --name-only`` answers, for a git before 2.38: ``target`` merged into
+    ``head`` in a detached worktree of its own, removed after; (0, the tree, "") or (1, a line, then the paths that
+    conflict, "")."""
+    with tempfile.TemporaryDirectory(prefix="evo-judge-merge-") as scratch:
+        path = Path(scratch) / "merge"
+        await gitops.git(checkout, "worktree", "add", "--detach", "--quiet", str(path), head, env=env)
+        try:
+            merged = await gitops.git(
+                path, "merge", "--no-ff", "--no-commit", "--quiet", target, check=False, env={**env, **IDENTITY}
+            )
+            if merged[0] == 0:
+                return 0, (await gitops.git(path, "write-tree", env=env))[1], ""
+            _, conflicted, _ = await gitops.git(path, "diff", "--name-only", "--diff-filter=U", check=False, env=env)
+            return (1, f"conflict\n{conflicted}", "") if conflicted.strip() else merged
+        finally:
+            await gitops.git(checkout, "worktree", "remove", "--force", str(path), check=False, env=env)
 
 
 class JudgeRun:
@@ -224,25 +255,21 @@ class JudgeRun:
     ) -> tuple[str | None, list[str] | None]:
         """(the commit of ``head`` merged with ``target``, origin's ``base_branch`` now, made in the object store alone
         with no branch, work tree or hook touched; None) for a merge check, or (None, the paths that conflict) when
-        the head needs a rebase. ``git merge-tree --write-tree`` merges without a work tree; exit 1 is a conflict."""
+        the head needs a rebase. ``git merge-tree --write-tree`` merges without a work tree; exit 1 is a conflict. A
+        git without it merges in a worktree of its own (``merge_in_worktree``)."""
         env = gitops.without_hooks(self.run.daemon.env)
-        code, out, err = await gitops.git(
-            checkout, "merge-tree", "--write-tree", "--name-only", "--no-messages", target, head, check=False, env=env
-        )
+        code, out, err = await gitops.git(checkout, *WRITE_TREE, target, head, check=False, env=env)
+        if code == USAGE and "usage: git merge-tree" in err + out:
+            code, out, err = await merge_in_worktree(checkout, target, head, env)
         lines = [line for line in out.splitlines() if line.strip()]
         if code == 1:
             self.run.note(f"Merging origin's {base_branch} into {head[:12]} conflicts: the head needs a rebase.")
             return None, list(dict.fromkeys(lines[1:]))[: judge.MAX_PATHS]
         if code != 0 or not lines:
             raise RunFailed(f"cannot merge origin's {base_branch} into {head[:12]}: {err.strip() or out.strip()}")
-        identity = {"GIT_AUTHOR_NAME": "evo-agents judge", "GIT_AUTHOR_EMAIL": "judge@evo-agents.invalid"}
-        identity |= {
-            "GIT_COMMITTER_NAME": identity["GIT_AUTHOR_NAME"],
-            "GIT_COMMITTER_EMAIL": identity["GIT_AUTHOR_EMAIL"],
-        }
         message = f"The merge check's merge of origin/{base_branch} into {head[:12]}"
         _, made, _ = await gitops.git(
-            checkout, "commit-tree", lines[0], "-p", head, "-p", target, "-m", message, env={**env, **identity}
+            checkout, "commit-tree", lines[0], "-p", head, "-p", target, "-m", message, env={**env, **IDENTITY}
         )
         self.run.note(f"Merged origin's {base_branch} into {head[:12]} as {made.strip()[:12]}: the checks run there.")
         return made.strip(), None
