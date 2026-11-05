@@ -29227,7 +29227,7 @@
    "bench": "evo-agents",
    "id": "curator-agent#11",
    "part": "tune",
-   "repo": "ialab-harness",
+   "repo": "lumen-harness",
    "language": "local",
    "method": "kg_search",
    "metrics": {
@@ -29365,7 +29365,7 @@
    "bench": "evo-agents",
    "id": "editorial-on-hub#8",
    "part": "tune",
-   "repo": "omelet.tech-template",
+   "repo": "lumen-site-template",
    "language": "local",
    "method": "kg_search",
    "metrics": {
@@ -29388,7 +29388,7 @@
    "bench": "evo-agents",
    "id": "editorial-on-hub#9",
    "part": "holdout",
-   "repo": "omelet.tech-template",
+   "repo": "lumen-site-template",
    "language": "local",
    "method": "kg_search",
    "metrics": {
@@ -30697,7 +30697,7 @@
   },
   {
    "bench": "evo-agents",
-   "id": "ialab-migration#1",
+   "id": "lumen-migration#1",
    "part": "tune",
    "repo": "evo-agents-harness",
    "language": "local",
@@ -30720,9 +30720,9 @@
   },
   {
    "bench": "evo-agents",
-   "id": "ialab-migration#2",
+   "id": "lumen-migration#2",
    "part": "tune",
-   "repo": "ialab-harness",
+   "repo": "lumen-harness",
    "language": "local",
    "method": "kg_search",
    "metrics": {
@@ -30743,9 +30743,9 @@
   },
   {
    "bench": "evo-agents",
-   "id": "ialab-migration#4",
+   "id": "lumen-migration#4",
    "part": "holdout",
-   "repo": "ialab-harness",
+   "repo": "lumen-harness",
    "language": "local",
    "method": "kg_search",
    "metrics": {
@@ -30766,7 +30766,7 @@
   },
   {
    "bench": "evo-agents",
-   "id": "ialab-migration-debt#1",
+   "id": "lumen-migration-debt#1",
    "part": "holdout",
    "repo": "evo-agents",
    "language": "local",
@@ -30789,9 +30789,9 @@
   },
   {
    "bench": "evo-agents",
-   "id": "ialab-migration-debt#4",
+   "id": "lumen-migration-debt#4",
    "part": "holdout",
-   "repo": "ialab-harness",
+   "repo": "lumen-harness",
    "language": "local",
    "method": "kg_search",
    "metrics": {
@@ -30812,9 +30812,9 @@
   },
   {
    "bench": "evo-agents",
-   "id": "ialab-migration-debt#5",
+   "id": "lumen-migration-debt#5",
    "part": "tune",
-   "repo": "ialab-harness",
+   "repo": "lumen-harness",
    "language": "local",
    "method": "kg_search",
    "metrics": {

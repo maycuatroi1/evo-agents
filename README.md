@@ -68,6 +68,7 @@ See the [roadmap](docs/roadmap.md) for current capabilities and unfinished work.
 | Set permissions and handle credentials | [Autonomy](docs/autonomy.md), [credentials](docs/credentials.md) |
 | Host a hub or build a plugin | [Deployment](docs/hub-deployment.md), [plugins](docs/plugins.md) |
 | Contribute code or documentation | [Contributing](CONTRIBUTING.md) |
+| Report a vulnerability | [Security policy](SECURITY.md) |
 
 Agent instructions and MCP details are in [AGENTS.md](AGENTS.md) and the [agent guide](docs/agents.md).
 
