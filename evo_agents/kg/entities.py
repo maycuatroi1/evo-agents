@@ -23,8 +23,15 @@ What it does for each item of the kinds the mapping chooses (the prose kinds whe
   committed as it comes, so a build that is killed keeps what it was told, and the ceiling may be passed by the calls
   already running when the token or cost ceiling is reached (at most ``jobs - 1``).
 
+The mapping's ``style`` says what the model is asked (``prompt``). ``closed``, the default, asks for the node kinds and
+relations of the mapping, each node with a conf. ``lightrag`` asks as LightRAG does: each entity with its name, a type
+taken from ``node_kinds`` as a suggestion (one outside them is kept as ``Other``, its own word in ``props.type``) and a
+description; each relation between two of them with keywords, a description and a strength from 1 to 10, stored as the
+first relation of the mapping. Each node and edge keeps its item and the model's short quote; in the lightrag style
+also, when the quote is found in the text sent, the ``line`` of the item it starts on.
+
 A model is one of: ``command``, an argv run on this machine that reads one JSON object on stdin
-(``{"text", "node_kinds", "relations", "model"}``) and writes one on stdout
+(``{"text", "node_kinds", "relations", "model"}``, and ``"style"`` when it is not ``closed``) and writes one on stdout
 (``{"nodes": [{"kind", "name", "evidence", "conf"}], "edges": [{"src", "rel", "dst", "evidence"}], "usage":
 {"input_tokens", "output_tokens", "cost"}}``); or ``url``, an OpenAI-compatible endpoint, reached with the ``openai``
 library of the optional extra ``entities`` (``key_env`` names the variable that holds the key, never the key). The
@@ -70,6 +77,12 @@ REFUSED_SAMPLES = 20
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 SLUG = re.compile(r"[^a-z0-9]+")
 MAX_ALIASES = 10
+STYLES = ("closed", "lightrag")
+OTHER = "Other"  # the kind of a lightrag entity whose type is none of the mapping's node kinds
+TYPE_WORDS = {"person": "Actor", "people": "Actor", "location": "Place"}  # LightRAG's words for kinds named otherwise
+MAX_DESCRIPTION = 600
+NODE_EXTRAS = ("description", "type", "line")  # what a lightrag node keeps in its props besides the quote
+EDGE_EXTRAS = ("description", "keywords", "strength", "line")
 STOP_EXIT = claude_code.STOP_EXIT  # a command's exit status that stops the step at the item
 
 FIELDS = {
@@ -88,6 +101,8 @@ FIELDS = {
     "max_chars",  # characters of an item sent
     "synonym_threshold",  # the cosine from which two entities are synonyms, when the graph has vectors (entity_links)
     "jobs",  # calls at once (default 1); not part of what is memoized
+    "style",  # what the model is asked: closed (the default) or lightrag (``prompt``)
+    "reasoning",  # of a url model, sent as the request's ``reasoning`` (OpenRouter's): {"enabled": false} turns it off
 }
 _INTS = ("max_calls", "max_tokens", "max_chars", "jobs")
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:/-]{0,79}$")
@@ -140,6 +155,10 @@ def _check_names(out: dict) -> None:
         raise EntitiesError("entities.model must name the model (letters, digits, . _ : / -), it is the evidence")
     if not out.get("node_kinds"):
         raise EntitiesError("entities.node_kinds must list the kinds the model may state")
+    if out.get("style", "closed") not in STYLES:
+        raise EntitiesError(f"entities.style must be one of {', '.join(STYLES)}")
+    if out.get("style") == "lightrag" and not out.get("relations"):
+        raise EntitiesError("entities.relations must name the relation a lightrag style stores its relations as")
 
 
 def _check_command(out: dict) -> None:
@@ -188,7 +207,9 @@ def _check_ceiling(out: dict) -> None:
 
 
 def _check_tuning(out: dict) -> None:
-    """The price of a model that reports no cost, and the cosine of a synonym."""
+    """The price of a model that reports no cost, the cosine of a synonym and the reasoning of a url model."""
+    if "reasoning" in out and (not isinstance(out["reasoning"], dict) or "url" not in out):
+        raise EntitiesError("entities.reasoning must be a mapping, sent to a url model as its reasoning")
     if "price" in out:
         p = out["price"]
         if (
@@ -226,9 +247,17 @@ def entity_id(kind: str, name: str) -> str:
     return f"entity:{kind}:{slug(name)}"
 
 
+def style_of(config: dict) -> str:
+    return config.get("style") or "closed"
+
+
 def config_digest(config: dict, node_kinds: list[str], relations: list[str]) -> str:
     keep = {"model": config["model"], "node_kinds": node_kinds, "relations": relations}
     keep["max_chars"] = config.get("max_chars", DEFAULT_MAX_CHARS)
+    if style_of(config) != "closed":  # a closed mapping keeps the digest, and the memo, it had before styles
+        keep["style"] = style_of(config)
+    if config.get("reasoning"):
+        keep["reasoning"] = config["reasoning"]
     return sha256(canonical_json({**keep, "version": VERSION}))[:16]
 
 
@@ -263,10 +292,10 @@ class Spend:
             self.cost += tin / 1e6 * float(self.price.get("input", 0)) + tout / 1e6 * float(self.price.get("output", 0))
 
 
-def estimate(text: str, node_kinds: list[str], relations: list[str]) -> dict:
+def estimate(text: str, node_kinds: list[str], relations: list[str], style: str = "closed") -> dict:
     """The usage of a call that reported none, such as one that failed or timed out: the prompt's tokens in (4
     characters a token), none out."""
-    return {"input_tokens": -(-len(prompt(text, node_kinds, relations)) // 4), "output_tokens": 0}
+    return {"input_tokens": -(-len(prompt(text, node_kinds, relations, style)) // 4), "output_tokens": 0}
 
 
 # -- the models ---------------------------------------------------------------------------------------------------
@@ -286,8 +315,22 @@ def parse_answer(text: str) -> dict:
     return data
 
 
-def prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
-    """What a model is asked of ``text``: the entities of ``node_kinds`` and the ``relations`` it says outright."""
+def prompt(text: str, node_kinds: list[str], relations: list[str], style: str | None = "closed") -> str:
+    """What a model is asked of ``text``: the entities of ``node_kinds`` and the ``relations`` it says outright; in the
+    lightrag style, entities of open types with a description, and relations with keywords, a description and a
+    strength."""
+    if style == "lightrag":
+        return (
+            "Read the text and list the entities it names and the relations between them that it states.\n"
+            f"Entity types, a suggestion: {', '.join(k for k in node_kinds if k != OTHER)}; use Other when none fits.\n"
+            'Answer with one JSON object, nothing else: {"nodes": [{"name", "type", "description", "evidence"}], '
+            '"edges": [{"src", "dst", "keywords", "description", "strength", "evidence"}]}. name: as the text writes '
+            "it. description: one short sentence of what the text says of it, not repeating the evidence. src and "
+            "dst: names of your nodes. keywords: two or three words of what ties them. strength: 1 to 10, how "
+            "strongly the text ties them. evidence: the text's own words, at most 8. No line breaks or indentation. "
+            'A node may add "aliases": other names the text gives it. '
+            "Keep the entities the text's facts are about; leave out what it does not say.\n\nTEXT:\n" + text
+        )
     return (
         "Read the text and state the entities and the relations between them that it says outright.\n"
         f"Entity kinds you may use: {', '.join(node_kinds)}.\n"
@@ -301,6 +344,8 @@ def prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
 
 def call_command(config: dict, text: str, node_kinds: list[str], relations: list[str]) -> dict:
     request = {"text": text, "node_kinds": node_kinds, "relations": relations, "model": config["model"]}
+    if style_of(config) != "closed":
+        request["style"] = style_of(config)
     try:
         done = subprocess.run(
             config["command"],
@@ -355,8 +400,9 @@ def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: lis
     try:
         got = client.chat.completions.create(
             model=config["model"],
-            messages=[{"role": "user", "content": prompt(text, node_kinds, relations)}],
+            messages=[{"role": "user", "content": prompt(text, node_kinds, relations, style_of(config))}],
             temperature=0,
+            **({"extra_body": {"reasoning": config["reasoning"]}} if config.get("reasoning") else {}),
         )
     except Exception as exc:  # the library's errors differ by version: a failed call is a failed call
         raise EntitiesError(redact(f"the model endpoint failed: {type(exc).__name__}: {exc}", key)) from None
@@ -385,14 +431,63 @@ def call_model(config: dict, text: str, node_kinds: list[str], relations: list[s
 # -- the step -----------------------------------------------------------------------------------------------------
 
 
-def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
+def _kind_of(said, node_kinds: set[str]) -> tuple[str | None, str | None]:
+    """The node kind of a lightrag entity's type, with the type when it is not that kind's name once folded: a kind
+    matched by its folded name or by TYPE_WORDS, else OTHER (None when the mapping has no OTHER)."""
+    word = said.strip()[:80] if isinstance(said, str) else ""
+    folded = links.key(word).replace("-", "")
+    for k in sorted(node_kinds):
+        if links.key(k).replace("-", "") == folded:
+            return k, None
+    k = TYPE_WORDS.get(folded)
+    if k in node_kinds:
+        return k, word
+    return (OTHER, word or None) if OTHER in node_kinds else (None, None)
+
+
+def _line(text: str | None, quote: str) -> int | None:
+    """The line of ``text`` (from 1) the model's ``quote`` starts on; None when the text does not hold it."""
+    words = quote.split()
+    if not text or not words:
+        return None
+    found = re.search(r"\s+".join(map(re.escape, words[:8])), text)
+    return text.count("\n", 0, found.start()) + 1 if found else None
+
+
+def _extras(said: dict, keys: tuple[str, ...]) -> dict:
+    """The description, keywords and strength of a lightrag node or edge, those it gave in a readable form."""
+    out = {}
+    if "description" in keys and isinstance(said.get("description"), str) and said["description"].strip():
+        out["description"] = said["description"].strip()[:MAX_DESCRIPTION]
+    if "keywords" in keys:
+        words = said.get("keywords")
+        words = ", ".join(w for w in words if isinstance(w, str)) if isinstance(words, list) else words
+        if isinstance(words, str) and words.strip():
+            out["keywords"] = words.strip()[:200]
+    if "strength" in keys:
+        try:
+            out["strength"] = min(max(float(said.get("strength")), 0.0), 10.0)
+        except (TypeError, ValueError):
+            out["strength"] = 1.0
+    return out
+
+
+def _clean(
+    answer: dict, node_kinds: set[str], relations: set[str], style: str = "closed", text: str | None = None
+) -> dict:
     """What of a model's answer is within the kinds and relations allowed: nodes and edges, with the counts dropped.
     Names one item gives twice, folded as ``entity_links.key`` folds them, are one node; an edge may name a node by
-    one of its aliases."""
+    one of its aliases. In the lightrag style a node's kind comes from its type (``_kind_of``), every edge is the
+    first of ``relations`` in order, and ``text``, the text sent, gives each quote its line."""
+    lightrag = style == "lightrag"
     nodes, seen, dropped = [], {}, 0
     for n in answer.get("nodes") or []:
         name = n.get("name") if isinstance(n, dict) else None
-        kind = n.get("kind") if isinstance(n, dict) else None
+        kind, said_type = (None, None)
+        if lightrag and isinstance(n, dict):
+            kind, said_type = _kind_of(n.get("type") or n.get("kind"), node_kinds)
+        elif isinstance(n, dict):
+            kind = n.get("kind")
         if not isinstance(name, str) or not name.strip() or kind not in node_kinds or not links.key(name):
             dropped += 1
             continue
@@ -411,13 +506,19 @@ def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
         seen[key] = {"kind": kind, "name": name, "conf": conf, "evidence": str(n.get("evidence") or "")[:200]}
         if aliases:
             seen[key]["aliases"] = aliases
+        if lightrag:
+            seen[key].update(_extras(n, ("description",)), **({"type": said_type} if said_type else {}))
+            _add_line(seen[key], text)
         nodes.append(seen[key])
     by_name = {}
     for n in nodes:
         for name in (n["name"], *n.get("aliases", ())):
             by_name.setdefault(links.key(name), n)
     edges = []
+    stored = relations[0] if lightrag and isinstance(relations, list) and relations else None
     for e in answer.get("edges") or []:
+        if lightrag and isinstance(e, dict) and stored:
+            e = {**e, "rel": stored}
         if not isinstance(e, dict) or e.get("rel") not in relations:
             dropped += 1
             continue
@@ -425,15 +526,23 @@ def _clean(answer: dict, node_kinds: set[str], relations: set[str]) -> dict:
         if src is None or dst is None or src is dst:
             dropped += 1
             continue
-        edges.append(
-            {
-                "src": entity_id(src["kind"], src["name"]),
-                "rel": e["rel"],
-                "dst": entity_id(dst["kind"], dst["name"]),
-                "evidence": str(e.get("evidence") or "")[:200],
-            }
-        )
+        stated = {
+            "src": entity_id(src["kind"], src["name"]),
+            "rel": e["rel"],
+            "dst": entity_id(dst["kind"], dst["name"]),
+            "evidence": str(e.get("evidence") or "")[:200],
+        }
+        if lightrag:
+            stated.update(_extras(e, ("description", "keywords", "strength")))
+            _add_line(stated, text)
+        edges.append(stated)
     return {"nodes": nodes, "edges": edges, "dropped": dropped}
+
+
+def _add_line(stated: dict, text: str | None) -> None:
+    line = _line(text, stated["evidence"])
+    if line is not None:
+        stated["line"] = line
 
 
 def run(
@@ -636,7 +745,7 @@ class _Step:
         given = self.inbox.get(key)
         if isinstance(given, dict):
             self.cov["answered_elsewhere"] += 1
-            cleaned = _clean(given, set(self.kinds), set(self.rels))
+            cleaned = _clean(given, set(self.kinds), self.rels, style_of(self.config), text)
             cleaned["usage"] = given.get("usage") if isinstance(given.get("usage"), dict) else {}
             return cleaned
         if self.halted:
@@ -645,6 +754,8 @@ class _Step:
             self.cov["deferred"] += 1
             if self.outbox is not None:
                 request = {"text": text, "node_kinds": self.kinds, "relations": self.rels}
+                if style_of(self.config) != "closed":
+                    request["style"] = style_of(self.config)
                 self.outbox.append({"key": key, "item": item, **request, "model": self.config["model"]})
             raise BudgetStop("deferred")
         why = self.spend.exhausted()
@@ -656,12 +767,13 @@ class _Step:
             self.halted.append(str(stop))
             raise BudgetStop("halted") from None
         except EntitiesError as exc:  # a failed call, a timeout or JSON that does not read was paid all the same
-            self.spend.add(exc.usage if isinstance(exc.usage, dict) else estimate(text, self.kinds, self.rels))
+            used = exc.usage if isinstance(exc.usage, dict) else None
+            self.spend.add(used or estimate(text, self.kinds, self.rels, style_of(self.config)))
             raise
         given = answer.get("usage")
         usage = given if isinstance(given, dict) else {}
         self.spend.add(usage)
-        cleaned = _clean(answer, set(self.kinds), set(self.rels))
+        cleaned = _clean(answer, set(self.kinds), self.rels, style_of(self.config), text)
         cleaned["usage"] = usage
         return cleaned
 
@@ -679,7 +791,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
     running: dict = {}
 
     def take(future) -> None:
-        _rec, _label, _text, inputs, key = running.pop(future)
+        _rec, _label, text, inputs, key = running.pop(future)
         try:
             answer = future.result()
         except ModelStop as stop:
@@ -690,7 +802,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
             return
         usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
         spend.add(usage)
-        cleaned = _clean(answer, set(kinds), set(rels))
+        cleaned = _clean(answer, set(kinds), rels, style_of(config), text)
         cleaned["usage"] = usage
         memo.run("entities", VERSION, inputs, lambda: cleaned)
         memo.commit()
@@ -754,7 +866,7 @@ def _assemble(config, answers, first, out, cov, project, memo, semantic_settings
             nid = groups.id_of(n["kind"], n["name"])
             old_ids.setdefault(entity_id(n["kind"], n["name"]), nid)
             own.append(nid)
-            props = {**evidence, "evidence": n["evidence"]}
+            props = {**evidence, "evidence": n["evidence"], **{k: n[k] for k in NODE_EXTRAS if k in n}}
             facts.append(node(nid, n["kind"], groups.name[nid], [unit], props=props, status=STATUS, conf=n["conf"]))
             if has_doc:
                 facts.append(edge(item, "mentions", nid, [unit], props=props, status=STATUS, conf=n["conf"]))
@@ -764,7 +876,7 @@ def _assemble(config, answers, first, out, cov, project, memo, semantic_settings
             src, dst = old_ids.get(e["src"]), old_ids.get(e["dst"])
             if src is None or dst is None or src == dst:
                 continue
-            props = {**evidence, "evidence": e["evidence"]}
+            props = {**evidence, "evidence": e["evidence"], **{k: e[k] for k in EDGE_EXTRAS if k in e}}
             facts.append(edge(src, e["rel"], dst, [unit], props=props, status=STATUS, conf=DEFAULT_CONF))
         for nid in dict.fromkeys(own):
             if nid in code:

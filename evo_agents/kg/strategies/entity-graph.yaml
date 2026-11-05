@@ -1,0 +1,50 @@
+# Prose read as LightRAG reads it, into a graph of entities and relations a person can look at (docs/kg-strategies.md,
+# "entity-graph"). The keys of `documents`, the entities step in its lightrag style, and the walk of kg_search and
+# kg_context. Each entity has a name, a type (the node kinds below are a suggestion, Other takes the rest) and a
+# description; each relation joins two of them with keywords, a description and a strength from 1 to 10, as one
+# relation relates_to. The entities step asks Claude Code (evo-agents kg claude-entities) on the login of the machine
+# or of the hub's agent pool, never an API key. Claude Code sends the text to Anthropic, so the project's
+# knowledge.yaml must declare a policy sink `llm` of kind llm-backend; an item whose label that sink does not clear is
+# not sent, and without the sink every item is refused with a coverage reason.
+version: 1
+name: entity-graph
+description: Prose to look at as a graph of entities and relations, as LightRAG builds it, such as reports, articles,
+  wiki pages and uploaded documents. The keys of documents, and entities of open types with a description and
+  relations with keywords, a description and a strength, read by a model (Claude Code with claude-haiku-5-5, through
+  the llm-backend sink llm), each with its source item, line and quote, and the walk of kg_search and kg_context.
+suits: [prose]
+knowledge:
+  ontology:
+    node_kinds:
+      - Actor          # a person or a role the text names
+      - Creature       # an animal or another living being
+      - Organization   # a company, team, institution or group
+      - Place          # a country, city, site or address
+      - Event          # something that happened or is planned, with a time
+      - Concept        # an idea, term or feature the text defines or uses
+      - Method         # a way, process or technique of doing something
+      - Content        # a document, book, article, film or other work of words, sound or image
+      - Data           # a figure, measure, dataset or record
+      - Artifact       # a product, tool, device or other made thing
+      - NaturalObject  # a thing of nature that is not alive
+      - Other          # an entity of none of these types; its own type is in props.type
+    relations:
+      - relates_to     # two entities the text ties, with keywords, a description and a strength
+settings:
+  passage_from: 2500
+  passage_chars: 1800
+  embed_chars: 3000
+  semantic_mode: index
+  walk: {}
+  entities:
+    model: claude-haiku-5-5
+    command: [evo-agents, kg, claude-entities]
+    sink: llm
+    style: lightrag
+    node_kinds: [Actor, Creature, Organization, Place, Event, Concept, Method, Content, Data, Artifact, NaturalObject,
+      Other]
+    relations: [relates_to]
+    price: {input: 1.0, output: 5.0}
+    max_cost: 5.0
+    synonym_threshold: 0.8
+steps: [entities]

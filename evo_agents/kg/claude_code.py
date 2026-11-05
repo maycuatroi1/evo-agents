@@ -5,7 +5,8 @@ A mapping names it as its ``command`` (``["evo-agents", "kg", "claude-entities"]
 ``claude-haiku-5-5``, and a policy sink of kind ``llm-backend``: Claude Code sends the text to Anthropic, so the step
 sends an item only when that sink clears the item's label (``entities.check`` refuses the mapping without a sink).
 
-The command reads one request on stdin, ``{"text", "node_kinds", "relations", "model"}``, runs ``claude -p`` with that
+The command reads one request on stdin, ``{"text", "node_kinds", "relations", "model"}`` and the mapping's ``style``
+when it is not ``closed`` (``entities.prompt``), runs ``claude -p`` with that
 model, no tool, no MCP server and no session kept, and writes one answer on stdout: ``{"nodes", "edges", "usage"}``,
 where ``usage`` holds the tokens in (cache reads and writes included) and out and the cost Claude Code reports
 (``total_cost_usd``; without it the step prices the tokens with the mapping's ``price``). ANTHROPIC_API_KEY and
@@ -166,7 +167,7 @@ def answer(
     try:
         done = runner(
             argv(claude, model),
-            input=prompt(text, kinds, relations),
+            input=prompt(text, kinds, relations, request.get("style") or "closed"),
             capture_output=True,
             text=True,
             timeout=TIMEOUT,

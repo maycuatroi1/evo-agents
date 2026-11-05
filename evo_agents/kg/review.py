@@ -17,7 +17,8 @@ over a build that has clusters (``evo_agents.kg.clusters``), with no model.
   two objects, stated by two different documents, each with conf CLAIM_CONF or more. The item is about the pair: its
   evidence is the subject, both objects and one source document of each edge, all required, and ``detail.claims``
   holds both edges. The relations the entity step adds itself (CLAIM_SKIP: ``mentions``, ``refers_to``,
-  ``synonym_of``) state no claim. A subject and relation with many objects open at most CLAIM_PAIRS items.
+  ``synonym_of``) and ``relates_to``, the one relation of the lightrag style, state no claim. A subject and relation
+  with many objects open at most CLAIM_PAIRS items.
 
 An item holds its rule, the ids of the nodes it is about (``evidence``), the level-1 cluster its first node counts in,
 with the level-1 cluster of each of its nodes, the action it suggests and what it found (``detail``: a count, samples).
@@ -108,7 +109,9 @@ DOC_LEVELS = 2  # an unmentioned document looks this many directories up for its
 FIX_REL = "mentions"  # what a fix links an item to its target by
 CLAIM_STATUS = "extracted"  # the status of what a model stated (``evo_agents.kg.entities.STATUS``)
 CLAIM_CONF = 0.6  # the least conf of an edge of a conflicting claim: the conf the entity step gives a relation
-CLAIM_SKIP = frozenset({"mentions", "refers_to", "synonym_of"})  # relations of the entity step that state no claim
+# relations of the entity step that state no claim; relates_to, a lightrag relation, has no predicate, so two objects
+# of one subject are two links, not two answers
+CLAIM_SKIP = frozenset({"mentions", "refers_to", "synonym_of", "relates_to"})
 CLAIM_PAIRS = 20  # items one subject and relation open at most
 
 Visible = Callable[[tuple], bool]
