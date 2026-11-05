@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import kg_pipeline, kg_upload_cli
+from evo_agents.hub import kg_coverage, kg_pipeline, kg_upload_cli
 from evo_agents.hub.client import HubError
 from tests.hub import pg
 
@@ -18,7 +18,12 @@ needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
 READ = {"state": "extracted", "files": 12, "build_id": 7, "uploaded_at": "t"}
 BUILT = {"id": 7, "status": "succeeded", "nodes": 40, "edges": 90, "coverage": {"sources": 1}}
-ENTITIES = {"enabled": True, "nodes": 30, "edges": 55, "stopped": None, "failed": 0, "deferred": 0}
+# as kg_builds.coverage keeps them: build_coverage drops the step's "enabled"
+ENTITIES = kg_coverage.build_coverage(
+    {"entities": {"enabled": True, "nodes": 30, "edges": 55, "stopped": None, "failed": 0, "deferred": 0}},
+    None,
+    skipped=False,
+)["entities"]
 
 
 def states(found: dict) -> dict:
@@ -260,7 +265,7 @@ def test_the_route_follows_an_upload_to_ready_and_its_sender_and_admins_are_told
     live.sql(world.db, update(t).where(t.c.id == init_id).values(state="done", body=decided))
     read = world.client.get(world.path, headers=world.sender).json()
     assert (read["state"], read["phase"], read["rebuild_id"]) == ("running", "entities", rebuild)
-    entities = {"enabled": True, "nodes": 9, "edges": 12, "stopped": None, "failed": 0, "deferred": 0}
+    entities = {"nodes": 9, "edges": 12, "stopped": None, "failed": 0, "deferred": 0}
     set_build(world, rebuild, status="succeeded", coverage={"entities": entities})
     read = world.client.get(world.path, headers=world.sender).json()
     assert (read["state"], read["phase"], read["told_at"]) == ("ready", None, None)
@@ -290,7 +295,7 @@ def test_a_rebuild_its_worker_stopped_is_followed_by_the_build_queued_in_its_pla
     assert (read["state"], read["phase"], read["rebuild_id"]) == ("running", "entities", again)
     assert read["phases"][-1]["detail"] == f"rebuild #{again} with the Curator's settings running"
     assert tell(world) == {} and told(world) == [], "no notice while the build queued in its place runs"
-    entities = {"enabled": True, "nodes": 9, "edges": 12, "stopped": None, "failed": 0, "deferred": 0}
+    entities = {"nodes": 9, "edges": 12, "stopped": None, "failed": 0, "deferred": 0}
     set_build(world, again, status="succeeded", coverage={"entities": entities})
     read = world.client.get(world.path, headers=world.sender).json()
     assert (read["state"], read["phases"][-1]["state"]) == ("ready", "done")
