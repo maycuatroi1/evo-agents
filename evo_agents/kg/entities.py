@@ -65,6 +65,7 @@ from evo_agents.kg import entity_links as links
 from evo_agents.kg import entity_merge as merge
 from evo_agents.kg.entity_mapping import (
     DEFAULT_MAX_CHARS,
+    LIGHTRAG_READ,
     LOCAL_HOSTS,
     OTHER,
     EntitiesError,
@@ -74,6 +75,8 @@ from evo_agents.kg.entity_mapping import (
     estimate,
     parse_answer,
     prompt,
+    quote_line,
+    quoted,
 )
 from evo_agents.kg.memo import memo_key
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -123,7 +126,7 @@ def config_digest(config: dict, node_kinds: list[str], relations: list[str]) -> 
     keep = {"model": config["model"], "node_kinds": node_kinds, "relations": relations}
     keep["max_chars"] = config.get("max_chars", DEFAULT_MAX_CHARS)
     if style_of(config) != "closed":  # a closed mapping keeps the digest, and the memo, it had before styles
-        keep["style"] = style_of(config)
+        keep["style"], keep["read"] = style_of(config), LIGHTRAG_READ
     if config.get("reasoning"):
         keep["reasoning"] = config["reasoning"]
     return sha256(canonical_json({**keep, "version": VERSION}))[:16]
@@ -253,15 +256,6 @@ def _kind_of(said, node_kinds: set[str]) -> tuple[str | None, str | None]:
     return (OTHER, word or None) if OTHER in node_kinds else (None, None)
 
 
-def _line(text: str | None, quote: str) -> int | None:
-    """The line of ``text`` (from 1) the model's ``quote`` starts on; None when the text does not hold it."""
-    words = quote.split()
-    if not text or not words:
-        return None
-    found = re.search(r"\s+".join(map(re.escape, words[:8])), text)
-    return text.count("\n", 0, found.start()) + 1 if found else None
-
-
 def _extras(said: dict, keys: tuple[str, ...]) -> dict:
     """The description, keywords and strength of a lightrag node or edge, those it gave in a readable form."""
     out = {}
@@ -304,12 +298,13 @@ def _clean(
         if key in seen:
             continue
         aliases = _aliases(n, key[1])
-        seen[key] = {"kind": kind, "name": name, "conf": _conf(n), "evidence": str(n.get("evidence") or "")[:200]}
+        evidence, quotes = quoted(n.get("evidence"))
+        seen[key] = {"kind": kind, "name": name, "conf": _conf(n), "evidence": evidence}
         if aliases:
             seen[key]["aliases"] = aliases
         if lightrag:
             seen[key].update(_extras(n, ("description",)), **({"type": said_type} if said_type else {}))
-            _add_line(seen[key], text)
+            _add_line(seen[key], text, quotes)
         nodes.append(seen[key])
     by_name = {}
     for n in nodes:
@@ -327,15 +322,16 @@ def _clean(
         if src is None or dst is None or src is dst:
             dropped += 1
             continue
+        evidence, quotes = quoted(e.get("evidence"))
         stated = {
             "src": entity_id(src["kind"], src["name"]),
             "rel": e["rel"],
             "dst": entity_id(dst["kind"], dst["name"]),
-            "evidence": str(e.get("evidence") or "")[:200],
+            "evidence": evidence,
         }
         if lightrag:
             stated.update(_extras(e, ("description", "keywords", "strength")))
-            _add_line(stated, text)
+            _add_line(stated, text, quotes)
         edges.append(stated)
     return {"nodes": nodes, "edges": edges, "dropped": dropped}
 
@@ -356,8 +352,8 @@ def _aliases(said: dict, key: str) -> list[str]:
     ]
 
 
-def _add_line(stated: dict, text: str | None) -> None:
-    line = _line(text, stated["evidence"])
+def _add_line(stated: dict, text: str | None, quotes: list[str]) -> None:
+    line = quote_line(text, quotes)
     if line is not None:
         stated["line"] = line
 

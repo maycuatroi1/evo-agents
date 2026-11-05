@@ -215,7 +215,8 @@ project declares it in its knowledge.yaml as for `multi-hop`.
 
 Each node and edge keeps, as every entity of the step does, the item that stated it (`props.item`), the model
 (`props.model`) and its short quote (`props.evidence`), and `props.line`, the line of the item the quote starts on, when
-the quote is found in the text sent. The sink and label check, the ceilings, the memo by digest (the style is part of
+the quote is found in the text sent. A model that gives its evidence as a list of quotes has them joined by ` … `, and
+the line is that of the first quote the text holds. The sink and label check, the ceilings, the memo by digest (the style is part of
 the digest, so a closed mapping keeps its memo), the Claude Code relay (a request carries `style`) and the url path are
 the entities step's. `relates_to` states no `conflicting_claim` in the review queue: it has no predicate, so two objects
 of one subject are two links, not two answers.
