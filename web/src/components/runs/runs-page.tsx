@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, CircleCheck, CircleX, Clock, Eye, Laptop, type LucideIcon, MonitorPlay, Play, Send } from "lucide-react";
+import { Activity, CircleCheck, CircleX, Clock, Eye, Laptop, type LucideIcon, MonitorPlay, Play, Scale, Send } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -117,6 +117,7 @@ const FACET_ICONS: Record<RunFacet, LucideIcon> = {
   done: STATUS_LOOKS.run.done.icon,
   ended: STATUS_LOOKS.run.failed.icon,
 };
+const KIND_ICONS: Record<KindFilter, LucideIcon> = { local: Laptop, judge: Scale };
 
 function RunList({ project }: { project: string }) {
   const t = useTranslations("runs");
@@ -179,7 +180,7 @@ function RunList({ project }: { project: string }) {
           label={t("local.kindLabel")}
           options={[
             { value: null, label: t("local.all") },
-            ...KIND_FILTERS.map((kind): FacetOption => ({ value: kind, label: t(`local.${kind}`), icon: Laptop })),
+            ...KIND_FILTERS.map((kind): FacetOption => ({ value: kind, label: t(`local.${kind}`), icon: KIND_ICONS[kind] })),
           ]}
           selected={filters.kind}
           onSelect={(kind) => setFilters({ ...filters, kind: kind as KindFilter | null, page: 1 })}

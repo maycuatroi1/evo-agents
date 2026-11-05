@@ -31,7 +31,7 @@ head at the push); GET .../git/trees/{sha} and GET .../git/blobs/{sha} of a comm
 and modes, which the merge commit of a pull request of that head holds too; GET .../contents/{path}?ref= of the files
 ``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set;
 GET filters on head, state and base) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
-.../status (``ci`` sets them); POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409)
+.../status (``ci`` sets them); POST .../check-runs; POST .../issues/{n}/comments (``comments``); and PUT .../pulls/{n}/merge, which refuses a head that moved (409)
 and a base branch whose ruleset the token's App may not bypass (405), and otherwise merges. It answers git's own POST
 /{o}/{r}.git/git-upload-pack with the command ls-refs (protocol version 2), for Basic credentials of x-access-token and
 an installation token that opens the repo with contents read, as GitHub does: the refs ``tag`` and ``set_ref`` set under
@@ -210,6 +210,7 @@ class FakeGitHub:
     pull_refusals: list = field(default_factory=list)  # (status, body) answering the next POSTs of a pull request
     merge_refusals: list = field(default_factory=list)  # (status, body) answering the next merges of a pull request
     check_runs: dict = field(default_factory=dict)  # sha -> [check run]
+    comments: list = field(default_factory=list)  # POST .../issues/{n}/comments, in order
     statuses: dict = field(default_factory=dict)  # sha -> combined status
     merges: list = field(default_factory=list)  # (owner, name, number, sha, app) of each merge
     made_refs: list = field(default_factory=list)  # (owner, name, ref, sha, app) of each ref made through the API
@@ -1068,6 +1069,17 @@ class FakeGitHub:
             with self._lock:
                 self.check_runs.setdefault(asked["head_sha"], []).append(made)
             return 201, made
+        if method == "POST" and len(rest) == 3 and rest[0] == "issues" and rest[2] == "comments" and repo is not None:
+            _, app, refused = need("pull_requests", "write")
+            if refused:
+                return refused
+            asked = json.loads(body or "{}")
+            with self._lock:
+                comment_id = 7000 + len(self.comments)
+                url = f"https://github.com/{repo.owner}/{repo.name}/pull/{rest[1]}#issuecomment-{comment_id}"
+                made = {"repo": f"{repo.owner}/{repo.name}", "number": int(rest[1]), "body": asked["body"]}
+                self.comments.append({**made, "id": comment_id, "app": app})
+            return 201, {"id": comment_id, "html_url": url}
         return 404, {"message": "Not Found"}
 
     def answer(self, method: str, path: str, query: dict, headers: dict, body: str):

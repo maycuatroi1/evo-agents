@@ -372,6 +372,14 @@ and a judge run of the old head no longer counts (its verdict answers 409). A ch
 `gh pr merge N --match-head-commit SHA`, so GitHub refuses the merge if the branch moved since. A check that failed
 says why: fix it, push, and ask again. Turning `merge_check` off while a check judges fails it and wakes the run.
 
+Once a check settles, the next pass of `hub.merge_queue` comments on the pull request, once a head
+(`hub/server/merge_comments.py`): the state and why, each Judge's run on the hub, model, verdict and reasons, the
+hidden checks by number with exit code and time (never what they run), the verify commands with exit code and time,
+the signs the Judge weighed, the open findings, and the merge command when it passed. The reasons of the safety, auth
+and security dimensions and the findings of the security pass stay on the hub. The comment needs the workers' App to
+hold pull_requests write on the repo; GitHub refusing it is recorded in the check (`verdict.commented`) and not asked
+again for that head. The web lists the Judges' runs at `/p/<project>/runs?kind=judge&state=all`.
+
 The checks live in the table `merge_checks` (schema 0187), one row a pull request, with the head, the state
 (`judging`, `passed` or `failed`), the verdict and the wait it answers. The GitLab merge queue is not changed by it.
 
