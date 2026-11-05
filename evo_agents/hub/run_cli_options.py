@@ -243,7 +243,8 @@ def plan_options(plan, with_model) -> None:
         "--session-per-step",
         action="store_true",
         help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
-        "than one session for every step; a worker takes it once its daemon says it runs one",
+        "than one session for every step, and its steps run one after another, never two at once, where one session "
+        "starts the ready steps together; a worker takes it once its daemon says it runs one",
     )
     browser_option(plan, identities=True)
     account_option(plan)

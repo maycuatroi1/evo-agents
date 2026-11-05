@@ -45,7 +45,9 @@ evo-agents hub notifications --unread
 
 A plan run does every step in one agent session unless it is dispatched with `--session-per-step`: then each step
 gets a new session whose prompt carries the plan's handoff instead of what the sessions before it read, and the run's
-usage lists the session of each step. A Claude Code agent on a worker compacts its context as it nears 200,000 tokens
+usage lists the session of each step. The sessions run one after another, never two at once, while one session starts
+every ready step together, each in a subagent (a second step of a repo in a git worktree of its own, merged back
+before its `done`): a plan whose `depends_on` leaves several steps ready at once finishes sooner in one session. A Claude Code agent on a worker compacts its context as it nears 200,000 tokens
 (`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window). A Codex agent compacts there too and
 keeps 8,000 tokens of each tool output (`EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT`,
 `EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT`), and opencode clears old tool outputs (`EVO_WORKER_OPENCODE_COMPACTION_PRUNE`
