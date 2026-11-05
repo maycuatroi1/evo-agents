@@ -40,6 +40,10 @@ USER_AGENT = f"evo-agents-worker/{__version__}"
 FIRST_DELAY = 1.0
 MOST_DELAY = 60.0
 RETRY_AFTER_MOST = 300.0  # seconds: a longer Retry-After, a proxy's or a broken hub's, holds a call no longer
+# Tries with the Backoff of a read a run cannot go on without (its leases, its plan): about three minutes of waits,
+# longer than a deploy of the hub keeps its API down. Run #1766 of evo-agents (2026-11-05) failed on five, about 30
+# seconds, of HTTP 500 while the hub deployed.
+OUTAGE_TRIES = 9
 
 
 class HubProblem(Exception):

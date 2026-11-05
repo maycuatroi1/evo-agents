@@ -309,6 +309,20 @@ def test_the_backoff_grows_from_1_to_60_seconds():
     assert 0.8 <= jittered.next() <= 1.2 and 1.6 <= jittered.next() <= 2.4
 
 
+def test_the_reads_a_run_needs_outlast_a_deploy_of_the_hub():
+    """A run's leases and its plan are read again for about three minutes while the hub does not answer: run #1766
+    failed on five reads, some 30 seconds of HTTP 500, while the hub deployed."""
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker import credentials
+    from evo_agents.worker.hubapi import OUTAGE_TRIES, Backoff
+    from evo_agents.worker.runner import sessions
+
+    assert credentials.TAKE_TRIES == sessions.PLAN_TRIES == OUTAGE_TRIES
+    backoff = Backoff(jitter=0)
+    waited = sum(backoff.next() for _ in range(OUTAGE_TRIES - 1))  # a wait between each two reads
+    assert waited * 0.8 >= 150, waited  # three minutes, two and a half with the jitter at its lowest
+
+
 # Cleanup
 
 
