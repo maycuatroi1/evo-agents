@@ -18,16 +18,32 @@ export type EntityEdge = Schemas["EntityEdge"];
 export type EntityDetail = Schemas["EntityDetail"];
 export type RelationDetail = Schemas["RelationDetail"];
 export type Citation = Schemas["Citation"];
+export type CodeNode = Schemas["CodeNode"];
+export type CodeEdge = Schemas["CodeEdge"];
+export type CodeLink = Schemas["CodeLink"];
 export type EntitySetup = Schemas["SetupOut"];
 
 export { DEFAULT_LIMIT, DEPTHS, type Depth, EXPAND_LIMIT, LIMITS, parseDepth, parseLimit } from "./entity-params";
 
-/** What the canvas draws: the nodes and edges of the base graph and of each neighbourhood opened, each once. */
-export type WorkingSet = { nodes: EntityGraphNode[]; edges: EntityEdge[] };
+/**
+ * What the canvas draws: the nodes and edges of the base graph and of each neighbourhood opened, each once, and with
+ * the code switch on, the Directories, Files and Symbols those entities point to (`code=true` of the reads).
+ */
+export type WorkingSet = { nodes: EntityGraphNode[]; edges: EntityEdge[]; codeNodes?: CodeNode[]; codeEdges?: CodeEdge[] };
 
-export function mergeGraphs(parts: readonly (WorkingSet | null | undefined)[]): WorkingSet {
+/** A graph as the hub answers it, its code nodes included when they were asked for. */
+type GraphPart = WorkingSet & { code_nodes?: CodeNode[]; code_edges?: CodeEdge[] };
+
+/** The key of the canvas edge from an entity to a code node: one per pair, whatever relations join them. */
+export function codeEdgeKey(edge: Pick<CodeEdge, "src" | "dst">): string {
+  return `code:${edge.src}->${edge.dst}`;
+}
+
+export function mergeGraphs(parts: readonly (GraphPart | null | undefined)[]): WorkingSet {
   const nodes = new Map<string, EntityGraphNode>();
   const edges = new Map<string, EntityEdge>();
+  const codeNodes = new Map<string, CodeNode>();
+  const codeEdges = new Map<string, CodeEdge>();
   for (const part of parts) {
     if (!part) continue;
     for (const node of part.nodes) {
@@ -36,8 +52,15 @@ export function mergeGraphs(parts: readonly (WorkingSet | null | undefined)[]): 
       nodes.set(node.id, known ? { ...node, hop: known.hop ?? node.hop } : node);
     }
     for (const edge of part.edges) edges.set(edge.id, edge);
+    for (const node of part.code_nodes ?? part.codeNodes ?? []) codeNodes.set(node.id, node);
+    for (const edge of part.code_edges ?? part.codeEdges ?? []) codeEdges.set(codeEdgeKey(edge), edge);
   }
-  return { nodes: [...nodes.values()], edges: [...edges.values()].filter((edge) => nodes.has(edge.src) && nodes.has(edge.dst)) };
+  return {
+    nodes: [...nodes.values()],
+    edges: [...edges.values()].filter((edge) => nodes.has(edge.src) && nodes.has(edge.dst)),
+    codeNodes: [...codeNodes.values()],
+    codeEdges: [...codeEdges.values()].filter((edge) => nodes.has(edge.src) && codeNodes.has(edge.dst)),
+  };
 }
 
 /** The node kinds of a working set, most first, with their counts: the legend and its filters. */
@@ -49,15 +72,23 @@ export function typeCounts(nodes: readonly EntityGraphNode[]): { kind: string; c
 
 /**
  * The working set once the hidden kinds are out, split in two: the nodes with at least one relation left, which the
- * canvas draws, and the isolated ones, which the rail lists instead of scattering them over the canvas.
+ * canvas draws, and the isolated ones, which the rail lists instead of scattering them over the canvas. With code
+ * drawn, a link to code counts as a relation, and a code node stays while one entity kept points to it.
  */
 export function splitShown(set: WorkingSet, hidden: ReadonlySet<string>): { linked: WorkingSet; isolated: EntityGraphNode[] } {
   const kept = set.nodes.filter((node) => !hidden.has(node.kind));
   const ids = new Set(kept.map((node) => node.id));
   const edges = set.edges.filter((edge) => ids.has(edge.src) && ids.has(edge.dst));
-  const touched = new Set(edges.flatMap((edge) => [edge.src, edge.dst]));
+  const codeEdges = (set.codeEdges ?? []).filter((edge) => ids.has(edge.src));
+  const pointed = new Set(codeEdges.map((edge) => edge.dst));
+  const touched = new Set([...edges.flatMap((edge) => [edge.src, edge.dst]), ...codeEdges.map((edge) => edge.src)]);
   return {
-    linked: { nodes: kept.filter((node) => touched.has(node.id)), edges },
+    linked: {
+      nodes: kept.filter((node) => touched.has(node.id)),
+      edges,
+      codeNodes: (set.codeNodes ?? []).filter((node) => pointed.has(node.id)),
+      codeEdges,
+    },
     isolated: kept.filter((node) => !touched.has(node.id)).sort((a, b) => b.docs - a.docs || a.name.localeCompare(b.name)),
   };
 }
@@ -140,6 +171,21 @@ export function seedPosition(id: string): { x: number; y: number } {
   return { x: (a / 0xffffffff) * 2 - 1, y: (b / 0xffffffff) * 2 - 1 };
 }
 
+/** The code kinds, each with a slate of its own: neutral, so no entity type reads as code. */
+export const CODE_TONES: Record<string, { light: string; dark: string }> = {
+  Directory: { light: "#334155", dark: "#cbd5e1" },
+  File: { light: "#52627a", dark: "#a3b1c6" },
+  Symbol: { light: "#72829a", dark: "#7c8aa0" },
+};
+
+export function codeColour(kind: string, dark: boolean): string {
+  const tone = CODE_TONES[kind] ?? CODE_TONES.File;
+  return dark ? tone.dark : tone.light;
+}
+
+/** The sigma program of a node: a disc for an entity, a rounded square for code (components/kg/entity-canvas.tsx). */
+export type NodeShape = "circle" | "square";
+
 export type EntityNodeAttributes = {
   label: string;
   kind: string;
@@ -149,18 +195,22 @@ export type EntityNodeAttributes = {
   color: string;
   docs: number;
   hop: number | null;
+  /** An entity's visible code links (Directories, Files, Symbols); 0 for a code node. */
+  code: number;
+  type: NodeShape;
 };
 
-export type EntityEdgeAttributes = { label: string; rel: string; size: number; weight: number; color: string };
+export type EntityEdgeAttributes = { label: string; rel: string; size: number; weight: number; color: string; code: boolean };
 
 /**
  * The graphology graph sigma draws from a working set: one node per entity, coloured by kind and sized by documents,
- * one undirected edge per relation (LightRAG relations have no direction), labelled by its keywords. Places already
- * laid out in `previous` are kept, so an opened neighbourhood grows beside the node it came from.
+ * one undirected edge per relation (LightRAG relations have no direction), labelled by its keywords; with code, one
+ * square slate node per code node, sized by the entities that point to it, and one thin edge from each entity to it.
+ * Places already laid out in `previous` are kept, so an opened neighbourhood grows beside the node it came from.
  */
 export function buildGraph(
   set: WorkingSet,
-  options: { dark: boolean; edgeColour: string; previous?: ReadonlyMap<string, { x: number; y: number }> },
+  options: { dark: boolean; edgeColour: string; codeEdgeColour?: string; previous?: ReadonlyMap<string, { x: number; y: number }> },
 ): Graph<EntityNodeAttributes, EntityEdgeAttributes> {
   const graph = new Graph<EntityNodeAttributes, EntityEdgeAttributes>({ type: "undirected", multi: true });
   const most = Math.max(1, ...set.nodes.map((node) => node.docs));
@@ -184,6 +234,8 @@ export function buildGraph(
       color: kindColour(node.kind, options.dark),
       docs: node.docs,
       hop: node.hop ?? null,
+      code: node.code ?? 0,
+      type: "circle",
     });
   }
   for (const edge of set.edges) {
@@ -194,9 +246,66 @@ export function buildGraph(
       size: edgeSize(edge.weight, heaviest),
       weight: edge.weight,
       color: options.edgeColour,
+      code: false,
+    });
+  }
+  const mostPointed = Math.max(1, ...(set.codeNodes ?? []).map((node) => node.entities));
+  for (const node of set.codeNodes ?? []) {
+    if (graph.hasNode(node.id)) continue;
+    let place = placed.get(node.id);
+    if (!place) {
+      const near = (set.codeEdges ?? []).find((edge) => edge.dst === node.id && graph.hasNode(edge.src));
+      const anchor = near ? graph.getNodeAttributes(near.src) : undefined;
+      const seed = seedPosition(node.id);
+      place = anchor ? { x: anchor.x + seed.x * 0.08, y: anchor.y + seed.y * 0.08 } : seed;
+    }
+    graph.addNode(node.id, {
+      label: node.name,
+      kind: node.kind,
+      x: place.x,
+      y: place.y,
+      size: Math.max(3, nodeSize(node.entities, mostPointed) * 0.75),
+      color: codeColour(node.kind, options.dark),
+      docs: 0,
+      hop: null,
+      code: 0,
+      type: "square",
+    });
+  }
+  for (const edge of set.codeEdges ?? []) {
+    const key = codeEdgeKey(edge);
+    if (!graph.hasNode(edge.src) || !graph.hasNode(edge.dst) || graph.hasEdge(key)) continue;
+    graph.addEdgeWithKey(key, edge.src, edge.dst, {
+      label: edge.rel.replaceAll("_", " "),
+      rel: edge.rel,
+      size: 0.5,
+      weight: edge.conf,
+      color: options.codeEdgeColour ?? options.edgeColour,
+      code: true,
     });
   }
   return graph;
+}
+
+/** Whether a canvas node is code, not an entity: the canvas selects it by opening its node page instead. */
+export function isCodeNode(attributes: Pick<EntityNodeAttributes, "type">): boolean {
+  return attributes.type === "square";
+}
+
+/** A code link's group in the inspector: its repo and package, the repo's root named `/`. */
+export function codePackage(link: Pick<CodeLink, "repo" | "package">): string {
+  const where = link.package || "/";
+  return link.repo ? `${link.repo}:${where}` : where;
+}
+
+/** The code links of an entity grouped by repo and package, in the hub's order (repo, package, kind, path). */
+export function groupCode(links: readonly CodeLink[]): { key: string; links: CodeLink[] }[] {
+  const groups = new Map<string, CodeLink[]>();
+  for (const link of links) {
+    const key = codePackage(link);
+    groups.set(key, [...(groups.get(key) ?? []), link]);
+  }
+  return [...groups.entries()].map(([key, members]) => ({ key, links: members }));
 }
 
 /** The ids within one relation of `id` in the graph drawn, `id` included: what lights up when it is pointed at. */

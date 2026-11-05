@@ -1391,7 +1391,8 @@ export interface paths {
         };
         /**
          * Entity Graph
-         * @description The visible entities the most documents mention and the visible relations between them.
+         * @description The visible entities the most documents mention and the visible relations between them; with ``code``, the
+         *     visible code nodes they point to.
          */
         get: operations["entity_graph_v1_kg__project__entity_graph_get"];
         put?: never;
@@ -1411,7 +1412,8 @@ export interface paths {
         };
         /**
          * Entity Neighbourhood
-         * @description The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them.
+         * @description The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them; with
+         *     ``code``, the visible code nodes they point to.
          */
         get: operations["entity_neighbourhood_v1_kg__project__entity_graph_around_get"];
         put?: never;
@@ -1431,7 +1433,7 @@ export interface paths {
         };
         /**
          * Show Entity
-         * @description One visible entity with the documents that mention it, quoted, and its relations.
+         * @description One visible entity with the documents that mention it, quoted, its relations and the code it points to.
          */
         get: operations["show_entity_v1_kg__project__entity_get"];
         put?: never;
@@ -2099,6 +2101,108 @@ export interface paths {
          * @description Keep the answers of a run of this project to the latest entity requests and queue a build that reads them.
          */
         post: operations["entity_answers_v1_kg__project__entities_answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Entity Map
+         * @description Check a run's entity map against the latest build, keep what passes and queue a build that reads it.
+         */
+        post: operations["post_entity_map_v1_kg__project__entity_map_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity-map/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Entity Map
+         * @description Ask for an entity map run of the project now: 201 with the new run, or 200 with the run in flight.
+         */
+        post: operations["start_entity_map_v1_kg__project__entity_map_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity-map/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entity Map
+         * @description The project's entity map runs, newest first, with the one in flight.
+         */
+        get: operations["list_entity_map_v1_kg__project__entity_map_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity-map/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Entity Map Outline
+         * @description The structure of the project as the agents' sink reads its latest graph: repos and directories with their files
+         *     and symbols, the clusters that hold code, the entities, the documents and the plans.
+         */
+        get: operations["entity_map_outline_v1_kg__project__entity_map_outline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/entity-map/changed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Entity Map Changed
+         * @description The items new, changed or gone since the last run that posted a map, and the documents, sections, plans and
+         *     steps no map cites, as the agents' sink reads the latest graph.
+         */
+        get: operations["entity_map_changed_v1_kg__project__entity_map_changed_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -18497,6 +18601,115 @@ export interface components {
              */
             subclusters: number;
         };
+        /** CodeEdge */
+        CodeEdge: {
+            /**
+             * Src
+             * @description the entity
+             */
+            src: string;
+            /**
+             * Rel
+             * @description implemented_by (an agent's entity map) or refers_to (the entity's name names it)
+             */
+            rel: string;
+            /**
+             * Dst
+             * @description the code node
+             */
+            dst: string;
+            /**
+             * Conf
+             * @description the surest confidence of the links between the two
+             */
+            conf: number;
+        };
+        /** CodeLink */
+        CodeLink: {
+            /**
+             * Id
+             * @description the id of the code node, for its page of the graph
+             */
+            id: string;
+            /**
+             * Kind
+             * @description Directory, File or Symbol
+             */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Repo */
+            repo: string | null;
+            /** Path */
+            path: string | null;
+            /**
+             * Package
+             * @description the directory it is in (a Directory's own path), empty at the repo's root
+             */
+            package: string;
+            label: components["schemas"]["NodeLabel"];
+            /**
+             * Rels
+             * @description the relations that link the entity to it: implemented_by, refers_to
+             */
+            rels: string[];
+            /**
+             * Reason
+             * @description why the agent that mapped the entity says this code implements it
+             */
+            reason: string | null;
+            /**
+             * Name Match
+             * @description the entity's name that names this code, for refers_to
+             */
+            name_match: string | null;
+            /** Conf */
+            conf: number | null;
+            /** Status */
+            status: string;
+            /**
+             * Model
+             * @description the model or agent that linked them
+             */
+            model: string | null;
+            /**
+             * Uri
+             * @description the code at the commit its source read, when it has a link
+             */
+            uri: string | null;
+            /**
+             * Line
+             * @description the line a Symbol starts on in that file
+             */
+            line: number | null;
+        };
+        /** CodeNode */
+        CodeNode: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @description Directory, File or Symbol
+             */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Repo */
+            repo: string | null;
+            /** Path */
+            path: string | null;
+            /**
+             * Package
+             * @description the directory it is in (a Directory's own path), empty at the repo's root
+             */
+            package: string;
+            /**
+             * Entities
+             * @description visible entities that point to it
+             */
+            entities: number;
+            label: components["schemas"]["NodeLabel"];
+        };
         /** CommandCount */
         CommandCount: {
             /** Command */
@@ -20685,6 +20898,17 @@ export interface components {
              * @description the entities at the other end of those relations
              */
             neighbours: components["schemas"]["EntityNode"][];
+            /**
+             * Code
+             * @description the code it points to, by repo, package and path, at most 100
+             */
+            code?: components["schemas"]["CodeLink"][];
+            /**
+             * Code Links
+             * @description visible Directories, Files and Symbols it points to
+             * @default 0
+             */
+            code_links: number;
         };
         /** EntityEdge */
         EntityEdge: {
@@ -20749,6 +20973,22 @@ export interface components {
             total_edges: number;
             /** Truncated */
             truncated: boolean;
+            /**
+             * Code Nodes
+             * @description with code=true, the code they point to
+             */
+            code_nodes?: components["schemas"]["CodeNode"][];
+            /**
+             * Code Edges
+             * @description with code=true, entity to code
+             */
+            code_edges?: components["schemas"]["CodeEdge"][];
+            /**
+             * Code Left Out
+             * @description code nodes past the first 500 left out
+             * @default 0
+             */
+            code_left_out: number;
         };
         /** EntityGraphNode */
         EntityGraphNode: {
@@ -20778,6 +21018,12 @@ export interface components {
              * @description its visible relations to another visible entity
              */
             degree: number;
+            /**
+             * Code
+             * @description visible Directories, Files and Symbols it points to (implemented_by, refers_to)
+             * @default 0
+             */
+            code: number;
             /** Status */
             status: string;
             /** Conf */
@@ -20793,6 +21039,204 @@ export interface components {
              * @description relations from the entity asked for; null in the overview
              */
             hop?: number | null;
+        };
+        /**
+         * EntityMap
+         * @description A map of format evo-entity-map/1 (``evo_agents.kg.entity_map``); the hub stamps the run itself.
+         */
+        EntityMap: {
+            /**
+             * Format
+             * @description evo-entity-map/1
+             */
+            format: string;
+            /**
+             * Model
+             * @description the model of the agent that read the project
+             */
+            model?: string | null;
+            /** Entities */
+            entities?: {
+                [key: string]: unknown;
+            }[];
+            /** Relations */
+            relations?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** EntityMapChanged */
+        EntityMapChanged: {
+            /** Project */
+            project: string;
+            /**
+             * Sink
+             * @description the sink the graph was read through
+             */
+            sink: string;
+            /**
+             * Since Map
+             * @description whether a run posted a map before; false: every item is new
+             */
+            since_map: boolean;
+            /**
+             * Counts
+             * @description each list counted whole, before it was cut
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * New
+             * @description the items no map's snapshot holds: id and class
+             */
+            new: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Changed
+             * @description the items whose revision changed since the snapshot
+             */
+            changed: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Gone
+             * @description the items of the snapshot the graph no longer holds
+             */
+            gone: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Uncited
+             * @description the documents, sections, plans and steps no map cites
+             */
+            uncited: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** EntityMapOutline */
+        EntityMapOutline: {
+            /** Project */
+            project: string;
+            /**
+             * Sink
+             * @description the sink the graph was read through
+             */
+            sink: string;
+            /**
+             * Counts
+             * @description each list counted whole, before it was cut
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Repos
+             * @description each repo with its files and symbols
+             */
+            repos: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Directories
+             * @description each directory (repo, path) with the files and symbols under it
+             */
+            directories: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Clusters
+             * @description the clusters that hold code: id, level, code and other nodes, members
+             */
+            clusters: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Entities
+             * @description the entities the graph has, with the code each is implemented by
+             */
+            entities: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Documents
+             * @description the documents with their sections
+             */
+            documents: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Plans
+             * @description the plans with their steps
+             */
+            plans: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** EntityMapRun */
+        EntityMapRun: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Via
+             * @enum {string}
+             */
+            via: "first_build" | "stale" | "manual";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "failed";
+            /**
+             * Why
+             * @description what asked for the run
+             */
+            why: string[];
+            /** Build Id */
+            build_id: number | null;
+            /**
+             * Agent Run Id
+             * @description the review run (lens kg_entity_map) of the agent that maps
+             */
+            agent_run_id: number | null;
+            /**
+             * Maps
+             * @description the maps the review run posted
+             */
+            maps: number;
+            /**
+             * Readable
+             * @description what the run's sink read of the graph when it was queued, in counts
+             */
+            readable: {
+                [key: string]: unknown;
+            } | null;
+            /** Notes */
+            notes: string[];
+            /** Error */
+            error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Ended At */
+            ended_at: string | null;
+        };
+        /** EntityMapRuns */
+        EntityMapRuns: {
+            active: components["schemas"]["EntityMapRun"] | null;
+            /** Runs */
+            runs: components["schemas"]["EntityMapRun"][];
         };
         /** EntityNeighbourhood */
         EntityNeighbourhood: {
@@ -20817,6 +21261,22 @@ export interface components {
             left_out: number;
             /** Truncated */
             truncated: boolean;
+            /**
+             * Code Nodes
+             * @description with code=true, the code they point to
+             */
+            code_nodes?: components["schemas"]["CodeNode"][];
+            /**
+             * Code Edges
+             * @description with code=true, entity to code
+             */
+            code_edges?: components["schemas"]["CodeEdge"][];
+            /**
+             * Code Left Out
+             * @description code nodes past the first 500 left out
+             * @default 0
+             */
+            code_left_out: number;
         };
         /** EntityNode */
         EntityNode: {
@@ -20846,6 +21306,12 @@ export interface components {
              * @description its visible relations to another visible entity
              */
             degree: number;
+            /**
+             * Code
+             * @description visible Directories, Files and Symbols it points to (implemented_by, refers_to)
+             * @default 0
+             */
+            code: number;
             /** Status */
             status: string;
             /** Conf */
@@ -21292,7 +21758,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Severity
              * @default medium
@@ -25445,6 +25911,41 @@ export interface components {
              * @description the session of its agent, as its worker reported it
              */
             session_id: string;
+        };
+        /** MapKept */
+        MapKept: {
+            /**
+             * Entities
+             * @description entities kept
+             */
+            entities: number;
+            /**
+             * Relations
+             * @description relations kept
+             */
+            relations: number;
+            /**
+             * Mentions
+             * @description citations of documents, sections, plans and steps kept
+             */
+            mentions: number;
+            /**
+             * Code Links
+             * @description links to directories, files and symbols kept
+             */
+            code_links: number;
+            /** Rejected */
+            rejected: components["schemas"]["Rejected"][];
+            /**
+             * Sha256
+             * @description the blob the map is kept as; None when nothing was kept
+             */
+            sha256: string | null;
+            /**
+             * Queued
+             * @description whether a build was queued to read it; false when one was waiting already
+             */
+            queued: boolean;
         };
         /** MapNode */
         MapNode: {
@@ -29905,7 +30406,7 @@ export interface components {
              * Lens
              * @description add: the lens it is for; none: every lens
              */
-            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions") | null;
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
             /**
              * Text
              * @description add: the lesson
@@ -33659,7 +34160,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -34887,6 +35388,16 @@ export interface components {
             /** Repos */
             repos?: components["schemas"]["Repo"][];
             harness: components["schemas"]["Harness"];
+        };
+        /** Rejected */
+        Rejected: {
+            /**
+             * Entry
+             * @description the entry, as entities[i] (name), relations[i] (src - dst) or a part of one
+             */
+            entry: string;
+            /** Reason */
+            reason: string;
         };
         /** RejectedProposal */
         RejectedProposal: {
@@ -38638,7 +39149,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Severity
              * @default medium
@@ -38671,7 +39182,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -48970,6 +49481,8 @@ export interface operations {
             query?: {
                 /** @description most entities shown, at most 1000 */
                 limit?: number;
+                /** @description also the code nodes the entities shown point to, at most 500 */
+                code?: boolean;
             };
             header?: never;
             path: {
@@ -49052,6 +49565,8 @@ export interface operations {
                 depth?: number;
                 /** @description most entities shown, at most 1000 */
                 limit?: number;
+                /** @description also the code nodes the entities shown point to, at most 500 */
+                code?: boolean;
             };
             header?: never;
             path: {
@@ -52149,6 +52664,387 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    post_entity_map_v1_kg__project__entity_map_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityMap"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapKept"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_entity_map_v1_kg__project__entity_map_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a run is in flight already: that run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityMapRun"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityMapRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entity_map_v1_kg__project__entity_map_runs_get: {
+        parameters: {
+            query?: {
+                /** @description the newest runs listed */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityMapRuns"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    entity_map_outline_v1_kg__project__entity_map_outline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityMapOutline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    entity_map_changed_v1_kg__project__entity_map_changed_get: {
+        parameters: {
+            query?: {
+                /** @description the items of each list */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityMapChanged"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -58440,7 +59336,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -58579,7 +59475,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -63558,7 +64454,7 @@ export interface operations {
     show_earlier_v1_projects__project__curator_earlier_get: {
         parameters: {
             query?: {
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
                 limit?: number;
             };
@@ -63623,7 +64519,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description its entries and those of no lens */
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 /** @description the retired entries too, after the live ones */
                 retired?: boolean;
             };

@@ -34022,7 +34022,7 @@
             "kg"
           ],
           "summary": "Entity Graph",
-          "description": "The visible entities the most documents mention and the visible relations between them.",
+          "description": "The visible entities the most documents mention and the visible relations between them; with ``code``, the\nvisible code nodes they point to.",
           "operationId": "entity_graph_v1_kg__project__entity_graph_get",
           "parameters": [
             {
@@ -34048,6 +34048,18 @@
                 "title": "Limit"
               },
               "description": "most entities shown, at most 1000"
+            },
+            {
+              "name": "code",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also the code nodes the entities shown point to, at most 500",
+                "default": false,
+                "title": "Code"
+              },
+              "description": "also the code nodes the entities shown point to, at most 500"
             }
           ],
           "responses": {
@@ -34130,7 +34142,7 @@
             "kg"
           ],
           "summary": "Entity Neighbourhood",
-          "description": "The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them.",
+          "description": "The visible entities within ``depth`` relations of one, at most ``limit``, and the relations between them; with\n``code``, the visible code nodes they point to.",
           "operationId": "entity_neighbourhood_v1_kg__project__entity_graph_around_get",
           "parameters": [
             {
@@ -34181,6 +34193,18 @@
                 "title": "Limit"
               },
               "description": "most entities shown, at most 1000"
+            },
+            {
+              "name": "code",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also the code nodes the entities shown point to, at most 500",
+                "default": false,
+                "title": "Code"
+              },
+              "description": "also the code nodes the entities shown point to, at most 500"
             }
           ],
           "responses": {
@@ -34263,7 +34287,7 @@
             "kg"
           ],
           "summary": "Show Entity",
-          "description": "One visible entity with the documents that mention it, quoted, and its relations.",
+          "description": "One visible entity with the documents that mention it, quoted, its relations and the code it points to.",
           "operationId": "show_entity_v1_kg__project__entity_get",
           "parameters": [
             {
@@ -114131,6 +114155,252 @@
           ],
           "title": "ClusterSummary"
         },
+        "CodeEdge": {
+          "properties": {
+            "src": {
+              "type": "string",
+              "title": "Src",
+              "description": "the entity"
+            },
+            "rel": {
+              "type": "string",
+              "title": "Rel",
+              "description": "implemented_by (an agent's entity map) or refers_to (the entity's name names it)"
+            },
+            "dst": {
+              "type": "string",
+              "title": "Dst",
+              "description": "the code node"
+            },
+            "conf": {
+              "type": "number",
+              "title": "Conf",
+              "description": "the surest confidence of the links between the two"
+            }
+          },
+          "type": "object",
+          "required": [
+            "src",
+            "rel",
+            "dst",
+            "conf"
+          ],
+          "title": "CodeEdge"
+        },
+        "CodeLink": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "the id of the code node, for its page of the graph"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "Directory, File or Symbol"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "package": {
+              "type": "string",
+              "title": "Package",
+              "description": "the directory it is in (a Directory's own path), empty at the repo's root"
+            },
+            "label": {
+              "$ref": "#/components/schemas/NodeLabel"
+            },
+            "rels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Rels",
+              "description": "the relations that link the entity to it: implemented_by, refers_to"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why the agent that mapped the entity says this code implements it"
+            },
+            "name_match": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name Match",
+              "description": "the entity's name that names this code, for refers_to"
+            },
+            "conf": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conf"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model or agent that linked them"
+            },
+            "uri": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uri",
+              "description": "the code at the commit its source read, when it has a link"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "the line a Symbol starts on in that file"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "repo",
+            "path",
+            "package",
+            "label",
+            "rels",
+            "reason",
+            "name_match",
+            "conf",
+            "status",
+            "model",
+            "uri",
+            "line"
+          ],
+          "title": "CodeLink"
+        },
+        "CodeNode": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "Directory, File or Symbol"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            },
+            "package": {
+              "type": "string",
+              "title": "Package",
+              "description": "the directory it is in (a Directory's own path), empty at the repo's root"
+            },
+            "entities": {
+              "type": "integer",
+              "title": "Entities",
+              "description": "visible entities that point to it"
+            },
+            "label": {
+              "$ref": "#/components/schemas/NodeLabel"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "repo",
+            "path",
+            "package",
+            "entities",
+            "label"
+          ],
+          "title": "CodeNode"
+        },
         "CommandCount": {
           "properties": {
             "command": {
@@ -119111,6 +119381,20 @@
               "type": "array",
               "title": "Neighbours",
               "description": "the entities at the other end of those relations"
+            },
+            "code": {
+              "items": {
+                "$ref": "#/components/schemas/CodeLink"
+              },
+              "type": "array",
+              "title": "Code",
+              "description": "the code it points to, by repo, package and path, at most 100"
+            },
+            "code_links": {
+              "type": "integer",
+              "title": "Code Links",
+              "description": "visible Directories, Files and Symbols it points to",
+              "default": 0
             }
           },
           "type": "object",
@@ -119276,6 +119560,28 @@
             "truncated": {
               "type": "boolean",
               "title": "Truncated"
+            },
+            "code_nodes": {
+              "items": {
+                "$ref": "#/components/schemas/CodeNode"
+              },
+              "type": "array",
+              "title": "Code Nodes",
+              "description": "with code=true, the code they point to"
+            },
+            "code_edges": {
+              "items": {
+                "$ref": "#/components/schemas/CodeEdge"
+              },
+              "type": "array",
+              "title": "Code Edges",
+              "description": "with code=true, entity to code"
+            },
+            "code_left_out": {
+              "type": "integer",
+              "title": "Code Left Out",
+              "description": "code nodes past the first 500 left out",
+              "default": 0
             }
           },
           "type": "object",
@@ -119330,6 +119636,12 @@
               "type": "integer",
               "title": "Degree",
               "description": "its visible relations to another visible entity"
+            },
+            "code": {
+              "type": "integer",
+              "title": "Code",
+              "description": "visible Directories, Files and Symbols it points to (implemented_by, refers_to)",
+              "default": 0
             },
             "status": {
               "type": "string",
@@ -119801,6 +120113,28 @@
             "truncated": {
               "type": "boolean",
               "title": "Truncated"
+            },
+            "code_nodes": {
+              "items": {
+                "$ref": "#/components/schemas/CodeNode"
+              },
+              "type": "array",
+              "title": "Code Nodes",
+              "description": "with code=true, the code they point to"
+            },
+            "code_edges": {
+              "items": {
+                "$ref": "#/components/schemas/CodeEdge"
+              },
+              "type": "array",
+              "title": "Code Edges",
+              "description": "with code=true, entity to code"
+            },
+            "code_left_out": {
+              "type": "integer",
+              "title": "Code Left Out",
+              "description": "code nodes past the first 500 left out",
+              "default": 0
             }
           },
           "type": "object",
@@ -119856,6 +120190,12 @@
               "type": "integer",
               "title": "Degree",
               "description": "its visible relations to another visible entity"
+            },
+            "code": {
+              "type": "integer",
+              "title": "Code",
+              "description": "visible Directories, Files and Symbols it points to (implemented_by, refers_to)",
+              "default": 0
             },
             "status": {
               "type": "string",

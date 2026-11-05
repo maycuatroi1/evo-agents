@@ -1,8 +1,9 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
-import { Tags } from "lucide-react";
+import { Code2, Tags } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
@@ -22,6 +23,7 @@ import {
   type WorkingSet,
 } from "@/lib/kg/entity-graph";
 import { entityAroundQuery, entityGraphQuery } from "@/lib/kg/entity-queries";
+import { nodeHref } from "@/lib/kg/routes";
 import { cn } from "@/lib/utils";
 
 import { EntitiesEmpty } from "./entity-empty";
@@ -53,8 +55,9 @@ const SELECT =
  * The explorer's Entities view: the graph of entities and relations the entities step read from the project's
  * documents, as LightRAG's web UI shows it. By default the entities the most documents mention with the relations
  * between them; with a focus (`?entity=`), the entities within a depth of it. A double click opens a node's
- * neighbours into the same canvas. The focus, depth and node count live in the URL; the kinds hidden, the selection
- * and the neighbourhoods opened last for the visit. Read-only.
+ * neighbours into the same canvas. The Code switch also draws the Directories, Files and Symbols the entities shown
+ * point to; a click on one opens its node page. The focus, depth and node count live in the URL; the kinds hidden,
+ * the selection, the code switch and the neighbourhoods opened last for the visit. Read-only.
  */
 export function EntityView({
   project,
@@ -75,12 +78,17 @@ export function EntityView({
   const [selection, setSelection] = useState<Selection>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [allLabels, setAllLabels] = useState(false);
+  const [withCode, setWithCode] = useState(false);
+  const router = useRouter();
   const [centre, setCentre] = useState<{ id: string; nonce: number } | null>(null);
 
-  const overview = useHubQuery({ ...entityGraphQuery(browserApi, project, limit), enabled: focus === null }, null);
-  const around = useHubQuery({ ...entityAroundQuery(browserApi, project, focus ?? "", depth, limit), enabled: focus !== null }, null);
+  const overview = useHubQuery({ ...entityGraphQuery(browserApi, project, limit, withCode), enabled: focus === null }, null);
+  const around = useHubQuery({ ...entityAroundQuery(browserApi, project, focus ?? "", depth, limit, withCode), enabled: focus !== null }, null);
   const base = focus === null ? overview : around;
-  const opened = useQueries({ queries: expanded.map((id) => entityAroundQuery(browserApi, project, id, 1, EXPAND_LIMIT)), combine: combineOpened });
+  const opened = useQueries({
+    queries: expanded.map((id) => entityAroundQuery(browserApi, project, id, 1, EXPAND_LIMIT, withCode)),
+    combine: combineOpened,
+  });
   const baseData = base.status === "success" ? base.data : null;
   const working = useMemo<WorkingSet>(() => mergeGraphs([baseData, ...opened.data]), [baseData, opened.data]);
   const { linked, isolated } = useMemo(() => splitShown(working, hidden), [working, hidden]);
@@ -103,6 +111,7 @@ export function EntityView({
     setSelection({ type: "node", id });
     setCentre((now) => ({ id, nonce: (now?.nonce ?? 0) + 1 }));
   };
+  const openCode = useCallback((id: string) => router.push(nodeHref(project, id)), [router, project]);
   const toggleKind = (kind: string) => setHidden((now) => (now.has(kind) ? new Set([...now].filter((k) => k !== kind)) : new Set([...now, kind])));
 
   const actions: EntityActions = {
@@ -149,6 +158,7 @@ export function EntityView({
           onSelectNode={selectNode}
           onSelectEdge={selectEdge}
           onExpand={expand}
+          onOpenCode={openCode}
         />
         <p id={ENTITY_HELP_ID} className="sr-only">
           {t("help")}
@@ -164,6 +174,8 @@ export function EntityView({
   const total = base.status === "success" && "total_nodes" in base.data ? base.data.total_nodes : null;
   const totalEdges = base.status === "success" && "total_edges" in base.data ? base.data.total_edges : null;
   const leftOut = base.status === "success" && "left_out" in base.data ? base.data.left_out : 0;
+  const codeLeftOut = withCode && base.status === "success" ? (base.data.code_left_out ?? 0) : 0;
+  const codeShown = linked.codeNodes?.length ?? 0;
   const toolbar = noEntities || graphMissing ? null : (
     <>
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -200,6 +212,26 @@ export function EntityView({
         <Tags className="size-3.5" aria-hidden="true" />
         {t("edgeLabels")}
       </button>
+      <button
+        type="button"
+        aria-pressed={withCode}
+        title={t("codeToggleHint")}
+        onClick={() => setWithCode(!withCode)}
+        className={cn(
+          "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none max-md:h-11",
+          withCode ? "border-border-strong bg-card text-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
+        )}
+        data-testid="kg-entity-code-toggle"
+      >
+        <Code2 className="size-3.5" aria-hidden="true" />
+        {t("codeToggle")}
+        {withCode && base.status === "success" ? <span className="text-fg-subtle tabular-nums">{format.number(codeShown)}</span> : null}
+      </button>
+      {codeLeftOut > 0 ? (
+        <span className="text-xs text-muted-foreground" data-testid="kg-entity-code-left-out">
+          {t("codeLeftOut", { count: codeLeftOut })}
+        </span>
+      ) : null}
       {leftOut > 0 || (total !== null && total > working.nodes.length) ? (
         <span className="text-xs text-muted-foreground" data-testid="kg-entity-truncated">
           {leftOut > 0 ? t("leftOut", { count: leftOut }) : t("truncated", { shown: working.nodes.length, total: total ?? 0 })}
@@ -267,6 +299,10 @@ export function EntityView({
                 ))}
               </ul>
               <p>{t("legendSize")}</p>
+              <p className="inline-flex items-start gap-1.5">
+                <span className="mt-1 size-2.5 shrink-0 rounded-[2px] bg-fg-subtle" aria-hidden="true" />
+                {t("legendCode")}
+              </p>
               <p>{t("help")}</p>
             </div>
           </details>
