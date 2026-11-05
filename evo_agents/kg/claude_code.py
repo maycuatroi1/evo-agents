@@ -152,7 +152,7 @@ def answer(
 ) -> dict:
     """The model's answer to ``request`` with its ``usage``. ClaudeStop or ClaudeError when the call fails."""
     from evo_agents.kg import entity_merge
-    from evo_agents.kg.entities import EntitiesError, parse_answer, prompt
+    from evo_agents.kg.entity_mapping import EntitiesError, parse_answer, prompt
 
     env = os.environ if env is None else env
     model = request.get("model")
