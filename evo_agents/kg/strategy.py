@@ -257,6 +257,21 @@ def _merged_ontology(current: dict, extra: dict) -> dict:
     return out
 
 
+def with_ontology(name: str | None, ontology: dict | None) -> dict | None:
+    """``ontology`` with the node kinds and relations of the strategy named ``name`` added, as ``apply`` adds them to a
+    project's file: what a hub build reads, where the strategy is a key of the project's settings and no file of the
+    harness changes. ``ontology`` itself for no strategy, one this machine does not know, or one that adds nothing."""
+    if not name:
+        return ontology
+    try:
+        extra = available()[name].ontology
+    except (KeyError, StrategyError):
+        return ontology
+    if not extra:
+        return ontology
+    return _merged_ontology(ontology or {}, extra)
+
+
 @dataclass
 class Plan:
     strategy: Strategy
