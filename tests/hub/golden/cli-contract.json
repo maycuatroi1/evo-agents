@@ -10376,6 +10376,137 @@
         "schema": "JevUsage"
       }
     },
+    "hub kg answer": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--questions"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--out"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "answers.jsonl"
+        },
+        {
+          "flags": [
+            "--batch"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--no-wait"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--job"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--reply"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "state",
+          "questions",
+          "answered",
+          "errors",
+          "pending",
+          "asking",
+          "batch",
+          "runs",
+          "run_id",
+          "note",
+          "error",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "ended_at",
+          "again",
+          "out",
+          "written"
+        ],
+        "schema": "KgAnswerJob",
+        "with": {
+          "--status": {
+            "kind": "object",
+            "keys": [
+              "jobs"
+            ],
+            "schema": "KgAnswerJobs"
+          },
+          "--reply": {
+            "kind": "object",
+            "keys": [
+              "kept",
+              "problems"
+            ],
+            "schema": "KgAnswerReplied"
+          }
+        }
+      }
+    },
     "hub kg build": {
       "positionals": [],
       "options": [
@@ -35947,6 +36078,515 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/answers": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Jobs",
+          "description": "The answer jobs of the project, newest first, with their counts.",
+          "operationId": "list_jobs_v1_kg__project__answers_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "default": 20,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgAnswerJobs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Ask",
+          "description": "Ask the questions of a file of the project's graph: a new job, or the job of the same file sent before, which\nasks again only its questions without an agent's reply. Agents answer them in batches as the hub moves the job.",
+          "operationId": "ask_v1_kg__project__answers_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgAnswerAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgAnswerJob"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/answers/{job_id}": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Get Job",
+          "description": "One answer job with its counts.",
+          "operationId": "get_job_v1_kg__project__answers__job_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "job_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the answer job, as `hub kg answer --status` lists it",
+                "title": "Job Id"
+              },
+              "description": "the answer job, as `hub kg answer --status` lists it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgAnswerJob"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/answers/{job_id}/lines": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Job Lines",
+          "description": "The job's answers in the file's order, as answers.jsonl holds them: a question not answered has an error, or\nneither while it waits for a run.",
+          "operationId": "job_lines_v1_kg__project__answers__job_id__lines_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "job_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the answer job, as `hub kg answer --status` lists it",
+                "title": "Job Id"
+              },
+              "description": "the answer job, as `hub kg answer --status` lists it"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "default": 1000,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgAnswerLines"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/answers/{job_id}/replies": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Reply",
+          "description": "The agent of the run asking a batch sends answers, or errors, for questions of its batch; an id sent again\nreplaces its answer. The lines that are not kept come back with why, by position.",
+          "operationId": "reply_v1_kg__project__answers__job_id__replies_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "job_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the answer job, as `hub kg answer --status` lists it",
+                "title": "Job Id"
+              },
+              "description": "the answer job, as `hub kg answer --status` lists it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KgAnswerReply"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgAnswerReplied"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -92059,7 +92699,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -123235,6 +123875,348 @@
           ],
           "title": "JudgeInputs",
           "description": "What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,\nand the project's hidden checks, which no other run reads."
+        },
+        "KgAnswerAsk": {
+          "properties": {
+            "questions": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "minItems": 1,
+              "title": "Questions",
+              "description": "the questions in the file's order: each {id, question}, the id a string or an integer"
+            },
+            "batch": {
+              "type": "integer",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "title": "Batch",
+              "description": "questions asked of one agent run",
+              "default": 50
+            }
+          },
+          "type": "object",
+          "required": [
+            "questions"
+          ],
+          "title": "KgAnswerAsk"
+        },
+        "KgAnswerJob": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "running",
+                "done",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "questions": {
+              "type": "integer",
+              "title": "Questions"
+            },
+            "answered": {
+              "type": "integer",
+              "title": "Answered",
+              "description": "questions with an answer"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors",
+              "description": "questions with an error: from the agent, or from a run that ended without one"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending",
+              "description": "questions no run asked yet"
+            },
+            "asking": {
+              "type": "integer",
+              "title": "Asking",
+              "description": "questions of the run active now, not yet answered"
+            },
+            "batch": {
+              "type": "integer",
+              "title": "Batch",
+              "description": "questions asked of one agent run"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "agent runs queued for the job"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run asking the current batch"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why the next batch waits: no node of the pool fits, another review run"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the job failed"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "again": {
+              "type": "boolean",
+              "title": "Again",
+              "description": "POST only: the same file was sent before, and this is its job",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "state",
+            "questions",
+            "answered",
+            "errors",
+            "pending",
+            "asking",
+            "batch",
+            "runs",
+            "run_id",
+            "note",
+            "error",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "ended_at"
+          ],
+          "title": "KgAnswerJob"
+        },
+        "KgAnswerJobs": {
+          "properties": {
+            "jobs": {
+              "items": {
+                "$ref": "#/components/schemas/KgAnswerJob"
+              },
+              "type": "array",
+              "title": "Jobs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "jobs"
+          ],
+          "title": "KgAnswerJobs"
+        },
+        "KgAnswerLine": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "answer": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer"
+            },
+            "evidence": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evidence",
+              "description": "the node ids or repo:path names the agent read the answer from"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model of the run that asked the question"
+            },
+            "input_tokens": {
+              "type": "integer",
+              "title": "Input Tokens",
+              "description": "its share of the run's input tokens, cache reads and writes included"
+            },
+            "output_tokens": {
+              "type": "integer",
+              "title": "Output Tokens",
+              "description": "its share of the run's output tokens"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why there is no answer: from the agent, or the run that ended without one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "question",
+            "answer",
+            "evidence",
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "error"
+          ],
+          "title": "KgAnswerLine"
+        },
+        "KgAnswerLines": {
+          "properties": {
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/KgAnswerLine"
+              },
+              "type": "array",
+              "title": "Lines"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "questions of the job"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lines",
+            "total",
+            "offset"
+          ],
+          "title": "KgAnswerLines"
+        },
+        "KgAnswerReplied": {
+          "properties": {
+            "kept": {
+              "type": "integer",
+              "title": "Kept",
+              "description": "answers and errors kept"
+            },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "the lines not kept and why, by their position in the reply"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kept",
+            "problems"
+          ],
+          "title": "KgAnswerReplied"
+        },
+        "KgAnswerReply": {
+          "properties": {
+            "answers": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Answers",
+              "description": "each {\"id\", \"answer\", \"evidence\"} or {\"id\", \"error\"}"
+            }
+          },
+          "type": "object",
+          "required": [
+            "answers"
+          ],
+          "title": "KgAnswerReply"
         },
         "KgBuildCoverage": {
           "properties": {

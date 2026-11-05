@@ -11987,5 +11987,33 @@
         "failed": "Thất bại"
       }
     }
+  },
+  "kgAnswers": {
+    "title": "Lượt trả lời #{id}",
+    "intro": "Các câu hỏi gửi bằng evo-agents hub kg answer, được hỏi trên đồ thị tri thức của dự án theo từng lô, mỗi lô là một lượt chạy agent đọc đồ thị. Không có chấm điểm ở đây.",
+    "job": "Lượt trả lời #{id}: {state}",
+    "states": {
+      "running": "đang chạy",
+      "done": "xong",
+      "failed": "thất bại"
+    },
+    "progress": "Câu hỏi đã xong",
+    "ended": "{ended} trên {questions} câu hỏi đã xong",
+    "counts": "{answered} đã trả lời, {errors} lỗi, {asking} đang hỏi, {pending} đang chờ, trên {questions}",
+    "failed": "Lượt trả lời thất bại",
+    "waits": "Lô tiếp theo đang chờ",
+    "download": "Tải answers.jsonl",
+    "downloadSoFar": "Tải các câu trả lời hiện có",
+    "downloaded": "{count, plural, other {Đã lưu # câu trả lời}}",
+    "downloadFailed": "Không tải được các câu trả lời",
+    "facts": {
+      "batch": "Câu hỏi mỗi lượt chạy",
+      "runs": "Lượt chạy",
+      "current": "lượt chạy #{id} đang hỏi",
+      "created": "Đã gửi",
+      "ended": "Kết thúc",
+      "never": "chưa bao giờ",
+      "notYet": "chưa"
+    }
   }
 }

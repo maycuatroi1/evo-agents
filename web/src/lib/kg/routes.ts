@@ -9,7 +9,7 @@ import type { Hops, ReviewRule } from "./types";
  * The knowledge graph's pages: `/p/{project}/kg` (the explorer: `?cluster=` or `?node=` for its scope, `?q=&kind=` for
  * its search), `/p/{project}/kg/builds` (status, commits read, shape and builds), `/p/{project}/kg/node?id=` (one node),
  * `/p/{project}/kg/cluster?id=` (one cluster), `/p/{project}/kg/review` (the review queue) and `/p/{project}/kg/upload`
- * (Upload data); `/projects/new` makes a project from an archive.
+ * (Upload data), `/p/{project}/kg/answers/{id}` (an answer job); `/projects/new` makes a project from an archive.
  */
 export const KG_SEGMENT = "kg";
 
@@ -37,6 +37,11 @@ export function buildsHref(project: string, failed = false): Route {
 /** The Upload data page: an archive sent as a source of the graph, and the reports of the uploads before it. */
 export function uploadHref(project: string): Route {
   return `${projectHref(project, KG_SEGMENT)}/upload` as Route;
+}
+
+/** The progress page of answer job `id` (`evo-agents hub kg answer`), with the download of its answers.jsonl. */
+export function answersHref(project: string, id: number): Route {
+  return `${projectHref(project, KG_SEGMENT)}/answers/${id}` as Route;
 }
 
 /** New project from data: a project made by the hub from the archive uploaded into it. */

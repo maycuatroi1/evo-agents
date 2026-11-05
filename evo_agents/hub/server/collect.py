@@ -78,6 +78,7 @@ from evo_agents.hub.server import (
     audit,
     curator_threads,
     facet_figures,
+    kg_answers,
     kg_health,
     kg_init,
     kg_optimize,
@@ -122,6 +123,7 @@ def _ended_runs(project_id: int, plans: list[str], since: datetime, until: datet
         r.c.project_id == project_id,
         r.c.kind != "local",
         (r.c.plan_id.in_(plans)) | (r.c.kind == "review"),
+        r.c.id.not_in(kg_answers.answer_runs()),  # the runs of answer jobs ask a writer's questions, not the night's
         r.c.finished_at >= since,
         r.c.finished_at < until,
     )
@@ -787,6 +789,9 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
     ).one()
+    answering = await kg_answers.prompt_of(conn, view.id)
+    if answering is not None:  # the run of a batch of an answer job: its questions, never the Curator's prompt
+        return answering
     asking = await kg_init_db.of_questions_run(conn, view.id)
     if asking is not None:  # the run that writes a kg_init run's starter questions: counts only, never an item
         return review.build_review_prompt(
@@ -921,6 +926,11 @@ async def collect(
     except Exception:  # the night shift goes on without telling the end of the uploads' flows
         log.exception("telling the end of the kg uploads' flows failed")
         told = {"failed": 1}
+    try:
+        answered = await kg_answers.advance(engine)
+    except Exception:  # the night shift goes on without moving the answer jobs
+        log.exception("moving the kg answer jobs on failed")
+        answered = {"failed": 1}
     async with engine.begin() as conn:
         due = (await conn.execute(due_schedules(now))).all()
         reopened = await reopen_deferred(conn)
@@ -943,4 +953,6 @@ async def collect(
         found["kg_init"] = initiated
     if told:
         found["kg_pipeline"] = told
+    if answered:
+        found["kg_answers"] = answered
     return found if measured is None else {**found, "graphs": measured}

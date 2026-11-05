@@ -2985,6 +2985,29 @@ evo-agents hub kg upload ./lumen-handbook.zip --project demo   # waits until the
 evo-agents hub kg pipeline --project demo --json
 ```
 
+**Answering a file of questions.** `evo-agents hub kg answer --project P --questions Q.jsonl [--out answers.jsonl]
+[--batch N]` sends a file of at most 5,000 questions, one JSON object a line with `id` (a string or an integer, unique)
+and `question`, to `POST /v1/kg/{project}/answers` (the writer role; `evo_agents/hub/server/kg_answers.py`, the model
+in `evo_agents/hub/kg_answers.py`, tables `kg_answer_jobs` and `kg_answers` of migration 0207). The hub keeps them as a
+job and asks them in batches of N (50 by default, at most 200): each batch is a review run without a repo on the
+project's KG pool, under the charter's review cost cap, whose Claude Code agent reads the graph with kg_search,
+kg_context, kg_node and kg_more within the clearance of the agents' sink and sends its answers back with
+`hub kg answer --job J --reply FILE`. One batch runs at a time, as one review run of a project is active at a time;
+`curator.collect` queues the next one each minute. A question the run ended without answering keeps an error. The CLI
+prints the job's page and a line each time its counts change, then writes `--out` in the file's order, each line
+`id`, `question`, `answer`, `evidence`, `model`, `input_tokens` and `output_tokens` (the run's usage split evenly over
+its questions, cache tokens counted as input), and `error` for a question with no answer; it exits 1 when the job
+failed (no pool took its next batch for 24 hours). Sending the same file again asks only the questions no agent
+answered. `--no-wait` returns once the hub kept the file, `--job J` follows job J and writes its answers, and `--status`
+lists the project's jobs with their questions, answered, errors and state. The page `/p/{project}/kg/answers/{id}`
+shows the job while it runs and downloads answers.jsonl. Nothing is scored: the questions never join the project's
+eval set, and answer runs stay out of the Curator's prompt and figures.
+
+```sh
+evo-agents hub kg answer --project demo --questions questions.jsonl --out answers.jsonl
+evo-agents hub kg answer --project demo --status
+```
+
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
 graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is

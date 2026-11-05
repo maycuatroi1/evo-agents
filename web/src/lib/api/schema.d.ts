@@ -1765,6 +1765,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Jobs
+         * @description The answer jobs of the project, newest first, with their counts.
+         */
+        get: operations["list_jobs_v1_kg__project__answers_get"];
+        put?: never;
+        /**
+         * Ask
+         * @description Ask the questions of a file of the project's graph: a new job, or the job of the same file sent before, which
+         *     asks again only its questions without an agent's reply. Agents answer them in batches as the hub moves the job.
+         */
+        post: operations["ask_v1_kg__project__answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/answers/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job
+         * @description One answer job with its counts.
+         */
+        get: operations["get_job_v1_kg__project__answers__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/answers/{job_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Lines
+         * @description The job's answers in the file's order, as answers.jsonl holds them: a question not answered has an error, or
+         *     neither while it waits for a run.
+         */
+        get: operations["job_lines_v1_kg__project__answers__job_id__lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/answers/{job_id}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply
+         * @description The agent of the run asking a batch sends answers, or errors, for questions of its batch; an id sent again
+         *     replaces its answer. The lines that are not kept come back with why, by position.
+         */
+        post: operations["reply_v1_kg__project__answers__job_id__replies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/uploads/{upload_id}/parts/{number}": {
         parameters: {
             query?: never;
@@ -23170,6 +23257,175 @@ export interface components {
             knowledge?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** KgAnswerAsk */
+        KgAnswerAsk: {
+            /**
+             * Questions
+             * @description the questions in the file's order: each {id, question}, the id a string or an integer
+             */
+            questions: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Batch
+             * @description questions asked of one agent run
+             * @default 50
+             */
+            batch: number;
+        };
+        /** KgAnswerJob */
+        KgAnswerJob: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed";
+            /** Questions */
+            questions: number;
+            /**
+             * Answered
+             * @description questions with an answer
+             */
+            answered: number;
+            /**
+             * Errors
+             * @description questions with an error: from the agent, or from a run that ended without one
+             */
+            errors: number;
+            /**
+             * Pending
+             * @description questions no run asked yet
+             */
+            pending: number;
+            /**
+             * Asking
+             * @description questions of the run active now, not yet answered
+             */
+            asking: number;
+            /**
+             * Batch
+             * @description questions asked of one agent run
+             */
+            batch: number;
+            /**
+             * Runs
+             * @description agent runs queued for the job
+             */
+            runs: number;
+            /**
+             * Run Id
+             * @description the run asking the current batch
+             */
+            run_id: number | null;
+            /**
+             * Note
+             * @description why the next batch waits: no node of the pool fits, another review run
+             */
+            note: string | null;
+            /**
+             * Error
+             * @description why the job failed
+             */
+            error: string | null;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Again
+             * @description POST only: the same file was sent before, and this is its job
+             * @default false
+             */
+            again: boolean;
+        };
+        /** KgAnswerJobs */
+        KgAnswerJobs: {
+            /** Jobs */
+            jobs: components["schemas"]["KgAnswerJob"][];
+        };
+        /** KgAnswerLine */
+        KgAnswerLine: {
+            /** Id */
+            id: string;
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string | null;
+            /**
+             * Evidence
+             * @description the node ids or repo:path names the agent read the answer from
+             */
+            evidence: string[];
+            /**
+             * Model
+             * @description the model of the run that asked the question
+             */
+            model: string | null;
+            /**
+             * Input Tokens
+             * @description its share of the run's input tokens, cache reads and writes included
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @description its share of the run's output tokens
+             */
+            output_tokens: number;
+            /**
+             * Error
+             * @description why there is no answer: from the agent, or the run that ended without one
+             */
+            error: string | null;
+        };
+        /** KgAnswerLines */
+        KgAnswerLines: {
+            /** Lines */
+            lines: components["schemas"]["KgAnswerLine"][];
+            /**
+             * Total
+             * @description questions of the job
+             */
+            total: number;
+            /** Offset */
+            offset: number;
+        };
+        /** KgAnswerReplied */
+        KgAnswerReplied: {
+            /**
+             * Kept
+             * @description answers and errors kept
+             */
+            kept: number;
+            /**
+             * Problems
+             * @description the lines not kept and why, by their position in the reply
+             */
+            problems: string[];
+        };
+        /** KgAnswerReply */
+        KgAnswerReply: {
+            /**
+             * Answers
+             * @description each {"id", "answer", "evidence"} or {"id", "error"}
+             */
+            answers: {
+                [key: string]: unknown;
+            }[];
         };
         /** KgBuildCoverage */
         KgBuildCoverage: {
@@ -49775,6 +50031,360 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_v1_kg__project__answers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgAnswerJobs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_v1_kg__project__answers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KgAnswerAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgAnswerJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_job_v1_kg__project__answers__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the answer job, as `hub kg answer --status` lists it */
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgAnswerJob"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    job_lines_v1_kg__project__answers__job_id__lines_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description the answer job, as `hub kg answer --status` lists it */
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgAnswerLines"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reply_v1_kg__project__answers__job_id__replies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the answer job, as `hub kg answer --status` lists it */
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KgAnswerReply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgAnswerReplied"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

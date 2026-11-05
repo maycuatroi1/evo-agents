@@ -17,7 +17,9 @@ session or a run with what the agent opened after it, under the label of the ses
 retrieval question set (``evo_agents.hub.server.kg_eval_sets``), as ``tables.kg_eval_sets``. kg_optimize_runs (0182)
 holds each run of the KG optimize loop (``evo_agents.hub.server.kg_optimize``), as ``tables.kg_optimize_runs``.
 kg_uploads (0200) holds each archive a writer sends as a source with ``hub kg upload``
-(``evo_agents.hub.server.kg_uploads``), as ``tables.kg_uploads``.
+(``evo_agents.hub.server.kg_uploads``), as ``tables.kg_uploads``. kg_answer_jobs and kg_answers (0207) hold each
+file of questions sent with ``hub kg answer`` and each of its questions with the agent's answer
+(``evo_agents.hub.server.kg_answers``), as ``tables.kg_answer_jobs`` and ``tables.kg_answers``.
 """
 
 from __future__ import annotations
@@ -548,6 +550,62 @@ def uploads(metadata: MetaData) -> Table:
         postgresql_where=table.c.state == "uploading",
     )
     return table
+
+
+ANSWER_STATES = ("running", "done", "failed")  # of an answer job of `hub kg answer`
+
+
+def answer_tables(metadata: MetaData) -> tuple[Table, Table]:
+    """(kg_answer_jobs, kg_answers) (0207), added to ``metadata``: each file of questions a writer sends with ``hub kg
+    answer`` (``evo_agents.hub.server.kg_answers``), with the digest a second send finds it by, its batch size, the run
+    asking its current batch and its state; and each question of a job at its position, with its id, the run that asked
+    it and the agent's answer and evidence, or the error it ended with."""
+    jobs_name, name = "kg_answer_jobs", "kg_answers"
+    jobs = Table(
+        jobs_name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("created_by", BigInteger),
+        Column("digest", Text, nullable=False),
+        Column("questions", Integer, nullable=False),
+        Column("batch_size", Integer, nullable=False),
+        Column("state", Text, nullable=False),
+        Column("run_id", BigInteger),
+        Column("runs", Integer, nullable=False, server_default="0"),
+        _when("waiting_since"),
+        Column("note", Text),
+        Column("error", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        _when("ended_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{jobs_name}_project_id_fkey"),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{jobs_name}_created_by_fkey"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name=f"{jobs_name}_run_id_fkey"),
+        PrimaryKeyConstraint("id", name=f"{jobs_name}_pkey"),
+        CheckConstraint(column("state").in_(ANSWER_STATES), name=f"{jobs_name}_state_check"),
+        Index(f"{jobs_name}_project_idx", "project_id", "id"),
+    )
+    answers = Table(
+        name,
+        metadata,
+        Column("job_id", BigInteger, nullable=False),
+        Column("position", Integer, nullable=False),
+        Column("qid", Text, nullable=False),
+        Column("question", Text, nullable=False),
+        Column("run_id", BigInteger),
+        Column("answer", Text),
+        Column("evidence", JSONB, nullable=False, server_default="[]"),
+        Column("error", Text),
+        _when("asked_at"),
+        _when("replied_at"),
+        ForeignKeyConstraint(["job_id"], [f"{jobs_name}.id"], ondelete="CASCADE", name=f"{name}_job_id_fkey"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_run_id_fkey"),
+        PrimaryKeyConstraint("job_id", "position", name=f"{name}_pkey"),
+        UniqueConstraint("job_id", "qid", name=f"{name}_job_id_qid_key"),
+        Index(f"{name}_run_idx", "run_id"),
+    )
+    return jobs, answers
 
 
 def kg_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:

@@ -169,6 +169,7 @@ TABLES |= {"kg_settings", "kg_settings_changes"}  # migration 0196
 TABLES |= {"kg_init_runs"}  # migration 0197
 TABLES |= {"kg_uploads"}  # migration 0200
 TABLES |= {"plugin_cron"}  # migration 0203
+TABLES |= {"kg_answer_jobs", "kg_answers"}  # migration 0207
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -259,8 +260,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_twenty_three_tables(hub_db):
-    assert len(TABLES) == 223  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_twenty_five_tables(hub_db):
+    assert len(TABLES) == 225  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5660,6 +5661,39 @@ def test_0204_keeps_the_last_minute_of_plugin_jobs_in_one_row_and_going_back_dro
     move_to(hub_db, "0203", down=True)
     assert "plugin_cron" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0204") :]
+
+
+def test_0207_keeps_answer_jobs_and_their_questions_once_each_and_going_back_drops_both(hub_db):
+    move_to(hub_db, "0206")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0207")
+    j, a = hub_tables.kg_answer_jobs, hub_tables.kg_answers
+    job = {
+        "project_id": ids["project"],
+        "created_by": ids["user"],
+        "digest": "d" * 64,
+        "questions": 2,
+        "batch_size": 50,
+    }
+    with live.connect(hub_db) as conn:
+        job_id = one(conn, insert(j).values({**job, "state": "running"}).returning(j.c.id))
+        conn.execute(insert(a), [{"job_id": job_id, "position": n, "qid": f"q{n}", "question": "?"} for n in range(2)])
+    assert query(hub_db, select(j.c.state, j.c.runs, j.c.run_id)) == [("running", 0, None)]
+    assert query(hub_db, select(a.c.qid, a.c.evidence, a.c.answer).order_by(a.c.position)) == [
+        ("q0", [], None),
+        ("q1", [], None),
+    ]
+    with live.connect(hub_db) as conn, pytest.raises(errors.UniqueViolation):
+        conn.execute(insert(a).values(job_id=job_id, position=2, qid="q0", question="?"))  # an id once a job
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(j).values({**job, "state": "lost"}))
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(j).where(j.c.id == job_id))
+    assert query(hub_db, select(func.count()).select_from(a)) == [(0,)]  # a job's questions go with it
+    move_to(hub_db, "0206", down=True)
+    assert not {"kg_answer_jobs", "kg_answers"} & tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0207") :]
 
 
 @pytest.mark.parametrize(

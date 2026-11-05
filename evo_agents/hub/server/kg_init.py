@@ -212,49 +212,43 @@ def _coverage_text(coverage) -> dict:
     }
 
 
-async def _queue_agent(
-    conn: AsyncConnection, ctx, body: dict, measures: dict | None, lens: str = "kg_init"
-) -> int | None:
-    """Queue the review run of ``ctx`` through ``lens`` (kg_init, or kg_questions for the run that writes its starter
-    questions first); its id, or None with why in ``body["notes"]``."""
+async def queue_repoless(
+    conn: AsyncConnection, project_id: int, project: str, who: int, title: str, notes: list, *, repos: bool = True
+):
+    """Queue a review run of ``project`` titled ``title``, dispatched by user ``who``, on its KG pool
+    (``night_duty.kg_duty``) under the charter's review cost cap, with no repo but those the node holds (none with
+    ``repos`` False): (its id, its caps), or None with why in ``notes``."""
     from evo_agents.hub.server.collect import review_place
     from evo_agents.hub.server.night_duty import kg_duty, pool_empty
-    from evo_agents.hub.server.run_state import notify_queued, write_event
     from evo_agents.hub.server.runs.service.dispatch import insert_run
 
-    who = await _asker(conn, ctx)
-    if who is None:
-        body.setdefault("notes", []).append("no review run: the project has no admin to dispatch it as")
-        return None
     c = tables.charters
     charter = (
-        await conn.execute(
-            select(c.c.body).where(c.c.project_id == ctx.project_id).order_by(c.c.revision.desc()).limit(1)
-        )
+        await conn.execute(select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1))
     ).scalar_one_or_none() or {}
-    due = SimpleNamespace(project_id=ctx.project_id, project=ctx.project)
+    due = SimpleNamespace(project_id=project_id, project=project)
     duty, why = await kg_duty(conn, due)
     if duty is None:
-        body.setdefault("notes", []).append(f"no review run: {why}")
+        notes.append(f"no review run: {why}")
         return None
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
-    repos, problems = await review_place(conn, due, duty, runtime, repoless=True)
+    found, problems = await review_place(conn, due, duty, runtime, repoless=True)
     if problems and duty.shared:  # no node of the shared KG pool fits it: the agent's pool is still empty
-        await pool_empty(conn, ctx.project_id)
+        await pool_empty(conn, project_id)
     if problems:
-        body.setdefault("notes", []).append("no review run: " + "; ".join(problems))
+        notes.append("no review run: " + "; ".join(problems))
         return None
     caps = kg_init.budget(charter)
     if caps["max_usd"] < curator.MIN_RUN_USD:
-        body.setdefault("notes", []).append("no review run: the review cost cap leaves no money")
+        notes.append("no review run: the review cost cap leaves no money")
         return None
     values = {
         "kind": "review",
-        "project_id": ctx.project_id,
+        "project_id": project_id,
         "plan_id": None,
-        "title": f"KG init of {ctx.project}" if lens == "kg_init" else f"KG starter questions of {ctx.project}",
+        "title": title,
         "plan_revision": None,
-        "dispatched_by": who[0],
+        "dispatched_by": who,
         "dispatched_via": "machine",
         "pinned_worker_id": None,
         "selector": duty.columns()["selector"],
@@ -265,7 +259,7 @@ async def _queue_agent(
         "mode": "headless",
         "approval": "auto",
         "timeout_s": caps["max_seconds"] + curator.BUDGET_GRACE_SECONDS,
-        "repos": repos or null(),  # SQL NULL: a project fed by uploads alone has no repo (schema 0202)
+        "repos": (found if repos else None) or null(),  # SQL NULL: no repo (schema 0202)
         "budget": caps,
     }
     try:
@@ -273,9 +267,28 @@ async def _queue_agent(
             run_id = await insert_run(conn, values)
     except IntegrityError as exc:
         if isinstance(exc.orig, psycopg.errors.UniqueViolation):
-            body.setdefault("notes", []).append("no review run: another review run of the project is active")
+            notes.append("no review run: another review run of the project is active")
             return None
         raise
+    return run_id, caps
+
+
+async def _queue_agent(
+    conn: AsyncConnection, ctx, body: dict, measures: dict | None, lens: str = "kg_init"
+) -> int | None:
+    """Queue the review run of ``ctx`` through ``lens`` (kg_init, or kg_questions for the run that writes its starter
+    questions first); its id, or None with why in ``body["notes"]``."""
+    from evo_agents.hub.server.run_state import notify_queued, write_event
+
+    who = await _asker(conn, ctx)
+    if who is None:
+        body.setdefault("notes", []).append("no review run: the project has no admin to dispatch it as")
+        return None
+    title = f"KG init of {ctx.project}" if lens == "kg_init" else f"KG starter questions of {ctx.project}"
+    queued = await queue_repoless(conn, ctx.project_id, ctx.project, who[0], title, body.setdefault("notes", []))
+    if queued is None:
+        return None
+    run_id, caps = queued
     text = (
         f"Queued for KG init run #{ctx.id} of project {ctx.project}, {kg_init.CALLED.format(who=who[1])}: lens "
         f"{lens}; cost cap {curator.money(caps['max_usd'])}, {caps['max_turns']} turns, "
