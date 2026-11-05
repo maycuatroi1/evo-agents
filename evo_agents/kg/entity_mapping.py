@@ -237,9 +237,11 @@ def quoted(value) -> tuple[str, list[str]]:
 
 def quote_line(text: str | None, quotes: list[str]) -> int | None:
     """The line of ``text`` (from 1) the first of ``quotes`` it holds starts on; None when it holds none of them."""
+    if not text:
+        return None
     for quote in quotes:
         words = quote.split()
-        found = re.search(r"\s+".join(map(re.escape, words[:8])), text) if text and words else None
+        found = re.search(r"\s+".join(map(re.escape, words[:8])), text) if words else None
         if found:
             return text.count("\n", 0, found.start()) + 1
     return None
