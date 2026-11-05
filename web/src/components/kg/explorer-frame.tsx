@@ -128,19 +128,23 @@ export function Workspace({
   inspector,
   announcement,
   status,
+  toolbar,
 }: {
   search: ReactNode;
   rail: ReactNode;
   trail: ReactNode;
-  layout: ExplorerLayout;
-  onLayout: (layout: ExplorerLayout) => void;
-  scope: Scope["kind"];
+  layout?: ExplorerLayout;
+  onLayout?: (layout: ExplorerLayout) => void;
+  /** The cluster explorer's scope, or the Entities view, which has no layouts to choose and brings its `toolbar`. */
+  scope: Scope["kind"] | "entities";
   canvas: ReactNode;
   legend: ReactNode;
   inspector: ReactNode | null;
   announcement: string;
   /** A short line beside the trail while something loads ("Reading neighbours"). */
   status?: string | null;
+  /** A row of controls under the canvas's bar (the Entities view's depth, node count and edge labels). */
+  toolbar?: ReactNode;
 }) {
   const t = useTranslations("kg.explorer");
   const frame = useRef<HTMLDivElement>(null);
@@ -154,7 +158,7 @@ export function Workspace({
     if (document.fullscreenElement) void document.exitFullscreen();
     else void frame.current?.requestFullscreen?.();
   };
-  const layouts = SCOPE_LAYOUTS[scope];
+  const layouts = scope === "entities" ? [] : SCOPE_LAYOUTS[scope];
   return (
     <div
       ref={frame}
@@ -182,7 +186,7 @@ export function Workspace({
               {status}
             </span>
           ) : null}
-          {layouts.length > 1 ? (
+          {layouts.length > 1 && layout && onLayout ? (
             <Segmented
               label={t("layout")}
               value={layout}
@@ -203,6 +207,7 @@ export function Workspace({
             {full ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
           </Button>
         </div>
+        {toolbar ? <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2">{toolbar}</div> : null}
         <div className="relative h-[62vh] min-h-[22rem] bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:18px_18px] lg:h-auto lg:min-h-0 lg:flex-1">
           {canvas}
           <div className="pointer-events-none absolute bottom-3 left-3 flex">{legend}</div>

@@ -26,7 +26,7 @@ const PROPS_SHOWN = 6;
 const HIDDEN_PROPS = new Set(["source", "uri", "deprecated"]);
 
 /** The inspector's frame: what it is about, a close button, then its scrolling content. */
-function Frame({ overline, onClose, children, testId }: { overline: string; onClose: () => void; children: ReactNode; testId: string }) {
+export function Frame({ overline, onClose, children, testId }: { overline: string; onClose: () => void; children: ReactNode; testId: string }) {
   const t = useTranslations("kg.explorer.inspector");
   return (
     <aside aria-label={t("label")} className="flex min-h-0 flex-col" data-testid={testId}>
@@ -41,7 +41,7 @@ function Frame({ overline, onClose, children, testId }: { overline: string; onCl
   );
 }
 
-function Heading({ children, testId }: { children: ReactNode; testId?: string }) {
+export function Heading({ children, testId }: { children: ReactNode; testId?: string }) {
   return (
     <h2 className="text-[15px] leading-[22px] font-semibold [overflow-wrap:anywhere]" data-testid={testId}>
       {children}
@@ -49,7 +49,7 @@ function Heading({ children, testId }: { children: ReactNode; testId?: string })
   );
 }
 
-function SubTitle({ children }: { children: ReactNode }) {
+export function SubTitle({ children }: { children: ReactNode }) {
   return <h3 className="text-xs font-medium text-muted-foreground">{children}</h3>;
 }
 
