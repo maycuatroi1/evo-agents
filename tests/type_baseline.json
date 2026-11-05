@@ -15820,16 +15820,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/kg_eval_sets.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 58,
-                    "endColumn": 89,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/kg_health.py": [
             {
                 "code": "reportArgumentType",
