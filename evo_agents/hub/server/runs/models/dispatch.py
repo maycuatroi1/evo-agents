@@ -31,6 +31,7 @@ from evo_agents.hub.server.runs.models.limits import (
 from evo_agents.hub.server.runs.models.placement import HubPlaced, RunPlacement
 from evo_agents.hub.server.runs.models.routing import RoutingRecord
 from evo_agents.hub.server.runs.models.run_parts import RunAutonomy, RunBudget, RunRepo
+from evo_agents.hub.server.runs.models.spend import RunSpend
 from evo_agents.plugins.config import MAX_LAYER_BYTES
 
 
@@ -260,6 +261,11 @@ class Run(RunPlacement):
     verify: list | None
     evidence: str | None
     usage: dict | None
+    spend: RunSpend | None = Field(
+        None,
+        description="what the run spent itself, by model, from its usage reports as they came: while it runs, waits "
+        "or is parked too, and only its own share of a session it went on in; null before its first report",
+    )
     plan_progress: PlanProgress | None = Field(
         None, description="a plan run's plan progress, set in a list of runs; null for any other run"
     )

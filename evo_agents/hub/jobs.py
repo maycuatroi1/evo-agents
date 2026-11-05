@@ -51,6 +51,7 @@ PRUNE_TRANSCRIPTS = "hub.prune_transcripts"  # daily: the content of transcripts
 PRUNE_SIGNALS = "hub.prune_signals"  # daily: signals measured more than EVO_HUB_SIGNAL_DAYS ago
 ANALYZE_FACETS = "hub.analyze_facets"  # every 5 minutes: the facet of each new transcript, digest and ended run
 INDEX_HISTORY = "hub.index_history"  # every 5 minutes: the words of each new part of a transcript and ended run
+RECORD_SPEND = "hub.record_spend"  # every minute: the spend of runs no usage report recorded yet, oldest first
 CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open

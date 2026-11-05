@@ -11,11 +11,12 @@ from fastapi import HTTPException
 from sqlalchemy import BigInteger, and_, bindparam, case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, runs, tables
+from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import ActiveRun, ReadySteps, Run, SteadyWait, StepReadiness
+from evo_agents.hub.server.runs.models.spend import run_spend_view
 from evo_agents.hub.server.security import Principal
 
 STEADY = timedelta(seconds=runs.STEADY_SECONDS)
@@ -186,10 +187,19 @@ async def with_overlap(conn: AsyncConnection, views: list[Run]) -> list[Run]:
     return views
 
 
+async def with_spend(conn: AsyncConnection, views: list[Run]) -> list[Run]:
+    """``views`` with Run.spend set from the hub's ledger of their usage reports (``spend_store``)."""
+    found = await spend_store.spend_of(conn, [view.id for view in views])
+    for view in views:
+        summary = found.get(view.id)
+        view.spend = run_spend_view(summary) if summary is not None else None
+    return views
+
+
 async def run_views(conn: AsyncConnection, run_ids: list[int]) -> list[Run]:
     r = tables.runs
     views = runs_of(await conn.execute(run_select().where(r.c.id.in_(list(run_ids))).order_by(r.c.id)))
-    return await with_overlap(conn, views)
+    return await with_spend(conn, await with_overlap(conn, views))
 
 
 async def run_view(conn: AsyncConnection, run_id: int) -> Run:

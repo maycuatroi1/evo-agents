@@ -13,6 +13,8 @@ current:
   the event holding a reference to each image instead of its base64, and go to the hub from a sender in the
   background (``evo_agents.hub.local_outputs``, ``evo_agents.hub.local_send``);
 - ``stop`` (the Stop hook of ``evo_agents.hub.hooks`` calls ``on_stop``): the last words, then ``idle``;
+- ``local-tool`` and ``stop`` also send what the session spent since the last hook, from the transcript's usage and
+  Claude Code's ``cost-state`` lines (``evo_agents.hub.local_usage``), so the run shows its tokens and cost by model;
 - ``session-end`` (the SessionEnd hook of ``evo_agents.hub.hooks`` calls ``on_session_end`` once it pushed the
   session's digest): ``ended``;
 - ``local-ask`` (PreToolUse of AskUserQuestion): each question of the dialog is put to the hub as a decision of the
@@ -76,7 +78,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
-from evo_agents.hub import digest, hooks, local_outputs
+from evo_agents.hub import digest, hooks, local_outputs, local_usage
 from evo_agents.hub.client import Hub, HubError, hub_dir, load_credentials, transient
 from evo_agents.hub.local_delivery import MAX_ASKS, Delivery, Late
 from evo_agents.hub.local_store import Store, cut, directory, locked, read_record
@@ -359,6 +361,7 @@ def _hook_events(hook: str, payload: dict, rec: dict, found: local_outputs.Found
     transcript = _absolute(payload.get("transcript_path"))
     if hook in ("tool", "stop") and transcript:
         events += [("agent_message_chunk", {"text": cut(t, TEXT_CHARS)}) for t in agent_words(rec, Path(transcript))]
+        events += local_usage.usage_events(rec, Path(transcript), str(payload.get("session_id") or ""))
     if hook == "tool":
         events += tool_events(payload, found)
     if hook == "user-prompt" and rec.get("offset") is None and transcript:
@@ -546,6 +549,7 @@ def _end_turn(rec: dict, sid: str, token: str) -> None:
     if transcript is not None:
         words = agent_words(rec, transcript)
         _append(rec, [("agent_message_chunk", {"text": cut(t, TEXT_CHARS)}) for t in words], token)
+        _append(rec, local_usage.usage_events(rec, transcript, sid), token)
     rec["wanted"] = "idle"
 
 

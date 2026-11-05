@@ -13,6 +13,7 @@ import { RunDetails, RunResult } from "./run-facts";
 import type { RunViewer } from "./run-model";
 import { RunPlanSteps } from "./run-plan-steps";
 import { RunSessions } from "./run-sessions";
+import { RunSpend } from "./run-spend";
 import { UsageMeter } from "./usage-meter";
 
 /**
@@ -41,7 +42,7 @@ export function RunSide({
   owner: boolean;
   events: RunEvent[];
   flat: boolean;
-  /** A local run's own details (LocalRunDetails) in place of the run's; such a run has no usage, result or leases. */
+  /** A local run's own details (LocalRunDetails) in place of the run's, with what it spent; it has no result or leases. */
   details?: ReactNode;
 }) {
   const plan = run.kind === "plan";
@@ -49,6 +50,7 @@ export function RunSide({
     return (
       <div className={cn("relative grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1", flat && FLAT_SECTIONS)} data-testid="run-side">
         {details}
+        <RunSpend run={run} />
       </div>
     );
   }
@@ -70,6 +72,7 @@ export function RunSide({
         }
       />
       <UsageMeter run={run} events={events} />
+      <RunSpend run={run} />
       {plan && run.session_per_step ? <RunSessions run={run} /> : null}
       <RunResult run={run} />
     </div>

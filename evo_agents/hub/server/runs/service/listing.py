@@ -26,6 +26,7 @@ from evo_agents.hub.server.runs.service.views import (
     runs_of,
     sees_unplanned,
     visible_plans,
+    with_spend,
 )
 from evo_agents.hub.server.security import Principal
 
@@ -243,6 +244,7 @@ async def run_list(
         page = runs_of(await conn.execute(page_query, bound))
         counts = {row.state: row.runs for row in await conn.execute(counts_query, bound)}
         page = await _with_progress(conn, access.project_id, page)
+        page = await with_spend(conn, page)
     wanted = states or runs.SHOWN_STATES
     return RunList(
         runs=page,

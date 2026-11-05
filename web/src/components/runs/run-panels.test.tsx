@@ -11,6 +11,7 @@ import type { RunMove } from "./log-model";
 import type { Run, RunEvent } from "./queries";
 import { RunNotes } from "./run-notes";
 import { RunSessions } from "./run-sessions";
+import { RunSpend } from "./run-spend";
 import type { RunControls } from "./run-model";
 import { RunTimeline } from "./run-timeline";
 import { UsageMeter } from "./usage-meter";
@@ -64,6 +65,49 @@ describe("UsageMeter", () => {
     first.unmount();
     renderVi(<UsageMeter run={{ ...run, state: "failed" } as Run} events={[]} />);
     expect(screen.queryByTestId("run-usage")).toBeNull();
+  });
+});
+
+describe("RunSpend", () => {
+  const tokens = (input: number, output: number, cacheRead = 0, cacheWrite = 0) => ({
+    input,
+    output,
+    cache_read: cacheRead,
+    cache_write: cacheWrite,
+    cache_write_1h: 0,
+    reasoning: 0,
+    total: input + output + cacheRead + cacheWrite,
+  });
+  const spend = {
+    tokens: tokens(30, 2000, 1_000_000, 5000),
+    cost_usd: 1.25,
+    reported_usd: 1.2,
+    estimated_usd: 0.05,
+    sessions: 2,
+    updated_at: "2026-11-06T03:00:00Z",
+    models: [
+      { model: "claude-opus-5-5", tokens: tokens(20, 1900, 1_000_000, 5000), cost_usd: 1.2, reported_usd: 1.2, estimated_usd: null },
+      { model: "claude-haiku-5-5", tokens: tokens(10, 100), cost_usd: 0.05, reported_usd: null, estimated_usd: 0.05 },
+    ],
+  };
+
+  it("says what a running run spent so far by model, reported and estimated apart", () => {
+    renderVi(<RunSpend run={{ state: "running", spend } as unknown as Run} />);
+    const card = screen.getByTestId("run-spend");
+    expect(within(card).getByTestId("run-spend-cost")).toHaveTextContent("1,25");
+    expect(card).toHaveTextContent("runtime báo và ước tính");
+    expect(card).toHaveTextContent("2 phiên");
+    expect(within(card).getByTestId("run-spend-split")).toHaveTextContent("theo runtime báo");
+    const models = within(card).getByTestId("run-spend-models").querySelectorAll("li");
+    expect([...models].map((item) => item.getAttribute("data-model"))).toEqual(["claude-opus-5-5", "claude-haiku-5-5"]);
+    expect(models[0]).toHaveTextContent("đọc cache 1.000.000");
+    expect(models[1]).toHaveTextContent("ước tính theo giá niêm yết");
+    expect(card).toHaveTextContent("đến giờ");
+  });
+
+  it("is not there before the hub took in a usage report", () => {
+    renderVi(<RunSpend run={{ state: "running", spend: null } as unknown as Run} />);
+    expect(screen.queryByTestId("run-spend")).toBeNull();
   });
 });
 
