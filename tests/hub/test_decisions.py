@@ -574,6 +574,18 @@ def test_autonomy_gate_holds_plan_and_author_runs_alone_and_the_scope_words_ask_
     admit_ask(7, "plan", body, None)  # no card: as before
     chat = DecisionAsk(category="triage", question="May I merge into main?", options=OPTIONS)
     admit_ask(7, "chat", chat, made)
+    for category in ("access", "credential", "spend_money", "external_send", "delete_data"):  # run #1675 asked access
+        question = DecisionAsk(category=category, question="Will you merge PR #462 by hand?", options=OPTIONS)
+        with pytest.raises(HTTPException) as refused:
+            admit_ask(7, "plan", question, made)
+        assert refused.value.status_code == 409 and "Every class of action is yours" in refused.value.detail, category
+    for category in ("architecture", "scope"):
+        admit_ask(7, "plan", DecisionAsk(category=category, question="Keep the v1 route?", options=OPTIONS), made)
+    asking = autonomy_card.card(at_level("A3"), autonomy_card.Who(OWNER, "lead", "unit"))
+    kept = [name for name in asking.categories if name not in autonomy_card.FREE_CATEGORIES]
+    assert kept, asking.categories
+    for category in kept:  # a class the card leaves to ask is asked as before
+        admit_ask(7, "plan", DecisionAsk(category=category, question="Go ahead?", options=OPTIONS), asking)
     asked_class = autonomy_card.asked_class
     assert asked_class("scope", "Is it okay to merge this into the default branch?") == "K5"
     assert asked_class("scope", "Có được merge vào nhánh mặc định không?") == "K5"

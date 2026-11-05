@@ -15,8 +15,10 @@ for an author run that has put no plan yet. It answers 201 with the decision, wh
 ``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
 decision without a plan names the author run and its title instead. A run has at most MAX_OPEN_DECISIONS open at once
 (409). A plan run or an author run whose autonomy card leaves merging (K5) or deploying and releasing (K6) to its
-agent gets 409 for a question of category merge or deploy, or a scope question asking leave to do it, and the reason
-quotes the card's rule (``admit_ask``, ``autonomy_card.left_to_agent``); a run without a snapshot asks as before.
+agent gets 409 for a question of category merge or deploy, or a scope question asking leave to do it, and so does a
+question in the category of any other class its card has auto (``autonomy_card.category_left_to_agent``: run
+#1675 asked under access to merge, at A5); the reason quotes the card's rule (``admit_ask``,
+``autonomy_card.left_to_agent``); a run without a snapshot asks as before.
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
 their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
@@ -473,7 +475,9 @@ def admit_ask(run_id: int, kind: str, body: DecisionAsk, card: autonomy_card.Car
     if refusal is not None:
         log.info("decision refused: credential in prose", extra={"run_id": run_id, "category": body.category})
         raise HTTPException(422, f"run {run_id}: {refusal}")
-    left = autonomy_card.left_to_agent(card, body.category, body.question)
+    left = autonomy_card.left_to_agent(card, body.category, body.question) or autonomy_card.category_left_to_agent(
+        card, body.category
+    )
     if left is not None:
         klass, rule = left
         log.info(
