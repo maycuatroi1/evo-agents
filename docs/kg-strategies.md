@@ -74,7 +74,8 @@ settings:
   item whose label the sink does not clear is not sent: `coverage["entities"]["refused"]` lists the items and why.
 - What the model states is cut to the node kinds and relations the mapping lists and the ontology holds. Each node
   and edge has the status `extracted`, below `resolved` in rank and left out of impact, and carries the model's name. An
-  edge `mentions` joins the document to each entity.
+  edge `mentions` joins the document to each entity. `kg_search` and `kg_context` answer a matched entity with the
+  documents that mention it, the entity named as their reason (docs/kg.md, Search).
 - The answers of all items are read together (`evo_agents/kg/entity_links.py`). Names of one kind that differ only in
   case, accents, spaces, punctuation or number, or that the model gave as `aliases` of each other, are one node; it
   takes the name of the most public item that stated it. An entity whose name or alias names exactly one Symbol or File

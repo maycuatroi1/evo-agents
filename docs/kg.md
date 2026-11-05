@@ -331,6 +331,13 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
   may see: a search that finds a step or a page of the docs also names the code they point at.
+- An entity node (one the entities step stated, docs/kg-strategies.md) never takes a document's place in `kg_search`
+  or among the seeds of `kg_context` (`search.through_entities`): an entity the query matches puts up to three
+  documents that mention it, through edges and nodes the sink may see, at its rank (those the search ranked itself
+  first; the others by the edge's confidence, only when 20 or fewer mention it), and the entities come after every
+  other result. Such a document names the entity on its line (` entity Name` in kg_search, `seed [id] for entity id`
+  in kg_context; `entities`, document id to entity ids, in both structured results). A graph without the entities
+  step ranks as before.
 - Each result `kg_search` found by its words that holds only some of the query's words says how many its name, path
   or body holds whole (` words=2/3` on its line; `matched` in the structured result counts them all), and a query of
   two words or more whose results hold none of them all says so under the header (`no result holds all N words of the

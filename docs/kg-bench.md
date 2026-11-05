@@ -591,6 +591,27 @@ the bench venv lacks. `literature` was not run because its extraction does not f
 
 The code sets are untouched: `kg bench` without a set name still runs the four.
 
+**Entities that no longer take a document's slot, `bench/results/entity-results.json`** (plan kg-zip-to-answers,
+step 3). Since then a matched entity gives its rank in `kg_search` to up to three documents that mention it
+(docs/kg.md, Search). The run is at evo-ak 0.57.0 (b419a087) on the same entity graph, rebuilt under the new
+extractor from its memo with no model call. The file has the same shape as `entity-graph.json`. `recall_all@5`:
+
+| Config | tune (n 301) | holdout (n 158) | holdout vs shipped, 95% CI |
+|---|---|---|---|
+| shipped (`--search graph`) | 0.1163 | 0.1266 | |
+| entities, no walk, before (`entity-graph.json`) | 0.0498 | 0.0570 | -0.0696 [-0.1139, -0.0316] regressed |
+| entities, no walk, after | 0.0831 | 0.1013 | -0.0253 [-0.0633, +0.0063] |
+| multi-hop (entities and walk), after | 0.0432 | 0.0380 | -0.0886 [-0.1392, -0.0380] regressed |
+
+```sh
+evo-agents kg bench compare musique-shipped.json musique-entities.json --split holdout
+```
+
+Entities still score below the shipped ranking, but the holdout loss is now within the interval. The walk is
+unchanged: it already listed entities after documents, so the walk causes its own loss. On the tune part only, a
+variant that kept the documents the search ranked in their own place scored 0.0399, so it was dropped. The Curator
+reads these figures when it keeps or turns off entities for a project (docs/kg-strategies.md).
+
 Baseline, `bench/results/noncode-base.json` (release ranking, `recall_all@5`, `--jobs 4`):
 
 | Set | tune | holdout |
