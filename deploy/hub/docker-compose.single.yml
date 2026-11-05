@@ -1,0 +1,106 @@
+# A whole hub on one machine: Postgres and a reverse proxy with its own certificates, on top of docker-compose.yml
+# and docker-compose.seaweedfs.yml, with the images of one release pulled from GHCR. docs/self-host.md walks through
+# it; deploy/hub/single.env.example lists the variables:
+#
+#   cp deploy/hub/single.env.example deploy/hub/.env      # then fill it in
+#   docker compose -f deploy/hub/docker-compose.yml -f deploy/hub/docker-compose.seaweedfs.yml \
+#     -f deploy/hub/docker-compose.single.yml --env-file deploy/hub/.env up -d
+#
+# Two names point at this machine: EVO_HUB_DOMAIN for the web, the API and /mcp, and EVO_HUB_S3_DOMAIN for the blob
+# store's S3 gateway, which workers and the CLI reach through presigned URLs. The proxy (Caddy, deploy/hub/Caddyfile)
+# takes ports 80 and 443 and gets a certificate for each name from Let's Encrypt; a name under .localhost gets one
+# from Caddy's own authority instead, for a trial on a laptop.
+#
+# Back up the volumes postgres-data and seaweedfs-data together: the database and the blobs are the hub's whole
+# state. The other volumes are caches.
+
+services:
+  postgres:
+    image: postgres:16.15-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${EVO_HUB_POSTGRES_USER:-hub}
+      POSTGRES_PASSWORD: ${EVO_HUB_POSTGRES_PASSWORD:?set EVO_HUB_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${EVO_HUB_POSTGRES_DB:-evo_hub}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      platform:
+        aliases: [evo-agents-hub-postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    shm_size: 256m
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      EVO_HUB_DOMAIN: ${EVO_HUB_DOMAIN:?set EVO_HUB_DOMAIN}
+      EVO_HUB_S3_DOMAIN: ${EVO_HUB_S3_DOMAIN:?set EVO_HUB_S3_DOMAIN}
+    ports:
+      - "${EVO_HUB_HTTP_PORT:-80}:80"
+      - "${EVO_HUB_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    # A fixed address on a network of its own, so the api believes the X-Forwarded-For of this proxy alone and not of
+    # another container on its networks.
+    networks:
+      proxy:
+        ipv4_address: ${EVO_HUB_PROXY_IP:-10.231.129.2}
+      storage: {}
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    depends_on:
+      web:
+        condition: service_started
+      api:
+        condition: service_started
+
+  api:
+    environment:
+      EVO_HUB_FORWARDED_ALLOW_IPS: ${EVO_HUB_FORWARDED_ALLOW_IPS:-10.231.129.2}
+    networks:
+      proxy:
+        aliases: [evo-agents-hub-api]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    networks:
+      default: {}
+      proxy:
+        aliases: [evo-agents-hub-web]
+
+volumes:
+  postgres-data:
+  proxy-data:
+  proxy-config:
+
+networks:
+  # docker-compose.yml expects the database on a network of the platform; here the stack makes it.
+  platform:
+    name: evo-agents-hub-platform
+    external: false
+  # The proxy, the api and the web. Its subnet is stated, outside Docker's default pools, for the proxy's fixed address;
+  # the api and the web take theirs from ip_range, which leaves that address out whichever container starts first.
+  proxy:
+    ipam:
+      config:
+        - subnet: ${EVO_HUB_PROXY_SUBNET:-10.231.129.0/28}
+          ip_range: ${EVO_HUB_PROXY_IP_RANGE:-10.231.129.8/29}

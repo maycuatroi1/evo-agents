@@ -40,7 +40,7 @@ its output in the browser; you can send the agent a message or stop the run ther
 
 **Run agents with a team.** You'll need access to a hub and a machine with a coding agent installed and signed in.
 [Ask for an invite](https://github.com/maycuatroi1/evo-agents/issues/new?template=invite.yml), use your team's hub, or
-[self-host](docs/hub-deployment.md). Install Python 3.11+ and [uv](https://docs.astral.sh/uv/), then run:
+[host one yourself](docs/self-host.md). Install Python 3.11+ and [uv](https://docs.astral.sh/uv/), then run:
 
 ```sh
 uv tool install 'evo-ak[graphify,worker]'
@@ -66,7 +66,7 @@ See the [roadmap](docs/roadmap.md) for current capabilities and unfinished work.
 | Monitor runs and manage workers | [Operations](docs/operations.md) |
 | Index repos and configure the graph | [Graph setup](docs/kg-setup.md), [query reference](docs/kg.md) |
 | Set permissions and handle credentials | [Autonomy](docs/autonomy.md), [credentials](docs/credentials.md) |
-| Host a hub or build a plugin | [Deployment](docs/hub-deployment.md), [plugins](docs/plugins.md) |
+| Host a hub or build a plugin | [One machine](docs/self-host.md), [deployment](docs/hub-deployment.md), [plugins](docs/plugins.md) |
 | Contribute code or documentation | [Contributing](CONTRIBUTING.md) |
 | Report a vulnerability | [Security policy](SECURITY.md) |
 
