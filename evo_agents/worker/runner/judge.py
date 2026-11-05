@@ -33,6 +33,7 @@ committing and pushing nothing.
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 import shutil
 import tempfile
@@ -42,7 +43,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import diff_signs, judge, knowledge_diff, merge_gate, runs, security_pass
 from evo_agents.worker import gitops, untrusted, venvs
 from evo_agents.worker.checkouts import default_branch_of
-from evo_agents.worker.hubapi import HubProblem
+from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner import access, judge_knowledge, origin, verify
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
@@ -56,6 +57,9 @@ if TYPE_CHECKING:
 
 # The merge of the base into the head in the object store alone; git before 2.38 (Ubuntu 22.04 ships 2.34) has no
 # --write-tree and answers USAGE with its usage text, so the merge is then made in a worktree of its own.
+VERDICT_TRIES = 6  # posts of a verdict the hub answers 5xx, 429 or nothing to, before the run fails
+VERDICT_FIRST_DELAY = 5.0  # seconds before the second post, doubling
+VERDICT_MOST_DELAY = 60.0  # seconds between two posts at most
 WRITE_TREE = ("merge-tree", "--write-tree", "--name-only", "--no-messages")
 USAGE = 129
 IDENTITY = {
@@ -104,6 +108,9 @@ class JudgeRun:
         self.head: str | None = None
         self.merge_base: str | None = None
         self.merge_result = bool(change.get("merge_result"))  # a merge check's: the checks run on head and base merged
+        # A merge check's Judge weighs the signs against the plan rather than the signs failing the change unjudged:
+        # run #1673 failed pull request #462 on the golden contract additions its plan's criterion a7 asked for.
+        self.weighs_signs = self.merge_result
         self.tested: str | None = None  # the commit the checks run at: the head, or its merge with the base
         self.conflicts: list[str] | None = None  # where merging the base into the head conflicts
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
@@ -164,7 +171,8 @@ class JudgeRun:
             checks += await judge_knowledge.run_checks(self, workspace.worktree, knowledge)
         verdict, reasons = await self.ask_judge(cls, workspace.worktree, checks, results, signs)
         self.usage = run.outcome.usage if run.outcome else None
-        security = await self.run_security_pass(cls, workspace.worktree) if verdict is not None and not signs else None
+        judged = verdict is not None and (self.weighs_signs or not signs)
+        security = await self.run_security_pass(cls, workspace.worktree) if judged else None
         body = {
             "verdict": verdict,
             "reasons": reasons,
@@ -319,20 +327,24 @@ class JudgeRun:
             signs = [cut_sign, *signs][: diff_signs.MAX_SIGNS]
         if signs:
             kinds = ", ".join(sorted({item["kind"] for item in signs}))
-            run.note(
-                f"The diff shows signs of score hacking ({kinds}): the change fails, and its Judge does not start."
+            then = (
+                "the Judge weighs each against the plan"
+                if self.weighs_signs
+                else "the change fails, and its Judge does not start"
             )
+            run.note(f"The diff shows signs of score hacking ({kinds}): {then}.")
         return files, signs
 
     async def ask_judge(
         self, cls, cwd: Path, checks: list[dict], results: list[dict], signs: list[dict]
     ) -> tuple[str | None, str | None]:
-        """The Judge's verdict and its reasons, unless a sign already fails the change: its agent on the worktree put
-        back again, the hub's prompt and what the worker ran."""
-        if signs:
+        """The Judge's verdict and its reasons, unless a sign already fails the change (a merge check's Judge weighs
+        them instead): its agent on the worktree put back again, the hub's prompt and what the worker ran."""
+        if signs and not self.weighs_signs:
             return None, None
         await self.restore(cwd)
-        prompt = runs.clip(self.prompt() + judge.results_text(checks, results, signs), runs.MAX_PROMPT_BYTES)
+        ran = judge.results_text(checks, results, signs) + (judge.WEIGH_SIGNS if signs else "")
+        prompt = runs.clip(self.prompt() + ran, runs.MAX_PROMPT_BYTES)
         await self.conversation.turns(cls, prompt, None)
         return self.read_verdict()
 
@@ -385,10 +397,19 @@ class JudgeRun:
         """Post the verdict with the run's own key, and end the run done."""
         run = self.run
         send = run.daemon.hub.merge_verdict if self.merge else run.daemon.hub.verdict
-        try:
-            answer = await send(run.id, body, run.judge_key)
-        except HubProblem as exc:
-            raise RunFailed(f"the hub did not take the Judge's verdict: {exc}") from None
+        backoff = Backoff(first=VERDICT_FIRST_DELAY, most=VERDICT_MOST_DELAY)
+        answer = None
+        for tried in range(1, VERDICT_TRIES + 1):
+            try:
+                answer = await send(run.id, body, run.judge_key)
+                break
+            except HubProblem as exc:  # a hub that redeploys answers 502 for a while: run #1671 lost its verdict so
+                passing = isinstance(exc, Unreachable) or (exc.status or 0) >= 500 or exc.status == 429
+                if not passing or tried == VERDICT_TRIES:
+                    raise RunFailed(f"the hub did not take the Judge's verdict: {exc}") from None
+                delay = backoff.next()
+                run.note(f"The hub did not take the Judge's verdict ({exc}): trying again in {delay:.0f} s.")
+                await asyncio.sleep(delay)
         passed = answer.get("passed") if isinstance(answer, dict) else None
         reasons = body["reasons"]
         run.summary = f"The Judge {'passed' if passed else 'failed'} the change" + (f": {reasons}" if reasons else ".")
@@ -442,7 +463,9 @@ class JudgeRun:
         await self.restore(cwd, self.tested)
         if self.wanted is None or self.uv is None:
             return await verify.run_untrusted(self.run, command, cwd)
-        env = {"PATH": venvs.front(self.run_path(), [str(venvs.bin_dir(cwd))])}
+        # UV_VENV_CLEAR: a check that makes .venv itself replaces the one made here; `uv venv` refuses an existing
+        # one with exit 2, which failed two hidden checks of every pull request from 2026-11-04 (runs #1591, #1673).
+        env = {"PATH": venvs.front(self.run_path(), [str(venvs.bin_dir(cwd))]), "UV_VENV_CLEAR": "1"}
         for making in self.wanted.commands(self.uv):
             code, output = await verify.run_untrusted(
                 self.run, shlex.join(making), cwd, extra_env=env, without=venvs.FOREIGN

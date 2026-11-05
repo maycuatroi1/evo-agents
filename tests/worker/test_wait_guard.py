@@ -77,7 +77,7 @@ def test_the_refusal_names_worker_wait_and_is_recorded():
     assert [body["tool"] for _, body in recorded] == ["Bash", "Monitor"]
     assert all(body["verdict"] == "refused" and body["run"] == 1537 for _, body in recorded)
     assert guard.check("Read", {"file_path": "README.md"}) is None
-    assert guard.check("Bash", {"command": "pytest -q"}) is None
+    assert guard.check("Bash", {"command": "pytest -q tests/kg/test_profile.py"}) is None
     assert recorded[-1][1]["tool"] == "Monitor", "a call that goes through records nothing"
 
 

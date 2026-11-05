@@ -217,6 +217,9 @@ class StepSessions:
         run, conversation = self.run, self.conversation
         parked = [entry for entry in self.entries if entry.get("run_id") != run.id]
         key = parked[-1].get("step") if parked else None
+        session_id = parked[-1].get("session_id") if parked else None
+        if isinstance(session_id, str) and session_id:  # the hub's names the run's first session, step 1's: run #1664
+            conversation.session_id = session_id
         if not isinstance(key, str):
             found = runs.next_session_step(body, ())
             key = found[0] if found else None
