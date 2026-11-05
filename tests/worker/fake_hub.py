@@ -142,6 +142,7 @@ class FakeHub:
         self.output_limits = {"max_file_bytes": 200 * 1024 * 1024, "max_outputs": 500, "max_run_bytes": 1024**3}
         self.outputs_down = 0
         self.verdicts_down = 0  # posts of a verdict left to answer 502, as a hub that redeploys
+        self.judge_inputs_down = 0  # reads of a judge run's inputs left to answer 502
         self.browser_links: dict[int, list[BrowserLink]] = {}  # run id -> the broker's connections, in order
         self.browser_link_seen = asyncio.Event()
         self.browser_refusal: int | None = None  # a code to close the broker's end with as soon as it connects
@@ -1403,6 +1404,9 @@ class FakeHub:
         if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "judge":
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
         self._judge_key(request, run_id, "judge")
+        if self.judge_inputs_down > 0:
+            self.judge_inputs_down -= 1
+            return _error(502, "bad_gateway", "Bad Gateway")
         self.judge_reads.append(run_id)
         self.judge_routes.append(request.path.rsplit("/", 1)[-1])
         return web.json_response(self.judge_inputs.get(run_id) or {})
