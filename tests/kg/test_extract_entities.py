@@ -157,6 +157,24 @@ def test_the_cost_ceiling_stops_too(tmp_path, kg_env):
     assert cov["calls"] == 1 and "max_cost" in cov["stopped"]
 
 
+def test_calls_at_once_give_the_answers_of_calls_one_by_one_and_are_memoized(tmp_path, kg_env):
+    project, log = setup(tmp_path, kg_env, extra={"jobs": 3})
+    report = build_project(project)
+    cov = report.coverage["entities"]
+    assert report.ok and cov["calls"] == calls(log) == 3 and cov["cache_hits"] == 0 and cov["skipped"] == 0
+    assert cov["cost"] == 1.5
+    found = entity_nodes(project)
+    assert {r[0] for r in found} >= {"entity:Concept:search", "entity:Concept:server", "entity:Concept:obsolete"}
+    assert build_project(project).ok
+    assert calls(log) == 3, "the answers of calls at once are in the memo"
+
+
+def test_calls_at_once_stop_at_the_ceiling_and_leave_the_rest(tmp_path, kg_env):
+    project, log = setup(tmp_path, kg_env, extra={"jobs": 2, "max_calls": 1})
+    cov = build_project(project).coverage["entities"]
+    assert cov["calls"] == 1 == calls(log) and cov["skipped"] == 2 and "max_calls 1" in cov["stopped"]
+
+
 def test_verifying_a_build_never_calls_the_model(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env)
     report = build_project(project)

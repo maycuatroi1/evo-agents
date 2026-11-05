@@ -72,6 +72,29 @@ def _tuning_file(path: str | None) -> dict | None:
     return wanted.overrides() or None
 
 
+def _graph(args):
+    """The corpus graph of ``--strategy`` and ``--entities``; None without --strategy."""
+    from evo_agents.kg.bench import corpus
+    from evo_agents.kg.bench.datasets import BenchError
+
+    name, path = getattr(args, "strategy", None), getattr(args, "entities", None)
+    if not name:
+        if path:
+            raise BenchError("--entities goes with --strategy")
+        return None
+    data = {}
+    if path:
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise BenchError(f"--entities {path}: {exc}") from None
+        if not isinstance(data, dict):
+            raise BenchError(f"--entities {path}: expected an object")
+    graph = corpus.GraphConfig(name, corpus.check_entities(data))
+    graph.digest()  # an unknown strategy fails here
+    return graph
+
+
 def _options(args):
     from evo_agents.kg.bench import graphs, run
     from evo_agents.kg.bench.tasks import HOLDOUT, TEST, TUNE
@@ -126,10 +149,13 @@ def cmd_build(args) -> int:
     try:
         cache = datasets.cache_dir(args.cache)
         options = _options(args)
+        graph = _graph(args)
         failed = 0
         for bench in _benches(args.sets):
+            if graph is not None and not corpus.is_corpus(bench):
+                raise datasets.BenchError(f"--strategy builds the graphs of corpus sets, not of {bench}")
             if corpus.is_corpus(bench):
-                done = corpus.build_only(cache, bench, _memory_options(options))
+                done = corpus.build_only(cache, bench, _memory_options(options), graph)
                 failed += bool(done.error)
                 print(f"{bench}: 1 graph: " + ("reused" if done.reused else done.error or f"built in {done.seconds}s"))
                 continue
@@ -172,6 +198,7 @@ def cmd_run(args) -> int:
 
     try:
         options = _options(args)
+        graph = _graph(args)
         outs = [Path(p) for p in args.out]
         if len(outs) != len(options.searches):
             raise datasets.BenchError(f"{len(options.searches)} searches need as many --out, not {len(outs)}")
@@ -182,12 +209,15 @@ def cmd_run(args) -> int:
         records: dict[str, list[dict]] = {s: [] for s in options.searches}
         with kg_settings.overriding(options.tuning):
             for bench in benches:
+                if graph is not None and not corpus.is_corpus(bench):
+                    raise datasets.BenchError(f"--strategy asks the graphs of corpus sets, not of {bench}")
                 if corpus.is_corpus(bench):
-                    if options.searches != ("graph",):
-                        raise datasets.BenchError(f"{bench} is asked with --search graph only")
-                    part, mine = corpus.run_corpus(cache, bench, _memory_options(options))
-                    parts["graph"][bench] = part
-                    records["graph"] += mine
+                    for search in options.searches:
+                        part, mine = corpus.run_corpus(
+                            cache, bench, _memory_options(options), search=search, graph=graph
+                        )
+                        parts[search][bench] = part
+                        records[search] += mine
                     continue
                 if memory.is_memory(bench):
                     if options.searches != ("graph",):
@@ -214,6 +244,8 @@ def cmd_run(args) -> int:
                     parts[search][name] = part
                     records[search] += mine
         summaries = [run.summary(parts[s], records[s], options, s) for s in options.searches]
+        for summary in summaries:
+            _extraction_cost(summary, graph)
     except (datasets.BenchError, ProjectError, ValueError) as exc:
         return _fail(str(exc), 1)
     for out, summary in zip(outs, summaries, strict=True):
@@ -225,6 +257,19 @@ def cmd_run(args) -> int:
             print("\n".join(compare.show_lines(summary)))
             print(f"summary written to {out}")
     return 0
+
+
+def _extraction_cost(summary: dict, graph) -> None:
+    """A summary asked on strategy graphs: the graph it names, and the cost of their entities step in ``cost``."""
+    if graph is None:
+        return
+    summary["settings"]["graph"] = {"strategy": graph.found().name, "digest": graph.digest()}
+    found = [p["extraction"] for p in summary["benches"].values() if p.get("extraction")]
+    summary["cost"] = {
+        "usd": round(sum(f["usd"] for f in found), 4),
+        "model_calls": sum(f["answers"] for f in found),
+        "what": "the answers of the entities step in the graphs' memo, every build of them (a run calls no model)",
+    }
 
 
 def cmd_compare(args) -> int:
@@ -441,6 +486,16 @@ def _selection_args(parser) -> None:
         "smaller disk)",
     )
     parser.add_argument("--verbose", action="store_true", help="progress lines on stderr even with --json")
+    parser.add_argument(
+        "--strategy",
+        metavar="NAME",
+        help="corpus sets: a graph of its own built with this kg strategy applied, its entities step included",
+    )
+    parser.add_argument(
+        "--entities",
+        metavar="FILE",
+        help="with --strategy: a json object of jobs, max_calls, max_tokens, max_cost set on its entities mapping",
+    )
 
 
 def register(ksub) -> None:

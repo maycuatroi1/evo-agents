@@ -551,7 +551,43 @@ and a summary holds ids and scores, never text.
 - **Parts.** A question falls in `tune`, `holdout` or `test` by the SHA-256 of `<set>/<question id>`, with the shares of
   the code sets (a half, a quarter, a quarter). `test` is sealed as before. `--sample N` samples the questions
   asked, not the corpus.
-- **Search.** The corpus and memory sets take `--search graph` only, and `--limit` 1 to 25.
+- **Search.** The memory sets take `--search graph` only; the corpus sets take `--search graph` or `--search hybrid`
+  (hybrid embeds the graph first, with the backend `EVO_KG_EMBEDDINGS` names). `--limit` is 1 to 25.
+- **Strategy graphs.** `--strategy NAME` builds a corpus set's graph with a strategy (`evo-agents kg strategy`), such
+  as `multi-hop`, apart from the plain graph: the graph's name carries the strategy and a digest of its build and
+  semantic settings. Its entities step reads the `document` items through the strategy's sink, which the bench
+  harness clears for public text. `--entities FILE` is a JSON object of run keys only (`jobs`, `max_calls`,
+  `max_tokens`, `max_cost`) that replaces the strategy's ceilings. A build that left items for later fails with
+  "entities unfinished" and writes no marker; the same command goes on from the memo. The strategy's query
+  settings (such as `walk`) are not kept: pass them with `--settings`, so one entity graph serves arms with and
+  without them. The part of a summary carries `graph` (strategy, digest, repo) and `extraction` (model calls,
+  tokens, cost and `usd_per_1000_documents`, summed from the memo).
+
+```sh
+evo-agents kg bench build musique --strategy multi-hop --entities entities.json   # again until it passes
+evo-agents kg bench run musique --strategy multi-hop --entities entities.json --out entities-run.json
+echo '{"walk": {}}' > walk.json
+evo-agents kg bench run musique --strategy multi-hop --entities entities.json --settings walk.json --out multihop.json
+```
+
+**Entity graph on MuSiQue, `bench/results/entity-graph.json`** (plan kg-entity-graph, step 8). The file is the
+shipped arm's summary with `arms` and `configs` added: each config's tune and holdout parts, its tasks, its
+`extraction` and its holdout compare against the shipped arm. One entity graph was built with the `multi-hop`
+strategy (Claude Haiku 5.5 through the machine's Claude Code login, sink clear public, `max_cost` 18 USD, `jobs` 8).
+The entities arm and the multi-hop arm ask that same graph. The multi-hop arm adds the walk back with
+`--settings walk.json`. `recall_all@5`:
+
+| Config | tune (n 301) | holdout (n 158) | holdout vs shipped, 95% CI | extraction USD / 1,000 docs |
+|---|---|---|---|---|
+| shipped (`--search graph`) | 0.1163 | 0.1266 | | 0 |
+| hybrid (`--search hybrid`, OpenRouter embeddings) | 0.1694 | 0.1709 | +0.0443 [+0.0063, +0.0886] improved | 0 (embeddings not metered) |
+| entities, no walk | 0.0498 | 0.0570 | -0.0696 [-0.1139, -0.0316] regressed | 1.9632 |
+| multi-hop (entities and walk) | 0.0432 | 0.0380 | -0.0886 [-0.1392, -0.0380] regressed | 1.9632 |
+
+The entities step made 7,921 calls, used 23.1M input and 21.7M output tokens, and cost 15.55 USD, as Claude Code
+reported it. Each arm asks `kg_search` with limit 25 and scores only the document nodes, so entity nodes that rank
+in the 25 can take slots that documents would otherwise fill. `medical` was not run because it needs `pyarrow`, which
+the bench venv lacks. `literature` was not run because its extraction does not fit the cap.
 
 The code sets are untouched: `kg bench` without a set name still runs the four.
 

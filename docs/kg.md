@@ -620,10 +620,10 @@ no model (`evo_agents/kg/review.py`, stored in the build's `review_items` table)
 
 | Rule | What it finds | Suggested action |
 | --- | --- | --- |
-| `dangling_mention` | an item (a document, a plan) that mentions code the graph does not hold, the dangling mentions its source's coverage counts | `fix_mention` |
+| `dangling_mention` | an item (a document, a plan) that mentions code the graph does not hold, the dangling mentions its source's coverage counts; a dated item (a commit, a pull request, a chat message, a plan or document under `completed/` or an archive directory) only when its fix links a mention, as nobody edits history (the same holds for `ambiguous_match` of mentions) | `fix_mention` |
 | `unmentioned_document` | a Document no other node mentions or links to, its own sections aside | `link_or_deprecate` |
 | `cluster_without_knowledge` | a level-1 cluster with code (File, Symbol) and no Document, Plan, Problem or Claim | `add_knowledge` |
-| `possible_duplicate` | nodes of one kind whose normalised names (accents dropped, case folded, letters and digits only) are the same and whose ids differ | `merge` |
+| `possible_duplicate` | nodes of one kind whose normalised names (accents dropped, case folded, letters and digits only) are the same and whose ids differ, unless they are each repo's own file at one path (`AGENTS.md` of two repos) | `merge` |
 | `ambiguous_match` | an item whose mentions matched several nodes by name, or a path edge resolved to one of several files with that path | `disambiguate` |
 | `bulk_noise` | images, generated files (lockfiles, `dist/`, `node_modules/`, `*.min.js` and the like) and plan steps whose name repeats across plans, 3 or more of a kind in one place | `exclude` |
 | `conflicting_claim` | two `extracted` edges (the entities step) with one subject and one relation and different objects, stated by two different documents, each with conf 0.6 or more; `mentions`, `refers_to` and `synonym_of` state no claim, and one subject and relation opens at most 20 items | `check_claims` |
