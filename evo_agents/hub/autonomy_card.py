@@ -280,6 +280,19 @@ def rule_line(made: Card, klass: str) -> str:
     return next((line for line in lines if line.endswith("Every class of action is yours to do.")), named)
 
 
+def category_left_to_agent(made: Card | None, category: str) -> tuple[str, str] | None:
+    """(class, the card's line that leaves it to the agent) when ``category`` is the category of a class card ``made``
+    has auto and asks in no category of its own: run #1675, at A5, asked its owner under access to merge a pull request
+    the merge check failed, and parked. None for a run without a card, a category of no class (architecture, scope:
+    ``asked_class`` reads those), one the card leaves to ask, and one of a class it has notify, asked as before."""
+    if made is None or category in made.categories:
+        return None
+    klass = next((name for name, categories in CLASS_CATEGORIES.items() if category in categories), None)
+    if klass is None or made.modes.get(klass) != AUTO:
+        return None
+    return klass, rule_line(made, klass)
+
+
 def left_to_agent(made: Card | None, category: str, question: str) -> tuple[str, str] | None:
     """(class, the card's line that leaves it to the agent) when a question of ``category`` asks about K5 or K6
     (``asked_class``) and card ``made`` has that class auto with no ask of its own in the category (a K5 that asks on a
