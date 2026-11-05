@@ -2721,7 +2721,10 @@ What the session spent goes with its log (`evo_agents/hub/local_usage.py`): Post
 new lines, and its subagents' under `<session>/subagents/`, from where the last hook stopped, and send a `usage_update`
 of each model's tokens of the API calls read (`scope` delta, each message id once) and one for each `cost-state` line,
 Claude Code's own count of the session's cost and `modelUsage` (`scope` total). The run's `spend` takes the cost-state
-as reported and prices the calls after it at list prices (`docs/workers.md`, What a run spent itself).
+as reported and prices the calls after it at list prices (`docs/workers.md`, What a run spent itself). A local run
+with no such report (a session before this, or a machine on an older plugin) is read from the transcripts the hub holds
+of its session by the job `hub.local_spend` (`evo_agents/hub/local_spend.py`, every 5 minutes, 100 runs a pass, the
+latest first), once its transcripts are quiet for 10 minutes, and again when they change (`runs.spend_transcripts`).
 A plan write (`evo harness step`, `hub plan step`, the MCP `plan_step`, which the proxy sends with the header
 `X-Evo-Local-Run`) names the session's run (`CLAUDE_CODE_SESSION_ID` of the tool's environment, else the newest live
 session of the directory), so the revision is recorded for the run and the run shows that plan and step; a hub that

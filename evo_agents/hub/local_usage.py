@@ -88,46 +88,62 @@ def _cost_state(item: dict, session_id: str) -> dict | None:
     return {"source": "local", "scope": "total", "session_id": session_id, "cost": cost, "models": models}
 
 
+class UsageReader:
+    """The ``usage_update`` bodies of a session's transcript lines, read a file at a time (see the module): the calls
+    of each model added up until a ``cost-state`` of the session's own file (``main``), which comes after them. ``last``
+    holds the message id each file counted last, so a message whose blocks two reads split counts once."""
+
+    def __init__(self, session_id: str, last: dict | None = None):
+        self.session_id = session_id
+        self.last = last if last is not None else {}
+        self.models: dict = {}
+        self.bodies: list[dict] = []
+
+    def line(self, key: str, item) -> None:
+        """Take in line ``item`` (its JSON value) of the file ``key`` (``main``, or a subagent's file name)."""
+        if not isinstance(item, dict):
+            return
+        if item.get("type") == "cost-state" and key == "main":
+            state = _cost_state(item, self.session_id)
+            if state is not None:
+                self._flush()  # the calls before it, then Claude Code's count, which holds them
+                self.bodies.append(state)
+            return
+        message = item.get("message") if item.get("type") == "assistant" else None
+        if not isinstance(message, dict) or not isinstance(message.get("usage"), dict):
+            return
+        model, message_id = message.get("model"), message.get("id")
+        if not isinstance(model, str) or not model or model == digest.SYNTHETIC_MODEL:
+            return
+        if message_id is not None and message_id == self.last.get(key):
+            return  # another content block of a message counted already
+        self.last[key] = message_id
+        _add(self.models, model, message["usage"])
+
+    def _flush(self) -> None:
+        if self.models:
+            kept = {name: {k: v for k, v in figures.items() if v} for name, figures in self.models.items()}
+            self.bodies.append({"source": "local", "scope": "delta", "session_id": self.session_id, "models": kept})
+            self.models = {}
+
+    def done(self) -> list[dict]:
+        """The bodies read, the calls since the last cost-state last."""
+        self._flush()
+        return self.bodies
+
+
 def usage_events(rec: dict, transcript: Path, session_id: str) -> list[tuple[str, dict]]:
     """The ``usage_update`` events of what the session spent since the last hook (see the module), moving the offsets
     of ``rec`` on."""
-    offsets, last = _dict(rec.get("usage_at")), _dict(rec.get("usage_last"))
-    events: list[tuple[str, dict]] = []
-    models: dict = {}
+    offsets = _dict(rec.get("usage_at"))
+    reader = UsageReader(session_id, _dict(rec.get("usage_last")))
     for path in _files(transcript):
         key = "main" if path == transcript else path.name
         lines, offsets[key] = _new_lines(path, int(offsets.get(key) or 0))
         for line in lines:
             try:
-                item = json.loads(line)
+                reader.line(key, json.loads(line))
             except ValueError:
                 continue
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") == "cost-state" and key == "main":
-                state = _cost_state(item, session_id)
-                if state is not None:
-                    if models:  # the calls before it, then Claude Code's count, which holds them
-                        events.append(("usage_update", _delta(models, session_id)))
-                        models = {}
-                    events.append(("usage_update", state))
-                continue
-            message = item.get("message") if item.get("type") == "assistant" else None
-            if not isinstance(message, dict) or not isinstance(message.get("usage"), dict):
-                continue
-            model, message_id = message.get("model"), message.get("id")
-            if not isinstance(model, str) or not model or model == digest.SYNTHETIC_MODEL:
-                continue
-            if message_id is not None and message_id == last.get(key):
-                continue  # another content block of a message counted already
-            last[key] = message_id
-            _add(models, model, message["usage"])
-    if models:
-        events.append(("usage_update", _delta(models, session_id)))
-    rec["usage_at"], rec["usage_last"] = offsets, last
-    return events
-
-
-def _delta(models: dict, session_id: str) -> dict:
-    kept = {name: {key: value for key, value in figures.items() if value} for name, figures in models.items()}
-    return {"source": "local", "scope": "delta", "session_id": session_id, "models": kept}
+    rec["usage_at"], rec["usage_last"] = offsets, reader.last
+    return [("usage_update", body) for body in reader.done()]
