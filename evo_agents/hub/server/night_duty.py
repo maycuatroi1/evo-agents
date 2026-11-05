@@ -5,18 +5,21 @@ take a run now (live, online, serving the project, not draining, taking runs dis
 doctor report, and with no taint of their own beyond the pool's). A pool with no such node waits, and says so. A run
 of the night shift goes there by the selector pool=<name>, tolerating the pool's taints: any ready node of the pool
 that fits it claims it (``Duty.columns``).
+
+A KG run of a project fed by uploads alone (``kg_duty``) goes to the same pool when it has a ready node, else to the
+shared KG pool when that may take it (``kg_shared_pool.for_project``), which then serves the project.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import agent_placement
+from evo_agents.hub.server import agent_placement, kg_shared_pool
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.models.placement import selector_of
 from evo_agents.hub.server.runs.service.dispatch import Pinned, unfit
@@ -43,6 +46,7 @@ class Duty:
     nodes: tuple[Pinned, ...]
     pool: str
     tolerations: tuple[str, ...] = ()
+    shared: bool = False  # the shared KG pool's, for a KG run (``kg_duty``)
 
     @property
     def where(self) -> str:
@@ -150,12 +154,41 @@ async def _pool_duty(conn: AsyncConnection, pool_id: int, project_id: int) -> tu
     return None, f"pool {pool.name} has no node ready for a run now ({'; '.join(why)})"
 
 
+NO_POOL = "the default agent of the project has no pool: create the agent's pool and add a node to it"
+
+
 async def on_duty(conn: AsyncConnection, due) -> tuple[Duty | None, str | None]:
     """Where schedule ``due``'s runs go now (``Duty``), or why nothing of it takes a run now."""
     home = await agent_placement.default_home(conn, due.project_id)
     if home is None:
-        return None, "the default agent of the project has no pool: create the agent's pool and add a node to it"
+        return None, NO_POOL
     duty, why = await _pool_duty(conn, home.pool_id, due.project_id)
     if duty is None:
         await agent_placement.watch(conn, home)
     return duty, why
+
+
+async def kg_duty(conn: AsyncConnection, due) -> tuple[Duty | None, str | None]:
+    """Where a KG run of ``due``'s project goes now (the review runs with lens kg_questions and kg_init): the ready
+    nodes of its default agent's pool, else those of the shared KG pool when it may take the project's KG runs, which
+    then serves the project. With neither, why; the admins hear the agent's pool is empty only then."""
+    home = await agent_placement.default_home(conn, due.project_id)
+    duty, why = (None, NO_POOL) if home is None else await _pool_duty(conn, home.pool_id, due.project_id)
+    if duty is not None:
+        return duty, None
+    shared = await kg_shared_pool.for_project(conn, due.project_id)
+    if shared is not None:
+        await kg_shared_pool.serve(conn, shared, due.project_id)
+        found, not_shared = await _pool_duty(conn, shared.pool_id, due.project_id)
+        if found is not None:
+            return replace(found, shared=True), None
+        why = f"{why}; the shared KG pool: {not_shared}"
+    await pool_empty(conn, due.project_id)
+    return None, why
+
+
+async def pool_empty(conn: AsyncConnection, project_id: int) -> None:
+    """Tell the admins of the project once that its default agent's pool has no ready node (``agent_placement.watch``)."""
+    home = await agent_placement.default_home(conn, project_id)
+    if home is not None:
+        await agent_placement.watch(conn, home)

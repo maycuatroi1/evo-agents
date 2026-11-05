@@ -526,6 +526,7 @@ def _include_member_routes(app: FastAPI) -> None:
         gateway_proxy,
         goals,
         intake,
+        kg_shared_pool_api,
         market,
         market_install,
         market_licenses,
@@ -624,6 +625,7 @@ def _include_member_routes(app: FastAPI) -> None:
         branding.admin_router,
         features.router,
         features.admin_router,
+        kg_shared_pool_api.router,  # /v1/admin/kg-pool: the shared KG pool
         model_catalog.router,
         provider_accounts.router,
         runnable_models.router,

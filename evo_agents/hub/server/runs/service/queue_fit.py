@@ -21,7 +21,7 @@ from sqlalchemy import and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import agent_placement, worker_placement
+from evo_agents.hub.server import agent_placement, kg_shared_pool, worker_placement
 from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
 from evo_agents.hub.server.runs.service.candidates import PoolCandidate, RerunCandidates, WorkerCandidate
@@ -83,13 +83,16 @@ async def _run(conn: AsyncConnection, run_id: int):
 
 def _workers(run, home: agent_placement.Home | None):
     """The workers that could take ``run``, not revoked: the nodes of the agent's pool ``home`` when its agent is in pool
-    mode, else the owner's and those shared in its project; and the one it is pinned to. The owner's first."""
+    mode (and of the shared KG pool for a run of its kinds), else the owner's and those shared in its project; and the
+    one it is pinned to. The owner's first."""
     w, wp, r, u = tables.workers, tables.worker_projects, tables.runs, tables.users
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == run.project_id)
     held = select(func.count()).where(r.c.worker_id == w.c.id, r.c.state.in_(runs.HELD_STATES)).scalar_subquery()
     owner = select(u.c.login).where(u.c.id == w.c.owner_id).scalar_subquery()
     if home is not None:
-        who = w.c.pool_id == home.pool_id
+        kg_pool = tables.worker_pools
+        shared = select(kg_pool.c.id).where(kg_pool.c.kg_shared)  # its KG runs may go there (``kg_shared_pool``)
+        who = or_(w.c.pool_id == home.pool_id, and_(literal(run.kind in kg_shared_pool.KINDS), w.c.pool_id.in_(shared)))
     else:
         who = or_(w.c.owner_id == run.dispatched_by, and_(w.c.shared, serves))
     if run.pinned_worker_id is not None:

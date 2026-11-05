@@ -15,7 +15,10 @@ places each run of an agent:
   (``worker_pools.empty_notified_at``, cleared by ``recovered`` when a node is ready again).
 - ``ready_nodes`` lists them, for the machine of a chat run.
 
-A run with no agent, a ``local`` one, is no run of a pool.
+A run with no agent, a ``local`` one, is no run of a pool. The one exception to both rules is the shared KG pool
+(``kg_shared_pool``): its ready nodes take the KG runs of a project with no repo whose default agent's pool has no ready
+node, when the project's creator owns that pool; such a run is stamped on it and tells no admin the agent's pool is
+empty.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import worker_placement
+from evo_agents.hub.server import kg_shared_pool, worker_placement
 from evo_agents.hub.server.profile_store import POOL_PREFIX
 from evo_agents.hub.server.runs.models.placement import POOL_KEY, normalized
 
@@ -92,6 +95,9 @@ async def stamp(conn: AsyncConnection, values: dict) -> dict:
     home = await home_of(conn, values.get("profile_id"))
     if home is None:
         return values
+    shared = await kg_shared_pool.placed(conn, values)
+    if shared is not None:
+        return shared
     await watch(conn, home)
     placed = {**values, **stamped(home, values.get("selector"), values.get("tolerations"))}
     pin = values.get("pinned_worker_id")
@@ -218,11 +224,12 @@ def home_run(worker_id: int):
 
 def claim_gate(worker_id: int):
     """The condition on the run being claimed that placement by agent holds: a run of an agent goes to a node of that
-    agent's pool, and a node of an agent's pool takes only the runs of that agent."""
+    agent's pool, or to a node of the shared KG pool that may take it (``kg_shared_pool.takes``), and a node of an
+    agent's pool takes only the runs of that agent."""
     r = tables.runs
     home = _agent_of(worker_id)
     return and_(
-        or_(~pooled_run(), home == r.c.profile_id),
+        or_(~pooled_run(), home == r.c.profile_id, kg_shared_pool.takes(worker_id)),
         or_(home.is_(None), r.c.profile_id == home),
     )
 

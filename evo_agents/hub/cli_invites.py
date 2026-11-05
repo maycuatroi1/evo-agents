@@ -143,4 +143,7 @@ def admin_commands(hsub):
     from evo_agents.hub.cli_project_admin import project_commands
 
     project_commands(asub)
+    from evo_agents.hub.cli_kg_pool import kg_pool_commands
+
+    kg_pool_commands(asub)
     return asub

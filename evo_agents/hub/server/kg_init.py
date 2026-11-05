@@ -218,7 +218,7 @@ async def _queue_agent(
     """Queue the review run of ``ctx`` through ``lens`` (kg_init, or kg_questions for the run that writes its starter
     questions first); its id, or None with why in ``body["notes"]``."""
     from evo_agents.hub.server.collect import review_place
-    from evo_agents.hub.server.night_duty import on_duty
+    from evo_agents.hub.server.night_duty import kg_duty, pool_empty
     from evo_agents.hub.server.run_state import notify_queued, write_event
     from evo_agents.hub.server.runs.service.dispatch import insert_run
 
@@ -233,12 +233,14 @@ async def _queue_agent(
         )
     ).scalar_one_or_none() or {}
     due = SimpleNamespace(project_id=ctx.project_id, project=ctx.project)
-    duty, why = await on_duty(conn, due)
+    duty, why = await kg_duty(conn, due)
     if duty is None:
         body.setdefault("notes", []).append(f"no review run: {why}")
         return None
     runtime = (charter.get("reviewer") or {}).get("runtime") or curator.DEFAULT_RUNTIME
     repos, problems = await review_place(conn, due, duty, runtime, repoless=True)
+    if problems and duty.shared:  # no node of the shared KG pool fits it: the agent's pool is still empty
+        await pool_empty(conn, ctx.project_id)
     if problems:
         body.setdefault("notes", []).append("no review run: " + "; ".join(problems))
         return None

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement, gateway_accounts, pool_accounts, worker_placement
+from evo_agents.hub.server import agent_placement, gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import claim_clause, run_packs, runtime_rule
@@ -158,14 +158,14 @@ def _claim_conditions(
 
 
 def dispatcher_parts(worker_id: int, owner_id: int, shared: bool) -> dict[str, Any]:
-    """The parts of ``_dispatcher_clause``, by key: ``home`` (a run of the agent whose pool the worker is a node of),
+    """The parts of ``_dispatcher_clause``, by key: ``home`` (a run of the agent whose pool the worker is a node of, or a
+    KG run of the shared KG pool it is a node of),
     ``own`` (its owner's run) and, on a shared worker, the parts of another member's run, ``writer``, ``unit`` and
     ``not_night`` (``member``), and ``alone`` (no run of another member held)."""
     r = tables.runs
     parts = {
-        "home": agent_placement.home_run(
-            worker_id
-        ),  # a node of an agent's pool takes the agent's runs of any dispatcher
+        # a node of an agent's pool takes the agent's runs of any dispatcher, a node of the shared KG pool its KG runs
+        "home": or_(agent_placement.home_run(worker_id), kg_shared_pool.takes(worker_id)),
         "own": r.c.dispatched_by == owner_id,
     }
     if not shared:
