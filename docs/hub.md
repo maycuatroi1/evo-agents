@@ -3000,7 +3000,10 @@ prints the job's page and a line each time its counts change, then writes `--out
 its questions, cache tokens counted as input), and `error` for a question with no answer; it exits 1 when the job
 failed (no pool took its next batch for 24 hours). Sending the same file again asks only the questions no agent
 answered. `--no-wait` returns once the hub kept the file, `--job J` follows job J and writes its answers, and `--status`
-lists the project's jobs with their questions, answered, errors and state. The page `/p/{project}/kg/answers/{id}`
+lists the project's jobs with their questions, answered, errors and state. `--job J --stop` (a writer,
+`POST /v1/kg/{project}/answers/{job_id}/stop`) stops a running job: its queued run is cancelled and a held one is asked
+to stop, its questions without an answer get an error, and the job ends failed; the same file sent again asks them
+again. The page `/p/{project}/kg/answers/{id}`
 shows the job while it runs and downloads answers.jsonl. Nothing is scored: the questions never join the project's
 eval set, and answer runs stay out of the Curator's prompt and figures.
 

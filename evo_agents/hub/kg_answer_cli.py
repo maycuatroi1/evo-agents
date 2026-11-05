@@ -9,6 +9,7 @@ file's order: each line ``id``, ``question``, ``answer``, ``evidence``, ``model`
 and ``error`` for a question with no answer. Exit 1 when the job failed. The same file sent again asks only the
 questions no agent answered. ``--no-wait`` returns once the hub kept the file; ``--job J`` in place of ``--questions``
 follows job J and writes its answers. ``--status`` lists the project's jobs: questions, answered, errors, state.
+``--job J --stop`` stops a running job: its run is cancelled and its questions without an answer get an error.
 ``--job J --reply FILE`` is the agent's: it sends the answers of its batch (``{"id", "answer", "evidence"}`` or
 ``{"id", "error"}`` a line). ``--json`` prints the hub's answer. Standard library only.
 """
@@ -158,6 +159,8 @@ def cmd_answer(args) -> int:
         return _status(hub, args)
     if args.reply:
         return _reply(hub, args)
+    if args.stop:
+        return _stop(hub, args)
     if args.questions:
         job, ids = _ask(hub, args)
         if not args.json:
@@ -201,6 +204,17 @@ def _status(hub: Hub, args) -> int:
     return 0
 
 
+def _stop(hub: Hub, args) -> int:
+    if not args.job:
+        sys.exit("--stop needs --job J: the answer job to stop")
+    job = hub.call("POST", f"{_base(args.project)}/{args.job}/stop") or {}
+    if args.json:
+        print_json(job)
+    else:
+        print(progress_line(job))
+    return 0
+
+
 def _reply(hub: Hub, args) -> int:
     if not args.job:
         sys.exit("--reply needs --job J: the answer job your run asks")
@@ -228,6 +242,11 @@ def register(ksub) -> None:
     parser.add_argument("--status", action="store_true", help="list the project's answer jobs")
     parser.add_argument("--limit", type=int, default=20, help="with --status, the newest jobs listed (1 to 50)")
     parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="with --job, stop a running job: its run is cancelled; the same file sent again asks the rest again",
+    )
+    parser.add_argument(
         "--reply", metavar="FILE", help="the agent of a run: send its answers, JSON lines of id with answer or error"
     )
     json_option(
@@ -240,6 +259,7 @@ def register(ksub) -> None:
             variants=(
                 ("--status", returns_object("jobs", schema="KgAnswerJobs")),
                 ("--reply", returns_object("kept", "problems", schema="KgAnswerReplied")),
+                ("--stop", returns_object(*JOB, schema="KgAnswerJob")),
             ),
         ),
         help="machine-readable output: the job, with the file written and its lines (null with --no-wait)",

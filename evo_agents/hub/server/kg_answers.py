@@ -10,6 +10,8 @@ Code agents in batches. ``evo_agents.hub.kg_answers`` holds the rules without th
   that asked each and its share of the run's tokens. A grant on the project reads them.
 - POST .../{job_id}/replies (``hub kg answer --job J --reply FILE``): the agent of the run asking a batch sends its
   answers, or an error for a question, while the run is active; only for the questions of its batch.
+- POST .../{job_id}/stop (``hub kg answer --job J --stop``, a writer): stop a running job: its run is cancelled, its
+  questions without an answer get an error, and it ends failed; the same file sent again asks them again.
 - ``advance``, called each minute by ``curator.collect``: for each running job, the questions of a run that ended
   without a reply get an error; the next batch is queued as a review run with no repo (``kg_init.queue_repoless``),
   dispatched by the sender of the file, on the project's KG pool, under the review cost cap. One review run of a
@@ -457,6 +459,61 @@ async def _end(conn: AsyncConnection, job, state: str, error: str | None = None)
         .where(j.c.id == job.id)
         .values(state=state, error=error, note=None, waiting_since=None, ended_at=func.now(), updated_at=func.now())
     )
+
+
+@router.post("/{project}/answers/{job_id}/stop", response_model=KgAnswerJob, responses=REFUSALS)
+async def stop(request: Request, project: ProjectName, job_id: JobId, user: CurrentUser) -> KgAnswerJob:
+    """Stop a running job: its run is cancelled (a queued one at once, a held one by its worker), its questions without
+    an answer get the error that it was stopped, and it ends failed. The same file sent again asks them again."""
+    from evo_agents.hub.server.run_state import move_run
+
+    a, j, r = tables.kg_answers, tables.kg_answer_jobs, tables.runs
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        if not has_role(access.role, "writer"):
+            raise HTTPException(403, f"stopping an answer job of project {access.name} needs the writer role on it")
+        job = await _job(conn, access, job_id, lock=True)
+        if job.state != model.RUNNING:
+            raise HTTPException(409, f"answer job {job_id} is {job.state}: only a running job stops")
+        why = f"{user.login} stopped answer job {job_id}"
+        if job.run_id is not None:
+            state = await conn.scalar(select(r.c.state).where(r.c.id == job.run_id).with_for_update())
+            if state == "queued":
+                await move_run(conn, job.run_id, state, "cancelled", "owner", reason=why, token_id=user.token_id)
+            elif state in runs.HELD_STATES:
+                await conn.execute(
+                    update(r)
+                    .where(r.c.id == job.run_id, r.c.cancel_requested_at.is_(None))
+                    .values(cancel_requested_at=func.now())
+                )
+        error = f"{why} before this question had an answer"
+        await conn.execute(
+            update(a).where(a.c.job_id == job_id, a.c.answer.is_(None), a.c.error.is_(None)).values(error=error)
+        )
+        await conn.execute(
+            update(j)
+            .where(j.c.id == job_id)
+            .values(
+                state=model.FAILED,
+                error=why,
+                run_id=None,
+                note=None,
+                waiting_since=None,
+                ended_at=func.now(),
+                updated_at=func.now(),
+            )
+        )
+        await audit.record(
+            conn,
+            actor_id=user.user_id,
+            token_id=user.token_id,
+            action=model.AUDIT,
+            target=f"{access.name} job={job_id} stopped",
+            project_id=access.project_id,
+        )
+        out = (await _shown(conn, access.name, [await _job(conn, access, job_id)]))[0]
+    log.info("kg answer job stopped", extra={"project": access.name, "job_id": job_id})
+    return out
 
 
 async def _waits(conn: AsyncConnection, job, note: str, now: datetime) -> str:
