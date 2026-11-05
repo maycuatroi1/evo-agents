@@ -56,7 +56,7 @@ from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.tables_kg import INIT_ACTIVE
-from evo_agents.kg import init_run
+from evo_agents.kg import entities, init_run
 from evo_agents.kg import settings as tuning
 from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.evaluate import TUNE
@@ -535,8 +535,11 @@ async def record_decision(conn: AsyncConnection, user: Principal, project: str, 
     body = dict(row.body or {})
     if body.get("decision"):
         raise HTTPException(409, f"kg_init run {run_id} has a decision already")
+    current = await kg_settings.read(conn, access.project_id)
     try:
-        decision = init_run.parse_decision(data)
+        decision = init_run.parse_decision(
+            data, prose=init_run.mostly_prose(row.profile), entities_now=entities.enabled(current) is not None
+        )
     except init_run.DecisionError as exc:
         raise HTTPException(422, str(exc)) from None
     try:

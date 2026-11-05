@@ -112,7 +112,8 @@ def test_a_hub_admin_makes_a_project_from_an_upload_with_the_ladder_sinks_config
     assert sinks_of(hub, project_id) == {
         "evo-hub": ("hub", {"level": "customer"}),
         "claude-code@anthropic": ("agent-session", {"level": "internal"}),
-    }, "the hub sink clears L; the agent's session clears internal alone"
+        "llm": ("llm-backend", {"level": "internal"}),
+    }, "the hub sink clears L; the agent's session and the build's model clear internal alone"
     assert grant_of(hub, project_id, live.ADMIN) == ("admin", DEFAULT_LEVELS[-1])
     c = tables.kg_configs
     ((knowledge, ontology),) = query(hub.db, select(c.c.knowledge, c.c.ontology).where(c.c.project_id == project_id))

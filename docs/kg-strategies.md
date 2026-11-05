@@ -14,6 +14,7 @@ hub a strategy is the `strategy` key of the project's KG settings.
 | `conversation` | chat threads, transcripts, agent memories | short passages, vectors weighted 0.8, vectors written |
 | `media-metadata` | binary files known by metadata or sidecar text | name weight 8, path weight 3, vectors written |
 | `multi-hop` | prose whose answers join facts from several passages | the keys of `documents`, the entities step on Claude Code, the walk |
+| `multi-hop-api` | the same prose, on the hub | `multi-hop` with the entities step calling OpenRouter from the build |
 
 The built-in files live in `evo_agents/kg/strategies/`.
 
@@ -175,6 +176,36 @@ Without that sink, or for an item whose label is above its clearance, nothing is
 On the hub, `hub kg settings --strategy multi-hop` sets the settings only. Apply the strategy locally first and push
 the knowledge config (`evo-agents hub kg push`), so the hub's ontology holds the kinds and relations and the policy
 holds the sink; a kind the ontology lacks is dropped from the mapping (`coverage["entities"]["rejected_config"]`).
+
+## The multi-hop-api strategy
+
+`multi-hop-api` is `multi-hop` with another model: the build calls an OpenAI-compatible endpoint itself, OpenRouter's
+`https://openrouter.ai/api/v1` with `anthropic/claude-haiku-5.5` (`url`, `key_env: OPENROUTER_API_KEY`), so a build on
+the hub states the entities of the items it reads at once, with no nightly run of an agent pool. It is the strategy the
+Curator starts prose with on the hub (see "The Curator and prose" below). Everything else is `multi-hop`'s: the keys of
+`documents`, the ontology it adds, the sink `llm`, the walk, and the ceilings of a build (200 calls, 400000 tokens,
+`max_cost` 5), with `price` OpenRouter's of 2026-11-05 (0.10 per million tokens in, 0.50 out) and four calls at once
+(`jobs: 4`).
+
+**The key.** On a machine, the build reads `OPENROUTER_API_KEY` from the environment. On the hub, the build opens it
+from a member's secret (`evo_agents.hub.server.kg_entity_key`): a live env secret whose variable is
+`OPENROUTER_API_KEY`, or a provider account whose base URL is on `openrouter.ai`, either bound to the project for any
+worker or owned by the member who created the project, so a project made from an upload uses its creator's key. The
+key stays in the build's memory: it is never put in the worker's environment, a log line, a blob, the coverage (which
+names `key_from: secret:<id>` alone) or a prompt, and an error of the endpoint is kept with the key cut out. Without a
+key the step calls nothing: `coverage["entities"]["stopped"]` says so and the items wait for a later build.
+
+**The sink.** A project made from an upload (`hub kg upload FILE --new-project P`) has the sink `llm`, kind
+`llm-backend`, with the clearance of its agent sink (`internal`): an item labelled above it is not sent. Any other
+project declares it in its knowledge.yaml as for `multi-hop`.
+
+## The Curator and prose
+
+A kg_init run whose data profile is mostly prose (`class:prose` a major part) starts with the entities step on: the
+prompt says so, and a decision that leaves the project with a strategy whose steps lack `entities` is refused unless one
+of its reasons cites `entities_on` and `entities_off`, the figure of the tune questions with the step and without it,
+and `entities_off` is the higher (`evo_agents.kg.init_run.parse_decision`). The figures are kept with the decision in
+the settings' history.
 
 ## Your own strategy
 

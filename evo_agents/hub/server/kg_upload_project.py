@@ -5,6 +5,8 @@ transaction of POST /v1/kg/{project}/uploads with ``new_project`` true (``evo_ag
 The project gets what ``evo-agents harness init`` writes for a new harness, without its sources: the default ladder
 (``evo_agents.kg.policy``), one hub sink HUB_SINK that clears L, one Claude Code sink AGENT_SINK that clears only
 AGENT_CLEARANCE, so an agent reads what is labelled above it only once an admin raised that clearance on purpose,
+one llm-backend sink LLM_SINK with that same clearance, through which the entities step of a strategy such as
+multi-hop-api sends prose to a model's endpoint (an item labelled above it is not sent, ``evo_agents.kg.entities``),
 the default label L for its memories, plans and uploads, and a minimal knowledge config naming that ladder and those
 sinks with no source of its own, so the build the upload's extraction queues runs, and its first success queues a
 kg_init run (``first_build``) as for any project with a config. L is DEFAULT_LEVEL without ``--label``.
@@ -35,12 +37,14 @@ DEFAULT_LEVEL = "internal"  # the label of the data without --label, as `harness
 HUB_SINK = "evo-hub"
 AGENT_SINK = "claude-code@anthropic"
 AGENT_CLEARANCE = "internal"
+LLM_SINK = "llm"  # the sink the entities mapping of the built-in prose strategies names
 
 
 def sinks(level: str) -> list[dict]:
     """The sinks of a project made from an upload labelled ``level``."""
     return [
         {"id": AGENT_SINK, "kind": "agent-session", "clearance": {"level": AGENT_CLEARANCE}},
+        {"id": LLM_SINK, "kind": "llm-backend", "clearance": {"level": AGENT_CLEARANCE}},
         {"id": HUB_SINK, "kind": HUB_KIND, "clearance": {"level": level}},
     ]
 

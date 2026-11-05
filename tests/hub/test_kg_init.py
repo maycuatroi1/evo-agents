@@ -76,6 +76,51 @@ def test_the_prompt_holds_the_profile_and_the_decision_help_and_only_the_names_g
     assert "secret" not in text
 
 
+def prose_profile(prose: int = 700, lines: int = 1000) -> dict:
+    found = profile(lines)
+    found["classes"] = {
+        "prose": {"item_share": 0.5, "share": prose / lines, "lines": prose},
+        "code": {"item_share": 0.5, "share": 1 - prose / lines, "lines": lines - prose},
+    }
+    return found
+
+
+def test_a_project_that_is_mostly_prose_is_told_to_start_with_the_entities_step_on():
+    assert model.init_run.mostly_prose(prose_profile(500)) and not model.init_run.mostly_prose(prose_profile(499))
+    assert not model.init_run.mostly_prose(profile()) and not model.init_run.mostly_prose(None)
+    args = dict(project="demo", run_id=3, why=[model.FIRST_BUILD], coverage={}, strategies=[], measures={},
+                settings={}, samples=[])  # fmt: skip
+    assert "## Entities and relations of prose" in model.prompt(profile=prose_profile(), **args)
+    assert "## Entities and relations of prose" not in model.prompt(profile=profile(), **args)
+
+
+def decision(strategy=None, settings=None, figures=None) -> dict:
+    data = {"reasons": []}
+    if strategy:
+        data["strategy"] = {"use": strategy}
+        data["reasons"].append({"about": "strategy", "why": "measured", "figures": figures or {"hit@5": 60.0}})
+    if settings is not None:
+        data["settings"] = settings
+        data["reasons"].append({"about": "settings", "why": "measured", "figures": figures or {"hit@5": 60.0}})
+    return data
+
+
+def test_the_curator_turns_the_entities_of_prose_off_only_with_figures_that_show_them_worse():
+    parse = model.init_run.parse_decision
+    assert parse(decision("multi-hop-api"), prose=True)["strategy"] == {"use": "multi-hop-api"}
+    assert parse(decision("multi-hop"), prose=True), "Claude Code's entities count as on"
+    assert parse(decision(), prose=True, entities_now=True) == {"reasons": []}, "nothing changed keeps them on"
+    for off in (decision("code"), decision(), decision(settings={"entities": None}, figures={"hit@5": 1.0})):
+        with pytest.raises(model.init_run.DecisionError, match="entities_on and entities_off"):
+            parse(off, prose=True, entities_now=bool(off.get("settings")))
+    worse = {"entities_on": 40.0, "entities_off": 55.0}
+    kept = parse(decision("code", figures=worse), prose=True)
+    assert kept["reasons"][0]["figures"] == worse, "the figures stay with the decision"
+    with pytest.raises(model.init_run.DecisionError, match="entities_off the higher"):
+        parse(decision("code", figures={"entities_on": 55.0, "entities_off": 40.0}), prose=True)
+    assert parse(decision("code"), prose=False), "code is not held to it"
+
+
 def test_the_summary_and_the_report_say_what_was_decided():
     assert model.summary("demo", "queued", None) == "KG init of demo is queued"
     assert model.summary("demo", "failed", {"error": "boom"}) == "KG init of demo failed: boom"
