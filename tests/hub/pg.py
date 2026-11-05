@@ -1,6 +1,7 @@
 """Postgres for the hub tests.
 
-EVO_HUB_TEST_DSN names a server and a superuser on it; without it every hub test module skips. Each test
+EVO_HUB_TEST_DSN names a server and a superuser on it; without it every hub test module skips, unless
+EVO_HUB_TEST_REQUIRE_DSN is set, as CI's Linux jobs set it: there a missing database fails the run. Each test
 gets a database of its own, owned by a role of its own with a random password, so the hub runs without
 superuser rights, a re-run starts clean, nothing lands in the server's own databases, and a password that
 reaches a log line is easy to find. Such a database is a copy of a template the pytest process migrated once
@@ -35,6 +36,9 @@ import pytest
 
 DSN = os.environ.get("EVO_HUB_TEST_DSN", "").strip()
 SKIP_REASON = "EVO_HUB_TEST_DSN is not set: hub tests need Postgres"
+REQUIRE_ENV = "EVO_HUB_TEST_REQUIRE_DSN"
+if os.environ.get(REQUIRE_ENV, "").strip() and not DSN:  # CI: a hub test that skips would pass the run untested
+    raise pytest.UsageError(f"{REQUIRE_ENV} is set but EVO_HUB_TEST_DSN is not: hub tests need Postgres")
 READY_TIMEOUT = 30.0
 SERVER_STACK = (
     "fastapi",

@@ -4,8 +4,10 @@ name: ci
 # makes a change tests the cases it puts at risk on its own machine, merges, and main deploys to the hub at once
 # (deploy.yml). Two weights. The full one, which release.yml runs before it builds anything: Linux, macOS and Windows on
 # Python 3.11 and 3.12, the web's checks and its end-to-end tests. The light one, a manual run without `full`: Linux on
-# Python 3.12, the Python of the hub's image, and the web. No linter runs here: ruff, ESLint, import-linter and the
-# structure budgets of tests/test_structure.py are commands to run when wanted (docs/structure.md).
+# Python 3.12, the Python of the hub's image, and the web. The full one also runs the lint job: ruff, ruff format,
+# import-linter, the structure budgets of tests/test_structure.py and basedpyright against tests/type_baseline.json
+# (docs/structure.md), so a tag keeps the structure, types and lint main has. A plain pytest still leaves the structure
+# tests out.
 on:
   workflow_call:
     inputs:
@@ -97,6 +99,8 @@ jobs:
           --health-retries 30
     env:
       EVO_HUB_TEST_DSN: postgresql://postgres:test@localhost:5432/postgres
+      # A hub test fails rather than skips when EVO_HUB_TEST_DSN is missing (tests/hub/pg.py).
+      EVO_HUB_TEST_REQUIRE_DSN: "1"
     steps:
       - name: Postgres without fsync
         run: >-
@@ -246,6 +250,37 @@ jobs:
       - name: Its tests
         working-directory: evo-agents-core-plugins
         run: make test PYTEST_ARGS="-n 4 --durations=20"
+
+  # The full run only: lint, structure and types. ruff and its formatter, the package boundaries of import-linter, the
+  # budgets and baselines of tests/test_structure.py against main (EVO_STRUCTURE_BASE makes a missing origin/main fail
+  # rather than skip), and basedpyright, in the environment of a worker's run (the extras of [tool.evo-agents.worker]),
+  # in which tests/type_baseline.json was made.
+  lint:
+    name: lint
+    needs: changes
+    if: needs.changes.outputs.full == 'true' && needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    env:
+      EVO_STRUCTURE_BASE: origin/main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git fetch origin +refs/heads/main:refs/remotes/origin/main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install --system -e '.[test,graphify,hub-server,worker,ingest]'
+      - run: uv pip install --system --no-deps --require-hashes -r deploy/hub/core-plugins.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: lint-imports
+      - run: python -m pytest -q -m structure tests/test_structure.py
+      - run: python -m basedpyright
 
   # The full run only. Service containers run on Linux only: macOS and Windows install the core package without the
   # hub-server and worker extras, and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that
@@ -438,6 +473,7 @@ jobs:
     needs:
       - changes
       - test
+      - lint
       - plugin-host-root
       - core-plugins-image
       - core-plugins-suite

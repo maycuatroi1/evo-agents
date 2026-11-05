@@ -166,8 +166,8 @@ markers = [
     "structure: evo_agents against its structure budgets (tests/test_structure.py); runs only with -m structure",
     "gateway_image: the model gateway's client against the pinned OmniRoute image (tests/hub/test_gateway_image.py); skipped without Docker",
 ]
-# The structure budgets are a check to run when wanted, not part of the suite or of CI (docs/structure.md):
-# `python -m pytest -m structure tests/test_structure.py`. Another -m replaces this one.
+# The structure budgets are not part of the suite: the lint job of the full ci (a v* tag) runs them, and so can you
+# (docs/structure.md): `python -m pytest -m structure tests/test_structure.py`. Another -m replaces this one.
 addopts = ["-m", "not structure"]
 # Read by pytest-asyncio when it is installed (the tests do not need it); tests/conftest.py declares the option
 # otherwise, so pytest does not warn about an unknown key.

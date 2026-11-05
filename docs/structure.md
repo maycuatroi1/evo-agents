@@ -1,10 +1,31 @@
 # The structure of the code
 
 Two checks keep the structure of `evo_agents`: import-linter checks the boundaries between its packages, and the
-tests marked `structure` in `tests/test_structure.py` check size and complexity budgets. Since 2026-10-13 neither runs
-in CI nor in a plain `pytest` (`addopts` deselects the marker); run them when a change moves code between packages or
-grows a large module. A failure says what is over, by how much, and how to fix it. What broke a rule when the rules
-came in (2026-10-10) is frozen as an exception, and exceptions only shrink.
+tests marked `structure` in `tests/test_structure.py` check size and complexity budgets. basedpyright checks its types
+against a baseline (section Type check). A plain `pytest` runs none of them (`addopts` deselects the marker); run them
+when a change moves code between packages or grows a large module. A failure says what is over, by how much, and how
+to fix it. What broke a rule when the rules came in (2026-10-10) was frozen as an exception, and exceptions only
+shrink; since 2026-11-05 the baseline of the budgets holds none.
+
+## In CI
+
+The CI of a release tag keeps these checks. The full tier of `.github/workflows/ci.yml`, which `release.yml` runs on a
+`v*` tag before it builds anything, has a `lint` job that runs, in the environment of a worker's run (the extras of
+`[tool.evo-agents.worker]`):
+
+```sh
+ruff check .
+ruff format --check .
+lint-imports
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+EVO_STRUCTURE_BASE=origin/main python -m pytest -q -m structure tests/test_structure.py
+python -m basedpyright
+```
+
+A failure of any of them fails `ci-ok`, so the tag is not released. In the same run, the Linux test jobs set
+`EVO_HUB_TEST_REQUIRE_DSN=1` next to `EVO_HUB_TEST_DSN`: with it set and the DSN missing, `tests/hub/pg.py` fails the
+run instead of skipping every hub test (`tests/hub/test_require_dsn.py`). A pull request and a push to main run no CI,
+so run the commands below before you merge a change that touches what they check.
 
 ## Commands
 
@@ -45,15 +66,15 @@ you remove the import an entry names, remove the entry too (import-linter fails 
 
 ## Budgets
 
-| Budget | Limit | Measured by | Frozen in `tests/structure_baseline.json`, 2026-10-11 |
-| --- | --- | --- | --- |
-| module | 1,000 lines | lines of the file | 8 modules |
-| function | 50 statements, complexity 15 | ruff PLR0915 and C901, `# noqa` ignored | 36 functions |
-| private names | none imported from another module | `from module import _name` | 74 imports |
+| Budget | Limit | Measured by | Frozen in `tests/structure_baseline.json`, 2026-10-11 | Today |
+| --- | --- | --- | --- | --- |
+| module | 1,000 lines | lines of the file | 8 modules | none |
+| function | 50 statements, complexity 15 | ruff PLR0915 and C901, `# noqa` ignored | 36 functions | none |
+| private names | none imported from another module | `from module import _name` | 74 imports | none |
 
-When the rules came in, the baseline held 10 modules, 40 functions and 101 imports. Splitting `worker/run.py` into
-`worker/runner/` and `hub/server/runs.py` into the package `hub/server/runs/` removed two modules, four functions and
-the 27 imports of private names from the run API. `python -m tests.structure report` prints what is left today.
+When the rules came in, the baseline held 10 modules, 40 functions and 101 imports. The plan code-quality-upgrade
+(2026-11) split the rest, so the baseline is empty and every module, function and import keeps the budget, the
+alembic revisions included. `python -m tests.structure report` prints anything over budget.
 
 Only `evo_agents` is measured, not the tests. A frozen module or function may not grow past its number. Once it
 shrinks, the test asks you to lower the number, and once it fits the budget, to drop the entry: `tighten` does both.
