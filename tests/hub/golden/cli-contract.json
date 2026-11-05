@@ -3465,6 +3465,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -19993,6 +19994,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -20110,6 +20112,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -20286,6 +20289,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -20403,6 +20407,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -20755,6 +20760,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -20872,6 +20878,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -20989,6 +20996,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -21480,6 +21488,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -21621,6 +21630,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -21796,6 +21806,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -21913,6 +21924,7 @@
           "autonomy",
           "selector",
           "tolerations",
+          "spend",
           "plan_progress",
           "as_owner",
           "as_owner_since",
@@ -133487,6 +133499,63 @@
           ],
           "title": "ModelCount"
         },
+        "ModelSpend": {
+          "properties": {
+            "model": {
+              "type": "string",
+              "title": "Model",
+              "description": "the model as its runtime named it; empty when it named none"
+            },
+            "tokens": {
+              "$ref": "#/components/schemas/SpentTokens"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "reported plus estimated; null when neither is known"
+            },
+            "reported_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reported Usd",
+              "description": "the cost its runtime reported; null when it reported none"
+            },
+            "estimated_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Usd",
+              "description": "the tokens no reported cost covers, at the model's list price; null for none, or no price"
+            }
+          },
+          "type": "object",
+          "required": [
+            "model",
+            "tokens",
+            "cost_usd",
+            "reported_usd",
+            "estimated_usd"
+          ],
+          "title": "ModelSpend"
+        },
         "NameReport": {
           "properties": {
             "key": {
@@ -154364,6 +154433,17 @@
               ],
               "title": "Usage"
             },
+            "spend": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunSpend"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the run spent itself, by model, from its usage reports as they came: while it runs, waits or is parked too, and only its own share of a session it went on in; null before its first report"
+            },
             "plan_progress": {
               "anyOf": [
                 {
@@ -157299,6 +157379,79 @@
             "plan"
           ],
           "title": "RunSpec"
+        },
+        "RunSpend": {
+          "properties": {
+            "tokens": {
+              "$ref": "#/components/schemas/SpentTokens"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "reported plus estimated; null when neither is known"
+            },
+            "reported_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reported Usd",
+              "description": "what its runtimes reported it cost; null when none did"
+            },
+            "estimated_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estimated Usd",
+              "description": "what the tokens no reported cost covers come to at list prices"
+            },
+            "models": {
+              "items": {
+                "$ref": "#/components/schemas/ModelSpend"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "each model it used, the dearest first"
+            },
+            "sessions": {
+              "type": "integer",
+              "title": "Sessions",
+              "description": "the agent sessions it spent in"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "when the hub last took in its usage"
+            }
+          },
+          "type": "object",
+          "required": [
+            "tokens",
+            "cost_usd",
+            "reported_usd",
+            "estimated_usd",
+            "models",
+            "sessions",
+            "updated_at"
+          ],
+          "title": "RunSpend"
         },
         "RunState": {
           "properties": {
@@ -161490,6 +161643,54 @@
             "url"
           ],
           "title": "SourceRead"
+        },
+        "SpentTokens": {
+          "properties": {
+            "input": {
+              "type": "integer",
+              "title": "Input",
+              "description": "input tokens not read from the cache",
+              "default": 0
+            },
+            "output": {
+              "type": "integer",
+              "title": "Output",
+              "description": "output tokens, reasoning among them",
+              "default": 0
+            },
+            "cache_read": {
+              "type": "integer",
+              "title": "Cache Read",
+              "description": "input tokens read from the cache",
+              "default": 0
+            },
+            "cache_write": {
+              "type": "integer",
+              "title": "Cache Write",
+              "description": "input tokens written to the cache",
+              "default": 0
+            },
+            "cache_write_1h": {
+              "type": "integer",
+              "title": "Cache Write 1H",
+              "description": "of cache_write, those written for an hour",
+              "default": 0
+            },
+            "reasoning": {
+              "type": "integer",
+              "title": "Reasoning",
+              "description": "of output, the reasoning the runtime counted apart",
+              "default": 0
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "input, output, cache read and cache write together",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "title": "SpentTokens"
         },
         "SrsBaseline": {
           "properties": {

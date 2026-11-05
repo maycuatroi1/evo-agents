@@ -349,7 +349,11 @@ def events_of(message) -> list[AgentEvent]:
                     events.append(tool_result(block.tool_use_id, status, block.content))
         return events
     if isinstance(message, sdk.ResultMessage):
-        extra = {"numTurns": message.num_turns, "durationMs": message.duration_ms}
+        # Each model's tokens and cost so far in the session (modelUsage) and the session's id: the hub's ledger of
+        # what the run spent by model, and its share of a session it went on in (evo_agents.hub.run_spend).
+        models = getattr(message, "model_usage", None) or None
+        extra = {"numTurns": message.num_turns, "durationMs": message.duration_ms, "models": models}
+        extra["session_id"] = message.session_id or None
         return [usage_update(message.usage or {}, message.total_cost_usd, **extra)]
     data = _raw_of(message)
     if data.get("type") == "system" and data.get("subtype") in SKIPPED_SYSTEM:

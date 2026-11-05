@@ -27071,6 +27071,30 @@ export interface components {
              */
             messages: number;
         };
+        /** ModelSpend */
+        ModelSpend: {
+            /**
+             * Model
+             * @description the model as its runtime named it; empty when it named none
+             */
+            model: string;
+            tokens: components["schemas"]["SpentTokens"];
+            /**
+             * Cost Usd
+             * @description reported plus estimated; null when neither is known
+             */
+            cost_usd: number | null;
+            /**
+             * Reported Usd
+             * @description the cost its runtime reported; null when it reported none
+             */
+            reported_usd: number | null;
+            /**
+             * Estimated Usd
+             * @description the tokens no reported cost covers, at the model's list price; null for none, or no price
+             */
+            estimated_usd: number | null;
+        };
         /** NameReport */
         NameReport: {
             /**
@@ -36195,6 +36219,8 @@ export interface components {
             usage: {
                 [key: string]: unknown;
             } | null;
+            /** @description what the run spent itself, by model, from its usage reports as they came: while it runs, waits or is parked too, and only its own share of a session it went on in; null before its first report */
+            spend?: components["schemas"]["RunSpend"] | null;
             /** @description a plan run's plan progress, set in a list of runs; null for any other run */
             plan_progress?: components["schemas"]["PlanProgress"] | null;
             /** @description the caps of a run the night shift queued; null for any other */
@@ -37640,6 +37666,41 @@ export interface components {
              * @description a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run
              */
             chat_message_id?: number | null;
+        };
+        /** RunSpend */
+        RunSpend: {
+            tokens: components["schemas"]["SpentTokens"];
+            /**
+             * Cost Usd
+             * @description reported plus estimated; null when neither is known
+             */
+            cost_usd: number | null;
+            /**
+             * Reported Usd
+             * @description what its runtimes reported it cost; null when none did
+             */
+            reported_usd: number | null;
+            /**
+             * Estimated Usd
+             * @description what the tokens no reported cost covers come to at list prices
+             */
+            estimated_usd: number | null;
+            /**
+             * Models
+             * @description each model it used, the dearest first
+             */
+            models: components["schemas"]["ModelSpend"][];
+            /**
+             * Sessions
+             * @description the agent sessions it spent in
+             */
+            sessions: number;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when the hub last took in its usage
+             */
+            updated_at: string;
         };
         /** RunState */
         RunState: {
@@ -39495,6 +39556,51 @@ export interface components {
              * @description the commit on its forge, when the repo's origin is on one
              */
             url: string | null;
+        };
+        /** SpentTokens */
+        SpentTokens: {
+            /**
+             * Input
+             * @description input tokens not read from the cache
+             * @default 0
+             */
+            input: number;
+            /**
+             * Output
+             * @description output tokens, reasoning among them
+             * @default 0
+             */
+            output: number;
+            /**
+             * Cache Read
+             * @description input tokens read from the cache
+             * @default 0
+             */
+            cache_read: number;
+            /**
+             * Cache Write
+             * @description input tokens written to the cache
+             * @default 0
+             */
+            cache_write: number;
+            /**
+             * Cache Write 1H
+             * @description of cache_write, those written for an hour
+             * @default 0
+             */
+            cache_write_1h: number;
+            /**
+             * Reasoning
+             * @description of output, the reasoning the runtime counted apart
+             * @default 0
+             */
+            reasoning: number;
+            /**
+             * Total
+             * @description input, output, cache read and cache write together
+             * @default 0
+             */
+            total: number;
         };
         /**
          * SrsBaseline

@@ -1127,6 +1127,28 @@ def test_the_background_tracker_follows_background_bash_calls_and_their_tasks_on
     assert ended == ["b-auto"] and background.ended["b-auto"] == {"description": "npm test", "status": "killed"}
 
 
+def test_a_claude_result_reports_each_models_totals_and_the_session_with_the_turns_usage():
+    sdk = needs("claude_agent_sdk")
+    models = {"claude-opus-5-5": {"inputTokens": 3, "outputTokens": 40, "costUSD": 0.5}}
+    message = sdk.ResultMessage(
+        subtype="success",
+        duration_ms=10,
+        duration_api_ms=9,
+        is_error=False,
+        num_turns=2,
+        session_id="b2a7c4de-0000-4000-8000-000000000001",
+        total_cost_usd=0.5,
+        usage={"input_tokens": 3, "output_tokens": 40},
+        model_usage=models,
+    )
+    (event,) = events_of(message)
+    assert event.kind == "usage_update"
+    assert event.body["models"] == models and event.body["session_id"] == message.session_id
+    assert event.body["cost"] == {"amount": 0.5, "currency": "USD"} and event.body["usage"]["output_tokens"] == 40
+    bare = sdk.ResultMessage("success", 1, 1, False, 1, "", usage={"output_tokens": 1})
+    assert "models" not in events_of(bare)[0].body and "session_id" not in events_of(bare)[0].body
+
+
 def test_claude_thinking_and_its_todo_list_come_out_as_thoughts_and_a_plan():
     sdk = needs("claude_agent_sdk")
     message = sdk.AssistantMessage(

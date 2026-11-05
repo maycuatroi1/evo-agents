@@ -2066,7 +2066,8 @@ The events take the shapes of ACP's `session/update`: `agent_message_chunk` and 
 `toolCallId`, `status` (`completed` or `failed`), and the tool's output as `content`
 `[{"type": "content", "content": {"type": "text", "text": ...}}]`; `plan` carries `entries` of `content`, `status` and
 `priority` (Claude Code's todo list, Codex's plan, opencode's todos); `usage_update` carries the runtime's `usage`, and
-`cost` `{"amount", "currency": "USD"}` when the runtime counts one. An event a runtime sends that has none of these
+`cost` `{"amount", "currency": "USD"}` when the runtime counts one; Claude Code's also carries `models`, its
+`modelUsage` (each model's tokens and `costUSD` so far in the session), and the `session_id`. An event a runtime sends that has none of these
 meanings goes as `output` `{"raw": ...}`, except the ones that only repeat others: text deltas, the start of a hook,
 Claude Code's list of slash commands.
 
@@ -2099,6 +2100,20 @@ cost: opencode's steps added up under `cost`, else the session's running total (
 plus each total it fell back from when a new session began. Its figures and its plan's cost count it then; a run whose
 agent sent no `usage_update` before it stopped still counts as free. Migration 0183 did the same once for the runs that
 ended so before it.
+
+What a run spent itself is the hub's ledger of its `usage_update` events, kept as they come whatever the run's state
+(`run_spend`, `evo_agents.hub.run_spend`; Run's `spend`): its tokens and cost by agent session and model, so a run
+that runs, waits or is parked, or ends done because a new run resumes it, shows what it spent so far. A running total
+(Claude Code's cost and `models`, Codex's thread tokens, an ACP agent's cost) counts what earlier runs of the session
+spent too, so the ledger takes the run's share: from where the latest earlier run of the session left it (its `ends`),
+each report adds its step from the one before, unless it opened a new process that started from 0 (the step is farther
+from what the report's own turn cost at the model's list price than the total itself, or the total fell). A run of
+Claude Code's workers before `models` counts under the model its init message named. Tokens no reported cost covers
+(Codex, a local session between its `cost-state` lines) are priced at the list prices of `run_spend.PRICES`, as
+`estimated_usd` apart from `reported_usd`; a model not listed there has no estimate. `store_events` records a run
+whose batch holds a usage report, a state report with a usage records it (a run whose events are not kept counts its
+`usage`), and the job `hub.record_spend` takes in every minute, oldest first, the runs no record reached yet
+(`runs.spend_at` NULL), which after migration 0210 is every run before it.
 
 A Claude Code session of a run asks for the preset system prompt without its dynamic sections
 (`exclude_dynamic_sections`), so the system prompt holds nothing of the machine, the worktree or the step and a new

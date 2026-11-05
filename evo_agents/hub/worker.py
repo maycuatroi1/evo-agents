@@ -614,6 +614,14 @@ async def index_history(context: JobContext, timestamp: int | None = None) -> di
     return await index(found.engine, found.blobs, scratch=found.data_dir / "history")
 
 
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.RECORD_SPEND, pass_context=True, lock=jobs.RECORD_SPEND, queueing_lock=jobs.RECORD_SPEND)
+async def record_spend(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.spend_store import record_pending
+
+    return await record_pending(hub(context).engine)
+
+
 @queue.periodic(cron="43 3 * * *")
 @queue.task(name=jobs.PRUNE_JOBS, pass_context=True, queueing_lock=jobs.PRUNE_JOBS)
 async def prune_jobs(context: JobContext, timestamp: int | None = None) -> None:
