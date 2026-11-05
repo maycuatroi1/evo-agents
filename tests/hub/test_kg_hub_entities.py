@@ -260,6 +260,31 @@ def test_the_build_opens_the_creators_key_and_prefers_one_bound_to_the_project(h
 
 
 @needs_pg
+def test_a_key_goes_only_to_the_host_it_belongs_to(hub_db):
+    """A writer of the settings names the url and key_env: neither another host nor another variable opens a key."""
+    from evo_agents.hub.server.sealing import Sealer
+
+    sealer = Sealer(random.token_bytes(32))
+    creator, _, project = hub_rows(hub_db)
+    own = put_secret(hub_db, sealer, creator, "mine", "sk-mine")
+    put_secret(hub_db, sealer, creator, "gh", "ghp-x", env_var="GITHUB_TOKEN", bind=project)
+    acct = put_secret(hub_db, sealer, creator, "acct", "sk-acct", kind="provider", base_url="https://openrouter.ai/api")
+    assert find(hub_db, sealer, project) == ({ENV: "sk-mine"}, f"secret:{own}")
+    for url in (
+        "https://attacker.example/v1",
+        "http://openrouter.ai/api/v1",
+        "https://openrouter.ai.attacker.example/v1",
+    ):
+        assert find(hub_db, sealer, project, {**MAPPING, "url": url}) == ({}, None), url
+    assert find(hub_db, sealer, project, {**MAPPING, "key_env": "GITHUB_TOKEN"}) == (
+        {"GITHUB_TOKEN": "sk-acct"},
+        f"secret:{acct}",
+    ), "only the provider account of the host, never the token"
+    stolen = {**MAPPING, "url": "https://attacker.example/v1", "key_env": "GITHUB_TOKEN"}
+    assert find(hub_db, sealer, project, stolen) == ({}, None)
+
+
+@needs_pg
 def test_a_project_made_by_upload_runs_its_entities_in_the_hub_build_with_its_creators_key(
     hub_db, tmp_path, s3, monkeypatch, caplog
 ):
