@@ -2957,6 +2957,57 @@ each upload source with its label and latest upload, and a config pushed later k
 its uploads, archives and items. The report lists the first paths skipped or kept as assets only to members whose
 grant sees the upload's label; the log holds upload ids, counts and reasons, never a path.
 
+**Following an upload to a ready graph.** After an upload the hub runs every phase by itself: `uploading`,
+`extracting`, `building` (the build the read queued), `questions` (the starter questions), `curator` (the kg_init run
+after that build) and `entities`. Entities run in the build when the project's strategy already turns them on, and
+otherwise in the rebuild the Curator's decision queues, so they follow the Curator. `GET
+/v1/kg/{project}/uploads/{id}/pipeline` (`evo_agents/hub/server/kg_pipeline.py`, phases derived in
+`evo_agents/hub/kg_pipeline.py`) answers the flow's state (`running`, `ready`, `failed`, or `replaced` when a later
+upload of the source was read first), the phase running or failed, each phase with its state (`pending`, `running`,
+`done`, `skipped`, `failed`) and detail, the reason of a failure, and the build, kg_init run and rebuild it went through.
+Any grant on the project that sees the upload's label reads it; 404 otherwise. The flow is `ready` once every phase is done
+or skipped. Starter questions that fail or time out are `skipped`, since kg_init goes on without them; the entities
+step fails only when it was on and gave no node while it stopped (no key, the ceiling) or its items failed. Items
+deferred to a run with Claude Code skip it. `evo-agents hub kg pipeline --project demo [--upload ID] [--json]` prints
+the same, for the newest upload without `--upload`, and exits 1 when a phase failed. `hub kg upload` waits by default:
+it reads the flow every 15 seconds and prints `Knowledge graph build in progress: PHASE: DETAIL` each time it changes,
+then `Knowledge graph ready` with the graph's link and exits 0, or `Knowledge graph build failed at PHASE: REASON` and
+exits 1. `--no-wait` returns once the parts are joined, as before; with `--json` the progress goes to stderr and the
+object gains `pipeline` (null with `--no-wait`). The Upload data page shows the newest upload's flow, and the New
+project from data page shows the flow of the upload it just sent. Both refresh every few seconds while it runs, say
+"Knowledge graph ready" with a link to the graph, or name the failed phase and its reason. Each minute
+`curator.collect` sends the notice `kg_pipeline` once per upload whose flow ended ready or failed, to its sender and
+the project's admins, and stamps `kg_uploads.told_at` (migration 0206, which marks the uploads made before it as told).
+A replaced upload is stamped with no notice.
+
+```sh
+evo-agents hub kg upload ./lumen-handbook.zip --project demo   # waits until the graph is ready
+evo-agents hub kg pipeline --project demo --json
+```
+
+**Answering a file of questions.** `evo-agents hub kg answer --project P --questions Q.jsonl [--out answers.jsonl]
+[--batch N]` sends a file of at most 5,000 questions, one JSON object a line with `id` (a string or an integer, unique)
+and `question`, to `POST /v1/kg/{project}/answers` (the writer role; `evo_agents/hub/server/kg_answers.py`, the model
+in `evo_agents/hub/kg_answers.py`, tables `kg_answer_jobs` and `kg_answers` of migration 0207). The hub keeps them as a
+job and asks them in batches of N (50 by default, at most 200): each batch is a review run without a repo on the
+project's KG pool, under the charter's review cost cap, whose Claude Code agent reads the graph with kg_search,
+kg_context, kg_node and kg_more within the clearance of the agents' sink and sends its answers back with
+`hub kg answer --job J --reply FILE`. One batch runs at a time, as one review run of a project is active at a time;
+`curator.collect` queues the next one each minute. A question the run ended without answering keeps an error. The CLI
+prints the job's page and a line each time its counts change, then writes `--out` in the file's order, each line
+`id`, `question`, `answer`, `evidence`, `model`, `input_tokens` and `output_tokens` (the run's usage split evenly over
+its questions, cache tokens counted as input), and `error` for a question with no answer; it exits 1 when the job
+failed (no pool took its next batch for 24 hours). Sending the same file again asks only the questions no agent
+answered. `--no-wait` returns once the hub kept the file, `--job J` follows job J and writes its answers, and `--status`
+lists the project's jobs with their questions, answered, errors and state. The page `/p/{project}/kg/answers/{id}`
+shows the job while it runs and downloads answers.jsonl. Nothing is scored: the questions never join the project's
+eval set, and answer runs stay out of the Curator's prompt and figures.
+
+```sh
+evo-agents hub kg answer --project demo --questions questions.jsonl --out answers.jsonl
+evo-agents hub kg answer --project demo --status
+```
+
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
 graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is

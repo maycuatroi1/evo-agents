@@ -78,9 +78,11 @@ from evo_agents.hub.server import (
     audit,
     curator_threads,
     facet_figures,
+    kg_answers,
     kg_health,
     kg_init,
     kg_optimize,
+    kg_pipeline,
     memory_promotion,
     product_figures,
     runtime_figures,
@@ -121,6 +123,7 @@ def _ended_runs(project_id: int, plans: list[str], since: datetime, until: datet
         r.c.project_id == project_id,
         r.c.kind != "local",
         (r.c.plan_id.in_(plans)) | (r.c.kind == "review"),
+        r.c.id.not_in(kg_answers.answer_runs()),  # the runs of answer jobs ask a writer's questions, not the night's
         r.c.finished_at >= since,
         r.c.finished_at < until,
     )
@@ -786,6 +789,9 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
     ).one()
+    answering = await kg_answers.prompt_of(conn, view.id)
+    if answering is not None:  # the run of a batch of an answer job: its questions, never the Curator's prompt
+        return answering
     asking = await kg_init_db.of_questions_run(conn, view.id)
     if asking is not None:  # the run that writes a kg_init run's starter questions: counts only, never an item
         return review.build_review_prompt(
@@ -885,6 +891,16 @@ async def reopen_deferred(conn: AsyncConnection) -> int:
     return len(ids)
 
 
+async def _side(failed: str, work) -> dict | None:
+    """What ``work()``, a side task of the night shift, gave; ``{"failed": 1}`` when it raised, logged as ``failed``, so
+    the night shift goes on without it."""
+    try:
+        return await work()
+    except Exception:
+        log.exception(failed)
+        return {"failed": 1}
+
+
 async def collect(
     engine: AsyncEngine, *, now: datetime | None = None, github_app=None, blobs=None, data_dir=None
 ) -> dict:
@@ -894,27 +910,20 @@ async def collect(
     first (``kg_health.measure``, with ``github_app`` and ``blobs``), and ``graphs`` says how many."""
     from evo_agents.hub.server.curator_shift import due_schedules, gate_of  # it imports this module
 
-    measured = None
+    measured = optimized = initiated = None
     if data_dir is not None:
-        try:
-            measured = await kg_health.measure(engine, github_app=github_app, blobs=blobs, data_dir=data_dir, now=now)
-        except Exception:  # the night's figures go on without a new measure of the graph
-            log.exception("measuring the knowledge graphs failed")
-            measured = {"failed": 1}
-    optimized = None
-    if data_dir is not None:
-        try:
-            optimized = await kg_optimize.advance(engine, blobs=blobs, data_dir=data_dir)  # by the database's clock
-        except Exception:  # the night shift goes on without moving its KG optimize runs
-            log.exception("moving the KG optimize runs on failed")
-            optimized = {"failed": 1}
-    initiated = None
-    if data_dir is not None:
-        try:
-            initiated = await kg_init.advance(engine, blobs=blobs, data_dir=data_dir)
-        except Exception:  # the night shift goes on without moving its kg_init runs
-            log.exception("moving the kg_init runs on failed")
-            initiated = {"failed": 1}
+        measured = await _side(
+            "measuring the knowledge graphs failed",
+            lambda: kg_health.measure(engine, github_app=github_app, blobs=blobs, data_dir=data_dir, now=now),
+        )
+        optimized = await _side(  # by the database's clock
+            "moving the KG optimize runs on failed", lambda: kg_optimize.advance(engine, blobs=blobs, data_dir=data_dir)
+        )
+        initiated = await _side(
+            "moving the kg_init runs on failed", lambda: kg_init.advance(engine, blobs=blobs, data_dir=data_dir)
+        )
+    told = await _side("telling the end of the kg uploads' flows failed", lambda: kg_pipeline.tell(engine))
+    answered = await _side("moving the kg answer jobs on failed", lambda: kg_answers.advance(engine))
     async with engine.begin() as conn:
         due = (await conn.execute(due_schedules(now))).all()
         reopened = await reopen_deferred(conn)
@@ -930,9 +939,13 @@ async def collect(
         except Exception:  # one schedule failing leaves the others their turn
             log.exception("collecting a night failed", extra={"project": row.project, "schedule_id": row.id})
             outcomes["failed"] += 1
-    found = {**dict(sorted(outcomes.items())), "reopened": reopened}
+    found: dict = {**dict(sorted(outcomes.items())), "reopened": reopened}
     if optimized:
         found["kg_optimize"] = optimized
     if initiated:
         found["kg_init"] = initiated
+    if told:
+        found["kg_pipeline"] = told
+    if answered:
+        found["kg_answers"] = answered
     return found if measured is None else {**found, "graphs": measured}

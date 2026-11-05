@@ -10,7 +10,14 @@ from evo_agents.kg import locate, ppr, semantic
 from evo_agents.kg import rank as learned
 from evo_agents.kg.explore import MARK, POOL
 from evo_agents.kg.refs import readable
-from evo_agents.kg.search import CODE_LEAD, SNIPPET_KINDS, code_words, query_words, with_mentions
+from evo_agents.kg.search import (
+    CODE_LEAD,
+    SNIPPET_KINDS,
+    code_words,
+    query_words,
+    through_entities,
+    with_mentions,
+)
 from evo_agents.kg.serve_text import SessionText
 from evo_agents.kg.serve_view import ANSWERS_NOTHING
 from evo_agents.kg.store import Store
@@ -56,6 +63,10 @@ class SearchTools(SessionText):
         if self.plain:
             return self._plain_search(store, b, query, kinds, limit)
         hits = self._search_hits(store, b, query, kinds, limit, repo)
+        stood: dict[str, list[str]] = {}  # a source document -> the matched entities it stands for
+        if not kinds:  # an entity gives its place to the documents that mention it (search.through_entities)
+            hits, stood = through_entities(store, b, hits, self.seen)
+            hits = [n for n in hits if in_repo(n, repo)]
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
@@ -72,17 +83,26 @@ class SearchTools(SessionText):
         explored = self._explore(store, results, hits, via)
         for reached in via.values():
             self._saw(reached["label"])
-        lines = self._search_lines(b, query, results, via, matched, code, repo)
+        listed = {n["id"] for n in results}
+        stood = {nid: why for nid, why in stood.items() if nid in listed}
+        lines = self._search_lines(b, query, results, via, matched, code, repo, self._stood_names(store, b, stood))
         if explored is not None:
             lines.append(MARK.format(rank=explored[0], p=explored[1], ref=readable(results[explored[0] - 1]["id"])))
         return "\n".join(lines), {
             "build": b,
             "results": [self._node_json(n) for n in results],
             "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
+            "entities": stood,
             "matched": matched,
             "code": {nid: found_lines for nid, found_lines in code.items() if any(n["id"] == nid for n in results)},
             "summary": f"{len(results)} results",
         }
+
+    @staticmethod
+    def _stood_names(store: Store, b: int, stood: dict[str, list[str]]) -> dict[str, str]:
+        """For each result that stands for matched entities, their names as its line shows them."""
+        entity = store.nodes(sorted({e for why in stood.values() for e in why}), b)
+        return {nid: ", ".join(entity[e]["name"] if e in entity else e for e in why) for nid, why in stood.items()}
 
     def _search_hits(
         self, store: Store, b: int, query: str, kinds: list | None, limit: int, repo: str | None
@@ -132,9 +152,12 @@ class SearchTools(SessionText):
         matched: dict,
         code: dict[str, list[int]],
         repo: str | None,
+        stood: dict[str, str] | None = None,
     ) -> list[str]:
         """The text of kg_search: a header with the status most results have, the label line, and a line for each
-        result, the first FULL_LINES whole and the others by id alone."""
+        result, the first FULL_LINES whole and the others by id alone; ``stood`` names the entities a document stands
+        for."""
+        stood = stood or {}
         words = len(query_words(query))
         # No result holds the whole query: the line under the header says so, and the results stay at ``limit``, since
         # the evidence of a question in plain words is spread over nodes that each hold some of its words.
@@ -163,7 +186,8 @@ class SearchTools(SessionText):
             else:
                 m = matched.get(n["id"])
                 line = mark + self._line(n, shared, (m or {}).get("lines"), status)
-                lines.append(line + (f" words={m['words']}/{words}" if m and m["words"] < words else ""))
+                line += f" words={m['words']}/{words}" if m and m["words"] < words else ""
+                lines.append(line + (f" entity {stood[n['id']]}" if n["id"] in stood else ""))
                 if m and m.get("snippet"):
                     lines.append(f"    > {m['snippet']}")
         return lines

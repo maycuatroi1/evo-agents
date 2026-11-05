@@ -27,7 +27,11 @@ A model is one of: ``command``, an argv run on this machine that reads one JSON 
 (``{"text", "node_kinds", "relations", "model"}``) and writes one on stdout
 (``{"nodes": [{"kind", "name", "evidence", "conf"}], "edges": [{"src", "rel", "dst", "evidence"}], "usage":
 {"input_tokens", "output_tokens", "cost"}}``); or ``url``, an OpenAI-compatible endpoint, reached with the ``openai``
-library of the optional extra ``entities`` (``key_env`` names the variable that holds the key, never the key).
+library of the optional extra ``entities`` (``key_env`` names the variable that holds the key, never the key). The
+key is read from ``keys``, a mapping of variable to value the caller holds in memory (the hub's build opens it from a
+hub secret, ``evo_agents.hub.server.kg_entity_key``), else from the environment; a remote url whose ``key_env`` has no
+value stops the step before any call (the rest waits for a later build), and an error of the endpoint is kept with the
+key cut out, so the key reaches no coverage, log or prompt.
 A command that exits STOP_EXIT (a login refused, a limit reached) stops the step at that item: the rest is skipped and
 waits for a later build. Verification of a build never calls a model: it reads the memo only.
 
@@ -320,20 +324,34 @@ def call_command(config: dict, text: str, node_kinds: list[str], relations: list
     return parse_answer(done.stdout)
 
 
-def _openai_client(config: dict):
+def key_of(config: dict, keys: dict | None = None) -> str | None:
+    """The key of a url model: ``keys[key_env]``, else the variable ``key_env`` of the environment; None without one."""
+    name = config.get("key_env")
+    if not name:
+        return None
+    found = (keys or {}).get(name) or os.environ.get(name) or ""
+    return found.strip() or None
+
+
+def redact(text: str, key: str | None) -> str:
+    """``text`` with ``key`` cut out, for an error that may quote what was sent."""
+    return text.replace(key, "[key]") if key else text
+
+
+def _openai_client(config: dict, key: str | None = None):
     try:
         import openai
     except ImportError:
         raise EntitiesError("the url model needs the openai library: pip install 'evo-agents[entities]'") from None
-    key = os.environ.get(config.get("key_env") or "") if config.get("key_env") else None
     return openai.OpenAI(base_url=config["url"], api_key=key or "none")
 
 
 CLIENT_FACTORY = _openai_client  # tests replace it
 
 
-def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: list[str]) -> dict:
-    client = CLIENT_FACTORY(config)
+def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: list[str], keys=None) -> dict:
+    key = key_of(config, keys)
+    client = CLIENT_FACTORY(config, key)
     try:
         got = client.chat.completions.create(
             model=config["model"],
@@ -341,7 +359,7 @@ def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: lis
             temperature=0,
         )
     except Exception as exc:  # the library's errors differ by version: a failed call is a failed call
-        raise EntitiesError(f"the model endpoint failed: {type(exc).__name__}: {exc}") from None
+        raise EntitiesError(redact(f"the model endpoint failed: {type(exc).__name__}: {exc}", key)) from None
     usage = getattr(got, "usage", None)
     used = None
     if usage is not None:
@@ -358,10 +376,10 @@ def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: lis
     return data
 
 
-def call_model(config: dict, text: str, node_kinds: list[str], relations: list[str]) -> dict:
+def call_model(config: dict, text: str, node_kinds: list[str], relations: list[str], keys=None) -> dict:
     if "command" in config:
         return call_command(config, text, node_kinds, relations)
-    return call_endpoint(config, text, node_kinds, relations)
+    return call_endpoint(config, text, node_kinds, relations, keys)
 
 
 # -- the step -----------------------------------------------------------------------------------------------------
@@ -433,13 +451,15 @@ def run(
     semantic_settings=None,
     outbox=None,
     inbox=None,
+    keys=None,
 ):
     """Run the step: ``(facts per item id, coverage)``. ``config`` is the mapping of ``enabled``; ``body(rec)`` the text
     of an item; ``first`` the facts the item's map stage gave (the document node an edge starts from, the code an
     entity may name); ``kinds`` and ``relations_known`` what the ontology holds (None: everything). ``offline`` reads
     the memo and calls nothing. ``semantic_settings`` are the project's (``kg.semantic``): with vectors, near entities
     get synonym edges (``entity_links``). ``outbox``, a list, gets the requests of the items deferred on a machine
-    without ``claude``; ``inbox`` maps a request's key to the answer a run that had ``claude`` gave."""
+    without ``claude``; ``inbox`` maps a request's key to the answer a run that had ``claude`` gave. ``keys`` maps a
+    variable named by ``key_env`` to its value, held in memory only (``key_of``)."""
     from evo_agents.kg.pipeline.stages import item_unit
 
     out: dict[str, list[dict]] = {}
@@ -453,12 +473,17 @@ def run(
         cov["stopped"] = "no node kind of entities.node_kinds is in the ontology"
         return out, cov
     step = _Step(config, memo, cov, allowed_kinds, allowed_rels, offline=offline, outbox=outbox, inbox=inbox or {})
+    step.keys = keys
+    if "url" in config and not cov["local"] and config.get("key_env") and key_of(config, keys) is None:
+        step.halted.append(f"no key: {config['key_env']} is not set on this machine nor given by a hub secret")
     digest = config_digest(config, allowed_kinds, allowed_rels)
     todo = _todo(config, project.policy, records, body, unit_labels, cov, digest)
     jobs = int(config.get("jobs", 1))
     ready: dict[str, dict | EntitiesError] = {}
-    if jobs > 1 and not offline and not step.defer:
-        ready = _prefetch(config, todo, memo, step.inbox, step.spend, step.halted, allowed_kinds, allowed_rels, jobs)
+    if jobs > 1 and not offline and not step.defer and not step.halted:
+        ready = _prefetch(
+            config, todo, memo, step.inbox, step.spend, step.halted, allowed_kinds, allowed_rels, jobs, keys
+        )
     answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
     for rec, label, text, inputs, key in todo:
         cleaned = step.answer(rec.item_id, text, inputs, key, ready)
@@ -561,6 +586,7 @@ class _Step:
         self.spend = Spend(config)
         self.defer = "command" in config and claude_code.uses(config["command"]) and not claude_code.available()
         self.halted: list[str] = []  # why a command asked to stop: no item after it is sent
+        self.keys: dict | None = None  # the keys of a url model, held in memory (``key_of``)
 
     def answer(self, item: str, text: str, inputs: dict, key: str, ready: dict) -> dict | None:
         """The cleaned answer of an item, or None when it is skipped or its call failed (counted in coverage)."""
@@ -625,7 +651,7 @@ class _Step:
         if why:
             raise BudgetStop(why)
         try:
-            answer = call_model(self.config, text, self.kinds, self.rels)
+            answer = call_model(self.config, text, self.kinds, self.rels, self.keys)
         except ModelStop as stop:
             self.halted.append(str(stop))
             raise BudgetStop("halted") from None
@@ -640,7 +666,7 @@ class _Step:
         return cleaned
 
 
-def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs) -> dict:
+def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=None) -> dict:
     """Ask the model ``jobs`` items at a time for the items of ``todo`` the memo and the inbox lack, in their order;
     each answer is memoized and committed as it comes. Returns the answer, or the EntitiesError, by memo key. It stops
     sending at the ceiling of ``spend`` and at the first ModelStop (appended to ``halted``); the items it did not send
@@ -678,7 +704,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs) -> di
                 item = next(pending, None)
                 if item is None:
                     break
-                running[pool.submit(call_model, config, item[2], kinds, rels)] = item
+                running[pool.submit(call_model, config, item[2], kinds, rels, keys)] = item
             if not running:
                 break
             done, _ = wait(running, return_when=FIRST_COMPLETED)

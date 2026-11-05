@@ -85,6 +85,9 @@ WORKER_POOL_CREATE = "worker_pool.create"
 WORKER_POOL_UPDATE = "worker_pool.update"
 WORKER_POOL_TOKEN = "worker_pool.token"
 WORKER_POOL_TOKEN_REVOKE = "worker_pool.token_revoke"
+# A hub admin named the shared KG pool, "pool:<id> name=<n> owner=<login>", or cleared it, "pool:<id> name=<n>
+# kg_shared=off"; the hub added a project to it, "pool:<id> name=<n> project=<name>" (evo_agents.hub.server.kg_shared_pool)
+WORKER_POOL_KG_SHARED = "worker_pool.kg_shared"
 # The owner or a hub admin asked the worker's daemon to update itself to nightly now, or cancelled that request:
 # "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.update_now)
 WORKER_UPDATE_NOW = "worker.update_now"

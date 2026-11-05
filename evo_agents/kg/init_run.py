@@ -15,6 +15,11 @@ decides and applies without waiting for a person. Its decision is one JSON objec
   through the proposal flow and are never applied here;
 - ``reasons``: one entry per decision, ``{"about", "why", "figures"}``, the figures being the numbers that justify it.
 
+A project whose content lines are mostly prose (``mostly_prose``) starts with the entities step on (plan
+kg-zip-to-answers, a3): its prompt says so, and a decision that leaves it with a strategy whose steps lack ``entities``
+is refused unless a reason about the strategy or the settings cites ENTITY_FIGURES, the figure of the tune questions
+with the step and without it, the one without it the higher.
+
 A decision part without a reason that cites a figure is refused: the point of a run is that every choice says why and
 by how much. Standard library only; the strategy and settings modules validate what they own.
 """
@@ -27,6 +32,8 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 SHARE = 0.10  # a language or data type is a major part of the project from this share of its content lines
+PROSE_SHARE = 0.5  # a project is mostly prose from this share of its content lines
+ENTITY_FIGURES = ("entities_on", "entities_off")  # the tune figure with the entities step and without it
 HALF = 0.5  # the content lines changed by this share or more
 NEW_PROFILE = "no profile of an earlier run"
 PARTS = ("strategy", "settings", "sources", "code_changes")
@@ -58,6 +65,13 @@ def major(profile: Mapping) -> set[str]:
         if share >= SHARE:
             found.add(f"text:{name}")
     return found
+
+
+def mostly_prose(profile: Mapping | None) -> bool:
+    """Whether prose holds PROSE_SHARE or more of the profile's content lines."""
+    lines = int((profile or {}).get("lines") or 0)
+    prose = (((profile or {}).get("classes") or {}).get("prose") or {}).get("lines") or 0
+    return bool(lines) and int(prose) / lines >= PROSE_SHARE
 
 
 def changed(before: Mapping | None, after: Mapping | None) -> list[str]:
@@ -125,10 +139,12 @@ def prompt_lines(
     settings: Mapping,
     samples: Iterable[str] = (),
     tools: str = "",
+    prose: bool = False,
 ) -> list[str]:
     """What the Curator reads of project ``project``. ``strategies`` are ``Strategy.to_json`` of the candidates;
     ``measures`` the figures {"current": {"words", "meaning", "candidates": {name: figures}}}; ``samples`` names of
-    nodes the run's sink may see (the caller filtered them by label): nothing else of any item's text is here."""
+    nodes the run's sink may see (the caller filtered them by label): nothing else of any item's text is here.
+    ``prose``: the project is mostly prose (``mostly_prose``), so the entities step starts on."""
     lines = [
         f"# KG init of project {project}",
         "You are the Curator. Decide, for this project's knowledge graph, which strategy and settings fit the data, "
@@ -163,6 +179,8 @@ def prompt_lines(
         )
         for name, found in sorted((m.get("candidates") or {}).items()):
             lines.append(f"- candidate {name}: {_figure(found)}")
+    if prose:
+        lines += ["", ENTITIES_HELP]
     shown = list(samples)[:MAX_SAMPLES]
     if shown:
         lines += ["", "## Names of some nodes (only those your sink may see)"] + [f"- {s[:120]}" for s in shown]
@@ -170,6 +188,16 @@ def prompt_lines(
         lines += ["", tools]
     lines += ["", DECISION_HELP]
     return lines
+
+
+ENTITIES_HELP = (
+    "## Entities and relations of prose\n"
+    "The data is mostly prose: start with the entities step on, a strategy whose steps name entities "
+    "(multi-hop-api, whose build calls the model itself, on the hub; multi-hop where Claude Code runs). Turn it off "
+    "only when the tune questions are answered worse with it: then cite, in the reason of the strategy or the "
+    f"settings, the figures {ENTITY_FIGURES[0]} and {ENTITY_FIGURES[1]}, one measure of the tune questions with the "
+    "step and without it. A decision that leaves the step off otherwise is refused."
+)
 
 
 DECISION_HELP = (
@@ -282,9 +310,11 @@ def _reason_problems(out: dict) -> list[str]:
     return problems + [f"{p} has no reason that cites figures" for p in sorted(given - covered)]
 
 
-def parse_decision(data) -> dict:
+def parse_decision(data, *, prose: bool = False, entities_now: bool = False, harness_root: Path | None = None) -> dict:
     """``data`` as a validated decision, or DecisionError naming every problem. Settings and strategies are checked by
-    their own modules; here the shape, the sources and that each part has a reason with numbers."""
+    their own modules; here the shape, the sources and that each part has a reason with numbers. For a project that is
+    mostly prose (``prose``), whose settings run the entities step or not (``entities_now``), a decision that leaves
+    the step off needs the figures ENTITY_FIGURES (``entities_kept``); ``harness_root`` finds a custom strategy."""
     if isinstance(data, str):
         data = extract_json(data)
     if not isinstance(data, dict):
@@ -300,10 +330,50 @@ def parse_decision(data) -> dict:
     if out.get("code_changes") is not None and not _changes_ok(out["code_changes"]):
         problems.append("code_changes must be a list of {title, why}")
     problems += _reason_problems(out)
+    if prose and not problems:
+        problems += entities_kept(out, entities_now, harness_root)
     if problems:
         raise DecisionError("; ".join(problems))
     out.setdefault("reasons", [])
     return out
+
+
+def entities_after(decision: Mapping, entities_now: bool, harness_root: Path | None = None) -> bool:
+    """Whether the entities step runs once ``decision`` is applied to settings that run it or not (``entities_now``)."""
+    from evo_agents.kg import strategy as kg_strategy
+
+    on = entities_now
+    chosen = decision.get("strategy")
+    if isinstance(chosen, Mapping) and isinstance(chosen.get("use"), str):
+        on = "entities" in kg_strategy.steps_of(chosen["use"], harness_root)
+    elif isinstance(chosen, Mapping) and isinstance(chosen.get("create"), Mapping):
+        on = "entities" in (chosen["create"].get("steps") or [])
+    settings = decision.get("settings")
+    if isinstance(settings, Mapping) and "entities" in settings and not settings["entities"]:
+        on = False
+    return on
+
+
+def entities_kept(decision: Mapping, entities_now: bool, harness_root: Path | None = None) -> list[str]:
+    """The problem of a decision for prose that leaves the entities step off without tune figures that show it worse
+    (ENTITY_FIGURES, the one without the step the higher); none when the step stays on or the figures say so."""
+    if entities_after(decision, entities_now, harness_root):
+        return []
+    on, off = ENTITY_FIGURES
+    for r in decision.get("reasons") or []:
+        found = r.get("figures") if isinstance(r, Mapping) and r.get("about") in ("strategy", "settings") else None
+        if isinstance(found, Mapping) and all(_number(found.get(k)) for k in ENTITY_FIGURES):
+            if found[off] > found[on]:
+                return []
+    return [
+        "the data is mostly prose, so the entities step stays on (strategy multi-hop-api on the hub) unless the tune "
+        f"questions are answered worse with it: cite {on} and {off} in a reason about the strategy or the settings, "
+        f"{off} the higher"
+    ]
+
+
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def figures(row: Mapping | None) -> dict | None:

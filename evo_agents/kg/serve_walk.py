@@ -15,6 +15,7 @@ from evo_agents.kg.budget import (
     line_size,
 )
 from evo_agents.kg.refs import readable
+from evo_agents.kg.search import through_entities
 from evo_agents.kg.serve_text import SessionText
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.store import Store
@@ -35,7 +36,7 @@ class WalkTools(SessionText):
         store, b = self._store()
         size = max(500, min(int(budget_tokens), 8000)) * 3
         hops = max(1, min(int(hops), 3))
-        seeds = self._context_seeds(store, b, query, ids)
+        seeds, stood = self._context_seeds(store, b, query, ids)
         if query:
             what = str(query)[:CONTEXT_QUERY_SHOWN]
         else:
@@ -69,6 +70,8 @@ class WalkTools(SessionText):
         shared, label_line = self._labels(room.nodes.values())
         lines = [header(len(room.nodes), len(room.edges)), *label_line]
         lines += [self._line(n, shared) for n in room.nodes.values()]
+        stood = {sid: why for sid, why in stood.items() if sid in room.nodes}
+        lines += [f"seed [{readable(sid)}] for entity {', '.join(map(readable, why))}" for sid, why in stood.items()]
         lines.append("edges:")
         for e in room.edges.values():
             self._saw(e["label"])
@@ -77,6 +80,7 @@ class WalkTools(SessionText):
         data = {
             "build": b,
             "seeds": list(seeds),
+            "entities": stood,
             "nodes": [self._node_json(n) for n in room.nodes.values()],
             "edges": [
                 {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]} for e in room.edges.values()
@@ -86,9 +90,11 @@ class WalkTools(SessionText):
         }
         return "\n".join(lines), data
 
-    def _context_seeds(self, store: Store, b: int, query, ids) -> dict[str, dict]:
+    def _context_seeds(self, store: Store, b: int, query, ids) -> tuple[dict[str, dict], dict[str, list[str]]]:
         """The visible seeds of kg_context: the nodes ``ids`` name (stored or readable ids), else the first five
-        that match ``query``."""
+        that match ``query``, a matched entity seeding the documents that mention it in its place; and for each seed
+        so reached, the entities it stands for."""
+        stood: dict[str, list[str]] = {}
         if ids:
             found = [self._lookup(store, i, b) for i in ids if isinstance(i, str)]
             seeds = {n["id"]: n for n in found if n is not None}
@@ -100,12 +106,15 @@ class WalkTools(SessionText):
             else:
                 hits = store.search(query, b, limit=5, deprecated=self.deprecated)[:5]
             nodes = store.nodes(hits, b)
-            seeds = dict([(h, nodes[h]) for h in hits if h in nodes and self.seen(nodes[h])][:5])
+            found = [nodes[h] for h in hits if h in nodes and self.seen(nodes[h])]
+            found, stood = through_entities(store, b, found, self.seen)
+            seeds = {n["id"]: n for n in found[:5]}
+            stood = {sid: why for sid, why in stood.items() if sid in seeds}
         else:
             raise ToolError("give a query or ids")
         if not seeds:
             raise ToolError("nothing visible matches; try kg_search")
-        return seeds
+        return seeds, stood
 
     def _context_walk(self, store: Store, b: int, query, room: Room, walk) -> None:
         """Fill ``room`` past its seeds with the visible nodes a walk settles on most (``evo_agents.kg.ppr``), best

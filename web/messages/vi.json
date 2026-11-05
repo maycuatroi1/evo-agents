@@ -6762,7 +6762,8 @@
       "today": "Tóm tắt Today",
       "market_install_request": "Một dự án xin cài plugin từ market",
       "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn",
-      "kg_optimize": "Báo cáo của một lượt tối ưu KG"
+      "kg_optimize": "Báo cáo của một lượt tối ưu KG",
+      "kg_pipeline": "Knowledge graph của một lượt tải lên đã sẵn sàng hoặc thất bại"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -11961,6 +11962,59 @@
       "open": "Mở các lượt tải lên của dự án",
       "forbidden": "Tạo dự án cần admin hub, hoặc một quyền đăng ký bạn chưa dùng.",
       "taken": "Đã có dự án tên {name}. Hãy chọn tên khác."
+    },
+    "pipeline": {
+      "title": "Knowledge graph",
+      "running": "Đang build knowledge graph: {phase}",
+      "ready": "Knowledge graph đã sẵn sàng",
+      "open": "Mở graph",
+      "failed": "Build knowledge graph thất bại ở bước {phase}",
+      "reason": "Lý do",
+      "replaced": "Một lượt tải lên sau của nguồn này đã thay lượt này, nên lượt này không build graph.",
+      "loadFailed": "Không đọc được tình trạng build: {message}",
+      "phases": {
+        "uploading": "Tải lên",
+        "extracting": "Đọc tệp nén",
+        "building": "Build graph",
+        "entities": "Thực thể",
+        "questions": "Câu hỏi khởi đầu",
+        "curator": "Curator cấu hình"
+      },
+      "states": {
+        "pending": "Đang chờ",
+        "running": "Đang chạy",
+        "done": "Xong",
+        "skipped": "Bỏ qua",
+        "failed": "Thất bại"
+      }
+    }
+  },
+  "kgAnswers": {
+    "title": "Lượt trả lời #{id}",
+    "intro": "Các câu hỏi gửi bằng evo-agents hub kg answer, được hỏi trên đồ thị tri thức của dự án theo từng lô, mỗi lô là một lượt chạy agent đọc đồ thị. Không có chấm điểm ở đây.",
+    "job": "Lượt trả lời #{id}: {state}",
+    "states": {
+      "running": "đang chạy",
+      "done": "xong",
+      "failed": "thất bại"
+    },
+    "progress": "Câu hỏi đã xong",
+    "ended": "{ended} trên {questions} câu hỏi đã xong",
+    "counts": "{answered} đã trả lời, {errors} lỗi, {asking} đang hỏi, {pending} đang chờ, trên {questions}",
+    "failed": "Lượt trả lời thất bại",
+    "waits": "Lô tiếp theo đang chờ",
+    "download": "Tải answers.jsonl",
+    "downloadSoFar": "Tải các câu trả lời hiện có",
+    "downloaded": "{count, plural, other {Đã lưu # câu trả lời}}",
+    "downloadFailed": "Không tải được các câu trả lời",
+    "facts": {
+      "batch": "Câu hỏi mỗi lượt chạy",
+      "runs": "Lượt chạy",
+      "current": "lượt chạy #{id} đang hỏi",
+      "created": "Đã gửi",
+      "ended": "Kết thúc",
+      "never": "chưa bao giờ",
+      "notYet": "chưa"
     }
   }
 }

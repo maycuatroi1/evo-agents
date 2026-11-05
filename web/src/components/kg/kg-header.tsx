@@ -9,7 +9,8 @@ import { TabNav } from "@/components/data/tab-nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { buildsHref, explorerHref, reviewHref, uploadHref } from "@/lib/kg/routes";
 
-export type KgTab = "explore" | "builds" | "review" | "upload";
+/** "answers", an answer job's page, has no tab of its own: none is underlined there. */
+export type KgTab = "explore" | "builds" | "review" | "upload" | "answers";
 
 /**
  * The head of the knowledge graph's pages and their tabs: the explorer (the graph itself, where the sidebar's entry

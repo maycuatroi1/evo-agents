@@ -194,6 +194,9 @@ class HubContext:
     # the server's upkeep of agents' memories (evo_agents.hub.server.memory_upkeep), handed down the same way; None
     # keeps none
     memory_upkeep: Callable[[AsyncEngine, BlobStore, Path], Awaitable[dict]] | None = None
+    # the server's finder of the key of a build's entities step (evo_agents.hub.server.kg_entity_key.find), handed down
+    # the same way; None finds no key, and a url model with a key_env stops before any call
+    entity_key: Callable[..., Awaitable[tuple[dict, str | None]]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -699,10 +702,12 @@ async def run(
     release_pass=None,
     loop_tick=None,
     memory_upkeep=None,
+    entity_key=None,
 ) -> int:
     """Migrate, then run jobs of ``queues`` (None: every queue) until a signal stops the worker. The exit status: 0
-    when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
-    (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``)."""
+    when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick``, ``memory_upkeep`` and
+    ``entity_key`` are the server's (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``,
+    ``HubContext.entity_key``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -760,6 +765,7 @@ async def run(
                     release_pass,
                     loop_tick,
                     memory_upkeep,
+                    entity_key,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -793,8 +799,10 @@ def main(
     release_pass=None,
     loop_tick=None,
     memory_upkeep=None,
+    entity_key=None,
 ) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
     passes = {"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
+    passes["entity_key"] = entity_key
     return asyncio.run(run(config, concurrency, queues=queues, **passes))

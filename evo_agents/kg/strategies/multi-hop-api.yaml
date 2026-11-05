@@ -1,0 +1,53 @@
+# Prose whose answers join facts from more than one passage, its entities read by the build itself (docs/kg-strategies.md,
+# "multi-hop-api"). What multi-hop does, but the entities step calls an OpenAI-compatible endpoint (OpenRouter) from the
+# build, on the hub too, with no run of an agent pool: the build reads the key from OPENROUTER_API_KEY, which the hub's
+# build opens from a member's secret (evo_agents.hub.server.kg_entity_key) and never writes down. The text leaves for
+# OpenRouter, so the project's policy must declare the llm-backend sink `llm` (a project made from an upload has it);
+# an item whose label that sink does not clear is not sent, and without the sink every item is refused with a reason.
+# Model: claude-haiku-5.5, the model multi-hop asks through Claude Code, at OpenRouter's price of 2026-11-05 (USD 0.10
+# a million tokens in, 0.50 out); the ceilings are multi-hop's.
+version: 1
+name: multi-hop-api
+description: Prose where an answer joins facts stated in different passages, as multi-hop, with the entities and
+  relations read by the build itself through an OpenAI-compatible endpoint (OpenRouter, anthropic/claude-haiku-5.5,
+  key from a hub secret or OPENROUTER_API_KEY, through the llm-backend sink llm), so a build on the hub needs no run of
+  an agent pool. The strategy to start prose with on the hub.
+suits: [prose]
+knowledge:
+  ontology:
+    node_kinds:
+      - Concept       # an idea, term, method or feature the text defines or uses
+      - Actor         # a person or a role the text names
+      - Organization  # a company, team, institution or group
+      - Place         # a country, city, site or address
+      - Event         # something that happened or is planned, with a time
+      - Work          # a product, tool, document, book, film or other made thing
+    relations:
+      - is_a          # an entity to a broader one
+      - has_part      # a whole to a part of it
+      - located_in    # an entity to the place it is in
+      - belongs_to    # an actor or a work to the organization it belongs to
+      - created_by    # a work or an organization to who made or founded it
+      - leads         # an actor to the organization or event it leads
+      - occurred_in   # an event to the place it happened in
+      - causes        # an event or concept to what it brings about
+      - uses          # an actor, work or concept to what it uses
+      - related_to    # any other stated link
+settings:
+  passage_from: 2500
+  passage_chars: 1800
+  embed_chars: 3000
+  semantic_mode: index
+  walk: {}
+  entities:
+    model: anthropic/claude-haiku-5.5
+    url: https://openrouter.ai/api/v1
+    key_env: OPENROUTER_API_KEY
+    sink: llm
+    node_kinds: [Concept, Actor, Organization, Place, Event, Work]
+    relations: [is_a, has_part, located_in, belongs_to, created_by, leads, occurred_in, causes, uses, related_to]
+    price: {input: 0.1, output: 0.5}
+    max_cost: 5.0
+    jobs: 4
+    synonym_threshold: 0.8
+steps: [entities]

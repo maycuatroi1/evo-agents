@@ -14,6 +14,9 @@ Since 0189 a pool may be an agent's: ``worker_pools.agent_id`` names the agent (
 NULL for a member's, and at most one pool names an agent (``worker_pools_agent_key``). An agent's pool is named
 ``agent-<handle>`` and owned by the member who created the agent.
 
+Since 0205 ``worker_pools.kg_shared`` marks the shared KG pool a hub admin named (``evo_agents.hub.server.kg_shared_pool``):
+at most one pool (``worker_pools_kg_shared_key``), a member's, never an agent's.
+
 Their CHECK constraints are the migration's alone. ``pool_tables`` also gives workers ``pool_id``, the pool a node joined, NULL for a worker paired or registered.
 ``placement_columns`` gives workers ``taints`` and runs ``selector`` and ``tolerations`` (0149), which place a run.
 """
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -33,6 +37,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -68,6 +73,7 @@ def pools_table(metadata: MetaData) -> Table:
         Column(
             "empty_notified_at", DateTime(timezone=True)
         ),  # since 0190: the admins heard that no node was ready; cleared when one is
+        Column("kg_shared", Boolean, nullable=False, server_default=false()),  # since 0205: the shared KG pool
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="worker_pools_owner_id_fkey"),
         ForeignKeyConstraint(
             ["agent_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="worker_pools_agent_id_fkey"
@@ -76,6 +82,7 @@ def pools_table(metadata: MetaData) -> Table:
     )
     Index("worker_pools_name_key", pools.c.owner_id, func.lower(pools.c.name), unique=True)
     Index("worker_pools_agent_key", pools.c.agent_id, unique=True, postgresql_where=pools.c.agent_id.is_not(None))
+    Index("worker_pools_kg_shared_key", pools.c.kg_shared, unique=True, postgresql_where=pools.c.kg_shared)
     return pools
 
 

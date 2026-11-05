@@ -125,6 +125,7 @@ def prompt(
         settings=settings,
         samples=samples,
         tools=tools,
+        prose=init_run.mostly_prose(profile),
     )
     return "\n".join(lines)
 

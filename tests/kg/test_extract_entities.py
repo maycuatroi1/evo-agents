@@ -231,7 +231,7 @@ def test_the_endpoint_model_reads_usage_and_names_a_missing_library(monkeypatch)
     client = type(
         "K", (), {"chat": type("H", (), {"completions": type("P", (), {"create": staticmethod(lambda **k: Got)})})}
     )
-    monkeypatch.setattr(entities, "CLIENT_FACTORY", lambda c: client)
+    monkeypatch.setattr(entities, "CLIENT_FACTORY", lambda c, key=None: client)
     got = entities.call_endpoint(config, "t", ["Concept"], [])
     assert got["usage"] == {"input_tokens": 7, "output_tokens": 3}
     monkeypatch.setitem(sys.modules, "openai", None)

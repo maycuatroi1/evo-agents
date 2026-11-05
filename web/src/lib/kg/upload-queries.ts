@@ -10,10 +10,13 @@ import type { KgUpload } from "./upload";
 /**
  * The reads of the Upload data page: the project's uploads with their reports (GET /v1/kg/{project}/uploads), and its
  * kg_init runs (GET /v1/kg/{project}/init), to link an upload to the build and the Curator's first look that followed
- * it. Both ask again every few seconds while something still moves.
+ * it. Both ask again every few seconds while something still moves. The flow after one upload, phase by phase, comes
+ * from GET /v1/kg/{project}/uploads/{id}/pipeline and is asked again while it runs.
  */
 export type KgInitRun = components["schemas"]["InitRun"];
 export type KgInitRuns = components["schemas"]["InitRuns"];
+export type KgPipeline = components["schemas"]["KgPipeline"];
+export type KgPipelinePhase = components["schemas"]["KgPipelinePhase"];
 
 export const UPLOADS_SHOWN = 20;
 const INIT_SHOWN = 10;
@@ -21,6 +24,7 @@ const INIT_SHOWN = 10;
 export const uploadKeys = {
   uploads: (project: string) => ["kg", project, "uploads"] as const,
   init: (project: string) => ["kg", project, "init"] as const,
+  pipeline: (project: string, upload: number) => ["kg", project, "uploads", upload, "pipeline"] as const,
 };
 
 /** An upload still moving: being sent, being read, or read with its build not ended yet. */
@@ -55,3 +59,12 @@ export function initRunFor(upload: KgUpload, runs: KgInitRun[] | undefined): KgI
   if (upload.build_id == null || !runs) return null;
   return runs.find((run) => run.build_id === upload.build_id) ?? null;
 }
+
+/** Where the flow after upload `upload` stands, asked again while it runs. */
+export const kgPipelineQuery = (api: ApiSource, project: string, upload: number) =>
+  queryOptions({
+    queryKey: uploadKeys.pipeline(project, upload),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/kg/{project}/uploads/{upload_id}/pipeline", { params: { path: { project, upload_id: upload } }, signal })),
+    refetchInterval: (query) => (!query.state.data || query.state.data.state === "running" ? ACTIVE_REFRESH : false),
+  });

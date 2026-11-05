@@ -292,13 +292,17 @@ def _sha256(path: Path) -> str:
 
 
 def build_graph(
-    project: Project, *, entity_inbox: dict | None = None, entity_outbox: list | None = None
+    project: Project,
+    *,
+    entity_inbox: dict | None = None,
+    entity_outbox: list | None = None,
+    entity_keys: dict | None = None,
 ) -> tuple[Path, object]:
     """Build ``project`` into a fresh store and make it its graph.sqlite: one file, out of WAL mode. The path and the
     build report; BuildFailure when the build reports errors. When the graph.sqlite of the cache was built from the
     corpus state and the inputs ``project`` has now (``evo_agents.kg.build.unchanged``), nothing is built: that file
-    and the report of its build, ``skipped``. ``entity_inbox`` and ``entity_outbox`` go to the entities step
-    (``evo_agents.kg.entities.run``)."""
+    and the report of its build, ``skipped``. ``entity_inbox``, ``entity_outbox`` and ``entity_keys`` go to the
+    entities step (``evo_agents.kg.entities.run``)."""
     from evo_agents.kg.build import build_project, unchanged
     from evo_agents.kg.store import Store
 
@@ -308,7 +312,9 @@ def build_graph(
         return target, current
     stage = Store.staging(target)
     try:
-        report = build_project(project, store=stage, entity_outbox=entity_outbox, entity_inbox=entity_inbox)
+        report = build_project(
+            project, store=stage, entity_outbox=entity_outbox, entity_inbox=entity_inbox, entity_keys=entity_keys
+        )
         if not report.ok:
             shown = "; ".join(report.errors[:5])
             raise BuildFailure(f"the build reported {len(report.errors)} error(s): {shown}")
@@ -357,6 +363,7 @@ def build_in_cache(
     tuning: settings.Tuning | None = None,
     answers: list[str] | None = None,
     uploads: list[kg_upload_sources.Held] | None = None,
+    keys: dict | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
@@ -368,7 +375,8 @@ def build_in_cache(
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
-    items are fetched and held as a plugin's (``kg_upload_sources``). Blocking."""
+    items are fetched and held as a plugin's (``kg_upload_sources``). ``keys``: the key of the entities step's url model,
+    in memory (``evo_agents.hub.server.kg_entity_key``). Blocking."""
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
@@ -381,7 +389,7 @@ def build_in_cache(
         semantic = tuning.semantic_settings()
     inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
     outbox: list[dict] = []
-    path, report = build_graph(project, entity_inbox=inbox, entity_outbox=outbox)
+    path, report = build_graph(project, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
     requests = kg_entity_relay.write_requests(project.root, outbox) if not report.skipped else None
     asked = kg_asked.write(path, learned) if learned is not None else None
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
@@ -616,6 +624,19 @@ async def _stopped(
             await queue_build(JobQueue(manager), conn, project_id, project, None)
 
 
+async def _entity_key(conn: AsyncConnection, context, project_id: int, tuning) -> tuple[dict, str | None]:
+    """The key of the entities step's url model, opened from a member's secret by the server's finder the ``hub worker``
+    command hands down (``HubContext.entity_key``, ``evo_agents.hub.server.kg_entity_key.find``), and the secret's
+    ``secret:<id>``; nothing when the project's strategy does not run the step with a url, or without a finder."""
+    from evo_agents.kg import entities
+
+    find = getattr(context, "entity_key", None)
+    mapping = entities.enabled(tuning) if tuning is not None else None
+    if find is None or mapping is None:
+        return {}, None
+    return await find(conn, getattr(context, "sealer", None), project_id, mapping)
+
+
 async def run_build(context, project: str, build_id: int | None, job_id: int | None, manager=None) -> dict:
     """The job: build ``project`` and record the outcome on build ``build_id`` (a new row when it is None or gone).
     ``context`` is the worker's HubContext; ``manager``, procrastinate's job manager, queues the build again when
@@ -662,6 +683,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             learned = await kg_asked.read(conn, project_id, project, found[1])
             tuning = await kg_settings.read(conn, project_id)
             uploads = await kg_upload_sources.latest(conn, project_id)
+            keys, key_from = await _entity_key(conn, context, project_id, tuning)
         built = await asyncio.to_thread(
             build_in_cache,
             context.blobs,
@@ -675,7 +697,11 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             tuning,
             answers,
             uploads,
+            keys,
         )
+        entities_coverage = (built.coverage or {}).get("entities")
+        if key_from is not None and isinstance(entities_coverage, dict):
+            entities_coverage["key_from"] = key_from
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop

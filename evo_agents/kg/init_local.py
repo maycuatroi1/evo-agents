@@ -31,7 +31,7 @@ from pathlib import Path
 
 import yaml
 
-from evo_agents.kg import init_run
+from evo_agents.kg import entities, init_run
 from evo_agents.kg import profile as kg_profile
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import strategy as kg_strategy
@@ -356,6 +356,7 @@ def run(
         strategies=strategies,
         measures=found,
         settings=tuning.overrides(),
+        prose=init_run.mostly_prose(profile),
     )
     prompt = "\n".join(lines)
     files = _write_inputs(project, profile, coverage, strategies, tune, prompt)
@@ -378,7 +379,12 @@ def run(
     }
     try:
         answer = (ask or ask_agent)(prompt)
-        decision = init_run.parse_decision(answer)
+        decision = init_run.parse_decision(
+            answer,
+            prose=init_run.mostly_prose(profile),
+            entities_now=entities.enabled(tuning, project.harness.root) is not None,
+            harness_root=project.harness.root,
+        )
         record["decision"] = decision
         record["applied"] = apply_decision(project, decision)
     except (InitError, init_run.DecisionError, kg_strategy.StrategyError, kg_settings.SettingsError) as exc:

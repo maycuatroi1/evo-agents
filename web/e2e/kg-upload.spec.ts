@@ -10,7 +10,8 @@ import { extractUploads, grantOn, kgProject, open, uploadPath } from "./support/
  * Upload data and New project from data (plan kg-upload-archive, a7) against the local stack, with a small fictional
  * archive (e2e/fixtures/lumen-notes.zip: a markdown guide, a CSV, a PNG kept without text, and an entry whose path
  * leaves the archive). The parts go through the hub's relay to the stack's fake S3; the worker's read of the archive
- * and the build it queues run through the stack (POST /kg/extract). With E2E_SCREENSHOT_DIR set, it also takes a
+ * and the build it queues run through the stack (POST /kg/extract). Both pages follow the flow after the upload (plan
+ * kg-zip-to-answers, step 4): in progress, failed at a phase, and ready. With E2E_SCREENSHOT_DIR set, it also takes a
  * screenshot of each page.
  */
 const ARCHIVE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "lumen-notes.zip");
@@ -63,6 +64,10 @@ test.describe("upload data", () => {
     await expect(report).toHaveCount(1);
     await expect(report).toHaveAttribute("data-state", "extracting");
     await expect(report.getByTestId("kg-upload-moving")).toHaveText("Reading");
+    // The newest upload shows the flow the hub runs after it, refreshed by itself: the archive is being read.
+    const flow = report.getByTestId("kg-upload-pipeline");
+    await expect(flow).toHaveAttribute("data-state", "running");
+    await expect(flow.getByTestId("kg-upload-pipeline-headline")).toHaveText("Knowledge graph build in progress: Read the archive");
 
     // The worker reads it and builds: the report says what was read and skipped, by reason, and links the build.
     const { uploads } = await extractUploads(project, writer);
@@ -76,6 +81,10 @@ test.describe("upload data", () => {
     await expect(report.getByTestId("kg-upload-state")).toHaveCount(0); // nothing went wrong: no pill
     // This project has no knowledge config on the hub yet (no sync pushed one), so no build follows the read.
     await expect(report.getByTestId("kg-upload-build-link")).toHaveCount(0);
+    // The flow stops at the build and says why.
+    await expect(flow).toHaveAttribute("data-state", "failed");
+    await expect(flow).toHaveAttribute("data-phase", "building");
+    await expect(flow.getByTestId("kg-upload-pipeline-error")).toContainText("no build was queued");
     await expect(report).toContainText("Label customer");
     await report.locator("summary").click();
     await expect(report.getByTestId("kg-upload-paths")).toContainText("../outside.txt");
@@ -114,6 +123,10 @@ test.describe("upload data", () => {
     await page.getByTestId("kg-upload-input").setInputFiles(ARCHIVE);
     if (shots) await page.screenshot({ path: path.join(shots, "kg-new-project-page.png"), fullPage: true });
     await page.getByTestId("kg-new-project-create").click();
+    // Once the archive is on the hub, the page follows the flow after it: the hub reads the archive next.
+    const flow = page.getByTestId("kg-upload-pipeline");
+    await expect(flow).toHaveAttribute("data-state", "running");
+    await expect(flow.getByTestId("kg-upload-pipeline-headline")).toContainText("Knowledge graph build in progress");
     await page.getByTestId("kg-new-project-open").click();
     await expect(page).toHaveURL(new RegExp(`/p/${project}/kg/upload$`));
     await expect(page.getByTestId("kg-upload-report")).toHaveAttribute("data-state", "extracting");
@@ -127,6 +140,30 @@ test.describe("upload data", () => {
     await expect(page.getByTestId("kg-upload-build-link")).toHaveText(`Build #${built}`);
     await expect(page.getByTestId("kg-upload-build-link")).toHaveAttribute("href", `/p/${project}/kg/builds`);
     await expect(page.getByTestId("kg-upload-build-state")).toHaveCount(0);
+    // The rest of the flow (starter questions, the Curator's run, the entities) needs an agent the stack does not run:
+    // its end is the hub's answer here. Ready, the page says so and links the graph.
+    await page.route(`**/v1/kg/${project}/uploads/*/pipeline`, (route) =>
+      route.fulfill({
+        json: {
+          upload_id: uploads[0]?.id,
+          project,
+          state: "ready",
+          phase: null,
+          phases: ["uploading", "extracting", "building", "questions", "curator", "entities"].map((phase) => ({ name: phase, state: "done", detail: null })),
+          error: null,
+          build_id: built,
+          init_id: 1,
+          rebuild_id: null,
+          told_at: null,
+        },
+      }),
+    );
+    await open(page, uploadPath(project));
+    const ready = page.getByTestId("kg-upload-pipeline");
+    await expect(ready).toHaveAttribute("data-state", "ready");
+    await expect(ready.getByTestId("kg-upload-pipeline-headline")).toContainText("Knowledge graph ready");
+    await expect(ready.getByTestId("kg-upload-pipeline-open")).toHaveAttribute("href", `/p/${project}/kg`);
+    await page.unrouteAll();
 
     // A member with no register right is refused.
     await signOut(page);

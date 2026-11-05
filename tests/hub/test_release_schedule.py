@@ -546,8 +546,16 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker", queues=None
     )
     assert hub_cli.cmd_worker.__wrapped__(args) == 0
+    from evo_agents.hub.server.kg_entity_key import find as entity_key
+
     assert handed == [
-        {"queues": None, "release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
+        {
+            "queues": None,
+            "release_pass": release_pass,
+            "loop_tick": loop_tick,
+            "memory_upkeep": memory_upkeep,
+            "entity_key": entity_key,
+        }
     ]
 
 

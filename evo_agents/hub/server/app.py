@@ -60,6 +60,7 @@ from evo_agents.hub.server import (
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
+from evo_agents.hub.server.kg_entity_key import find as entity_key  # noqa: F401
 from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, POST .../loop/resume
 
 # The hub worker runs the tick of a project's Loop, the release pass and the upkeep of agents' memories, but
@@ -327,6 +328,14 @@ def _include_kg_routes(app: FastAPI) -> None:
 
     app.include_router(kg_uploads.router)
 
+    from evo_agents.hub.server import kg_pipeline
+
+    app.include_router(kg_pipeline.router)
+
+    from evo_agents.hub.server import kg_answers
+
+    app.include_router(kg_answers.router)
+
     from evo_agents.hub.server import kg_upload_relay
 
     app.include_router(kg_upload_relay.router)
@@ -526,6 +535,7 @@ def _include_member_routes(app: FastAPI) -> None:
         gateway_proxy,
         goals,
         intake,
+        kg_shared_pool_api,
         market,
         market_install,
         market_licenses,
@@ -624,6 +634,7 @@ def _include_member_routes(app: FastAPI) -> None:
         branding.admin_router,
         features.router,
         features.admin_router,
+        kg_shared_pool_api.router,  # /v1/admin/kg-pool: the shared KG pool
         model_catalog.router,
         provider_accounts.router,
         runnable_models.router,
