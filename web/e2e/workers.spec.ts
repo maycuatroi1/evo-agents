@@ -362,8 +362,12 @@ test("the owner adds and drops the projects a worker serves, and a project it st
   await expect(firstBox).toBeChecked();
   await expect(secondBox).not.toBeChecked();
 
-  // None at all: said at the field, and nothing is sent.
-  await firstBox.uncheck();
+  // None at all: said at the field, and nothing is sent. The box shows checked in the server's HTML, and a click before
+  // the page hydrates is undone by it: unchecking again keeps it unchecked, so retry until it stays so.
+  await expect(async () => {
+    await firstBox.uncheck({ timeout: 1_000 });
+    await expect(firstBox).not.toBeChecked({ timeout: 1_000 });
+  }).toPass();
   await settings.getByTestId("worker-settings-save").click();
   await expect(settings).toContainText("Choose one project at least.");
 
