@@ -18,6 +18,7 @@ export type EntityEdge = Schemas["EntityEdge"];
 export type EntityDetail = Schemas["EntityDetail"];
 export type RelationDetail = Schemas["RelationDetail"];
 export type Citation = Schemas["Citation"];
+export type EntitySetup = Schemas["SetupOut"];
 
 export { DEFAULT_LIMIT, DEPTHS, type Depth, EXPAND_LIMIT, LIMITS, parseDepth, parseLimit } from "./entity-params";
 
@@ -233,9 +234,4 @@ export const COST_MODEL = { model: "anthropic/claude-haiku-5.5", tokensIn: 2_000
 export function estimateCost(documents: number): { perDocument: number; total: number } {
   const perDocument = (COST_MODEL.tokensIn * COST_MODEL.priceIn + COST_MODEL.tokensOut * COST_MODEL.priceOut) / 1e6;
   return { perDocument, total: Math.max(documents, 0) * perDocument };
-}
-
-/** The command that turns the entity graph on for a hub project; the next build reads the entities. */
-export function enableCommand(project: string): string {
-  return `evo-agents hub kg settings --project ${project} --strategy entity-graph-api --reason "entity graph view"`;
 }

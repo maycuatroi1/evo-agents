@@ -2068,9 +2068,15 @@
           "unknown": "chưa rõ",
           "about": "khoảng {cost}",
           "basis": "Ước tính, khoảng {perDocument} mỗi tài liệu với {model} và khoảng {tokensOut} token ra mỗi đoạn, đo trên MuSiQue; tài liệu dài tốn hơn. Một build dừng ở trần {ceiling} và đi tiếp ở build sau.",
-          "howTitle": "Để bật, admin của project chạy:",
-          "command": "Lệnh bật graph thực thể",
-          "howAfter": "Build kế tiếp rút thực thể, gộp trùng và lấp đầy view này. Theo dõi ở <link>Builds</link>."
+          "howAfter": "Build rút thực thể, gộp trùng và lấp đầy view này. Theo dõi ở <link>Builds</link>.",
+          "reasonOn": "Bước entities đã bật nhưng graph mới nhất chưa có thực thể: graph được dựng trước khi bật, hoặc build của nó chưa rút được thực thể nào.",
+          "building": "Build #{id} {status, select, queued {đang chờ worker} running {đang rút thực thể} other {đang chạy}}. View này tự hiện thực thể khi build xong.",
+          "turnOn": "Bật và build",
+          "buildNow": "Build ngay",
+          "askWriter": "Thành viên có quyền writer của project bật được ở đây.",
+          "queued": "Đã xếp build #{id}",
+          "failed": "Không xếp được build",
+          "sinkTitle": "knowledge.yaml của project thiếu sink {sink}"
         }
       }
     },

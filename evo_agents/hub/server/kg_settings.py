@@ -81,7 +81,7 @@ class UndoBody(BaseModel):
     reason: str | None = Field(None, max_length=MAX_REASON_CHARS)
 
 
-async def _may_change(conn, user, access) -> None:
+async def may_change(conn, user, access) -> None:
     require_reader(access)
     if not has_role(access.role, "writer"):
         raise HTTPException(403, f"changing the KG settings of project {access.name} needs the writer role on it")
@@ -140,7 +140,7 @@ async def put_settings(request: Request, project: ProjectName, body: SetBody, us
         raise HTTPException(422, f"figures are over {MAX_FIGURES_CHARS} characters")
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        await _may_change(conn, user, access)
+        await may_change(conn, user, access)
         try:
             before, after, made = await store.change(
                 conn,
@@ -169,7 +169,7 @@ async def undo_settings(request: Request, project: ProjectName, body: UndoBody, 
     """Put back what the newest change that is not undone replaced."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        await _may_change(conn, user, access)
+        await may_change(conn, user, access)
         try:
             before, after, made = await store.undo(
                 conn, access.project_id, user_id=user.user_id, run_id=user.acts_for_run, reason=body.reason

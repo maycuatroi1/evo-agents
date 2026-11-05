@@ -2068,9 +2068,15 @@
           "unknown": "unknown",
           "about": "about {cost}",
           "basis": "An estimate, about {perDocument} a document with {model} and about {tokensOut} tokens out a passage, measured on MuSiQue; long documents cost more. A build stops at its ceiling of {ceiling} and goes on in the next.",
-          "howTitle": "To turn it on, an admin of the project runs:",
-          "command": "Command that turns on the entity graph",
-          "howAfter": "The next build reads the entities, merges duplicates and fills this view. Follow it on <link>Builds</link>."
+          "howAfter": "The build reads the entities, merges duplicates and fills this view. Follow it on <link>Builds</link>.",
+          "reasonOn": "The entities step is on, but the newest graph holds no entities: it was built before the step was turned on, or its build read none.",
+          "building": "Build #{id} is {status, select, queued {waiting for a worker} running {reading the entities} other {in flight}}. This view fills when it is done.",
+          "turnOn": "Turn on and build",
+          "buildNow": "Build now",
+          "askWriter": "A writer of the project can turn it on here.",
+          "queued": "Build #{id} queued",
+          "failed": "Couldn't queue the build",
+          "sinkTitle": "The project's knowledge.yaml lacks the sink {sink}"
         }
       }
     },

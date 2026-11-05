@@ -100276,6 +100276,182 @@
             }
           }
         }
+      },
+      "/v1/kg/{project}/entities/setup": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Get Setup",
+          "description": "Whether the project's builds read entities, and what a click would do.",
+          "operationId": "get_setup_v1_kg__project__entities_setup_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SetupOut"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Post Setup",
+          "description": "Turn the entities step on when it is off, then queue a build that reads the entities.",
+          "operationId": "post_setup_v1_kg__project__entities_setup_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "202": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SetupOut"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -172176,6 +172352,113 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
+        },
+        "SetupBody": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "title": "SetupBody"
+        },
+        "SetupOut": {
+          "properties": {
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy",
+              "description": "the strategy the project's builds follow; null for none"
+            },
+            "step_on": {
+              "type": "boolean",
+              "title": "Step On",
+              "description": "whether that strategy has the entities step"
+            },
+            "turns_on": {
+              "type": "string",
+              "title": "Turns On",
+              "description": "the strategy a writer's click sets while the step is off"
+            },
+            "sink": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sink",
+              "description": "the sink the entities mapping sends text through; null for a local model"
+            },
+            "sink_problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sink Problem",
+              "description": "why that sink would take no item, as a build says; null when it can"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "whether the reader may turn the step on and queue a build (the writer role)"
+            },
+            "building": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Build"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the newest build queued or running"
+            },
+            "queued": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queued",
+              "description": "POST only: false when a build was waiting already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "strategy",
+            "step_on",
+            "turns_on",
+            "sink",
+            "sink_problem",
+            "can_change",
+            "building"
+          ],
+          "title": "SetupOut"
         }
       }
     }

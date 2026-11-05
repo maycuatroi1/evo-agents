@@ -311,6 +311,10 @@ def _include_kg_routes(app: FastAPI) -> None:
 
     app.include_router(kg_settings.router)
 
+    from evo_agents.hub.server import kg_entities_setup
+
+    app.include_router(kg_entities_setup.router)
+
     from evo_agents.hub.server import kg_optimize
 
     app.include_router(kg_optimize.router)
