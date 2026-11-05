@@ -436,6 +436,32 @@ def drop(db: sqlite3.Connection) -> None:
     db.commit()
 
 
+def _rows_digest(model: str, rows: list, digests: list[str]) -> str:
+    return sha256(canonical_json([model, [[r[0], d] for r, d in zip(rows, digests, strict=True)]]))
+
+
+def _write_vectors(
+    db: sqlite3.Connection, settings: Settings, rows: list, digests: list[str], held: dict, dim: int | None
+) -> tuple[int, str]:
+    """Write the vectors ``held`` has of ``rows`` into the graph: how many rows have one, and their digest."""
+    if dim is None:  # every vector came from the cache
+        dim = KNOWN_MODELS.get(settings.model, {}).get("dim") or (len(next(iter(held.values()))) // 2 if held else 0)
+    if len(held) < len(set(digests)):  # the budget ran out: the rows without a vector wait
+        kept = [(r, d) for r, d in zip(rows, digests, strict=True) if d in held]
+        rows, digests = [r for r, _ in kept], [d for _, d in kept]
+    digest = _rows_digest(settings.model, rows, digests)
+    drop(db)
+    db.executescript(VEC_SCHEMA)
+    db.executemany(
+        "INSERT INTO node_vec VALUES (?, ?, ?, ?, ?, ?)",
+        [(key, nid, kind, aud, d, held[d]) for (key, nid, kind, aud, _), d in zip(rows, digests, strict=True)],
+    )
+    meta = {"model": settings.model, "dim": str(dim), "mode": settings.mode, "digest": digest}
+    db.executemany("INSERT INTO node_vec_meta VALUES (?, ?)", sorted(meta.items()))
+    db.commit()
+    return len(rows), digest
+
+
 def index(
     db: sqlite3.Connection,
     settings: Settings,
@@ -456,7 +482,7 @@ def index(
         return Indexed("off")
     rows = index_rows(db, settings.embed_chars)
     digests = [text_digest(settings.model, text) for *_, text in rows]
-    digest = sha256(canonical_json([settings.model, [[r[0], d] for r, d in zip(rows, digests, strict=True)]]))
+    digest = _rows_digest(settings.model, rows, digests)
     held_info = info(db)
     if held_info is not None and held_info.digest == digest:  # the graph holds these vectors already
         db.execute("UPDATE node_vec_meta SET value = ? WHERE key = 'mode'", (settings.mode,))
@@ -493,23 +519,8 @@ def index(
     finally:
         if cache:
             cache.close()
-    if dim is None:  # every vector came from the cache
-        dim = KNOWN_MODELS.get(settings.model, {}).get("dim") or (len(next(iter(held.values()))) // 2 if held else 0)
-    total = len(rows)
-    if len(held) < len(set(digests)):  # the budget ran out: the rows without a vector wait
-        kept = [(r, d) for r, d in zip(rows, digests, strict=True) if d in held]
-        rows, digests = [r for r, _ in kept], [d for _, d in kept]
-        digest = sha256(canonical_json([settings.model, [[r[0], d] for r, d in zip(rows, digests, strict=True)]]))
-    drop(db)
-    db.executescript(VEC_SCHEMA)
-    db.executemany(
-        "INSERT INTO node_vec VALUES (?, ?, ?, ?, ?, ?)",
-        [(key, nid, kind, aud, d, held[d]) for (key, nid, kind, aud, _), d in zip(rows, digests, strict=True)],
-    )
-    meta = {"model": settings.model, "dim": str(dim), "mode": settings.mode, "digest": digest}
-    db.executemany("INSERT INTO node_vec_meta VALUES (?, ?)", sorted(meta.items()))
-    db.commit()
-    return Indexed(settings.mode, len(rows), done, digest, total=total)
+    written, digest = _write_vectors(db, settings, rows, digests, held, dim)
+    return Indexed(settings.mode, written, done, digest, total=len(rows))
 
 
 def index_file(

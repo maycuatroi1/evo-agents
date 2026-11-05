@@ -4,7 +4,8 @@ reader sees."""
 from evo_agents.kg import review
 from evo_agents.kg.build import build_project
 from evo_agents.kg.search import PASSAGE_MARK
-from evo_agents.kg.store import Clusters, Graph, Store, edge_id
+from evo_agents.kg.store import Graph, Store, edge_id
+from evo_agents.kg.store_clusters import Clusters
 from tests.kg.projects import commit, make_project, write
 from tests.kg.test_clusters import CUSTOMER, link, needs_engine, node, sync_build
 

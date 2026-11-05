@@ -271,44 +271,57 @@ class StreamChecker:
         if self.hello is None and kind != "hello":
             self._add("first message must be hello")
         if kind == "hello":
-            if self.hello is not None:
-                self._add("second hello")
-            self.hello = message
-            proto = str(message.get("protocol", ""))
-            major = proto.split("/")[-1]
-            if not major.isdigit() or int(major) != MAJOR:
-                self._add(f"unsupported protocol {proto!r}; this reader speaks {PROTOCOL}")
-                self.refused = True
+            self._hello(message)
         elif kind in ("item", "tombstone"):
-            item_id = message.get("id", "")
-            if self.source_id and source_of(item_id) != self.source_id:
-                self._add(f"id {item_id!r} does not belong to source {self.source_id!r}")
-            if item_id in self.seen:
-                self._add(f"id {item_id!r} emitted twice in one run")
-            self.seen[item_id] = kind
-            if kind == "item" and not problems:
-                anchors = [f["anchor"] for f in message.get("fragments", [])]
-                if len(anchors) != len(set(anchors)):
-                    self._add(f"duplicate fragment anchors in {item_id!r}")
-                for f in message.get("fragments", []):
-                    if f.get("hash") != fragment_hash(f):
-                        self._add(f"fragment {f.get('anchor')!r} of {item_id!r} has a wrong hash")
-                if message.get("hash") != item_hash(message):
-                    self._add(f"item {item_id!r} has a wrong content hash")
+            self._item(kind, message, valid=not problems)
         elif kind == "error" and message.get("id"):
             self.error_ids.add(message["id"])
         elif kind == "listing":
-            scope = message.get("scope", "")
-            if self.source_id and source_of(scope) != self.source_id:
-                self._add(f"listing scope {scope!r} does not belong to source {self.source_id!r}")
-            emitted = sum(1 for i, k in self.seen.items() if k == "item" and i.startswith(scope))
-            if message.get("complete") and message.get("count") != emitted:
-                self._add(f"listing {scope!r} reports {message.get('count')} item(s) but the run emitted {emitted}")
-            self.listings.append(message)
+            self._listing(message)
         elif kind == "closed":
             self.closed = message
         self.position += 1
         return self.issues[before:]
+
+    def _hello(self, message: dict) -> None:
+        if self.hello is not None:
+            self._add("second hello")
+        self.hello = message
+        proto = str(message.get("protocol", ""))
+        major = proto.split("/")[-1]
+        if not major.isdigit() or int(major) != MAJOR:
+            self._add(f"unsupported protocol {proto!r}; this reader speaks {PROTOCOL}")
+            self.refused = True
+
+    def _item(self, kind: str, message: dict, *, valid: bool) -> None:
+        """An item or tombstone: its source, that its id comes once, and the hashes of a valid item."""
+        item_id = message.get("id", "")
+        if self.source_id and source_of(item_id) != self.source_id:
+            self._add(f"id {item_id!r} does not belong to source {self.source_id!r}")
+        if item_id in self.seen:
+            self._add(f"id {item_id!r} emitted twice in one run")
+        self.seen[item_id] = kind
+        if kind == "item" and valid:
+            self._hashes(item_id, message)
+
+    def _hashes(self, item_id: str, message: dict) -> None:
+        anchors = [f["anchor"] for f in message.get("fragments", [])]
+        if len(anchors) != len(set(anchors)):
+            self._add(f"duplicate fragment anchors in {item_id!r}")
+        for f in message.get("fragments", []):
+            if f.get("hash") != fragment_hash(f):
+                self._add(f"fragment {f.get('anchor')!r} of {item_id!r} has a wrong hash")
+        if message.get("hash") != item_hash(message):
+            self._add(f"item {item_id!r} has a wrong content hash")
+
+    def _listing(self, message: dict) -> None:
+        scope = message.get("scope", "")
+        if self.source_id and source_of(scope) != self.source_id:
+            self._add(f"listing scope {scope!r} does not belong to source {self.source_id!r}")
+        emitted = sum(1 for i, k in self.seen.items() if k == "item" and i.startswith(scope))
+        if message.get("complete") and message.get("count") != emitted:
+            self._add(f"listing {scope!r} reports {message.get('count')} item(s) but the run emitted {emitted}")
+        self.listings.append(message)
 
     def finish(self) -> list[Issue]:
         before = len(self.issues)

@@ -336,24 +336,43 @@ def _asked(store, ids: list[str]) -> dict[str, float]:
         return {}
 
 
-def features(store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None):
-    """One row of FEATURES for each file of ``ranked`` (``locate.files``), in its order. ``cosine``, when given, is
-    the cosine of the query's embedding with each node's (id -> float); without it the feature is missing (NaN)."""
+def _link_counts(pool: locate.Pool, base: dict[str, float], params) -> tuple[dict[str, Counter], dict, Counter]:
+    """What the links of the pool give each candidate: the score lent to it by relation, its links by status
+    (``parsed`` at conf 1, else ``resolved``) and the degree of each end."""
     weights = dict(params.expand_rels)
-    cands = pool.cands
-    base = {i: c.rel**params.sharp * locate.kind_factor(c, params) + params.anchor * c.anchor for i, c in cands.items()}
     lent: dict[str, Counter] = {}
     status: dict[str, Counter] = {}
     deg: Counter = Counter()
     for src, links in pool.links.items():
         for other, rel, conf in links:
-            if other not in cands:
+            if other not in pool.cands:
                 continue
             deg[other] += 1
             deg[src] += 1
             if (w := weights.get(rel)) and base.get(src):
                 lent.setdefault(other, Counter())[rel] += params.expand * w * conf * base[src]
             status.setdefault(other, Counter())["parsed" if conf >= 1.0 else "resolved"] += 1
+    return lent, status, deg
+
+
+def _tested(pool: locate.Pool) -> set[str]:
+    """The paths of the candidates at either end of a ``tests`` link."""
+    cands, tested = pool.cands, set()
+    for src, links in pool.links.items():
+        for other, rel, _ in links:
+            if rel == "tests":
+                for i in (src, other):
+                    if i in cands and cands[i].path:
+                        tested.add(cands[i].path)
+    return tested
+
+
+def features(store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None):
+    """One row of FEATURES for each file of ``ranked`` (``locate.files``), in its order. ``cosine``, when given, is
+    the cosine of the query's embedding with each node's (id -> float); without it the feature is missing (NaN)."""
+    cands = pool.cands
+    base = {i: c.rel**params.sharp * locate.kind_factor(c, params) + params.anchor * c.anchor for i, c in cands.items()}
+    lent, status, deg = _link_counts(pool, base, params)
     hops = _hops(pool)
     pr = _pagerank(pool, base)
     position = {i: k for k, i in enumerate(pool.order)}
@@ -365,13 +384,7 @@ def features(store, b: int, query: str, pool: locate.Pool, ranked: list, params=
     dirs = Counter(_dir(p) for p in paths)
     parents = Counter(_dir(_dir(p)) for p in paths)
     top_dir = _dir(paths[0]) if paths else ""
-    tested = set()
-    for src, links in pool.links.items():
-        for other, rel, _ in links:
-            if rel == "tests":
-                for i in (src, other):
-                    if i in cands and cands[i].path:
-                        tested.add(cands[i].path)
+    tested = _tested(pool)
     file_index = locate._file_index(store) if store is not None else {}
     file_ids = {key: file_index[key] for key in paths if key in file_index}
     counts = _graph_counts(store, list(file_ids.values())) if store is not None else {}

@@ -36,7 +36,8 @@ from pathlib import Path
 from evo_agents.kg import grep_command
 from evo_agents.kg.hook_scope import Scope, scope_for
 from evo_agents.kg.refs import readable
-from evo_agents.kg.store import LIVE, Store
+from evo_agents.kg.store import Store
+from evo_agents.kg.store_filters import LIVE
 
 SINK = "claude-code@anthropic"
 BUDGET = 0.35  # seconds for reading the output and the store; past it the hook says nothing

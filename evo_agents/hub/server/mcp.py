@@ -117,7 +117,7 @@ from evo_agents.hub.server.security import (
     LOGIN_HINT,
     Principal,
 )
-from evo_agents.kg.serve import Session, _error, for_model, wants_data
+from evo_agents.kg.serve import Session, error_result, for_model, wants_data
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -249,7 +249,7 @@ class HubMcp(MCPServer):
         state = request.scope.get("state", {}) if isinstance(request, Request) else {}
         user, session, request_id = state.get("principal"), state.get(SESSION), state.get("request_id")
         if user is None or session is None:  # mounted without McpGate in front: refuse rather than guess
-            result = _error(f"sign-in required: {LOGIN_HINT}")
+            result = error_result(f"sign-in required: {LOGIN_HINT}")
         else:
             caller = Caller(
                 user, session.project, session.sink, Request({**request.scope, "app": self.hub}), session.local_run
@@ -273,7 +273,7 @@ class HubMcp(MCPServer):
     async def _answer(self, caller: Caller, name: str, arguments: dict, request_id) -> dict:
         scope = caller.user.scope
         if scope is not None and scope.kind in RUN_TOOLS and name not in RUN_TOOLS[scope.kind]:
-            return _error(KIND_ONLY[scope.kind].format(tool=name))
+            return error_result(KIND_ONLY[scope.kind].format(tool=name))
         if plugin_tools.split(name) is not None:
             return await plugin_tools.answer(
                 self.hub.state, caller.user, caller.project, name, arguments, sink=caller.sink
@@ -286,25 +286,25 @@ class HubMcp(MCPServer):
                 return await self._kg(caller, name, arguments)
             tool = self._hub_tools.get(name)
             if tool is None and name not in CHAT_TOOL_NAMES:
-                return _error(f"unknown tool {name!r}")
+                return error_result(f"unknown tool {name!r}")
             problems = errors(validate(arguments, SCHEMAS[name]))
             if problems:
                 shown = "; ".join(f"{i.path or 'arguments'}: {i.message}" for i in problems[:SHOWN_PROBLEMS])
-                return _error(f"bad arguments for {name}: {shown}")
+                return error_result(f"bad arguments for {name}: {shown}")
             if tool is None:  # chat_message, chat_thread: the reader's chats and labels, kg_more within its audience
                 return await chat_read.answer(self.hub.state, caller.user, caller.sink, caller.owner, name, arguments)
             text, data = await tool(caller, arguments)
             return self.hub.state.kg_handles.call(_Answered(caller.sink, name, text, data), caller.owner, name, {})
         except Refusal as exc:
-            return _error(str(exc))
+            return error_result(str(exc))
         except HTTPException as exc:
-            return _error(http_detail(exc))
+            return error_result(http_detail(exc))
         except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one
             log.warning("mcp tool: database unavailable", extra={"tool": name, "error": type(exc).__name__})
-            return _error("the hub database is unavailable; try again shortly")
+            return error_result("the hub database is unavailable; try again shortly")
         except Exception:
             log.exception("mcp tool failed", extra={"tool": name, "request_id": request_id})
-            return _error(f"the hub failed to answer; quote request id {request_id} when reporting it")
+            return error_result(f"the hub failed to answer; quote request id {request_id} when reporting it")
 
     async def _kg(self, caller: Caller, name: str, arguments: dict) -> dict:
         if name == "kg_more":  # the handles live in this process: no graph is read, only the caller's audience
@@ -313,7 +313,7 @@ class HubMcp(MCPServer):
                 session.audience = await kg_audience.reader_audience(conn, caller.user)
             return self.hub.state.kg_handles.call(session, caller.owner, name, arguments)
         if caller.project is None:
-            return _error(NO_PROJECT)
+            return error_result(NO_PROJECT)
         scope = caller.user.scope
         # an agent's search may explore the ranking (evo_agents.kg.explore); the loop's lookups never do
         explore = name == "kg_search" and (scope is None or scope.kind not in runs.CURATOR_KINDS)

@@ -78,6 +78,67 @@ def _names(value, where: str, problems: list[str]) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _requires(data: dict, problems: list[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The connectors and extras of ``requires``."""
+    requires = data.get("requires") or {}
+    if not isinstance(requires, dict) or set(requires) - REQUIRES:
+        problems.append(f"requires holds only {', '.join(sorted(REQUIRES))}")
+        requires = {}
+    connectors = _names(requires.get("connectors"), "requires.connectors", problems)
+    return connectors, _names(requires.get("extras"), "requires.extras", problems)
+
+
+def _identifiers(value, problems: list[str]) -> list:
+    if not isinstance(value, list):
+        problems.append("knowledge.identifiers must be a list")
+        return []
+    for i, ident in enumerate(value):
+        if not isinstance(ident, dict) or not IDENTIFIER_KIND.match(str(ident.get("kind", ""))):
+            problems.append(f"knowledge.identifiers[{i}] needs a kind such as Ticket")
+            continue
+        extra = set(ident) - {"kind", "pattern", "description"}
+        if extra or not isinstance(ident.get("pattern"), str):
+            problems.append(f"knowledge.identifiers[{i}] holds kind, pattern and description only")
+            continue
+        try:
+            re.compile(ident["pattern"])
+        except re.error as exc:
+            problems.append(f"knowledge.identifiers[{i}].pattern is not a regular expression: {exc}")
+    return value
+
+
+def _knowledge(data: dict, problems: list[str]) -> tuple[list, dict]:
+    """The identifiers and the ontology of ``knowledge``."""
+    knowledge = data.get("knowledge") or {}
+    if not isinstance(knowledge, dict) or set(knowledge) - KNOWLEDGE:
+        problems.append(f"knowledge holds only {', '.join(sorted(KNOWLEDGE))}: a strategy does not touch sources")
+        knowledge = {}
+    identifiers = _identifiers(knowledge.get("identifiers") or [], problems)
+    ontology = knowledge.get("ontology") or {}
+    problems += [f"knowledge.ontology {i.path}: {i.message}".replace("  ", " ") for i in validate_ontology(ontology)]
+    return identifiers, ontology
+
+
+def _settings(data: dict, problems: list[str]) -> dict:
+    settings = data.get("settings") or {}
+    if not isinstance(settings, dict):
+        problems.append("settings must be a mapping of KG settings keys")
+        settings = {}
+    if "strategy" in settings:
+        problems.append("settings.strategy is set by apply: leave it out")
+    try:
+        kg_settings.of({k: v for k, v in settings.items() if k != "strategy"})
+    except kg_settings.SettingsError as exc:
+        problems.append(f"settings: {exc}")
+    return settings
+
+
+def _known(values: tuple[str, ...], known, where: str, what: str, problems: list[str]) -> None:
+    for v in values:
+        if v not in known:
+            problems.append(f"{where}: {v!r} is not {what} ({', '.join(known)})")
+
+
 def parse(data, origin: str = "built-in") -> Strategy:
     """The strategy ``data`` (a loaded file) says; StrategyError naming every problem when it is not valid."""
     problems: list[str] = []
@@ -93,51 +154,12 @@ def parse(data, origin: str = "built-in") -> Strategy:
         problems.append("name must be lowercase letters, digits and hyphens, starting with a letter")
         name = str(name)
     suits = _names(data.get("suits"), "suits", problems)
-    for c in suits:
-        if c not in CLASSES:
-            problems.append(f"suits: {c!r} is not a class of the data profile ({', '.join(CLASSES)})")
-    requires = data.get("requires") or {}
-    if not isinstance(requires, dict) or set(requires) - REQUIRES:
-        problems.append(f"requires holds only {', '.join(sorted(REQUIRES))}")
-        requires = {}
-    connectors = _names(requires.get("connectors"), "requires.connectors", problems)
-    extras = _names(requires.get("extras"), "requires.extras", problems)
-    knowledge = data.get("knowledge") or {}
-    if not isinstance(knowledge, dict) or set(knowledge) - KNOWLEDGE:
-        problems.append(f"knowledge holds only {', '.join(sorted(KNOWLEDGE))}: a strategy does not touch sources")
-        knowledge = {}
-    identifiers = knowledge.get("identifiers") or []
-    if not isinstance(identifiers, list):
-        problems.append("knowledge.identifiers must be a list")
-        identifiers = []
-    for i, ident in enumerate(identifiers):
-        if not isinstance(ident, dict) or not IDENTIFIER_KIND.match(str(ident.get("kind", ""))):
-            problems.append(f"knowledge.identifiers[{i}] needs a kind such as Ticket")
-            continue
-        extra = set(ident) - {"kind", "pattern", "description"}
-        if extra or not isinstance(ident.get("pattern"), str):
-            problems.append(f"knowledge.identifiers[{i}] holds kind, pattern and description only")
-            continue
-        try:
-            re.compile(ident["pattern"])
-        except re.error as exc:
-            problems.append(f"knowledge.identifiers[{i}].pattern is not a regular expression: {exc}")
-    ontology = knowledge.get("ontology") or {}
-    problems += [f"knowledge.ontology {i.path}: {i.message}".replace("  ", " ") for i in validate_ontology(ontology)]
-    settings = data.get("settings") or {}
-    if not isinstance(settings, dict):
-        problems.append("settings must be a mapping of KG settings keys")
-        settings = {}
-    if "strategy" in settings:
-        problems.append("settings.strategy is set by apply: leave it out")
-    try:
-        kg_settings.of({k: v for k, v in settings.items() if k != "strategy"})
-    except kg_settings.SettingsError as exc:
-        problems.append(f"settings: {exc}")
+    _known(suits, CLASSES, "suits", "a class of the data profile", problems)
+    connectors, extras = _requires(data, problems)
+    identifiers, ontology = _knowledge(data, problems)
+    settings = _settings(data, problems)
     steps = _names(data.get("steps"), "steps", problems)
-    for s in steps:
-        if s not in STEPS:
-            problems.append(f"steps: {s!r} is not a build step ({', '.join(STEPS)})")
+    _known(steps, STEPS, "steps", "a build step", problems)
     if problems:
         raise StrategyError(f"strategy {name} ({origin}): " + "; ".join(problems))
     return Strategy(

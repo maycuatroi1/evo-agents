@@ -160,65 +160,78 @@ def read_lines(reads: list[dict]) -> list[str]:
     return [f"{'read' if i == 0 else '':<8}{r['source']} {freshness.describe(r)}" for i, r in enumerate(reads)]
 
 
+def _source_line(s: dict) -> str:
+    if s.get("withheld"):  # above the clearance of the sink that asked (``serve``)
+        return f"{s['id']:<22}withheld: above the clearance of this sink"
+    last = s["last_run"]
+    state = last["status"] if last else "never"
+    notes = []
+    if s["held_removals"]:
+        notes.append(f"{s['held_removals']} removal(s) held")
+    if last and last.get("errors"):
+        notes.append(f"{last['errors']} item error(s)")
+    if last and last.get("rejected"):
+        notes.append(f"{last['rejected']} rejected")
+    if last and last["status"] != "ok" and last.get("issues"):
+        notes.append(last["issues"][0])
+    connector = (s["connector"] or "")[:11]
+    return (
+        f"{s['id']:<22}{connector:<12}{s['items']:>7}{s['deleted']:>9}  {state:<9}"
+        f"{_human_age(s['age_seconds']):>6}  {'; '.join(notes)}"
+    )
+
+
+def _build_lines(graph: dict) -> list[str]:
+    """The ready build: its size, the coverage of each source and its clusters."""
+    lines = [
+        f"graph   build {graph['build_id']} ({_human_age(_age_seconds(graph.get('built_at')))} old): "
+        f"{graph['nodes']} nodes, {graph['edges']} edges, {graph['units']} units"
+    ]
+    for src in graph.get("coverage", {}).get("sources", []):
+        refs = f", refs {src.get('refs_resolved', 0)}/{src.get('refs', 0)}" if src.get("refs") else ""
+        lines.append(
+            f"        {src['id']:<20} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
+            f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{refs}"
+        )
+        if src.get("code"):
+            lines.append(f"          {code_line(src['code'])}")
+    lines.append(f"        {cluster_line(graph.get('coverage', {}).get('clusters'))}")
+    return lines
+
+
+def _multiple_lines(multiple: dict | None) -> list[str]:
+    if not multiple or not multiple["codes"]:
+        return []
+    lines = ["", f"codes defined in two or more places: {multiple['codes']}; {multiple['hint']}"]
+    for sample in multiple["samples"]:
+        lines.append(f"        {sample['code']}: {', '.join(sample['places'])}")
+    if multiple["codes"] > len(multiple["samples"]):
+        lines.append(f"        and {multiple['codes'] - len(multiple['samples'])} more")
+    return lines
+
+
+def _graph_lines(status: dict, graph: dict) -> list[str]:
+    lines = [""]
+    if graph.get("ready"):
+        lines += _build_lines(graph)
+    else:
+        lines.append(f"graph   {graph.get('error') or 'no ready build'}")
+    lines += read_lines(status.get("reads") or [])
+    if status.get("warnings"):
+        lines.append("")
+        lines += [f"warning: {w}" for w in status["warnings"]]
+    return lines + _multiple_lines(status.get("multiple_definitions"))
+
+
 def render_status(status: dict, *, brief: bool = False) -> str:
     if brief:
         return render_brief(status)
-    lines = []
     graph = status.get("graph")
-    lines.append(f"project {status['project']}  harness {status['harness']}")
-    lines.append(f"corpus  {status['home']}")
-    lines.append("")
+    lines = [f"project {status['project']}  harness {status['harness']}", f"corpus  {status['home']}", ""]
     lines.append(f"{'source':<22}{'connector':<12}{'items':>7}{'deleted':>9}  {'last run':<9}{'age':>6}  notes")
-    for s in status["sources"]:
-        if s.get("withheld"):  # above the clearance of the sink that asked (``serve``)
-            lines.append(f"{s['id']:<22}withheld: above the clearance of this sink")
-            continue
-        last = s["last_run"]
-        state = last["status"] if last else "never"
-        notes = []
-        if s["held_removals"]:
-            notes.append(f"{s['held_removals']} removal(s) held")
-        if last and last.get("errors"):
-            notes.append(f"{last['errors']} item error(s)")
-        if last and last.get("rejected"):
-            notes.append(f"{last['rejected']} rejected")
-        if last and last["status"] != "ok" and last.get("issues"):
-            notes.append(last["issues"][0])
-        connector = (s["connector"] or "")[:11]
-        lines.append(
-            f"{s['id']:<22}{connector:<12}{s['items']:>7}{s['deleted']:>9}  {state:<9}"
-            f"{_human_age(s['age_seconds']):>6}  {'; '.join(notes)}"
-        )
+    lines += [_source_line(s) for s in status["sources"]]
     if graph:
-        lines.append("")
-        if graph.get("ready"):
-            lines.append(
-                f"graph   build {graph['build_id']} ({_human_age(_age_seconds(graph.get('built_at')))} old): "
-                f"{graph['nodes']} nodes, {graph['edges']} edges, {graph['units']} units"
-            )
-            for src in graph.get("coverage", {}).get("sources", []):
-                refs = f", refs {src.get('refs_resolved', 0)}/{src.get('refs', 0)}" if src.get("refs") else ""
-                lines.append(
-                    f"        {src['id']:<20} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
-                    f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{refs}"
-                )
-                if src.get("code"):
-                    lines.append(f"          {code_line(src['code'])}")
-            lines.append(f"        {cluster_line(graph.get('coverage', {}).get('clusters'))}")
-        else:
-            lines.append(f"graph   {graph.get('error') or 'no ready build'}")
-        lines += read_lines(status.get("reads") or [])
-        if status.get("warnings"):
-            lines.append("")
-            lines += [f"warning: {w}" for w in status["warnings"]]
-        multiple = status.get("multiple_definitions")
-        if multiple and multiple["codes"]:
-            lines.append("")
-            lines.append(f"codes defined in two or more places: {multiple['codes']}; {multiple['hint']}")
-            for sample in multiple["samples"]:
-                lines.append(f"        {sample['code']}: {', '.join(sample['places'])}")
-            if multiple["codes"] > len(multiple["samples"]):
-                lines.append(f"        and {multiple['codes'] - len(multiple['samples'])} more")
+        lines += _graph_lines(status, graph)
     else:
         lines.append("")
         lines.append("graph   not built: run evo-agents kg build")

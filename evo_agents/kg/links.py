@@ -36,9 +36,11 @@ import posixpath
 import re
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-from evo_agents.kg.store import LIVE, SEEN, Store
+from evo_agents.kg.store import Store
+from evo_agents.kg.store_filters import LIVE, SEEN
 
 MODELS = ("distmult", "rotate")  # the first is the default
 DIM = 64  # complex dimensions of RotatE, real ones of DistMult
@@ -531,6 +533,49 @@ class _Names:
         return found[:MAX_PER_NAME]
 
 
+Pair = tuple[int, str, int, str, str]  # head, relation, tail, why, the name that suggests it
+
+
+def _review_pairs(g: LinkGraph, names: _Names, review: list[dict]) -> Iterator[Pair]:
+    """The targets the samples of ``dangling_mention`` and ``ambiguous_match`` review items name."""
+    for item in review:
+        rule = item.get("rule")
+        if rule not in ("dangling_mention", "ambiguous_match"):
+            continue
+        nodes = item.get("evidence") or [n["id"] for n in item.get("nodes") or []]
+        h = g.index.get(nodes[0]) if nodes else None
+        if h is None:
+            continue
+        why = "dangling" if rule == "dangling_mention" else "ambiguous"
+        for sample in dict.fromkeys((item.get("detail") or {}).get("samples") or []):
+            for t in names.targets(sample):
+                yield h, "mentions", t, why, sample
+
+
+def _rival_pairs(g: LinkGraph) -> Iterator[Pair]:
+    """For each resolved edge to a symbol, the other symbols of its name, when a few share it."""
+    by_kind_name: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for i, (kind, name) in enumerate(zip(g.kinds, g.names, strict=True)):
+        if kind == "Symbol" and name:
+            by_kind_name[(kind, name)].append(i)
+    for h, r, t in g.resolved:
+        rivals = by_kind_name.get((g.kinds[t], g.names[t]), [])
+        if 1 < len(rivals) <= MAX_PER_NAME:
+            for x in rivals:
+                yield h, g.rels[r], x, "ambiguous", g.names[t]
+
+
+def _test_pairs(g: LinkGraph, names: _Names) -> Iterator[Pair]:
+    """Each test file to the code files of its stem it has no edge to."""
+    for h, kind in enumerate(g.kinds):
+        stem = _test_stem(g.paths[h]) if kind == "File" else None
+        if not stem:
+            continue
+        for t in names.stem.get(stem, [])[:MAX_PER_NAME]:
+            if (h, t) not in g.linked:
+                yield h, "verifies", t, "test", stem
+
+
 def candidates(
     g: LinkGraph,
     review: list[dict] | None = None,
@@ -557,40 +602,16 @@ def candidates(
         seen.add(key)
         out.append(Candidate(g.ids[h], rel, g.ids[t], why, name))
 
-    for item in review or []:
-        rule = item.get("rule")
-        if rule not in ("dangling_mention", "ambiguous_match"):
-            continue
-        nodes = item.get("evidence") or [n["id"] for n in item.get("nodes") or []]
-        h = g.index.get(nodes[0]) if nodes else None
-        if h is None:
-            continue
-        why = "dangling" if rule == "dangling_mention" else "ambiguous"
-        for sample in dict.fromkeys((item.get("detail") or {}).get("samples") or []):
-            for t in names.targets(sample):
-                add(h, "mentions", t, why, sample)
-
-    by_kind_name: dict[tuple[str, str], list[int]] = defaultdict(list)
-    for i, (kind, name) in enumerate(zip(g.kinds, g.names, strict=True)):
-        if kind == "Symbol" and name:
-            by_kind_name[(kind, name)].append(i)
-    for h, r, t in g.resolved:
-        rivals = by_kind_name.get((g.kinds[t], g.names[t]), [])
-        if 1 < len(rivals) <= MAX_PER_NAME:
-            for x in rivals:
-                add(h, g.rels[r], x, "ambiguous", g.names[t])
-
+    for pair in _review_pairs(g, names, review or []):
+        add(*pair)
+    for pair in _rival_pairs(g):
+        add(*pair)
     if docs and model is not None and "mentions" in g.rel_index:
         for h, t in _doc_targets(g, model):
             add(h, "mentions", t, "doc", g.paths[t])
     if tests:
-        for h, kind in enumerate(g.kinds):
-            stem = _test_stem(g.paths[h]) if kind == "File" else None
-            if not stem:
-                continue
-            for t in names.stem.get(stem, [])[:MAX_PER_NAME]:
-                if (h, t) not in g.linked:
-                    add(h, "verifies", t, "test", stem)
+        for pair in _test_pairs(g, names):
+            add(*pair)
     return out
 
 

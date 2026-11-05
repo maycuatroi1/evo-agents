@@ -17,7 +17,8 @@ from evo_agents.kg.memo import Memo
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
-from evo_agents.kg.store import Graph, Store, edge_id, label_columns
+from evo_agents.kg.store import Graph, Store, edge_id
+from evo_agents.kg.store_filters import label_columns
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
 from tests.kg.projects import write

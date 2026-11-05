@@ -79,7 +79,7 @@ diff --git a/pkg/new.py b/pkg/new.py
 
 
 def test_a_commit_time_with_an_offset_no_clock_has_is_read_in_utc():
-    from evo_agents.kg.connectors._git import iso_time
+    from evo_agents.kg.connectors.gitcli import iso_time
 
     assert iso_time("2011-09-08T02:38:50+518:00\n") == "2011-08-17T12:38:50Z"  # a real commit of psf/requests
     assert iso_time("2011-09-08T02:38:50-05:30") == "2011-09-08T02:38:50-05:30"

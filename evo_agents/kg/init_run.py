@@ -215,58 +215,55 @@ def _numbers(figures) -> bool:
     )
 
 
-def parse_decision(data) -> dict:
-    """``data`` as a validated decision, or DecisionError naming every problem. Settings and strategies are checked by
-    their own modules; here the shape, the sources and that each part has a reason with numbers."""
-    from evo_agents.kg import settings as kg_settings
+def _strategy_problems(chosen) -> list[str]:
     from evo_agents.kg import strategy as kg_strategy
 
-    if isinstance(data, str):
-        data = extract_json(data)
-    if not isinstance(data, dict):
-        raise DecisionError("the decision must be an object")
-    problems = [f"unknown key {k!r}" for k in sorted(set(data) - KEYS)]
-    out: dict = {k: data[k] for k in KEYS & set(data)}
-    chosen = out.get("strategy")
-    if chosen is not None:
-        if not isinstance(chosen, dict) or len(chosen) != 1 or next(iter(chosen)) not in ("use", "create"):
-            problems.append('strategy must be {"use": NAME} or {"create": {...}}')
-        elif "use" in chosen and not isinstance(chosen["use"], str):
-            problems.append("strategy.use must be a name")
-        elif "create" in chosen:
-            try:
-                kg_strategy.parse(chosen["create"], origin="created by the Curator")
-            except kg_strategy.StrategyError as exc:
-                problems.append(f"strategy.create: {exc}")
-    if "settings" in out:
+    if not isinstance(chosen, dict) or len(chosen) != 1 or next(iter(chosen)) not in ("use", "create"):
+        return ['strategy must be {"use": NAME} or {"create": {...}}']
+    if "use" in chosen and not isinstance(chosen["use"], str):
+        return ["strategy.use must be a name"]
+    if "create" in chosen:
         try:
-            kg_settings.of(out["settings"])
-        except kg_settings.SettingsError as exc:
-            problems.append(f"settings: {exc}")
-        if isinstance(out["settings"], dict) and "strategy" in out["settings"]:
-            problems.append("settings.strategy is set by the strategy part")
-    found = out.get("sources")
-    if found is not None:
-        if not isinstance(found, list) or len(found) > MAX_SOURCES:
-            problems.append(f"sources must be a list of at most {MAX_SOURCES} sources")
-        else:
-            for i, s in enumerate(found):
-                if (
-                    not isinstance(s, dict)
-                    or not isinstance(s.get("id"), str)
-                    or not isinstance(s.get("connector"), str)
-                ):
-                    problems.append(f"sources[{i}] needs an id and a connector")
-                elif "label" in s:
-                    problems.append(f"sources[{i}] sets a label: a person does, a new source gets the strictest one")
-    changes = out.get("code_changes")
-    if changes is not None and not (
-        isinstance(changes, list)
-        and all(
-            isinstance(c, dict) and isinstance(c.get("title"), str) and isinstance(c.get("why"), str) for c in changes
-        )
-    ):
-        problems.append("code_changes must be a list of {title, why}")
+            kg_strategy.parse(chosen["create"], origin="created by the Curator")
+        except kg_strategy.StrategyError as exc:
+            return [f"strategy.create: {exc}"]
+    return []
+
+
+def _settings_problems(settings) -> list[str]:
+    from evo_agents.kg import settings as kg_settings
+
+    problems = []
+    try:
+        kg_settings.of(settings)
+    except kg_settings.SettingsError as exc:
+        problems.append(f"settings: {exc}")
+    if isinstance(settings, dict) and "strategy" in settings:
+        problems.append("settings.strategy is set by the strategy part")
+    return problems
+
+
+def _source_problems(found) -> list[str]:
+    if not isinstance(found, list) or len(found) > MAX_SOURCES:
+        return [f"sources must be a list of at most {MAX_SOURCES} sources"]
+    problems = []
+    for i, s in enumerate(found):
+        if not isinstance(s, dict) or not isinstance(s.get("id"), str) or not isinstance(s.get("connector"), str):
+            problems.append(f"sources[{i}] needs an id and a connector")
+        elif "label" in s:
+            problems.append(f"sources[{i}] sets a label: a person does, a new source gets the strictest one")
+    return problems
+
+
+def _changes_ok(changes) -> bool:
+    return isinstance(changes, list) and all(
+        isinstance(c, dict) and isinstance(c.get("title"), str) and isinstance(c.get("why"), str) for c in changes
+    )
+
+
+def _reason_problems(out: dict) -> list[str]:
+    """That each part given has a reason citing figures, and that every reason is well formed."""
+    problems = []
     reasons = out.get("reasons")
     if reasons is not None and not isinstance(reasons, list):
         problems.append("reasons must be a list")
@@ -282,7 +279,27 @@ def parse_decision(data) -> dict:
             problems.append(f"reasons[{i}] must cite figures: numbers by name")
         else:
             covered.add(r["about"])
-    problems += [f"{p} has no reason that cites figures" for p in sorted(given - covered)]
+    return problems + [f"{p} has no reason that cites figures" for p in sorted(given - covered)]
+
+
+def parse_decision(data) -> dict:
+    """``data`` as a validated decision, or DecisionError naming every problem. Settings and strategies are checked by
+    their own modules; here the shape, the sources and that each part has a reason with numbers."""
+    if isinstance(data, str):
+        data = extract_json(data)
+    if not isinstance(data, dict):
+        raise DecisionError("the decision must be an object")
+    problems = [f"unknown key {k!r}" for k in sorted(set(data) - KEYS)]
+    out: dict = {k: data[k] for k in KEYS & set(data)}
+    if out.get("strategy") is not None:
+        problems += _strategy_problems(out["strategy"])
+    if "settings" in out:
+        problems += _settings_problems(out["settings"])
+    if out.get("sources") is not None:
+        problems += _source_problems(out["sources"])
+    if out.get("code_changes") is not None and not _changes_ok(out["code_changes"]):
+        problems.append("code_changes must be a list of {title, why}")
+    problems += _reason_problems(out)
     if problems:
         raise DecisionError("; ".join(problems))
     out.setdefault("reasons", [])

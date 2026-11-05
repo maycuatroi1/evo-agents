@@ -384,10 +384,12 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                 continue
             length = None
             if kind == "bench":
-                from evo_agents.kg.evaluate import _length_reader
+                from evo_agents.kg.evaluate import length_reader
 
-                clone = lay.clone(group[0].task.repo)
-                read = _length_reader({clone.name: clone}, group[0].task.commit, {}, None)
+                bench_task = group[0].task
+                assert bench_task is not None  # a bench graph's labels carry their task
+                clone = lay.clone(bench_task.repo)
+                read = length_reader({clone.name: clone}, bench_task.commit, {}, None)
 
                 def length(path, read=read):
                     return read(None, path)

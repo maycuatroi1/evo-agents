@@ -70,7 +70,7 @@ import sys
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.kg.connectors import _git, github
+from evo_agents.kg.connectors import gitcli, github
 from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
 from evo_agents.kg.protocol import canonical_json, finalize_item, hello, sha256
 from evo_agents.kg.redact import redact_file
@@ -107,7 +107,7 @@ def behind_now(ctx, commit: str, base: str) -> int | None:
         repo = repo_dir(ctx)
     except ValueError:
         return None
-    return _git.behind(repo, commit, base) if repo.is_dir() else None
+    return gitcli.behind(repo, commit, base) if repo.is_dir() else None
 
 
 def _repo_entry(ctx) -> dict:
@@ -124,7 +124,7 @@ def _code() -> str:
     from evo_agents.kg import redact
 
     digest = hashlib.sha256(__version__.encode())
-    for module in (sys.modules[__name__], _git, github, sys.modules[selected.__module__], redact):
+    for module in (sys.modules[__name__], gitcli, github, sys.modules[selected.__module__], redact):
         try:
             digest.update(Path(module.__file__).read_bytes())
         except (OSError, TypeError):  # no source file to read: the version alone stands for it
@@ -152,13 +152,13 @@ def read_already(ctx) -> tuple[bool, list[str]]:
         repo = repo_dir(ctx)
     except ValueError:
         return False, []
-    if not _git.is_repo(repo):
+    if not gitcli.is_repo(repo):
         return False, []
     ref = ctx.source.get("ref") or "HEAD"
     warnings = [m["message"] for m in _fetch(repo, ref)] if ctx.source.get("fetch") else []
     try:
-        return _git.resolve(repo, ref) == cursor["commit"], warnings
-    except _git.GitError:
+        return gitcli.resolve(repo, ref) == cursor["commit"], warnings
+    except gitcli.GitError:
         return False, warnings
 
 
@@ -169,8 +169,8 @@ def _fetch(repo: Path, ref: str):
         yield {"type": "log", "level": "warning", "message": f"fetch: true ignored: ref {ref!r} is not origin/<branch>"}
         return
     try:
-        _git.fetch(repo, remote, branch)
-    except (_git.GitError, OSError) as exc:
+        gitcli.fetch(repo, remote, branch)
+    except (gitcli.GitError, OSError) as exc:
         yield {"type": "log", "level": "warning", "message": f"fetch failed, reading {ref} as the clone has it: {exc}"}
 
 
@@ -195,14 +195,14 @@ def read_cursor(repo: Path, ref: str, commit: str, *, origin: str, branch: str, 
     forge, ``url`` of the commit and ``blob``, where file links by branch start and where those at the commit read
     start (``evo_agents.kg.freshness`` reads all of it)."""
     cursor: dict = {"commit": commit, "ref": ref, "at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")}
-    default = default or _git.remote_head(repo)
-    count = _git.behind(repo, commit, f"origin/{default}") if default else None
+    default = default or gitcli.remote_head(repo)
+    count = gitcli.behind(repo, commit, f"origin/{default}") if default else None
     if count is not None:
         cursor.update(base=f"origin/{default}", behind=count)
-    url = _git.commit_url(origin, commit) if origin else None
+    url = gitcli.commit_url(origin, commit) if origin else None
     if url:
         cursor["url"] = url
-        cursor["blob"] = {"branch": _git.web_url(origin, branch, ""), "commit": _git.web_url(origin, commit, "")}
+        cursor["blob"] = {"branch": gitcli.web_url(origin, branch, ""), "commit": gitcli.web_url(origin, commit, "")}
     return cursor
 
 
@@ -250,7 +250,7 @@ def commit_item(sid: str, repo_name: str, origin: str, commit: dict, exclude, al
         item["label"] = {"integrity": "U"}
     if redactions:
         props["redactions"] = redactions
-    uri = _git.commit_url(origin, commit["sha"]) if origin else None
+    uri = gitcli.commit_url(origin, commit["sha"]) if origin else None
     if uri:
         item["uri"] = uri
     return finalize_item(item)
@@ -262,10 +262,10 @@ def rewritten(repo: Path, ref: str, since: str, commit: str) -> str | None:
     then a gc). None when ``since`` is ``commit`` or one of its ancestors. A commit object that outlived the rewrite
     would still let ``git log since..commit`` run, and list the new history without dropping the old."""
     try:
-        if _git.is_ancestor(repo, since, commit):
+        if gitcli.is_ancestor(repo, since, commit):
             return None
         why = f"{since[:10]}, the commit the last run read, is not an ancestor of {commit[:10]}"
-    except _git.GitError:
+    except gitcli.GitError:
         why = f"{since[:10]}, the commit the last run read, is not in the clone"
     return f"history of {ref} rewritten: {why}; read the whole history, so the commits only on the old one go"
 
@@ -281,7 +281,7 @@ def history_items(ctx, repo: Path, commit: str, repo_name: str, origin: str, pri
     if why:
         yield {"type": "log", "level": "warning", "message": why}
         since = None
-    commits = _git.history(repo, commit, since)
+    commits = gitcli.history(repo, commit, since)
     for found in commits:
         yield commit_item(ctx.source_id, repo_name, origin, found, exclude, allow)
     yield {"type": "listing", "scope": f"{ctx.source_id}:commit:", "complete": since is None, "count": len(commits)}
@@ -318,7 +318,7 @@ def pull_items(ctx, repo_name: str, origin: str, prior: dict):
     """The pull request items of a repo on GitHub updated since the prior cursor's ``pulls.since``, then their
     listing; returns the cursor's next ``pulls`` (the prior one when nothing was read). Nothing for a repo elsewhere,
     a source with ``pulls: false``, EVO_KG_PULLS=0 or no token; a log line when GitHub could not be read."""
-    key = _git.remote_key(origin) if origin else None
+    key = gitcli.remote_key(origin) if origin else None
     since = (prior.get("pulls") or {}).get("since") if isinstance(prior.get("pulls"), dict) else None
     kept = {"since": since} if since else None
     if not key or key[0] != "github.com" or ctx.source.get("pulls") is False or not github.enabled(ctx.env):
@@ -354,7 +354,7 @@ def run(ctx):
     yield hello("git", __version__, list_complete=True, rev_exact=True, history=True)
     try:
         repo = repo_dir(ctx)
-        if not _git.is_repo(repo):
+        if not gitcli.is_repo(repo):
             raise ValueError(f"{repo} is not a git checkout")
     except ValueError as exc:
         yield {"type": "error", "failure": "config", "message": str(exc)}
@@ -364,19 +364,19 @@ def run(ctx):
     if ctx.source.get("fetch"):
         yield from _fetch(repo, ref)
     try:
-        commit = _git.resolve(repo, ref)
-    except _git.GitError as exc:
+        commit = gitcli.resolve(repo, ref)
+    except gitcli.GitError as exc:
         yield {"type": "error", "failure": "config", "message": str(exc)}
         yield {"type": "closed", "status": "error", "exception": str(exc)}
         return
 
     include, exclude, allow = ctx.source.get("include"), ctx.source.get("exclude"), ctx.source.get("allow")
     assets = ctx.source.get("assets", True)
-    tree = [(sha, path) for sha, path in _git.ls_tree(repo, commit) if not excluded(path, exclude, allow)]
+    tree = [(sha, path) for sha, path in gitcli.ls_tree(repo, commit) if not excluded(path, exclude, allow)]
     files = [(sha, path) for sha, path in tree if selected(path, include, exclude, allow)]
     others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude, allow)]
-    times = _git.last_change_times(repo, commit)
-    fallback_time = _git.commit_time(repo, commit)
+    times = gitcli.last_change_times(repo, commit)
+    fallback_time = gitcli.commit_time(repo, commit)
     entry = _repo_entry(ctx)
     origin = entry.get("origin", "")
     branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
@@ -386,7 +386,7 @@ def run(ctx):
     batch = 200
     for start in range(0, len(files), batch):
         chunk = files[start : start + batch]
-        blobs = _git.cat_blobs(repo, [sha for sha, _ in chunk])
+        blobs = gitcli.cat_blobs(repo, [sha for sha, _ in chunk])
         for sha, path in chunk:
             item = blob_item(
                 f"{sid}:file:{path}",
@@ -394,7 +394,7 @@ def run(ctx):
                 sha,
                 blobs.get(sha, b""),
                 rev_time=times.get(path, fallback_time),
-                uri=_git.web_url(origin, branch, path) if origin else None,
+                uri=gitcli.web_url(origin, branch, path) if origin else None,
                 assets=assets,
             )
             if item is None:
@@ -404,7 +404,7 @@ def run(ctx):
             yield finalize_item(item)
             count += 1
     for sha, path in others:  # known by path only: never read, so no blob fetch
-        uri = _git.web_url(origin, branch, path) if origin else None
+        uri = gitcli.web_url(origin, branch, path) if origin else None
         item = asset_item(f"{sid}:file:{path}", path, rev=sha, rev_time=times.get(path, fallback_time), uri=uri, size=0)
         item["props"]["repo"] = repo_name
         yield finalize_item(item)
