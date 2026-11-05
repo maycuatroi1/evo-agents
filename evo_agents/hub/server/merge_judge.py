@@ -38,7 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate, runs, tables, tiers
+from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate, merge_infra, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
@@ -471,6 +471,7 @@ class Judged:
         request, ``judge.WEIGH_SIGNS``), so they fail nothing by themselves; the queue's signs hold at gate 3."""
         self.body, self.second = body, second
         self.signs_weighed = signs_weighed
+        self.expected, self.hidden_count = expected, hidden_count
         self.verify = [item.model_dump(exclude_none=True) for item in body.verify]
         self.hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
         self.signs = [sign.model_dump() for sign in body.signs]
@@ -494,6 +495,7 @@ class Judged:
         self.judge_ok, self.judge_why = merge_gate.judge_round(
             body.verdict, self.dimensions, names, ledger=ledger, marks=self.marks, new=new
         )
+        self.round = (names, ledger, new)  # what ``infra_causes`` judges the round again with
         self.ledger, self.raised = findings.record_round(
             ledger,
             names=names,
@@ -503,12 +505,47 @@ class Judged:
             run_id=run_id,
             head=body.head_sha,
         )
-        if body.head_sha != head:
+        self.head_matches = body.head_sha == head
+        if not self.head_matches:
             self.judge_ok = False
             self.judge_why.append("the Judge read another commit than the merge request's head")
 
+    @property
+    def passed(self) -> bool:
+        return (self.signs_weighed or not self.signs) and self.checks_ok and self.judge_ok
+
+    def infra_causes(self) -> list[str]:
+        """The hub's own causes of this verdict's fail (``merge_infra.verdict_causes``): none when it passed, or when
+        the pull request fails it too."""
+        names, ledger, new = self.round
+        checks_ok_without_base, _ = judge.final_verdict(
+            agent="pass",
+            verify=merge_infra.without_base(self.verify),
+            expected_verify=self.expected,
+            hidden=merge_infra.without_base(self.hidden),
+            hidden_count=self.hidden_count,
+            signs=[],
+            head_matches=True,
+        )
+        judge_ok_with_security = False
+        if self.body.security is None and self.body.verdict is not None:
+            passing = {**self.dimensions, merge_gate.SECURITY: {"verdict": "pass", "reason": ""}}
+            judge_ok_with_security, _ = merge_gate.judge_round(
+                self.body.verdict, passing, names, ledger=ledger, marks=self.marks, new=new
+            )
+        return merge_infra.verdict_causes(
+            passed=self.passed,
+            unweighed_signs=bool(self.signs) and not self.signs_weighed,
+            head_matches=self.head_matches,
+            checks_ok=self.checks_ok,
+            checks_ok_without_base=checks_ok_without_base,
+            agent=self.body.verdict,
+            judge_ok=self.judge_ok,
+            judge_ok_with_security=judge_ok_with_security,
+        )
+
     def entry(self, run_id: int, model: str | None) -> dict:
-        passed = (self.signs_weighed or not self.signs) and self.checks_ok and self.judge_ok
+        passed = self.passed
         return {
             "run_id": run_id,
             "model": model,

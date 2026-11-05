@@ -12565,6 +12565,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/triage/merge-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage Check
+         * @description In the thread of a merge check its triage holds (``merge_holds``), for the plan run's owner: judge it again, or
+         *     hand its failure back to the plan run; 403 for another member's run, 404 outside such a thread, 409 for a check no
+         *     longer held.
+         */
+        post: operations["triage_check_v1_worker_runs__run_id__triage_merge_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -21672,6 +21694,11 @@ export interface components {
             exit_code: number;
             /** Duration Ms */
             duration_ms?: number | null;
+            /**
+             * Base Exit Code
+             * @description a merge check's failed check: its exit code on the base branch alone, where it ran again
+             */
+            base_exit_code?: number | null;
         };
         /** HistoryBatch */
         HistoryBatch: {
@@ -26077,6 +26104,35 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** MergeTriageIn */
+        MergeTriageIn: {
+            /**
+             * Action
+             * @description rejudge: judge it again from its first Judge, once the system is fixed; return: hand the failure back to the plan run, which caused it after all
+             * @enum {string}
+             */
+            action: "rejudge" | "return";
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** MergeTriaged */
+        MergeTriaged: {
+            /** Check Id */
+            check_id: number;
+            /**
+             * State
+             * @description judging again after rejudge, failed after return
+             */
+            state: string;
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
         };
         /** MergeVerdict */
         MergeVerdict: {
@@ -42217,6 +42273,11 @@ export interface components {
             exit_code: number;
             /** Duration Ms */
             duration_ms?: number | null;
+            /**
+             * Base Exit Code
+             * @description a merge check's failed check: its exit code on the base branch alone, where it ran again
+             */
+            base_exit_code?: number | null;
         };
         /** VerifyRun */
         VerifyRun: {
@@ -91660,6 +91721,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MergeGate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    triage_check_v1_worker_runs__run_id__triage_merge_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeTriageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeTriaged"];
                 };
             };
             /** @description Unauthorized */

@@ -441,6 +441,39 @@ def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_fr
     with_daemon(machine, body)
 
 
+def test_the_triage_merge_check_command_judges_a_held_check_again_or_hands_it_back(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "chat": [
+                {"cli": ["triage", "merge-check", "rejudge", "--reason", "the judge's git has merge-tree now"]},
+                {"cli": ["triage", "merge-check", "return", "--reason", "the test fails on the branch alone"]},
+                {"cli": ["triage", "merge-check", "merge", "--reason", "x"]},
+                {"say": "Done."},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        rejudged, returned, wrong = [e for e in machine.commands() if e["run"] == run_id]
+        assert (
+            rejudged["exit"] == 0
+            and "judges the merge check again; its verdict wakes the plan run" in rejudged["stdout"]
+        )
+        assert (
+            returned["exit"] == 0 and "The failure went back to the plan run (check #7, failed)" in returned["stdout"]
+        )
+        assert wrong["exit"] != 0, "rejudge or return alone"
+        assert [(call["route"], call["action"]) for call in hub.chat_calls] == [
+            ("triage/merge-check", "rejudge"),
+            ("triage/merge-check", "return"),
+        ]
+        assert hub.chat_calls[0]["reason"] == "the judge's git has merge-tree now"
+
+    with_daemon(machine, body)
+
+
 def test_triage_plan_edits_several_steps_in_one_call_and_refuses_a_mixed_or_broken_one(machine, tmp_path):  # noqa: F811
     edits = tmp_path / "edits.json"
     edits.write_text(

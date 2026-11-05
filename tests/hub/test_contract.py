@@ -302,6 +302,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker step",
         "worker triage cancel",
         "worker triage invite",
+        "worker triage merge-check",
         "worker triage plan",
         "worker triage rerun",
         "worker wait",
