@@ -120,6 +120,7 @@ LENSES: dict[str, str] = {
     "each to the directories, files or symbols that implement it, then post the map. Asked for by an entity map run "
     "(evo_agents.hub.server.kg_entity_map_run), never a night's turn",
 }
+WHOLE_RUN_LENSES = ("kg_entity_map",)  # lenses whose run works to its cap, not stopping well before it
 ON_DEMAND_LENSES = ("kg_init", "kg_questions", "kg_entity_map")  # the lenses a run asks for, left out of the nights' turns
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
@@ -429,7 +430,9 @@ def evidence_text(item: dict) -> str:
 # The prompt
 
 
-def _rules(project: str) -> list[str]:
+def _rules(project: str, lenses=()) -> list[str]:
+    """The rules of a review run; a run of a lens in WHOLE_RUN_LENSES works to its cap instead of stopping early."""
+    whole = any(name in WHOLE_RUN_LENSES for name in lenses)
     kinds = [f"  - {name} (tier {tier}): {what}" for name, (tier, what) in CHANGE_KINDS.items()]
     return [
         "Rules for this review run:",
@@ -483,11 +486,20 @@ def _rules(project: str) -> list[str]:
         f"the owner rejected in the last {REJECTED_DAYS} days is dropped unless its evidence is twice as large. Name "
         "the kind that fits the change, from these:",
         *kinds,
-        "- Look through the lenses of this night below; leave the others to other nights. Prefer a few proposals with "
-        "strong evidence to many weak ones, and stop well before the run's budget ends.",
+        (
+            "- Work the lens below until its work is whole or the run's budget nears its end, whichever comes first; "
+            "never stop with work left while budget remains."
+            if whole
+            else "- Look through the lenses of this night below; leave the others to other nights. Prefer a few "
+            "proposals with strong evidence to many weak ones, and stop well before the run's budget ends."
+        ),
         OUTPUTS_RULE,
         f'- Before you stop, write {RESULT_FILE} as a JSON object whose "summary" says what you looked at, the '
-        "findings and proposals you recorded (their ids), and what you left for another night.",
+        + (
+            "parts you posted, and what is still left, with the reason (the budget ran out) if anything is."
+            if whole
+            else "findings and proposals you recorded (their ids), and what you left for another night."
+        ),
     ]
 
 
@@ -746,7 +758,7 @@ def build_review_prompt(
         f"You are the Reviewer of project {project} on the evo-agents hub: the review run of {when}. You read the "
         "project's sessions, runs, plans and code, record what you find, and propose changes with evidence.",
         "",
-        *_rules(project),
+        *_rules(project, lenses),
         "",
         "Repositories of this run, each a read-only worktree under the current directory:",
     ]

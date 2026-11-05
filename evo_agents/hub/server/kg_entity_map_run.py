@@ -96,8 +96,9 @@ async def count_readable(engine: AsyncEngine, row, blobs, data_dir: Path | None,
     return await kg_questions._read_graph(engine, row, blobs, data_dir, read)
 
 
-async def _queue_agent(conn: AsyncConnection, ctx, who: tuple[int, str], body: dict) -> int | None:
-    """Queue the review run of ``ctx`` (lens kg_entity_map) as ``who``; its id, or None with why in ``body["notes"]``."""
+async def _queue_agent(conn: AsyncConnection, ctx, who: tuple[int, str], body: dict, since_map: bool) -> int | None:
+    """Queue the review run of ``ctx`` (lens kg_entity_map) as ``who`` and write its prompt, which tells the run's caps,
+    into ``body["prompt"]`` (``since_map``: a run posted a map before); its id, or None with why in ``body["notes"]``."""
     from evo_agents.hub.server.run_state import notify_queued, write_event
 
     title = f"KG entity map of {ctx.project}"
@@ -107,6 +108,15 @@ async def _queue_agent(conn: AsyncConnection, ctx, who: tuple[int, str], body: d
     if queued is None:
         return None
     run_id, caps = queued
+    body["prompt"] = model.prompt(
+        project=ctx.project,
+        run_id=ctx.id,
+        sink=str(body.get("sink") or AGENT_SINK),
+        found=model.Readable.of(body["readable"]),
+        why=list(ctx.why or []),
+        since_map=since_map,
+        caps=caps,
+    )
     text = (
         f"Queued for entity map run #{ctx.id} of project {ctx.project}, asked for as {ctx.via} by {who[1]}: lens "
         f"{model.LENS}; cost cap {curator.money(caps['max_usd'])}, {caps['max_turns']} turns, "
@@ -149,17 +159,9 @@ async def _queued(engine: AsyncEngine, ctx, blobs, data_dir, now: datetime, coun
         body |= {"sink": found.get("sink"), "readable": found["readable"]}
         revs = found["revs"]
     readable = model.Readable.of(body["readable"])
-    body["prompt"] = model.prompt(
-        project=ctx.project,
-        run_id=ctx.id,
-        sink=str(body.get("sink") or AGENT_SINK),
-        found=readable,
-        why=list(ctx.why or []),
-        since_map=before is not None,
-    )
     async with engine.begin() as conn:
         body["notes"] = [n for n in body.get("notes") or [] if not n.startswith("no review run")]
-        agent_run_id = await _queue_agent(conn, ctx, who, body)
+        agent_run_id = await _queue_agent(conn, ctx, who, body, before is not None)
         if agent_run_id is None:
             if ctx.created_at + model.QUEUE_WAIT < now:
                 raise MapFailed("no review run could be queued in " + str(model.QUEUE_WAIT))
