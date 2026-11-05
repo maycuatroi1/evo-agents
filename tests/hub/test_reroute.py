@@ -193,6 +193,20 @@ def test_the_agent_runs_a_plan_run_that_lacked_a_program_again_on_its_agents_poo
     assert again.status_code in (409, 422), again.text
 
 
+def test_the_agent_runs_a_plan_run_the_hub_answered_5xx_again(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
+    made = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"]).json()
+    assert claim(client, worker)["id"] == made["id"]
+    error = "the hub answered HTTP 500 to GET /v1/worker/runs/1/plan"
+    assert report(client, worker, made["id"], "failed", error=error, failure_cause="hub_5xx").status_code == 200
+    agent = agent_of(client, worker, made["id"], hub_db)
+    done = rerun(client, worker, agent)
+    assert done.status_code == 201, done.text
+    r = tables.runs
+    query = select(r.c.kind, r.c.state, r.c.parent_run_id).where(r.c.id == done.json()["run_id"])
+    assert sql(hub_db, query) == [("plan", "queued", made["id"])]
+
+
 def test_a_plan_run_that_failed_of_another_cause_is_still_the_owners_to_dispatch(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     made = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"]).json()

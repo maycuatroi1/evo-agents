@@ -897,7 +897,8 @@ it, on its last attempt, once no fit worker is left, or when the agent had start
 fails at once, since it fails on every worker. With no worker left, the agent of its thread runs on a worker the run was
 tried on, the owner's own first, and the thread's first message says which: it installs the program there, checks it
 with `command -v`, and runs the run again with `evo-agents worker triage rerun`, which pins the rerun to that worker.
-For this cause a plan run is rerun too; any other failed plan run is its owner's to dispatch again.
+For this cause a plan run is rerun too, and for `hub_5xx`, the hub's own 5xx; any other failed plan run is its owner's to
+dispatch again.
 
 Everyone in the project's chat clears its label, the project's default label (`evo_agents.hub.server.chat_access`). A
 plan whose label is not at or below it (a higher level or location), or that is no longer on the hub, keeps a chat of

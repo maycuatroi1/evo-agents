@@ -87,7 +87,7 @@ A hold nobody ends is judged again by the hub after 6 hours; the third hold at o
 ## What you ask instead
 
 Any other cause (`credentials`, `origin`, `branch_mismatch`, a verify that fails because the code is wrong, a plan run
-of any cause but `missing_tool`, an author or review run), or a refusal of the hub: ask the owner with a decision of the category `triage`, 2 to 6 options,
+of any cause but `missing_tool` and `hub_5xx`, an author or review run), or a refusal of the hub: ask the owner with a decision of the category `triage`, 2 to 6 options,
 each one an action you can do or a choice the owner makes (`evo-agents worker ask`, see the `using-agent-hub` skill).
 State the diagnosis before you ask, and recommend one option with `--recommended KEY --recommended-reason TEXT`, the
 reason in a sentence the owner can act on from a phone. For an action, add `--reversible yes --undo TEXT` or
