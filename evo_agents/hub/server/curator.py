@@ -474,6 +474,8 @@ async def last_brief(conn: AsyncConnection, project_id: int) -> BriefSummary | N
 
 
 async def _last_review(conn: AsyncConnection, project_id: int) -> ReviewRunSummary | None:
+    """The last review run of a night; a review run of the knowledge graph (starter questions, kg_init, an answer
+    batch) belongs to no night and is not one."""
     r, f, p, cf = tables.runs, tables.findings, tables.proposals, tables.curator_figures
     findings = select(func.count()).where(f.c.run_id == r.c.id).scalar_subquery()
     proposals = select(func.count()).where(p.c.run_id == r.c.id).scalar_subquery()
@@ -489,7 +491,7 @@ async def _last_review(conn: AsyncConnection, project_id: int) -> ReviewRunSumma
             r.c.queued_at,
             r.c.finished_at,
         )
-        .where(r.c.project_id == project_id, r.c.kind == "review")
+        .where(r.c.project_id == project_id, r.c.kind == "review", r.c.schedule_night.is_not(None))
         .order_by(r.c.id.desc())
         .limit(1)
     )
