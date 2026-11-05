@@ -57,7 +57,8 @@ if TYPE_CHECKING:
 
 # The merge of the base into the head in the object store alone; git before 2.38 (Ubuntu 22.04 ships 2.34) has no
 # --write-tree and answers USAGE with its usage text, so the merge is then made in a worktree of its own.
-VERDICT_TRIES = 6  # posts of a verdict the hub answers 5xx, 429 or nothing to, before the run fails
+VERDICT_TRIES = 6  # calls of the hub it answers 5xx, 429 or nothing to (inputs, verdict), before the run fails
+MERGE_CHECK_ENV = "EVO_JUDGE_MERGE_CHECK"  # set to 1 for the checks of a merge check
 VERDICT_FIRST_DELAY = 5.0  # seconds before the second post, doubling
 VERDICT_MOST_DELAY = 60.0  # seconds between two posts at most
 WRITE_TREE = ("merge-tree", "--write-tree", "--name-only", "--no-messages")
@@ -197,11 +198,25 @@ class JudgeRun:
         """What the hub gives the Judge to read, asked with the run's own key; held in memory alone."""
         run = self.run
         ask = run.daemon.hub.merge_judge_inputs if self.merge else run.daemon.hub.judge_inputs
-        try:
-            found = await ask(run.id, run.judge_key)
-        except HubProblem as exc:
-            raise RunFailed(f"the hub did not give the Judge its inputs: {exc}") from None
+        found = await self.again_on_5xx(lambda: ask(run.id, run.judge_key), "give the Judge its inputs")
         return found if isinstance(found, dict) else {}
+
+    async def again_on_5xx(self, call, what: str):
+        """``call()``'s answer, called again while the hub answers 5xx, 429 or nothing, up to VERDICT_TRIES times: a
+        hub that redeploys does so for a while (run #1671 lost its verdict and run #1697 its inputs to a 502). Any
+        other refusal, or the last try's, fails the run with the hub did not ``what``."""
+        backoff = Backoff(first=VERDICT_FIRST_DELAY, most=VERDICT_MOST_DELAY)
+        for tried in range(1, VERDICT_TRIES + 1):
+            try:
+                return await call()
+            except HubProblem as exc:
+                passing = isinstance(exc, Unreachable) or (exc.status or 0) >= 500 or exc.status == 429
+                if not passing or tried == VERDICT_TRIES:
+                    raise RunFailed(f"the hub did not {what}: {exc}") from None
+                delay = backoff.next()
+                self.run.note(f"The hub did not {what} ({exc}): trying again in {delay:.0f} s.")
+                await asyncio.sleep(delay)
+        raise RunFailed(f"the hub did not {what}")
 
     async def prepare(self, name: str, change: dict) -> None:
         """The run's directory with a worktree of ``name`` detached at the commit to judge, made with no hook of the
@@ -397,19 +412,7 @@ class JudgeRun:
         """Post the verdict with the run's own key, and end the run done."""
         run = self.run
         send = run.daemon.hub.merge_verdict if self.merge else run.daemon.hub.verdict
-        backoff = Backoff(first=VERDICT_FIRST_DELAY, most=VERDICT_MOST_DELAY)
-        answer = None
-        for tried in range(1, VERDICT_TRIES + 1):
-            try:
-                answer = await send(run.id, body, run.judge_key)
-                break
-            except HubProblem as exc:  # a hub that redeploys answers 502 for a while: run #1671 lost its verdict so
-                passing = isinstance(exc, Unreachable) or (exc.status or 0) >= 500 or exc.status == 429
-                if not passing or tried == VERDICT_TRIES:
-                    raise RunFailed(f"the hub did not take the Judge's verdict: {exc}") from None
-                delay = backoff.next()
-                run.note(f"The hub did not take the Judge's verdict ({exc}): trying again in {delay:.0f} s.")
-                await asyncio.sleep(delay)
+        answer = await self.again_on_5xx(lambda: send(run.id, body, run.judge_key), "take the Judge's verdict")
         passed = answer.get("passed") if isinstance(answer, dict) else None
         reasons = body["reasons"]
         run.summary = f"The Judge {'passed' if passed else 'failed'} the change" + (f": {reasons}" if reasons else ".")
@@ -461,11 +464,14 @@ class JudgeRun:
         the change's own pinned tools, not the machine's (run #1579 judged with a stale ruff and CLI). The restore
         before the next command removes it with the rest of what a command left."""
         await self.restore(cwd, self.tested)
+        # MERGE_CHECK_ENV tells a check it runs for a merge check, whose Judge weighs changed tests against the plan:
+        # a charter's check of the old tests skips there (they fail on expectations a plan changes on purpose).
+        marked = {MERGE_CHECK_ENV: "1"} if self.merge_result else {}
         if self.wanted is None or self.uv is None:
-            return await verify.run_untrusted(self.run, command, cwd)
+            return await verify.run_untrusted(self.run, command, cwd, extra_env=marked or None)
         # UV_VENV_CLEAR: a check that makes .venv itself replaces the one made here; `uv venv` refuses an existing
         # one with exit 2, which failed two hidden checks of every pull request from 2026-11-04 (runs #1591, #1673).
-        env = {"PATH": venvs.front(self.run_path(), [str(venvs.bin_dir(cwd))]), "UV_VENV_CLEAR": "1"}
+        env = {"PATH": venvs.front(self.run_path(), [str(venvs.bin_dir(cwd))]), "UV_VENV_CLEAR": "1", **marked}
         for making in self.wanted.commands(self.uv):
             code, output = await verify.run_untrusted(
                 self.run, shlex.join(making), cwd, extra_env=env, without=venvs.FOREIGN

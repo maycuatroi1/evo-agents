@@ -149,17 +149,17 @@ def test_github_merge_check_a_conflict_found_in_a_worktree_posts_its_paths(machi
 
 
 def test_github_merge_check_has_its_judge_weigh_the_signs_and_posts_a_verdict_again_after_a_502(machine, monkeypatch):  # noqa: F811
-    """Run #1673 failed pull request #462 unjudged on the golden contract additions its plan asked for, and run #1671
-    lost its verdict to the 502 of a hub that redeployed. A merge check's Judge weighs the signs against the plan, and
-    a verdict the hub answers 5xx to is posted again."""
+    """Run #1673 failed pull request #462 unjudged on the golden contract additions its plan asked for, and runs #1671
+    and #1697 lost their verdict and inputs to the 502 of a hub that redeployed. A merge check's Judge weighs the signs
+    against the plan, its checks see EVO_JUDGE_MERGE_CHECK, and a call the hub answers 5xx to is made again."""
     monkeypatch.setattr(judge_run, "VERDICT_FIRST_DELAY", 0.01)
     head = change_branch(machine, {"curator.yaml": "protected: changed\n", "tests/test_wait.py": TEST_FILE})
     machine.scenarios({"judge": [{"say": '{"verdict": "pass", "reasons": "The plan asks for that file."}'}]})
     found = {}
 
     async def body(hub, daemon):
-        hub.verdicts_down = 1
-        inputs = {**judge_inputs(head, ["true"]), "queue_id": 3}
+        hub.verdicts_down = hub.judge_inputs_down = 1
+        inputs = {**judge_inputs(head, ['test "$EVO_JUDGE_MERGE_CHECK" = 1']), "queue_id": 3}
         run_id = hub.queue_judge_run("alpha", {**curator(head), **CHECK}, inputs)
         assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
         found.update(hub=hub, run=run_id)
@@ -172,5 +172,7 @@ def test_github_merge_check_has_its_judge_weigh_the_signs_and_posts_a_verdict_ag
     texts = hub.texts(run_id)
     assert any("the Judge weighs each against the plan" in text for text in texts), texts
     assert hub.verdicts_down == 0 and any("did not take the Judge's verdict" in text for text in texts), texts
+    assert hub.judge_inputs_down == 0 and any("did not give the Judge its inputs" in text for text in texts), texts
+    assert [item["exit_code"] for item in sent["hidden"]] == [0], "a merge check's checks know they run for one"
     (start,) = [item for item in machine.starts() if item["run"] == run_id][:1]
     assert judge.WEIGH_SIGNS.strip() in start["prompt"]
