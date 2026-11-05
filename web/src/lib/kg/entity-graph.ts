@@ -19,23 +19,7 @@ export type EntityDetail = Schemas["EntityDetail"];
 export type RelationDetail = Schemas["RelationDetail"];
 export type Citation = Schemas["Citation"];
 
-/** The entities the default view and a focus ask for, and the bounds the hub keeps (a3). */
-export const DEFAULT_LIMIT = 150;
-export const LIMITS = [50, 150, 300, 600, 1000] as const;
-export const DEPTHS = [1, 2, 3] as const;
-export type Depth = (typeof DEPTHS)[number];
-/** The neighbours a double click opens around one entity. */
-export const EXPAND_LIMIT = 40;
-
-export function parseLimit(value: string | null | undefined): number {
-  const found = Number(value);
-  return LIMITS.includes(found as (typeof LIMITS)[number]) ? found : DEFAULT_LIMIT;
-}
-
-export function parseDepth(value: string | null | undefined): Depth {
-  const found = Number(value);
-  return found === 2 || found === 3 ? found : 1;
-}
+export { DEFAULT_LIMIT, DEPTHS, type Depth, EXPAND_LIMIT, LIMITS, parseDepth, parseLimit } from "./entity-params";
 
 /** What the canvas draws: the nodes and edges of the base graph and of each neighbourhood opened, each once. */
 export type WorkingSet = { nodes: EntityGraphNode[]; edges: EntityEdge[] };

@@ -3,6 +3,7 @@
 import { Boxes, Waypoints } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 
 import { Segmented } from "@/components/data/segmented";
@@ -11,12 +12,12 @@ import { useHubQuery } from "@/components/states/query-view";
 import { ApiErrorState, NotFoundState } from "@/components/states/states";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { parseDepth, parseLimit } from "@/lib/kg/entity-graph";
+import { parseDepth, parseLimit } from "@/lib/kg/entity-params";
 import { parseScope, type Scope, scopeKey, withScope } from "@/lib/kg/explorer";
 import { cleanQuery, kgBuildsQuery, kgClusterSummaryQuery, kgGraphQuery } from "@/lib/kg/queries";
 import type { KgNode } from "@/lib/kg/types";
 
-import { EntityView, type EntityViewState } from "./entity-view";
+import type { EntityViewState } from "./entity-view";
 import { type ExplorerLayout, SCOPE_LAYOUTS } from "./explorer-layout";
 import { RailKinds, RailSearch, RailStats } from "./explorer-rail";
 import { NodeScope } from "./explorer-node-scope";
@@ -40,6 +41,8 @@ export type KgExplorerErrors = {
  * the documents, drawn with sigma.js, its focus, depth and node count in `?entity=`, `?depth=` and `?limit=`.
  */
 type View = "clusters" | "entities";
+// The Entities view, its rail, inspector and graphology, loads when it is opened, not with the clusters.
+const EntityView = dynamic(() => import("./entity-view").then((module) => module.EntityView));
 const ENTITY_PARAMS = ["entity", "depth", "limit"];
 
 export function KgExplorer({ project, errors }: { project: string; errors: KgExplorerErrors }) {

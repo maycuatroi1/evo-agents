@@ -114,6 +114,32 @@ def group(stated: list[Stated], joins=()) -> Groups:
     """Fold ``stated`` into nodes. The same answers give the same nodes, whatever order they come in. ``joins``, pairs
     of (kind, key) a model said name one entity (``evo_agents.kg.entity_merge``), fold their nodes into one, of
     whichever kind its name comes from."""
+    roots = _roots(stated, joins)
+    members: dict[tuple, list[Stated]] = defaultdict(list)
+    for s in stated:
+        members[roots[(s.kind, key(s.name))]].append(s)
+    counts = Counter((s.kind, s.name) for s in stated)
+    out = Groups()
+    node_of_root = {}
+    for root in sorted(members):
+        ss = members[root]
+        best = min(ss, key=lambda s: (s.rank, -counts[(s.kind, s.name)], s.name))
+        nid = entity_id(best.kind, key(best.name))
+        node_of_root[root] = nid
+        out.name[nid] = best.name
+        out.kind[nid] = best.kind
+        out.names[nid] = sorted({s.name for s in ss} | {a for s in ss for a in s.aliases})
+        out.conf[nid] = max(s.conf for s in ss)
+        out.merged += len({s.name for s in ss}) - 1
+    for k, root in roots.items():
+        out.of[k] = node_of_root.get(root) or ""
+    out.of = {k: v for k, v in out.of.items() if v}
+    return out
+
+
+def _roots(stated: list[Stated], joins) -> dict[tuple[str, str], tuple[str, str]]:
+    """(kind, key) of each name and alias -> the (kind, key) of the entity it folds into: the names and aliases one
+    answer gives, the ``joins`` and the singular of a plural fold together."""
     parent: dict[tuple[str, str], tuple[str, str]] = {}
 
     def find(x):
@@ -141,26 +167,7 @@ def group(stated: list[Stated], joins=()) -> Groups:
         for other in singulars(k):
             if (kind, other) in parent:
                 union((kind, k), (kind, other))
-    members: dict[tuple, list[Stated]] = defaultdict(list)
-    for s in stated:
-        members[find((s.kind, key(s.name)))].append(s)
-    counts = Counter((s.kind, s.name) for s in stated)
-    out = Groups()
-    node_of_root = {}
-    for root in sorted(members):
-        ss = members[root]
-        best = min(ss, key=lambda s: (s.rank, -counts[(s.kind, s.name)], s.name))
-        nid = entity_id(best.kind, key(best.name))
-        node_of_root[root] = nid
-        out.name[nid] = best.name
-        out.kind[nid] = best.kind
-        out.names[nid] = sorted({s.name for s in ss} | {a for s in ss for a in s.aliases})
-        out.conf[nid] = max(s.conf for s in ss)
-        out.merged += len({s.name for s in ss}) - 1
-    for k in parent:
-        out.of[k] = node_of_root.get(find(k)) or ""
-    out.of = {k: v for k, v in out.of.items() if v}
-    return out
+    return {k: find(k) for k in list(parent)}
 
 
 # -- code ---------------------------------------------------------------------------------------------------------
