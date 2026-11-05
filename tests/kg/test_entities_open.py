@@ -9,6 +9,8 @@ import sys
 import pytest
 import yaml
 
+pytest.importorskip("sqlalchemy", reason="the entity relay needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import kg_entity_relay
 from evo_agents.kg import claude_code, entities, init_run, review, strategy
 from evo_agents.kg.build import build_project

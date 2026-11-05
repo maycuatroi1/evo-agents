@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the hub's graph needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import kg_entity_graph
 from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_web import NotVisible, WebSession
