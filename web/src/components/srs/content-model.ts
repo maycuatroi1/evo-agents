@@ -62,9 +62,49 @@ export function stepRefs(item: SrsItem): string[] {
   return Array.isArray(item.fields.steps) ? item.fields.steps.filter((step): step is string => typeof step === "string") : [];
 }
 
-/** The business rules under a use case, in the document's order. */
+/** The business rules under a use case, in the document's order: its own and those of the sections under it. */
 export function rulesOf(items: readonly SrsItem[], useCase: SrsItem): SrsItem[] {
-  return childrenOf(items, useCase.key).filter((item) => item.kind === "business_rule");
+  const rules: SrsItem[] = [];
+  const walk = (key: string) => {
+    for (const child of childrenOf(items, key)) {
+      if (child.kind === "business_rule") rules.push(child);
+      else if (child.kind === "section") walk(child.key);
+    }
+  };
+  walk(useCase.key);
+  return rules;
+}
+
+/** A heading's words as a field's key: "5. Post-Condition" is post_condition, "6. Activity Flow" activity_flow. */
+function headingKey(title: string): string {
+  return title
+    .normalize("NFC")
+    .replace(/^\s*\d+(?:\.\d+)*\.?\s+/, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+const RULES_HEADING = /^(?:business_rules?|quy_tắc_nghiệp_vụ)$/;
+
+/**
+ * The sections under a use case the page draws besides its fields: the one that holds its business rules as text (a
+ * table of rules rather than a heading per rule), and the others (Relationships, Update History). A section that
+ * repeats a field or the Activity Flow the page already shows ("1. Objective", "6. Activity Flow") is left out.
+ */
+export function useCaseSections(items: readonly SrsItem[], useCase: SrsItem): { rules: SrsItem | null; others: SrsItem[] } {
+  const shown = new Set(factsOf(useCase).map((fact) => fact.name));
+  if (stepsOf(useCase).rows.length) shown.add("activity_flow");
+  let rules: SrsItem | null = null;
+  const others: SrsItem[] = [];
+  for (const child of childrenOf(items, useCase.key)) {
+    if (child.kind !== "section") continue;
+    const key = headingKey(child.title);
+    if (shown.has(key)) continue;
+    if (RULES_HEADING.test(key) && !rules) rules = child;
+    else others.push(child);
+  }
+  return { rules, others };
 }
 
 /** The use case a business rule belongs to: the nearest one above it. */
@@ -113,20 +153,31 @@ export function sectionMarkdown(items: readonly SrsItem[], item: SrsItem): strin
 
 /**
  * The prose of a use case's body outside its tables (the items table and the Activity Flow, which the page draws from
- * the fields) and their one-line bold captions; empty when the body is only those.
+ * the fields), their one-line bold captions and one-line HTML comments; empty when the body is only those.
  */
 export function proseOutsideTables(body: string): string {
   const kept: string[] = [];
   let fence = false;
   for (const line of body.split("\n")) {
     if (/^\s*(```|~~~)/.test(line)) fence = !fence;
-    if (!fence && (/^\s*\|/.test(line) || /^\s*\*\*[^*]+\*\*\s*$/.test(line))) continue;
+    if (!fence && (/^\s*\|/.test(line) || /^\s*\*\*[^*]+\*\*\s*$/.test(line) || /^\s*<!--.*-->\s*$/.test(line))) continue;
     kept.push(line);
   }
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // Codes inside text
+
+// What opens a block at the start of a cell's text: a list item, a heading, a quote, a fence, a thematic break.
+const BLOCK_START = /^(?:[-+*](?=\s|$)|#{1,6}(?=\s|$)|>|`{3,}|~{3,}|([-*_])(?:\s*\1){2,}\s*$)/;
+const ORDERED_START = /^(\d{1,9})([.)])(?=\s|$)/;
+
+/** A field or an Activity Flow cell as Markdown of one line: "- " or "1. " at its start stays text, not a list. */
+export function inlineMarkdown(text: string): string {
+  const line = text.trim();
+  if (ORDERED_START.test(line)) return line.replace(ORDERED_START, "$1\\$2");
+  return BLOCK_START.test(line) ? `\\${line}` : line;
+}
 
 export type CodePart = string | { code: string; ref: string };
 

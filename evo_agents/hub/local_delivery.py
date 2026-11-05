@@ -140,14 +140,16 @@ class Delivery:
 
     def ask(self) -> None:
         """Put the questions of the AskUserQuestion dialog about to open to the hub, as decisions of the run, each
-        carrying the files the session sent since the person's last message (``local_outputs.for_question``)."""
+        carrying the files the session sent since the person's last message (``local_outputs.for_question``). Each
+        decision is kept in the session's file as soon as the hub made it, so a later question that fails (the hook's
+        deadline, a hub that went silent) leaves the answers of the earlier ones a decision to go to."""
         rec = self.rec
         data = self.payload.get("tool_input")
         questions = data.get("questions") if isinstance(data, dict) else None
         if not isinstance(questions, list):
             return
         attached = local_outputs.for_question(self.sid, self.hub.url, self.deadline)
-        entries = []
+        entries: list[dict] = []
         for q in questions[:MAX_QUESTIONS]:
             found = _question(q)
             if found is None:
@@ -156,13 +158,13 @@ class Delivery:
             view = self._decision({**body, "output_ids": attached} if attached else body)
             if view is None:
                 continue  # the hub will not take this question: the dialog still opens
+            if not entries:
+                asks = rec.setdefault("asks", {})
+                asks[str(self.payload.get("tool_use_id") or "last")] = entries
+                for stale in list(asks)[:-MAX_ASKS]:
+                    del asks[stale]
             entries.append({"decision": int(view["id"]), "question": q["question"], "keys": keys})
             rec["sent"] = "waiting"
-        if entries:
-            asks = rec.setdefault("asks", {})
-            asks[str(self.payload.get("tool_use_id") or "last")] = entries
-            for stale in list(asks)[:-MAX_ASKS]:
-                del asks[stale]
 
     def _decision(self, body: dict) -> dict | None:
         """The hub's view of the decision ``body`` asks; None when the hub will not take it. A question whose files
