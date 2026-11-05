@@ -35,6 +35,12 @@ The principal's own secrets come first: ``account_choice`` takes a shared accoun
 own for the variable is ready, and ``credentials`` a shared git secret for an origin only when none of the
 principal's own covers it.
 
+A KG run on a node of the shared KG pool (``kg_shared_pool.holding``: a review with no repo of a project with no repo
+that the pool's owner created) whose charter gives no model login, as a project fed by uploads alone has none, is
+leased the pool owner's own env secrets for MODEL_ENV_VARS bound to that pool, whatever project each binding names
+(``kg_pool_logins``), one per variable as ``account_choice`` chooses. No other run takes them, and no run of a
+project another member created.
+
 A share revoked ends the leases still out under it at once (``credential_shares.revoke_share``, with
 ``end_share_leases``). A share that ended, or no longer covers a run, ends that run's leases under it at the run's next
 ask (``end_unlent``), and on every pass of the reaper for any run (``end_lapsed``).
@@ -46,13 +52,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, distinct, exists, func, or_, select, update
+from sqlalchemy import and_, distinct, exists, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credential_shares import ALL, UNIT, USER
 from evo_agents.hub.credentials import LEASED_KINDS
 from evo_agents.hub.server import (
+    kg_shared_pool,
     org_store,
     worker_placement,  # a module: importing it may reach this one before it is whole
 )
@@ -133,6 +141,42 @@ def own_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool, r
         .order_by(s.c.name)
     )
     return statement.with_for_update(read=True, of=s) if lock else statement
+
+
+def pool_logins(owner_id: int, pool_id: int, *, lock: bool, refreshable: bool = False):
+    """The env secrets of ``owner_id`` for a variable of MODEL_ENV_VARS bound to pool ``pool_id``, whatever project
+    each binding names, live and not past their end, by name; on the worker, since it asks as a node of that pool.
+    With ``lock`` their rows are shared-locked."""
+    s, b = tables.secrets, tables.secret_bindings
+    statement = (
+        select(*_secret_columns(), literal(True).label("on_worker"))
+        .where(
+            s.c.owner_id == owner_id,
+            s.c.kind == "env",
+            s.c.env_var.in_(MODEL_ENV_VARS),
+            s.c.deleted_at.is_(None),
+            _live(refreshable),
+            exists().where(b.c.secret_id == s.c.id, b.c.pool_id == pool_id),
+        )
+        .order_by(s.c.name)
+    )
+    return statement.with_for_update(read=True, of=s) if lock else statement
+
+
+async def kg_pool_logins(
+    conn: AsyncConnection, run, worker_id: int, rows: list, *, lock: bool, refreshable: bool = False
+) -> list:
+    """The model logins a KG run on a node of the shared KG pool is leased when ``rows``, what ``run`` may be leased
+    already (for a run of the Curator, what its charter lists), set no variable of MODEL_ENV_VARS: the pool owner's own
+    (``pool_logins``) that the run's profile allows. Empty for any other run, and for one of a project the pool's
+    owner did not create (``kg_shared_pool.holding``)."""
+    if any(row.kind == "env" and row.env_var in MODEL_ENV_VARS for row in rows):
+        return []
+    shared = await kg_shared_pool.holding(conn, run.id, worker_id)
+    if shared is None:
+        return []
+    found = await conn.execute(pool_logins(shared.owner_id, shared.pool_id, lock=lock, refreshable=refreshable))
+    return [row for row in found if run.allows(row.name)]
 
 
 async def grantee_clause(conn: AsyncConnection, principal_id: int):

@@ -23,7 +23,9 @@ less, and from elsewhere: its GitHub token comes from the Curator's App (EVO_HUB
 tokens the rulesets of the repos keep off their default branches, never from the workers' App, and without the Curator's
 App it gets none, every repo on GitHub missing with that reason; no git secret answers for an origin on GitHub; for
 other origins only the git secret the charter names (``git_secret``) is leased, and of the env secrets only those the
-charter lists (``env_secrets``). Each ask of a Builder of the Curator checks again, with the Curator's App, that the
+charter lists (``env_secrets``). A KG run on a node of the shared KG pool whose charter gives no model login, as a
+project fed by uploads alone has none, is leased the pool owner's own logins bound to that pool instead
+(``share_leases.kg_pool_logins``). Each ask of a Builder of the Curator checks again, with the Curator's App, that the
 ruleset of each of its repos on GitHub still keeps that App off the default branch (``pulls.check_ruleset``, kept as the
 repo's last check): a repo whose check does not pass, or cannot be made now, gets no token, and its reason says why.
 
@@ -139,7 +141,14 @@ from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.share_leases import Refusal, end_unlent, note_refusals, own_secrets, shared_secrets
+from evo_agents.hub.server.share_leases import (
+    Refusal,
+    end_unlent,
+    kg_pool_logins,
+    note_refusals,
+    own_secrets,
+    shared_secrets,
+)
 
 if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
@@ -456,6 +465,7 @@ async def survey_run(
         rows += shared
     allowed = _allowed(run.curator)
     rows = [row for row in rows if _leasable(run, allowed, row)]
+    rows += await kg_pool_logins(conn, run, worker_id, rows, lock=lock, refreshable=refreshable)  # no charter's login
     lending = [row.share_id for row in rows if getattr(row, "share_id", None) is not None]
     k7 = await lease_autonomy.k7(conn, run.id, lending)  # a share's level holds the run from the lease that lends it
     accounts = []
