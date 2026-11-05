@@ -73,7 +73,7 @@ async def verify(path: Path, commands: list[str], env: dict[str, str] | None = N
         )
         assert proc.stdout is not None
         reader = asyncio.create_task(proc.stdout.read())
-        await proc.wait()
+        await untrusted.exited(proc)
         await untrusted.kill_leftovers(proc.pid, marker)
         try:
             output = await asyncio.wait_for(reader, OUTPUT_GRACE)
