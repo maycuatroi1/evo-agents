@@ -372,6 +372,32 @@ and a judge run of the old head no longer counts (its verdict answers 409). A ch
 `gh pr merge N --match-head-commit SHA`, so GitHub refuses the merge if the branch moved since. A check that failed
 says why: fix it, push, and ask again. Turning `merge_check` off while a check judges fails it and wakes the run.
 
+### Failures of the hub's own machinery
+
+A judge run runs the code installed on its worker, never the pull request's, so a plan run cannot fix a failure of
+the merge check's own machinery, and waking it with one only has it retry, park again or ask its owner. The hub reads
+these failures as its own (`hub/merge_infra.py`): three judge runs ended without a verdict (`no_verdict`), the last one
+failing before its agent ran (`judge_setup`), the Judge's agent ended without a verdict (`judge_silent`), every check
+that failed also fails on the base branch alone (`base_fails`; the worker runs each failed check again on origin's base
+branch and the Judge reads that the base fails it), and the security pass gave no result (`no_security`). They count
+only when nothing of the pull request fails the check too: a conflict, a check that fails on the merge result alone, a
+dimension the Judge failed, an open finding or another head read send the failure back to the run as before.
+
+Such a check is held for the project's triage instead (`hub/server/merge_holds.py`): it stays `judging`, the run's
+wait stays open and the run stays parked, and nobody asks its owner. The hub writes the facts in the project's triage
+chat, in one thread a check, and mentions the project's agent, which starts a chat run for the run's owner. The agent
+fixes the system (a pull request of the hub's code it merges, a worker set right, the base branch made green), then:
+
+```sh
+evo-agents worker triage merge-check rejudge --reason "the judge's git lacked merge-tree; fixed by the pull request named"
+evo-agents worker triage merge-check return --reason "the test fails on this branch alone after all"
+```
+
+`rejudge` judges the check again from its first Judge, and that verdict wakes the run; `return` hands the failure back
+to the run. A hold nobody ended within 6 hours is judged again by the hub, which says so in the thread. A check is held
+3 times at one head at most; a later failure of the hub, or one while the project's triage or the hub's chats are off,
+goes back to the run with a message saying the hub caused it, and asking again judges it again.
+
 Once a check settles, the next pass of `hub.merge_queue` comments on the pull request, once a head
 (`hub/server/merge_comments.py`): the state and why, each Judge's run on the hub, model, verdict and reasons, the
 hidden checks by number with exit code and time (never what they run), the verify commands with exit code and time,
@@ -381,7 +407,8 @@ hold pull_requests write on the repo; GitHub refusing it is recorded in the chec
 again for that head. The web lists the Judges' runs at `/p/<project>/runs?kind=judge&state=all`.
 
 The checks live in the table `merge_checks` (schema 0187), one row a pull request, with the head, the state
-(`judging`, `passed` or `failed`), the verdict and the wait it answers. The GitLab merge queue is not changed by it.
+(`judging`, `passed` or `failed`), the verdict and the wait it answers. The verdict's `triage` key holds a check's hold
+and its thread. The GitLab merge queue is not changed by it.
 
 ## Commands, routes and pages
 
@@ -400,6 +427,7 @@ evo-agents hub merge pass lumen-api 11 --reason "its goal is this CI job" --proj
 | `POST .../merge-queue/samples/{id}`, `POST .../merge-queue/{id}/release`, `POST .../merge-queue/{id}/revert`, `POST .../merge-queue/{id}/pass` (`{"reason": ...}`), `POST .../merge-queue/repos/{repo}/resume` | an admin of the project |
 | `GET /v1/worker/runs/{id}/merge-judge`, `POST /v1/worker/runs/{id}/merge-verdict` | the worker holding the judge run, with the run's key |
 | `POST /v1/worker/runs/{id}/merge-check` (`{"repo", "number"?, "branch"?}`) | the worker holding the plan run, for its agent's `evo-agents worker merge-check` |
+| `POST /v1/worker/runs/{id}/triage/merge-check` (`{"action": "rejudge"\|"return", "reason"}`) | the worker holding the chat run of a held check's thread, for the plan run's owner (403 for another member, 404 outside such a thread, 409 for a check no longer held) |
 
 The web's Merge queue entry of a project, after Runs, has three tabs: Queue (`/p/{project}/merge-queue`: the merge
 requests waiting, in their turn and after their merge, why each waits or is blocked, the events after a merge, each

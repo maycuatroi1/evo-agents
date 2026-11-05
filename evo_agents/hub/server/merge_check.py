@@ -34,6 +34,16 @@ file, a verify command or a test's expectations to change (run #1673 failed pull
 contract additions its criterion a7 asked for), and its pass holds (``merge_judge.Judged``, ``signs_weighed``). A
 failed hidden check fails it still, and its reason tells the Builder each check's exit code and time
 (``judge.hidden_exits``), never what it runs.
+
+A check that would fail for a reason of the hub's own machinery (``evo_agents.hub.merge_infra``: its judge runs ended
+without a verdict, the last one failing before its agent ran, the Judge's agent gave none, every failed check fails on
+the base branch alone too, the security pass gave no result) is held for the project's triage instead
+(``merge_holds``): it stays judging, the run's wait stays open, and the agent of a thread of the triage chat fixes the
+system, then judges it again or hands the failure back (POST /v1/worker/runs/{id}/triage/merge-check,
+``triage_check``). A failure of the pull request goes back to the run as before. A hold nobody ended within
+``merge_infra.HOLD_HOURS`` is judged again by ``advance``; a failure of the hub that is not held (triage off, the
+rounds of ``merge_infra.TRIAGE_ROUNDS`` used up) goes back to the run saying it was the hub's, and asking again judges
+it again.
 """
 
 from __future__ import annotations
@@ -43,14 +53,15 @@ import logging
 import secrets
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import autonomy, findings, judge, merge_gate, runs, tables
-from evo_agents.hub.server import audit, change_tiers, pulls, run_events, run_waits
+from evo_agents.hub import autonomy, findings, judge, merge_gate, merge_infra, runs, tables
+from evo_agents.hub.server import audit, change_tiers, merge_holds, pulls, run_events, run_waits
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import merge_judge as judging
 from evo_agents.hub.server.decisions import OptionIn, store_decision
@@ -83,6 +94,12 @@ async def row_of(conn: AsyncConnection, check_id: int, *, lock: bool = False):
     m = tables.merge_checks
     query = select(m).where(m.c.id == check_id)
     return (await conn.execute(query.with_for_update() if lock else query)).one_or_none()
+
+
+async def fresh_row(conn: AsyncConnection, check_id: int):
+    """Check ``check_id`` as it is now, one the caller knows is there."""
+    m = tables.merge_checks
+    return (await conn.execute(select(m).where(m.c.id == check_id))).one()
 
 
 async def judged_check(conn: AsyncConnection, run_id: int, *, lock: bool = False):
@@ -207,10 +224,12 @@ async def _upsert(conn: AsyncConnection, project, run_id: int, run, repo: str, p
         values = {"project_id": project.id, "repo": repo, "number": pull["number"], "head_sha": head, **seen}
         check_id = (await conn.execute(insert(m).values(values).returning(m.c.id))).scalar_one()
         return await row_of(conn, check_id)
-    if row.head_sha != head:  # a new head: the old verdict holds no more, its open findings stay
+    if row.head_sha != head:  # a new head: the old verdict holds no more, its open findings and its thread stay
         fresh = {"head_sha": head, "base_sha": None, "state": JUDGING, "reason": None, "risk": None}
-        fresh |= {"verdict": findings.carried(row.verdict), "judge_run_id": None, "judge_key": None}
+        fresh |= {"verdict": merge_holds.at_new_head(row.verdict), "judge_run_id": None, "judge_key": None}
         await set_row(conn, row.id, **seen, **fresh, judge_attempts=0)
+    elif row.state == FAILED and merge_holds.failed_by(row):  # the hub's own machinery failed it: judge it again
+        await set_row(conn, row.id, **seen, **merge_holds.released(row, "the run asked again"))
     elif row.state == FAILED and not (row.verdict or {}).get("first"):  # no Judge said it: try again
         await set_row(conn, row.id, **seen, state=JUDGING, reason=None, judge_attempts=0)
     else:
@@ -319,7 +338,8 @@ def gate_of(row, number: int, repo: str, head: str | None) -> tuple[bool, str | 
     if row is None:
         return False, f"the hub has no merge check of pull request #{number}: {ask}, and merge when it passes"
     if row.state == JUDGING:
-        return False, f"the hub still judges pull request #{number} at {row.head_sha[:12]}: wait for the verdict"
+        held = " (its triage fixes a failure of the hub's own first)" if merge_holds.held_at(row) else ""
+        return False, f"the hub still judges pull request #{number} at {row.head_sha[:12]}{held}: wait for the verdict"
     if row.state == FAILED:
         return (
             False,
@@ -386,20 +406,100 @@ def woke_text(decision_id: int, row) -> str:
             f"The verdict holds for that head alone: merge it with `gh pr merge {row.number} --match-head-commit "
             f"{row.head_sha}`; after another push, ask again with `{COMMAND} {row.repo}`."
         )
+    elif merge_holds.failed_by(row):
+        lines.append(
+            f"The hub's own machinery failed it ({merge_infra.said(merge_holds.failed_by(row))}), not the pull "
+            "request: do not change the pull request for it, and do not ask the owner. Wait a while with "
+            f"`evo-agents worker wait`, then ask again with `{COMMAND} {row.repo}`, which judges it again."
+        )
     else:
         lines.append(f"Do not merge it as it is: fix it, push, and ask again with `{COMMAND} {row.repo}`.")
     return runs.clip("\n".join(lines), runs.MAX_ANSWER_BYTES)
 
 
-async def settle(conn: AsyncConnection, row, state: str, reason: str) -> None:
-    """End check ``row`` ``state`` (passed or failed) with ``reason``, and answer the wait of the run that asked."""
-    await set_row(conn, row.id, state=state, reason=reason, judge_run_id=None, judge_key=None)
+async def settle(conn: AsyncConnection, row, state: str, reason: str, causes: list[str] | None = None) -> None:
+    """End check ``row`` ``state`` (passed or failed) with ``reason``, and answer the wait of the run that asked;
+    ``causes``: the hub's own, of a failure no triage holds (``merge_holds.failed_by``). The thread of a check its
+    triage held is told."""
+    verdict = merge_holds.settled(row.verdict, causes or [])
+    await set_row(conn, row.id, state=state, reason=reason, judge_run_id=None, judge_key=None, verdict=verdict)
+    if merge_holds.state_of(row.verdict).get("rounds"):
+        await merge_holds.tell(
+            conn,
+            row,
+            f"The merge check of pull request #{row.number} of {row.repo} {state} at {row.head_sha[:12]}: {reason}",
+        )
     if row.decision_id is None:
         return
     d = tables.decisions
     plan_id = (await conn.execute(select(d.c.plan_id).where(d.c.id == row.decision_id))).scalar_one_or_none()
     settled = await row_of(conn, row.id)
     await run_waits.wake(conn, row.decision_id, row.project_id, plan_id, woke_text(row.decision_id, settled))
+
+
+async def _failed(conn: AsyncConnection, row, reason: str, causes: list[str], judge_run: int | None) -> str:
+    """End check ``row`` failed with ``reason`` and answer the run's wait, unless the hub's own machinery failed it
+    (``causes``) and the project's triage holds it (``merge_holds.hold``); the outcome, ``failed`` or ``held``."""
+    state = await merge_holds.hold(conn, row, reason, causes, judge_run) if causes else None
+    if state is None:
+        await settle(conn, row, FAILED, reason, causes)
+        return "failed"
+    verdict = {**(row.verdict or {}), merge_holds.KEY: state}
+    await set_row(
+        conn, row.id, verdict=verdict, reason=merge_holds.held_reason(causes, reason), judge_run_id=None, judge_key=None
+    )
+    return "held"
+
+
+# The agent of a held check's thread
+
+
+class MergeTriageIn(BaseModel):
+    action: Literal["rejudge", "return"] = Field(  # merge_holds.ACTIONS
+        description="rejudge: judge it again from its first Judge, once the system is fixed; return: hand the failure "
+        "back to the plan run, which caused it after all"
+    )
+    reason: str = Field(min_length=1, max_length=600, description="why, for the Decision: line")
+
+
+class MergeTriaged(BaseModel):
+    check_id: int
+    state: str = Field(description="judging again after rejudge, failed after return")
+    message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
+
+
+@worker_router.post(
+    "/runs/{run_id}/triage/merge-check",
+    response_model=MergeTriaged,
+    responses={**REFUSALS, 409: {"model": ErrorBody}, 422: {"model": ErrorBody}},
+)
+async def triage_check(request: Request, run_id: RunId, body: MergeTriageIn, user: CurrentUser) -> MergeTriaged:
+    """In the thread of a merge check its triage holds (``merge_holds``), for the plan run's owner: judge it again, or
+    hand its failure back to the plan run; 403 for another member's run, 404 outside such a thread, 409 for a check no
+    longer held."""
+    async with request.app.state.engine.begin() as conn:
+        frame = await merge_holds.frame(conn, user, run_id)
+        row, why = frame.row, " ".join(body.reason.split())
+        what = f"the merge check of pull request #{row.number} of {row.repo} at {row.head_sha[:12]}"
+        if body.action == merge_holds.REJUDGE:
+            await set_row(conn, row.id, **merge_holds.released(row, f"its triage asked: {why}"))
+            line = f"Decision: judge {what} again for {frame.owner.login}, from its first Judge: {why}"
+        else:
+            kept = merge_holds.state_of(row.verdict).get("reason") or row.reason or "the Judge failed it"
+            await settle(conn, row, FAILED, runs.clip(f"{kept}; its triage handed it back: {why}", 2000))
+            line = f"Decision: hand the failure of {what} back to plan run #{row.run_id} for {frame.owner.login}: {why}"
+        message_id = await merge_holds.said(conn, frame, line)
+        await audit.record(
+            conn,
+            actor_id=frame.owner.user_id,
+            token_id=None,
+            action=audit.MERGE_TRIAGE,
+            target=f"{row.repo} #{row.number} check:{row.id} {body.action} chat_run:{run_id}",
+            project_id=row.project_id,
+        )
+        state = (await fresh_row(conn, row.id)).state
+    log.info("merge check triaged", extra={"check_id": row.id, "action": body.action, "agent_run_id": run_id})
+    return MergeTriaged(check_id=row.id, state=state, message_id=message_id)
 
 
 # The judge run: its claim, its prompt, its inputs and its verdict
@@ -511,6 +611,7 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
     key: a fail ends the check, the first Judge's pass waits for ``advance`` to weigh the risk, the second's ends it."""
     run, row = await held(conn, user, run_id, key)
     second = queue.next_round(row.verdict, row.risk) == "second"
+    causes: list[str] = []
     if body.conflicts is not None:  # the worker could not merge the base into the head
         entry, ledger = _conflict_entry(run_id, run.model, body), findings.ledger_of(row.verdict)
     else:
@@ -527,7 +628,7 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
             run_id=run_id,
             signs_weighed=True,
         )
-        entry, ledger = found.entry(run_id, run.model), found.ledger
+        entry, ledger, causes = found.entry(run_id, run.model), found.ledger, found.infra_causes()
     stored = {**(row.verdict or {}), ("second" if second else "first"): entry, "findings": ledger}
     if not second:
         stored["paths"] = list(body.paths)
@@ -536,14 +637,15 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
     )
     row = await row_of(conn, row.id)
     if not entry["passed"]:
-        await settle(conn, row, FAILED, "; ".join(entry.get("failures") or []) or "the Judge failed it")
+        await _failed(conn, row, "; ".join(entry.get("failures") or []) or "the Judge failed it", causes, run_id)
     elif second:
         await settle(conn, row, PASSED, "the Judge and the second Judge passed it")
     else:
         await set_row(conn, row.id, reason="the Judge passed it; the hub weighs its risk next")
-    row = await row_of(conn, row.id)
+    row = await fresh_row(conn, row.id)
     said = "passed" if entry["passed"] else "failed"
-    text = f"The merge check took the verdict: the Judge {said} pull request #{row.number}; it is {row.state} now."
+    now = "held for the hub's triage" if merge_holds.held_at(row) else row.state
+    text = f"The merge check took the verdict: the Judge {said} pull request #{row.number}; it is {now} now."
     await write_event(conn, run_id, {"text": text, "merge_check": row.id, "passed": entry["passed"]})
     log.info("merge check verdict", extra={"run_id": run_id, "check_id": row.id, "passed": entry["passed"]})
     return judging.MergeVerdict(queue_id=row.id, passed=entry["passed"], state=row.state, reason=row.reason)
@@ -611,9 +713,62 @@ async def _risk(engine: AsyncEngine, project, repo: str, paths: list[str], reade
     )
 
 
+async def _held(conn: AsyncConnection, row, outcomes) -> bool:
+    """Whether check ``row`` waits for its triage (``merge_holds``); a hold older than HOLD_HOURS is released here, and
+    the check judged again."""
+    if merge_holds.held_at(row) is None:
+        return False
+    now = datetime.now(UTC)
+    if not merge_holds.expired(row, now):
+        again = await merge_holds.ask_again(conn, row, now)
+        if again is not None:
+            await set_row(conn, row.id, verdict={**(row.verdict or {}), merge_holds.KEY: again})
+        outcomes["held"] += 1
+        return True
+    why = f"nobody ended its triage within {merge_infra.HOLD_HOURS} h"
+    await set_row(conn, row.id, **merge_holds.released(row, why))
+    await merge_holds.tell(
+        conn, row, f"The hub judges pull request #{row.number} of {row.repo} again by itself: {why}."
+    )
+    outcomes["released"] += 1
+    return False
+
+
+async def _ended(conn: AsyncConnection, row, outcomes) -> str | None:
+    """Of check ``row``'s judge run: ``running`` while it has not ended, ``ended`` once it ended without a verdict and
+    another is due, ``failed`` or ``held`` once it was the last of JUDGE_ATTEMPTS (``_failed``); None without one."""
+    if row.judge_run_id is None:
+        return None
+    r = tables.runs
+    query = select(r.c.state, r.c.failure_cause, r.c.error).where(r.c.id == row.judge_run_id)
+    last = (await conn.execute(query)).one_or_none()
+    if last is not None and last.state not in runs.TERMINAL_STATES:
+        return "running"
+    attempts = row.judge_attempts + 1
+    ended = last.state if last is not None else "gone"
+    cause = f" ({last.failure_cause})" if last is not None and last.failure_cause else ""
+    error = " ".join((last.error or "").split()) if last is not None else ""
+    why = f"judge run #{row.judge_run_id} ended {ended}{cause} without a verdict" + (
+        f": {runs.clip(error, 300)}" if error else ""
+    )
+    judge_run = row.judge_run_id
+    await set_row(conn, row.id, judge_run_id=None, judge_key=None, judge_attempts=attempts)
+    if attempts < judge.JUDGE_ATTEMPTS:
+        return "ended"
+    row = await fresh_row(conn, row.id)
+    causes = [merge_infra.no_verdict_cause(last.failure_cause if last is not None else None)]
+    reason = f"{attempts} judge runs ended without a verdict; the last: {why}"
+    outcome = await _failed(conn, row, reason, causes, judge_run)
+    outcomes[outcome] += 1
+    return outcome
+
+
 async def _judge_next(conn: AsyncConnection, project, row, outcomes) -> None:
     """Settle ``row`` when its Judges have spoken, else queue its next judge run, or end it once JUDGE_ATTEMPTS runs
-    ended without a verdict."""
+    ended without a verdict; leave it while its triage holds it."""
+    if await _held(conn, row, outcomes):
+        return
+    row = await fresh_row(conn, row.id)
     step = queue.next_round(row.verdict, row.risk)
     if step == "ready":
         high = (row.risk or {}).get("high")
@@ -625,19 +780,11 @@ async def _judge_next(conn: AsyncConnection, project, row, outcomes) -> None:
         await settle(conn, row, FAILED, "the Judges' verdict at this head did not pass it")
         outcomes["failed"] += 1
         return
-    if row.judge_run_id is not None:
-        r = tables.runs
-        ended = (await conn.execute(select(r.c.state).where(r.c.id == row.judge_run_id))).scalar_one_or_none()
-        if ended not in runs.TERMINAL_STATES:
-            return
-        attempts = row.judge_attempts + 1
-        why = f"judge run #{row.judge_run_id} ended {ended} without a verdict"
-        await set_row(conn, row.id, judge_run_id=None, judge_key=None, judge_attempts=attempts)
-        row = await row_of(conn, row.id)
-        if attempts >= judge.JUDGE_ATTEMPTS:
-            await settle(conn, row, FAILED, f"{attempts} judge runs ended without a verdict; the last: {why}")
-            outcomes["failed"] += 1
-            return
+    ended = await _ended(conn, row, outcomes)
+    if ended in ("running", "failed", "held"):
+        return
+    if ended is not None:
+        row = await fresh_row(conn, row.id)
     second = step == "second"
     run_id, model, chosen = await judging.queue_judge_run(
         conn,

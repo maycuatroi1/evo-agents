@@ -369,6 +369,10 @@ AUTONOMY_STOP_LIFT = "autonomy.stop.lift"
 MERGE_OPEN = "merge.open"
 MERGE_JUDGE = "merge.judge"
 MERGE_MERGE = "merge.merge"
+# The agent of a held merge check's thread (evo_agents.hub.server.merge_holds) judged it again or handed its failure
+# back to the plan run, for the run's owner, in the project: "<repo> #<number> check:<id> rejudge|return
+# chat_run:<id>"; never the reason.
+MERGE_TRIAGE = "merge.triage"
 # An admin passed the hold of a merge request at a gate that holds it for a person (evo_agents.hub.server.merge_pass),
 # in the project: "<project>/<repo> !<iid> gate=<n> sha=<the head it holds> reason=<the admin's reason, cut>".
 MERGE_PASS = "merge.pass"

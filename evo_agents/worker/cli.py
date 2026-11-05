@@ -25,7 +25,8 @@
   --attach`` and ``chat post --attach`` do for a question and a message (``output_cli``).
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
-- ``triage rerun|plan|invite|cancel``: what the agent of a triage thread does for a failed or stale run (``triage_cli``).
+- ``triage rerun|plan|invite|cancel|merge-check``: what the agent of a triage thread does for a failed or stale run, or a
+  held merge check (``triage_cli``).
 - ``curator answer|merge``: the agent of a proposal's thread answers the Curator's proposal for its owner, or merges
   the change the hub left open (``curator_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).

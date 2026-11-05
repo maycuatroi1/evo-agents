@@ -637,16 +637,29 @@ def build_judge_prompt(
     return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
 
 
+def _on_base(item: dict) -> str:
+    """What a merge check's failed check did on the base branch alone, where the worker ran it again."""
+    base = item.get("base_exit_code")
+    if not isinstance(base, int) or isinstance(base, bool):
+        return ""
+    if base != 0:
+        return f", and exited {base} on the base branch alone too: the base fails it, not the change"
+    return ", and exited 0 on the base branch alone: the change fails it"
+
+
 def results_text(verify: list[dict], hidden: list[dict], signs: list[dict]) -> str:
     """What the worker ran before the Judge's agent starts, for its prompt: the verify commands with their exit
-    codes, the hidden checks by number with theirs (never what they run), and the signs the detector found."""
+    codes, the hidden checks by number with theirs (never what they run), what a merge check's failed check did on the
+    base branch alone, and the signs the detector found."""
     lines = ["", "# What the worker ran before you started"]
     if verify:
-        lines += [f"- verify `{item.get('command')}` exited {item.get('exit_code')}" for item in verify]
+        lines += [f"- verify `{item.get('command')}` exited {item.get('exit_code')}{_on_base(item)}" for item in verify]
     else:
         lines.append("- the plan names no verify command")
     if hidden:
-        lines += [f"- hidden check {item.get('index')} exited {item.get('exit_code')}" for item in hidden]
+        lines += [
+            f"- hidden check {item.get('index')} exited {item.get('exit_code')}{_on_base(item)}" for item in hidden
+        ]
     else:
         lines.append("- the project has no hidden check")
     if signs:

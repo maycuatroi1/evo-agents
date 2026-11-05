@@ -584,7 +584,9 @@ def _rules(base: str, head: str | None, names: Iterable[str]) -> list[str]:
         f"- A separate security review judges {SECURITY} after you, on its own and without your findings: do not "
         "judge it, and leave it out of your dimensions.",
         "- When the verify commands or the hidden checks below did not all exit 0, or a test, assertion, threshold, "
-        "lint rule or CI step was weakened, skipped or removed to make it pass, it fails. When in doubt, fail it.",
+        "lint rule or CI step was weakened, skipped or removed to make it pass, it fails. When in doubt, fail it. A "
+        "check the worker says fails on the base branch alone too is the base's, which the hub fixes apart: judge the "
+        "change on the rest.",
         _verdict_rule(names),
         findings.verdict_rule(),
     ]

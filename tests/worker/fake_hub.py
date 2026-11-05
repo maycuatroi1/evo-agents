@@ -1075,6 +1075,9 @@ class FakeHub:
         if body.get("worker") == "nowhere":
             raise _refusal(422, "the owner has no worker nowhere: their workers are mac-mini")
         number = len(self.chat_calls)
+        if route == "triage/merge-check":  # a held merge check: judged again, or its failure handed back
+            state = "judging" if body.get("action") == "rejudge" else "failed"
+            return web.json_response({"check_id": 7, "state": state, "message_id": 1000 + number})
         again = route == "triage/rerun" or body.get("rerun")
         answer = {
             "message_id": 1000 + number,
