@@ -63,6 +63,25 @@ def test_github_merge_check_runs_the_checks_on_the_head_merged_with_the_base_and
     assert seen.read_text(encoding="utf-8").strip() == "head", "the Judge's worktree is at the head"
 
 
+def test_github_merge_check_of_a_head_that_already_holds_the_base_runs_the_checks_on_the_head(machine):  # noqa: F811
+    """No merge to make: the head is its own merge with the base, so a worker whose git has no merge-tree --write-tree
+    judges it as well."""
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, ["test -f tests/test_wait.py"], ["test -f tests/test_wait.py"]), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
+        claim=CHECK,
+    )
+    (sent,) = found["hub"].verdicts
+    assert sent["route"] == "merge-verdict" and sent.get("conflicts") is None and sent["head_sha"] == head
+    assert [item["exit_code"] for item in sent["verify"]] == [0] and [item["exit_code"] for item in sent["hidden"]] == [
+        0
+    ]
+    assert "already holds origin's main" in str(found["hub"].texts(found["run"]))
+
+
 def test_github_merge_check_a_conflict_with_the_base_posts_its_paths_and_runs_nothing(machine):  # noqa: F811
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
     base_moved(machine, {"tests/test_wait.py": "def test_other():\n    assert True\n"})

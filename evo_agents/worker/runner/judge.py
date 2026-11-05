@@ -224,7 +224,12 @@ class JudgeRun:
     ) -> tuple[str | None, list[str] | None]:
         """(the commit of ``head`` merged with ``target``, origin's ``base_branch`` now, made in the object store alone
         with no branch, work tree or hook touched; None) for a merge check, or (None, the paths that conflict) when
-        the head needs a rebase. ``git merge-tree --write-tree`` merges without a work tree; exit 1 is a conflict."""
+        the head needs a rebase. ``git merge-tree --write-tree`` merges without a work tree; exit 1 is a conflict. A
+        head that already holds ``target`` is its own merge, which a git before 2.38, with no ``--write-tree``, can judge
+        too."""
+        if await gitops.is_ancestor(checkout, target, head):
+            self.run.note(f"{head[:12]} already holds origin's {base_branch}: the checks run on the head.")
+            return head, None
         env = gitops.without_hooks(self.run.daemon.env)
         code, out, err = await gitops.git(
             checkout, "merge-tree", "--write-tree", "--name-only", "--no-messages", target, head, check=False, env=env
@@ -234,7 +239,10 @@ class JudgeRun:
             self.run.note(f"Merging origin's {base_branch} into {head[:12]} conflicts: the head needs a rebase.")
             return None, list(dict.fromkeys(lines[1:]))[: judge.MAX_PATHS]
         if code != 0 or not lines:
-            raise RunFailed(f"cannot merge origin's {base_branch} into {head[:12]}: {err.strip() or out.strip()}")
+            why = err.strip() or out.strip()
+            if "usage: git merge-tree" in why:
+                why = "the git of this worker has no merge-tree --write-tree (git 2.38 or later): update git, or rebase the head on the base"
+            raise RunFailed(f"cannot merge origin's {base_branch} into {head[:12]}: {why}")
         identity = {"GIT_AUTHOR_NAME": "evo-agents judge", "GIT_AUTHOR_EMAIL": "judge@evo-agents.invalid"}
         identity |= {
             "GIT_COMMITTER_NAME": identity["GIT_AUTHOR_NAME"],
