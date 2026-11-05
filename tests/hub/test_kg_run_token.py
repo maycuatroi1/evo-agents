@@ -152,6 +152,25 @@ def test_the_run_of_an_answer_batch_sends_its_answers_with_its_token(review):
     assert person.status_code == 403, "a member's own token still sends no answer of a run"
 
 
+def test_a_kg_run_asks_no_answer_job_whatever_its_owner_opened(review):
+    """A KG run never runs as its owner: the run reach answers, which lets the owner's runs that run as them ask a job,
+    opens nothing to the run of an answer batch, whose job would hand agents work on and on."""
+    client, db, owner = review.client, review.db, review.headers["owner"]
+    asked = client.post(base(), headers=owner, json={"questions": [{"id": "1", "question": "Where is the ledger?"}]})
+    assert asked.status_code == 201, asked.text
+    job_id = asked.json()["id"]
+    assert answers_advanced(review) == {"queued": 1}
+    run_id = run_of(review, job_id)
+    kg_beat(client, review.worker)
+    assert claim(client, review.worker)["id"] == run_id
+    auth = bearer(kg_token(review, run_id))
+    opened = client.put("/v1/autonomy/run-reach", json={"groups": ["answers"]}, headers=owner)
+    assert opened.status_code == 200, opened.text
+    refused = client.post(base(), headers=auth, json={"questions": [{"id": "2", "question": "Who signs?"}]})
+    assert refused.status_code == 403 and "KG run's token" in refused.json()["message"], refused.text
+    assert sql(db, select(func.count()).select_from(tables.kg_answer_jobs)) == [(1,)]
+
+
 def test_a_review_run_that_is_no_kg_run_gets_no_token(review):
     run_id = held_review(review)
     assert hub_leases(review, run_id) == []

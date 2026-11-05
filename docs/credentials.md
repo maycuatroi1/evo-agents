@@ -974,16 +974,21 @@ These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
 - releases: a project's release schedule, its resume and the check now (`evo-agents hub release run`), unless the
   owner's run reach holds `releases`. The check a run's token makes then queues the cut as the daily check does, as
   the schedule's owner, so a plan run whose step ends in a release cuts it at once instead of waiting for the day's
-  check.
+  check;
+- answers: asking an answer job of a project's graph (`POST /v1/kg/{p}/answers`, `evo-agents hub kg answer
+  --questions FILE`), unless the owner's run reach holds `answers`. The job is then the owner's, as a file they sent:
+  the hub queues its batches later as review runs dispatched as the owner, so a plan run whose step answers a bench's
+  questions asks them itself. The run of a batch is a KG run, which never runs as its owner, so it asks no job whatever
+  the owner opened.
 
-**The run reach.** Four of those groups are the owner's to open to every run that runs as them: `agents`, `workers`,
-`curator` and `releases`. The set is per member and hub-wide, empty unless the member chose, which refuses as above; a
-refusal of one of the four says how to open it. Only the member sets their own, with their own sign-in:
+**The run reach.** Five of those groups are the owner's to open to every run that runs as them: `agents`, `workers`,
+`curator`, `releases` and `answers`. The set is per member and hub-wide, empty unless the member chose, which refuses
+as above; a refusal of one of the five says how to open it. Only the member sets their own, with their own sign-in:
 
 ```sh
-evo-agents hub autonomy run-reach                                         # show it
-evo-agents hub autonomy run-reach --allow agents,workers,curator,releases # replace it with these
-evo-agents hub autonomy run-reach --none                                  # clear it
+evo-agents hub autonomy run-reach                                                 # show it
+evo-agents hub autonomy run-reach --allow agents,workers,curator,releases,answers # replace it with these
+evo-agents hub autonomy run-reach --none                                          # clear it
 ```
 
 That is `GET` and `PUT /v1/autonomy/run-reach` with `{"groups": [...]}`, which replaces the set whole; each change adds

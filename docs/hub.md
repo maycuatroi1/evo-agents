@@ -2988,7 +2988,8 @@ evo-agents hub kg pipeline --project demo --json
 **Answering a file of questions.** `evo-agents hub kg answer --project P --questions Q.jsonl [--out answers.jsonl]
 [--batch N]` sends a file of at most 5,000 questions, one JSON object a line with `id` (a string or an integer, unique)
 and `question`, to `POST /v1/kg/{project}/answers` (the writer role; `evo_agents/hub/server/kg_answers.py`, the model
-in `evo_agents/hub/kg_answers.py`, tables `kg_answer_jobs` and `kg_answers` of migration 0207). The hub keeps them as a
+in `evo_agents/hub/kg_answers.py`, tables `kg_answer_jobs` and `kg_answers` of migration 0207; a run's token only when
+its owner's run reach holds `answers`, `docs/credentials.md`). The hub keeps them as a
 job and asks them in batches of N (50 by default, at most 200): each batch is a review run without a repo on the
 project's KG pool, under the charter's review cost cap, whose Claude Code agent reads the graph with kg_search,
 kg_context, kg_node and kg_more within the clearance of the agents' sink and sends its answers back with

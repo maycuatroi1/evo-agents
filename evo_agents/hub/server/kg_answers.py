@@ -3,7 +3,8 @@ Code agents in batches. ``evo_agents.hub.kg_answers`` holds the rules without th
 
 - POST /v1/kg/{project}/answers (``evo-agents hub kg answer --project P --questions FILE``, a writer): keep the file as
   a job, or find the job of the same file (``kg_answers.digest``) and ask again its questions without an agent's reply.
-  The agent of a run cannot: it would hand agents work.
+  The agent of a run cannot, as it would hand agents work, unless it runs as its owner (a run's token, ``evr_...``) and
+  the owner opened the run reach ``answers`` (``run_access_rules``): the job is then the owner's, as a file they sent.
 - GET /v1/kg/{project}/answers (``--status``): the project's jobs, newest first, with their counts. GET .../{job_id}:
   one job. GET .../{job_id}/lines: its answers in the file's order, as answers.jsonl holds them: the model of the run
   that asked each and its share of the run's tokens. A grant on the project reads them.
@@ -35,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import kg_answers as model
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, run_access_rules
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
@@ -337,8 +338,12 @@ async def ask(request: Request, project: ProjectName, body: KgAnswerAsk, user: C
         access = await project_access(conn, user, project)
         if not has_role(access.role, "writer"):
             raise HTTPException(403, f"asking questions of project {access.name}'s graph needs the writer role on it")
-        if user.acts_for_run is not None:
-            raise HTTPException(403, "the agent of a run asks no answer job: it would hand agents work")
+        if user.acts_for_run is not None and run_access_rules.ANSWERS not in user.run_reach:
+            raise HTTPException(
+                403,
+                "the agent of a run asks no answer job, as it would hand agents work, unless it runs as its owner and "
+                "the owner's run reach holds answers",
+            )
         await conn.execute(
             select(tables.projects.c.id).where(tables.projects.c.id == access.project_id).with_for_update()
         )

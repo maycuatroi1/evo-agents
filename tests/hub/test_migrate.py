@@ -5740,3 +5740,24 @@ def test_migration_0208_lets_releases_into_the_run_reach_and_going_back_takes_it
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(update(u).values(run_reach=["releases"]).where(u.c.id == ids["user"]))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0208") :]
+
+
+def test_migration_0209_lets_answers_into_the_run_reach_and_going_back_takes_it_out(hub_db):
+    move_to(hub_db, "0208")
+    u = hub_tables.users
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        conn.execute(update(u).values(run_reach=["agents", "releases"]).where(u.c.id == ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # not yet a group
+        conn.execute(update(u).values(run_reach=["answers"]).where(u.c.id == ids["user"]))
+    move_to(hub_db, "0209")
+    assert query(hub_db, select(u.c.run_reach).where(u.c.id == ids["user"])) == [(["agents", "releases"],)]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(u).values(run_reach=["releases", "answers"]).where(u.c.id == ids["user"]))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(u).values(run_reach=["answers", "secrets"]).where(u.c.id == ids["user"]))
+    move_to(hub_db, "0208", down=True)
+    assert query(hub_db, select(u.c.run_reach).where(u.c.id == ids["user"])) == [(["releases"],)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(u).values(run_reach=["answers"]).where(u.c.id == ids["user"]))
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0209") :]
