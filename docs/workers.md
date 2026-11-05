@@ -3316,6 +3316,14 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
 - A command of a run that the kernel's OOM killer ends fails alone: the systemd unit sets `OOMPolicy=continue`, so
   the unit is not stopped with its daemon, agents and leases when one process of its cgroup is killed. A unit
   installed before gets the line at the next `evo-agents worker service install`.
+- On Linux every worker service of the machine runs in the user slice `evo-agents-workers.slice`, which the install
+  writes beside the unit (`Slice=` in the unit): together they may take 80% of the machine's memory (`MemoryHigh`)
+  before the kernel reclaims theirs and slows them, never more than 90% (`MemoryMax`), at which it kills their biggest
+  process, and they never swap (`MemorySwapMax=0`). A 4-vCPU VPS whose runs ran several `pytest -n auto` beside
+  Postgres swapped until all of its daemons went silent for five minutes, and the hub lost their runs while the agents
+  still worked; the slice keeps such a run from taking the machine down with it. A user's manager gets only the memory
+  and pids controllers on most distributions (`Delegate=pids memory`), so the slice sets no CPU weight. Uninstalling
+  one node leaves the slice to the others. A unit installed before joins the slice at the next install.
 - The daemon, and so its agents, start with umask 077 (launchd `Umask` 63, systemd `UMask=0077`): what a run writes
   is the user's alone.
 - The daemon writes `worker.log` itself. What it prints before that log is open goes to `service.log` in the state
