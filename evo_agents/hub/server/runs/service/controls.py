@@ -298,7 +298,8 @@ async def rerun_in(
 
 async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, run_id: int) -> int:
     """Queue failed plan run ``run_id`` again on its agent's pool, in the caller's transaction, for the triage of a
-    program it lacked (``evo_agents.hub.server.triage_actions``; a member dispatches the plan again instead): what the
+    cause of ``triage_rules.PLAN_RERUN``: a program it lacked or a 5xx of the hub
+    (``evo_agents.hub.server.triage_actions``; a member dispatches the plan again instead): what the
     run asked for, at the plan's revision now, a first attempt, and never as its owner. The id of the new run; 409 while
     another run of the plan is active."""
     access, row = await owned_run(conn, user, project, run_id, "rerun")

@@ -8,7 +8,7 @@ chat run does, and the hub checks the frame again on each call, so an agent that
 
 - POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on its agent's pool, with a
   runtime or account the owner names, for the causes of ``triage_rules.RERUN_CAUSES``, within the chain cap; a plan run
-  only for a program it lacked (``controls.rerun_plan_in``). Nobody picks the machine. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
+  only for a program it lacked or a 5xx of the hub, ``triage_rules.PLAN_RERUN`` (``controls.rerun_plan_in``). Nobody picks the machine. The rerun never runs as its owner (``run_access``), whatever the failed run did: only the owner lets a
   run act as them.
 - POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
   the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
@@ -293,7 +293,7 @@ async def _audit(conn: AsyncConnection, frame: Frame, action: str, tail: str) ->
 async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, edited: bool) -> int:
     """Run the failed run again as ``options`` say, once the frame allows it; the id of the new run."""
     failed = frame.failed
-    plan_run = failed.kind == "plan" and frame.cause == triage_rules.MISSING_TOOL
+    plan_run = failed.kind == "plan" and frame.cause in triage_rules.PLAN_RERUN
     if failed.kind != "step" and not plan_run:
         raise HTTPException(
             422,

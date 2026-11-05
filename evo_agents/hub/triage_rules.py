@@ -62,6 +62,7 @@ def named_in(text: str | None, names) -> dict[str, str]:
 
 
 SAME_WORKER = (MISSING_TOOL, "network", "hub_5xx")  # the rerun stays on the worker of the failed run
+PLAN_RERUN = (MISSING_TOOL, "hub_5xx")  # the causes a plan run is run again of by the agent; any other is the owner's
 NEW_ACCOUNT = ("rate_limit", "account_auth")  # the rerun takes an account the run did not, or another runtime
 
 
