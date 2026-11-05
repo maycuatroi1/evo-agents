@@ -33,8 +33,9 @@ if os.name == "nt":
 def _no_hub_home_of_this_machine(monkeypatch):
     """No EVO_HUB_HOME of the shell running pytest: a test that points HOME at a temporary directory expects the
     hub login under it, and must never read, overwrite or delete the login of the machine somewhere else. Nor the
-    EVO_HUB_TOKEN and EVO_HUB_URL of a run that runs as its owner, which come before any login."""
-    for name in ("EVO_HUB_HOME", "EVO_HUB_TOKEN", "EVO_HUB_URL"):
+    EVO_HUB_TOKEN and EVO_HUB_URL of a run that runs as its owner, which come before any login. Nor the
+    CLAUDE_CONFIG_DIR of a Claude Code session running pytest, which comes before the ~/.claude of a test's HOME."""
+    for name in ("EVO_HUB_HOME", "EVO_HUB_TOKEN", "EVO_HUB_URL", "CLAUDE_CONFIG_DIR"):
         monkeypatch.delenv(name, raising=False)
 
 
