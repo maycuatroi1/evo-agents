@@ -64,8 +64,10 @@ def _build(build: Mapping | None, what: str) -> tuple[str, str | None]:
 
 
 def _entities_of(coverage: Mapping | None) -> dict | None:
+    """The entities of a build's coverage as kg_builds keeps it (``kg_coverage.build_coverage``): there only when the
+    step ran, without the step's own ``enabled``."""
     found = (coverage or {}).get("entities")
-    return found if isinstance(found, dict) and found.get("enabled") else None
+    return found if isinstance(found, dict) and found.get("enabled", True) else None
 
 
 def _entities(cov: dict | None, why_none: str) -> dict:
