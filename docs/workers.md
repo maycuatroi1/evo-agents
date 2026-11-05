@@ -1062,6 +1062,13 @@ in the foreground or the background, with words that name `evo-agents worker wai
 the run (its `wait` body). Tests and builds on the machine still run in the background. The hook reads commands, so a
 poll kept in a script gets past it; the plan run's prompt and its system note say the same.
 
+The same hook refuses a broad test run (`evo_agents.worker.broad_tests`): a pytest command that names no test file or
+node (the whole suite, or the suite less what `--ignore` leaves out), a directory or a glob, more than 10 files, or a
+`timeout` over 600 seconds; `--collect-only` and `--last-failed` pass. The step's verify runs once through the worker,
+the Judge of the merge check runs the verify of every done step again, and the full CI runs on the release tag: run
+#1642 of evo-agents spent about 115 of its 173 minutes in tests, and run #1675 ran the whole suite for 28 minutes to
+guess what two hidden checks wanted. Its refusal is a `system` event with `rule` `tests` in its `wait` body.
+
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
 of `docs/notifications.md`.

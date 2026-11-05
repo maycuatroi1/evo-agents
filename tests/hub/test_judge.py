@@ -372,6 +372,19 @@ def test_judge_passes_a_change_only_when_everything_passed():
         assert not passed and any(why in reason for reason in reasons), (changes, reasons)
 
 
+def test_judge_tells_how_failed_hidden_checks_ended_and_when_they_most_likely_never_set_up():
+    """Run #1675 ran the whole suite to find what two hidden checks wanted that exited 2 within a second: `uv venv`
+    refused the .venv the Judge had made."""
+    fast = [{"index": 1, "exit_code": 2, "duration_ms": 1240}, {"index": 2, "exit_code": 2, "duration_ms": 761}]
+    _, reasons = verdict(hidden=fast, hidden_count=2)
+    (told,) = [reason for reason in reasons if "hidden" in reason]
+    assert told.startswith("2 hidden check(s) of the project failed (exit 2 after 1.2 s, exit 2 after 0.8 s")
+    assert "most likely could not set up" in told
+    _, reasons = verdict(hidden=[{"index": 1, "exit_code": 1, "duration_ms": 60_000}])
+    (told,) = [reason for reason in reasons if "hidden" in reason]
+    assert told == "1 hidden check(s) of the project failed (exit 1 after 60.0 s)"
+
+
 def test_judge_reads_its_agents_verdict_file():
     assert judge.read_verdict('{"verdict": "pass", "reasons": " looked fine "}') == ("pass", "looked fine")
     assert judge.read_verdict('{"verdict": "maybe"}')[0] is None

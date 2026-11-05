@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import os
 
-from tests.worker.test_curator_runs import TEST_FILE, change_branch
+from evo_agents.hub import judge
+from evo_agents.worker.runner import judge as judge_run
+from tests.worker.test_curator_runs import TEST_FILE, change_branch, curator
 from tests.worker.test_judge_hardening import judge_inputs, judged
-from tests.worker.test_plan_runs import git, machine  # noqa: F401 (machine is a fixture)
+from tests.worker.test_plan_runs import git, machine, with_daemon  # noqa: F401 (machine is a fixture)
 
 PULL = {"change_id": None, "forge": "github", "pr_url": "https://github.com/northwind/alpha/pull/7"}
 CHECK = {**PULL, "merge_result": True}
@@ -94,10 +96,11 @@ def test_github_merge_check_runs_each_check_in_the_python_environment_the_repo_a
     machine.env["PATH"] = f"{tools}{os.pathsep}{machine.env['PATH']}"
     head = change_branch(machine, {"pyproject.toml": PYPROJECT, "tests/test_wait.py": TEST_FILE})
     from_venv = "venv-tool | grep -q from-the-venv"
+    hidden = f'{from_venv} && test "$UV_VENV_CLEAR" = 1'  # a check's own `uv venv` replaces the venv made for it
     found = judged(
         machine,
         head,
-        {**judge_inputs(head, [from_venv], [from_venv, "test -x .venv/bin/venv-tool"]), "queue_id": 3},
+        {**judge_inputs(head, [hidden], [from_venv, "test -x .venv/bin/venv-tool"]), "queue_id": 3},
         [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
         claim=CHECK,
     )
@@ -143,3 +146,31 @@ def test_github_merge_check_a_conflict_found_in_a_worktree_posts_its_paths(machi
     )
     (sent,) = found["hub"].verdicts
     assert sent["conflicts"] == ["tests/test_wait.py"] and sent["verdict"] is None
+
+
+def test_github_merge_check_has_its_judge_weigh_the_signs_and_posts_a_verdict_again_after_a_502(machine, monkeypatch):  # noqa: F811
+    """Run #1673 failed pull request #462 unjudged on the golden contract additions its plan asked for, and run #1671
+    lost its verdict to the 502 of a hub that redeployed. A merge check's Judge weighs the signs against the plan, and
+    a verdict the hub answers 5xx to is posted again."""
+    monkeypatch.setattr(judge_run, "VERDICT_FIRST_DELAY", 0.01)
+    head = change_branch(machine, {"curator.yaml": "protected: changed\n", "tests/test_wait.py": TEST_FILE})
+    machine.scenarios({"judge": [{"say": '{"verdict": "pass", "reasons": "The plan asks for that file."}'}]})
+    found = {}
+
+    async def body(hub, daemon):
+        hub.verdicts_down = 1
+        inputs = {**judge_inputs(head, ["true"]), "queue_id": 3}
+        run_id = hub.queue_judge_run("alpha", {**curator(head), **CHECK}, inputs)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    hub, run_id = found["hub"], found["run"]
+    (sent,) = hub.verdicts
+    assert sent["verdict"] == "pass" and [item["kind"] for item in sent["signs"]] == ["protected_path"]
+    assert sent["security"] is not None, "the security pass ran on a change with signs too"
+    texts = hub.texts(run_id)
+    assert any("the Judge weighs each against the plan" in text for text in texts), texts
+    assert hub.verdicts_down == 0 and any("did not take the Judge's verdict" in text for text in texts), texts
+    (start,) = [item for item in machine.starts() if item["run"] == run_id][:1]
+    assert judge.WEIGH_SIGNS.strip() in start["prompt"]

@@ -465,8 +465,12 @@ class Judged:
         head,
         ledger: list[dict] | None = None,
         run_id: int | None = None,
+        signs_weighed: bool = False,
     ):
+        """``signs_weighed``: the Judge weighed the signs of score hacking against the plan (a merge check of a pull
+        request, ``judge.WEIGH_SIGNS``), so they fail nothing by themselves; the queue's signs hold at gate 3."""
         self.body, self.second = body, second
+        self.signs_weighed = signs_weighed
         self.verify = [item.model_dump(exclude_none=True) for item in body.verify]
         self.hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
         self.signs = [sign.model_dump() for sign in body.signs]
@@ -504,7 +508,7 @@ class Judged:
             self.judge_why.append("the Judge read another commit than the merge request's head")
 
     def entry(self, run_id: int, model: str | None) -> dict:
-        passed = not self.signs and self.checks_ok and self.judge_ok
+        passed = (self.signs_weighed or not self.signs) and self.checks_ok and self.judge_ok
         return {
             "run_id": run_id,
             "model": model,

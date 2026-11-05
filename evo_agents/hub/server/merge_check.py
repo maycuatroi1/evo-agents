@@ -27,6 +27,13 @@ verdict is read as the queue reads its own (``merge_judge.Judged``: the checks, 
 each round with its marks of earlier ones, and the security pass, ``evo_agents.hub.security_pass``). Once the first
 Judge passed, ``advance`` weighs the risk of the paths it read (``merge_gate.risk_of``, with the project's graph); a
 high one has the second Judge judge it too. The Judge never reads the Builder's transcript.
+
+The signs of score hacking the worker reads in the diff do not fail a merge check by themselves, as they fail a
+Curator's change: the Judge weighs each against the plan (``judge.WEIGH_SIGNS``), since a plan may ask for a golden
+file, a verify command or a test's expectations to change (run #1673 failed pull request #462 unjudged on the golden
+contract additions its criterion a7 asked for), and its pass holds (``merge_judge.Judged``, ``signs_weighed``). A
+failed hidden check fails it still, and its reason tells the Builder each check's exit code and time
+(``judge.hidden_exits``), never what it runs.
 """
 
 from __future__ import annotations
@@ -518,6 +525,7 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
             head=row.head_sha,
             ledger=findings.ledger_of(row.verdict),
             run_id=run_id,
+            signs_weighed=True,
         )
         entry, ledger = found.entry(run_id, run.model), found.ledger
     stored = {**(row.verdict or {}), ("second" if second else "first"): entry, "findings": ledger}
