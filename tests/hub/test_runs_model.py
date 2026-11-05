@@ -762,6 +762,15 @@ def test_a_plan_run_prompt_of_an_odd_plan():
     assert "# Steps not done yet: 0 of 0" in build_plan_prompt({"id": "empty"}, [], {})
 
 
+def test_a_plan_run_prompt_starts_the_ready_steps_together():
+    # run #1969 did four ready steps one after another, three of them in one repo
+    prompt = " ".join(build_plan_prompt({"id": "p", "steps": [{"id": 1}, {"id": 2}]}, ["evo-agents"], None).split())
+    assert "the steps ready at the same time together" in prompt
+    assert "at once, each in a fresh subagent, all spawned in one message" in prompt
+    assert "git worktree of its own under the current directory" in prompt
+    assert "merged into the run's worktree before `evo-agents worker step KEY done`" in prompt
+
+
 # A plan run with a session for each step (criterion a3 of the context-economy plan)
 
 

@@ -2647,7 +2647,9 @@ as a verify that fails does.
 A plan run claimed with `session_per_step` (`evo_agents/worker/runner/sessions.py`) does steps 1, 4 and 5 above as any
 plan run, and in between gives each step not done yet an agent session of its own, instead of one session for every
 step, so the context of each session holds one step and the handoff of the plan rather than everything the run read
-before it:
+before it. The sessions run one after another, so two ready steps never run at once; the one session of a plan run
+starts every ready step together, each in a subagent, as its prompt says (run #1969 of evo-agents did four ready steps
+in turn with a session for each):
 
 1. Before each session the daemon reads the plan as the hub holds it now and takes the next step
    (`runs.next_session_step`): the first in plan order that is `pending` or `in_progress` (a step an earlier session or

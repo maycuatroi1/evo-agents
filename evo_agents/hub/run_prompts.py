@@ -47,7 +47,7 @@ EVIDENCE_BYTES = 1536  # the evidence of one step this one depends on
 DEPENDENCIES_BYTES = 5 * 1024  # all of it
 LIST_TITLE_BYTES = 120  # the title of a step in a plan run's list of steps
 LIST_DEPENDS_BYTES = 120  # and its depends_on
-STEP_LIST_BYTES = 13 * 1024  # the whole list; the steps past it are counted, and the plan file has them
+STEP_LIST_BYTES = 12 * 1024  # the whole list; the steps past it are counted, and the plan file has them
 REPOS_BYTES = 3 * 1024  # a plan run's repos with their branches and worktrees
 
 
@@ -237,6 +237,11 @@ def _plan_rules(autonomy) -> list[str]:
         "(EVO_RUN_KIND=plan). Without it, follow these rules yourself.",
         f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
         "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
+        "- Start every step whose depends_on are all done at once, each in a fresh subagent, all spawned in one "
+        "message. The first of a repo works in the run's worktree of that repo; another of the same repo works in a "
+        "git worktree of its own under the current directory, on a local branch, and is merged into the run's "
+        "worktree before `evo-agents worker step KEY done`, which commits whatever the run's worktree holds. Run two "
+        "steps of a repo one after another only when they will certainly conflict on merge.",
         checkpoint_rule(autonomy),
         record_rule("KEY", "a step"),
         *decision_lines("its step", autonomy),
@@ -347,7 +352,8 @@ def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, au
     worktrees = worktrees or {}
     lines = [
         f"You are running the plan {_line(plan.get('id'), SHORT_BYTES, 'without an id')} from the evo-agents hub, as "
-        "one plan run on a worker: do every step of it that is not done yet, in the order their depends_on allows.",
+        "one plan run on a worker: do every step of it that is not done yet, in the order their depends_on allows, the "
+        "steps ready at the same time together.",
         "",
         *_plan_rules(autonomy),
         "",
