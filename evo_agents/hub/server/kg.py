@@ -95,7 +95,7 @@ from evo_agents.hub.kg_ingest import (
 )
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import audit, project_archive, rankers, run_audience
+from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -832,4 +832,5 @@ async def call_tool(
     user: CurrentUser,
 ):
     """One kg_* tool of ``evo-agents kg serve``, answered from the project's latest successful build."""
-    return JSONResponse(await tool_result(request.app.state, user, project, tool, body.arguments, body.sink))
+    sink = kg_run_access.sink(user, body.sink)  # a KG run's token reads as the agents do, whatever it names
+    return JSONResponse(await tool_result(request.app.state, user, project, tool, body.arguments, sink))

@@ -19,6 +19,9 @@ the run (``end_access``) and when the owner revokes the token itself (DELETE /v1
 that resumes gets a token of its own at its first ask. A worker of an older release reads the lease, masks its value and
 puts nothing of it into the agent's environment, which takes kind env alone.
 
+A KG run (``kg_run_access``), the Curator's, never runs as its owner: ``lease`` hands it a token of its own of the
+same kind instead, which reaches its project's KG routes alone.
+
 What the token never reaches is ``run_access_rules``'s, and on the routes open to it every rule of the agent of a run
 holds (``Principal.acts_for_run``): it answers no decision (``decisions.answer_decision``), starts no run and hands no
 agent work (``run_access_rules.refuse_new_run``), approves nothing and lets no run run as its owner
@@ -38,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, RUN_ACCESS, Lease
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, kg_run_access
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad
 from evo_agents.hub.server.security import RUN, Principal, issue_token
@@ -85,10 +88,8 @@ def token_host(run_id: int) -> str:
     return f"run:{run_id}"
 
 
-def _lease(lease_id: int, owner: str, token: str, root: str) -> Lease:
-    return Lease(
-        lease_id, HUB_KIND, RUN_ACCESS, f"{RUN_ACCESS}:{owner}", env_var=HUB_TOKEN_ENV, value=token, base_url=root
-    )
+def _lease(lease_id: int, name: str, token: str, root: str) -> Lease:
+    return Lease(lease_id, HUB_KIND, RUN_ACCESS, name, env_var=HUB_TOKEN_ENV, value=token, base_url=root)
 
 
 def _held(run_id: int, worker_id: int):
@@ -117,18 +118,21 @@ async def lease(
     """The lease of the run's token, in the transaction of the ask of worker ``worker_id``, with the token's id: the
     lease this worker holds, its token opened again, else a new token and lease (any other run-access lease of the run
     on this worker ended first); none for a run its owner does not let run as them, or that may not
-    (``may_run_as_owner``). ``run`` is the ask's ``credentials._Run``, ``root`` the hub's URL."""
-    if not run.as_owner or may_run_as_owner(run.kind, run.curator is not None) is not None:
+    (``may_run_as_owner``). A KG run that does not run as its owner gets the token of a KG run instead
+    (``kg_run_access``). ``run`` is the ask's ``credentials._Run``, ``root`` the hub's URL."""
+    kg = not run.as_owner and await kg_run_access.is_kg_run(conn, run.id, run.kind)
+    if not kg and (not run.as_owner or may_run_as_owner(run.kind, run.curator is not None) is not None):
         return [], None
+    name = kg_run_access.lease_name(run.project) if kg else f"{RUN_ACCESS}:{run.owner}"
     held = (await conn.execute(_held(run.id, worker_id))).one_or_none()
     if held is not None:
         try:
             token = sealer.open(Sealed(held.sealed_value, held.nonce, held.key_id), lease_aad(held.id))
-            return [_lease(held.id, run.owner, token, root)], held.token_id
+            return [_lease(held.id, name, token, root)], held.token_id
         except Unsealable as exc:
             log.warning("a run's token does not open; a new one is made", extra={"lease_id": held.id, "why": str(exc)})
     await end_access(conn, run.id, worker_id=worker_id)
-    issued = await issue_token(conn, run.owner_id, RUN, token_host(run.id))
+    issued = await issue_token(conn, run.owner_id, RUN, kg_run_access.host(run.id) if kg else token_host(run.id))
     cl = tables.credential_leases
     lease_id = (
         await conn.execute(
@@ -151,7 +155,7 @@ async def lease(
         .values(sealed_value=sealed.ciphertext, nonce=sealed.nonce, key_id=sealed.key_id)
         .where(cl.c.id == lease_id)
     )
-    return [_lease(lease_id, run.owner, issued.token, root)], issued.token_id
+    return [_lease(lease_id, name, issued.token, root)], issued.token_id
 
 
 async def end_access(conn: AsyncConnection, run_id: int, *, worker_id: int | None = None) -> int:

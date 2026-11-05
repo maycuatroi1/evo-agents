@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, RUN_ACCESS, Lease
+from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, HUB_URL_ENV, KG_RUN, RUN_ACCESS, Lease
 from evo_agents.worker import credential_commands, credentials, interactive
 from evo_agents.worker.credentials import MISSING_NOTE, RunCredentials
 from evo_agents.worker.home import WorkerHome
@@ -807,6 +807,18 @@ def test_run_access_env_takes_the_runs_token_of_the_hub_alone():
     ):
         env, refusal = credentials.run_access_env([odd], daemons, guarded=False)
         assert env == {} and refusal.startswith(f"the hub sent a lease of kind {HUB_KIND}"), odd
+
+
+def test_a_guarded_run_takes_the_token_of_a_kg_run_alone():
+    token, daemons = sample("evr_"), "https://agents.northwind.example"
+    kg = Lease(7, HUB_KIND, RUN_ACCESS, f"{KG_RUN}:lumen-kb", env_var=HUB_TOKEN_ENV, value=token, base_url=daemons)
+    assert credentials.run_access_env([kg], daemons, guarded=True) == (
+        {HUB_TOKEN_ENV: token, HUB_URL_ENV: daemons},
+        None,
+    )
+    owner = Lease.from_json(hub_lease(8, token))
+    env, refusal = credentials.run_access_env([owner], daemons, guarded=True)
+    assert env == {} and refusal == "a run of the Curator or a release run never runs as its owner"
 
 
 @needs_worker
