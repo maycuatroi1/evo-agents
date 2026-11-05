@@ -38,5 +38,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint(CHECK, "users", type_="check")
-    op.execute("UPDATE users SET run_reach = array_remove(run_reach, 'releases') WHERE 'releases' = ANY(run_reach)")
+    users = sa.table("users", col("run_reach", postgresql.ARRAY(sa.Text())))
+    reach = users.c.run_reach
+    op.execute(
+        users.update()
+        .where(sa.literal("releases") == sa.any_(reach))
+        .values(run_reach=sa.func.array_remove(reach, "releases"))
+    )
     _check(BEFORE)
