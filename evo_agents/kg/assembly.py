@@ -110,6 +110,7 @@ class Facts:
         else:
             _strongest(self.edges[key], f)
         self.derivs[key].append({"units": f["units"], "needs": sorted(set(f["needs"]) | {f["src"], f["dst"]})})
+        self.props_of[key].append((self.derivs[key][-1], f["props"]))
         self.where[key].update(tuple(w) for w in f.get("where", []))
 
     def _stats(self, rec, f: dict) -> None:
@@ -135,6 +136,7 @@ class Merged:
     edges: dict[tuple, dict] = field(default_factory=dict)
     edge_derivs: dict[tuple, list[dict]] = field(default_factory=lambda: defaultdict(list))
     edge_where: dict[tuple, set] = field(default_factory=lambda: defaultdict(set))
+    edge_props: dict[tuple, list[tuple[dict, dict]]] = field(default_factory=lambda: defaultdict(list))
 
     def remap(self, x: str) -> str:
         return self.rep.get(x, x)
@@ -203,6 +205,10 @@ def _merge_edges(facts: Facts, merged: Merged) -> None:
             _strongest(merged.edges[nkey], facts.edges[key])
         for d in facts.derivs.pop(key):
             merged.edge_derivs[nkey].append({"units": d["units"], "needs": sorted({remap(n) for n in d["needs"]})})
+        merged.edge_props[nkey] += [
+            ({"units": d["units"], "needs": sorted({remap(n) for n in d["needs"]})}, p)
+            for d, p in facts.props_of.pop(key, [])
+        ]
         merged.edge_where[nkey] |= facts.where.pop(key, set())
 
 
@@ -243,6 +249,13 @@ def _write_labelled(graph: Graph, facts: Facts, merged: Merged, unit_labels: dic
         eid = edge_id(src, rel, dst)
         ds = _dedupe(merged.edge_derivs[(src, rel, dst)])
         label = _any_of([_deriv_label(d, unit_labels, node_label) for d in ds])
+        # As a node's: the props of the first derivation the edge's label reads, none of a restricted item's.
+        readable = (
+            p
+            for d, p in merged.edge_props[(src, rel, dst)]
+            if all(n in node_label for n in d["needs"]) and _reads(label, _deriv_label(d, unit_labels, node_label))
+        )
+        e = {**e, "props": next(readable, {})}
         graph.edges[eid] = {"src": src, "rel": rel, "dst": dst, **e, "label": label}
         graph.derivations[eid] = ds
         graph.where[eid] = sorted(merged.edge_where[(src, rel, dst)])

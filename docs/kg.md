@@ -638,7 +638,7 @@ no model (`evo_agents/kg/review.py`, stored in the build's `review_items` table)
 | `possible_duplicate` | nodes of one kind whose normalised names (accents dropped, case folded, letters and digits only) are the same and whose ids differ, unless they are each repo's own file at one path (`AGENTS.md` of two repos) | `merge` |
 | `ambiguous_match` | an item whose mentions matched several nodes by name, or a path edge resolved to one of several files with that path | `disambiguate` |
 | `bulk_noise` | images, generated files (lockfiles, `dist/`, `node_modules/`, `*.min.js` and the like) and plan steps whose name repeats across plans, 3 or more of a kind in one place | `exclude` |
-| `conflicting_claim` | two `extracted` edges (the entities step) with one subject and one relation and different objects, stated by two different documents, each with conf 0.6 or more; `mentions`, `refers_to` and `synonym_of` state no claim, and one subject and relation opens at most 20 items | `check_claims` |
+| `conflicting_claim` | two `extracted` edges (the entities step) with one subject and one relation and different objects, stated by two different documents, each with conf 0.6 or more; `mentions`, `refers_to`, `synonym_of` and `merged_from` state no claim, and one subject and relation opens at most 20 items | `check_claims` |
 
 An item holds its rule, the ids of the nodes it is about (its evidence, at most 50 with the full count in its detail),
 the level-1 cluster its first node counts in, the suggested action and what it found. Kinds whose names repeat by

@@ -220,6 +220,21 @@ the digest, so a closed mapping keeps its memo), the Claude Code relay (a reques
 the entities step's. `relates_to` states no `conflicting_claim` in the review queue: it has no predicate, so two objects
 of one subject are two links, not two answers.
 
+After all items are read, the model merges and summarizes as LightRAG does at merge time
+(`evo_agents/kg/entity_merge.py`; the mapping key `merge`, on by default in the lightrag style only):
+
+- Candidate pairs are `synonym_of` pairs, one name in two kinds, and near names of one kind (the words of one all in the
+  other, or alike by `difflib` at 0.85). The model answers 20 pairs a call whether they are one entity and why; each
+  answer is memoized by the pair and the model. A pair it calls one is one node, with an edge `merged_from` from that
+  node to the document of the name folded in, carrying `reason`. Deprecating that edge with a decision undoes the merge
+  at the next build.
+- A relation stated more than once (in either direction, after merges) gets `weight`, the sum of its strengths, and
+  the union of its `keywords`. Eight descriptions or more, or over 1200 tokens of them, get a `summary` the model writes.
+  Descriptions are grouped by label, so a summary mixes one label only and carries it; each item's `mentions` edge
+  keeps its own group's summary or `descriptions`.
+- These calls use the step's ceiling, sink check and relay. A call past the ceiling waits for a later build; coverage
+  counts `merge` (asked, same, pending, refused, undone) and `summaries` (made, pending, refused).
+
 `entity-graph` asks Claude Code as `multi-hop` does; `entity-graph-api` calls OpenRouter as `multi-hop-api` does, with
 the same model, price and ceilings, and sends `reasoning: {enabled: false}` (the mapping key `reasoning`, sent to a url
 model as the request's reasoning). On 40 MuSiQue paragraphs (seed 7, 2026-11-05, `anthropic/claude-haiku-5.5`), tokens

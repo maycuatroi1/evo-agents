@@ -40,7 +40,7 @@ MAX_REQUESTS_BYTES = 64 * MiB
 MAX_ANSWERS_BYTES = 8 * MiB  # one post of answers
 REQUESTS_FILE = "entity-requests.json"  # in the project's cache directory
 REQUEST_KEYS = ("key", "item", "text", "node_kinds", "relations", "model")
-OPTIONAL_KEYS = ("style",)  # kept only when the request has it: a closed mapping's requests read as they did
+OPTIONAL_KEYS = ("style", "task")  # kept only when the request has it: a closed mapping's requests read as they did
 
 
 class RelayError(ValueError):
@@ -86,7 +86,13 @@ def clean_answers(answers) -> dict[str, dict]:
         if not isinstance(key, str) or not isinstance(answer, dict):
             raise RelayError("each answer is an object under the key of its request")
         usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
+        task = {}  # the answer to a task of entity_merge: the decisions of a merge, or a summary
+        if isinstance(answer.get("decisions"), list):
+            task["decisions"] = [d for d in answer["decisions"] if isinstance(d, dict)]
+        if isinstance(answer.get("summary"), str):
+            task["summary"] = answer["summary"]
         found[key] = {
+            **task,
             "nodes": [n for n in answer.get("nodes") or [] if isinstance(n, dict)],
             "edges": [e for e in answer.get("edges") or [] if isinstance(e, dict)],
             "usage": {

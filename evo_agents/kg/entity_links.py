@@ -10,6 +10,8 @@ names of one entity, an edge to the code an entity names, and an edge between tw
   id or the name, then for a dotted name its last two parts and its last part; ``code_key`` folds case and accents), gets
   an edge ``refers_to`` to it. A name that names more than one is not linked and coverage counts it. The edge is
   ``extracted``, so ``kg_impact``, which follows ``resolved`` and above, never walks it.
+- Model merges (a2). ``group`` also folds the pairs a model said name one entity (``evo_agents.kg.entity_merge``), of
+  one kind or two, the node taking its name and kind from the most public item as above.
 - Synonyms (a2). When the project's graph has vectors (semantic ``index`` or ``on``), the names of two entities of one
   kind whose cosine under that model is at least the mapping's ``synonym_threshold`` get an edge ``synonym_of`` (from
   the smaller id), each entity at most SYNONYM_NEIGHBOURS. The pairs are memoized by the model, the threshold and the
@@ -108,8 +110,10 @@ class Groups:
         return self.of.get((kind, key(name)))
 
 
-def group(stated: list[Stated]) -> Groups:
-    """Fold ``stated`` into nodes. The same answers give the same nodes, whatever order they come in."""
+def group(stated: list[Stated], joins=()) -> Groups:
+    """Fold ``stated`` into nodes. The same answers give the same nodes, whatever order they come in. ``joins``, pairs
+    of (kind, key) a model said name one entity (``evo_agents.kg.entity_merge``), fold their nodes into one, of
+    whichever kind its name comes from."""
     parent: dict[tuple[str, str], tuple[str, str]] = {}
 
     def find(x):
@@ -130,6 +134,9 @@ def group(stated: list[Stated]) -> Groups:
         for alias in s.aliases:
             if key(alias):
                 union(k, (s.kind, key(alias)))
+    for a, b in joins:
+        if a in parent and b in parent:
+            union(a, b)
     for kind, k in sorted(parent):
         for other in singulars(k):
             if (kind, other) in parent:

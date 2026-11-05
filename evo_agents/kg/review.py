@@ -111,7 +111,7 @@ CLAIM_STATUS = "extracted"  # the status of what a model stated (``evo_agents.kg
 CLAIM_CONF = 0.6  # the least conf of an edge of a conflicting claim: the conf the entity step gives a relation
 # relations of the entity step that state no claim; relates_to, a lightrag relation, has no predicate, so two objects
 # of one subject are two links, not two answers
-CLAIM_SKIP = frozenset({"mentions", "refers_to", "synonym_of", "relates_to"})
+CLAIM_SKIP = frozenset({"mentions", "refers_to", "synonym_of", "merged_from", "relates_to"})
 CLAIM_PAIRS = 20  # items one subject and relation open at most
 
 Visible = Callable[[tuple], bool]
