@@ -21,7 +21,8 @@ from sqlalchemy import func, select, update
 from evo_agents.hub import autonomy_card, runs, tables
 from evo_agents.hub.server import autonomy_gates, principals, run_autonomy
 from tests.hub.live import ADMIN, sql
-from tests.hub.test_autonomy_level_runs import daemon, on_db, org, user_id
+from tests.hub.test_autonomy_level_lease import FEATURES
+from tests.hub.test_autonomy_level_runs import daemon, on_db, org, pref, user_id
 from tests.hub.test_decisions import (  # noqa: F401 (client and hub are fixtures)
     answer,
     answered,
@@ -131,7 +132,12 @@ def test_autonomy_level_routing_card_of_the_claim_opens_the_prompt_of_an_interns
 
 
 def test_autonomy_level_routing_of_a_members_decision_to_the_principal_in_a_new_category(client, hub):
+    # A5 leaves credentials to the agent, and the hub refuses its question with 409; K8 ask restricts the run, which
+    # only a daemon that says autonomy claims.
+    pref(client, hub["owner"], classes={"K8": "ask"})
     worker = fleet_worker(client, hub["owner"], "owner-box")
+    body = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "features": FEATURES}
+    assert client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"]).status_code == 200
     run = dispatched_plan(client, hub["owner"])
     assert claim(client, worker)["id"] == run["id"]
     moved(client, worker, run["id"], "running")

@@ -257,7 +257,8 @@ test("the sheet's card says why the agent picks its option, that the act cannot 
   await seedPlanRunPlan(me, project);
   const { live, run } = await planRunUnderway(me, project, uniqueName("inbox-why"));
   const decision = await askDecision(live, run.id, SECOND, "3", {
-    category: "delete_data",
+    // a category of no class: the specs run at A5, whose card leaves deleting data to the agent (409)
+    category: "architecture",
     options: [
       { key: "drop", label: "Drop it" },
       { key: "keep", label: "Keep it" },

@@ -482,7 +482,8 @@ test("a decision's screen says why the agent picks its option, how to undo the a
   await seedPlanRunPlan(me, project);
   const { live, run } = await planRunUnderway(me, project, uniqueName("phone-why"));
   const decision = await askDecision(live, run.id, "Drop the staging bucket of the old build now?", "3", {
-    category: "delete_data",
+    // a category of no class: the specs run at A5, whose card leaves deleting data to the agent (409)
+    category: "architecture",
     options: [
       { key: "drop", label: "Drop it now" },
       { key: "keep", label: "Keep it a week" },
