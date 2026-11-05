@@ -337,6 +337,7 @@ class ReplayRun:
 
 
 def usage_cost(usage) -> float | None:
+    """The cost in USD a runtime reported in ``usage`` (``total_cost_usd`` or ``cost``), None when it reported none."""
     for key in ("total_cost_usd", "cost"):
         value = (usage or {}).get(key)
         if isinstance(value, (int, float)) and not isinstance(value, bool):

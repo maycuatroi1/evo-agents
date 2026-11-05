@@ -28,18 +28,16 @@ the side branch as above.
 A branch the remote moved past HEAD (it has HEAD in its history) is left alone: there is nothing to push. A default
 branch the plan names that the remote moved on while HEAD has commits of its own (``push`` with a ``Replay``, as
 ``evo-agents worker step`` and the push at the end of a plan run call it) gets those commits on top of the remote's tip:
-they are replayed with ``git rebase`` in a worktree of their own (``replay_commits``), the run's worktree moves to the
-result (``reset --keep``, so changes it has that the remote's commits do not touch stay), the verify the replay names
-runs again there, and the result is pushed as a fast-forward; a remote that moved on again before the push lands gets
-the same, REPLAY_TRIES times in all. Only commits the remote's branch lacks are replayed: never one it has, and never
-one the run pushed to it before that the remote no longer has (someone took it out; putting it back is the owner's
-call). When the commits do not go on top (a conflict, a merge commit among them, changes of the worktree in the way)
-or the verify run again fails, the worktree goes back to HEAD as it was (unless that verify changed a file the
-remote's commits brought, which ``reset --keep`` will not overwrite: the worktree then stays at the replayed commit, and
-the conflict says so), HEAD is pushed to the replay's side branch (``evo-run/<run>``, ``SIDE_BRANCH``), the default
-branch is not touched, and ``push`` raises ``PushConflict``, for the notice ``conflict_notice`` and the run's
-failure_cause ``push_conflict``. Any other branch the remote moved on is pushed as before, and the remote refuses it
-(``rejected``).
+they are replayed in a worktree of their own, the run's worktree moves to the result, the verify the replay names runs
+again there, and the result is pushed as a fast-forward, as many as REPLAY_TRIES times (``git_replay``). Only commits
+the remote's branch lacks are replayed: never one it has, and never one the run pushed to it before that the remote no
+longer has (someone took it out; putting it back is the owner's call). When the commits do not go on top (a conflict, a
+merge commit among them, changes of the worktree in the way) or the verify run again fails, the worktree goes back to
+HEAD as it was (unless that verify changed a file the remote's commits brought, which ``reset --keep`` will not
+overwrite: the worktree then stays at the replayed commit, and the conflict says so), HEAD is pushed to the replay's
+side branch (``evo-run/<run>``, ``SIDE_BRANCH``), the default branch is not touched, and ``push`` raises
+``PushConflict``, for the notice ``conflict_notice`` and the run's failure_cause ``push_conflict``. Any other branch the
+remote moved on is pushed as before, and the remote refuses it (``rejected``).
 
 A commit of a run (``commit_run``) holds only the run's own work. It leaves out, at any depth, the paths under
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
@@ -68,6 +66,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents.hub.runs import MAX_NOTICE_BODY_BYTES, MAX_NOTICE_COMMITS, RESULT_DIR, clip
+from evo_agents.worker.workspace import Workspace, folder_name, plan_branches  # noqa: F401 (callers import them here)
 
 TIMEOUT = 120.0
 NETWORK_TIMEOUT = 600.0  # fetch and push
@@ -77,8 +76,6 @@ DIFF_BYTES = 8 * 1024 * 1024  # the most of a run's diff read (``diff``), what t
 DIFF_CHUNK = 64 * 1024
 PROTECTED = ("main", "master")  # never pushed, whatever the remote's default branch is
 SIDE_BRANCH = "evo-run/{id}"  # the remote branch a plan run's commits go to when they do not go on top of its default
-REPLAY_TRIES = 3  # replays of a run's commits onto a default branch the remote keeps moving on before the push lands
-MAX_CONFLICT_PATHS = 10  # paths of a replay's conflict its message names
 # What git prints when the remote refused a push that is no fast-forward: the branch moved on.
 REJECTED = re.compile(
     r"\((?:non-fast-forward|fetch first)\)|tip of your current branch is behind"
@@ -142,10 +139,6 @@ class PushConflict(GitError):
         self.commits = commits  # the run's commits the default branch lacks, newest first, at most MAX_NOTICE_COMMITS
 
 
-class Unreplayable(GitError):
-    """The run's commits did not replay on top of the remote's tip; the message says why (the paths of a conflict)."""
-
-
 @dataclass(frozen=True)
 class Replay:
     """How ``push`` puts a plan run's own commits on top of a default branch its plan names when the remote moved it on
@@ -171,89 +164,13 @@ class Pushed:
     replayed_from: str | None = None  # HEAD before the replay, whose commits ``head`` holds again; None without one
 
 
-@dataclass(frozen=True)
-class Workspace:
-    """One repo of a plan run on this worker: the owner's checkout, and the worktree the run made of it. The daemon
-    keeps it in the run's record (``runs/<run>/run.json``), where ``evo-agents worker step`` reads it."""
-
-    repo: str
-    branch: str  # the branch the plan names for the repo: every push goes there
-    plan_branch: str | None  # the branch the plan named for the repo when the run was claimed, for check_push
-    checkout: Path
-    worktree: Path
-    local_branch: str  # the branch the worktree is on: ``branch``, or evo-run/<run>/<repo> when that is elsewhere
-    base: str  # the commit the worktree started at
-    protected: tuple[str, ...]  # the repo's default branches: the remote's HEAD, the hub's default_branch, main, master
-
-    def to_record(self) -> dict:
-        return {
-            "repo": self.repo,
-            "branch": self.branch,
-            "plan_branch": self.plan_branch,
-            "checkout": str(self.checkout),
-            "worktree": str(self.worktree),
-            "local_branch": self.local_branch,
-            "base": self.base,
-            "protected": sorted(self.protected),
-        }
-
-    @classmethod
-    def from_record(cls, item) -> Workspace:
-        """The workspace of a record that ``to_record`` wrote; ValueError for anything else."""
-        if not isinstance(item, dict):
-            raise ValueError("a repo of a plan run's record is a JSON object")
-        try:
-            plan_branch = item.get("plan_branch")
-            return cls(
-                repo=_text(item["repo"]),
-                branch=_text(item["branch"]),
-                plan_branch=plan_branch if isinstance(plan_branch, str) and plan_branch else None,
-                checkout=Path(_text(item["checkout"])),
-                worktree=Path(_text(item["worktree"])),
-                local_branch=_text(item["local_branch"]),
-                base=_text(item["base"]),
-                protected=tuple(str(name) for name in item.get("protected") or ()),
-            )
-        except KeyError as exc:
-            raise ValueError(f"a repo of a plan run's record lacks {exc}") from None
-
-
-def _text(value) -> str:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{value!r} is not a name")
-    return value
-
-
-def plan_branches(plan: dict) -> dict[str, str | None]:
-    """repo -> the branch the plan's ``repos`` names for it (None when it names none)."""
-    found: dict[str, str | None] = {}
-    repos = plan.get("repos") if isinstance(plan, dict) else None
-    for entry in repos if isinstance(repos, list) else []:
-        if isinstance(entry, dict) and isinstance(entry.get("repo"), str):
-            branch = entry.get("branch")
-            found[entry["repo"]] = branch if isinstance(branch, str) and branch else None
-    return found
-
-
-def folder_name(repo: str, taken: Collection[str] = ()) -> str:
-    """A name for the worktree of ``repo`` in a plan run's directory, which is also a valid part of a branch name:
-    the repo's own name when it is one, and none of ``taken``."""
-    base = re.sub(r"\.{2,}", ".", re.sub(r"[^A-Za-z0-9._-]+", "-", repo)).strip(".-") or "repo"
-    if base.endswith(".lock"):
-        base += "-repo"
-    name, number = base, 2
-    while name in taken:
-        name, number = f"{base}-{number}", number + 1
-    return name
-
-
 def _env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     env = dict(os.environ if base is None else base)
     env.update({"GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0"})
     return env
 
 
-def _tail(text: str, limit: int = MAX_MESSAGE) -> str:
+def tail(text: str, limit: int = MAX_MESSAGE) -> str:
     text = " ".join(text.strip().split())
     return text if len(text) <= limit else "..." + text[-limit:]
 
@@ -290,7 +207,7 @@ async def git(
 def _failure(command: str, code: int, stdout: str, stderr: str) -> GitError:
     """The error of ``git COMMAND`` that exited ``code``: GitAuthError when the remote refused its credential."""
     error = GitAuthError if AUTH_FAILURE.search(stderr) else GitError
-    return error(f"git {command} failed ({code}): {_tail(stderr or stdout)}")
+    return error(f"git {command} failed ({code}): {tail(stderr or stdout)}")
 
 
 async def rev(cwd: Path, ref: str) -> str | None:
@@ -649,7 +566,7 @@ def rejected(exc: Exception) -> bool:
     return isinstance(exc, GitError) and bool(REJECTED.search(str(exc)))
 
 
-async def _send(
+async def send(
     cwd: Path,
     source: str,
     branch: str,
@@ -712,177 +629,15 @@ async def push(
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")
     if replay is not None and (default or kind == "step"):
-        return await _push_replaying(cwd, branch, remote, head, replay, default, env=env, options=options)
+        from evo_agents.worker.git_replay import push_replaying
+
+        return await push_replaying(cwd, branch, remote, head, replay, default, env=env, options=options)
     before = await remote_tip(cwd, branch, remote, env=env)
     if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
         return Pushed(branch, head, default, False)
     commits = tuple(await new_commits(cwd, before, remote))
-    await _send(cwd, "HEAD", branch, remote, env=env, options=options)
+    await send(cwd, "HEAD", branch, remote, env=env, options=options)
     return Pushed(branch, head, default, True, commits)
-
-
-async def _push_replaying(
-    cwd: Path,
-    branch: str,
-    remote: str,
-    head: str,
-    replay: Replay,
-    default: bool,
-    *,
-    env: Mapping[str, str] | None,
-    options: Collection[str],
-) -> Pushed:
-    """``push`` of a default branch the plan names, with ``replay``: HEAD as a fast-forward, after its own commits were
-    replayed on top of the remote's tip when the remote moved the branch on, as many as REPLAY_TRIES times."""
-    original, onto = head, None
-    for attempt in range(1, REPLAY_TRIES + 1):
-        before = await remote_tip(cwd, branch, remote, env=env)
-        if before == head or (before is not None and await has_commit(cwd, before, head, branch, remote, env=env)):
-            return Pushed(branch, head, default, False, (), onto, original if head != original else None)
-        if before is not None and not await is_ancestor(cwd, before, head):
-            if await rev(cwd, before) is None:  # has_commit fetched it; nothing replays onto a commit not here
-                raise GitError(f"the tip {before[:12]} of {branch} on {remote} could not be fetched to replay onto")
-            head = await _replay(cwd, branch, remote, before, head, original, replay, env=env)
-            onto = before
-            if head == before:  # every commit of the run was on the remote's branch already, as another commit
-                return Pushed(branch, head, default, False, (), onto, original)
-        commits = tuple(await new_commits(cwd, before, remote))
-        try:
-            await _send(cwd, "HEAD", branch, remote, env=env, options=options)
-        except GitError as exc:
-            if not rejected(exc) or isinstance(exc, GitAuthError):
-                raise
-            if attempt == REPLAY_TRIES:
-                why = f"went on top of it {REPLAY_TRIES} times, and each time it moved on again before the push"
-                raise await _conflict(cwd, branch, remote, original, before or head, why, replay, env=env) from None
-            continue  # the remote moved the branch on between the look and the push
-        return Pushed(branch, head, default, True, commits, onto, original if head != original else None)
-    raise AssertionError("unreachable")  # pragma: no cover
-
-
-async def _replay(
-    cwd: Path,
-    branch: str,
-    remote: str,
-    onto: str,
-    head: str,
-    original: str,
-    replay: Replay,
-    *,
-    env: Mapping[str, str] | None,
-) -> str:
-    """The commits of ``head`` that ``onto`` lacks, replayed on top of ``onto``, the worktree at ``cwd`` moved there and
-    the replay's verify run again in it; the new HEAD. PushConflict, the worktree back at ``original`` and that on the
-    side branch, when they do not go on top or their verify fails."""
-
-    async def conflict(why: str) -> PushConflict:
-        return await _conflict(cwd, branch, remote, original, onto, why, replay, env=env)
-
-    for sha in replay.pushed:
-        if sha and await is_ancestor(cwd, sha, head) and not await is_ancestor(cwd, sha, onto):
-            raise await conflict(
-                f"include {sha[:12]}, which the run pushed to {branch} before and the remote no longer has: the worker "
-                "does not put back a commit the remote dropped"
-            )
-    _, merges, _ = await git(cwd, "rev-list", "--merges", f"{onto}..{head}", check=False)
-    if merges.split():
-        raise await conflict(f"hold a merge commit ({merges.split()[0][:12]}), which the worker does not replay")
-    try:
-        new = await replay_commits(cwd, onto, head, replay.scratch)
-    except Unreplayable as exc:
-        raise await conflict(f"did not go on top of it ({exc})") from None
-    code, out, err = await git(cwd, "reset", "--quiet", "--keep", new, check=False)
-    if code != 0:
-        why = f"went on top of it, but the worktree has changes the remote's commits touch ({_tail(err or out, 300)})"
-        raise await conflict(why)
-    if replay.verify is not None:
-        failed = await replay.verify(new)
-        if failed:
-            raise await conflict(f"went on top of it, but the verify run again there failed: {failed}")
-    return new
-
-
-async def replay_commits(cwd: Path, onto: str, head: str, scratch: Path) -> str:
-    """The commits of ``head`` that ``onto`` lacks, replayed on top of ``onto`` with ``git rebase`` in a worktree of
-    their own at ``scratch``, detached and without the repository's hooks, which is removed after: the commit the
-    replay ends on. A commit whose change ``onto`` has already is dropped. Unreplayable when one does not apply, naming
-    the paths in conflict; nothing of the repository's branches moves either way."""
-    local = {**without_hooks(None), "GIT_EDITOR": "true"}
-    await _drop_scratch(cwd, scratch)
-    scratch.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    try:
-        await git(cwd, "worktree", "add", "--quiet", "--detach", str(scratch), head, env=local)
-        code, out, err = await git(
-            scratch,
-            "-c",
-            "rebase.updateRefs=false",
-            "-c",
-            "rebase.autoStash=false",
-            "rebase",
-            "--quiet",
-            "--no-autosquash",
-            onto,
-            check=False,
-            env=local,
-        )
-        if code != 0:
-            _, unmerged, _ = await git(scratch, "diff", "--name-only", "--diff-filter=U", check=False, env=local)
-            await git(scratch, "rebase", "--abort", check=False, env=local)
-            paths = unmerged.split()
-            if paths:
-                more = f" and {len(paths) - MAX_CONFLICT_PATHS} more" if len(paths) > MAX_CONFLICT_PATHS else ""
-                raise Unreplayable(f"conflict in {', '.join(paths[:MAX_CONFLICT_PATHS])}{more}")
-            raise Unreplayable(_tail(err or out, 300) or f"git rebase exited {code}")
-        new = await rev(scratch, "HEAD")
-        if new is None:
-            raise Unreplayable("the replay ended on no commit")
-        return new
-    finally:
-        await _drop_scratch(cwd, scratch)
-
-
-async def _drop_scratch(cwd: Path, scratch: Path) -> None:
-    await git(cwd, "worktree", "remove", "--force", str(scratch), check=False)
-    if scratch.exists():
-        await asyncio.to_thread(shutil.rmtree, scratch, True)
-    await prune_worktrees(cwd)
-
-
-async def _conflict(
-    cwd: Path,
-    branch: str,
-    remote: str,
-    original: str,
-    onto: str,
-    why: str,
-    replay: Replay,
-    *,
-    env: Mapping[str, str] | None,
-) -> PushConflict:
-    """Put the worktree back at ``original`` and push it to the replay's side branch, never forced (a side branch
-    that has it already is left alone); the PushConflict that says so. A push to the side branch that fails raises.
-    When ``reset --keep`` will not take the worktree back, because the verify run again changed a file the remote's
-    commits brought, the worktree stays at the replayed commit with that change, and the message says so."""
-    stays = ""
-    if await rev(cwd, "HEAD") != original:
-        code, out, err = await git(cwd, "reset", "--quiet", "--keep", original, check=False)
-        head = await rev(cwd, "HEAD")
-        if code != 0 and head is not None and head != original:
-            stays = (
-                f"; the worktree stays at {head[:12]}, the commits on top of {branch}, since going back would "
-                f"overwrite changes made there ({_tail(err or out, 300)})"
-            )
-    side = replay.side_branch
-    tip = await remote_tip(cwd, side, remote, env=env)
-    if tip != original and not (tip is not None and await has_commit(cwd, tip, original, side, remote, env=env)):
-        await _send(cwd, original, side, remote, env=env)
-    _, out, _ = await git(cwd, "rev-list", f"--max-count={MAX_NOTICE_COMMITS}", original, f"^{onto}", check=False)
-    commits = tuple(out.split())
-    message = (
-        f"{branch} of {remote} moved on to {onto[:12]}, and the run's commits {why}. They are on {side} of {remote} "
-        f"now, at {original[:12]} ({len(commits)} commit(s) {branch} lacks); {branch} was not touched{stays}"
-    )
-    return PushConflict(message, branch=branch, side_branch=side, head=original, onto=onto, commits=commits)
 
 
 def push_notice(run_id: int, repo: str, pushed: Pushed) -> dict:

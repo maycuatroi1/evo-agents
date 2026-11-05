@@ -16,16 +16,16 @@ COMMAND = "merge-check"
 
 
 def cmd_merge_check(args) -> int:
-    from evo_agents.worker import cli as worker_cli  # it registers this module's parser
+    from evo_agents.worker.cli_support import worker_command
 
-    return worker_cli.worker_command(_ask)(args)
+    return worker_command(_ask)(args)
 
 
 def _ask(args) -> int:
-    from evo_agents.worker import cli as worker_cli
+    from evo_agents.worker import agent_cli  # it registers this module's parser
 
-    agent = worker_cli.agent_run(COMMAND)
-    workspace = worker_cli._workspaces(agent).get(args.repo)
+    agent = agent_cli.agent_run(COMMAND)
+    workspace = agent_cli.run_workspaces(agent).get(args.repo)
     body: dict = {"repo": args.repo, "number": args.pr}
     if workspace is not None:
         body["branch"] = workspace.branch
@@ -33,7 +33,7 @@ def _ask(args) -> int:
     async def work(hub) -> dict:
         return await hub.merge_check(agent.run_id, body)
 
-    answer = worker_cli.with_hub(agent, work)
+    answer = agent_cli.with_hub(agent, work)
     what = f"pull request #{answer.get('number')} of {args.repo} at {str(answer.get('head_sha') or '')[:12]}"
     if answer.get("decision_id") is None:
         reason = f": {answer['reason']}" if answer.get("reason") else "."
@@ -43,7 +43,7 @@ def _ask(args) -> int:
                 f"Merge only that head: gh pr merge {answer.get('number')} --match-head-commit {answer.get('head_sha')}"
             )
         return 0
-    decision_id = worker_cli._noted_decision(agent, {"id": answer.get("decision_id")})
+    decision_id = agent_cli.noted_decision(agent, {"id": answer.get("decision_id")})
     print(
         f"The hub judges {what}: wait #{decision_id} is open until its verdict. End your turn once no work that does "
         "not depend on it is left: the run waits without the agent and holds no worker slot, and this session goes on "

@@ -108,14 +108,14 @@ def test_claude_codes_trust_is_recorded_for_the_worktree_and_every_other_key_is_
     path.chmod(0o600)
     assert interactive.claude_state_path({"HOME": str(home)}) == path
 
-    assert interactive.trust_folder(path, interactive._folders(link)) is True
+    assert interactive.trust_folder(path, interactive.worktree_folders(link)) is True
     written = json.loads(path.read_text(encoding="utf-8"))
     assert written["projects"].pop(str(link)) == {"hasTrustDialogAccepted": True}
     assert written["projects"].pop(os.path.realpath(worktree)) == {"hasTrustDialogAccepted": True}
     assert written == state, "every other key, and the other projects, stay as they were"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     before = path.read_bytes()
-    assert interactive.trust_folder(path, interactive._folders(link)) is False
+    assert interactive.trust_folder(path, interactive.worktree_folders(link)) is False
     assert path.read_bytes() == before, "a folder trusted already leaves the file alone"
 
     # An entry the folder has keeps its keys.

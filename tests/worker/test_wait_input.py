@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-import evo_agents.worker.cli as worker_cli
+import evo_agents.worker.agent_cli as worker_cli
 from evo_agents.worker.agent_input import payload_contains, wait_until
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 

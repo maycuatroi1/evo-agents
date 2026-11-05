@@ -10,7 +10,7 @@ from evo_agents.worker.runner.common import HARD_STOP_TRIES, log, wait_or
 from evo_agents.worker.spool import Spool
 
 if TYPE_CHECKING:
-    from evo_agents.worker.daemon import Daemon
+    from evo_agents.worker.run_host import RunHost
 
 FLUSH_DEBOUNCE = 0.2  # seconds of events gathered into one batch
 
@@ -27,7 +27,7 @@ class Sender:
     call is tried again with the backoff (``transient``); a hub that will not take the run's events (its own 404, the
     run's 20,000) ends the sending and drops what is left."""
 
-    def __init__(self, daemon: Daemon, spool: Spool):
+    def __init__(self, daemon: RunHost, spool: Spool):
         self.daemon = daemon
         self.spool = spool
         self.wake = asyncio.Event()

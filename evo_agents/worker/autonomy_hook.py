@@ -66,7 +66,7 @@ from pathlib import Path
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ASK, AUTO, CLASS_NAMES, DENY, NOTIFY
 from evo_agents.worker import pull_heads
-from evo_agents.worker.command_classes import SHELLS, Hit, shell_script, classify, repo_slug, simple_commands
+from evo_agents.worker.command_classes import SHELLS, Hit, classify, repo_slug, shell_script, simple_commands
 
 BACKUPS_FILE = "backups.jsonl"
 BACKUP_FRESH = timedelta(hours=24)

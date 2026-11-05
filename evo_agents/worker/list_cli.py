@@ -68,7 +68,7 @@ def cmd_list(args) -> int:
 
 
 def register_list(wsub) -> None:
-    from evo_agents.worker.cli import worker_command  # the cli imports this module
+    from evo_agents.worker.cli_support import worker_command
 
     listed = wsub.add_parser(
         "list",

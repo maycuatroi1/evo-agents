@@ -1,7 +1,7 @@
 """The floor S3 at a push (plan autonomy-levels, criterion a10): the worker never pushes a commit whose message or diff
 holds the value of one of the run's leases.
 
-Every push of the worker goes through ``gitops._send``, which calls ``check`` first. It reads the commits the push
+Every push of the worker goes through ``gitops.send``, which calls ``check`` first. It reads the commits the push
 would send that the remote does not have yet (``git log -p SOURCE --not --remotes=REMOTE``, at most MAX_COMMITS) and
 looks for each lease value in their messages and in the lines their diffs add:
 

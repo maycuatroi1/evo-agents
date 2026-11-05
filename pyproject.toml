@@ -188,8 +188,8 @@ forbidden_modules = ["evo_agents.hub.server"]
 ignore_imports = [
     # The parser of `evo-agents worker plan` borrows the hub CLI's JSON option and plan keys. Both modules walk the
     # hub's whole CLI, whose `hub serve` and `hub worker` commands import the server inside their functions only.
-    "evo_agents.worker.cli -> evo_agents.hub.contract",
-    "evo_agents.worker.cli -> evo_agents.hub.plan_cli",
+    "evo_agents.worker.agent_cli -> evo_agents.hub.contract",
+    "evo_agents.worker.agent_cli -> evo_agents.hub.plan_cli",
 ]
 broken_contract_guidance = """\
 The worker runs on members' machines without the hub-server extra, so nothing it imports may reach \

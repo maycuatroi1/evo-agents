@@ -130,12 +130,12 @@ def test_plugin_runtime_declarations_of_plugins_the_owner_did_not_accept_or_unre
     daemon = Daemon(machine.home, config, TOKEN, adapters={}, env=machine.env)
     other = {**DECLARATION, "runtime": "other/fake", "plugin": "other"}
     broken = {**DECLARATION, "runtime": "sandbox/broken", "command": []}
-    daemon._take_worker_state({"drain": False, "plugin_runtimes": [DECLARATION, other, broken]})
+    daemon.state.take({"drain": False, "plugin_runtimes": [DECLARATION, other, broken]})
     assert sorted(daemon.plugin_adapters) == [RUNTIME]
     cls = daemon.plugin_adapters[RUNTIME]
     assert (cls.runtime, cls.declaration.command) == (RUNTIME, tuple(DECLARATION["command"]))
     assert daemon._detect()[RUNTIME] == FOUND
-    daemon._take_worker_state({"drain": False, "settings": {**SETTINGS, "plugins": []}})
+    daemon.state.take({"drain": False, "settings": {**SETTINGS, "plugins": []}})
     assert daemon.config.plugins == [] and daemon.plugin_adapters == {}, "no plugin accepted, no runtime of one"
-    daemon._take_worker_state({"drain": False, "settings": {**SETTINGS, "plugins": "sandbox"}})
+    daemon.state.take({"drain": False, "settings": {**SETTINGS, "plugins": "sandbox"}})
     assert daemon.config.plugins == [], "settings this daemon cannot read are left"

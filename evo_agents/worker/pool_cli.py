@@ -272,7 +272,7 @@ def _setting_options(parser, *, create: bool) -> None:
 
 
 def register_pool(wsub) -> None:
-    from evo_agents.worker.cli import worker_command  # the cli imports this module
+    from evo_agents.worker.cli_support import worker_command
 
     pool = wsub.add_parser("pool", help="your worker pools and their join tokens (needs `hub login`)")
     psub = pool.add_subparsers(dest="pool_command", required=True)

@@ -22,7 +22,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 from evo_agents.hub import runs
 from evo_agents.worker import cli as worker_cli
-from evo_agents.worker.daemon import _settings
+from evo_agents.worker.daemon_state import settings_of
 from tests.worker.fake_hub import FakeHub
 from tests.worker.test_plan_runs import PLAN, machine, plan_body, wait_for, with_daemon  # noqa: F401 (machine)
 
@@ -201,15 +201,15 @@ def test_a_heartbeat_answer_without_settings_or_with_unreadable_ones_keeps_the_c
     ],
 )
 def test_settings_not_as_the_hub_sends_them_are_not_read(value):
-    assert _settings(value) is None
+    assert settings_of(value) is None
 
 
 def test_settings_as_the_hub_sends_them_are_read_and_unknown_keys_left():
     value = {"slots": 16, "name": "mac", "labels": ["gpu"], "later": 1}
-    assert _settings(value) == {"slots": 16, "name": "mac", "labels": ["gpu"]}
+    assert settings_of(value) == {"slots": 16, "name": "mac", "labels": ["gpu"]}
     projects = {**value, "projects": ["blog", "demo"]}
-    assert _settings(projects) == {"slots": 16, "name": "mac", "labels": ["gpu"], "projects": ["blog", "demo"]}
-    assert _settings({**value, "projects": []}) == {"slots": 16, "name": "mac", "labels": ["gpu"]}  # none sent
+    assert settings_of(projects) == {"slots": 16, "name": "mac", "labels": ["gpu"], "projects": ["blog", "demo"]}
+    assert settings_of({**value, "projects": []}) == {"slots": 16, "name": "mac", "labels": ["gpu"]}  # none sent
 
 
 def test_register_slots_takes_1_to_16():

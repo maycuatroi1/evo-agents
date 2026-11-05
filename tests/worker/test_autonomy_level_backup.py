@@ -3,7 +3,7 @@ part) on the worker.
 
 The agent of a run records a backup: the command sends it to the hub (the fake hub keeps it) and keeps it in the run's
 ``backups.jsonl``, where the hook of autonomy reads it; a time in the future and one without its zone are refused, and
-nothing is kept. Every push of the worker (``gitops._send``) refuses a commit whose message or added lines hold the
+nothing is kept. Every push of the worker (``gitops.send``) refuses a commit whose message or added lines hold the
 value of one of the run's leases, in the daemon with the values it holds and in an agent's command through the run's
 socket (``op leaks``), and the refusal names the commit, never the value.
 """
@@ -126,13 +126,13 @@ def test_autonomy_level_a_push_that_carries_a_lease_value_is_refused_without_the
     credentials.remember(VALUE, RUN)
     try:
         with pytest.raises(gitops.PushRefused) as refused:
-            asyncio.run(gitops._send(repo, "HEAD", "feat/x", "origin", env=None))
+            asyncio.run(gitops.send(repo, "HEAD", "feat/x", "origin", env=None))
     finally:
         credentials.forget(RUN)
     message = str(refused.value)
     assert leaked[:12] in message and "floor S3" in message and VALUE not in message
     assert _git(repo, "ls-remote", "origin", "refs/heads/feat/x") == "", "nothing was pushed"
-    asyncio.run(gitops._send(repo, "HEAD", "feat/x", "origin", env=None)), "no value held: the push goes"
+    asyncio.run(gitops.send(repo, "HEAD", "feat/x", "origin", env=None)), "no value held: the push goes"
 
 
 def test_autonomy_level_a_commit_message_with_a_lease_value_is_refused_and_a_removed_line_is_not(repo):

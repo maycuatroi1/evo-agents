@@ -39,7 +39,7 @@ from evo_agents.worker.runner.watchdog import Watchdog
 from evo_agents.worker.spool import Spool, encode_event
 
 if TYPE_CHECKING:
-    from evo_agents.worker.daemon import Daemon
+    from evo_agents.worker.run_host import RunHost
 
 SENDER_GRACE = 30.0  # seconds the events left have to reach the hub once the run is over here
 
@@ -73,11 +73,16 @@ def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None,
     return tuple(curator.pop(f"{kind}_key", None) for kind in kinds)  # type: ignore[return-value]
 
 
+def _curator_of(spec: dict) -> dict | None:
+    found = spec.get("curator")
+    return found if isinstance(found, dict) else None
+
+
 class Run:
     """One run on this worker, from the claim to its last report: its state and log, what the heartbeat asks of it,
     the parts every kind shares, and its kind (``kind``)."""
 
-    def __init__(self, daemon: Daemon, spec: dict):
+    def __init__(self, daemon: RunHost, spec: dict):
         self.daemon = daemon
         self.spec = spec
         self.id = int(spec["id"])
@@ -108,8 +113,7 @@ class Run:
         self.summary: str | None = None
         self.proofs: list[dict] | None = None  # a run of one step's proof of each criterion its step names
         self.outcome: Outcome | None = None
-        found = spec.get("curator")
-        self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
+        self.curator: dict | None = _curator_of(spec)  # a run of the Curator: its role
         # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
         # and records see.
         self.judge_key, self.replay_key, self.history_key, self.probe_key = _own_keys(self.curator)

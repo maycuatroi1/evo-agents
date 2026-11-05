@@ -125,7 +125,7 @@ def test_browser_login_command_notes_the_decision_for_the_daemon_and_a_step_run_
 
         return asyncio.run(work(Hub()))
 
-    import evo_agents.worker.cli as worker_cli
+    import evo_agents.worker.agent_cli as worker_cli
 
     monkeypatch.setattr(worker_cli, "with_hub", with_hub)
     args = types.SimpleNamespace(

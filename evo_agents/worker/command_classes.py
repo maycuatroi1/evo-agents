@@ -145,6 +145,7 @@ def classify(
 
 
 def shell_script(words: list[str]) -> str | None:
+    """The script of a shell called with ``-c`` (``bash -c SCRIPT``), None when it has none."""
     for index, word in enumerate(words[1:], 1):
         if word.startswith("-") and "c" in word.lstrip("-") and not word.startswith("--"):
             return words[index + 1] if index + 1 < len(words) else None
@@ -228,6 +229,7 @@ def _rm(words: list[str], worktree) -> list[Hit]:
 
 
 def option_of(words: list[str], *names: str) -> str | None:
+    """The value of the first of ``names`` among ``words`` (``--name VALUE`` or ``--name=VALUE``), None without one."""
     for index, word in enumerate(words):
         for name in names:
             if word == name and index + 1 < len(words):

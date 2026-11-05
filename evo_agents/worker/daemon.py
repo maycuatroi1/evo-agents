@@ -93,146 +93,49 @@ import asyncio
 import contextlib
 import logging
 import os
-import shutil
 import signal
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.guard_check import ENV as GUARD_ENV
 from evo_agents.hub import runs
-from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import (
-    checkouts,
-    doctor_report,
-    gitops,
-    guard,
-    interactive,
-    kg_sync,
-    orphans,
-    skill_sync_loop,
-    verify_jobs,
-)
+from evo_agents.worker import checkouts, doctor_report, guard, interactive, skill_sync_loop
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
-from evo_agents.worker.browser import install as browser_install
+from evo_agents.worker.background import spawn
 from evo_agents.worker.browser import session as browser_session
-from evo_agents.worker.credentials import socket_path
-from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
-from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
+from evo_agents.worker.daemon_browser import BrowserInstall
+from evo_agents.worker.daemon_claims import Claims
+from evo_agents.worker.daemon_cleanup import Cleanup
+from evo_agents.worker.daemon_heartbeat import Heartbeat, heartbeat_seconds
+from evo_agents.worker.daemon_kg import Graphs
+from evo_agents.worker.daemon_leftovers import Leftovers
+from evo_agents.worker.daemon_state import WorkerState
+from evo_agents.worker.daemon_updates import Updates
+from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
+from evo_agents.worker.hubapi import HubProblem, Outdated, WorkerHub, new_session
 from evo_agents.worker.power import KeepAwake, WakeWatch
-from evo_agents.worker.run import KINDS, Run, Sender, run_class
-from evo_agents.worker.runtimes.acp import adapter_class
+from evo_agents.worker.run import Run
 from evo_agents.worker.selfupdate.updater import SelfUpdate
-from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
+from evo_agents.worker.spool import SpoolBudget
 
 log = logging.getLogger("evo_agents.worker")
 
-HEARTBEAT_VARIABLE = "EVO_WORKER_HEARTBEAT_SECONDS"  # for tests: a shorter heartbeat than the protocol's 15 s
 EXIT_FAILED = 1
 RUNTIMES_EVERY = 300.0  # seconds between looks at the runtimes
 CHECKOUTS_EVERY = 60.0  # and at the checkouts
-CLEANUP_EVERY = 3600.0
-KEEP_WORKTREES = timedelta(days=7)  # the sweep's: the worktrees of a run whose work merged go at the next cleanup
-MAX_MERGED_ASKED = 200  # run ids in one POST /v1/worker/merged, as the hub takes them
-# the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
-DIRECTORY_KINDS = (
-    "plan",
-    "review",
-    "judge",
-    "author",
-    "chat",
-    "task",
-    "replay",
-    "history",
-    "release",
-    "question",
-    "probe",
-)
 LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events to go
-MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
-
-
-def _strings(value) -> bool:
-    return isinstance(value, list) and all(isinstance(item, str) for item in value)
-
-
-def _settings(value) -> dict | None:
-    """The worker settings of a heartbeat answer, {"slots", "name", "labels"}, "plugins" when the hub sends them
-    (0039), "version_locked" (0048) and "projects" (evo-ak 0.31.2), or None when they are not as the hub sends them."""
-    if not isinstance(value, dict):
-        return None
-    slots, name, labels = value.get("slots"), value.get("name"), value.get("labels")
-    if isinstance(slots, bool) or not isinstance(slots, int) or not 1 <= slots <= runs.MAX_SLOTS:
-        return None
-    if not isinstance(name, str) or not name or not _strings(labels):
-        return None
-    found = {"slots": slots, "name": name, "labels": list(labels)}
-    if "plugins" in value:
-        if not _strings(value["plugins"]) or len(value["plugins"]) > runs.MAX_WORKER_PLUGINS:
-            return None
-        found["plugins"] = list(value["plugins"])
-    if "version_locked" in value:
-        if not isinstance(value["version_locked"], bool):
-            return None
-        found["version_locked"] = value["version_locked"]
-    if "projects" in value:  # a worker serves one project at least: none is a hub that sent no list
-        if not _strings(value["projects"]):
-            return None
-        if value["projects"]:
-            found["projects"] = list(value["projects"])
-    return found
-
-
-def _paths(record: dict) -> list[Path]:
-    """The directory and worktrees a run's record names."""
-    found = [record.get("dir"), record.get("worktree")]
-    found += [item.get("worktree") for item in record.get("repos") or [] if isinstance(item, dict)]
-    return [Path(item) for item in found if isinstance(item, str) and item]
-
-
-def _finished(record: dict, now: datetime) -> datetime:
-    """When a run's record says it ended, in UTC; ``now`` for one that has not, or says it unreadably."""
-    try:
-        finished = datetime.fromisoformat(str(record["finished_at"])) if record.get("finished_at") else now
-    except ValueError:
-        return now
-    return finished.replace(tzinfo=UTC) if finished.tzinfo is None else finished
-
-
-def heartbeat_seconds(env: Mapping[str, str]) -> float:
-    try:
-        value = float(env.get(HEARTBEAT_VARIABLE) or runs.HEARTBEAT_SECONDS)
-    except ValueError:
-        value = float(runs.HEARTBEAT_SECONDS)
-    return min(max(value, 0.2), float(runs.HEARTBEAT_SECONDS))
-
-
-def _goes_on_from(spec: dict) -> set:
-    """The runs whose worktrees a run of claim ``spec`` may adopt: the one it resumes and its lost attempt."""
-    lost = spec.get("lost_attempt") if isinstance(spec.get("lost_attempt"), dict) else {}
-    ids = (spec.get("resume_of_run_id"), lost.get("run_id"))
-    return {int(found) for found in ids if isinstance(found, int | str) and str(found).isdigit()}
-
-
-def task_failed(task: asyncio.Task) -> None:
-    """Log what ended a background task of the daemon: a loop that raised stops for the daemon's life, and its error
-    must not wait in the task until the daemon stops (or vanish, when nothing awaits it)."""
-    if task.cancelled() or task.exception() is None:
-        return
-    exc = task.exception()
-    log.error("a background task of the daemon failed", extra={"task": task.get_name()}, exc_info=exc)
-
-
-def spawn(coro, name: str) -> asyncio.Task:
-    """``coro`` as a task named ``name`` whose error is logged as it ends (``task_failed``)."""
-    task = asyncio.create_task(coro, name=name)
-    task.add_done_callback(task_failed)
-    return task
 
 
 class Daemon:
+    """The daemon of a worker: the state its parts and its runs share, and the loop that runs those parts. Each part
+    is a component of its own: the heartbeat (``daemon_heartbeat``) and what its answers say of the worker
+    (``daemon_state``), the claims (``daemon_claims``), what an earlier daemon left (``daemon_leftovers``), the cleanup
+    (``daemon_cleanup``), the night shift (``daemon_kg``), the browser install (``daemon_browser``) and the
+    self-update (``daemon_updates``). A run sees the daemon through ``run_host.RunHost``."""
+
     def __init__(
         self,
         home: WorkerHome,
@@ -250,7 +153,7 @@ class Daemon:
         self.token = token
         self.adapters = dict(adapters)
         self.env = dict(os.environ if env is None else env)
-        self.env[GUARD_ENV] = str(guard.policy_path(home.root))  # the hub's private names, kept by _take_guard
+        self.env[GUARD_ENV] = str(guard.policy_path(home.root))  # the hub's private names, kept by guard.heard
         self.heartbeat_s = heartbeat_seconds(self.env)
         self.budget = SpoolBudget()
         self.runs: dict[int, Run] = {}
@@ -269,26 +172,28 @@ class Daemon:
         self._repo_locks: dict[str, asyncio.Lock] = {}
         self._runtimes_at = float("-inf")
         self._checkouts_at = float("-inf")
-        self._beat_failures = 0
-        self._settings_unread = False
-        self._declarations_unread: set[str] = set()  # the errors of declarations logged already
         self.keep_awake = keep_awake or KeepAwake(config.name)  # the power assertions, while it holds a run
         self.wake = wake or WakeWatch()  # notices a sleep from the turns of the heartbeat and claim loops
         self.updater = self_update or SelfUpdate.here(home, self.env)  # updating its install to the tag nightly
         self.outdated = False  # the hub answered 426
-        self._claiming = False
-        self.kg_on = kg_sync.enabled(self.env)
-        self.kg_every = kg_sync.every(self.env)
-        self.kg: kg_sync.KgSync | None = None  # made once the loop runs, with the hub's URL and the token
-        self.kg_duties: dict[str, str | None] = {}  # project -> when the hub last took a run of its graph
-        self._kg_wrong: dict[str, tuple] = {}  # project -> what went wrong at its last look
-        self.browser_report: dict | None = None  # the Chromium `worker browser install` installed, as heartbeats say it
         self.browsers: dict[int, browser_session.BrowserSession] = {}  # run id -> its Chromium, while it runs
-        # the owner's open Install browser, as heartbeats report it: {requested_at, ended, error}; None for none
-        self.install_asked: dict | None = None
-        self._installing: asyncio.Task | None = None  # the install of Chromium it carries out, while it runs
-        self._guarding: asyncio.Task | None = None  # the fetch of the hub's guard policy, while it runs
-        self._asks_merged = True  # until a hub before POST /v1/worker/merged answers 404
+        self._events()
+        # its parts
+        self.heartbeat = Heartbeat(self)
+        self.state = WorkerState(self)
+        self.claims = Claims(self)
+        self.leftovers = Leftovers(self)
+        self.cleaner = Cleanup(self)
+        self.graphs = Graphs(self)
+        self.browser = BrowserInstall(self)
+        self.updates = Updates(self)
+
+    def _events(self) -> None:
+        """The events of a turn of ``run``, made again each time it starts."""
+        self.stopping = asyncio.Event()
+        self.hard_stop = asyncio.Event()
+        self.slot_free = asyncio.Event()
+        self.beat_ok = asyncio.Event()
 
     # Shared with the runs
 
@@ -337,11 +242,11 @@ class Daemon:
 
     # The machine
 
-    async def _look_at_machine(self, force: bool = False) -> None:
+    async def look_at_machine(self, force: bool = False) -> None:
         now = asyncio.get_running_loop().time()
         if force or now - self._runtimes_at > RUNTIMES_EVERY:
             self.runtimes = await asyncio.to_thread(self._detect)
-            self.browser_report = await asyncio.to_thread(browser_install.report, self.home)
+            await self.browser.look()
             self._runtimes_at = now
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)
@@ -351,6 +256,13 @@ class Daemon:
             self.checkouts = found
             self._checkouts_at = now
 
+    def look_again(self, *, runtimes: bool = False, checkouts: bool = False) -> None:
+        """Have the next heartbeat look at the runtimes, or the checkouts, whatever the time since the last look."""
+        if runtimes:
+            self._runtimes_at = float("-inf")
+        if checkouts:
+            self._checkouts_at = float("-inf")
+
     def _detect(self) -> dict[str, dict]:
         """The runtimes of the core, then those of the plugins the hub declared, as the heartbeat reports them."""
         return {**detect_runtimes(self.adapters), **detect_adapters(self.plugin_adapters)}
@@ -359,14 +271,24 @@ class Daemon:
     def free_slots(self) -> int:
         return max(0, self.config.slots - len(self.runs))
 
+    def in_pool(self) -> bool:
+        """Whether this daemon is a node of a worker pool, which syncs the hub's skills (``skill_sync_loop``)."""
+        return skill_sync_loop.pool_of(self.config.labels or ()) is not None
+
+    def says(self, feature: str) -> bool:
+        """Whether the heartbeat names ``feature``: the night shift unless turned off, the browser once Chromium is
+        installed, the skill sync on a pool node, every other one always."""
+        if feature == runs.KG_SYNC:
+            return self.graphs.on
+        if feature == runs.SKILL_SYNC:
+            return self.in_pool()
+        return feature != runs.BROWSER or self.browser.report is not None
+
     # The loop
 
     async def run(self) -> int:
-        self.stopping = asyncio.Event()
-        self.hard_stop = asyncio.Event()
-        self.slot_free = asyncio.Event()
-        self.beat_ok = asyncio.Event()
-        self.kg_wake = asyncio.Event()
+        self._events()
+        self.graphs.wake = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self._signal, sig)
@@ -374,54 +296,70 @@ class Daemon:
         self.hub = WorkerHub(self.config.url, self.token, session)
         background: list[asyncio.Task] = []
         try:
-            await self._clear_leftovers()
-            await self._look_at_machine(force=True)
+            await self.leftovers.clear()
+            await self.look_at_machine(force=True)
             self._log_start()
-            self.updater.publish(held=0, orphans=len(self.orphans), worker=self._who())
-            leftovers = spawn(self._send_leftovers(), "leftovers")
-            heartbeat = spawn(self._heartbeat_loop(), "heartbeat")
-            claims = spawn(self._claim_loop(), "claims")
-            cleanup = spawn(self._cleanup_loop(), "cleanup")
-            updates = spawn(self._self_update_loop(), "self-update")
-            doctoring = doctor_report.report_loop(
-                self.hub, self.stopping, lambda: doctor_report.examine_here(self.env), secrets=(self.token,)
-            )
-            background = [leftovers, heartbeat, cleanup, updates, spawn(doctoring, "doctor-report")]
-            if self.kg_on:
-                background.append(spawn(self._kg_sync_loop(), "kg-sync"))
-            if self._in_pool():
-                syncing = skill_sync_loop.sync_loop(self.config.url, self.token, self.env, self.stopping)
-                background.append(spawn(syncing, "skill-sync"))
+            self.updater.publish(held=0, orphans=len(self.orphans), worker=self.updates.who())
+            background = self._start_parts()
             await self.stopping.wait()
-            claims.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await claims
-            if self.run_tasks:
-                log.info("waiting for the runs held to end", extra={"runs": sorted(self.run_tasks)})
-            while self.run_tasks:
-                await asyncio.wait(list(self.run_tasks.values()))
-            if self.outdated:
-                await self._update_for_hub(updates)
-            with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(asyncio.shield(leftovers), 0 if self.hard_stop.is_set() else LEFTOVER_GRACE)
+            await self._wind_down(*background[:3])
         finally:
-            if self.kg is not None:
-                self.kg.stop.set()
-            if self._installing is not None:  # its thread ends on its own; the daemon does not wait for it here
-                background.append(self._installing)
-            for task in background:
-                task.cancel()
-            for task in background:
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await task
-            await self.updater.settle()  # an install in flight ends before the daemon does
-            self.updater.close()
-            await session.close()
-            self.keep_awake.close()
+            await self._close(background, session)
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.remove_signal_handler(sig)
         log.info("worker stopped", extra={"exit_code": self.exit_code})
         return self.exit_code
+
+    def _start_parts(self) -> list[asyncio.Task]:
+        """The tasks of the daemon's parts, the events left, the claims and the self-update first."""
+        assert self.hub is not None
+        leftovers = spawn(self.leftovers.send_events(), "leftovers")
+        heartbeat = spawn(self.heartbeat.loop(), "heartbeat")
+        claims = spawn(self.claims.loop(), "claims")
+        cleanup = spawn(self.cleaner.loop(), "cleanup")
+        updates = spawn(self.updates.loop(), "self-update")
+        doctoring = doctor_report.report_loop(
+            self.hub, self.stopping, lambda: doctor_report.examine_here(self.env), secrets=(self.token,)
+        )
+        parts = [leftovers, claims, updates, heartbeat, cleanup, spawn(doctoring, "doctor-report")]
+        if self.graphs.on:
+            parts.append(spawn(self.graphs.loop(), "kg-sync"))
+        if self.in_pool():
+            syncing = skill_sync_loop.sync_loop(self.config.url, self.token, self.env, self.stopping)
+            parts.append(spawn(syncing, "skill-sync"))
+        return parts
+
+    async def _wind_down(self, leftovers: asyncio.Task, claims: asyncio.Task, updates: asyncio.Task) -> None:
+        """Once the daemon stops: no new claim, the runs held end, the update the hub needs, the events left go."""
+        claims.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await claims
+        if self.run_tasks:
+            log.info("waiting for the runs held to end", extra={"runs": sorted(self.run_tasks)})
+        while self.run_tasks:
+            await asyncio.wait(list(self.run_tasks.values()))
+        if self.outdated:
+            await self.updates.for_hub(updates)
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(leftovers), 0 if self.hard_stop.is_set() else LEFTOVER_GRACE)
+
+    async def _close(self, background: list[asyncio.Task], session) -> None:
+        self.graphs.stop()
+        if self.browser.installing is not None:  # its thread ends on its own; the daemon does not wait for it here
+            background.append(self.browser.installing)
+        for task in background:
+            task.cancel()
+        for task in background:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        await self.updater.settle()  # an install in flight ends before the daemon does
+        self.updater.close()
+        await session.close()
+        self.keep_awake.close()
+
+    async def cleanup(self, now: datetime | None = None) -> list[int]:
+        """The cleanup's sweep (``daemon_cleanup``): the ids of the runs whose worktrees and records went."""
+        return await self.cleaner.sweep(now)
 
     def _log_start(self) -> None:
         available = sorted(name for name, report in self.runtimes.items() if report.get("available"))
@@ -464,711 +402,3 @@ class Daemon:
             self.hard_stop.set()
             for run in self.runs.values():
                 run.request_stop("shutdown")
-
-    # Heartbeat
-
-    async def _heartbeat_loop(self) -> None:
-        backoff = Backoff()
-        while True:
-            self.wake.turn("heartbeat")  # a sleep holds the claims, never the heartbeats of the runs held
-            try:
-                ok = await self._beat()
-            except Exception:  # a bug here must not end the heartbeats, and with them the leases
-                log.exception("heartbeat failed")
-                ok = False
-            if ok:
-                backoff.reset()
-                delay = self.heartbeat_s
-            else:
-                delay = min(self.heartbeat_s, backoff.next())
-            await asyncio.sleep(delay)
-
-    def _held(self) -> list[int]:
-        return sorted(run_id for run_id, run in self.runs.items() if not run.ended)
-
-    async def _beat(self) -> bool:
-        try:
-            await self._look_at_machine()
-        except Exception:
-            log.exception("looking at the runtimes and checkouts failed")
-        held = self._held()[:MAX_HEARTBEAT_RUNS]
-        asked = sorted(self.orphans)[: MAX_HEARTBEAT_RUNS - len(held)]
-        try:
-            answer = await self.hub.heartbeat(self._heartbeat_body(held + asked))
-        except Unreachable as exc:
-            self._beat_failures += 1
-            if self._beat_failures <= 3 or self._beat_failures % 20 == 0:
-                log.warning("heartbeat not sent", extra={"failures": self._beat_failures, "error": str(exc)})
-            return False
-        except Refused as exc:
-            if isinstance(exc, Outdated) or exc.status in (401, 403):
-                self.fatal(exc)
-            else:
-                log.error("heartbeat refused", extra={"status": exc.status, "error": str(exc)})
-            return False
-        if self._beat_failures:
-            log.info("heartbeat sent again", extra={"after_failures": self._beat_failures})
-            self._beat_failures = 0
-        listed = answer.get("runs") if isinstance(answer, dict) else None
-        controls = [item for item in listed or [] if isinstance(item, dict)]
-        if asked:  # before any claim, so a new run never starts next to an agent a dead daemon left
-            await self._settle_orphans({item.get("id"): item for item in controls if item.get("id") in asked})
-        self.beat_ok.set()
-        if isinstance(answer, dict):
-            self._take_worker_state(answer)
-        for control in controls:
-            run = self.runs.get(control.get("id"))
-            if run is None or run.ended:
-                continue
-            if control.get("park"):  # parked, or done because a new run resumes it: not held, and not cancelled
-                run.request_park()
-            elif not control.get("held"):
-                run.request_stop("gone")
-            elif control.get("cancel"):
-                run.request_stop("cancel")
-            else:
-                decisions = control.get("decisions")
-                run.open_decisions = decisions if isinstance(decisions, int) else 0
-                if control.get("inbox"):
-                    run.inbox_waits()
-                if control.get("takeover"):
-                    run.request_takeover()
-                if control.get("handback"):
-                    run.request_handback()
-                if control.get("finish"):
-                    run.request_finish()
-                if control.get("terminal_open"):
-                    run.open_terminal()
-                if run.curator is not None:  # the watchdog of the Curator's runs, after each heartbeat
-                    run.spawn(run.watch())
-        return True
-
-    def _heartbeat_body(self, reported: list[int]) -> dict:
-        """What a heartbeat sends: the machine, the runs ``reported``, the install, what the last looks at the graphs
-        found."""
-        body = {
-            "runtimes": self.runtimes,
-            "checkouts": self.checkouts,
-            "free_slots": min(self.free_slots, runs.MAX_SLOTS),
-            "runs": reported,
-            "agent_version": __version__,
-            # the kinds of runs.RUN_KINDS this daemon has a class for (run.KINDS): the hub hands it no other
-            "run_kinds": [kind for kind in runs.RUN_KINDS if kind in KINDS],
-            # a plan run with a session for each step (runner.sessions), an author run that asks decisions
-            "features": [name for name in runs.WORKER_FEATURES if self._says(name)],
-            **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
-        }
-        report = self.kg.report(sorted(self.kg_duties)) if self.kg is not None else None
-        if report and report["projects"]:
-            body["kg_sync"] = report  # what the last looks found (0053)
-        if self.browser_report is not None:
-            body["browser"] = self.browser_report  # its Chromium, and how many browsers it holds at once (0119)
-        if self.install_asked is not None:  # where it stands with its owner's Install browser (0146)
-            body["browser_install"] = {key: value for key, value in self.install_asked.items() if value is not None}
-        return body
-
-    def _in_pool(self) -> bool:
-        """Whether this daemon is a node of a worker pool, which syncs the hub's skills (``skill_sync_loop``)."""
-        return skill_sync_loop.pool_of(self.config.labels or ()) is not None
-
-    def _says(self, feature: str) -> bool:
-        """Whether the heartbeat names ``feature``: the night shift unless turned off, the browser once Chromium is
-        installed, the skill sync on a pool node, every other one always."""
-        if feature == runs.KG_SYNC:
-            return self.kg_on
-        if feature == runs.SKILL_SYNC:
-            return self._in_pool()
-        return feature != runs.BROWSER or self.browser_report is not None
-
-    def _take_worker_state(self, answer: dict) -> None:
-        """What a heartbeat answer says of the worker itself: whether to drain, its settings when the hub sends them,
-        and for the self-update, the hub's read of nightly and its owner's Update now."""
-        drain = bool(answer.get("drain"))
-        if drain != self.draining:
-            log.info("draining: no new claims" if drain else "drain ended: claiming again")
-            self.draining = drain
-            self.slot_free.set()
-        if answer.get("settings") is not None:
-            self._take_settings(answer["settings"])
-            self._guarding = guard.heard(self._guarding, self.hub, self.home.root, answer["settings"])
-        else:
-            self.updater.hear_lock(None)
-        self.updater.hear_answer(answer.get("nightly"), answer.get("update_now"))
-        self._take_browser_install(answer.get("browser_install"))
-        self._take_plugin_runtimes(answer.get("plugin_runtimes"))
-        if self.kg_on:
-            self._take_kg_duties(answer.get("kg_sync"))
-
-    def _take_browser_install(self, value) -> None:
-        """Its owner's Install browser, as the answer carries it: a request new to the daemon installs Chromium in the
-        background unless an install runs already, whose end then counts for it; none, the hub ended the request."""
-        requested_at = value.get("requested_at") if isinstance(value, dict) else None
-        if not isinstance(requested_at, str):
-            self.install_asked = None
-            return
-        if self.install_asked is not None and self.install_asked["requested_at"] == requested_at:
-            return
-        self.install_asked = {"requested_at": requested_at, "ended": None, "error": None}
-        if self._installing is None or self._installing.done():
-            self._installing = spawn(self._install_browser(), "browser-install")
-
-    async def _install_browser(self) -> None:
-        """Install Chromium as `evo-agents worker browser install` does, in a thread, without its progress on the
-        daemon's output; the heartbeats then say the feature browser, or why the install failed."""
-        log.info("installing a browser, as the owner asked from the hub")
-        try:
-            installed, _ = await asyncio.to_thread(
-                browser_install.install, self.home, self.env, say=log.info, quiet=True
-            )
-        except Exception as exc:  # an InstallError says why; anything else must not end the daemon either
-            if not isinstance(exc, browser_install.InstallError):
-                log.exception("the browser install broke")
-            error = (str(exc) or type(exc).__name__)[: runs.MAX_BROWSER_INSTALL_ERROR]
-            log.error("the browser could not be installed", extra={"error": error})
-            if self.install_asked is not None:
-                self.install_asked = {**self.install_asked, "ended": "failed", "error": error}
-            return
-        self.browser_report = installed.report()
-        log.info("browser installed", extra={"browser": self.browser_report})
-
-    def _take_kg_duties(self, value) -> None:
-        """The projects whose graph the hub asks this worker to keep fresh, with when it last took a run of each: a
-        project new to the list, or one whose time moved, wakes the loop of ``kg_sync``."""
-        found = {}
-        for item in value if isinstance(value, list) else []:
-            if isinstance(item, dict) and isinstance(item.get("project"), str):
-                received = item.get("received_at")
-                found[item["project"]] = received if isinstance(received, str) else None
-        if found != self.kg_duties:
-            if set(found) != set(self.kg_duties):
-                log.info("graphs to keep fresh", extra={"projects": sorted(found)})
-            self.kg_duties = found
-            self.kg_wake.set()
-
-    def _take_plugin_runtimes(self, value) -> None:
-        """The declarations of the runtimes of the plugins the owner accepted, as the answer carries them: each one of
-        a plugin of the config's plugins gets its adapter of ACP, looked for at the next heartbeat when they changed. A
-        declaration this daemon cannot read is logged once and left out; an answer without any (a hub before 0039)
-        leaves none."""
-        found: dict[str, AcpRuntime] = {}
-        for item in value if isinstance(value, list) else []:
-            try:
-                declaration = AcpRuntime.from_json(item)
-            except ValueError as exc:
-                if str(exc) not in self._declarations_unread:
-                    self._declarations_unread.add(str(exc))
-                    log.warning("the hub declared a runtime this daemon cannot read", extra={"error": str(exc)})
-                continue
-            if declaration.plugin in self.config.plugins:
-                found[declaration.runtime] = declaration
-        if found == self.plugin_runtimes:
-            return
-        self.plugin_runtimes = found
-        self.plugin_adapters = {name: adapter_class(declaration) for name, declaration in found.items()}
-        self._runtimes_at = float("-inf")  # looked for at the next heartbeat
-        log.info("runtimes of plugins declared", extra={"runtimes": sorted(found)})
-
-    def _take_settings(self, settings) -> None:
-        """Take the worker's settings the hub sent (slots, name, labels, plugins, version_locked, projects) when they
-        differ from the config: in memory, and in config.json, read again so a field set by hand since the start
-        (checkouts) stays. New projects have the checkouts looked at again at the next turn. Settings this daemon
-        cannot read are logged and left, and leave the lock unknown."""
-        wanted = _settings(settings)
-        self.updater.hear_lock(None if wanted is None else wanted.get("version_locked"))
-        if wanted is None:
-            if not self._settings_unread:  # once, not at each heartbeat
-                self._settings_unread = True
-                log.warning("the hub sent worker settings this daemon cannot read", extra={"got": settings})
-            return
-        self._settings_unread = False
-        old = {key: getattr(self.config, key) for key in wanted}
-        if old == wanted:
-            return
-        for key, value in wanted.items():
-            setattr(self.config, key, value)
-        try:
-            on_disk = self.home.load_config()
-        except Exception:  # an unreadable config.json: write the one in memory, which holds the new settings
-            on_disk = self.config
-        for key, value in wanted.items():
-            setattr(on_disk, key, value)
-        if "projects" in wanted and old["projects"] != wanted["projects"]:
-            self.config.repos = on_disk.repos  # those `worker projects` on this machine read for new projects
-        try:
-            self.home.save(on_disk)
-        except OSError as exc:
-            log.error("config.json could not be written; the new settings hold until the daemon stops", exc_info=exc)
-        changed = {key: {"old": old[key], "new": wanted[key]} for key in wanted if old[key] != wanted[key]}
-        log.info("worker settings changed on the hub", extra={"changed": changed})
-        if "slots" in changed:
-            self.slot_free.set()  # more slots: the claim loop claims at once
-        if "projects" in changed:
-            self._checkouts_at = float("-inf")  # the checkouts of the projects it serves now
-
-    # Updating itself
-
-    def _who(self) -> str:
-        return f"{self.config.name} (id {self.config.worker_id})"
-
-    async def _self_update_loop(self) -> None:
-        """A turn of the self-update each heartbeat period; one that updated the install, or found it updated, stops
-        the daemon to exit EXIT_UPDATED."""
-        while not self.stopping.is_set():
-            try:
-                restart = await self.updater.turn(held=len(self.runs), orphans=len(self.orphans), worker=self._who())
-            except Exception:  # a bug here must not end the daemon
-                log.exception("self-update: the turn failed")
-                restart = False
-            if restart and not self.stopping.is_set():
-                self.exit_code = EXIT_UPDATED
-                log.info("stopping to restart on the updated install", extra={"exit_code": EXIT_UPDATED})
-                self.stopping.set()
-                return
-            with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(self.stopping.wait(), self.heartbeat_s)
-
-    async def _update_for_hub(self, updates: asyncio.Task) -> None:
-        """The hub answered 426 and the runs ended: update to nightly, if the daemon may, before it exits."""
-        updates.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await updates
-        try:
-            updated = await self.updater.after_outdated(self.config.version_locked)
-        except Exception:
-            log.exception("self-update: the update the hub needs failed")
-            updated = False
-        if updated:
-            self.exit_code = EXIT_UPDATED
-
-    # Keeping the graphs fresh
-
-    def _kg_checkouts(self, project: str) -> dict[str, Path]:
-        """The checkouts of ``project``'s repos here, by repo name."""
-        prefix = f"{project}/"
-        return {
-            key[len(prefix) :]: Path(entry["path"]) for key, entry in self.checkouts.items() if key.startswith(prefix)
-        }
-
-    def _kg_lock(self, loop: asyncio.AbstractEventLoop):
-        """A context manager for the thread of a look: it holds the daemon's lock of a checkout, as a run does."""
-
-        async def acquire(path: Path) -> None:
-            await self.repo_lock(path).acquire()
-
-        @contextlib.contextmanager
-        def locked(path: Path):
-            future = asyncio.run_coroutine_threadsafe(acquire(Path(path)), loop)
-            while True:  # a daemon that stops no longer runs the loop: the look gives up rather than wait forever
-                try:
-                    future.result(timeout=1.0)
-                    break
-                except TimeoutError:
-                    if self.kg is not None and self.kg.stop.is_set():
-                        future.cancel()
-                        raise RuntimeError("the daemon is stopping") from None
-            try:
-                yield
-            finally:
-                loop.call_soon_threadsafe(self.repo_lock(Path(path)).release)
-
-        return locked
-
-    async def _kg_sync_loop(self) -> None:
-        """Look at each project of kg_sync every kg_every seconds, and at once at one whose time moved (``kg_sync``)."""
-        loop = asyncio.get_running_loop()
-        hub = Hub(self.config.url, self.token, headers={runs.PROTOCOL_HEADER: runs.PROTOCOL_VERSION})
-        self.kg = kg_sync.KgSync(self.home.root, hub, lock=self._kg_lock(loop), secrets=(self.token,))
-        looked: dict[str, tuple[float, str | None]] = {}  # project -> when the daemon looked, and the time it saw
-        while not self.stopping.is_set():
-            self.kg_wake.clear()
-            for project, received in sorted(self.kg_duties.items()):
-                last = looked.get(project)
-                if last is not None and last[1] == received and loop.time() - last[0] < self.kg_every:
-                    continue
-                if self.stopping.is_set():
-                    return
-                looked[project] = (loop.time(), received)
-                await self._kg_look(project)
-            waits = [self.kg_every - (loop.time() - at) for at, _ in looked.values()] or [self.kg_every]
-            with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(self.kg_wake.wait(), max(1.0, min(waits)))
-
-    async def _kg_look(self, project: str) -> None:
-        try:
-            state = await asyncio.to_thread(self.kg.look, project, self._kg_checkouts(project))
-        except Exception:  # a bug here must not end the loop
-            log.exception("keeping the graph fresh failed", extra={"project": project})
-            return
-        failed = {sid: found.error for sid, found in state.sources.items() if found.status == "failed"}
-        wrong = (state.error, sorted(failed.items()))
-        level = logging.WARNING if (state.error or failed) and wrong != self._kg_wrong.get(project) else logging.INFO
-        self._kg_wrong[project] = wrong  # a failure that stays is warned of once, then logged at info
-        log.log(
-            level,
-            "graph looked at",
-            extra={
-                "project": project,
-                "error": state.error,
-                "failed": failed,
-                "pushed": sum(found.pushed for found in state.sources.values()),
-                "pulled": sum(found.pulled for found in state.sources.values()),
-            },
-        )
-
-    # Claims
-
-    async def _claim_loop(self) -> None:
-        await self.beat_ok.wait()
-        backoff = Backoff()
-        held_for_wake = False
-        while not self.stopping.is_set():
-            self.wake.turn("claim")
-            left = self.wake.hold_left()
-            if left > 0:  # the machine slept: no new run until it has been awake WAKE_HOLD_SECONDS
-                if not held_for_wake:
-                    held_for_wake = True
-                    log.info("no claims for a while after a sleep", extra={"claims_in_s": round(left, 1)})
-                with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(self.stopping.wait(), min(left, self.heartbeat_s))
-                continue
-            if held_for_wake:
-                held_for_wake = False
-                log.info("claiming again after the sleep")
-            if self.draining or self.free_slots == 0:
-                self.slot_free.clear()
-                with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(self.slot_free.wait(), self.heartbeat_s)
-                continue
-            if not self.updater.may_claim():  # another daemon of the install updates it, or this one restarts on it
-                self._install_idle()
-                with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(self.stopping.wait(), self.heartbeat_s)
-                continue
-            self._claiming = True
-            try:
-                spec, delay = await self._claim(backoff)
-                if spec:
-                    try:
-                        self._start(spec)
-                    except Exception:
-                        log.exception("the claimed run could not start", extra={"run_id": spec.get("id")})
-                        await self._refuse(spec)
-            finally:
-                self._claiming = False
-                self._install_idle()
-            if delay:
-                await asyncio.sleep(delay)
-
-    async def _claim(self, backoff: Backoff) -> tuple[dict | None, float]:
-        """One claim: the run it got, if any, and how long to wait before the next one."""
-        try:
-            spec = await self.hub.claim()
-        except Unreachable as exc:
-            delay = exc.retry_after if exc.retry_after is not None else backoff.next()
-            log.warning("claim failed", extra={"retry_in_s": round(delay, 1), "error": str(exc)})
-            return None, delay
-        except Refused as exc:
-            if isinstance(exc, Outdated) or exc.status in (401, 403):
-                self.fatal(exc)  # sets stopping, which ends the claim loop
-                return None, 0.0
-            delay = backoff.next()
-            log.error("claim refused", extra={"status": exc.status, "error": str(exc)})
-            return None, delay
-        except Exception:  # a bug here must not end the claims for the daemon's life
-            log.exception("claim failed")
-            return None, backoff.next()
-        backoff.reset()
-        return spec, 0.0
-
-    def _install_idle(self) -> None:
-        """Let the other daemons of the install update it, once this one neither claims nor holds a run."""
-        if not self.runs and not self._claiming:
-            self.updater.idle()
-
-    async def _refuse(self, spec: dict) -> None:
-        """Fail a claimed run the daemon cannot even start, so it does not wait for its lease to run out."""
-        with contextlib.suppress(HubProblem, KeyError, TypeError, ValueError):
-            error = f"the worker {self.config.name} could not start the run"
-            await self.hub.report(int(spec["id"]), {"state": "failed", "error": error})
-
-    def _start(self, spec: dict) -> None:
-        run = run_class(spec)(self, spec)
-        log.info(
-            "run claimed",
-            extra={
-                "run_id": run.id,
-                "project": run.project,
-                "plan_id": spec.get("plan_id"),
-                "step": spec.get("step_key"),
-                "kind": spec.get("kind") or "step",
-                "runtime": run.runtime,
-                "repo": run.repo,
-                "repos": [entry.get("repo") for entry in spec.get("repos") or [] if isinstance(entry, dict)] or None,
-                "branch": run.branch,
-            },
-        )
-        self.runs[run.id] = run
-        self.keep_awake.update(len(self.runs))
-        task = spawn(run.main(), f"run-{run.id}")
-        self.run_tasks[run.id] = task
-
-        def ended(_task: asyncio.Task, run_id: int = run.id) -> None:
-            self.runs.pop(run_id, None)
-            self.run_tasks.pop(run_id, None)
-            self.keep_awake.update(len(self.runs))
-            self._install_idle()
-            self.slot_free.set()
-
-        task.add_done_callback(ended)
-
-    # What earlier daemons left
-
-    async def _clear_leftovers(self) -> None:
-        """What a daemon before this one left, before any claim: the agents it started, the runs it held, and the
-        browsers of the runs here."""
-        self.orphans = self._find_orphans()
-        self._close_abandoned_runs()
-        await browser_session.sweep(self.home)
-
-    def _find_orphans(self) -> dict[int, dict]:
-        """The runs a previous daemon left with an agent started (agent.json), and their records; before
-        ``_close_abandoned_runs`` marks those records ended. A file of a run whose record says it ended is a leftover
-        of a crash at the very end, and goes."""
-        found: dict[int, dict] = {}
-        for run_id, agent in self.home.load_agents().items():
-            record = self.home.load_run(run_id)
-            if record is not None and record.get("finished_at"):
-                with contextlib.suppress(OSError):
-                    self.home.remove_agent(run_id)
-                continue
-            found[run_id] = {"agent": agent, "record": record}
-        if found:
-            log.warning(
-                "a previous daemon left runs with their agents: the first heartbeat asks the hub about them",
-                extra={"runs": sorted(found)},
-            )
-        return found
-
-    async def _settle_orphans(self, controls: Mapping[int, dict]) -> None:
-        """Deal with the orphans the hub answered for (``controls``, by run id), each at once; the others are asked
-        again at the next heartbeat."""
-        jobs = [self._settle_orphan(run_id, self.orphans.pop(run_id), control) for run_id, control in controls.items()]
-        for outcome in await asyncio.gather(*jobs, return_exceptions=True):
-            if isinstance(outcome, BaseException):
-                log.error("an orphan of a previous daemon was not dealt with", exc_info=outcome)
-
-    async def _settle_orphan(self, run_id: int, orphan: dict, control: dict) -> None:
-        """Stop the agent of an orphan run, then remove its worktree and evo-run branch unless the hub parked the run
-        (it keeps its session and worktree for the run that resumes it) or still holds it for this worker (its lease
-        runs out, and its worktree ages)."""
-        stopped = await orphans.stop(orphan["agent"])
-        with contextlib.suppress(OSError):
-            await asyncio.to_thread(verify_jobs.stop_all, self.home.run_dir(run_id) / verify_jobs.JOBS_DIR)
-        record = self.home.load_run(run_id) or orphan.get("record")  # as _close_abandoned_runs left it
-        if control.get("held"):
-            what = "kept: the hub still holds the run for this worker, which cannot go on with it; its lease runs out"
-        elif control.get("park"):
-            what = "kept for the run that resumes it: the hub parked the run"
-            if record is not None:
-                record["state"] = "parked"
-                with contextlib.suppress(OSError):
-                    self.home.save_run(record)
-        else:
-            what = "removed with its evo-run branch: the hub no longer holds the run for this worker"
-            if record is not None:
-                await self._remove_worktree(record)
-        with contextlib.suppress(OSError):
-            self.home.remove_agent(run_id)
-        log.warning(
-            "the agent a previous daemon left was dealt with",
-            extra={
-                "run_id": run_id,
-                "agent": stopped,
-                "worktree": what,
-                "hub_state": control.get("state"),
-                "pgid": orphan["agent"].get("pgid"),
-            },
-        )
-
-    def _close_abandoned_runs(self) -> None:
-        """Runs a previous daemon left without an end: their leases ran out on the hub; their worktrees age now, and
-        a terminal UI left running in their tmux session is closed."""
-        for record in self.home.load_runs():
-            if record.get("finished_at") is None:
-                with contextlib.suppress(OSError):  # its leases went with that daemon; the hub takes them back
-                    socket_path(self.home, record["id"]).unlink(missing_ok=True)
-                record["finished_at"] = datetime.now(UTC).isoformat()
-                record["state"] = f"{record.get('state')} when the worker stopped"
-                with contextlib.suppress(OSError):
-                    self.home.save_run(record)
-                if record.get("tmux_session"):
-                    socket = record.get("tmux_socket")
-                    tmux = interactive.Tmux.from_env(self.env, socket=socket) if socket else self.tmux
-                    tmux.kill_sync(str(record["tmux_session"]))
-
-    async def _send_leftovers(self) -> None:
-        for run_id in leftover_runs(self.home.spool_dir):
-            if run_id in self.runs:
-                continue
-            spool = Spool(self.home.spool_dir, run_id, self.budget)
-            if spool.pending:
-                log.info("sending events a previous daemon left", extra={"run_id": run_id, "events": spool.pending})
-                sender = Sender(self, spool)
-                sender.close()
-                await sender.run()
-                if not sender.settled:
-                    continue
-            spool.remove()
-
-    async def _cleanup_loop(self) -> None:
-        while True:
-            try:
-                await self.cleanup()
-            except Exception:
-                log.exception("cleaning up old worktrees failed")
-            await asyncio.sleep(CLEANUP_EVERY)
-
-    async def cleanup(self, now: datetime | None = None) -> list[int]:
-        """Remove the worktrees and records of runs that ended more than 7 days ago, and those of ended runs whose work
-        the hub says merged (``_merged_work``), each worktree's uncommitted changes kept first (``_recover``); their
-        ids."""
-        now = now or datetime.now(UTC)
-        records = self.home.load_runs()
-        old = {record["id"] for record in records if now - _finished(record, now) >= KEEP_WORKTREES}
-        merged = await self._merged_work([record for record in records if record["id"] not in old], records)
-        removed = []
-        for record in records:
-            run_id = record["id"]
-            if run_id not in old and run_id not in merged:
-                continue
-            record = self._still_ended(run_id)  # read again: a run may have resumed or adopted it since
-            if record is None:
-                continue
-            if run_id in old:
-                await self._remove_worktree(record)
-                log.info("old worktree removed", extra={"run_id": run_id, "worktree": record.get("worktree")})
-            elif await self._recover(record) and self._still_ended(run_id) is not None:
-                await self._remove_worktree(record)
-                where = record.get("dir") or record.get("worktree")
-                log.info("worktree of merged work removed", extra={"run_id": run_id, "worktree": where})
-            else:
-                continue
-            await asyncio.to_thread(self.home.remove_run, run_id)
-            removed.append(run_id)
-        return removed
-
-    def _still_ended(self, run_id: int) -> dict | None:
-        """The record of run ``run_id`` as it is on disk now, while the cleanup may still remove what it names: the run
-        ended, this daemon holds it no more, and no run this daemon holds resumes it or goes on from its lost attempt
-        (a run that went on from it already took its worktrees out of the record, ``Conversation.adopt``). Else None."""
-        record = self.home.load_run(run_id)
-        if record is None or run_id in self.runs or not record.get("finished_at"):
-            return None
-        if any(run_id in _goes_on_from(run.spec) for run in self.runs.values()):
-            return None
-        return record
-
-    async def _merged_work(self, young: list[dict], records: list[dict]) -> set[int]:
-        """Of the runs of ``young`` (within their 7 days) whose worktrees this worker may remove (``_removable``, over
-        all its ``records``), those the hub says the work of merged (POST /v1/worker/merged); none without a hub, from
-        a hub before that route (asked once a daemon), or when it cannot answer now."""
-        if self.hub is None or not self._asks_merged:
-            return set()
-        asked = [record["id"] for record in young if self._removable(record, records)]
-        found: set[int] = set()
-        for start in range(0, len(asked), MAX_MERGED_ASKED):
-            try:
-                found |= set(await self.hub.merged(asked[start : start + MAX_MERGED_ASKED]))
-            except Refused as exc:
-                if exc.status in (404, 405):
-                    self._asks_merged = False
-                    log.info("the hub does not say which runs merged: their worktrees wait out the 7 days")
-                else:
-                    log.warning("the hub refused to say which runs merged", extra={"status": exc.status})
-                break
-            except HubProblem as exc:
-                log.info("the hub did not say which runs merged; the next cleanup asks", extra={"error": str(exc)})
-                break
-        return found
-
-    def _removable(self, record: dict, records: list[dict]) -> bool:
-        """Whether ``record``'s run is one whose worktrees may go once its work merged: it ended and this daemon holds
-        it no more, it is not parked, no run went on from it (``Conversation.adopt``, ``adopt_lost``), its record names
-        a worktree, and no run that has not ended uses its directory or one of its worktrees."""
-        if record["id"] in self.runs or not record.get("finished_at") or record.get("resumed_by"):
-            return False
-        if str(record.get("state") or "").startswith("parked") or record.get("moved_to"):
-            return False
-        mine = _paths(record)
-        if not mine:
-            return False
-        for other in records:
-            if other["id"] == record["id"] or (other.get("finished_at") and other["id"] not in self.runs):
-                continue
-            if any(a == b or a in b.parents or b in a.parents for a in mine for b in _paths(other)):
-                return False
-        return True
-
-    async def _recover(self, record: dict) -> bool:
-        """Commit what each worktree of ``record``'s run has not committed to a ref of its checkout
-        (``gitops.save_wip``, ``refs/evo-recovery/run-<id>/<folder>``) and add a line for it to the worker's recovery
-        file (``WorkerHome.note_recovery``): the run, the repo, the branch, HEAD and the WIP commit. Whether every
-        worktree was kept or had nothing to keep; the run's worktrees stay when one could not be."""
-        run_id = record["id"]
-        items = record.get("repos") if record.get("kind") in DIRECTORY_KINDS else [record]
-        for item in items or []:
-            if not isinstance(item, dict) or not item.get("worktree") or not item.get("checkout"):
-                continue
-            path, checkout = Path(item["worktree"]), Path(item["checkout"])
-            if not path.is_dir() or not checkout.is_dir():
-                continue
-            ref = f"{gitops.RECOVERY_REFS}run-{int(run_id)}/{path.name}"
-            try:
-                async with self.repo_lock(checkout):
-                    wip = await gitops.save_wip(path, ref, f"WIP of run {run_id}, kept before its worktree went")
-            except gitops.GitError as exc:
-                log.warning(
-                    "the uncommitted changes of a merged run were not kept: its worktree stays",
-                    extra={"run_id": run_id, "worktree": str(path), "error": str(exc)},
-                )
-                return False
-            if wip is not None:
-                self.home.note_recovery(
-                    {
-                        "run": run_id,
-                        "repo": item.get("repo"),
-                        "branch": item.get("local_branch") or item.get("branch"),
-                        "head": wip.head,
-                        "wip": wip.wip,
-                        "ref": wip.ref,
-                        "checkout": str(checkout),
-                    }
-                )
-                log.info("uncommitted changes kept", extra={"run_id": run_id, "ref": wip.ref, "wip": wip.wip})
-        return True
-
-    async def _remove_worktree(self, record: dict) -> None:
-        """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
-        plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in DIRECTORY_KINDS:
-            for item in record.get("repos") or []:
-                if isinstance(item, dict):
-                    await self._remove_one(item)
-            await self._remove_one({"worktree": record.get("dir")})
-        else:
-            await self._remove_one(record)
-
-    async def _remove_one(self, item: dict) -> None:
-        path = Path(item["worktree"]) if item.get("worktree") else None
-        checkout = Path(item["checkout"]) if item.get("checkout") else None
-        if checkout is not None and checkout.is_dir():
-            async with self.repo_lock(checkout):
-                if path is not None and path.exists():
-                    with contextlib.suppress(gitops.GitError):
-                        await gitops.remove_worktree(checkout, path)
-                await gitops.prune_worktrees(checkout)
-                branch = item.get("local_branch")
-                if isinstance(branch, str) and branch.startswith("evo-run/"):
-                    await gitops.delete_branch(checkout, branch)
-        if path is not None and path.exists() and path.resolve().is_relative_to(self.home.worktrees_dir.resolve()):
-            await asyncio.to_thread(shutil.rmtree, path, True)

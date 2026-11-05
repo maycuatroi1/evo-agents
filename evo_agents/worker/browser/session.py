@@ -42,8 +42,8 @@ from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runtimes.common import descendants, kill_tree
 
 if TYPE_CHECKING:
-    from evo_agents.worker.daemon import Daemon
     from evo_agents.worker.home import WorkerHome
+    from evo_agents.worker.run_host import RunHost
 
 DIRECTORY = "browser"  # in the run's directory
 PROFILE = "profile"
@@ -63,7 +63,7 @@ def run_directory(home: WorkerHome, run_id: int) -> Path:
 class BrowserSession:
     """The Chromium of run ``run_id`` on the daemon ``daemon``."""
 
-    def __init__(self, daemon: Daemon, run_id: int, identities: Iterable[int] = ()):
+    def __init__(self, daemon: RunHost, run_id: int, identities: Iterable[int] = ()):
         self.daemon = daemon
         self.run_id = run_id
         self.profiles = profiles.Profiles(self, identities)  # its browser identities (spec browser_identities)
