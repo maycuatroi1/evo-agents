@@ -218,7 +218,7 @@ export const MACHINES = {
 
 /** The question the plan run asks at its checkpoint, as `evo-agents worker ask` sends it. */
 export const DECISION = {
-  category: "live_migration", // a bulk change on staging's data; a deploy question is the agent's own at A5
+  category: "scope", // when the checkpoint runs; at A5 a deploy or live_migration question is the agent's own (409)
   step_key: "3",
   question: "Reindex the 48,210 products on staging now?",
   context:
