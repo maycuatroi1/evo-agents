@@ -26549,6 +26549,32 @@
         }
       ],
       "json": null
+    },
+    "worker triage merge-check": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "rejudge",
+            "return"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
     }
   },
   "openapi": {
@@ -99572,6 +99598,101 @@
             }
           }
         }
+      },
+      "/v1/worker/runs/{run_id}/triage/merge-check": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Triage Check",
+          "description": "In the thread of a merge check its triage holds (``merge_holds``), for the plan run's owner: judge it again, or\nhand its failure back to the plan run; 403 for another member's run, 404 outside such a thread, 409 for a check no\nlonger held.",
+          "operationId": "triage_check_v1_worker_runs__run_id__triage_merge_check_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeTriageIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeTriaged"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -120461,6 +120582,18 @@
                 }
               ],
               "title": "Duration Ms"
+            },
+            "base_exit_code": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Exit Code",
+              "description": "a merge check's failed check: its exit code on the base branch alone, where it ran again"
             }
           },
           "type": "object",
@@ -168702,6 +168835,18 @@
                 }
               ],
               "title": "Duration Ms"
+            },
+            "base_exit_code": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Exit Code",
+              "description": "a merge check's failed check: its exit code on the base branch alone, where it ran again"
             }
           },
           "type": "object",
@@ -170774,6 +170919,57 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
+        },
+        "MergeTriageIn": {
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "rejudge",
+                "return"
+              ],
+              "title": "Action",
+              "description": "rejudge: judge it again from its first Judge, once the system is fixed; return: hand the failure back to the plan run, which caused it after all"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "action",
+            "reason"
+          ],
+          "title": "MergeTriageIn"
+        },
+        "MergeTriaged": {
+          "properties": {
+            "check_id": {
+              "type": "integer",
+              "title": "Check Id"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "judging again after rejudge, failed after return"
+            },
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "check_id",
+            "state",
+            "message_id"
+          ],
+          "title": "MergeTriaged"
         }
       }
     }

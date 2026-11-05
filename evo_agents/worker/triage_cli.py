@@ -1,5 +1,6 @@
-"""``evo-agents worker triage rerun|plan|invite|cancel``: what the agent of a triage thread does on its own for a failed run
-(``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules`` is the frame the hub enforces).
+"""``evo-agents worker triage rerun|plan|invite|cancel|merge-check``: what the agent of a triage thread does on its own for
+a failed run (``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules`` is the frame the hub enforces),
+or for a merge check the hub holds (``evo_agents.hub.server.merge_holds``).
 
 - ``rerun --reason TEXT [--runtime NAME] [--account NAME] [--confirm-cause]``: run the failed run of
   the thread again for its owner, with a runtime or account that is a fit candidate.
@@ -15,6 +16,10 @@
 - ``invite HANDLE --reason TEXT``: invite the agent of another project, one the failed run's error names, into the
   chat, so a mention can hand it work; the hub refuses and says in the thread when the owner is no writer there or the
   chat's label does not hold.
+
+- ``merge-check rejudge|return --reason TEXT``: in the thread of a merge check the hub holds because its own machinery
+  failed it, judge the check again once the system is fixed (its verdict wakes the plan run), or hand the failure back
+  to the plan run when the pull request caused it after all.
 
 All read the run from EVO_RUN_ID like ``worker chat`` (``chat_cli``) and are for a chat run only. The hub refuses
 what is outside the frame, with the reason, and the command prints it on stderr and exits 1. Each success is one line
@@ -119,6 +124,21 @@ def cmd_cancel(args) -> int:
     return 0
 
 
+@chat_command
+def cmd_merge_check(args) -> int:
+    run = agent_run("triage merge-check")
+    answer = call(run, "triage/merge-check", {"action": args.action, "reason": _text(args.reason)})
+    done = (
+        "The hub judges the merge check again; its verdict wakes the plan run"
+        if args.action == "rejudge"
+        else "The failure went back to the plan run"
+    )
+    print(
+        f"{done} (check #{answer['check_id']}, {answer['state']}); the Decision line is message #{answer['message_id']}."
+    )
+    return 0
+
+
 def _frame_options(parser) -> None:
     parser.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
     parser.add_argument("--runtime", metavar="NAME", help="rerun with this runtime, one the worker has")
@@ -170,3 +190,15 @@ def register_triage(wsub) -> None:
     plan.add_argument("--rerun", action="store_true", help="run the failed step again once the plan is written")
     _frame_options(plan)
     plan.set_defaults(func=cmd_plan)
+    check = tsub.add_parser(
+        "merge-check",
+        help="in a held merge check's thread: judge it again once the system is fixed, or hand the failure back to the "
+        "plan run",
+    )
+    check.add_argument(
+        "action",
+        choices=("rejudge", "return"),
+        help="rejudge: judge it again from its first Judge; return: the pull request caused it after all",
+    )
+    check.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
+    check.set_defaults(func=cmd_merge_check)

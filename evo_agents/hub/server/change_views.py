@@ -96,6 +96,9 @@ class HiddenResult(BaseModel):
     index: int = Field(ge=1, le=curator.MAX_HIDDEN_CHECKS, description="the check's place in the charter, from 1")
     exit_code: int
     duration_ms: int | None = Field(None, ge=0)
+    base_exit_code: int | None = Field(
+        None, description="a merge check's failed check: its exit code on the base branch alone, where it ran again"
+    )
 
 
 class Sign(BaseModel):

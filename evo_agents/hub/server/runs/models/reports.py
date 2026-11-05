@@ -25,6 +25,9 @@ class VerifyResult(BaseModel):
     command: str = Field(min_length=1, max_length=2000)
     exit_code: int
     duration_ms: int | None = Field(None, ge=0)
+    base_exit_code: int | None = Field(
+        None, description="a merge check's failed check: its exit code on the base branch alone, where it ran again"
+    )
 
 
 class Diffstat(BaseModel):

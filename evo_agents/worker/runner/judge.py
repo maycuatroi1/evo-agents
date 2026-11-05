@@ -23,6 +23,11 @@ already fails the change, on the worktree put back again, the hub's prompt and w
 hidden checks). The agent's verdict is the JSON object that ends its last message (``judge.verdict_from_message``),
 which reaches the worker from the agent's own output: no file the code under test could write.
 
+For a merge check, each check that failed on the merge result runs again on origin's base branch alone (``on_base``):
+its exit code there goes with its result (``base_exit_code``), and the Judge reads that a check the base fails too is
+not the change's. The hub then holds such a failure for its triage (``evo_agents.hub.merge_infra``) instead of handing
+it to the plan run, which cannot fix the base.
+
 Once a verdict exists and no sign fails the change, the run also does the security pass (``run_security_pass``,
 ``evo_agents.hub.security_pass``): a find turn and one false-positive filter turn per finding, each a new session of the
 agent that never sees the Builder's transcript, whose outcome (the dimension ``security``, its findings with path and
@@ -116,6 +121,8 @@ class JudgeRun:
         self.at: str | None = None  # the commit ``restore`` put the worktree at last, which the watchdog compares with
         self.moving = False  # while ``restore`` moves the worktree, which the watchdog then leaves alone
         self.conflicts: list[str] | None = None  # where merging the base into the head conflicts
+        self.base_tip: str | None = None  # a merge check's: origin's base branch, which a failed check runs on again
+        self.base_branch: str | None = None
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
         self.dimensions: dict | None = None  # what the Judge of a merge request said of each dimension
         self.findings: list[dict] = []  # what it found wrong
@@ -167,9 +174,11 @@ class JudgeRun:
         files, signs = await self.read_diff(workspace, name, protected, verify_commands)
         self.environment(name, workspace.worktree)
         results = await self.run_hidden(workspace.worktree, hidden)
+        await self.on_base(workspace.worktree, results, hidden, hidden=True)
         hidden.clear()  # the commands go: only their exit codes stay
         inputs.clear()
         checks = await self.run_checks(workspace.worktree, verify_commands)
+        await self.on_base(workspace.worktree, checks, verify_commands)
         if knowledge is not None:  # a change of knowledge.yaml: harness validate, a trial sync of each source
             checks += await judge_knowledge.run_checks(self, workspace.worktree, knowledge)
         verdict, reasons = await self.ask_judge(cls, workspace.worktree, checks, results, signs)
@@ -256,6 +265,7 @@ class JudgeRun:
             self.tested = head
             if self.merge_result:
                 self.tested, self.conflicts = await self.merge_with_base(checkout, target, head, base_branch)
+                self.base_tip, self.base_branch = target, base_branch
         self.head, self.merge_base = head, base
         self.directory.workspaces[name] = gitops.Workspace(
             repo=name,
@@ -462,14 +472,15 @@ class JudgeRun:
             repo=name,
         )
 
-    async def run_untrusted(self, command: str, cwd: Path) -> tuple[int, str]:
+    async def run_untrusted(self, command: str, cwd: Path, at: str | None = None) -> tuple[int, str]:
         """(exit code, the end of its output) of ``command``, code of the change the worker does not trust, in the
-        worktree put back at the commit judged, or for a merge check its merge with the base (``verify.run_untrusted``).
+        worktree put back at the commit judged, or for a merge check its merge with the base (``verify.run_untrusted``),
+        or at ``at``.
         When the repo asks for a Python environment of its worktree (``environment``), its commands run first, as code
         of the change too, and ``command`` runs with its bin directory first on the PATH, as a plan run's verify does:
         the change's own pinned tools, not the machine's (run #1579 judged with a stale ruff and CLI). The restore
         before the next command removes it with the rest of what a command left."""
-        await self.restore(cwd, self.tested)
+        await self.restore(cwd, at or self.tested)
         # MERGE_CHECK_ENV tells a check it runs for a merge check, whose Judge weighs changed tests against the plan:
         # a charter's check of the old tests skips there (they fail on expectations a plan changes on purpose).
         marked = {MERGE_CHECK_ENV: "1"} if self.merge_result else {}
@@ -501,6 +512,22 @@ class JudgeRun:
             results.append({"command": command, "exit_code": code, "duration_ms": duration_ms})
             run.event("system", verify_event(command, code, duration_ms, output))
         return results
+
+    async def on_base(self, cwd: Path, results: list[dict], commands: list[str], *, hidden: bool = False) -> None:
+        """For a merge check, run each of ``commands`` whose result in ``results`` (the same order) failed again on
+        origin's base branch alone, and add its exit code there to that result (``base_exit_code``). A hidden check is
+        named by its number alone, as in ``run_hidden``."""
+        if not self.merge_result or self.base_tip is None:
+            return
+        for result, command in zip(results, commands, strict=False):
+            if result.get("exit_code") == 0:
+                continue
+            self.run.check()
+            code, _ = await self.run_untrusted(command, cwd, at=self.base_tip)
+            result["base_exit_code"] = code
+            name = f"hidden check {result.get('index')}" if hidden else f"verify `{command}`"
+            then = "the base fails it too, not the change" if code != 0 else "it passes there, so the change fails it"
+            self.run.note(f"The failed {name} exited {code} on origin's {self.base_branch} alone: {then}.")
 
     async def run_hidden(self, cwd: Path, checks: list[str]) -> list[dict]:
         """Run each hidden check of the project in the worktree, first, as code the worker does not trust: each one's

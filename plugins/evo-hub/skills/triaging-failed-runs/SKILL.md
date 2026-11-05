@@ -1,6 +1,6 @@
 ---
 name: triaging-failed-runs
-description: The agent of a triage thread (a chat run the hub started for a failed run). Read the run, say the diagnosis, then rerun it or fix its plan inside the frame the hub enforces, or ask the owner with a decision.
+description: The agent of a triage thread (a chat run the hub started for a failed run, or for a merge check its own machinery failed). Read the run, say the diagnosis, then rerun it or fix its plan inside the frame the hub enforces, fix the system and judge the check again, or ask the owner with a decision.
 ---
 
 # Triaging a failed run
@@ -63,6 +63,26 @@ Each act posts a `Decision:` line in the thread and an audit row on its own; do 
 Keep the thread short: your diagnosis, the `Decision:` lines the hub posts, and at most one closing message. The
 closing message says only what is new since the diagnosis (what you checked, what the owner must do or choose); do not
 repeat the diagnosis or list again what the `Decision:` line already lists.
+
+## Merge checks
+
+A thread that starts with "The merge check of pull request #N ... failed for a reason of the hub's own machinery" is no
+failed run: the hub holds a merge check whose verdict failed for a cause of its own (`no_verdict`, `judge_setup`,
+`judge_silent`, `base_fails`, `no_security`), and the plan run that asked waits, parked. A judge runs the code installed
+on its worker, never the pull request's, so the plan run cannot fix it: you do. Never ask the owner, and never change
+the pull request.
+
+- Read the judge run's log (`evo-agents hub run logs N`) and find the cause in the hub's code, the worker, or the base
+  branch (`base_fails`: the check fails on the base alone too).
+- Fix the system: a pull request of the hub's code or of the base branch that you open and merge yourself (merging into
+  main deploys the hub), or the worker set right (a program installed, the worker updated or restarted). The fix of a
+  judge's own code reaches its worker only once the worker runs it.
+- Then `evo-agents worker triage merge-check rejudge --reason TEXT`: the hub judges the check again and its verdict
+  wakes the plan run. Rejudge only once the fix is in place, or when the failure was a passing one.
+- When the log shows the pull request's own change caused it after all, `evo-agents worker triage merge-check return
+  --reason TEXT` hands the failure back to the plan run.
+
+A hold nobody ends is judged again by the hub after 6 hours; the third hold at one head is the last.
 
 ## What you ask instead
 
