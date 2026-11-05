@@ -44,7 +44,7 @@ print(json.dumps({
 def with_entities(project, kg_env, script_text, tmp_path):
     """``project`` with the entities step on, its model the script ``script_text``, synced."""
     script = tmp_path / "model.py"
-    script.write_text(script_text)
+    script.write_text(script_text, encoding="utf-8")
     mapping = {
         "model": "fake-1",
         "command": [sys.executable, str(script)],

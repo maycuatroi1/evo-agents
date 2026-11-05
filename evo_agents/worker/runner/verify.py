@@ -126,7 +126,7 @@ async def shell(
     )
     tail = bytearray()
     reader = asyncio.create_task(read_tail(proc, tail))
-    waiter = asyncio.create_task(proc.wait())
+    waiter = asyncio.create_task(untrusted.exited(proc))
     stopper = asyncio.create_task(run.stop_event.wait())
     try:
         done, _ = await asyncio.wait({waiter, stopper}, timeout=max(0.0, seconds), return_when=asyncio.FIRST_COMPLETED)
@@ -171,7 +171,7 @@ async def run_untrusted(
     proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
     tail = bytearray()
     reader = asyncio.create_task(read_tail(proc, tail))
-    waiter = asyncio.create_task(proc.wait())
+    waiter = asyncio.create_task(untrusted.exited(proc))
     stopper = asyncio.create_task(run.stop_event.wait())
     try:
         done, _ = await asyncio.wait(

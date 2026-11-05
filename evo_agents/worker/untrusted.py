@@ -81,6 +81,14 @@ async def start(command: str, *, cwd: Path, env: Mapping[str, str], marker: str)
     return proc
 
 
+async def exited(proc: asyncio.subprocess.Process, every: float = 0.05) -> int:
+    """The exit code of ``proc`` once it exited. Before Python 3.13 ``proc.wait()`` also waits for its pipes to close,
+    which a process it left in the background holds open until ``kill_leftovers`` kills it."""
+    while proc.returncode is None:
+        await asyncio.sleep(every)
+    return proc.returncode
+
+
 def _linux_leftovers(session: int, marker: bytes) -> set[int]:
     found: set[int] = set()
     mine = os.getpid()

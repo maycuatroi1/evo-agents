@@ -210,6 +210,7 @@ WARM_MODULES = (
     "evo_agents.hub.server.app",
     "evo_agents.hub.server.collect",
     "evo_agents.hub.server.curator",
+    "evo_agents.hub.server.curator_shift",
     "evo_agents.hub.server.brief",
     "evo_agents.hub.server.release_cycles",
     "evo_agents.hub.server.canvas.value_check",
@@ -537,7 +538,7 @@ def brief_curator(dsn: str, body: dict) -> dict:
     from sqlalchemy.pool import NullPool
 
     from evo_agents.hub.server.brief import _send
-    from evo_agents.hub.server.curator import _due
+    from evo_agents.hub.server.curator_shift import due_schedules
 
     at = datetime.fromisoformat(str(body["at"]))
 
@@ -545,7 +546,7 @@ def brief_curator(dsn: str, body: dict) -> dict:
         engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
         try:
             async with engine.begin() as conn:
-                rows = [row for row in (await conn.execute(_due(at))).all() if row.project == body["project"]]
+                rows = [row for row in (await conn.execute(due_schedules(at))).all() if row.project == body["project"]]
             outcomes = []
             for row in rows:
                 async with engine.begin() as conn:
@@ -559,21 +560,23 @@ def brief_curator(dsn: str, body: dict) -> dict:
 
 def fire_curator(dsn: str, body: dict) -> dict:
     """One pass of the night shift for one project's schedule, as ``hub.fire_schedules`` runs it every minute at the
-    database's now (``evo_agents.hub.server.curator._fire``): the night's review run, a judge run or a Builder, each
-    when it may. The stack has no Curator App, so a planned change on GitHub waits for its ruleset and keeps that as
-    its reason. Other specs' projects are left alone, so their runs and changes stay as they expect."""
+    database's now (``evo_agents.hub.server.curator_shift._fire``): the night's review run, a judge run or a Builder,
+    each when it may. The stack has no Curator App, so a planned change on GitHub waits for its ruleset and keeps that
+    as its reason. Other specs' projects are left alone, so their runs and changes stay as they expect."""
     import asyncio
 
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from evo_agents.hub.server.curator import _due, _fire
+    from evo_agents.hub.server.curator_shift import _fire, due_schedules
 
     async def once() -> dict:
         engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
         try:
             async with engine.begin() as conn:
-                rows = [row for row in (await conn.execute(_due(None))).all() if row.project == body["project"]]
+                rows = [
+                    row for row in (await conn.execute(due_schedules(None))).all() if row.project == body["project"]
+                ]
             outcomes = []
             for row in rows:
                 async with engine.begin() as conn:
@@ -612,8 +615,7 @@ def deliver_plugin_events(dsn: str, body: dict) -> dict:
             async with engine.begin() as conn:
                 due = (await conn.execute(pending)).scalars().all()
             for delivery_id in due:
-                async with engine.begin() as conn:
-                    outcome = await _deliver_one(conn, delivery_id, engine, None, None)
+                outcome = await _deliver_one(engine, delivery_id, None, None, lambda name, tier: False, set())
                 if outcome is not None:
                     report[outcome] += 1
             return report
