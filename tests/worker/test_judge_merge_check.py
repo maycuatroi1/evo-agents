@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
 from evo_agents.hub import judge
 from evo_agents.worker.runner import judge as judge_run
 from tests.worker.test_curator_runs import TEST_FILE, change_branch, curator
@@ -114,7 +118,9 @@ def test_github_merge_check_runs_each_check_in_the_python_environment_the_repo_a
 def test_github_merge_check_merges_in_a_worktree_on_a_git_without_write_tree(machine, monkeypatch):  # noqa: F811
     from evo_agents.worker.runner import judge as runner
 
-    monkeypatch.setattr(runner, "WRITE_TREE", ("merge-tree", "--no-such-option"))  # git 2.34 answers usage, exit 129
+    # Two options and two revisions answer usage, exit 129, on any git: 2.34 reads one option and two revisions as three
+    # revisions and answers 128.
+    monkeypatch.setattr(runner, "WRITE_TREE", ("merge-tree", "--no-such-option", "--and-another"))
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
     base_moved(machine, {"docs/base-only.md": "The base moved on.\n"})
     verify = ["test -f tests/test_wait.py && test -f docs/base-only.md"]
@@ -134,7 +140,7 @@ def test_github_merge_check_merges_in_a_worktree_on_a_git_without_write_tree(mac
 def test_github_merge_check_a_conflict_found_in_a_worktree_posts_its_paths(machine, monkeypatch):  # noqa: F811
     from evo_agents.worker.runner import judge as runner
 
-    monkeypatch.setattr(runner, "WRITE_TREE", ("merge-tree", "--no-such-option"))
+    monkeypatch.setattr(runner, "WRITE_TREE", ("merge-tree", "--no-such-option", "--and-another"))
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
     base_moved(machine, {"tests/test_wait.py": "def test_other():\n    assert True\n"})
     found = judged(

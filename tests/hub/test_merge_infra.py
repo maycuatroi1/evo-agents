@@ -14,6 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("fastapi", reason="the merge holds need the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import judge, merge_gate, merge_infra
 from evo_agents.hub.server import merge_holds
 from evo_agents.hub.server.merge_judge import Judged, MergeVerdictIn
