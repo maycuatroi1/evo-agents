@@ -822,6 +822,28 @@ def test_the_curator_says_its_state_its_nights_and_the_proposals_waiting(review)
     assert shown_nights[0]["failed"] == 1 and shown_nights[0]["figures"] is False
 
 
+def test_a_review_run_of_the_knowledge_graph_has_no_night_and_the_status_reads_the_last_nights(review):
+    """Run on a second hub 2026-11-05: a project made from an upload had KG review runs (starter questions, kg_init,
+    answer batches), which belong to no night; once a charter was written, GET .../curator and its pause failed with
+    500, as the last review run had no night. The status reads the last review run of a night."""
+    client, worker, headers = review.client, review.worker, review.headers
+    run_id = held_review(review)
+    for state in ("verifying", "done"):
+        assert report(client, worker, run_id, state).status_code == 200
+    r = tables.runs
+    copied = (*REVIEW_COPY, "pinned_worker_id")
+    (row,) = sql(review.db, select(*(r.c[name] for name in copied)).where(r.c.id == run_id))
+    values = {**dict(zip(copied, row, strict=True)), "schedule_id": None, "schedule_night": None}
+    values |= {"dispatched_via": "machine", "title": "KG answers of the project", "pinned_worker_id": None}
+    kg_run = sql(review.db, insert(r).values(**values).returning(r.c.id))[0][0]
+    assert kg_run > run_id
+    status = status_of(client, headers["owner"])
+    assert status["last_review_run"]["id"] == run_id
+    assert status["last_review_run"]["night"] == THE_NIGHT.isoformat()
+    paused = client.post(charter_path("pause"), headers=headers["owner"])
+    assert paused.status_code == 200 and paused.json()["state"] == "paused", paused.text
+
+
 def test_a_review_run_that_fails_tells_its_owner(review):
     client, worker, headers = review.client, review.worker, review.headers
     run_id = held_review(review)
