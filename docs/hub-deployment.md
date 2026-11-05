@@ -8,7 +8,8 @@ variables in the platform's environment, the settings a hub admin makes in the h
 plugins, which a hub admin installs from the store or the operator builds into a child image.
 
 `docs/hub.md`, section Deploying, is the reference for the images, the compose file and every variable. This page
-puts them in order for a new instance.
+puts them in order for a new instance. For a whole hub on one server, its database, blob store and proxy included, follow
+[Host a hub on one machine](self-host.md).
 
 ## What an instance has of its own
 

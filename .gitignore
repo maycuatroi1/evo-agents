@@ -9,3 +9,6 @@ dist/
 .coverage
 .DS_Store
 plugins/*/evals/results/
+
+# A hub's own variables (docs/self-host.md), never committed.
+deploy/hub/.env

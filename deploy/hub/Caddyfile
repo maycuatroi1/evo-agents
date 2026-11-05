@@ -1,0 +1,17 @@
+# The reverse proxy of docker-compose.single.yml. One site for the hub: /v1 (with the web terminal's websockets) and
+# /mcp to the api, everything else to the web. One for the blob store's S3 gateway, with the Host header unchanged,
+# since SigV4 signs it. Caddy keeps the original Host and adds X-Forwarded-For and X-Forwarded-Proto itself.
+
+{$EVO_HUB_DOMAIN} {
+	@api path /v1 /v1/* /mcp /mcp/*
+	handle @api {
+		reverse_proxy evo-agents-hub-api:8080
+	}
+	handle {
+		reverse_proxy evo-agents-hub-web:3000
+	}
+}
+
+{$EVO_HUB_S3_DOMAIN} {
+	reverse_proxy evo-agents-hub-s3:8333
+}
