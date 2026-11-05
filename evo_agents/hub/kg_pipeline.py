@@ -132,6 +132,8 @@ def _after_build(build: Mapping, init: Mapping | None, waiting: Mapping | None, 
         return [_entities(in_build, "the project's strategy runs no entities step"), *tail]
     asked = [_questions(init), _curator(init)]
     rebuild_id = rebuild_of(init)
+    if rebuild_id is None and rebuild is not None:  # an earlier kg_init run's decision queued it (``derive``)
+        rebuild_id = rebuild.get("id")
     if rebuild_id is None:
         if in_build is not None:
             return [_entities(in_build, ""), *asked]
@@ -157,7 +159,8 @@ def derive(
 ) -> dict:
     """The flow of ``upload`` (its state, uploaded_at, files, error, build_id, replaced_by): ``build`` the build it
     queued, ``init`` the newest kg_init run whose build is that one or later, ``waiting`` a kg_init run in flight from
-    before when ``init`` is None, ``rebuild`` the build the Curator's decision queued; each a mapping of its row.
+    before when ``init`` is None, ``rebuild`` the build the Curator's decision queued, or the one an earlier kg_init run
+    on that build or later queued when ``init``'s queued none; each a mapping of its row.
     {state, phase, phases, error}: ``phase`` the phase running or failed, None once ready."""
     phases, read = _upload(upload)
     if read and upload.get("replaced_by") is not None and upload.get("build_id") is None:

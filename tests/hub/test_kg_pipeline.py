@@ -53,6 +53,20 @@ def test_entities_follow_the_curator_whose_rebuild_runs_them_and_the_graph_is_re
     assert found["phases"][-1]["detail"] == "30 entities, 55 relations"
 
 
+def test_an_earlier_curator_rebuild_still_running_keeps_the_flow_running_when_the_newest_queued_none():
+    """Run on a second hub 2026-11-05 (a MuSiQue upload): a manual kg_init run asked for while the first one's rebuild ran
+    decided nothing new, and the flow said ready with entities skipped before that rebuild had ended."""
+    newest = {"id": 5, "state": "done", "body": {"questions": {"state": "not_needed"}}}
+    found = kg_pipeline.derive(READ, BUILT, newest, rebuild={"id": 8, "status": "running"})
+    assert (found["state"], found["phase"]) == ("running", "entities")
+    assert found["phases"][-1]["detail"] == "rebuild #8 with the Curator's settings running"
+    rebuilt = {"id": 8, "status": "succeeded", "coverage": {"entities": ENTITIES}}
+    found = kg_pipeline.derive(READ, BUILT, newest, rebuild=rebuilt)
+    assert (found["state"], found["phases"][-1]["detail"]) == ("ready", "30 entities, 55 relations")
+    found = kg_pipeline.derive(READ, BUILT, newest)
+    assert (found["state"], found["phases"][-1]["state"]) == ("ready", "skipped"), "no rebuild of any run: skipped"
+
+
 def test_entities_run_in_the_build_when_the_strategy_has_them_on_already():
     built = {**BUILT, "coverage": {"entities": ENTITIES}}
     init = {"id": 3, "state": "done", "body": {"questions": {"state": "not_needed"}}}
@@ -334,6 +348,30 @@ def test_the_newest_kg_init_run_counts_so_a_rerun_after_a_failed_one_ends_the_fl
     newest = init_run(world, via="profile", state="running", build_id=later, body={"questions": {"state": "done"}})
     read = world.client.get(world.path, headers=world.sender).json()
     assert (read["state"], read["phase"], read["init_id"]) == ("running", "curator", newest), "only the newest counts"
+
+
+@needs_pg
+def test_a_kg_init_run_asked_again_does_not_end_the_flow_before_the_first_ones_rebuild(world):
+    """Run on a second hub 2026-11-05 (a MuSiQue upload): kg_init #4 queued rebuild #3764 with entities, a manual kg_init
+    #5 changed nothing, and the flow said ready, entities skipped, while #3764 still ran; the notice went out early."""
+    set_build(world, world.build_id, status="succeeded", nodes=4, edges=6, coverage={"sources": 1})
+    b = tables.kg_builds
+    ((rebuild,),) = live.sql(world.db, insert(b).values(project_id=world.project_id, status="queued").returning(b.c.id))
+    set_build(world, rebuild, status="running")
+    decided = {"questions": {"state": "done", "version": 1}, "applied": {"change": {"build_id": rebuild}}}
+    init_run(world, state="done", build_id=world.build_id, body=decided)
+    again = init_run(
+        world, via="manual", state="done", build_id=world.build_id, body={"questions": {"state": "not_needed"}}
+    )
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"]) == ("running", "entities")
+    assert (read["init_id"], read["rebuild_id"]) == (again, rebuild)
+    assert tell(world) == {} and told(world) == [], "no notice while the first decision's rebuild runs"
+    entities = {"nodes": 9, "edges": 12, "stopped": None, "failed": 0, "deferred": 0}
+    set_build(world, rebuild, status="succeeded", coverage={"entities": entities})
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phases"][-1]["detail"]) == ("ready", "9 entities, 12 relations")
+    assert tell(world) == {"ready": 1}
 
 
 @needs_pg
