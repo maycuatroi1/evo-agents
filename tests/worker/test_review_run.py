@@ -21,6 +21,8 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 from evo_agents.hub import runs
 from evo_agents.worker import figures
+from evo_agents.worker.runtimes import claude_code
+from tests.worker.test_credentials import env_lease
 from tests.worker.test_plan_runs import (
     ROOT,
     WAIT,
@@ -331,3 +333,24 @@ def test_a_review_run_with_no_repo_reads_the_hubs_graph_alone(machine):  # noqa:
         assert runs.REPOLESS_REVIEW in hub.last_heartbeat["features"]
 
     with_daemon(machine, body)
+
+
+def test_a_review_run_with_no_repo_starts_on_the_claude_login_it_is_leased(machine):  # noqa: F811
+    """A KG run on the shared KG pool, on a node with no Claude login of its own: the pool owner's
+    CLAUDE_CODE_OAUTH_TOKEN the hub leases it reaches the agent, which starts on it, without ANTHROPIC_API_KEY."""
+    for name in (claude_code.OAUTH_TOKEN, "CLAUDE_CONFIG_DIR"):
+        machine.env.pop(name, None)
+    home = machine.tmp / "no-login"
+    (home / ".claude").mkdir(parents=True)
+    machine.env.update({claude_code.API_KEY: "sk-ant-" + "api03-" + "k" * 32, "EVO_FAKE_CLAUDE_HOME": str(home)})
+    seen, token = machine.tmp / "kg-env.json", "sk-ant-oat01-" + "t" * 40
+    machine.scenarios({"review": [{"env": str(seen)}, {"result": {"summary": "Answered."}}]})
+
+    async def body(hub, daemon):
+        run_id = hub.queue_review_run([], curator={"role": "reviewer", "protected_paths": []})
+        hub.leases[run_id] = {"leases": [env_lease(1, claude_code.OAUTH_TOKEN, token)], "missing": []}
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+
+    with_daemon(machine, body)
+    env = json.loads(seen.read_text(encoding="utf-8"))
+    assert env[claude_code.OAUTH_TOKEN] == token and claude_code.API_KEY not in env

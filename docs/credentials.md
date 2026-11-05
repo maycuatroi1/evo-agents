@@ -256,6 +256,18 @@ one, read its files and CI, write the Judge's check run, merge) use tokens of th
 with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
 it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.
 
+A project made from an upload (`hub kg upload FILE --new-project P`) has no charter, so its KG runs (the reviews with
+no repo: lens `kg_questions` and `kg_init`, and the batches of `hub kg answer`) would get no model login on the hub's
+shared KG pool (`hub admin kg-pool`). When such a run is claimed by a node of that pool, its project has no repo and
+was created by the pool's owner, and its charter, if any, gives no model login, it is leased the pool owner's own `env`
+secrets for `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` that are bound to that pool, whatever
+project each binding names, one per variable as the accounts are chosen below. The pool's owner binds one once,
+`evo-agents hub secret bind NAME --pool KG_POOL` for a secret already bound to a project of theirs; that replaces the
+workers or pools it was bound to, so a login their other runs take on other workers is better set again as a secret of
+its own (`hub secret set NAME --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project P --pool KG_POOL`). A binding on
+any worker (`--anywhere`) does not count. No other run, and no run of a project another member created, is leased
+them; the lease and its `credential.lease` row are named as for any other secret.
+
 A **release run** ([releases.md](releases.md), "The run on the worker") is guarded as a run of the Curator is
 (`RunCredentials.guarded`): its agent gets no credential helper and no lease that pushes, and only the daemon's own git
 uses the token, with a ticket of one command, to push `release/<version>`. Its preflight checks that push against the

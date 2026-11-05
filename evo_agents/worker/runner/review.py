@@ -5,7 +5,9 @@ counts the open items of reports and the learned skills waiting for review in th
 ``.evo-run/worktree-figures.json``, the agent records findings and proposals with ``evo-agents worker
 finding|propose``, and the run ends done with the agent's summary: nothing is committed or pushed
 (``gitops.check_push`` refuses a review run), and the run's GitHub token reads only. A review run asks no decision and
-never parks: a park means the hub no longer holds it for this worker.
+never parks: a park means the hub no longer holds it for this worker. A review with no repo (a KG run of a project fed
+by uploads alone) takes its leases too, though it has no origin to check: its model login may be one of them (the
+shared KG pool's owner's, ``evo_agents.hub.server.share_leases.kg_pool_logins``).
 """
 
 from __future__ import annotations
@@ -55,9 +57,9 @@ class ReviewRun:
         cls = run.agent.runtime_class()
         run.agent.check_interactive(cls)
         names = [entry.get("repo") for entry in repos]
-        if names:  # with none, the KG init of a project fed by uploads alone: the agent reads the hub's graph only
-            await access.take_credentials(run, names)
-            run.check()
+        await access.take_credentials(run, names)  # with no repo too: a KG run's model login is a lease of it
+        run.check()
+        if names:  # with none, the KG run of a project fed by uploads alone: the agent reads the hub's graph only
             await access.check(run, names, path=access.run_path(run))
             run.check()
         await self.directory.prepare_detached(repos)

@@ -12,6 +12,9 @@ the project of any other member never goes there, and every other run keeps the 
 - ``placed`` keeps a KG run on the shared pool when ``agent_placement.stamp`` places a run; the admins hear no
   ``agent_pool_empty`` for it.
 - ``takes`` is the claim's side: the run being claimed is a KG run that a node of the shared pool may take.
+- ``holding`` is the lease's side: the shared pool when the run a worker asks leases for is a KG run that worker, a
+  node of the pool, may take. Such a run whose charter gives no model login is leased the pool owner's own login bound
+  to the pool (``share_leases.kg_pool_logins``), since a project fed by uploads alone has no charter to list one.
 """
 
 from __future__ import annotations
@@ -130,4 +133,16 @@ def takes(worker_id: int):
     )
 
 
-__all__ = ["KINDS", "Shared", "for_project", "placed", "serve", "shared_pool", "takes"]
+async def holding(conn: AsyncConnection, run_id: int, worker_id: int) -> Shared | None:
+    """The shared KG pool when run ``run_id`` is a KG run that worker ``worker_id``, a node of that pool, may take
+    (``takes``: of a project with no repo its owner created, asking that pool); None for any other run or worker."""
+    shared = await shared_pool(conn)
+    if shared is None:
+        return None
+    r, w = tables.runs, tables.workers
+    node = exists().where(w.c.id == worker_id, w.c.pool_id == shared.pool_id)  # that pool, not one named since
+    found = await conn.scalar(select(r.c.id).where(r.c.id == run_id, takes(worker_id), node))
+    return shared if found is not None else None
+
+
+__all__ = ["KINDS", "Shared", "for_project", "holding", "placed", "serve", "shared_pool", "takes"]
