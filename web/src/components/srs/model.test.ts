@@ -7,15 +7,18 @@ import type { SrsComment } from "./api";
 import {
   changeCounts,
   factsOf,
+  inlineMarkdown,
   parentUseCase,
   parseHunks,
   proseOutsideTables,
+  rulesOf,
   screensOf,
   screenUsers,
   sectionMarkdown,
   splitCodes,
   stepRefs,
   stepsOf,
+  useCaseSections,
 } from "./content-model";
 import {
   authorsSince,
@@ -186,6 +189,35 @@ describe("what an item holds", () => {
     );
     expect(proseOutsideTables(byKey("uc1").body)).toBe("The cart is kept for a day.");
     expect(proseOutsideTables("```\n| kept |\n```")).toBe("```\n| kept |\n```");
+    expect(proseOutsideTables("<!-- source: a.md id: SRS.1 -->\n\n| a |\n|---|\n\nAfter.")).toBe("After.");
+  });
+
+  it("finds a use case's rules under its sections, its rules as a table, and the sections it does not draw", () => {
+    const uc = item("uc", { kind: "use_case", code: "UC UP-1", fields: { objective: "Sign up", steps: [{ step: "1", user: "Opens" }] } });
+    const items = [
+      uc,
+      item("s1", { title: "1. Objective", parent: "uc", body: "Sign up" }),
+      item("s6", { title: "6. Activity Flow", parent: "uc", body: "| Step |\n|---|\n| 1 |" }),
+      item("s7", { title: "7. Business Rules", parent: "uc", body: "| Mã BR | Mô tả |\n|---|---|\n| BR001 | Rule |" }),
+      item("rel", { title: "Relationships", parent: "uc", body: "> See UC-91." }),
+      item("hist", { title: "Update History", parent: "uc", body: "| Ngày |\n|---|" }),
+    ];
+    expect(useCaseSections(items, uc)).toEqual({ rules: items[3], others: [items[4], items[5]] });
+    expect(useCaseSections([uc, item("qt", { title: "7. Quy tắc nghiệp vụ", parent: "uc" })], uc).rules?.key).toBe("qt");
+    const nested = [uc, item("brs", { title: "Business Rules", parent: "uc" }), item("br", { kind: "business_rule", code: "BR UP1-1", parent: "brs" })];
+    expect(rulesOf(nested, uc).map((rule) => rule.key)).toEqual(["br"]);
+  });
+
+  it("keeps a cell's text one line of Markdown, never a list, heading or quote", () => {
+    expect(inlineMarkdown(" Mở màn hình `Đăng ký (Web)` ")).toBe("Mở màn hình `Đăng ký (Web)`");
+    expect(inlineMarkdown("**Path A**: email")).toBe("**Path A**: email");
+    expect(inlineMarkdown("-")).toBe("\\-");
+    expect(inlineMarkdown("- one")).toBe("\\- one");
+    expect(inlineMarkdown("1. one")).toBe("1\\. one");
+    expect(inlineMarkdown("2.1")).toBe("2.1");
+    expect(inlineMarkdown("# title")).toBe("\\# title");
+    expect(inlineMarkdown("> quote")).toBe("\\> quote");
+    expect(inlineMarkdown("---")).toBe("\\---");
   });
 
   it("cuts a line into text and the codes it names, the longest first, by alias too", () => {

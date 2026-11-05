@@ -3,13 +3,15 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode, useCallback } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
+import type { SplitCodes } from "@/lib/remark-code-links";
 
 import type { SrsItem } from "./api";
 import { CodeChip } from "./badges";
 import {
+  inlineMarkdown,
   proseOutsideTables,
   rulesOf,
   screensOf,
@@ -20,6 +22,7 @@ import {
   parentUseCase,
   factsOf,
   screenUsers,
+  useCaseSections,
 } from "./content-model";
 import { childrenOf, CODED_KINDS, isRow } from "./model";
 
@@ -30,20 +33,21 @@ type Props = { items: SrsItem[]; item: SrsItem; links: ItemLinks };
 
 const H3 = "mt-6 mb-2 text-[15px] leading-[22px] font-semibold first:mt-0";
 
-/** A line of text with each code it names as a link to that item. */
+/** The codes of `items` a text names, each with its item's page. */
+function useCodes(items: SrsItem[], links: ItemLinks): SplitCodes {
+  return useCallback(
+    (text: string) => splitCodes(text, items).map((part) => (typeof part === "string" ? part : { code: part.code, href: links.item(part.ref) })),
+    [items, links],
+  );
+}
+
+/** A field or a cell as Markdown of one line (code, bold, links), with each code it names as a link to that item. */
 export function CodeText({ text, items, links }: { text: string; items: SrsItem[]; links: ItemLinks }) {
+  const codes = useCodes(items, links);
   return (
-    <>
-      {splitCodes(text, items).map((part, index) =>
-        typeof part === "string" ? (
-          <span key={index}>{part}</span>
-        ) : (
-          <Link key={index} href={links.item(part.ref)} className="font-mono text-[0.92em] whitespace-nowrap text-brand underline decoration-brand/40 underline-offset-2 hover:text-brand-hover">
-            {part.code}
-          </Link>
-        ),
-      )}
-    </>
+    <SafeMarkdown testId="srs-text" codes={codes}>
+      {inlineMarkdown(text)}
+    </SafeMarkdown>
   );
 }
 
@@ -65,7 +69,7 @@ function Facts({ rows }: { rows: { label: string; value: ReactNode }[] }) {
   );
 }
 
-function Rule({ rule, links }: { rule: SrsItem; links: ItemLinks }) {
+function Rule({ rule, links, codes }: { rule: SrsItem; links: ItemLinks; codes: SplitCodes }) {
   const t = useTranslations("srs.item");
   const steps = stepRefs(rule);
   return (
@@ -77,7 +81,11 @@ function Rule({ rule, links }: { rule: SrsItem; links: ItemLinks }) {
           {rule.title}
         </h4>
       </header>
-      {rule.body.trim() ? <SafeMarkdown testId="srs-markdown">{rule.body}</SafeMarkdown> : null}
+      {rule.body.trim() ? (
+        <SafeMarkdown testId="srs-markdown" codes={codes}>
+          {rule.body}
+        </SafeMarkdown>
+      ) : null}
     </article>
   );
 }
@@ -89,7 +97,10 @@ function UseCase({ items, item, links }: Props) {
   const steps = stepsOf(item);
   const prose = proseOutsideTables(item.body);
   const rules = rulesOf(items, item);
+  const sections = useCaseSections(items, item);
+  const rulesText = sections.rules ? sectionMarkdown(items, sections.rules) : "";
   const screens = screensOf(items, item);
+  const codes = useCodes(items, links);
   const ids = [item.code, ...item.aliases].filter(Boolean).join(", ");
   return (
     <div className="flex flex-col" data-testid="srs-use-case">
@@ -136,18 +147,24 @@ function UseCase({ items, item, links }: Props) {
       )}
       {prose ? (
         <div className="mt-4">
-          <SafeMarkdown testId="srs-markdown">{prose}</SafeMarkdown>
+          <SafeMarkdown testId="srs-markdown" codes={codes}>
+            {prose}
+          </SafeMarkdown>
         </div>
       ) : null}
       <h3 className={H3}>{t("rules")}</h3>
-      {rules.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">{t("noRules")}</p>
-      ) : (
+      {rules.length ? (
         <div className="flex flex-col gap-3">
           {rules.map((rule) => (
-            <Rule key={rule.key} rule={rule} links={links} />
+            <Rule key={rule.key} rule={rule} links={links} codes={codes} />
           ))}
         </div>
+      ) : rulesText ? (
+        <SafeMarkdown testId="srs-rules-text" codes={codes}>
+          {rulesText}
+        </SafeMarkdown>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">{t("noRules")}</p>
       )}
       <h3 className={H3}>{t("screens")}</h3>
       {screens.length === 0 ? (
@@ -163,17 +180,30 @@ function UseCase({ items, item, links }: Props) {
           ))}
         </ul>
       )}
+      {sections.others.map((section) => {
+        const markdown = sectionMarkdown(items, section);
+        return markdown ? (
+          <Fragment key={section.key}>
+            <h3 className={H3} data-testid="srs-use-case-section">
+              {section.title}
+            </h3>
+            <SafeMarkdown testId="srs-markdown" codes={codes}>
+              {markdown}
+            </SafeMarkdown>
+          </Fragment>
+        ) : null;
+      })}
     </div>
   );
 }
 
 /** A table row (an NFR, a common rule): its cells under the headers of its section's table. */
-function Row({ items, item }: { items: SrsItem[]; item: SrsItem }) {
+function Row({ items, item, links }: Props) {
   const parent = items.find((one) => one.key === item.parent);
   const header = (parent?.body ?? "").split("\n").find((line) => line.trim().startsWith("|")) ?? "";
   const heads = header.split("|").slice(1, -1).map((cell) => cell.trim());
   const cells = Array.isArray(item.fields.cells) ? item.fields.cells.map(String) : [item.body];
-  return <Facts rows={cells.map((cell, index) => ({ label: heads[index] || String(index + 1), value: cell }))} />;
+  return <Facts rows={cells.map((cell, index) => ({ label: heads[index] || String(index + 1), value: <CodeText text={cell} items={items} links={links} /> }))} />;
 }
 
 /**
@@ -183,8 +213,9 @@ function Row({ items, item }: { items: SrsItem[]; item: SrsItem }) {
  */
 export function ItemBody({ items, item, links }: Props) {
   const t = useTranslations("srs.item");
+  const codes = useCodes(items, links);
   if (item.kind === "use_case") return <UseCase items={items} item={item} links={links} />;
-  if (isRow(item)) return <Row items={items} item={item} />;
+  if (isRow(item)) return <Row items={items} item={item} links={links} />;
   const markdown = sectionMarkdown(items, item);
   const above = item.kind === "business_rule" ? parentUseCase(items, item) : null;
   const users = item.kind === "screen" ? screenUsers(items, item) : [];
@@ -199,7 +230,13 @@ export function ItemBody({ items, item, links }: Props) {
           {steps.length ? <span>{t("atSteps", { steps: steps.join(", "), count: steps.length })}</span> : null}
         </p>
       ) : null}
-      {markdown ? <SafeMarkdown testId="srs-markdown">{markdown}</SafeMarkdown> : <p className="text-[13px] text-fg-subtle">{t("empty")}</p>}
+      {markdown ? (
+        <SafeMarkdown testId="srs-markdown" codes={codes}>
+          {markdown}
+        </SafeMarkdown>
+      ) : (
+        <p className="text-[13px] text-fg-subtle">{t("empty")}</p>
+      )}
       {users.length ? (
         <p className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
           {t("usedBy")}

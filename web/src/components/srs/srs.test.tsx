@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { pluginKeys } from "@/lib/plugin-queries";
 import { queryKeys } from "@/lib/queries";
-import { documentOf, ITEMS } from "@/test/fixtures/srs";
+import { documentOf, item, ITEMS } from "@/test/fixtures/srs";
 import { renderVi } from "@/test/render";
 
 import { srsKeys } from "./api";
@@ -73,6 +73,40 @@ describe("ItemBody", () => {
     expect(screen.getByTestId("srs-rule")).toHaveTextContent("Cart rules");
     expect(within(screen.getByTestId("srs-screens")).getByText("Cart")).toBeInTheDocument();
     expect(screen.getByText("The cart is kept for a day.")).toBeInTheDocument();
+  });
+
+  it("draws a use case's Markdown as text: code and bold in its fields and steps, no source comment, its rules table", () => {
+    const uc = item("up", {
+      kind: "use_case",
+      code: "UC UP-368",
+      title: "Self-register",
+      body: "<!-- source: User Profile/uc-368.md id: SRS.da94 -->\n\n| Trường | Giá trị |\n|---|---|\n| Objective | Sign up |",
+      fields: {
+        objective: "Sign up with `email_verified` per **BR ORD1-1**",
+        steps: [{ step: "1", user: "Mở màn hình `Đăng ký (Web)`", system: "-" }],
+      },
+    });
+    const items = [
+      ...ITEMS,
+      uc,
+      item("up-objective", { title: "1. Objective", parent: "up", body: "Sign up" }),
+      item("up-rules", { title: "7. Business Rules", parent: "up", body: "| Mã BR | Mô tả |\n|---|---|\n| **BR001** | Màn hình<br>- Đăng ký (Web) |" }),
+      item("up-history", { title: "Update History", parent: "up", body: "| Ngày |\n|---|\n| 2026-10-26 |" }),
+    ];
+    const { container } = renderVi(<ItemBody items={items} item={uc} links={links} />);
+    expect(container.textContent).not.toContain("<!--");
+    expect(container.textContent).not.toContain("`");
+    expect(container.textContent).not.toContain("**");
+    const facts = screen.getByTestId("srs-facts");
+    expect(within(facts).getByText("email_verified").tagName).toBe("CODE");
+    expect(within(facts).getByRole("link", { name: "BR ORD1-1" })).toHaveAttribute("href", "/p/demo/x/srs/documents/demo-shop/items/BR%20ORD1-1");
+    const steps = screen.getByTestId("srs-steps");
+    expect(within(steps).getByText("Đăng ký (Web)").tagName).toBe("CODE");
+    expect(within(steps).queryByRole("list")).toBeNull();
+    const rules = screen.getByTestId("srs-rules-text");
+    expect(within(rules).getByText("BR001").tagName).toBe("STRONG");
+    expect(rules.querySelector("td br")).not.toBeNull();
+    expect(screen.getAllByTestId("srs-use-case-section").map((heading) => heading.textContent)).toEqual(["Update History"]);
   });
 
   it("draws a table row as its cells under its section's headers", () => {
