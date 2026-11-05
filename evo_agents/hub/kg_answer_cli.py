@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.client import Hub
+from evo_agents.hub.client import Hub, HubError, transient
 from evo_agents.hub.contract import json_option, returns_object
 
 JOB = (
@@ -89,10 +89,21 @@ def progress_line(job: dict) -> str:
 
 
 def follow(hub: Hub, project: str, job_id: int, say, *, poll: float | None = None, sleep=None) -> dict:
-    """Read job ``job_id`` until it ends, calling ``say`` with each line that changed; its end."""
+    """Read job ``job_id`` until it ends, calling ``say`` with each line that changed; its end. A read the hub did
+    not answer (``client.transient``: a redeploy, a proxy's 502) is read again, not an end."""
     last = None
     while True:
-        job = hub.call("GET", f"{_base(project)}/{job_id}") or {}
+        try:
+            job = hub.call("GET", f"{_base(project)}/{job_id}") or {}
+        except HubError as exc:
+            if not transient(exc):
+                raise
+            line = f"the hub did not answer ({exc}); reading the job again in a moment"
+            if line != last:
+                say(line)
+                last = line
+            (sleep or time.sleep)(POLL_SECONDS if poll is None else poll)
+            continue
         line = progress_line(job)
         if line != last:
             say(line)
