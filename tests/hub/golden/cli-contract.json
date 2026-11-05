@@ -5693,7 +5693,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -5819,7 +5820,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -5945,7 +5947,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -6449,7 +6452,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -7031,7 +7035,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -7309,7 +7314,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -10911,6 +10917,139 @@
           "failed",
           "stopped"
         ]
+      }
+    },
+    "hub kg entity-map": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--outline"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--changed"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--post"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "active",
+          "runs"
+        ],
+        "schema": "EntityMapRuns",
+        "with": {
+          "--run": {
+            "kind": "object",
+            "keys": [
+              "id",
+              "project",
+              "via",
+              "state",
+              "why",
+              "build_id",
+              "agent_run_id",
+              "maps",
+              "readable",
+              "notes",
+              "error",
+              "created_at",
+              "updated_at",
+              "ended_at"
+            ],
+            "schema": "EntityMapRun"
+          },
+          "--outline": {
+            "kind": "object",
+            "keys": [
+              "project",
+              "sink",
+              "counts",
+              "repos",
+              "directories",
+              "clusters",
+              "entities",
+              "documents",
+              "plans"
+            ],
+            "schema": "EntityMapOutline"
+          },
+          "--changed": {
+            "kind": "object",
+            "keys": [
+              "project",
+              "sink",
+              "since_map",
+              "counts",
+              "new",
+              "changed",
+              "gone",
+              "uncited"
+            ],
+            "schema": "EntityMapChanged"
+          },
+          "--post": {
+            "kind": "object",
+            "keys": [
+              "entities",
+              "relations",
+              "mentions",
+              "code_links",
+              "rejected",
+              "sha256",
+              "queued"
+            ],
+            "schema": "MapKept"
+          }
+        }
       }
     },
     "hub kg eval-set": {
@@ -25757,7 +25896,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -25961,7 +26101,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         }
       ],
@@ -26138,7 +26279,8 @@
             "product",
             "kg_health",
             "kg_init",
-            "kg_questions"
+            "kg_questions",
+            "kg_entity_map"
           ]
         },
         {
@@ -26412,6 +26554,32 @@
       ],
       "json": null
     },
+    "worker triage merge-check": {
+      "positionals": [
+        {
+          "name": "action",
+          "metavar": "ACTION",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "rejudge",
+            "return"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker triage plan": {
       "positionals": [
         {
@@ -26577,32 +26745,6 @@
           ],
           "value": "string",
           "required": false,
-          "repeatable": false
-        }
-      ],
-      "json": null
-    },
-    "worker triage merge-check": {
-      "positionals": [
-        {
-          "name": "action",
-          "metavar": "ACTION",
-          "value": "string",
-          "required": true,
-          "repeatable": false,
-          "choices": [
-            "rejudge",
-            "return"
-          ]
-        }
-      ],
-      "options": [
-        {
-          "flags": [
-            "--reason"
-          ],
-          "value": "string",
-          "required": true,
           "repeatable": false
         }
       ],
@@ -35441,6 +35583,182 @@
           }
         }
       },
+      "/v1/kg/{project}/entities/setup": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Get Setup",
+          "description": "Whether the project's builds read entities, and what a click would do.",
+          "operationId": "get_setup_v1_kg__project__entities_setup_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SetupOut"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Post Setup",
+          "description": "Turn the entities step on when it is off, then queue a build that reads the entities.",
+          "operationId": "post_setup_v1_kg__project__entities_setup_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupBody"
+                }
+              }
+            }
+          },
+          "responses": {
+            "202": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SetupOut"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/optimize": {
         "post": {
           "tags": [
@@ -38243,6 +38561,400 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entity-map/run": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Start Entity Map",
+          "description": "Ask for an entity map run of the project now: 201 with the new run, or 200 with the run in flight.",
+          "operationId": "start_entity_map_v1_kg__project__entity_map_run_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityMapRun"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "200": {
+              "description": "a run is in flight already: that run",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityMapRun"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entity-map/runs": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Entity Map",
+          "description": "The project's entity map runs, newest first, with the one in flight.",
+          "operationId": "list_entity_map_v1_kg__project__entity_map_runs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "description": "the newest runs listed",
+                "default": 10,
+                "title": "Limit"
+              },
+              "description": "the newest runs listed"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityMapRuns"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entity-map/outline": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Entity Map Outline",
+          "description": "The structure of the project as the agents' sink reads its latest graph: repos and directories with their files\nand symbols, the clusters that hold code, the entities, the documents and the plans.",
+          "operationId": "entity_map_outline_v1_kg__project__entity_map_outline_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityMapOutline"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/entity-map/changed": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Entity Map Changed",
+          "description": "The items new, changed or gone since the last run that posted a map, and the documents, sections, plans and\nsteps no map cites, as the agents' sink reads the latest graph.",
+          "operationId": "entity_map_changed_v1_kg__project__entity_map_changed_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "the items of each list",
+                "default": 500,
+                "title": "Limit"
+              },
+              "description": "the items of each list"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EntityMapChanged"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -47741,7 +48453,8 @@
                       "product",
                       "kg_health",
                       "kg_init",
-                      "kg_questions"
+                      "kg_questions",
+                      "kg_entity_map"
                     ],
                     "type": "string"
                   },
@@ -48021,7 +48734,8 @@
                       "product",
                       "kg_health",
                       "kg_init",
-                      "kg_questions"
+                      "kg_questions",
+                      "kg_entity_map"
                     ],
                     "type": "string"
                   },
@@ -55860,7 +56574,8 @@
                       "product",
                       "kg_health",
                       "kg_init",
-                      "kg_questions"
+                      "kg_questions",
+                      "kg_entity_map"
                     ],
                     "type": "string"
                   },
@@ -56021,7 +56736,8 @@
                       "product",
                       "kg_health",
                       "kg_init",
-                      "kg_questions"
+                      "kg_questions",
+                      "kg_entity_map"
                     ],
                     "type": "string"
                   },
@@ -100380,182 +101096,6 @@
             }
           }
         }
-      },
-      "/v1/kg/{project}/entities/setup": {
-        "get": {
-          "tags": [
-            "kg"
-          ],
-          "summary": "Get Setup",
-          "description": "Whether the project's builds read entities, and what a click would do.",
-          "operationId": "get_setup_v1_kg__project__entities_setup_get",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SetupOut"
-                  }
-                }
-              }
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            },
-            "503": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Service Unavailable"
-            }
-          }
-        },
-        "post": {
-          "tags": [
-            "kg"
-          ],
-          "summary": "Post Setup",
-          "description": "Turn the entities step on when it is off, then queue a build that reads the entities.",
-          "operationId": "post_setup_v1_kg__project__entities_setup_post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupBody"
-                }
-              }
-            }
-          },
-          "responses": {
-            "202": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SetupOut"
-                  }
-                }
-              }
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            },
-            "503": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Service Unavailable"
-            }
-          }
-        }
       }
     },
     "components": {
@@ -118882,6 +119422,333 @@
           "title": "EntityMap",
           "description": "A map of format evo-entity-map/1 (``evo_agents.kg.entity_map``); the hub stamps the run itself."
         },
+        "EntityMapChanged": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "sink": {
+              "type": "string",
+              "title": "Sink",
+              "description": "the sink the graph was read through"
+            },
+            "since_map": {
+              "type": "boolean",
+              "title": "Since Map",
+              "description": "whether a run posted a map before; false: every item is new"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "each list counted whole, before it was cut"
+            },
+            "new": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "New",
+              "description": "the items no map's snapshot holds: id and class"
+            },
+            "changed": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Changed",
+              "description": "the items whose revision changed since the snapshot"
+            },
+            "gone": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Gone",
+              "description": "the items of the snapshot the graph no longer holds"
+            },
+            "uncited": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Uncited",
+              "description": "the documents, sections, plans and steps no map cites"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "sink",
+            "since_map",
+            "counts",
+            "new",
+            "changed",
+            "gone",
+            "uncited"
+          ],
+          "title": "EntityMapChanged"
+        },
+        "EntityMapOutline": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "sink": {
+              "type": "string",
+              "title": "Sink",
+              "description": "the sink the graph was read through"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "each list counted whole, before it was cut"
+            },
+            "repos": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "each repo with its files and symbols"
+            },
+            "directories": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Directories",
+              "description": "each directory (repo, path) with the files and symbols under it"
+            },
+            "clusters": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Clusters",
+              "description": "the clusters that hold code: id, level, code and other nodes, members"
+            },
+            "entities": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Entities",
+              "description": "the entities the graph has, with the code each is implemented by"
+            },
+            "documents": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Documents",
+              "description": "the documents with their sections"
+            },
+            "plans": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Plans",
+              "description": "the plans with their steps"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "sink",
+            "counts",
+            "repos",
+            "directories",
+            "clusters",
+            "entities",
+            "documents",
+            "plans"
+          ],
+          "title": "EntityMapOutline"
+        },
+        "EntityMapRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "first_build",
+                "stale",
+                "manual"
+              ],
+              "title": "Via"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "done",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "why": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Why",
+              "description": "what asked for the run"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id"
+            },
+            "agent_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Run Id",
+              "description": "the review run (lens kg_entity_map) of the agent that maps"
+            },
+            "maps": {
+              "type": "integer",
+              "title": "Maps",
+              "description": "the maps the review run posted"
+            },
+            "readable": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Readable",
+              "description": "what the run's sink read of the graph when it was queued, in counts"
+            },
+            "notes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Notes"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "via",
+            "state",
+            "why",
+            "build_id",
+            "agent_run_id",
+            "maps",
+            "readable",
+            "notes",
+            "error",
+            "created_at",
+            "updated_at",
+            "ended_at"
+          ],
+          "title": "EntityMapRun"
+        },
+        "EntityMapRuns": {
+          "properties": {
+            "active": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EntityMapRun"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/EntityMapRun"
+              },
+              "type": "array",
+              "title": "Runs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "active",
+            "runs"
+          ],
+          "title": "EntityMapRuns"
+        },
         "EntityNeighbourhood": {
           "properties": {
             "graph": {
@@ -120063,7 +120930,8 @@
                 "product",
                 "kg_health",
                 "kg_init",
-                "kg_questions"
+                "kg_questions",
+                "kg_entity_map"
               ],
               "title": "Lens"
             },
@@ -140166,7 +141034,8 @@
                     "product",
                     "kg_health",
                     "kg_init",
-                    "kg_questions"
+                    "kg_questions",
+                    "kg_entity_map"
                   ]
                 },
                 {
@@ -148377,7 +149246,8 @@
                 "product",
                 "kg_health",
                 "kg_init",
-                "kg_questions"
+                "kg_questions",
+                "kg_entity_map"
               ],
               "title": "Lens"
             },
@@ -153794,7 +154664,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 17.0,
+              "maximum": 18.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",
@@ -159706,7 +160576,8 @@
                 "product",
                 "kg_health",
                 "kg_init",
-                "kg_questions"
+                "kg_questions",
+                "kg_entity_map"
               ],
               "title": "Lens"
             },
@@ -159802,7 +160673,8 @@
                 "product",
                 "kg_health",
                 "kg_init",
-                "kg_questions"
+                "kg_questions",
+                "kg_entity_map"
               ],
               "title": "Lens"
             },
@@ -160321,6 +161193,113 @@
           "type": "object",
           "title": "SettingsWrite",
           "description": "The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."
+        },
+        "SetupBody": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "title": "SetupBody"
+        },
+        "SetupOut": {
+          "properties": {
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy",
+              "description": "the strategy the project's builds follow; null for none"
+            },
+            "step_on": {
+              "type": "boolean",
+              "title": "Step On",
+              "description": "whether that strategy has the entities step"
+            },
+            "turns_on": {
+              "type": "string",
+              "title": "Turns On",
+              "description": "the strategy a writer's click sets while the step is off"
+            },
+            "sink": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sink",
+              "description": "the sink the entities mapping sends text through; null for a local model"
+            },
+            "sink_problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sink Problem",
+              "description": "why that sink would take no item, as a build says; null when it can"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "whether the reader may turn the step on and queue a build (the writer role)"
+            },
+            "building": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Build"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the newest build queued or running"
+            },
+            "queued": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queued",
+              "description": "POST only: false when a build was waiting already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "strategy",
+            "step_on",
+            "turns_on",
+            "sink",
+            "sink_problem",
+            "can_change",
+            "building"
+          ],
+          "title": "SetupOut"
         },
         "ShapeRow": {
           "properties": {
@@ -172578,113 +173557,6 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
-        },
-        "SetupBody": {
-          "properties": {
-            "reason": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 1000
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Reason"
-            }
-          },
-          "type": "object",
-          "title": "SetupBody"
-        },
-        "SetupOut": {
-          "properties": {
-            "strategy": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Strategy",
-              "description": "the strategy the project's builds follow; null for none"
-            },
-            "step_on": {
-              "type": "boolean",
-              "title": "Step On",
-              "description": "whether that strategy has the entities step"
-            },
-            "turns_on": {
-              "type": "string",
-              "title": "Turns On",
-              "description": "the strategy a writer's click sets while the step is off"
-            },
-            "sink": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Sink",
-              "description": "the sink the entities mapping sends text through; null for a local model"
-            },
-            "sink_problem": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Sink Problem",
-              "description": "why that sink would take no item, as a build says; null when it can"
-            },
-            "can_change": {
-              "type": "boolean",
-              "title": "Can Change",
-              "description": "whether the reader may turn the step on and queue a build (the writer role)"
-            },
-            "building": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/Build"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "the newest build queued or running"
-            },
-            "queued": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Queued",
-              "description": "POST only: false when a build was waiting already"
-            }
-          },
-          "type": "object",
-          "required": [
-            "strategy",
-            "step_on",
-            "turns_on",
-            "sink",
-            "sink_problem",
-            "can_change",
-            "building"
-          ],
-          "title": "SetupOut"
         }
       }
     }

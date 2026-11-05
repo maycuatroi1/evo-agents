@@ -5,8 +5,9 @@
   (``evo_agents.kg.entity_map``). The hub checks each entry against its latest build as the run's sink reads it
   (AGENT_SINK, the agents' sink, as ``kg_run_access.sink`` reads a KG run's): an entry that cites a node that build
   lacks, or one above that sink's clearance, alike, is rejected with its reason, and the rest is kept as a blob of kind
-  kg-entity-map, stamped with the run, and a build is queued, which reads every map the project holds. A member's own
-  credential is refused: a map comes from a run.
+  kg-entity-map, stamped with the run, and a build is queued, which reads every map the project holds; the run's entity
+  map run, when it is one's (``kg_entity_map_run``), counts the map. A member's own credential is refused: a map comes
+  from a run.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from evo_agents.hub import kg_entity_map_db
 from evo_agents.hub import kg_entity_maps as maps
 from evo_agents.hub import kg_entity_relay as relay
 from evo_agents.hub.blobs import BlobStoreUnavailable
@@ -110,6 +112,7 @@ async def post_entity_map(request: Request, project: ProjectName, body: EntityMa
             async with request.app.state.engine.begin() as conn:
                 await relay.hold(conn, store, access.project_id, sha, path, len(data), maps.MAP_KIND, user.user_id)
                 await project_archive.refuse_archived(conn, access.project_id, "its graph is not built again")
+                await kg_entity_map_db.posted(conn, user.acts_for_run)  # the entity map run it belongs to, if any
                 _, queued = await queue(request, conn, access.project_id, project, user.user_id)
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None

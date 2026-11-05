@@ -163,7 +163,7 @@ def test_review_lenses_take_the_lens_product_in_turn_with_the_others_and_show_it
     names = list(review.LENSES)
     assert review.PRODUCT == "product" and names.index("product") == names.index("product_goals") + 1
     assert (
-        names[-3:] == ["kg_health", "kg_init", "kg_questions"]
+        names[-4:] == ["kg_health", "kg_init", "kg_questions", "kg_entity_map"]
         and "product" in review.FIGURE_KEYS
         and review.LENS_FIGURES["product"] == "product"
     )

@@ -301,6 +301,24 @@ Sections, Plans and PlanSteps of the build that no map cites), and the entries `
 build record keeps the counts alone. `coverage.entities` repeats the node and edge counts with `style: agent`, so the
 pipeline view shows the step.
 
+**The runs.** The hub asks for a map itself. Lens `kg_entity_map` of the Curator (`docs/curator.md`) queues a review
+run on the project's default agent pool, under the charter's review cost cap, on the first successful build under this
+strategy, when a writer calls `evo-agents hub kg entity-map --run --project P`, and when a build's maps have more than
+20% of their citations stale or leave more than half of the citable items uncited (at most once a day). One run is in
+flight per project. Its prompt holds counts and classes only. The agent reads the outline and what changed through the
+run's sink, chooses the level of each code link, may use subagents, and posts one or more partial maps:
+
+```
+evo-agents hub kg entity-map --project P [--limit N] [--json]   # the runs, newest first
+evo-agents hub kg entity-map --project P --run [--json]         # ask for a run (the writer role)
+evo-agents hub kg entity-map --project P --outline [--json]     # repos, directories, code clusters, entities, documents, plans
+evo-agents hub kg entity-map --project P --changed [--limit N] [--json]  # new, changed, gone since the last map; uncited
+evo-agents hub kg entity-map --project P --post FILE [--json]   # send a map (a run's token)
+```
+
+The routes are `POST /v1/kg/{project}/entity-map/run` and `GET .../entity-map/runs`, `.../outline` and
+`.../changed`. A run is done when it posted a map, and failed otherwise.
+
 ## The Curator and prose
 
 A kg_init run whose data profile is mostly prose (`class:prose` a major part) starts with the entities step on: the

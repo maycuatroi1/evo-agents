@@ -70,7 +70,18 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, facet_job, kg_entity_relay, kg_init_db, kg_labels, review, runs, tables
+from evo_agents.hub import (
+    curator,
+    facet_job,
+    kg_entity_map_db,
+    kg_entity_map_run,
+    kg_entity_relay,
+    kg_init_db,
+    kg_labels,
+    review,
+    runs,
+    tables,
+)
 from evo_agents.hub import kg_optimize as optimize_model
 from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
@@ -89,6 +100,9 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
+from evo_agents.hub.server import (
+    kg_entity_map_run as entity_map_runs,
+)
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.night_duty import Duty
 from evo_agents.hub.server.projects import ProjectAccess
@@ -803,6 +817,17 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
             [],
             optimize=["", ((asking.body or {}).get("questions") or {}).get("prompt") or ""],
         )
+    mapping = await kg_entity_map_db.of_agent_run(conn, view.id)
+    if mapping is not None:  # the review run of an entity map run: counts only, never an item
+        return review.build_review_prompt(
+            view.project,
+            None,
+            [kg_entity_map_run.LENS],
+            [repo.model_dump() for repo in view.repos or []],
+            {},
+            [],
+            optimize=["", (mapping.body or {}).get("prompt") or ""],
+        )
     initiated = await kg_init_db.of_agent_run(conn, view.id)
     if initiated is not None:  # the review run of a kg_init run: no night, its own lens and prompt
         earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, ["kg_init"])
@@ -910,7 +935,7 @@ async def collect(
     first (``kg_health.measure``, with ``github_app`` and ``blobs``), and ``graphs`` says how many."""
     from evo_agents.hub.server.curator_shift import due_schedules, gate_of  # it imports this module
 
-    measured = optimized = initiated = None
+    measured = optimized = initiated = mapped = None
     if data_dir is not None:
         measured = await _side(
             "measuring the knowledge graphs failed",
@@ -921,6 +946,10 @@ async def collect(
         )
         initiated = await _side(
             "moving the kg_init runs on failed", lambda: kg_init.advance(engine, blobs=blobs, data_dir=data_dir)
+        )
+        mapped = await _side(
+            "moving the kg entity map runs on failed",
+            lambda: entity_map_runs.advance(engine, blobs=blobs, data_dir=data_dir),
         )
     told = await _side("telling the end of the kg uploads' flows failed", lambda: kg_pipeline.tell(engine))
     answered = await _side("moving the kg answer jobs on failed", lambda: kg_answers.advance(engine))
@@ -944,6 +973,8 @@ async def collect(
         found["kg_optimize"] = optimized
     if initiated:
         found["kg_init"] = initiated
+    if mapped:
+        found["kg_entity_map"] = mapped
     if told:
         found["kg_pipeline"] = told
     if answered:

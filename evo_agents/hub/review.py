@@ -75,6 +75,7 @@ Lens = Literal[
     "kg_health",
     "kg_init",
     "kg_questions",
+    "kg_entity_map",
 ]  # the keys of LENSES, as a type
 LENSES: dict[str, str] = {
     "tool_errors": "tools and commands that fail often, in sessions and in runs: the failures that repeat, and of "
@@ -114,8 +115,12 @@ LENSES: dict[str, str] = {
     "kg_questions": "the starter questions of a project whose data has no commit history: read its documents through "
     "the kg_* tools and write retrieval questions each answered by a file or a node of the graph. Asked for by a "
     "kg_init run before it measures (evo_agents.hub.server.kg_questions), never a night's turn",
+    "kg_entity_map": "the entity map of a project whose strategy is entity-graph-agent: read its documents, plans and "
+    "code through the kg_* tools or the checkout, name the concepts, components and features they speak of and link "
+    "each to the directories, files or symbols that implement it, then post the map. Asked for by an entity map run "
+    "(evo_agents.hub.server.kg_entity_map_run), never a night's turn",
 }
-ON_DEMAND_LENSES = ("kg_init", "kg_questions")  # the lenses a run asks for, left out of the nights' turns
+ON_DEMAND_LENSES = ("kg_init", "kg_questions", "kg_entity_map")  # the lenses a run asks for, left out of the nights' turns
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
 Severity = Literal["low", "medium", "high"]

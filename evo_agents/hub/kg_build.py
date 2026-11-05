@@ -70,6 +70,7 @@ from evo_agents.hub import (
     blob_gc,
     kg_asked,
     kg_coverage,
+    kg_entity_map_db,
     kg_entity_maps,
     kg_entity_relay,
     kg_eval_starter,
@@ -578,6 +579,11 @@ async def record(
                 await kg_init_db.on_build(conn, project_id, build_id, built.coverage)
         except Exception:
             log.exception("a kg init run was not queued", extra={"project_id": project_id, "build_id": build_id})
+        try:  # a run maps the entities to the code (strategy entity-graph-agent); a failure never fails the build
+            async with conn.begin_nested():
+                await kg_entity_map_db.on_build(conn, project_id, build_id, built.coverage)
+        except Exception:
+            log.exception("a kg entity map run was not queued", extra={"project_id": project_id, "build_id": build_id})
     return artifact
 
 

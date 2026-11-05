@@ -488,7 +488,10 @@ def night(activity: int, *, cost: float, write: int, p95: int, loaded: int, fixe
 
 def test_the_lenses_runtime_and_harness_have_their_figures_and_metrics_in_the_ledger():
     assert {"runtime", "harness"} <= set(review.LENSES) and {"runtime", "harness"} <= set(review.FIGURE_KEYS)
-    assert list(review.LENSES)[-3:] == ["kg_health", "kg_init", "kg_questions"] and len(review.LENSES) == 17
+    assert (
+        list(review.LENSES)[-4:] == ["kg_health", "kg_init", "kg_questions", "kg_entity_map"]
+        and len(review.LENSES) == 18
+    )
     assert ledger.LENS_METRICS["runtime"] == (
         "session_cost_usd",
         "cache_write_tokens",

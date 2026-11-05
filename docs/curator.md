@@ -425,6 +425,27 @@ turn with the other lenses: with three lenses a night, once in five nights.
 
 The Loop's own numbers (work items by state and by goal) join the figure once the Loop keeps work items.
 
+### The lens kg_entity_map
+
+The lens `kg_entity_map` (plan kg-entities-to-code, criterion a3) maps a project's entities to its code for strategy
+`entity-graph-agent` (`docs/kg-strategies.md`). It takes no turn on a night: like `kg_init` and `kg_questions` it is
+on demand (`review.ON_DEMAND_LENSES`), and the hub queues its review run
+(`evo_agents/hub/server/kg_entity_map_run.py`, migration 0210) on the project's default agent pool, under the review
+cost cap of the charter (`kg_init.HUB_CAP_USD`), with the pool's login and no API key.
+
+- **When.** The first successful build under the strategy, when the project has had no such run; a writer's call,
+  `evo-agents hub kg entity-map --run --project P` (`POST /v1/kg/{project}/entity-map/run`); or a build whose maps
+  have more than 20% of their citations stale or leave more than half of the citable items uncited, at most once in
+  24 hours. A project has one run in flight at a time: a second call answers with that run.
+- **What it reads.** The prompt holds counts and data classes only, never an item: what the run's sink reads of the
+  latest build, what lies above its clearance, and how much changed since the last map. The agent reads the rest with
+  `hub kg entity-map --outline` (the repos, directories, code clusters, entities, documents and plans),
+  `--changed` (the items new, changed or gone since the last map, and what no map cites) and the kg_* tools, all
+  through the sink. It chooses the level of each code link (Directory, File or Symbol), may hand parts to subagents,
+  and may post partial maps with `--post FILE`.
+- **The end.** The run is done when its review run posted at least one map, and failed otherwise; a run no node took
+  in 24 hours fails. It records no finding and files no proposal. `hub kg entity-map --project P` lists the runs.
+
 ## Replays
 
 A replay measures a change of the Curator on the project's own history, the way it would meet the project's next work:
