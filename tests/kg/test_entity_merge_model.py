@@ -9,6 +9,8 @@ import sys
 import pytest
 import yaml
 
+pytest.importorskip("sqlalchemy", reason="the entity relay needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import kg_entity_relay
 from evo_agents.kg import claude_code, entities, strategy
 from evo_agents.kg import entity_links as links
@@ -307,9 +309,7 @@ def test_fewer_descriptions_are_kept_as_they_are():
 
 def step_of(config, tmp_path, policy=None):
     cov = entities._coverage(config, False)
-    step = entities._Step(
-        config, Memo(tmp_path / "memo.sqlite"), cov, ["Actor"], ["relates_to"], offline=False, outbox=None, inbox={}
-    )
+    step = entities._Step(config, Memo(None), cov, ["Actor"], ["relates_to"], offline=False, outbox=None, inbox={})
     step.policy = policy
     return step, cov
 
