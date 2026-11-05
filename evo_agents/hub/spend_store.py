@@ -7,6 +7,9 @@ records a run whose batch of events holds a usage report, so the figures follow 
 a state report that carries the run's usage records it too. The job hub.record_spend (``record_pending``) takes in the
 runs no record reached yet, oldest first, so a run's earlier runs of its session are in before it.
 
+A local run whose machine sent no usage reports gets its rows from the transcripts the hub holds of its session
+(``evo_agents.hub.local_spend``, through ``write``), which ``record`` leaves alone.
+
 ``spend_of`` reads the rows of some runs back as ``run_spend.summary`` adds them up, for Run's ``spend``.
 """
 
@@ -78,8 +81,9 @@ def _row(run_id: int, spent: run_spend.Spend) -> dict:
 
 
 async def record(conn: AsyncConnection, run_id: int) -> list[run_spend.Spend]:
-    """Write what run ``run_id`` spent (see the module), in the caller's transaction; the rows written."""
-    r, s = tables.runs, tables.run_spend
+    """Write what run ``run_id`` spent (see the module), in the caller's transaction; the rows written. A run with no
+    report to read keeps the rows it has."""
+    r = tables.runs
     query = select(r.c.runtime, r.c.session_id, r.c.model_used, r.c.model, r.c.usage).where(r.c.id == run_id)
     run = (await conn.execute(query)).one_or_none()
     if run is None:
@@ -91,6 +95,16 @@ async def record(conn: AsyncConnection, run_id: int) -> list[run_spend.Spend]:
     if not reports:
         reported = run_spend.usage_report(run.runtime, run.usage, session, model)
         reports = [reported] if reported is not None else []
+    if not reports:  # nothing to read: the rows it has stay (a local run's from its transcripts, ``local_spend``)
+        await conn.execute(update(r).values(spend_at=func.now()).where(r.c.id == run_id))
+        return []
+    return await write(conn, run_id, reports)
+
+
+async def write(conn: AsyncConnection, run_id: int, reports: list[run_spend.Report]) -> list[run_spend.Spend]:
+    """Replace the rows of run ``run_id`` with what ``reports`` say it spent, from where its sessions stood, and stamp
+    its ``spend_at``, in the caller's transaction; the rows written."""
+    r, s = tables.runs, tables.run_spend
     spent = run_spend.ledger(reports, await bases(conn, run_id, (report.session for report in reports)))
     await conn.execute(delete(s).where(s.c.run_id == run_id))
     if spent:
