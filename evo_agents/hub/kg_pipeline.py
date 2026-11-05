@@ -136,7 +136,7 @@ def _after_build(build: Mapping, init: Mapping | None, waiting: Mapping | None, 
         if init.get("state") in ("queued", "running"):
             return [*asked, _phase("entities", "pending", "after the Curator decides the strategy")]
         return [*asked, _phase("entities", "skipped", "the Curator's settings needed no rebuild")]
-    state, detail = _build(rebuild, f"rebuild #{rebuild_id} with the Curator's settings")
+    state, detail = _build(rebuild, f"rebuild #{(rebuild or {}).get('id') or rebuild_id} with the Curator's settings")
     if state != "done":
         return [*asked, _phase("entities", state, detail)]
     return [
@@ -169,7 +169,7 @@ def derive(
         )
         phases += [_phase(name, "pending") for name in PHASES[3:]]
     else:
-        state, detail = _build(build, f"build #{upload['build_id']}")
+        state, detail = _build(build, f"build #{(build or {}).get('id') or upload['build_id']}")
         phases.append(_phase("building", state, detail))
         if state == "done":
             phases += _after_build(build or {}, init, waiting, rebuild)

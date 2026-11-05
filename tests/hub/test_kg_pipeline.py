@@ -136,7 +136,7 @@ if pg.DSN:
     from sqlalchemy import func, insert, select, update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.client import HubError
+    from evo_agents.hub.kg_build import STOPPED
     from evo_agents.hub.server import kg_pipeline as served
     from evo_agents.hub.server.app import create_app
     from tests.hub import live
@@ -272,6 +272,33 @@ def test_the_route_follows_an_upload_to_ready_and_its_sender_and_admins_are_told
     assert {(r[2], r[3]) for r in found} == {(f"Knowledge graph of {PROJECT} ready", f"/p/{PROJECT}/kg")}
     assert tell(world) == {} and len(told(world)) == 2, "told once"
     assert world.client.get(world.path, headers=world.sender).json()["told_at"] is not None
+
+
+@needs_pg
+def test_a_rebuild_its_worker_stopped_is_followed_by_the_build_queued_in_its_place(world):
+    """Run on agents.omelet.tech 2026-11-05 (plan kg-zip-to-answers, step 7): the hub restarted under the Curator's
+    rebuild, which failed as STOPPED and queued another; the flow said failed though the new build went on."""
+    set_build(world, world.build_id, status="succeeded", nodes=4, edges=6, coverage={"sources": 1})
+    b = tables.kg_builds
+    ((stopped,),) = live.sql(world.db, insert(b).values(project_id=world.project_id, status="queued").returning(b.c.id))
+    decided = {"questions": {"state": "done", "version": 1}, "applied": {"change": {"build_id": stopped}}}
+    init_run(world, state="done", build_id=world.build_id, body=decided)
+    set_build(world, stopped, status="failed", error=STOPPED)
+    ((again,),) = live.sql(world.db, insert(b).values(project_id=world.project_id, status="queued").returning(b.c.id))
+    set_build(world, again, status="running")
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"], read["rebuild_id"]) == ("running", "entities", again)
+    assert read["phases"][-1]["detail"] == f"rebuild #{again} with the Curator's settings running"
+    assert tell(world) == {} and told(world) == [], "no notice while the build queued in its place runs"
+    entities = {"enabled": True, "nodes": 9, "edges": 12, "stopped": None, "failed": 0, "deferred": 0}
+    set_build(world, again, status="succeeded", coverage={"entities": entities})
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phases"][-1]["state"]) == ("ready", "done")
+
+    no_artifact = {"artifact_sha256": None, "artifact_size": None, "content_hash": None}
+    set_build(world, again, status="failed", error="no knowledge config on the hub yet", **no_artifact)
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"]) == ("failed", "entities"), "any other failure still ends the flow"
 
 
 @needs_pg
