@@ -11,7 +11,9 @@
 
 The build is the one the upload queued; the kg_init run is the newest of the project whose build is that one or later
 (a run takes the newest build as it starts), so a run asked for again after one failed, or one that followed a later
-build, replaces it and only the newest counts; and the rebuild is the one its decision queued. A build whose worker
+build, replaces it and only the newest counts; and the rebuild is the one its decision queued, else the one the
+newest earlier kg_init run on that build or later queued (a kg_init run asked for again while the first one's rebuild
+runs, whose settings need none, does not end the flow before that rebuild). A build whose worker
 stopped queued the next one of the project (``kg_build.STOPPED``), which the flow follows in its place. Logs name the project and
 the upload, never an item.
 """
@@ -41,6 +43,7 @@ log = logging.getLogger(__name__)
 
 MAX_TOLD = 200  # uploads a pass of ``tell`` looks at
 MAX_REQUEUED = 20  # builds stopped and queued again one after the other that a read follows
+MAX_EARLIER_INITS = 20  # kg_init runs before the newest that a read looks through for the rebuild
 
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}})
 
@@ -125,6 +128,27 @@ async def _init(conn: AsyncConnection, project_id: int, build_id: int) -> tuple[
     return None, None if active is None else dict(active._mapping)
 
 
+async def _rebuild_id(conn: AsyncConnection, project_id: int, build_id: int, init: dict | None) -> int | None:
+    """The build the decision of kg_init run ``init`` queued, else the one the newest kg_init run of the project on
+    build ``build_id`` or later queued: a run asked for again after the first one's decision changes nothing, and the
+    rebuild of that first decision still runs the entities step."""
+    found = model.rebuild_of(init)
+    if found is not None or init is None:
+        return found
+    t = tables.kg_init_runs
+    rows = await conn.execute(
+        select(t.c.body)
+        .where(t.c.project_id == project_id, t.c.build_id >= build_id, t.c.id < init["id"])
+        .order_by(t.c.id.desc())
+        .limit(MAX_EARLIER_INITS)
+    )
+    for (body,) in rows:
+        found = model.rebuild_of({"body": body})
+        if found is not None:
+            return found
+    return None
+
+
 async def read(conn: AsyncConnection, project: str, row) -> KgPipeline:
     """The flow of upload ``row`` (``_upload_columns``) of project ``project``."""
     report = row.report or {}
@@ -140,7 +164,7 @@ async def read(conn: AsyncConnection, project: str, row) -> KgPipeline:
     init = waiting = rebuild = None
     if build is not None and build["status"] == "succeeded":
         init, waiting = await _init(conn, row.project_id, build["id"])
-        rebuild = await _build(conn, model.rebuild_of(init), row.project_id)
+        rebuild = await _build(conn, await _rebuild_id(conn, row.project_id, build["id"], init), row.project_id)
     found = model.derive(upload, build, init, waiting=waiting, rebuild=rebuild)
     return KgPipeline(
         upload_id=row.id,
