@@ -453,7 +453,7 @@ def _coverage(config: dict, offline: bool) -> dict:
     }
 
 
-def _sink_problem(policy, sink: str | None) -> str | None:
+def sink_problem(policy, sink: str | None) -> str | None:
     """Why the mapping's sink cannot take any item: not declared, or not an llm-backend."""
     if sink is None:
         return None
@@ -471,7 +471,7 @@ def _todo(config: dict, policy, records, body, unit_labels, cov: dict, digest: s
     from evo_agents.kg.profile import class_of
 
     sink = config.get("sink")
-    sink_problem = _sink_problem(policy, sink)
+    refusal = sink_problem(policy, sink)
     wanted = set(config.get("items") or [])
     max_chars = config.get("max_chars", DEFAULT_MAX_CHARS)
     todo = []
@@ -480,10 +480,10 @@ def _todo(config: dict, policy, records, body, unit_labels, cov: dict, digest: s
         if (r["kind"] not in wanted) if wanted else (class_of(r["kind"]) != "prose"):
             continue
         label = unit_labels[item_unit(rec.item_id)]
-        if sink_problem or (sink is not None and not policy.allows(label, sink)):
+        if refusal or (sink is not None and not policy.allows(label, sink)):
             cov["refused_count"] += 1
             if len(cov["refused"]) < REFUSED_SAMPLES:
-                why = sink_problem or (
+                why = refusal or (
                     f"the label of the item (level {policy.level_name(label.level)}, location "
                     f"{policy.location_name(label.location)}) is above the clearance of sink {sink!r}"
                 )
@@ -603,7 +603,7 @@ class _Step:
         if sink is None:
             return True
         policy = self.policy
-        return policy is not None and _sink_problem(policy, sink) is None and policy.allows(label, sink)
+        return policy is not None and sink_problem(policy, sink) is None and policy.allows(label, sink)
 
     def tally(self, what: str, key: str, n: int = 1) -> None:
         self.cov.setdefault(what, {})

@@ -1650,6 +1650,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/entities/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Setup
+         * @description Whether the project's builds read entities, and what a click would do.
+         */
+        get: operations["get_setup_v1_kg__project__entities_setup_get"];
+        put?: never;
+        /**
+         * Post Setup
+         * @description Turn the entities step on when it is off, then queue a build that reads the entities.
+         */
+        post: operations["post_setup_v1_kg__project__entities_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/optimize": {
         parameters: {
             query?: never;
@@ -38817,6 +38841,51 @@ export interface components {
              */
             if_version?: number | null;
         };
+        /** SetupBody */
+        SetupBody: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** SetupOut */
+        SetupOut: {
+            /**
+             * Strategy
+             * @description the strategy the project's builds follow; null for none
+             */
+            strategy: string | null;
+            /**
+             * Step On
+             * @description whether that strategy has the entities step
+             */
+            step_on: boolean;
+            /**
+             * Turns On
+             * @description the strategy a writer's click sets while the step is off
+             */
+            turns_on: string;
+            /**
+             * Sink
+             * @description the sink the entities mapping sends text through; null for a local model
+             */
+            sink: string | null;
+            /**
+             * Sink Problem
+             * @description why that sink would take no item, as a build says; null when it can
+             */
+            sink_problem: string | null;
+            /**
+             * Can Change
+             * @description whether the reader may turn the step on and queue a build (the writer role)
+             */
+            can_change: boolean;
+            /** @description the newest build queued or running */
+            building: components["schemas"]["Build"] | null;
+            /**
+             * Queued
+             * @description POST only: false when a build was waiting already
+             */
+            queued?: boolean | null;
+        };
         /** ShapeRow */
         ShapeRow: {
             /** Src Kind */
@@ -49903,6 +49972,144 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_setup_v1_kg__project__entities_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    post_setup_v1_kg__project__entities_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

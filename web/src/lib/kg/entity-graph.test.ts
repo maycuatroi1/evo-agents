@@ -6,7 +6,6 @@ import {
   edgeLabel,
   edgeSize,
   ENTITY_PALETTE,
-  enableCommand,
   type EntityEdge,
   type EntityGraphNode,
   estimateCost,
@@ -181,9 +180,5 @@ describe("the empty state's estimate", () => {
     expect(perDocument).toBeCloseTo((2000 * 0.1 + 1274 * 0.5) / 1e6, 10);
     expect(total).toBeCloseTo(perDocument * 1000, 10);
     expect(estimateCost(-3).total).toBe(0);
-  });
-
-  it("turns the step on with the hub's settings command", () => {
-    expect(enableCommand("demo")).toBe('evo-agents hub kg settings --project demo --strategy entity-graph-api --reason "entity graph view"');
   });
 });

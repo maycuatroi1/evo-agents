@@ -4,12 +4,25 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { createApiClient } from "@/lib/api/client";
 import type { EntityEdge, EntityGraphData, EntityGraphNode, WorkingSet } from "@/lib/kg/entity-graph";
 import { entityKeys } from "@/lib/kg/entity-queries";
 import { makeQueryClient } from "@/lib/query-client";
 import { renderVi } from "@/test/render";
 
 import { EntityView } from "./entity-view";
+
+// The empty state reads its setup (GET /v1/kg/{project}/entities/setup): a graph with the step off.
+vi.mock("@/lib/api/browser", () => ({
+  browserApi: () =>
+    createApiClient({
+      baseUrl: "http://hub.test",
+      fetch: async (request) =>
+        request.url.endsWith("/entities/setup")
+          ? Response.json({ strategy: null, step_on: false, turns_on: "entity-graph-api", sink: "llm", sink_problem: null, can_change: true, building: null })
+          : Response.json({ error: "not_found", message: "not in this test" }, { status: 404 }),
+    }),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -111,11 +124,11 @@ describe("EntityView", () => {
     expect(screen.getByTestId("kg-entity-canvas").dataset.selected).toBe("entity:ada");
   });
 
-  it("explains a graph without entities: the reason, the estimate by documents and the command that turns the step on", async () => {
+  it("explains a graph without entities: the reason and the estimate by documents", async () => {
     renderView(EMPTY, 1000);
     const empty = await screen.findByTestId("kg-entities-empty");
     expect(within(empty).getByTestId("kg-entities-estimate").textContent).toContain("1.000");
-    expect(within(empty).getByTestId("kg-entities-enable").textContent).toContain("evo-agents hub kg settings --project demo --strategy entity-graph-api");
+    expect(within(empty).getByTestId("kg-entities-reason").textContent).toContain("entities");
     expect(screen.queryByTestId("kg-entity-legend")).toBeNull();
   });
 });
