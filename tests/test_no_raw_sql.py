@@ -83,6 +83,7 @@ MIGRATIONS_RUN = (
     "0010_plan_runs.py",
     "0011_credentials.py",
     "0184_decision_approval.py",  # a CHECK constraint written as one SQL string, as it ran
+    "0210_run_spend.py",  # a partial index written as one SQL string, as it ran
 )
 # Migrations that have run: each is the record of how databases at its revision were built, so the guard leaves
 # them as they are. A new migration is written with Alembic's operations on evo_agents.hub.tables.

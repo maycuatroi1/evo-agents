@@ -29,9 +29,8 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from evo_agents.kg import entity_map
+from evo_agents.kg import entity_map, entity_map_reads
 from evo_agents.kg import profile as kg_profile
-from evo_agents.kg.store_filters import LIVE, SEEN
 
 LENS = "kg_entity_map"
 STALE_SHARE = 0.2  # a map whose citations are stale beyond this share asks for a run
@@ -92,13 +91,6 @@ class Node:
     props: dict
 
 
-def _visible(ceiling: tuple[int, int] | None) -> tuple[str, dict]:
-    if ceiling is None:
-        return "0 = 1", {}
-    level = "COALESCE(label_lvl, 0) <= :lvl AND COALESCE(label_loc, 0) <= :loc"
-    return f"{SEEN} AND {level}", {"lvl": ceiling[0], "loc": ceiling[1]}
-
-
 def _build(store) -> int | None:
     return store.latest_ready()
 
@@ -109,14 +101,7 @@ def nodes(store, ceiling: tuple[int, int] | None, kinds=()) -> Iterator[Node]:
     b = _build(store)
     if b is None:
         return
-    seen, args = _visible(ceiling)
-    args["b"] = b
-    where = ""
-    if kinds:
-        where = f" AND kind IN ({', '.join(f':k{n}' for n in range(len(kinds)))})"
-        args |= {f"k{n}": kind for n, kind in enumerate(kinds)}
-    query = f"SELECT node_id, kind, name, props FROM nodes WHERE {LIVE} AND {seen}{where}"
-    for node_id, kind, name, props in store.db.execute(query, args):
+    for node_id, kind, name, props in entity_map_reads.node_rows(store, b, ceiling, kinds):
         yield Node(node_id, kind, name or "", json.loads(props or "{}"))
 
 
@@ -124,9 +109,7 @@ def _edges(store, ceiling, rel: str) -> Iterator[tuple[str, str]]:
     b = _build(store)
     if b is None:
         return
-    seen, args = _visible(ceiling)
-    args |= {"b": b, "rel": rel}
-    yield from store.db.execute(f"SELECT src, dst FROM edges WHERE rel = :rel AND {LIVE} AND {seen}", args)
+    yield from entity_map_reads.edge_rows(store, b, ceiling, rel)
 
 
 def _class(props: Mapping) -> str:
@@ -142,15 +125,9 @@ def item_revs(store, ceiling) -> tuple[dict[str, str], dict[str, str], int]:
         return {}, {}, 0
     # the class of every item, those above the ceiling too, so that assets and commits stay out of ``above``
     classes = {n.node_id: _class(n.props) for n in nodes(store, ALL) if "item_kind" in n.props}
-    seen, args = _visible(ceiling)
-    args["b"] = b
     revs: dict[str, str] = {}
     above = 0
-    query = (
-        f"SELECT item_id, rev, hash, CASE WHEN {seen} THEN 1 ELSE 0 END FROM units"
-        f" WHERE anchor = '' AND {LIVE} ORDER BY item_id"
-    )
-    for item, rev, hashed, visible in store.db.execute(query, args):
+    for item, rev, hashed, visible in entity_map_reads.item_rows(store, b, ceiling):
         cls = classes.get(item, "other")
         if cls in LEFT_OUT:
             continue
@@ -321,15 +298,7 @@ def _clusters(store, visible: Mapping[str, Node]) -> list[dict]:
     b = _build(store)
     if b is None:
         return []
-    try:
-        rows = store.db.execute(
-            "SELECT m.cluster_id, c.level, m.node_id FROM cluster_members m JOIN clusters c ON c.cluster_id ="
-            " m.cluster_id AND c.tx_from <= :b AND (c.tx_to IS NULL OR c.tx_to > :b) WHERE m.tx_from <= :b AND"
-            " (m.tx_to IS NULL OR m.tx_to > :b) ORDER BY m.cluster_id, m.node_id",
-            {"b": b},
-        ).fetchall()
-    except Exception:  # a graph built without clusters has no such tables
-        return []
+    rows = entity_map_reads.cluster_rows(store, b)
     found: dict[str, dict] = {}
     for cluster, level, node_id in rows:
         node = visible.get(node_id)
