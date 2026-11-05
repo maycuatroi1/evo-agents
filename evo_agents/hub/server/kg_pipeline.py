@@ -10,7 +10,8 @@
   told with no notice.
 
 The build is the one the upload queued; the kg_init run is the first of the project whose build is that one or later
-(a run takes the newest build as it starts), and the rebuild the one its decision queued. Logs name the project and
+(a run takes the newest build as it starts), and the rebuild the one its decision queued. A build whose worker
+stopped queued the next one of the project (``kg_build.STOPPED``), which the flow follows in its place. Logs name the project and
 the upload, never an item.
 """
 
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_pipeline as model
 from evo_agents.hub import tables
+from evo_agents.hub.kg_build import STOPPED
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
@@ -37,6 +39,7 @@ from evo_agents.hub.tables_kg import INIT_ACTIVE
 log = logging.getLogger(__name__)
 
 MAX_TOLD = 200  # uploads a pass of ``tell`` looks at
+MAX_REQUEUED = 20  # builds stopped and queued again one after the other that a read follows
 
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}})
 
@@ -78,15 +81,25 @@ def _upload_columns():
     )
 
 
-async def _build(conn: AsyncConnection, build_id: int | None) -> dict | None:
+async def _build(conn: AsyncConnection, build_id: int | None, project_id: int) -> dict | None:
+    """Build ``build_id``, or the build that took its place: a build whose worker stopped (``kg_build.STOPPED``)
+    queued another of the project, so the flow goes on with the next build of the project."""
     if build_id is None:
         return None
     b = tables.kg_builds
-    found = (
-        await conn.execute(
-            select(b.c.id, b.c.status, b.c.error, b.c.nodes, b.c.edges, b.c.coverage).where(b.c.id == build_id)
-        )
-    ).first()
+    columns = (b.c.id, b.c.status, b.c.error, b.c.nodes, b.c.edges, b.c.coverage)
+    found = (await conn.execute(select(*columns).where(b.c.id == build_id, b.c.project_id == project_id))).first()
+    for _ in range(MAX_REQUEUED):
+        if found is None or found.status != "failed" or found.error != STOPPED:
+            break
+        after = (
+            await conn.execute(
+                select(*columns).where(b.c.project_id == project_id, b.c.id > found.id).order_by(b.c.id).limit(1)
+            )
+        ).first()
+        if after is None:
+            break
+        found = after
     return None if found is None else dict(found._mapping)
 
 
@@ -118,11 +131,11 @@ async def read(conn: AsyncConnection, project: str, row) -> KgPipeline:
         "files": report.get("files"),
         "replaced_by": report.get("replaced_by"),
     }
-    build = await _build(conn, row.build_id)
+    build = await _build(conn, row.build_id, row.project_id)
     init = waiting = rebuild = None
     if build is not None and build["status"] == "succeeded":
         init, waiting = await _init(conn, row.project_id, build["id"])
-        rebuild = await _build(conn, model.rebuild_of(init))
+        rebuild = await _build(conn, model.rebuild_of(init), row.project_id)
     found = model.derive(upload, build, init, waiting=waiting, rebuild=rebuild)
     return KgPipeline(
         upload_id=row.id,
@@ -130,7 +143,7 @@ async def read(conn: AsyncConnection, project: str, row) -> KgPipeline:
         **found,
         build_id=row.build_id,
         init_id=None if init is None else init["id"],
-        rebuild_id=model.rebuild_of(init),
+        rebuild_id=model.rebuild_of(init) if rebuild is None else rebuild["id"],
         told_at=row.told_at,
     )
 
