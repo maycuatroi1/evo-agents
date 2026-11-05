@@ -15,8 +15,9 @@ files and symbols under each, the clusters that hold code, the entities the grap
 what is new or changed since the map before (``changed``: the items whose revision the snapshot of the last run that
 posted a map lacks or holds otherwise, and the citable nodes no map cites). It reads the documents, plans and code it
 needs through the kg_* tools or the run's checkout, picks for each code link the level (Directory, File or Symbol) that
-fits, may hand parts to subagents, and posts the map, in parts if it likes (POST /v1/kg/{project}/entity-map). A run
-that reaches its cap posts what it has; the next one goes on from ``changed``.
+fits, hands areas to subagents when the uncited items are many, and posts the map in parts as it goes (POST
+/v1/kg/{project}/entity-map). The prompt tells it the run's caps; it works until every uncited item is read and cited
+or a cap nears, and a run that reaches its cap leaves the rest to the next one, from ``changed``.
 
 Standard library only, besides the graph's own modules.
 """
@@ -47,6 +48,7 @@ MAX_PLANS = 500
 MAX_CLUSTERS = 300
 CLUSTER_SAMPLE = 5
 MAX_CHANGED = 2000  # items of each list of ``changed``
+SPLIT_AT = 200  # uncited items past which the prompt asks the run to split the reading among subagents
 MAX_SNAPSHOT = 100_000  # items a snapshot keeps
 REV_CHARS = 16
 ALL = (1 << 30, 1 << 30)  # a ceiling above every label
@@ -314,8 +316,35 @@ def _clusters(store, visible: Mapping[str, Node]) -> list[dict]:
     return sorted((c for c in found.values() if c["code"]), key=lambda c: (-c["code"], c["id"]))
 
 
-def prompt(*, project: str, run_id: int, sink: str, found: Readable, why: list[str], since_map: bool) -> str:
-    """The text the run starts with: counts and classes, never the name or the text of an item."""
+def _budget_line(caps: Mapping | None) -> str:
+    """The run's caps as the prompt tells them: the cost cap, the turns and the agent time, all of which remain when
+    the run starts."""
+    caps = caps or {}
+    usd, turns, seconds = caps.get("max_usd"), caps.get("max_turns"), caps.get("max_seconds")
+    parts = [f"a cost cap of ${float(usd):.2f}" if usd is not None else ""]
+    parts += [f"{int(turns)} turns" if turns is not None else "", f"{int(seconds) // 60} minutes" if seconds else ""]
+    held = ", ".join(p for p in parts if p)
+    if not held:
+        return "The worker stops the run at its caps; work until they near, not until the first part is posted."
+    return (
+        f"This run has {held} of agent time, and all of it remains as you start. The worker stops the run at the "
+        "first cap it reaches. Spend it on the map: stop only when the work is whole, or when about a tenth "
+        "of a cap remains (note the time with `date` as you start and check it between parts). A subagent's turns "
+        "do not count against yours, its cost does."
+    )
+
+
+def prompt(
+    *,
+    project: str,
+    run_id: int,
+    sink: str,
+    found: Readable,
+    why: list[str],
+    since_map: bool,
+    caps: Mapping | None = None,
+) -> str:
+    """The text the run starts with: counts, classes and the run's caps, never the name or the text of an item."""
     classes = ", ".join(f"{name} ({n} items)" for name, n in sorted(found.classes.items()))
     moved = found.changed
     since = (
@@ -325,6 +354,14 @@ def prompt(*, project: str, run_id: int, sink: str, found: Readable, why: list[s
         else "No map of the project was posted before: every item is new to it."
     )
     cmd = f"evo-agents hub kg entity-map --project {project}"
+    split = (
+        f"- {found.uncited} items is more than one agent reads well: split the reading by area, one subagent (Task "
+        "tool) per top-level package or code directory, per docs directory and per group of plans, several at once. "
+        "Give each its area, the item ids of `--changed` in it, the format and these rules; have each post its own "
+        "parts or hand you the JSON to post, and give an area that comes back unfinished to a fresh subagent."
+        if found.uncited > SPLIT_AT
+        else "- Hand parts to subagents (Task tool), one per area, when an area is large; post each part as it is done."
+    )
     return "\n".join(
         [
             f"## The entity map of project {project} (entity map run #{run_id})",
@@ -335,27 +372,39 @@ def prompt(*, project: str, run_id: int, sink: str, found: Readable, why: list[s
             f"{found.above} more are above your clearance. It has {found.entities} entities, and {found.uncited} of "
             f"its {found.citable} documents, sections, plans and steps are cited by no map. {since}",
             "",
+            "## The work, and when it is done",
+            f"One run builds the map. The work is whole when every one of the {found.uncited} uncited documents, "
+            "sections, plans and steps (and every item new or changed since the last map) has been read and is cited "
+            "by each entity it speaks of; an item that speaks of no concept, component or feature of the code may "
+            "stay uncited, and your summary counts those. Do not stop after a first part, and never leave work "
+            '"for another run" while budget remains: a run stops early only at its caps, and then the next run goes '
+            "on from `--changed`.",
+            _budget_line(caps),
+            "",
             "## How to map it",
             f"- `{cmd} --outline --json` gives the structure: the repos and their directories with the files and "
             "symbols under each, the clusters that hold code, the entities the graph has, the documents with their "
-            f"sections and the plans with their steps. `{cmd} --changed --json` lists the items new or changed since "
-            "the last map and what no map cites yet: start there when a map exists.",
+            f"sections and the plans with their steps. `{cmd} --changed --json --limit {MAX_CHANGED}` lists the items "
+            "new or changed since the last map and what no map cites yet: that is your work list. A list longer than "
+            "the limit shows its first items; the rest show once the builds that follow your posts take your parts "
+            "in, so read it again after each few parts.",
             "- Read the documents, plans and code you need with kg_search, kg_context and kg_node, or in the run's "
             "checkout of the repos. What they do not show you, you may not use.",
-            "- Name the concepts, components and features the documents and plans speak of, and link each to the code "
-            "that implements it at the level that fits: a Directory for a package or a subsystem, a File for a "
-            "module, a Symbol for one class or function. Give each link a reason a reader can check. Cite the "
-            "documents, sections, plans or steps that speak of each entity, with a short quote.",
-            "- Split the work by area and hand parts to subagents when the project is large; post each part as it is "
-            "done.",
+            "- Name the concepts, components and features the documents and plans speak of, reusing the entities the "
+            "graph has, and link each to the code that implements it at the finest level that holds it whole: a "
+            "Symbol when one class or function is the implementation, a File when a module is, a Directory when a "
+            "package or a subsystem is. Give every link a reason a reader can check.",
+            "- Cite every document, section, plan or step that names or speaks of an entity, each with a short "
+            "quote: all of them, not one per entity. An entity many documents speak of carries a mention from each.",
+            split,
             "",
             "## How to send it",
             f'Write a JSON object of format {entity_map.FORMAT} (docs/kg-strategies.md, "The entity-graph-agent '
             f'strategy") to a file and run `{cmd} --post FILE`. The hub checks every cited node against its latest '
             "build through your sink, keeps what passes, lists each entry it rejected with the reason, and queues a "
-            "build. Fix what was rejected and post it again; parts may be posted one after another. When your cost "
-            "cap comes near, post what you have: the next run goes on from `--changed`. Record no finding and file no "
-            "proposal.",
+            "build. Post the map in parts as you go, one part per area or every few dozen entities, so that nothing "
+            "is lost if the run stops; fix what was rejected and post it again. A part that names an entity posted "
+            "before, by the same name, adds its mentions and links to it. Record no finding and file no proposal.",
         ]
     )
 

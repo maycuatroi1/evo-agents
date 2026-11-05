@@ -120,6 +120,33 @@ def test_the_privacy_of_the_prompt_counts_and_classes_never_an_item(store):
         assert named not in text
 
 
+def test_the_prompt_asks_for_the_whole_map_within_the_caps_it_tells():
+    """One run builds the map (a9): it tells the caps, works until every uncited item is read or a cap nears, posts in
+    parts, cites every document that names an entity, links at the level that fits with a reason, and splits a large
+    list among subagents."""
+    caps = {"max_usd": 2.0, "max_turns": 60, "max_seconds": 3600}
+    small = model.Readable(items=40, citable=30, uncited=12, classes={"code": 20, "prose": 20})
+    large = model.Readable(items=9000, citable=6100, uncited=6048, classes={"code": 3000, "prose": 6000})
+    args = {"project": "demo", "run_id": 7, "sink": "claude-code@anthropic", "why": [], "since_map": True}
+    text = model.prompt(found=large, caps=caps, **args)
+    assert "a cost cap of $2.00, 60 turns, 60 minutes of agent time, and all of it remains" in text
+    assert "every one of the 6048 uncited documents" in text and 'never leave work "for another run"' in text
+    assert "--changed --json --limit 2000" in text and "Post the map in parts as you go" in text
+    assert "all of them, not one per entity" in text and "Give every link a reason" in text
+    assert "a Symbol when one class or function is the implementation, a File when a module is" in text
+    assert "one subagent (Task tool) per top-level package" in text
+    assert "one subagent (Task tool) per top-level package" not in model.prompt(found=small, caps=caps, **args)
+    assert "work until they near" in model.prompt(found=small, **args)
+
+
+def test_the_review_rules_of_an_entity_map_run_work_to_the_cap_and_a_nights_stop_early():
+    whole = review_model.build_review_prompt("demo", None, [model.LENS], [], {}, [], optimize=["", "the lens"])
+    night = review_model.build_review_prompt("demo", None, ["security"], [], {})
+    assert "stop well before the run's budget ends" not in whole and "left for another night" not in whole
+    assert "never stop with work left while budget remains" in whole and "what is still left" in whole
+    assert "stop well before the run's budget ends" in night and "left for another night" in night
+
+
 # On Postgres
 
 if pg.DSN:
@@ -226,6 +253,7 @@ def test_the_run_queues_one_review_run_under_the_cap_and_its_prompt_holds_counts
     assert run[2]["max_usd"] <= kg_init.HUB_CAP_USD
     text = prompt_of(review, row["agent_run_id"])
     assert model.LENS in text and "holds 12 items" in text and "--post FILE" in text
+    assert f"a cost cap of ${run[2]['max_usd']:.2f}, {run[2]['max_turns']} turns" in text
     assert SECRET not in text and "ledger" not in text
     assert advanced(review) == {"running": 1}
     status = client.get(f"{URL}/runs", headers=owner).json()["active"]
