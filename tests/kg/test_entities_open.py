@@ -38,7 +38,7 @@ print(json.dumps({
 """
 
 
-def setup(tmp_path, kg_env):
+def setup(tmp_path, kg_env, extra=None):
     project = make_project(tmp_path, kg_env)
     script, log = tmp_path / "model.py", tmp_path / "calls"
     script.write_text(MODEL)
@@ -50,7 +50,12 @@ def setup(tmp_path, kg_env):
         "node_kinds": KINDS,
         "relations": ["relates_to"],
         "items": ["markdown"],
-    }
+    } | (extra or {})
+    path = project.knowledge_path
+    data = yaml.safe_load(path.read_text())
+    data["policy"]["sinks"] += [{"id": "llm-low", "kind": "llm-backend", "clearance": {"level": "public"}}]
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    project = load_project_at(project.harness.root, kg_env)
     data = {
         "version": 1,
         "name": "graph",
@@ -102,6 +107,17 @@ def test_a_lightrag_model_gives_typed_described_entities_and_keyworded_relations
     assert cov["tokens_out"] == 40 * cov["calls"] and cov["rejected"] >= 1, "the edge to an unknown name is dropped"
     calls = len(list(log.iterdir()))
     assert build_project(project).ok and len(list(log.iterdir())) == calls, "memoized by the item's digest"
+
+
+def test_the_lightrag_style_keeps_the_sink_check_and_the_cost_ceiling_of_the_step(tmp_path, kg_env):
+    project, log = setup(tmp_path / "low", kg_env, {"sink": "llm-low"})
+    cov = build_project(project).coverage["entities"]
+    assert not list(log.iterdir()) and cov["calls"] == 0 and cov["refused_count"] >= 1
+    assert "above the clearance of sink 'llm-low'" in cov["refused"][0]["reason"]
+    assert rows(project, "nodes", "node_id LIKE 'entity:%'") == []
+    project, log = setup(tmp_path / "cost", kg_env, {"max_cost": 0.005})
+    cov = build_project(project).coverage["entities"]
+    assert cov["calls"] == 1 and "max_cost" in cov["stopped"], "one call of 0.01 passes the ceiling, then it stops"
 
 
 def test_the_closed_style_keeps_its_prompt_digest_and_answers():

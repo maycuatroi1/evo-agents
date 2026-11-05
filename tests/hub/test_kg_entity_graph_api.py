@@ -179,3 +179,18 @@ def test_an_entity_and_a_relation_cite_their_documents_with_quote_line_and_link(
     assert (relation["src"]["name"], relation["dst"]["name"], relation["documents"]) == ("Alice", "Acme", 2)
     cited = {c["document"]: (c["quote"], c["line"]) for c in relation["citations"]}
     assert cited == {"doc:a1": ("Alice works at Acme", 7), "doc:a2": (None, None)}
+
+
+def test_the_routes_serve_150_entities_by_default_at_most_1000_and_a_depth_of_1_to_3():
+    pytest.importorskip("fastapi")
+    from evo_agents.hub.openapi import document
+
+    paths = document()["paths"]
+
+    def bounds(route: str) -> dict[str, dict]:
+        return {p["name"]: p["schema"] for p in paths[f"/v1/kg/{{project}}/{route}"]["get"]["parameters"]}
+
+    top, around = bounds("entity-graph"), bounds("entity-graph/around")
+    assert (top["limit"]["default"], top["limit"]["maximum"]) == (150, 1000)
+    assert (around["depth"]["minimum"], around["depth"]["maximum"], around["limit"]["maximum"]) == (1, 3, 1000)
+    assert {"id"} <= set(bounds("entity")) and {"id"} <= set(bounds("relation"))
