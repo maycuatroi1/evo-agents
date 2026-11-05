@@ -219,3 +219,24 @@ def test_a_measure_asks_with_the_current_and_the_candidate_tuning_and_leaves_bui
     )
     assert used == [(kg.DEFAULT.semantic_weight, False, 2), (1.5, True, 2)]
     assert found["build_id"] == 3 and found["questions"] == 2 and found["candidate"]["n"] == 2
+
+
+def test_a_hub_build_reads_the_ontology_of_the_strategy_its_settings_name():
+    """A strategy set on the hub changes no file of the harness: the build adds the strategy's node kinds and relations
+    to the project's ontology itself, else the entities step of entity-graph-api would drop every relation."""
+    own = {"node_kinds": ["Concept", "Work"], "relations": ["related_to"]}
+    config = {"knowledge": {"version": 1, "ontology": "ontology.yaml"}, "ontology": own}
+    knowledge, ontology = kg_build.knowledge_and_ontology(
+        config, [], kg.of({"strategy": "entity-graph-api"}, kg.DEFAULT)
+    )
+    assert knowledge["ontology"] == "ontology.yaml"
+    assert ontology["node_kinds"][:2] == ["Concept", "Work"] and "Artifact" in ontology["node_kinds"]
+    assert ontology["relations"] == ["related_to", "relates_to"]
+    assert own == {"node_kinds": ["Concept", "Work"], "relations": ["related_to"]}, "the config itself is not changed"
+
+    bare = {"knowledge": {"version": 1}, "ontology": None}
+    knowledge, ontology = kg_build.knowledge_and_ontology(bare, [], kg.of({"strategy": "entity-graph-api"}, kg.DEFAULT))
+    assert knowledge["ontology"] == "ontology.yaml" and "relates_to" in ontology["relations"]
+
+    for tuning in (None, kg.DEFAULT, kg.of({"strategy": "code"}, kg.DEFAULT), kg.of({"strategy": "gone"}, kg.DEFAULT)):
+        assert kg_build.knowledge_and_ontology(bare, [], tuning) == ({"version": 1}, None)

@@ -83,6 +83,7 @@ from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnav
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.kg import settings
+from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.protocol import sha256 as sha256_of
@@ -173,6 +174,18 @@ def _write_if_changed(path: Path, text: str) -> None:
     tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
+
+
+def knowledge_and_ontology(config: dict, sources: list, tuning: settings.Tuning | None) -> tuple[dict, dict | None]:
+    """The knowledge.yaml and the ontology a build of ``config`` reads: the plugins' ``sources`` added, and the node
+    kinds and relations of the strategy the project's settings name added to its ontology (``kg.strategy``). A strategy
+    set on the hub (``hub kg settings --strategy``, the Entities view's button) changes no file of the harness, so
+    without this an entities step whose relations the harness's ontology lacks would drop every relation."""
+    knowledge = kg_sources.knowledge_with(config["knowledge"], sources)
+    ontology = kg_strategy.with_ontology(tuning.strategy if tuning else None, config.get("ontology"))
+    if ontology is not None and knowledge.get("ontology") != ONTOLOGY_FILE:
+        knowledge = {**knowledge, "ontology": ONTOLOGY_FILE}
+    return knowledge, ontology
 
 
 def write_config(data_dir: Path, project: str, knowledge: dict, ontology: dict | None) -> Path:
@@ -379,7 +392,7 @@ def build_in_cache(
     in memory (``evo_agents.hub.server.kg_entity_key``). Blocking."""
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
-    write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
+    write_config(data_dir, name, *knowledge_and_ontology(config, sources, tuning))
     project = worker_project(data_dir, name)
     drop_forgotten(project, ingests)
     kg_sources.keep_sources(project, sources)
