@@ -957,3 +957,10 @@ def test_code_words_read_a_short_query_whole_and_a_long_one_for_identifiers():
     assert code_words("ab 12 the") == []
     text = "x = 1\nLUMEN_FLAG = 2\nprint(LUMEN_FLAG_OLD)\n  lumen_flag()\n"
     assert lines_holding(text, ["LUMEN_FLAG"]) == [2, 4]  # whole words only, case aside
+
+
+def test_the_stored_text_of_a_body_is_its_text_without_the_camel_case_parts_the_index_added():
+    from evo_agents.kg import search
+
+    for text in ("The FTX trial\n\nSam Bankman-Fried testified.", "getHTTPResponse reads the đường", "one line"):
+        assert search.stored_text(search.index_text(text)) == search.fold(text)

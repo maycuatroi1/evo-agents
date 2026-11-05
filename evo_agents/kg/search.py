@@ -175,6 +175,15 @@ def index_text(text: str) -> str:
     return f"{folded}\n{' '.join(extra)}" if extra else folded
 
 
+def stored_text(body: str) -> str:
+    """The text of a body ``index_text`` gave: without the parts of its camelCase words it added at the end (đ stays
+    read as d)."""
+    head, _, tail = body.rpartition("\n")
+    if head and tail == " ".join(dict.fromkeys(part for word in _WORD.findall(head) for part in camel_parts(word))):
+        return head
+    return body
+
+
 def passage_key(node_id: str, start: int, end: int) -> str:
     """The key of a passage's row in ``node_fts_rows``: the node's id, PASSAGE_MARK, its lines (``lines 10-42``)."""
     return f"{node_id}{PASSAGE_MARK}lines {start}-{end}"
