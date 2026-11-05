@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
 from evo_agents.hub import judge
 from evo_agents.worker.runner import judge as judge_run
 from tests.worker.test_curator_runs import TEST_FILE, change_branch, curator
