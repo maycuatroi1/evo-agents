@@ -65,9 +65,9 @@ HUB_URL_ENV = "EVO_HUB_URL"
 KG_RUN = "kg-run"
 # What a member may let the tokens of their runs reach besides what every run's token reaches (schema 0193,
 # ``users.run_reach``, ``evo_agents.hub.server.run_access_rules``): a project's agent profiles and agent types, workers
-# and their pools, the Curator's writes, a project's release schedule and checking it now (0208); in the order the hub
-# keeps them.
-RUN_REACH_GROUPS = ("agents", "workers", "curator", "releases")
+# and their pools, the Curator's writes, a project's release schedule and checking it now (0208), asking an answer job
+# of a project's graph (0209); in the order the hub keeps them.
+RUN_REACH_GROUPS = ("agents", "workers", "curator", "releases", "answers")
 
 ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 # Variables a secret may not set: they steer the shell, the daemon, git or the interpreter rather than the agent.

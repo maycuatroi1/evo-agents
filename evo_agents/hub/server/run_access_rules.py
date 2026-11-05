@@ -15,14 +15,15 @@ messaged, no decision answered and no approval given, and nothing of the Curator
 on a route open to it is the route's to refuse, as for the agent of a run on /mcp: each of those rules tests
 ``Principal.acts_for_run``, which both have.
 
-Four of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
+Five of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
 agent types), ``workers`` (workers, worker pools, their join tokens and labels, and the org chart's workers),
-``curator`` (the Curator's writes) and ``releases`` (setting a project's release schedule, resuming it and checking it
-now, which may queue the cut of a release as the schedule's owner). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach
-(``evo-agents hub autonomy run-reach --allow ...``), is the set of them the tokens of their runs skip; ``security``
-reads it with the token, so a change holds from the next request of every run. It is empty unless the member chose,
-which refuses as before, and a refusal of one of them says how the owner opens it. Every other group stays refused
-whatever the owner chose.
+``curator`` (the Curator's writes), ``releases`` (setting a project's release schedule, resuming it and checking it
+now, which may queue the cut of a release as the schedule's owner) and ``answers`` (asking an answer job of a project's
+graph, ``kg_answers.ask``, whose batches the hub queues later as review runs dispatched as the job's sender, the
+owner). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach (``evo-agents hub autonomy
+run-reach --allow ...``), is the set of them the tokens of their runs skip; ``security`` reads it with the token, so a
+change holds from the next request of every run. It is empty unless the member chose, which refuses as before, and a
+refusal of one of them says how the owner opens it. Every other group stays refused whatever the owner chose.
 
 While the middleware answers a request of a run's token, ACTING_RUN holds the run's id, and no run is queued whatever
 route the request took: ``refuse_new_run`` is the last word of every place that inserts a run
@@ -58,7 +59,7 @@ _PROJECT = r"/v1/projects/[^/]+"
 _RUN = rf"{_PROJECT}/runs/[^/]+"
 # The groups a member may let the tokens of their runs reach (``users.run_reach``), in the order the hub keeps them.
 REACH_GROUPS = RUN_REACH_GROUPS
-AGENTS, WORKERS, CURATOR, RELEASES = REACH_GROUPS
+AGENTS, WORKERS, CURATOR, RELEASES, ANSWERS = REACH_GROUPS
 RUN_REACH_PATH = "/v1/autonomy/run-reach"
 # (group, why, path patterns): every method of a path in one of them is refused
 REFUSED = (
@@ -149,6 +150,11 @@ WRITES_REFUSED = (
         RELEASES,
         "a project's release schedule and checking it now, which may queue the cut of a release",
         (rf"{_PROJECT}/releases/(?:run|schedule|resume)",),
+    ),
+    (
+        ANSWERS,
+        "asking an answer job of a project's graph, whose batches the hub hands agents as review runs",
+        (r"/v1/kg/[^/]+/answers$",),
     ),
 )
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
