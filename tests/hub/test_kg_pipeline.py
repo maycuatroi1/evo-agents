@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.hub import kg_pipeline, kg_upload_cli
+from evo_agents.hub.client import HubError
 from tests.hub import pg
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
@@ -95,7 +96,10 @@ class Answers:
 
     def call(self, method, path, body=None, *, timeout=None):
         self.calls.append((method, path))
-        return self.answers.pop(0)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 def flow(state, phase, error=None, phases=()):
@@ -113,6 +117,18 @@ def test_follow_prints_each_phase_once_then_ready():
         "Knowledge graph ready (building running)",
     ]
     assert hub.calls[0] == ("GET", "/v1/kg/northwind/uploads/5/pipeline")
+
+
+def test_follow_reads_again_through_a_redeploy_and_raises_what_is_not_transient():
+    building = [{"name": "building", "state": "running", "detail": "build #7 running"}]
+    gone = HubError("the hub at https://hub.example.org answered HTTP 502", status=502)
+    hub = Answers([flow("running", "building", phases=building), gone, gone, flow("ready", None, phases=building)])
+    said = []
+    found = kg_upload_cli.follow(hub, "northwind", 5, said.append, sleep=lambda _: None)
+    assert found["state"] == "ready" and len(hub.calls) == 4 and len(said) == 3
+    assert said[1].startswith("the hub did not answer (the hub at https://hub.example.org answered HTTP 502)")
+    with pytest.raises(HubError):
+        kg_upload_cli.follow(Answers([HubError("no", status=403)]), "northwind", 5, said.append, sleep=lambda _: None)
 
 
 if pg.DSN:

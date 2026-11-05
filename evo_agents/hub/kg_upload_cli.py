@@ -29,6 +29,7 @@ from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.client import Hub, HubError, put_presigned_part
+from evo_agents.hub.client import transient as hub_transient
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.kg_push import PUT_ATTEMPTS, PUT_DELAYS, transient
 
@@ -171,10 +172,21 @@ def progress_line(found: dict) -> str:
 
 
 def follow(hub: Hub, project: str, upload_id: int, say, *, poll: float | None = None, sleep=None) -> dict:
-    """Read the flow after upload ``upload_id`` until it ends, calling ``say`` with each line that changed; its end."""
+    """Read the flow after upload ``upload_id`` until it ends, calling ``say`` with each line that changed; its end.
+    A read the hub did not answer (``client.transient``: a redeploy, a proxy's 502) is read again, not an end."""
     last = None
     while True:
-        found = pipeline_of(hub, project, upload_id)
+        try:
+            found = pipeline_of(hub, project, upload_id)
+        except HubError as exc:
+            if not hub_transient(exc):
+                raise
+            line = f"the hub did not answer ({exc}); reading the flow again in a moment"
+            if line != last:
+                say(line)
+                last = line
+            (sleep or time.sleep)(POLL_SECONDS if poll is None else poll)
+            continue
         line = progress_line(found)
         if line != last:
             say(line)

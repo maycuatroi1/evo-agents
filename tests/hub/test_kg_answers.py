@@ -14,6 +14,7 @@ import pytest
 
 from evo_agents.hub import kg_answer_cli
 from evo_agents.hub import kg_answers as model
+from evo_agents.hub.client import HubError
 from tests.hub import pg
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
@@ -93,7 +94,10 @@ class Answers:
 
     def call(self, method, path, body=None, *, timeout=None):
         self.calls.append((method, path))
-        return self.answers.pop(0)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 def job(state="running", **counts):
@@ -117,6 +121,15 @@ def test_follow_prints_each_change_once_and_the_lines_keep_the_files_ids():
     lines = kg_answer_cli.answer_lines(Answers([page]), "northwind", 4, {"1": 1})
     assert lines[0]["id"] == 1 and "error" not in lines[0]
     assert lines[1] == {**line, "id": "q-2", "answer": None, "error": "run #9 ended failed"}
+
+
+def test_follow_reads_the_job_again_through_a_redeploy():
+    hub = Answers([job(), HubError("answered HTTP 502", status=502), job("done", answered=3, pending=0)])
+    said = []
+    found = kg_answer_cli.follow(hub, "northwind", 4, said.append, sleep=lambda _: None)
+    assert found["state"] == "done" and len(hub.calls) == 3 and said[1].startswith("the hub did not answer")
+    with pytest.raises(HubError):
+        kg_answer_cli.follow(Answers([HubError("no", status=403)]), "northwind", 4, said.append, sleep=lambda _: None)
 
 
 # On Postgres
