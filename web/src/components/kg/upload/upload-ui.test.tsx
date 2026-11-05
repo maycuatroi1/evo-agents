@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { KgUpload, KgUploadStarted } from "@/lib/kg/upload";
-import type { KgInitRun } from "@/lib/kg/upload-queries";
+import { initRunFor, type KgInitRun } from "@/lib/kg/upload-queries";
 
 import messages from "../../../../messages/en.json";
 import { UploadProgress } from "./upload-progress";
@@ -229,5 +229,26 @@ describe("UploadProgress", () => {
     expect(screen.queryByTestId("kg-upload-progress")).toBeNull();
     await userEvent.click(screen.getByTestId("kg-upload-retry"));
     expect(retry).toHaveBeenCalledOnce();
+  });
+});
+
+describe("initRunFor", () => {
+  // Newest first, as GET /v1/kg/{project}/init lists them: #3 asked again after #1 failed, both on the upload's build.
+  const failed = initRun({ id: 1, state: "failed", build_id: 12, agent_run_id: 720 });
+  const rerun = initRun({ id: 3, state: "done", build_id: 12, agent_run_id: 729, questions: { agent_run_id: 728 } });
+  const older = initRun({ id: 0, state: "done", build_id: 9, agent_run_id: 700 });
+
+  it("takes the newest kg_init run on the upload's build or a later one, as the pipeline does", () => {
+    expect(initRunFor(upload(), [rerun, failed, older])?.id).toBe(3);
+    const later = initRun({ id: 5, state: "running", build_id: 14, agent_run_id: 740 });
+    expect(initRunFor(upload(), [later, rerun, failed])?.id).toBe(5);
+    expect(initRunFor(upload(), [older])).toBeNull();
+    expect(initRunFor(upload({ build_id: null }), [rerun])).toBeNull();
+  });
+
+  it("names the pipeline's own run when the pipeline says which, and none when it names none", () => {
+    expect(initRunFor(upload(), [rerun, failed], 1)?.agent_run_id).toBe(720);
+    expect(initRunFor(upload(), [rerun, failed], null)).toBeNull();
+    expect(initRunFor(upload(), [rerun, failed], undefined)?.id).toBe(3);
   });
 });

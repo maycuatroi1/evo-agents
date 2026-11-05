@@ -307,6 +307,36 @@ def test_a_rebuild_its_worker_stopped_is_followed_by_the_build_queued_in_its_pla
 
 
 @needs_pg
+def test_the_newest_kg_init_run_counts_so_a_rerun_after_a_failed_one_ends_the_flow_ready(world):
+    """Run on a second hub 2026-11-05 (plan kg-zip-to-answers): the first kg_init run of an upload's build failed,
+    a manual one asked again ended done, and the flow still read the first, failed run."""
+    set_build(world, world.build_id, status="succeeded", nodes=4, edges=6, coverage={"sources": 1})
+    ended = {"questions": {"state": "failed", "ended": "the run ended failed without a question set"}}
+    first = init_run(world, state="failed", build_id=world.build_id, body=ended, error="no decision")
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"], read["init_id"]) == ("failed", "curator", first)
+
+    again = init_run(world, via="manual", state="queued", build_id=world.build_id, body={})
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"], read["init_id"]) == ("running", "questions", again), "the rerun in flight"
+
+    decided = {"questions": {"state": "done", "version": 1}, "decision": {"strategy": {"use": "documents"}}}
+    t = tables.kg_init_runs
+    live.sql(world.db, update(t).where(t.c.id == again).values(state="done", body=decided))
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"], read["error"], read["init_id"]) == ("ready", None, None, again)
+    phases = {p["name"]: p["state"] for p in read["phases"]}
+    assert (phases["questions"], phases["curator"]) == ("done", "done")
+
+    b = tables.kg_builds
+    ((later,),) = live.sql(world.db, insert(b).values(project_id=world.project_id, status="queued").returning(b.c.id))
+    set_build(world, later, status="succeeded", coverage={"sources": 1})
+    newest = init_run(world, via="profile", state="running", build_id=later, body={"questions": {"state": "done"}})
+    read = world.client.get(world.path, headers=world.sender).json()
+    assert (read["state"], read["phase"], read["init_id"]) == ("running", "curator", newest), "only the newest counts"
+
+
+@needs_pg
 def test_a_failed_build_is_told_with_its_phase_and_reason(world):
     set_build(world, world.build_id, status="failed", error="no knowledge config on the hub yet")
     assert tell(world) == {"failed": 1}

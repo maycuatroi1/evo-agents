@@ -54,10 +54,16 @@ export const kgInitRunsQuery = (api: ApiSource, project: string, moving: boolean
     refetchInterval: (query) => (moving || query.state.data?.active ? ACTIVE_REFRESH : false),
   });
 
-/** The kg_init run that followed `upload`'s build, if one did. */
-export function initRunFor(upload: KgUpload, runs: KgInitRun[] | undefined): KgInitRun | null {
-  if (upload.build_id == null || !runs) return null;
-  return runs.find((run) => run.build_id === upload.build_id) ?? null;
+/**
+ * The kg_init run that counts for `upload`, as its pipeline picks it: the newest of the project on the upload's build
+ * or a later one (`runs` come newest first), so a run asked for again after a failed one replaces it. With `initId`,
+ * the pipeline's own answer (`init_id`): that run, or none when it names none.
+ */
+export function initRunFor(upload: KgUpload, runs: KgInitRun[] | undefined, initId?: number | null): KgInitRun | null {
+  const built = upload.build_id;
+  if (built == null || !runs) return null;
+  if (initId !== undefined) return initId == null ? null : (runs.find((run) => run.id === initId) ?? null);
+  return runs.find((run) => run.build_id != null && run.build_id >= built) ?? null;
 }
 
 /** Where the flow after upload `upload` stands, asked again while it runs. */
