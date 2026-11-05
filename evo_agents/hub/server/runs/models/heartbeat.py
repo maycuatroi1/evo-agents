@@ -164,6 +164,12 @@ class HeartbeatRequest(BaseModel):
     runs: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
         default_factory=list, max_length=MAX_HEARTBEAT_RUNS, description="the runs the worker holds"
     )
+    orphans: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
+        default_factory=list,
+        max_length=MAX_HEARTBEAT_RUNS,
+        description="of runs, those a previous daemon left, whose agent this one stops whatever the answer: the hub "
+        "re-attaches none of them. An older daemon names none, and lists them among runs alone",
+    )
     agent_version: str | None = Field(None, min_length=1, max_length=100, pattern=LINE)
     run_kinds: list[Annotated[str, Field(pattern=RUN_KIND)]] | None = Field(
         None,
@@ -230,24 +236,31 @@ class RunControl(BaseModel):
     state: runs.RunState | None = Field(description="null for a run that is not this worker's")
     lease_expires_at: datetime | None
     cancel: bool
-    takeover: bool = Field(False, description="the owner asked to drive the agent in a terminal: report interactive")
-    handback: bool = Field(False, description="the owner asked to let the agent go on headless: report running")
+    takeover: bool = Field(
+        default=False, description="the owner asked to drive the agent in a terminal: report interactive"
+    )
+    handback: bool = Field(default=False, description="the owner asked to let the agent go on headless: report running")
     terminal_open: bool = Field(
-        False,
+        default=False,
         description="a browser waits for the run's terminal: connect WS /v1/worker/runs/{id}/terminal once the run "
         "is interactive",
     )
     park: bool = Field(
-        False,
+        default=False,
         description="the run is parked (it waited too long for an answer), or done because a new run resumes it: stop "
         "the agent at the end of its turn, keep the session and the worktrees, free the slot",
     )
     finish: bool = Field(
-        False,
+        default=False,
         description="the owner ended the chat of this author run: once the agent's turn is over, end the run done",
     )
-    inbox: int = Field(0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
-    decisions: int = Field(0, description="decisions of the run still open, waiting for the owner's answer")
+    inbox: int = Field(default=0, description="messages from the owner waiting for the agent: POST .../runs/{id}/inbox")
+    decisions: int = Field(default=0, description="decisions of the run still open, waiting for the owner's answer")
+    renew: bool = Field(
+        default=False,
+        description="the hub lost the run while this worker was silent and re-attached it, and the leases it held "
+        "ended: take the run's credentials again",
+    )
 
 
 class WorkerSettings(BaseModel):

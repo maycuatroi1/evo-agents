@@ -159,6 +159,8 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
     values["lease_expires_at"] = func.coalesce(r.c.lease_expires_at, func.now() + lease) if held else None
     if new in runs.TERMINAL_STATES:
         values["finished_at"] = func.now()
+    elif old in runs.TERMINAL_STATES:  # a lost run re-attached (``run_reattach``): it did not end after all
+        values |= {"finished_at": None, "error": None}
     if new in runs.CLOCK_STATES:
         in_clock = r.c.state.in_(runs.CLOCK_STATES)
         values["counted_at"] = case((in_clock, _clock_from() + _seconds(_elapsed())), else_=func.now())
@@ -205,15 +207,21 @@ async def move_run(
     token_id: int | None = None,
     lease: timedelta = LEASE,
     decisions: str | None = "cancelled",
+    reattach: bool = False,
+    recorded: bool = True,
 ) -> int | None:
     """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting ``columns``
     (of MOVE_COLUMNS) too; write the ``state`` event and the plugins' ``run.state`` event, then record the move in the
-    plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held
-    without a lease (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state
-    ``decisions`` (but those of ``runs.OUTLIVING_DECISION_CATEGORIES``), or leaves them open when it is None. Returns
-    the plan revision the move wrote, or None. Raises ``runs.TransitionRefused`` for a move the table refuses or a run
-    that is no longer in ``old``."""
-    runs.check_transition(old, new, actor)
+    plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row, unless ``recorded`` is
+    false. A run that comes to be held without a lease (the claim) is leased for ``lease``. A run that ends puts its
+    decisions still open in the state ``decisions`` (but those of ``runs.OUTLIVING_DECISION_CATEGORIES``), or leaves
+    them open when it is None. With ``reattach`` the move is the one out of an end state, the reaper's from lost back to
+    a held state (``run_reattach``), which TRANSITIONS does not hold. Returns the plan revision the move wrote, or None.
+    Raises ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
+    if reattach:
+        runs.check_reattach(old, new, actor)
+    else:
+        runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
     if unknown:
@@ -242,6 +250,8 @@ async def move_run(
         await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
     await browser_holds.follow(conn, run_id, new)
     await notify_events(conn, run_id)
+    if not recorded:
+        return None
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
 
 

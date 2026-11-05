@@ -21721,6 +21721,11 @@ export interface components {
              * @description the runs the worker holds
              */
             runs?: number[];
+            /**
+             * Orphans
+             * @description of runs, those a previous daemon left, whose agent this one stops whatever the answer: the hub re-attaches none of them. An older daemon names none, and lists them among runs alone
+             */
+            orphans?: number[];
             /** Agent Version */
             agent_version?: string | null;
             /**
@@ -36369,6 +36374,12 @@ export interface components {
              * @default 0
              */
             decisions: number;
+            /**
+             * Renew
+             * @description the hub lost the run while this worker was silent and re-attached it, and the leases it held ended: take the run's credentials again
+             * @default false
+             */
+            renew: boolean;
         };
         /** RunDay */
         RunDay: {

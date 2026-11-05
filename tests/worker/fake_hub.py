@@ -795,6 +795,13 @@ class FakeHub:
         assert self.runs[run_id]["state"] in runs.HELD_STATES, self.runs[run_id]["state"]
         self._move(run_id, "lost")
 
+    def reattach(self, run_id: int) -> None:
+        """What the hub does when the worker that lost a run while silent names it again soon: the run is held again,
+        and the next heartbeat's answer says renew once."""
+        assert self.runs[run_id]["state"] == "lost", self.runs[run_id]["state"]
+        self._move(run_id, self.runs[run_id]["moves"][-2])
+        self.runs[run_id]["renew"] = True
+
     def park(self, run_id: int) -> None:
         """What the reaper does to a run that waited too long for its owner."""
         assert self.runs[run_id]["state"] == "waiting", self.runs[run_id]["state"]
@@ -897,6 +904,7 @@ class FakeHub:
                         "finish": bool(run.get("finish")),
                         "inbox": waiting,
                         "decisions": open_count,
+                        "renew": bool(run.pop("renew", False)),
                     }
                 )
             else:

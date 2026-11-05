@@ -20,6 +20,7 @@ from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import guard, proofs, runs, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
+from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
     NOT_HELD,
@@ -156,6 +157,21 @@ async def _extras(conn, worker_id: int, body: HeartbeatRequest, settings: Worker
     return nightly, asked, install, runtimes, duties
 
 
+async def _reattached(
+    conn, worker_id: int, name: str, body: HeartbeatRequest, reported: list[int], lease: timedelta
+) -> set[int]:
+    """The runs of ``reported`` the worker lost while it was silent that the hub gives back to it
+    (``run_reattach.reattach_lost``), for a daemon that says it re-attaches, the orphans it names left out; inside a
+    savepoint, as ``_optional``, so a failure here never keeps the heartbeat from extending the leases."""
+    if runs.REATTACH not in (body.features or ()):
+        return set()
+    orphans = set(body.orphans)
+    live = [run_id for run_id in reported if run_id not in orphans]
+    return await _optional(
+        conn, "reattach", worker_id, lambda: reattach_lost(conn, worker_id, name, live, lease), set()
+    )
+
+
 async def record_heartbeat(
     engine, user: Principal, body: HeartbeatRequest, lease: timedelta, terminals
 ) -> HeartbeatAnswer:
@@ -200,6 +216,7 @@ async def record_heartbeat(
         nightly, asked, install, declared, duties = await _extras(conn, worker_id, body, settings)
         # a drained worker claims the run that resumes one it parked, which no other worker can take
         resuming = drained_at is not None and await resume_waits(conn, worker_id)
+        reattached = await _reattached(conn, worker_id, fields["name"], body, reported, lease)
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -217,13 +234,13 @@ async def record_heartbeat(
     controls = []
     for run_id in reported:
         if run_id in extended:
-            state, cancel, lease, takeover, handback, finish = extended[run_id]
+            state, cancel, expires, takeover, handback, finish = extended[run_id]
             controls.append(
                 RunControl(
                     id=run_id,
                     held=True,
                     state=state,
-                    lease_expires_at=lease,
+                    lease_expires_at=expires,
                     cancel=cancel,
                     takeover=takeover,
                     handback=handback,
@@ -231,6 +248,7 @@ async def record_heartbeat(
                     terminal_open=terminals.waiting(run_id),
                     inbox=waiting.get(run_id, 0),
                     decisions=open_decisions.get(run_id, 0),
+                    renew=run_id in reattached,
                 )
             )
         elif run_id in parked:  # let go of it without cancelling: its session goes on, or will, on this worker

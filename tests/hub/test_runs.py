@@ -160,12 +160,13 @@ def join_pool(client, worker: dict, handle: str, *findings: dict) -> dict:
     return worker
 
 
-def beat(client, worker: dict, runs_held=(), free_slots: int = 1) -> dict:
+def beat(client, worker: dict, runs_held=(), free_slots: int = 1, **extra) -> dict:
     body = {
         "runtimes": worker["runtimes"],
         "checkouts": worker["checkouts"],
         "free_slots": free_slots,
         "runs": list(runs_held),
+        **extra,
     }
     response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
     assert response.status_code == 200, response.text
@@ -651,6 +652,7 @@ def test_a_heartbeat_records_the_machine_extends_the_lease_and_carries_the_cance
         "finish": False,
         "inbox": 0,
         "decisions": 0,
+        "renew": False,
     }
     # the worker shows what the heartbeat reported, each runtime and checkout with every key
     shown = client.get(f"/v1/workers/{worker['id']}", headers=hub["owner"]).json()
@@ -941,6 +943,7 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
         "finish": False,
         "inbox": 0,
         "decisions": 0,
+        "renew": False,
     }
 
     assert claim(client, worker) is None, "the worker that lost the run is not steady yet"
@@ -962,6 +965,60 @@ def test_an_expired_lease_loses_the_run_and_the_third_attempt_fails_back_to_pend
     back = step(client, hub["owner"], 2)
     assert back["status"] == "pending" and back["note"] == f"run #{third} failed: {error}"
     assert ready(client, hub["reader"])["2"]["ready"] is True
+
+
+def test_a_worker_back_from_a_stall_gets_its_lost_run_again_while_the_next_attempt_waits(client, hub, hub_db):
+    # A host that stalls past the lease: the reaper loses the run while its agent still works.
+    worker = add_worker(client, hub["owner"], "longvan")
+    first, second = lost_once(client, hub, hub_db, worker)
+    d, r = tables.decisions, tables.runs
+    asked = {"run_id": first, "project_id": of_run(hub_db, first, "project_id")[0][0], "state": "cancelled"}
+    options = [{"key": "yes", "label": "Yes"}, {"key": "no", "label": "No"}]
+    for category in ("scope", runs.AUTONOMY_DECISION_CATEGORY):  # the loss cancelled the first; a gate the second
+        sql(hub_db, insert(d).values({**asked, "category": category, "question": f"{category}?", "options": options}))
+    back = {"features": [runs.REATTACH]}
+
+    # The agent a previous daemon left is no run to go on with: it is stopped, as before.
+    orphan = beat(client, worker, runs_held=[first], orphans=[first], **back)["runs"][0]
+    assert (orphan["held"], orphan["cancel"], orphan["renew"]) == (False, True, False)
+    assert state_of(hub_db, second) == "queued"
+
+    control = beat(client, worker, runs_held=[first], **back)["runs"][0]
+    assert (control["held"], control["state"], control["cancel"], control["renew"]) == (True, "running", False, True)
+    assert control["decisions"] == 1
+    assert seconds_from_now(hub_db, control["lease_expires_at"]) > 60, "the lease runs from now"
+    assert of_run(hub_db, first, "state", "error", "finished_at") == [("running", None, None)]
+    reason = f"its worker longvan came back within {runs.REATTACH_SECONDS // 60} minutes"
+    assert moves(hub_db, first)[-2:] == [(3, "running", "lost", "reaper"), (4, "lost", "running", "reaper")]
+    assert moves(hub_db, second) == [(1, "queued", "cancelled", "reaper")]
+    e = tables.run_events
+    said = sql(hub_db, select(e.c.body["reason"].astext).where(e.c.run_id.in_([first, second]), e.c.kind == "state"))
+    assert {reason, f"run #{first} went on: {reason}"} <= {text for (text,) in said}
+    states = sql(hub_db, select(d.c.category, d.c.state).where(d.c.run_id == first).order_by(d.c.id))
+    assert states == [("scope", "open"), (runs.AUTONOMY_DECISION_CATEGORY, "cancelled")]
+    assert step(client, hub["owner"], 2)["note"] == f"run #{first} on worker longvan"  # the plan never saw the loss
+    assert beat(client, worker, runs_held=[first], **back)["runs"][0]["renew"] is False  # renewed once
+    assert moved(client, worker, first, "verifying")["state"] == "verifying"
+
+    # Lost again, and back too late, or after another worker took the next attempt: the worker stops its agent.
+    expire(hub_db, first)
+    assert recover(client)["lost"] == 1
+    ((third,),) = sql(hub_db, select(r.c.id).where(r.c.parent_run_id == first, r.c.state == "queued"))
+    set_run(hub_db, first, finished_at=func.now() - timedelta(seconds=runs.REATTACH_SECONDS + 1))
+    assert beat(client, worker, runs_held=[first], **back)["runs"][0]["cancel"] is True
+    set_run(hub_db, first, finished_at=func.now())
+    other = add_worker(client, hub["owner"], "evo-worker-01")
+    assert claim(client, other)["id"] == third
+    assert beat(client, worker, runs_held=[first], **back)["runs"][0]["cancel"] is True
+    assert state_of(hub_db, first) == "lost" and state_of(hub_db, third) == "leased"
+
+    # A worker whose daemon does not say it re-attaches (an older one, which cannot tell orphans apart) is answered
+    # cancel, as before.
+    moved(client, other, third, "running")
+    expire(hub_db, third)
+    assert recover(client)["lost"] == 1
+    assert beat(client, other, runs_held=[third])["runs"][0]["cancel"] is True
+    assert state_of(hub_db, third) == "lost"
 
 
 def run_of(client, headers, run_id: int) -> dict:
