@@ -405,7 +405,7 @@ async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict
     found = hub(context)
     outcomes = await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)
     checks = await merge_check.advance(found.engine, blobs=found.blobs, data_dir=found.data_dir)
-    merged = await merge_ancestry.settle(found.engine, getattr(found, "github_app", None))
+    merged = await merge_ancestry.settle(found.engine, getattr(found, "github_app", None), found.config.public_url)
     checks = {**checks, **{f"checks_{key}": value for key, value in merged.items()}}
     return {**outcomes, **checks} if checks else outcomes
 

@@ -6,7 +6,8 @@ Each call asks the App's installation on the repo for a token of that repo alone
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
 head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
 list the pull requests of a branch with pull_requests read alone (``pulls``, the Loop's ``github_merges``);
-write the Judge's check run with checks write; merge with contents and pull_requests write; read a branch, a tree and
+write the Judge's check run with checks write; comment on a pull request with pull_requests write (``comment_pull``,
+the merge check's comment, ``evo_agents.hub.server.merge_comments``); merge with contents and pull_requests write; read a branch, a tree and
 a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
 its failed jobs again with actions write, ``evo_agents.hub.server.release_actions``), uses it, and revokes it.
 The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
@@ -62,6 +63,7 @@ SERVER_PERMISSIONS = {
     "pulls": {"pull_requests": "read", "metadata": "read"},
     "merged": {"pull_requests": "read", "contents": "read", "metadata": "read"},  # a merged pull request and its base
     "check": {"checks": "write", "metadata": "read"},
+    "comment": {"pull_requests": "write", "metadata": "read"},  # the merge check's comment (merge_comments)
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
     "tree": {"contents": "read", "metadata": "read"},
@@ -515,6 +517,19 @@ async def create_check_run(
     if type(found) is not int:
         raise GitHubUnavailable(f"GitHub answered without the check run's id while {doing}")
     return found
+
+
+async def comment_pull(app: GitHubApp, token: str, owner: str, repo: str, number: int, body: str) -> dict:
+    """Write ``body`` as a comment on pull request ``number`` (an issue comment); its ``id`` and ``url``."""
+    doing = f"commenting on pull request #{number} of {owner}/{repo}"
+    path = _path("repos", owner, repo, "issues", number, "comments")
+    response = await _api(app, token, "POST", path, doing, json={"body": body})
+    if response.status_code != 201:
+        raise _refused(response, doing)
+    found = app._json(response, doing)
+    if type(found.get("id")) is not int:
+        raise GitHubUnavailable(f"GitHub answered without the comment's id while {doing}")
+    return {"id": found["id"], "url": found.get("html_url") if isinstance(found.get("html_url"), str) else None}
 
 
 async def merge_pull(app: GitHubApp, token: str, owner: str, repo: str, number: int, *, sha: str, title: str) -> str:

@@ -6072,6 +6072,7 @@
       "kindLabel": "Kind",
       "all": "All",
       "local": "Local sessions",
+      "judge": "Judges",
       "accountLabel": "Claude account",
       "accountPlaceholder": "Filter by account email",
       "accountClear": "Clear the account filter",

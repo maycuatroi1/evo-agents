@@ -30,7 +30,8 @@ export function isRunFacet(value: string | null | undefined): value is RunFacet 
 }
 
 /** The kinds the list filters by: local, the member's own Claude Code sessions. */
-export const KIND_FILTERS = ["local"] as const satisfies readonly RunKind[];
+// local: the sessions on people's machines; judge: the Judges of merge checks and of the Curator's changes
+export const KIND_FILTERS = ["local", "judge"] as const satisfies readonly RunKind[];
 export type KindFilter = (typeof KIND_FILTERS)[number];
 
 export function isKindFilter(value: string | null | undefined): value is KindFilter {

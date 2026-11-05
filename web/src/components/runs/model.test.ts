@@ -139,6 +139,7 @@ describe("filters", () => {
     expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", kind: null, account: "", q: "queue", page: 3 });
     expect(readFilters(params("kind=local&account=%20Ana@Example.com%20&kind=x"))).toMatchObject({ kind: "local", account: "Ana@Example.com" });
     expect(readFilters(params("kind=plan")).kind).toBeNull();
+    expect(readFilters(params("kind=judge&state=all"))).toMatchObject({ kind: "judge", facet: null }); // the Judges' runs
     expect(readFilters(params("state=bogus&page=0"))).toEqual({ facet: "running", kind: null, account: "", q: "", page: 1 });
     expect(readFilters(params(`q=${"x".repeat(300)}&page=1.5`)).q).toHaveLength(200);
     expect(readFilters(params("page=999999")).page).toBe(1);

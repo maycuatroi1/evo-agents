@@ -6072,6 +6072,7 @@
       "kindLabel": "Loại",
       "all": "Tất cả",
       "local": "Phiên local",
+      "judge": "Judge",
       "accountLabel": "Tài khoản Claude",
       "accountPlaceholder": "Lọc theo email tài khoản",
       "accountClear": "Xóa bộ lọc tài khoản",
