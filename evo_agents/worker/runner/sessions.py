@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import handoff, run_prompts, runs
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import OUTAGE_TRIES, Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner.common import RunFailed, cut, now, wait_or
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS, summary_of
 from evo_agents.worker.runner.verify import RESULT_MAX_BYTES
@@ -48,7 +48,7 @@ PEAK = "peak_context_tokens"
 LARGEST = (PEAK, "context_window")  # of a run's sessions, and of a session's turns: the largest, not the sum
 SESSION_TOTALS = ("total_cost_usd",)  # Claude Code's running total of a session: the largest of its turns
 MAX_LISTED = 100  # sessions the usage lists, the latest; the record lists every one
-PLAN_TRIES = 5  # reads of the plan before the run fails, while the hub does not answer
+PLAN_TRIES = OUTAGE_TRIES  # reads of the plan before the run fails, while the hub does not answer
 # What the agent of a step's session is told when its owner wrote while its turn was over: an answer to a decision.
 STEP_ANSWER_PROMPT = (
     "The owner of this plan run wrote while your turn was over; a message that answers a decision names it. Go on "

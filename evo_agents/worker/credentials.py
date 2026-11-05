@@ -120,7 +120,7 @@ log = logging.getLogger("evo_agents.worker")
 
 DIR_MODE = 0o700
 MAX_REQUEST_BYTES = 16 * 1024
-TAKE_TRIES = 5  # asks for a run's leases while the hub does not answer, the backoff between them
+TAKE_TRIES = 9  # asks for a run's leases while the hub does not answer, the backoff between them: hubapi.OUTAGE_TRIES
 RELEASE_TRIES = 5
 REFRESH_TIMEOUT = 30.0  # seconds a GitHub token near its end may take to come, before git gets the one it replaces
 TICKET_VARIABLE = "EVO_GIT_TICKET"  # a ticket of one git command of the daemon, which the helper hands the socket
