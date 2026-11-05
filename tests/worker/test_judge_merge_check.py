@@ -63,25 +63,6 @@ def test_github_merge_check_runs_the_checks_on_the_head_merged_with_the_base_and
     assert seen.read_text(encoding="utf-8").strip() == "head", "the Judge's worktree is at the head"
 
 
-def test_github_merge_check_of_a_head_that_already_holds_the_base_runs_the_checks_on_the_head(machine):  # noqa: F811
-    """No merge to make: the head is its own merge with the base, so a worker whose git has no merge-tree --write-tree
-    judges it as well."""
-    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
-    found = judged(
-        machine,
-        head,
-        {**judge_inputs(head, ["test -f tests/test_wait.py"], ["test -f tests/test_wait.py"]), "queue_id": 3},
-        [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
-        claim=CHECK,
-    )
-    (sent,) = found["hub"].verdicts
-    assert sent["route"] == "merge-verdict" and sent.get("conflicts") is None and sent["head_sha"] == head
-    assert [item["exit_code"] for item in sent["verify"]] == [0] and [item["exit_code"] for item in sent["hidden"]] == [
-        0
-    ]
-    assert "already holds origin's main" in str(found["hub"].texts(found["run"]))
-
-
 def test_github_merge_check_a_conflict_with_the_base_posts_its_paths_and_runs_nothing(machine):  # noqa: F811
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
     base_moved(machine, {"tests/test_wait.py": "def test_other():\n    assert True\n"})
@@ -125,3 +106,40 @@ def test_github_merge_check_runs_each_check_in_the_python_environment_the_repo_a
     assert [item["exit_code"] for item in sent["hidden"]] == [0]
     syncs = [line for line in log.read_text(encoding="utf-8").splitlines() if line.startswith("sync")]
     assert syncs == ["sync --frozen --extra test"] * 3, "made again before each check, as the restore removed it"
+
+
+def test_github_merge_check_merges_in_a_worktree_on_a_git_without_write_tree(machine, monkeypatch):  # noqa: F811
+    from evo_agents.worker.runner import judge as runner
+
+    monkeypatch.setattr(runner, "WRITE_TREE", ("merge-tree", "--no-such-option"))  # git 2.34 answers usage, exit 129
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    base_moved(machine, {"docs/base-only.md": "The base moved on.\n"})
+    verify = ["test -f tests/test_wait.py && test -f docs/base-only.md"]
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, ["test -f docs/base-only.md"], verify), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
+        claim=CHECK,
+    )
+    (sent,) = found["hub"].verdicts
+    assert sent.get("conflicts") is None and sent["head_sha"] == head
+    assert [item["exit_code"] for item in sent["verify"]] == [0], "the verify ran on the merge made in a worktree"
+    assert not list(machine.checkouts["alpha"].glob(".git/worktrees/merge*")), "the merge's worktree is gone"
+
+
+def test_github_merge_check_a_conflict_found_in_a_worktree_posts_its_paths(machine, monkeypatch):  # noqa: F811
+    from evo_agents.worker.runner import judge as runner
+
+    monkeypatch.setattr(runner, "WRITE_TREE", ("merge-tree", "--no-such-option"))
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    base_moved(machine, {"tests/test_wait.py": "def test_other():\n    assert True\n"})
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, ["true"]), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "Should not be asked."}'}],
+        claim=CHECK,
+    )
+    (sent,) = found["hub"].verdicts
+    assert sent["conflicts"] == ["tests/test_wait.py"] and sent["verdict"] is None
