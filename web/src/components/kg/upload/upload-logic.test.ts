@@ -357,8 +357,9 @@ describe("uploads to resume", () => {
 
   it("keeps a record per project and upload, finds it by name, size and last change, and forgets it", () => {
     rememberUpload(record());
+    // a minute ahead: the record replaced below takes its own Date.now(), which a slow machine moves past +1 ms
     rememberUpload(
-      record({ id: 2, name: "other.zip", startedAt: Date.now() + 1 }),
+      record({ id: 2, name: "other.zip", startedAt: Date.now() + 60_000 }),
     );
     rememberUpload(record({ project: "else", id: 3 }));
     rememberUpload(record({ label: "customer" })); // the same upload again: replaced, not added
