@@ -43,6 +43,29 @@ describe("SafeMarkdown", () => {
     }
   });
 
+  it("drops HTML comments and breaks the line at a bare <br>, and nowhere else", () => {
+    const root = rendered(
+      [
+        "<!-- source: specs/uc-1.md id: SRS.1 -->",
+        "",
+        "Kept <!-- inline note --> text",
+        "",
+        "| Rule |",
+        "|---|",
+        "| first<br>second<br/>third |",
+        "",
+        "Not a break: <br onclick=\"window.__pwned = true\">",
+      ].join("\n"),
+    );
+    expect(root.textContent).not.toContain("<!--");
+    expect(root.textContent).toContain("Kept  text");
+    const cell = root.querySelector("td")!;
+    expect(cell.querySelectorAll("br")).toHaveLength(2);
+    expect(cell.textContent).toBe("first\nsecond\nthird");
+    expect(root.querySelector("[onclick]")).toBeNull();
+    expect(root.textContent).toContain('<br onclick="window.__pwned = true">');
+  });
+
   it("keeps http(s), mailto and in-page links and makes every other target inert", () => {
     const root = rendered(
       [

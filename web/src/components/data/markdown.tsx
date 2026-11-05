@@ -1,10 +1,14 @@
 import { CheckSquare, ImageIcon, Square } from "lucide-react";
+import type { Route } from "next";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ComponentPropsWithoutRef, type JSX, type ReactNode, useMemo } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { type MentionMark, remarkMentions } from "@/lib/mention-marks";
+import { remarkCodeLinks, type SplitCodes } from "@/lib/remark-code-links";
+import { remarkHtmlNotes } from "@/lib/remark-html-notes";
 import { remarkTracked } from "@/lib/remark-tracked";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +17,8 @@ import { TrackedDel, TrackedIns } from "./tracked-marks";
 /**
  * A memory body as Markdown (CommonMark and GitHub's tables, task lists, strikethrough and footnotes), never as
  * HTML: react-markdown turns raw HTML into text instead of markup (no rehype-raw here), so a <script> or an
- * onerror attribute in a memory shows as the characters it is. On top of that:
+ * onerror attribute in a memory shows as the characters it is; only a comment is dropped and a bare <br> breaks the
+ * line (lib/remark-html-notes.ts). On top of that:
  *
  * - only the elements below are rendered; anything else is unwrapped to its text;
  * - links keep http(s) and mailto targets and in-page anchors (footnotes); any other target, `javascript:` or a
@@ -27,7 +32,8 @@ import { TrackedDel, TrackedIns } from "./tracked-marks";
  * - code blocks and tables scroll inside a focusable region instead of widening the page;
  * - a chat message (`mentions`) marks the members it names, their names without the `@` (`lib/mention-marks.ts`);
  * - a tracked-changes document (`tracked`, lib/marked-markdown.ts) shows the words added and removed in place, as
- *   `ins` and `del` elements only lib/remark-tracked.ts makes (`tracked-marks.tsx`).
+ *   `ins` and `del` elements only lib/remark-tracked.ts makes (`tracked-marks.tsx`);
+ * - an SRS text (`codes`) links each item code it names to the item's page inside the hub (lib/remark-code-links.ts).
  */
 const ALLOWED = [
   "p",
@@ -226,6 +232,16 @@ const COMPONENTS: Components = {
   ),
 };
 
+/** A link: to an item's page inside the hub when `remarkCodeLinks` made it, else as MarkdownLink allows. */
+function CodeOrLink({ node, href, children, ...props }: Props<"a"> & { "data-code"?: string }) {
+  if (props["data-code"] === undefined || !href) return <MarkdownLink node={node} href={href} {...props}>{children}</MarkdownLink>;
+  return (
+    <Link href={href as Route} className="font-mono text-[0.92em] whitespace-nowrap text-brand underline decoration-brand/40 underline-offset-2 hover:text-brand-hover">
+      {children}
+    </Link>
+  );
+}
+
 /** A member a chat message names (`remarkMentions`): its name on a tint of `brand`, without the `@`. */
 function Mention({ node: _node, className: _className, ...props }: Props<"span">) {
   return <span {...props} className="rounded-xs bg-brand/10 px-0.5 font-medium text-brand" data-testid="message-mention" />;
@@ -249,6 +265,7 @@ export function SafeMarkdown({
   variant = "card",
   mentions,
   tracked = false,
+  codes,
 }: {
   children: string;
   className?: string;
@@ -262,11 +279,14 @@ export function SafeMarkdown({
   mentions?: readonly MentionMark[];
   /** The text is a tracked-changes document of lib/marked-markdown.ts, its marks shown as added and removed text. */
   tracked?: boolean;
+  /** The item codes an SRS text names, linked to their pages. */
+  codes?: SplitCodes;
 }): ReactNode {
   const components = useMemo<Components>(() => {
     const base: Components = variant === "page" ? { ...COMPONENTS, ...PAGE_HEADINGS } : COMPONENTS;
     const marked: Components = tracked ? { ...base, ins: TrackedIns, del: TrackedDel } : base;
-    const found: Components = mentions ? { ...marked, span: Mention } : marked;
+    const named: Components = mentions ? { ...marked, span: Mention } : marked;
+    const found: Components = codes ? { ...named, a: CodeOrLink } : named;
     if (!images) return found;
     return {
       ...found,
@@ -275,15 +295,16 @@ export function SafeMarkdown({
         return url ? <HeldImage url={url} alt={props.alt ?? ""} title={props.title} /> : <MarkdownImage {...props} />;
       },
     };
-  }, [images, variant, mentions, tracked]);
+  }, [images, variant, mentions, tracked, codes]);
   const plugins = useMemo<NonNullable<Options["remarkPlugins"]>>(
     () => {
-      const list: NonNullable<Options["remarkPlugins"]> = [remarkGfm];
+      const list: NonNullable<Options["remarkPlugins"]> = [remarkGfm, remarkHtmlNotes];
       if (mentions?.length) list.push([remarkMentions, mentions]);
+      if (codes) list.push([remarkCodeLinks, codes]);
       if (tracked) list.push(remarkTracked);
       return list;
     },
-    [mentions, tracked],
+    [mentions, tracked, codes],
   );
   const allowed = useMemo(() => {
     const base = mentions ? MENTION_ALLOWED : ALLOWED;
