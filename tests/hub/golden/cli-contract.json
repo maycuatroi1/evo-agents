@@ -10448,6 +10448,14 @@
         },
         {
           "flags": [
+            "--stop"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--reply"
           ],
           "value": "string",
@@ -10503,6 +10511,30 @@
               "problems"
             ],
             "schema": "KgAnswerReplied"
+          },
+          "--stop": {
+            "kind": "object",
+            "keys": [
+              "id",
+              "project",
+              "state",
+              "questions",
+              "answered",
+              "errors",
+              "pending",
+              "asking",
+              "batch",
+              "runs",
+              "run_id",
+              "note",
+              "error",
+              "created_by",
+              "created_at",
+              "updated_at",
+              "ended_at",
+              "again"
+            ],
+            "schema": "KgAnswerJob"
           }
         }
       }
@@ -36560,6 +36592,102 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/KgAnswerReplied"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/answers/{job_id}/stop": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Stop",
+          "description": "Stop a running job: its run is cancelled (a queued one at once, a held one by its worker), its questions without\nan answer get the error that it was stopped, and it ends failed. The same file sent again asks them again.",
+          "operationId": "stop_v1_kg__project__answers__job_id__stop_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "job_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the answer job, as `hub kg answer --status` lists it",
+                "title": "Job Id"
+              },
+              "description": "the answer job, as `hub kg answer --status` lists it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgAnswerJob"
                   }
                 }
               }

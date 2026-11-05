@@ -244,7 +244,9 @@ def test_a_file_is_answered_in_batches_of_review_runs_and_written_in_its_order(r
     out = tmp_path / "answers.jsonl"
     questions = tmp_path / "questions.jsonl"
     questions.write_text("".join(json.dumps(q) + "\n" for q in QUESTIONS))
-    args = dict(project=PROJECT, questions=None, out=str(out), batch=2, no_wait=False, status=False, reply=None)
+    args = dict(
+        project=PROJECT, questions=None, out=str(out), batch=2, no_wait=False, status=False, reply=None, stop=False
+    )
     assert kg_answer_cli.cmd_answer(argparse.Namespace(**args, job=job_id, limit=20, json=False)) == 0
     lines = [json.loads(line) for line in out.read_text().splitlines()]
     assert [line["id"] for line in lines] == ["1", "q-2", "q-3"], "the file's order"
@@ -299,13 +301,43 @@ def test_status_lists_the_jobs_and_a_job_no_run_can_be_queued_for_fails_after_a_
     assert (failed["state"], failed["errors"], failed["pending"]) == ("failed", 2, 0)
 
     monkeypatch.setattr(kg_answer_cli, "signed_in", lambda: (AppHub(client, review.headers["reader"]), None))
-    status = dict(project=PROJECT, questions=None, out="x", batch=50, no_wait=False, job=None, reply=None, limit=20)
+    status = dict(
+        project=PROJECT, questions=None, out="x", batch=50, no_wait=False, job=None, reply=None, limit=20, stop=False
+    )
     assert kg_answer_cli.cmd_answer(argparse.Namespace(**status, status=True, json=False)) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[0].startswith(f"#{second} failed questions 2 answered 0 errors 2")
     assert any(line.startswith(f"#{first} running questions 1") for line in out)
     assert kg_answer_cli.cmd_answer(argparse.Namespace(**status, status=True, json=True)) == 0
     assert [j["id"] for j in json.loads(capsys.readouterr().out)["jobs"]] == [second, first]
+
+
+@needs_pg
+def test_a_stopped_job_cancels_its_run_fails_and_the_same_file_asks_the_rest_again(review, monkeypatch, capsys):
+    client, db, owner = review.client, review.db, review.headers["owner"]
+    job_id = client.post(base(), headers=owner, json={"questions": QUESTIONS, "batch": 2}).json()["id"]
+    advanced(review)
+    first = run_of(review, job_id)
+    replied(review, job_id, first, [{"id": 1, "answer": "vault 7", "evidence": ["docs:ledger.md"]}])
+    stop = f"{base()}/{job_id}/stop"
+    assert client.post(stop, headers=review.headers["reader"]).status_code == 403
+
+    monkeypatch.setattr(kg_answer_cli, "signed_in", lambda: (AppHub(client, owner), None))
+    args = dict(project=PROJECT, questions=None, out="x", batch=2, no_wait=False, status=False, reply=None, limit=20)
+    assert kg_answer_cli.cmd_answer(argparse.Namespace(**args, job=job_id, stop=True, json=True)) == 0
+    stopped = json.loads(capsys.readouterr().out)
+    assert (stopped["state"], stopped["answered"], stopped["errors"], stopped["pending"]) == ("failed", 1, 2, 0)
+    assert "stopped answer job" in stopped["error"]
+    r = tables.runs
+    assert sql(db, select(r.c.state).where(r.c.id == first)) == [("cancelled",)], "a queued run is cancelled at once"
+    assert client.post(stop, headers=owner).status_code == 409, "only a running job stops"
+    assert advanced(review) == {}, "a stopped job asks nothing"
+
+    again = client.post(base(), headers=owner, json={"questions": QUESTIONS, "batch": 2}).json()
+    assert (again["id"], again["state"], again["pending"], again["answered"]) == (job_id, "running", 2, 1)
+    advanced(review)
+    text = prompt_of(review, run_of(review, job_id))
+    assert '"id": "q-2"' in text and '"id": "1"' not in text
 
 
 async def _db_now(engine):
