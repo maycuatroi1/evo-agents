@@ -479,3 +479,59 @@ def _mentioned(store, b: int, hit: dict, listed: set[str], visible, kinds) -> li
         if len(found) >= MENTIONS_PER_HIT:
             break
     return found
+
+
+# -- what an entity stands for -----------------------------------------------------------------------------------
+
+ENTITY_DOCS = 3  # source documents one matched entity brings, at most
+ENTITY_SPREAD = 20  # an entity more nodes mention than this brings only the sources the search ranked itself
+
+
+def through_entities(
+    store, b: int, hits: list[dict], visible: Callable[[dict], bool]
+) -> tuple[list[dict], dict[str, list[str]]]:
+    """``hits`` (visible nodes, best first) with each entity node (one the entities step stated) giving its place to
+    up to ENTITY_DOCS visible nodes that mention it (its source documents), the entities themselves after every other
+    hit; and for each source so reached, the ids of the entities that brought it. A matched entity thus never takes the
+    slot of a document: it is the reason its documents rank where it did. Hits without an entity come back as they are
+    (a graph built without the entities step ranks as before)."""
+    from evo_agents.kg.ppr import is_entity
+
+    if not any(is_entity(h["id"]) for h in hits):
+        return hits, {}
+    rank = {h["id"]: i for i, h in enumerate(hits)}
+    out: list[dict] = []
+    why: dict[str, list[str]] = {}
+    listed: set[str] = set()
+    entities: list[dict] = []
+    for hit in hits:
+        if not is_entity(hit["id"]):
+            if hit["id"] not in listed:
+                out.append(hit)
+                listed.add(hit["id"])
+            continue
+        entities.append(hit)
+        for source in _sources(store, b, hit, rank, visible):
+            why.setdefault(source["id"], []).append(hit["id"])
+            if source["id"] not in listed:
+                out.append(source)
+                listed.add(source["id"])
+    out += [e for e in entities if e["id"] not in listed]
+    return out, why
+
+
+def _sources(store, b: int, entity: dict, rank: dict[str, int], visible) -> list[dict]:
+    """Up to ENTITY_DOCS visible non-entity nodes that mention ``entity`` through visible edges: those the search ranked,
+    best first, then, unless more than ENTITY_SPREAD mention it, the others by the edge's confidence."""
+    from evo_agents.kg.ppr import is_entity
+
+    edges = [e for e in store.edges_of(entity["id"], b, "in", limit=500) if e["rel"] == "mentions" and visible(e)]
+    conf = {}
+    for e in edges:
+        if not is_entity(e["src"]):
+            conf[e["src"]] = max(conf.get(e["src"], 0.0), e["conf"] or 0.0)
+    ranked = sorted((i for i in conf if i in rank), key=rank.__getitem__)
+    if len(conf) <= ENTITY_SPREAD:
+        ranked += sorted((i for i in conf if i not in rank), key=lambda i: (-conf[i], i))
+    nodes = store.nodes(ranked, b)
+    return [nodes[i] for i in ranked if i in nodes and visible(nodes[i])][:ENTITY_DOCS]

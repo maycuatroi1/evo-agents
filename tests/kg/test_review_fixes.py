@@ -116,7 +116,7 @@ def test_failed_call_ceiling_takes_the_usage_an_unreadable_answer_reported(monke
     class Client:
         chat = type("Chat", (), {"completions": type("Completions", (), {"create": lambda self, **_: Answer()})()})()
 
-    monkeypatch.setattr(entities, "CLIENT_FACTORY", lambda config: Client())
+    monkeypatch.setattr(entities, "CLIENT_FACTORY", lambda config, key=None: Client())
     with pytest.raises(entities.EntitiesError) as found:
         entities.call_endpoint({"model": "m", "url": "http://localhost:1"}, "text", ["Concept"], [])
     assert found.value.usage == {"input_tokens": 700, "output_tokens": 300}

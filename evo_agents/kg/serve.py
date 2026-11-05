@@ -52,7 +52,14 @@ from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candida
 from evo_agents.kg.policy import Label, audience_below, audience_of
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
-from evo_agents.kg.search import CODE_LEAD, SNIPPET_KINDS, code_words, query_words, with_mentions
+from evo_agents.kg.search import (
+    CODE_LEAD,
+    SNIPPET_KINDS,
+    code_words,
+    query_words,
+    through_entities,
+    with_mentions,
+)
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
@@ -358,6 +365,10 @@ class Session:
                 lambda want: store.search(query, b, limit=want, kinds=kinds, deprecated=self.deprecated, vector=vector),
             )
             hits += [n for n in more if in_repo(n, repo)]
+        stood: dict[str, list[str]] = {}  # a source document -> the matched entities it stands for
+        if not kinds:  # an entity gives its place to the documents that mention it (search.through_entities)
+            hits, stood = through_entities(store, b, hits, self.seen)
+            hits = [n for n in hits if in_repo(n, repo)]
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
@@ -378,6 +389,9 @@ class Session:
         explored = self._explore(store, results, hits, via)
         for reached in via.values():
             self._saw(reached["label"])
+        listed = {n["id"] for n in results}
+        stood = {nid: why for nid, why in stood.items() if nid in listed}
+        entity = store.nodes(sorted({e for why in stood.values() for e in why}), b)
         shared, label_line = self._labels(results)
         statuses = Counter(n["status"] for n in results)
         status = statuses.most_common(1)[0][0] if statuses else ""
@@ -402,7 +416,10 @@ class Session:
                 continue
             m = matched.get(n["id"])
             line = mark + self._line(n, shared, (m or {}).get("lines"), status)
-            lines.append(line + (f" words={m['words']}/{words}" if m and m["words"] < words else ""))
+            line += f" words={m['words']}/{words}" if m and m["words"] < words else ""
+            if n["id"] in stood:
+                line += " entity " + ", ".join(entity[e]["name"] if e in entity else e for e in stood[n["id"]])
+            lines.append(line)
             if m and m.get("snippet"):
                 lines.append(f"    > {m['snippet']}")
         if explored is not None:
@@ -411,6 +428,7 @@ class Session:
             "build": b,
             "results": [self._node_json(n) for n in results],
             "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
+            "entities": stood,
             "matched": matched,
             "code": {nid: found_lines for nid, found_lines in code.items() if any(n["id"] == nid for n in results)},
             "summary": f"{len(results)} results",
@@ -624,7 +642,7 @@ class Session:
         store, b = self._store()
         size = max(500, min(int(budget_tokens), 8000)) * 3
         hops = max(1, min(int(hops), 3))
-        seeds = self._context_seeds(store, b, query, ids)
+        seeds, stood = self._context_seeds(store, b, query, ids)
         if query:
             what = str(query)[:CONTEXT_QUERY_SHOWN]
         else:
@@ -658,6 +676,8 @@ class Session:
         shared, label_line = self._labels(room.nodes.values())
         lines = [header(len(room.nodes), len(room.edges)), *label_line]
         lines += [self._line(n, shared) for n in room.nodes.values()]
+        stood = {sid: why for sid, why in stood.items() if sid in room.nodes}
+        lines += [f"seed [{readable(sid)}] for entity {', '.join(map(readable, why))}" for sid, why in stood.items()]
         lines.append("edges:")
         for e in room.edges.values():
             self._saw(e["label"])
@@ -666,6 +686,7 @@ class Session:
         data = {
             "build": b,
             "seeds": list(seeds),
+            "entities": stood,
             "nodes": [self._node_json(n) for n in room.nodes.values()],
             "edges": [
                 {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]} for e in room.edges.values()
@@ -675,9 +696,11 @@ class Session:
         }
         return "\n".join(lines), data
 
-    def _context_seeds(self, store: Store, b: int, query, ids) -> dict[str, dict]:
+    def _context_seeds(self, store: Store, b: int, query, ids) -> tuple[dict[str, dict], dict[str, list[str]]]:
         """The visible seeds of kg_context: the nodes ``ids`` name (stored or readable ids), else the first five
-        that match ``query``."""
+        that match ``query``, a matched entity seeding the documents that mention it in its place; and for each seed
+        so reached, the entities it stands for."""
+        stood: dict[str, list[str]] = {}
         if ids:
             found = [self._lookup(store, i, b) for i in ids if isinstance(i, str)]
             seeds = {n["id"]: n for n in found if n is not None}
@@ -689,12 +712,15 @@ class Session:
             else:
                 hits = store.search(query, b, limit=5, deprecated=self.deprecated)[:5]
             nodes = store.nodes(hits, b)
-            seeds = dict([(h, nodes[h]) for h in hits if h in nodes and self.seen(nodes[h])][:5])
+            found = [nodes[h] for h in hits if h in nodes and self.seen(nodes[h])]
+            found, stood = through_entities(store, b, found, self.seen)
+            seeds = {n["id"]: n for n in found[:5]}
+            stood = {sid: why for sid, why in stood.items() if sid in seeds}
         else:
             raise ToolError("give a query or ids")
         if not seeds:
             raise ToolError("nothing visible matches; try kg_search")
-        return seeds
+        return seeds, stood
 
     def _context_walk(self, store: Store, b: int, query, room: Room, walk) -> None:
         """Fill ``room`` past its seeds with the visible nodes a walk settles on most (``evo_agents.kg.ppr``), best
