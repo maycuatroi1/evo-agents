@@ -15,9 +15,11 @@ A turn, in order:
    Else the daemon reads the tag itself, at the first turn, then hourly (after a failure, in 15 minutes), on a clock
    that counts the time the machine sleeps (``power.clock_through_sleep``). Unknown, ``waiting``; the commit it runs,
    ``current``. Whatever the hub says, the daemon installs the tag nightly from GitHub, never a commit the hub names.
-7. It holds runs or agents of a previous daemon, processes of a run it no longer holds (one parked on a wait) live
-   on in its systemd service (``detached``), a daemon of the install is not ready (runs, a lock, run by hand),
-   another one updates the install, or the update to that commit failed less than an hour ago: ``waiting``.
+7. It holds runs or agents of a previous daemon, processes of a run it no longer holds live on in its systemd
+   service while that run's line may still need them (``detached.holds_back``), a daemon of the install is not ready
+   (runs, a lock, run by hand), another one updates the install, or the update to that commit failed less than an
+   hour ago: ``waiting``. Before it, an idle daemon moves the processes of a parked line out of its service into a
+   scope of their own, and stops the scopes of lines that no longer need theirs (``detached.Scopes``).
 8. Else ``updating``: it closes the gate, waits until no daemon of the install claims, installs nightly
    (``installer``) and, once the new install starts, ends the daemon with ``home.EXIT_UPDATED``. A failure is kept as
    ``error`` and the daemon goes on with the code it runs.
@@ -42,6 +44,7 @@ import contextlib
 import functools
 import logging
 import sys
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -49,7 +52,7 @@ from pathlib import Path
 from evo_agents.hub import runs
 from evo_agents.worker.home import WorkerHome
 from evo_agents.worker.power import clock_through_sleep
-from evo_agents.worker.selfupdate.detached import live_runs
+from evo_agents.worker.selfupdate.detached import Line, ScopeError, Scopes, holds_back, line_of, live_runs
 from evo_agents.worker.selfupdate.install import COMMIT, Install, find_uv, read_install
 from evo_agents.worker.selfupdate.installer import Installer, Outcome, nightly_commit
 from evo_agents.worker.selfupdate.peers import Peers, root_of
@@ -106,7 +109,10 @@ class SelfUpdate:
         lookup_retry: float = LOOKUP_RETRY,
         install_retry: float = INSTALL_RETRY,
         idle_wait: float = IDLE_WAIT,
-        live: Callable[[], Mapping[int, int]] = live_runs,
+        live: Callable[[], Mapping[int, list[int]]] = live_runs,
+        records: Callable[[int], dict | None] | None = None,
+        scopes: Scopes | None = None,
+        wall: Callable[[], float] = time.time,
     ):
         self.install = install
         self.identity = install.identity()  # what lay in the install when the daemon started
@@ -117,7 +123,12 @@ class SelfUpdate:
         self.check_every, self.lookup_retry, self.install_retry = check_every, lookup_retry, install_retry
         self.idle_wait = idle_wait
         self.live = live  # run id -> its processes alive in the daemon's service (``detached``)
-        self._live: Mapping[int, int] = {}  # as the last turn found them
+        self.records = records  # run id -> its record on this worker; None: the processes of every run hold it back
+        self.scopes = scopes  # where an idle daemon moves the processes of a parked line; None: they stay
+        self.wall = wall
+        self._live: Mapping[int, list[int]] = {}  # those that hold it back, as the last turn found them
+        self._let_go: set[int] = set()  # runs whose processes it said no longer hold it back
+        self._move_error: str | None = None  # why the last move of processes out of the service failed
         self.static = self._static_reason(supervision, off)
         self.locked: bool | None = None  # as the hub said it in this daemon's life; None until it did
         self.state, self.reason = ("unsupported", self.static) if self.static else ("waiting", LOCK_UNKNOWN)
@@ -155,6 +166,8 @@ class SelfUpdate:
             else None,
             lookup=functools.partial(nightly_commit, env),
             off=(env.get(OFF_VARIABLE) or "").strip().lower() in OFF_VALUES,
+            records=home.load_run,
+            scopes=Scopes.here(env),
         )
 
     def _static_reason(self, supervision: Supervision | None, off: bool) -> str | None:
@@ -256,20 +269,73 @@ class SelfUpdate:
             return "it has agents of a previous daemon to stop"
         return self._live_reason()
 
+    def _line(self, run_id: int) -> Line:
+        return line_of(run_id, self.records) if self.records is not None else Line("open")
+
     def _live_reason(self) -> str | None:
-        """Why the processes of runs this daemon no longer holds keep it from updating: its exit would kill them."""
+        """Why the processes of runs this daemon no longer holds keep it from updating: its exit would kill them while
+        their line may still need them."""
+        now = self.wall()
         try:
-            self._live = dict(self.live())
+            found = dict(self.live())
+            lines = {run_id: self._line(run_id) for run_id in found}
         except Exception:  # a bug here must not end the daemon
             log.exception("self-update: the processes of its service were not read")
-            self._live = {}
+            found, lines = {}, {}
+        self._live = {run_id: pids for run_id, pids in found.items() if holds_back(lines[run_id], now)}
+        for run_id in sorted(found.keys() - self._live.keys() - self._let_go):
+            self._let_go.add(run_id)
+            log.info(
+                "self-update: the processes of a run whose line no longer needs them do not hold it back; an exit "
+                "kills them",
+                extra={"run_id": run_id, "line": lines[run_id].state, "processes": len(found[run_id])},
+            )
         if not self._live:
             return None
         listed = ", ".join(f"#{run_id}" for run_id in sorted(self._live))
-        count = sum(self._live.values())
-        return (
+        count = sum(len(pids) for pids in self._live.values())
+        why = (
             f"{count} process(es) of run(s) {listed}, which it no longer holds, live in its service: an exit kills them"
         )
+        return f"{why} (not moved out of it: {self._move_error})" if self._move_error else why
+
+    def _tidy(self, idle: bool) -> None:
+        """Stop the scopes of runs whose line no longer needs them, then, when idle, move the processes of each parked
+        line out of the service into a scope of their own, so an exit no longer kills them (``detached.Scopes``)."""
+        scopes, now = self.scopes, self.wall()
+        if scopes is None or self.records is None:
+            return
+        for name, run_id in scopes.found().items():
+            line = self._line(run_id)
+            if line.state == "unknown" or holds_back(line, now):  # unknown: a run of another daemon of the slice
+                continue
+            try:
+                scopes.stop(name)
+            except ScopeError as exc:
+                log.warning("self-update: a scope of a run was not stopped", extra={"scope": name, "error": str(exc)})
+            else:
+                log.info("self-update: stopped a scope of a run", extra={"scope": name, "line": line.state})
+        if not idle:
+            return
+        for run_id, pids in self.live().items():
+            line = self._line(run_id)
+            if line.state not in ("parked", "open") or not holds_back(line, now):
+                continue
+            try:
+                name = scopes.move(run_id, pids)
+            except ScopeError as exc:
+                if str(exc) != self._move_error:
+                    log.warning(
+                        "self-update: the processes of a parked run were not moved out of its service",
+                        extra={"run_id": run_id, "error": str(exc)},
+                    )
+                self._move_error = str(exc)
+                continue
+            self._move_error = None
+            log.info(
+                "self-update: moved the processes of a parked run out of its service; an exit no longer kills them",
+                extra={"run_id": run_id, "scope": name, "processes": len(pids)},
+            )
 
     def publish(self, *, held: int, orphans: int, worker: str) -> str | None:
         """Write this daemon's state for the others of the install; why it may not update now, or None."""
@@ -289,6 +355,11 @@ class SelfUpdate:
         if self.peers is None:
             self._end_request("impossible")
             return False
+        if self.static is None and self.scopes is not None:
+            try:
+                await asyncio.to_thread(self._tidy, held == 0 and orphans == 0)
+            except Exception:  # a bug here must not end the daemon
+                log.exception("self-update: the scopes of runs were not tidied")
         why = self.publish(held=held, orphans=orphans, worker=worker)
         if self._changed():
             return self._restart_on_change(held == 0 and orphans == 0 and not self._live)

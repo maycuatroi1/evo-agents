@@ -10,7 +10,9 @@ and the ``uv`` of ``tests.worker.fake_uv``, without Postgres.
   cache of the updates' own, which keeps no build or checkout of evo-ak once an update ends.
 - The daemon: an idle, unlocked daemon under a service manager installs nightly and exits ``EXIT_UPDATED``; a locked
   one, one that has not heard the lock, one run by hand, one that holds a run or one whose systemd service still has
-  processes of a parked run (``detached``, read from /proc and the cgroup tree) does not; a failed update is reported
+  processes a run's line may need (``detached``, read from /proc, the cgroup tree and the worker's records) does not;
+  those of a parked line move out into a scope of their own and the daemon updates, those of a line that ended an
+  hour ago no longer hold it back, and the scopes of lines that ended are stopped; a failed update is reported
   and tried again later while runs go on; a hub that answers 426 gets an update first when the lock kept in
   config.json says unlocked; two daemons of one install update once, after both are idle, and both restart.
 """
@@ -23,6 +25,8 @@ import logging
 import os
 import shutil
 import signal
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -447,9 +451,10 @@ def test_a_daemon_whose_install_changes_during_an_update_restarts_only_once_the_
         b.close()
 
 
-def _proc(tmp: Path, cgroup_line: str, processes: dict[int, tuple[dict[str, str], float]], *, boot=1_000.0):
+def _proc(tmp: Path, cgroup_line: str, processes: dict[int, tuple], *, boot=1_000.0):
     """A /proc and a cgroup tree in ``tmp``: this process in the cgroup of ``cgroup_line``, the pids of
-    ``processes`` in it, each with its environment and its start in seconds after ``boot``."""
+    ``processes`` in it, each with its environment, its start in seconds after ``boot`` and its parent (0 when the
+    tuple names none)."""
     proc, cgroups = tmp / "proc", tmp / "cgroup"
     (proc / "self").mkdir(parents=True)
     (proc / "self" / "cgroup").write_text(cgroup_line + "\n", encoding="utf-8")
@@ -459,11 +464,11 @@ def _proc(tmp: Path, cgroup_line: str, processes: dict[int, tuple[dict[str, str]
     (root / path).mkdir(parents=True)
     (root / path / "cgroup.procs").write_text("".join(f"{pid}\n" for pid in processes), encoding="utf-8")
     tick = os.sysconf("SC_CLK_TCK")
-    for pid, (env, started) in processes.items():
+    for pid, (env, started, *parent) in processes.items():
         place = proc / str(pid)
         place.mkdir()
         place.joinpath("environ").write_bytes(b"".join(f"{k}={v}".encode() + b"\0" for k, v in env.items()))
-        fields = ["S"] + ["0"] * 18 + [str(int(started * tick))] + ["0"] * 5
+        fields = ["S", str(parent[0] if parent else 0)] + ["0"] * 17 + [str(int(started * tick))] + ["0"] * 5
         place.joinpath("stat").write_text(f"{pid} (python (x)) " + " ".join(fields), encoding="utf-8")
     return proc, cgroups
 
@@ -482,7 +487,7 @@ def test_the_processes_of_runs_in_the_daemons_service_are_counted_by_run(tmp_pat
         15: ({"HOME": "/home/evo"}, detached.MAX_AGE * 2 - 30),  # no run named
     }
     proc, cgroups = _proc(tmp_path, SERVICE, processes, boot=boot)
-    assert detached.live_runs(proc, cgroups, now=lambda: now, me=10) == {1609: 2, 1610: 1}
+    assert detached.live_runs(proc, cgroups, now=lambda: now, me=10) == {1609: [11, 12], 1610: [13]}
 
 
 @pytest.mark.parametrize(
@@ -503,7 +508,7 @@ def test_the_v1_systemd_hierarchy_wins_over_the_unified_one(tmp_path):
     proc, cgroups = _proc(tmp_path, line, {11: ({"EVO_RUN_ID": "7"}, 1.0)})
     with (proc / "self" / "cgroup").open("a", encoding="utf-8") as handle:
         handle.write("0::/user.slice/user@1000.service/init.scope\n")
-    assert detached.live_runs(proc, cgroups, now=lambda: 1_005.0, me=1) == {7: 1}
+    assert detached.live_runs(proc, cgroups, now=lambda: 1_005.0, me=1) == {7: [11]}
 
 
 def test_a_daemon_whose_service_runs_a_parked_runs_job_waits_and_holds_its_peers_back(fake, tmp_path):
@@ -514,7 +519,7 @@ def test_a_daemon_whose_service_runs_a_parked_runs_job_waits_and_holds_its_peers
         home.ensure()
     locks = [PidLock(home.pid_path) for home in homes]  # both daemons run
     assert all(lock.acquire() for lock in locks)
-    alive = {1609: 2}
+    alive = {1609: [11, 12]}
     a, b = fake.updater(homes[0], live=lambda: alive), fake.updater(homes[1])
     for updater in (a, b):
         updater.hear_lock(False)
@@ -539,7 +544,7 @@ def test_a_daemon_whose_service_runs_a_parked_runs_job_waits_and_holds_its_peers
 def test_a_daemon_whose_install_changed_restarts_once_the_parked_runs_processes_end(fake, tmp_path):
     home = WorkerHome(tmp_path / "worker-b")
     home.ensure()
-    alive = {1610: 1}
+    alive = {1610: [13]}
     b = fake.updater(home, live=lambda: alive)
     b.hear_lock(False)
     try:
@@ -550,6 +555,276 @@ def test_a_daemon_whose_install_changed_restarts_once_the_parked_runs_processes_
         assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is True
     finally:
         b.close()
+
+
+def test_the_processes_that_descend_from_a_runs_job_in_the_service_count_for_that_run(tmp_path):
+    """A Postgres a run started with setsid nohup: its backends show no environment, and count for its run."""
+    processes = {
+        10: ({"EVO_WORKER_HOME": "/w"}, 900.0, 1),  # the daemon itself
+        20: ({"EVO_RUN_ID": "1773"}, 900.0, 1),  # postgres, reparented to the user manager
+        21: ({}, 901.0, 20),  # its backends
+        22: ({}, 901.0, 20),
+        30: ({}, 902.0, 10),  # a child of the daemon that names no run
+        31: ({}, 902.0, 999),  # a parent outside the service
+    }
+    proc, cgroups = _proc(tmp_path, SERVICE, processes)
+    assert detached.live_runs(proc, cgroups, now=lambda: 2_000.0, me=10) == {1773: [20, 21, 22]}
+
+
+T = 1_800_000_000.0  # the wall clock of the tests of lines
+
+
+def _at(seconds_before: float) -> str:
+    return datetime.fromtimestamp(T - seconds_before, UTC).isoformat()
+
+
+def _line_records(home: WorkerHome, last_state: str, ended_before: float) -> None:
+    """The line of run 1773 on longvan: parked, resumed by 1806, parked, resumed by 1828, whose attempt ended
+    ``ended_before`` seconds ago in ``last_state``."""
+    home.save_run({"id": 1773, "kind": "plan", "state": "parked", "finished_at": _at(7200), "resumed_by": 1806})
+    home.save_run({"id": 1806, "kind": "plan", "state": "parked", "finished_at": _at(3600), "resumed_by": 1828})
+    home.save_run({"id": 1828, "kind": "plan", "state": last_state, "finished_at": _at(ended_before)})
+
+
+def test_the_line_of_a_run_follows_the_attempts_that_went_on_from_it(tmp_path):
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    _line_records(home, "parked", 300)
+    assert detached.line_of(1773, home.load_run) == detached.Line("parked", T - 300)
+    home.save_run({"id": 1828, "kind": "plan", "state": "done", "finished_at": _at(300)})
+    assert detached.line_of(1806, home.load_run) == detached.Line("ended", T - 300)
+    home.save_run({"id": 1828, "kind": "plan", "state": "running", "finished_at": None})
+    assert detached.line_of(1773, home.load_run) == detached.Line("open")
+    home.save_run({"id": 1828, "kind": "plan", "state": "parked", "finished_at": _at(1), "resumed_by": 1900})
+    assert detached.line_of(1773, home.load_run) == detached.Line("open"), "1900 runs here, or elsewhere"
+    assert detached.line_of(42, home.load_run) == detached.Line("unknown")
+
+
+@pytest.mark.parametrize(
+    ("line", "held_back"),
+    [
+        (detached.Line("open"), True),
+        (detached.Line("parked", T - detached.MAX_AGE + 60), True),
+        (detached.Line("parked", T - detached.MAX_AGE - 60), False),
+        (detached.Line("ended", T - detached.LINE_GRACE + 60), True),
+        (detached.Line("ended", T - detached.LINE_GRACE - 60), False),
+        (detached.Line("unknown"), False),
+    ],
+    ids=["open", "parked", "parked-a-day", "ended-just-now", "ended-an-hour-ago", "unknown"],
+)
+def test_the_processes_of_a_line_hold_the_update_back_for_a_bounded_time(line, held_back):
+    assert detached.holds_back(line, T) is held_back
+
+
+class FakeScopes:
+    """The scopes of runs of a user manager, over the processes ``alive`` of a daemon's service; ``refuse``: why each
+    move fails."""
+
+    def __init__(self, alive: dict[int, list[int]], refuse: str | None = None):
+        self.alive, self.refuse = alive, refuse
+        self.scopes: dict[str, int] = {}
+        self.stopped: list[str] = []
+
+    def move(self, run_id: int, pids: list[int]) -> str:
+        if self.refuse:
+            raise detached.ScopeError(self.refuse)
+        name = f"evo-agents-run-{run_id}-{min(pids)}.scope"
+        self.scopes[name] = run_id
+        self.alive[run_id] = [pid for pid in self.alive[run_id] if pid not in pids]
+        if not self.alive[run_id]:
+            del self.alive[run_id]
+        return name
+
+    def found(self) -> dict[str, int]:
+        return dict(self.scopes)
+
+    def stop(self, name: str) -> None:
+        self.stopped.append(name)
+        del self.scopes[name]
+
+
+LONGVAN = {1773: [406706, 406708, 413330, 413331, 417487, 417489]}  # bash, python3, postgres, next-server
+SAID_LONGVAN = "6 process(es) of run(s) #1773, which it no longer holds, live in its service: an exit kills them"
+
+
+def test_the_processes_of_a_parked_line_move_out_of_the_service_and_the_daemon_updates(fake, tmp_path, caplog):
+    """longvan, 2026-11-05: run 1773 left a proxy, a Postgres and a next-server in the daemon's service, and its line
+    went on parked in 1806 and 1828. The daemon as it was waits on them until they are a day old; with the line read
+    from its records and the scopes of its user manager, it moves them out of its service and updates."""
+    caplog.set_level(logging.INFO, logger="evo_agents.worker")
+    home = WorkerHome(tmp_path / "worker-evo-agents")
+    home.ensure()
+    _line_records(home, "parked", 300)
+    alive = {run_id: list(pids) for run_id, pids in LONGVAN.items()}
+    before = fake.updater(home, live=lambda: alive)
+    before.hear_lock(False)
+    try:
+        assert asyncio.run(before.turn(held=0, orphans=0, worker="a")) is False
+        assert (before.state, before.reason) == ("waiting", SAID_LONGVAN)
+    finally:
+        before.close()
+    scopes = FakeScopes(alive)
+    after = fake.updater(home, live=lambda: alive, records=home.load_run, scopes=scopes, wall=lambda: T)
+    after.hear_lock(False)
+    try:
+        assert asyncio.run(after.turn(held=0, orphans=0, worker="a")) is True, "it installed nightly"
+        assert scopes.scopes == {"evo-agents-run-1773-406706.scope": 1773} and alive == {}
+        assert [call["argv"][:2] for call in fake.calls()] == [["tool", "install"]] * 2  # staging, then the install
+        assert records(
+            caplog, "self-update: moved the processes of a parked run out of its service; an exit no longer kills them"
+        )
+    finally:
+        after.close()
+
+
+def test_a_daemon_moves_nothing_while_it_holds_a_run(fake, tmp_path):
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    _line_records(home, "parked", 300)
+    alive = {1773: [20]}
+    scopes = FakeScopes(alive)
+    b = fake.updater(home, live=lambda: alive, records=home.load_run, scopes=scopes, wall=lambda: T)
+    b.hear_lock(False)
+    try:
+        assert asyncio.run(b.turn(held=1, orphans=0, worker="b")) is False
+        assert (b.state, b.reason) == ("waiting", "it holds 1 run(s)") and scopes.scopes == {}
+    finally:
+        b.close()
+
+
+def test_a_move_the_user_manager_refuses_keeps_the_daemon_waiting_and_says_why(fake, tmp_path):
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    _line_records(home, "parked", 300)
+    alive = {run_id: list(pids) for run_id, pids in LONGVAN.items()}
+    refused = "busctl StartTransientUnit exited 1: Access denied"
+    b = fake.updater(home, live=lambda: alive, records=home.load_run, scopes=FakeScopes(alive, refused), wall=lambda: T)
+    b.hear_lock(False)
+    try:
+        assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is False
+        assert (b.state, b.reason) == ("waiting", f"{SAID_LONGVAN} (not moved out of it: {refused})")
+        assert fake.calls() == []
+    finally:
+        b.close()
+
+
+@pytest.mark.parametrize(
+    ("ended_before", "waits"), [(600.0, True), (2 * 3600.0, False)], ids=["ended-10-minutes-ago", "ended-2-hours-ago"]
+)
+def test_the_processes_of_a_line_that_ended_hold_the_update_back_an_hour_at_most(fake, tmp_path, ended_before, waits):
+    """Run 1828 ended the line: its processes stay in the service, where the next exit kills them, and hold the update
+    back for LINE_GRACE after that end; those of a run the worker has no record of hold nothing back."""
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    _line_records(home, "done", ended_before)
+    alive = {1773: [20, 21], 4242: [30]}
+    scopes = FakeScopes(alive)
+    b = fake.updater(home, live=lambda: alive, records=home.load_run, scopes=scopes, wall=lambda: T)
+    b.hear_lock(False)
+    try:
+        updated = asyncio.run(b.turn(held=0, orphans=0, worker="b"))
+        assert scopes.scopes == {}, "the processes of a line that ended are not moved"
+        if waits:
+            said = "2 process(es) of run(s) #1773, which it no longer holds, live in its service: an exit kills them"
+            assert (updated, b.state, b.reason) == (False, "waiting", said)
+        else:
+            assert updated is True
+    finally:
+        b.close()
+
+
+def test_the_scopes_of_lines_that_no_longer_need_them_are_stopped(fake, tmp_path):
+    home = WorkerHome(tmp_path / "worker")
+    home.ensure()
+    _line_records(home, "parked", 300)
+    home.save_run({"id": 1500, "kind": "chat", "state": "done", "finished_at": _at(2 * 3600)})
+    home.save_run({"id": 1501, "kind": "plan", "state": "done", "finished_at": _at(600)})
+    home.save_run({"id": 1400, "kind": "plan", "state": "parked", "finished_at": _at(detached.MAX_AGE + 60)})
+    scopes = FakeScopes({})
+    names = {1773: "evo-agents-run-1773-20.scope", 1500: "evo-agents-run-1500-5.scope"}
+    names |= {1501: "evo-agents-run-1501-6.scope", 1400: "evo-agents-run-1400-7.scope"}
+    names |= {900: "evo-agents-run-900-8.scope"}  # a run of another daemon of the slice
+    scopes.scopes = {name: run_id for run_id, name in names.items()}
+    b = fake.updater(home, records=home.load_run, scopes=scopes, wall=lambda: T)
+    b.hear_lock(True)  # locked: it stops scopes all the same
+    try:
+        asyncio.run(b.turn(held=1, orphans=0, worker="b"))
+        assert sorted(scopes.stopped) == [names[1400], names[1500]]
+    finally:
+        b.close()
+
+
+USER_SERVICE = (
+    "0::/user.slice/user-1001.slice/user@1001.service/evo.slice/evo-agents.slice/evo-agents-workers.slice/"
+    "evo-agents-worker-evo-agents.service"
+)
+
+
+def _busctl(tmp_path: Path) -> dict[str, str]:
+    command = tmp_path / "bin" / "busctl"
+    command.parent.mkdir()
+    command.write_text("#!/bin/sh\n", encoding="utf-8")
+    command.chmod(0o755)
+    return {"PATH": str(command.parent), "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1001/bus"}
+
+
+def test_the_scopes_of_a_user_service_are_made_and_stopped_with_busctl_in_its_slice(tmp_path):
+    proc, cgroups = _proc(tmp_path, USER_SERVICE, {11: ({"EVO_RUN_ID": "1773"}, 1.0)})
+    env = _busctl(tmp_path)
+    calls = []
+
+    def run(argv, **options):
+        calls.append((argv, options["env"]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    scopes = detached.Scopes.here(env, proc, cgroups, run=run)
+    assert scopes is not None and scopes.slice_dir.name == "evo-agents-workers.slice"
+    assert scopes.move(1773, [413330, 406706]) == "evo-agents-run-1773-406706.scope"
+    manager = ["org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager"]
+    description = "processes of evo-agents run 1773, out of the worker's service"
+    assert calls[0] == (
+        [
+            *[env["PATH"] + "/busctl", "--user", "call", *manager, "StartTransientUnit", "ssa(sv)a(sa(sv))"],
+            *["evo-agents-run-1773-406706.scope", "fail", "3", "PIDs", "au", "2", "413330", "406706"],
+            *["Slice", "s", "evo-agents-workers.slice", "Description", "s", description, "0"],
+        ],
+        env,
+    )
+    (scopes.slice_dir / "evo-agents-run-1773-406706.scope").mkdir()
+    (scopes.slice_dir / "evo-agents-run-x-1.scope").mkdir()
+    assert scopes.found() == {"evo-agents-run-1773-406706.scope": 1773}
+    scopes.stop("evo-agents-run-1773-406706.scope")
+    assert calls[1][0][-4:] == ["StopUnit", "ss", "evo-agents-run-1773-406706.scope", "replace"]
+
+
+def test_a_call_the_user_manager_refuses_says_why(tmp_path):
+    proc, cgroups = _proc(tmp_path, USER_SERVICE, {})
+
+    def run(argv, **options):
+        return subprocess.CompletedProcess(argv, 1, "", "Call failed: Access denied\n")
+
+    scopes = detached.Scopes.here(_busctl(tmp_path), proc, cgroups, run=run)
+    with pytest.raises(detached.ScopeError, match="busctl StartTransientUnit exited 1: Call failed: Access denied"):
+        scopes.move(1773, [20])
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "0::/system.slice/evo-agents-worker.service",  # a system service: its manager needs root
+        "0::/user.slice/user-1000.slice/session-3.scope",  # run by hand
+        "0::/user.slice/user-1000.slice/user@1000.service/evo-agents-worker.service",  # in no slice
+    ],
+    ids=["system", "session", "no-slice"],
+)
+def test_a_daemon_outside_a_user_managers_service_in_a_slice_moves_nothing(tmp_path, line):
+    proc, cgroups = _proc(tmp_path, line, {})
+    assert detached.Scopes.here(_busctl(tmp_path), proc, cgroups) is None
+
+
+def test_a_daemon_without_busctl_moves_nothing(tmp_path):
+    proc, cgroups = _proc(tmp_path, USER_SERVICE, {})
+    assert detached.Scopes.here({"PATH": str(tmp_path / "nowhere")}, proc, cgroups) is None
 
 
 # The update

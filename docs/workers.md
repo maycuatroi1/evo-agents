@@ -3383,12 +3383,20 @@ decides whether to reinstall its own install, and it does when all of these hold
   `parked` with its session and directory in the worker's state, and lets it go, so the turn after that may update.
   The run that resumes it is a new claim, which the updated daemon takes and goes on in the same session and
   worktrees (`Conversation.adopt`). What a parked run left running does count, on Linux: a job its agent started with
-  `setsid nohup` stays in the unit's cgroup, and systemd kills it when the daemon exits (`KillMode=mixed`), so while a
-  process whose environment names a run (`EVO_RUN_ID`) lives in the daemon's `.service` cgroup and started less than
-  24 hours ago, the daemon waits and says which runs (`selfupdate.detached`, read from `/proc/self/cgroup` and the
-  cgroup's `cgroup.procs`). launchd leaves a job that
-  left its process group alone, so a Mac counts none. A waiting run therefore holds the install back until the reaper's next pass after
-  those 10 minutes, and as long as the hub's job worker runs no pass, the daemon keeps waiting with it.
+  `setsid nohup` stays in the unit's cgroup, and systemd kills it when the daemon exits (`KillMode=mixed`). A process
+  of a run is one in the daemon's `.service` cgroup whose environment names the run (`EVO_RUN_ID`), or that names none
+  and descends there from one that does (a Postgres's backends), and that started less than 24 hours ago
+  (`selfupdate.detached`, read from `/proc/self/cgroup`, the cgroup's `cgroup.procs` and `/proc/<pid>`). Whether it
+  holds the update back depends on the run's line, the run and the attempts that went on from it in its session
+  (`resumed_by` of the worker's records): while the line is parked here (24 hours after its last attempt ended at
+  most) or has not ended here, yes; once it ended here, for one hour (`LINE_GRACE`); a run the worker has no record of,
+  no. An idle daemon of a user manager's service first moves the processes of a parked line out of its service into
+  `evo-agents-run-<run>-<pid>.scope`, in the service's own slice (`StartTransientUnit` with `PIDs`, through `busctl
+  --user`), so its exit no longer kills them and it updates; it stops such a scope once the line no longer holds an
+  update back. When the move fails, the daemon waits and its `self_update.reason` says which runs and why the move
+  failed. launchd leaves a job that left its process group alone, so a Mac counts none. A waiting run therefore holds
+  the install back until the reaper's next pass after those 10 minutes, and as long as the hub's job worker runs no
+  pass, the daemon keeps waiting with it.
 - **It is not turned off on the machine**: `EVO_WORKER_SELF_UPDATE` is not `off`, `0`, `false` or `no`.
 
 **Where nightly points.** The hub reads the tag every minute (`hub.read_nightly`) and each heartbeat answer carries

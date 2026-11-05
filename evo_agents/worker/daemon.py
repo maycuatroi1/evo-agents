@@ -38,8 +38,9 @@
 - Each heartbeat says the commit its install was built from (``agent_commit``) and what it found of updating itself
   to the tag nightly (``self_update``), and each turn of its loop of self-update (every heartbeat period) decides it
   (``selfupdate``): a daemon that launchd or systemd runs from a uv tool install of evo-ak, whose worker the hub says
-  is not locked, installs the commit nightly points to once no daemon of the install holds a run or has processes of
-  a parked run in its systemd service (``selfupdate.detached``), and exits ``home.EXIT_UPDATED`` for its manager to
+  is not locked, installs the commit nightly points to once no daemon of the install holds a run or has processes in
+  its systemd service that a run's line may still need (``selfupdate.detached``, which moves those of a parked line
+  into a scope of their own), and exits ``home.EXIT_UPDATED`` for its manager to
   start the new one. It claims nothing while another daemon of its install updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json. The
   answer's ``nightly`` (the commit the hub read the tag at, once a minute) spares the daemon its own hourly read, and
   its ``update_now`` (its owner's Update now) stops the claims of every daemon of the install until it updated, while
