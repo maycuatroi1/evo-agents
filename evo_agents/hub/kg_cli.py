@@ -605,15 +605,15 @@ class RemoteSession:
 
     def call(self, name: str, args: dict) -> dict:
         from evo_agents.hub.mcp_proxy import McpClient
-        from evo_agents.kg.serve import DATA_META, TOOLS, _error
+        from evo_agents.kg.serve import DATA_META, TOOLS, error_result
 
         if name not in {tool["name"] for tool in TOOLS}:
-            return _error(f"unknown tool {name!r}")
+            return error_result(f"unknown tool {name!r}")
         try:
             client = McpClient(self.hub.url, self.hub.token, self.project, self.sink, run=self.run)
             return client.call_tool(name, args or {}, {DATA_META: True})
         except HubError as exc:
-            return _error(f"{exc} (hub {self.hub.url})")
+            return error_result(f"{exc} (hub {self.hub.url})")
 
 
 def hub_has_graph(hub: Hub, project: str) -> bool:

@@ -29,7 +29,8 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import finalize_item
 from evo_agents.kg.replace import replace_source
 from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS, known_kinds, validate_ontology
-from evo_agents.kg.serve import Session, ToolError
+from evo_agents.kg.serve import Session
+from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.store import Store
 from evo_agents.kg.text import split_markdown
 from tests.kg.test_srs_tasks_plugin_graph import (

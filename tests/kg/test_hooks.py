@@ -15,7 +15,7 @@ from evo_agents.cli import main
 from evo_agents.hub import spool
 from evo_agents.kg import grep_command, hook_scope, post_search, serve, sessions
 from evo_agents.kg.build import build_project
-from evo_agents.kg.connectors import _git
+from evo_agents.kg.connectors import gitcli
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
@@ -319,7 +319,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     write(app / "docs/later.md", "# Later\n")
     commit(app, "later")
     git(app, "update-ref", "refs/remotes/origin/main", "HEAD")  # a later fetch brought one commit; the graph stays
-    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched outside a sync"))
+    monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched outside a sync"))
 
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
     stdin = json.dumps({"session_id": "44444444-5555-4666-8777-888888888888", "source": "startup"})

@@ -1,32 +1,6 @@
 {
   "about": "Frozen exceptions to the budgets of tests/structure.py (1000 lines a module; 50 statements and a complexity of 15 a function; no private name imported across modules). Entries only shrink: `python -m tests.structure tighten` lowers them; see docs/structure.md.",
   "modules": {},
-  "functions": {
-    "evo_agents/kg/build.py::run_pipeline": {"complexity": 48, "statements": 155},
-    "evo_agents/kg/pipeline/binding.py::binding_item": {"complexity": 16},
-    "evo_agents/kg/pipeline/link.py::Linker.scan": {"complexity": 37, "statements": 104},
-    "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21}
-  },
-  "private_imports": {
-    "evo_agents/hub/kg_cli.py": [
-      "evo_agents.kg.serve._error"
-    ],
-    "evo_agents/hub/server/mcp.py": [
-      "evo_agents.kg.serve._error"
-    ],
-    "evo_agents/kg/cli_graph.py": [
-      "evo_agents.kg.cli._print_json",
-      "evo_agents.kg.cli._project",
-      "evo_agents.kg.cli._project"
-    ],
-    "evo_agents/kg/connectors/git.py": [
-      "evo_agents.kg.connectors._git"
-    ],
-    "evo_agents/kg/connectors/harness.py": [
-      "evo_agents.kg.connectors._git"
-    ],
-    "evo_agents/kg/pipeline/binding.py": [
-      "evo_agents.kg.pipeline.link._unique"
-    ]
-  }
+  "functions": {},
+  "private_imports": {}
 }

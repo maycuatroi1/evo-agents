@@ -13,13 +13,13 @@ from pathlib import Path
 
 def cmd_build(args) -> int:
     from evo_agents.kg.build import build_project
-    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.cli import print_json, project_of
     from evo_agents.kg.status import code_line
 
-    project = _project(args)
+    project = project_of(args)
     report = build_project(project, verify=args.verify, cold=args.cold, force=args.force)
     if args.json:
-        _print_json(report.to_json())
+        print_json(report.to_json())
     else:
         print(report.summary_line())
         if report.verify is not None:
@@ -47,10 +47,10 @@ def cmd_build(args) -> int:
 def cmd_profile(args) -> int:
     """Print the data profile of the project's newest graph (``evo_agents.kg.profile``)."""
     from evo_agents.kg import profile as kg_profile
-    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.cli import print_json, project_of
     from evo_agents.kg.store import StaleSchema, Store
 
-    project = _project(args)
+    project = project_of(args)
     try:
         store = Store.open_readonly(project)
     except StaleSchema as exc:
@@ -68,7 +68,7 @@ def cmd_profile(args) -> int:
         print("error: the newest build holds no profile: run evo-agents kg build --force", file=sys.stderr)
         return 1
     if args.json:
-        _print_json({"project": project.name, "build_id": summary["build_id"], "profile": found})
+        print_json({"project": project.name, "build_id": summary["build_id"], "profile": found})
     else:
         print(f"project {project.name}, build {summary['build_id']}")
         print(kg_profile.render(found))
@@ -78,9 +78,9 @@ def cmd_profile(args) -> int:
 def cmd_semantic(args) -> int:
     """Show or set whether the project's graph is searched by meaning too, and with ``--index`` write its vectors."""
     from evo_agents.kg import semantic
-    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.cli import print_json, project_of
 
-    project = _project(args)
+    project = project_of(args)
     try:
         settings = semantic.read_settings(project.root)
         if args.mode or args.model:
@@ -113,7 +113,7 @@ def cmd_semantic(args) -> int:
         else {"rows": indexed.rows, "embedded": indexed.embedded, "error": indexed.error},
     }
     if args.json:
-        _print_json(out)
+        print_json(out)
     else:
         print(f"semantic {settings.mode}, model {settings.model}")
         if indexed is not None:
@@ -126,9 +126,9 @@ def cmd_settings(args) -> int:
     """Show the project's KG settings, set some (``--set KEY=VALUE``, a reason with ``--reason``) or put back the last
     change (``--undo``). A key that needs a build says so."""
     from evo_agents.kg import settings as kg_settings
-    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.cli import print_json, project_of
 
-    project = _project(args)
+    project = project_of(args)
     try:
         before = kg_settings.read(project.root)
         after = before
@@ -156,7 +156,7 @@ def cmd_settings(args) -> int:
         "needs_rebuild": kg_settings.rebuild_keys(before, after),
     }
     if args.json:
-        _print_json(out)
+        print_json(out)
     else:
         for key, value in after.to_json().items():
             mark = "" if value == getattr(kg_settings.DEFAULT, key) else "  (set)"
@@ -169,16 +169,16 @@ def cmd_settings(args) -> int:
 def cmd_init(args) -> int:
     """The kg_init run on this machine: the Curator configures the project's graph from its data profile."""
     from evo_agents.kg import init_local
-    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.cli import print_json, project_of
 
-    project = _project(args)
+    project = project_of(args)
     try:
         record = init_local.run(project, questions=Path(args.questions).expanduser() if args.questions else None)
     except (init_local.InitError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     if args.json:
-        _print_json(record)
+        print_json(record)
     else:
         print(
             f"kg init {project.name}: {record['questions']['count']} tune questions from {record['questions']['source']}"
@@ -199,11 +199,11 @@ def cmd_init(args) -> int:
 def cmd_strategy(args) -> int:
     """List the strategies, show one, or apply one (``--dry-run`` says what it would change)."""
     from evo_agents.kg import strategy as kg_strategy
-    from evo_agents.kg.cli import _print_json, _project
+    from evo_agents.kg.cli import print_json, project_of
 
     project = None
     if args.action == "apply" or args.project:
-        project = _project(args)
+        project = project_of(args)
     else:  # list and show work anywhere; a project the cwd belongs to adds its own strategies
         from evo_agents.kg.project import ProjectError, resolve_project
 
@@ -216,7 +216,7 @@ def cmd_strategy(args) -> int:
         if args.action == "list":
             found = kg_strategy.available(root)
             if args.json:
-                _print_json([s.to_json() for s in found.values()])
+                print_json([s.to_json() for s in found.values()])
             else:
                 print(kg_strategy.render_list(found))
             return 0
@@ -225,7 +225,7 @@ def cmd_strategy(args) -> int:
         chosen = kg_strategy.find(args.target, root)
         if args.action == "show":
             if args.json:
-                _print_json(chosen.to_json())
+                print_json(chosen.to_json())
             else:
                 print(f"{chosen.name} ({chosen.origin}): {chosen.description}")
                 print(yaml_dump(chosen.to_json()))
@@ -236,7 +236,7 @@ def cmd_strategy(args) -> int:
         return 2
     out = {**found.to_json(), "applied": not args.dry_run}
     if args.json:
-        _print_json(out)
+        print_json(out)
         return 1 if found.problems else 0
     for problem in found.problems:
         print(f"cannot apply: {problem}")
@@ -269,11 +269,11 @@ def _figures(text: str | None) -> dict | None:
 
 
 def cmd_query(args) -> int:
-    from evo_agents.kg.cli import _project
+    from evo_agents.kg.cli import project_of
     from evo_agents.kg.serve import Session
 
     if args.backend == "local":
-        session = Session(_project(args), sink=args.sink)
+        session = Session(project_of(args), sink=args.sink)
     else:
         from evo_agents.hub.kg_cli import open_session
 
@@ -397,10 +397,10 @@ def cmd_session_questions(args) -> int:
 def cmd_commit_questions(args) -> int:
     """``kg eval-questions --from-commits``: the starter set out of the commits the local graph holds."""
     from evo_agents.kg import commit_labels, eval_commits
-    from evo_agents.kg.cli import _project
+    from evo_agents.kg.cli import project_of
     from evo_agents.kg.store import StaleSchema, Store
 
-    project = _project(args)
+    project = project_of(args)
     try:
         store = Store.open_readonly(project)
     except StaleSchema as exc:

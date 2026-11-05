@@ -21,7 +21,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.harness import Harness, load_yaml
-from evo_agents.kg.connectors import _git, hub_plans
+from evo_agents.kg.connectors import gitcli, hub_plans
 from evo_agents.kg.connectors._files import (
     DEFAULT_EXCLUDE,
     asset_item,
@@ -87,9 +87,9 @@ def own_entry(harness: Harness | None, root: Path, origin: str) -> dict:
         path = harness.repo_path(repo)
         if path is not None and path.resolve() == root.resolve():
             return repo
-    key = _git.remote_key(origin) if origin else None
+    key = gitcli.remote_key(origin) if origin else None
     for repo in harness.repos():
-        if key and _git.remote_key(repo.get("origin") or "") == key:
+        if key and gitcli.remote_key(repo.get("origin") or "") == key:
             return repo
     return {}
 
@@ -112,14 +112,14 @@ def checkout_state(root: Path) -> tuple[set[str], dict[str, str], str]:
     of each path, and the origin; nothing of one that is not."""
     clean: set[str] = set()
     times: dict[str, str] = {}
-    if not _git.is_repo(root):
+    if not gitcli.is_repo(root):
         return clean, times, ""
     try:  # each as far as it goes: a checkout without an origin still has its commit times
-        head = _git.resolve(root, "HEAD")
-        clean = _git.tracked_clean(root)
-        times = _git.last_change_times(root, head)
-        return clean, times, _git.git(root, "remote", "get-url", "origin").strip()
-    except _git.GitError:
+        head = gitcli.resolve(root, "HEAD")
+        clean = gitcli.tracked_clean(root)
+        times = gitcli.last_change_times(root, head)
+        return clean, times, gitcli.git(root, "remote", "get-url", "origin").strip()
+    except gitcli.GitError:
         return clean, times, ""
 
 
@@ -153,7 +153,7 @@ def run(ctx):
         data = full.read_bytes()
         rev_time = times.get(rel) if rel in clean else None
         rev_time = rev_time or epoch_to_iso(full.stat().st_mtime)
-        uri = _git.web_url(origin, branch, rel) if origin else None
+        uri = gitcli.web_url(origin, branch, rel) if origin else None
         text = decode(data) if wanted else None
         if text is None:
             item = asset_item(

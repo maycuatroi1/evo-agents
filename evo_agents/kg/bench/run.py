@@ -231,7 +231,7 @@ def part_numbers(records: list[dict], outcomes: list[Outcome], method: str, prim
     }
 
 
-def _ensure_vectors(project_dir: Path, cache: Path) -> None:
+def ensure_vectors(project_dir: Path, cache: Path) -> None:
     from evo_agents.kg import semantic
 
     path = project_dir / "graph.sqlite"
@@ -303,7 +303,7 @@ def _ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> A
                 with graphs.bench_home(lay.home):
                     project = graphs.project_of(lay, task)
                     if search == "hybrid":
-                        _ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
+                        ensure_vectors(lay.project_dir(task), lay.vectors(task.repo))
                     report = evaluate(
                         [task.as_question()],
                         session_for=lambda _project, project=project, search=search, files=(clone, task.commit): (

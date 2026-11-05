@@ -45,7 +45,9 @@ REFUSAL = (
     "lasts, and the run cannot park while the session waits. Wait with `evo-agents worker wait --reason TEXT --until "
     "+15m --step KEY` instead (--on and --contains wake it sooner on an event of the hub, such as another plan's step "
     "done), then end your turn: the hub parks the run, which holds no worker, and wakes this session on the same "
-    "worker when the time comes. Then look once, and wait again if it has not come. Work on this machine, such as "
+    "worker when the time comes. Then look once, and wait again if it has not come. A GitHub Actions run (the CI of "
+    "a tag, a deploy) wakes it sooner, as soon as a job fails or it completes, with --on github.workflow_run "
+    "--contains repo=OWNER/NAME --contains run_id=ID. Work on this machine, such as "
     "tests or a build, may run in the background; waiting for something elsewhere (the CI of a commit, a pull request "
     "or a tag, a package on an index, a build or a run on the hub, a deploy) may not."
 )

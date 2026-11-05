@@ -92,7 +92,7 @@ def follow(hub: Hub, project: str, job_id: int, say, *, poll: float | None = Non
     """Read job ``job_id`` until it ends, calling ``say`` with each line that changed; its end."""
     last = None
     while True:
-        job = hub.call("GET", f"{_base(project)}/{job_id}")
+        job = hub.call("GET", f"{_base(project)}/{job_id}") or {}
         line = progress_line(job)
         if line != last:
             say(line)
@@ -108,7 +108,7 @@ def answer_lines(hub: Hub, project: str, job_id: int, ids: dict | None = None) -
     out: list[dict] = []
     offset = 0
     while True:
-        found = hub.call("GET", f"{_base(project)}/{job_id}/lines?offset={offset}&limit={PAGE}")
+        found = hub.call("GET", f"{_base(project)}/{job_id}/lines?offset={offset}&limit={PAGE}") or {}
         for item in found["lines"]:
             line = {key: item[key] for key in LINE}
             line["id"] = (ids or {}).get(item["id"], item["id"])
@@ -136,7 +136,7 @@ def _ask(hub: Hub, args) -> tuple[dict, dict]:
         sys.exit(f"no file {args.questions}")
     questions = read_lines(path)
     ids = {str(q["id"]): q["id"] for q in questions if isinstance(q, dict) and isinstance(q.get("id"), int | str)}
-    job = hub.call("POST", _base(args.project), {"questions": questions, "batch": args.batch})
+    job = hub.call("POST", _base(args.project), {"questions": questions, "batch": args.batch}) or {}
     return job, ids
 
 
@@ -153,7 +153,7 @@ def cmd_answer(args) -> int:
             asked = "sent before: asking again the questions with no answer" if job["again"] else "kept"
             print(f"answer job {job['id']} of {job['questions']} questions {asked}, batches of {job['batch']}")
     elif args.job:
-        job, ids = hub.call("GET", f"{_base(args.project)}/{args.job}"), {}
+        job, ids = hub.call("GET", f"{_base(args.project)}/{args.job}") or {}, {}
     else:
         sys.exit("give --questions FILE, --job J or --status")
     say = (lambda line: print(line, file=sys.stderr)) if args.json else (lambda line: print(line, flush=True))
@@ -173,7 +173,7 @@ def cmd_answer(args) -> int:
 
 
 def _status(hub: Hub, args) -> int:
-    found = hub.call("GET", f"{_base(args.project)}?limit={args.limit}")
+    found = hub.call("GET", f"{_base(args.project)}?limit={args.limit}") or {}
     if args.json:
         print_json(found)
         return 0
@@ -196,7 +196,7 @@ def _reply(hub: Hub, args) -> int:
     path = Path(args.reply)
     if not path.is_file():
         sys.exit(f"no file {args.reply}")
-    found = hub.call("POST", f"{_base(args.project)}/{args.job}/replies", {"answers": read_lines(path)})
+    found = hub.call("POST", f"{_base(args.project)}/{args.job}/replies", {"answers": read_lines(path)}) or {}
     if args.json:
         print_json(found)
     else:

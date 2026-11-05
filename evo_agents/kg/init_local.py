@@ -270,6 +270,59 @@ def _coverage_of(store, b) -> dict:
     return store.build_row(b)["coverage"]
 
 
+def _ready_graph(project):
+    """The store and build of the project's newest ready graph, built first when it has none."""
+    from evo_agents.kg.build import build_project
+
+    store, b = _latest(project)
+    if store is None:
+        report = build_project(project)
+        if not report.ok:
+            raise InitError("the project has no graph and its build failed: " + "; ".join(report.errors[:3]))
+        store, b = _latest(project)
+        if store is None:
+            raise InitError("the build left no ready graph")
+    return store, b
+
+
+def _write_inputs(project, profile: dict, coverage: dict, strategies: list, tune: list, prompt: str) -> dict:
+    """Write what the Curator reads under the project's INPUT_DIR; the files by name."""
+    inputs_dir = project.root / INPUT_DIR
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    files = {
+        "profile": inputs_dir / "profile.json",
+        "coverage": inputs_dir / "coverage.json",
+        "strategies": inputs_dir / "strategies.json",
+        "questions": inputs_dir / "questions.tune.jsonl",
+        "prompt": inputs_dir / "prompt.md",
+    }
+    files["profile"].write_text(json.dumps(profile, sort_keys=True, indent=1), encoding="utf-8")
+    files["coverage"].write_text(json.dumps(coverage, sort_keys=True, indent=1, default=str), encoding="utf-8")
+    files["strategies"].write_text(json.dumps(strategies, sort_keys=True, indent=1), encoding="utf-8")
+    files["questions"].write_text(
+        "".join(json.dumps(_dump(q), ensure_ascii=False) + "\n" for q in tune), encoding="utf-8"
+    )
+    files["prompt"].write_text(prompt, encoding="utf-8")
+    return files
+
+
+def _rebuild(project, record: dict, profile: Path) -> None:
+    """Build the project as the applied decision left it, into ``record``."""
+    from evo_agents.kg.build import build_project
+    from evo_agents.kg.project import load_project_at
+
+    after = load_project_at(project.harness.root, project.home)
+    report = build_project(after)
+    record["build"] = {
+        "ok": report.ok,
+        "build_id": report.build_id,
+        "content_hash": report.content_hash,
+        "errors": report.errors[:5],
+    }
+    if report.ok:
+        record["applied_profile_digest"] = init_run.digest(profile)
+
+
 def run(
     project,
     *,
@@ -280,17 +333,7 @@ def run(
 ) -> dict:
     """Run kg_init on ``project``; the record written to ``kg-init.json``. ``ask`` gives the Curator's answer to the
     prompt (the agent runtime of this machine by default)."""
-    from evo_agents.kg.build import build_project
-    from evo_agents.kg.project import load_project_at
-
-    store, b = _latest(project)
-    if store is None:
-        report = build_project(project)
-        if not report.ok:
-            raise InitError("the project has no graph and its build failed: " + "; ".join(report.errors[:3]))
-        store, b = _latest(project)
-        if store is None:
-            raise InitError("the build left no ready graph")
+    store, b = _ready_graph(project)
     try:
         coverage = _coverage_of(store, b)
         profile = kg_profile.of_coverage(coverage)
@@ -316,22 +359,7 @@ def run(
         prose=init_run.mostly_prose(profile),
     )
     prompt = "\n".join(lines)
-    inputs_dir = project.root / INPUT_DIR
-    inputs_dir.mkdir(parents=True, exist_ok=True)
-    files = {
-        "profile": inputs_dir / "profile.json",
-        "coverage": inputs_dir / "coverage.json",
-        "strategies": inputs_dir / "strategies.json",
-        "questions": inputs_dir / "questions.tune.jsonl",
-        "prompt": inputs_dir / "prompt.md",
-    }
-    files["profile"].write_text(json.dumps(profile, sort_keys=True, indent=1), encoding="utf-8")
-    files["coverage"].write_text(json.dumps(coverage, sort_keys=True, indent=1, default=str), encoding="utf-8")
-    files["strategies"].write_text(json.dumps(strategies, sort_keys=True, indent=1), encoding="utf-8")
-    files["questions"].write_text(
-        "".join(json.dumps(_dump(q), ensure_ascii=False) + "\n" for q in tune), encoding="utf-8"
-    )
-    files["prompt"].write_text(prompt, encoding="utf-8")
+    files = _write_inputs(project, profile, coverage, strategies, tune, prompt)
     record: dict = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "project": project.name,
@@ -362,15 +390,6 @@ def run(
     except (InitError, init_run.DecisionError, kg_strategy.StrategyError, kg_settings.SettingsError) as exc:
         record["error"] = str(exc)
     if rebuild and record["error"] is None:
-        after = load_project_at(project.harness.root, project.home)
-        report = build_project(after)
-        record["build"] = {
-            "ok": report.ok,
-            "build_id": report.build_id,
-            "content_hash": report.content_hash,
-            "errors": report.errors[:5],
-        }
-        if report.ok:
-            record["applied_profile_digest"] = init_run.digest(files["profile"])
+        _rebuild(project, record, files["profile"])
     (project.root / FILE).write_text(json.dumps(record, indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8")
     return record

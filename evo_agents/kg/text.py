@@ -85,13 +85,9 @@ def split_markdown(text: str) -> list[dict]:
     return sections
 
 
-def split_passages(text: str, start: int, max_chars: int) -> list[dict]:
-    """``text``, whose first line is line ``start`` of its file, cut into passages of about ``max_chars`` at most:
-    ``{"start", "end", "text"}``, line numbers of the file, in order, every line in one passage. A cut falls between
-    blocks, a block being a paragraph (lines up to a blank line) or a fenced code block whole; a block longer than
-    ``max_chars`` is cut between its lines, and a line longer than that is a passage of its own."""
-    lines = text.splitlines(keepends=True)
-    blocks: list[list[int]] = []  # line indexes of each block
+def _blocks(lines: list[str]) -> list[list[int]]:
+    """The line indexes of each block: a paragraph (lines up to a blank line) or a fenced code block whole."""
+    blocks: list[list[int]] = []
     current: list[int] = []
     fence: str | None = None
     for i, line in enumerate(lines):
@@ -114,8 +110,12 @@ def split_passages(text: str, start: int, max_chars: int) -> list[dict]:
             current = []
     if current:
         blocks.append(current)
+    return blocks
 
-    pieces: list[list[int]] = []  # blocks no longer than max_chars
+
+def _pieces(lines: list[str], blocks: list[list[int]], max_chars: int) -> list[list[int]]:
+    """The blocks, each one longer than ``max_chars`` cut between its lines."""
+    pieces: list[list[int]] = []
     for block in blocks:
         size = sum(len(lines[i]) for i in block)
         if size <= max_chars:
@@ -131,11 +131,19 @@ def split_passages(text: str, start: int, max_chars: int) -> list[dict]:
             held += len(lines[i])
         if part:
             pieces.append(part)
+    return pieces
 
+
+def split_passages(text: str, start: int, max_chars: int) -> list[dict]:
+    """``text``, whose first line is line ``start`` of its file, cut into passages of about ``max_chars`` at most:
+    ``{"start", "end", "text"}``, line numbers of the file, in order, every line in one passage. A cut falls between
+    blocks, a block being a paragraph (lines up to a blank line) or a fenced code block whole; a block longer than
+    ``max_chars`` is cut between its lines, and a line longer than that is a passage of its own."""
+    lines = text.splitlines(keepends=True)
     out: list[dict] = []
     group: list[int] = []
     held = 0
-    for piece in pieces:
+    for piece in _pieces(lines, _blocks(lines), max_chars):
         size = sum(len(lines[i]) for i in piece)
         if group and held + size > max_chars:
             out.append(_passage(lines, group, start))

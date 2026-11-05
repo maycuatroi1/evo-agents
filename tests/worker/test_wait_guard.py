@@ -133,5 +133,6 @@ def test_the_plan_runs_prompt_says_how_to_wait_for_something_elsewhere():
 
     plan = load_yaml(FIXTURE)
     prompt = run_prompts.build_plan_prompt(plan, plan["repos"])
-    assert "the CI of a commit, a pull request or a tag" in prompt
+    assert "A GitHub Actions run (the CI of a tag or of a commit pushed, a deploy)" in prompt
+    assert "--on github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID --until +90m --step KEY" in prompt
     assert "--until +15m --step KEY" in prompt and "no Monitor, no loop that sleeps" in prompt

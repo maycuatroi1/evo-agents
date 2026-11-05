@@ -7,7 +7,8 @@ import json
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
-from evo_agents.kg.store import LIVE, SEEN, Store
+from evo_agents.kg.store import Store
+from evo_agents.kg.store_filters import LIVE, SEEN
 
 
 @dataclass(frozen=True)

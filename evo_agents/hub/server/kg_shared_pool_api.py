@@ -11,7 +11,7 @@ Each change adds an audit row ``worker_pool.kg_shared``.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,7 +24,7 @@ from evo_agents.hub.server.admin import LOGIN_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import AdminUser, admin
 
-REFUSALS = {code: {"model": ErrorBody} for code in (404, 422)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (404, 422)}
 
 router = APIRouter(
     prefix="/v1/admin/kg-pool",

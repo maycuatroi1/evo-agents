@@ -112,7 +112,7 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry, loop_tick, memory_upkeep, release_pass
+        from evo_agents.hub.server.app import entity_key, init_sentry, loop_tick, memory_upkeep, release_pass
     except ImportError as exc:
         return missing_extra(exc, args)
     init_sentry(config)
@@ -123,6 +123,7 @@ def cmd_worker(args) -> int:
         release_pass=release_pass,
         loop_tick=loop_tick,
         memory_upkeep=memory_upkeep,
+        entity_key=entity_key,
     )
 
 

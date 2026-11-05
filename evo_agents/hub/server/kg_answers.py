@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as PathParam
@@ -50,7 +50,7 @@ MAX_REPLIES = 1000  # lines of one reply
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}})
 
 JobId = Annotated[int, PathParam(ge=1, description="the answer job, as `hub kg answer --status` lists it")]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 
 
 class KgAnswerAsk(BaseModel):
@@ -80,7 +80,7 @@ class KgAnswerJob(BaseModel):
     created_at: datetime
     updated_at: datetime
     ended_at: datetime | None
-    again: bool = Field(False, description="POST only: the same file was sent before, and this is its job")
+    again: bool = Field(default=False, description="POST only: the same file was sent before, and this is its job")
 
 
 class KgAnswerJobs(BaseModel):
@@ -299,9 +299,11 @@ async def _again(conn: AsyncConnection, row, batch: int) -> None:
     await conn.execute(update(j).where(j.c.id == row.id).values(**values))
 
 
-async def _keep(conn: AsyncConnection, user: Principal, access, asked: list[tuple[str, str]], digest: str, batch: int):
+async def _keep(
+    conn: AsyncConnection, user: Principal, access, asked: list[tuple[str, str]], digest: str, batch: int
+) -> int:
     j, a = tables.kg_answer_jobs, tables.kg_answers
-    job_id = await conn.scalar(
+    made = await conn.execute(
         j.insert()
         .values(
             project_id=access.project_id,
@@ -313,6 +315,7 @@ async def _keep(conn: AsyncConnection, user: Principal, access, asked: list[tupl
         )
         .returning(j.c.id)
     )
+    job_id: int = made.scalar_one()
     await conn.execute(
         a.insert(),
         [{"job_id": job_id, "position": n, "qid": qid, "question": text} for n, (qid, text) in enumerate(asked)],
@@ -347,7 +350,7 @@ async def ask(request: Request, project: ProjectName, body: KgAnswerAsk, user: C
         )
         if found is not None:
             await _again(conn, await _job(conn, access, found, lock=True), body.batch)
-            job_id = found
+            job_id: int = found
         else:
             job_id = await _keep(conn, user, access, asked, digest, body.batch)
         await audit.record(
@@ -404,7 +407,7 @@ async def reply(
             qid, values, why = model.check_reply(entry)
             if why is None and qid not in mine:
                 why = "names a question this run was not asked"
-            if why is not None:
+            if why is not None or qid is None or values is None:
                 problems.append(f"line {n} {why}")
                 continue
             await conn.execute(
@@ -463,9 +466,9 @@ async def _waits(conn: AsyncConnection, job, note: str, now: datetime) -> str:
 
 
 async def _asked_by(conn: AsyncConnection, job) -> tuple[int, str] | None:
-    from evo_agents.hub.server.kg_init import _asker
+    from evo_agents.hub.server.kg_init import asker_of
 
-    return await _asker(conn, SimpleNamespace(requested_by=job.created_by, project_id=job.project_id))
+    return await asker_of(conn, SimpleNamespace(requested_by=job.created_by, project_id=job.project_id))
 
 
 async def _next(conn: AsyncConnection, job, now: datetime) -> str:
@@ -538,7 +541,7 @@ async def _move(engine: AsyncEngine, job_id: int, now: datetime | None) -> str |
             return None
         if job.run_id is not None and not await _ended(conn, job):
             return "asking"
-        return await _next(conn, job, now or await conn.scalar(select(func.now())))
+        return await _next(conn, job, now or (await conn.execute(select(func.now()))).scalar_one())
 
 
 async def advance(engine: AsyncEngine, *, now: datetime | None = None) -> dict:

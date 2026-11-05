@@ -452,7 +452,8 @@ async def _patched_step(conn: AsyncConnection, access, actor: Principal, found: 
     """Set on the run's step what ``updates_for`` gives for it, trying again on a revision conflict up to PLAN_TRIES
     times; the new revision, or None when nothing was written. Raises _Skipped when the plan has no such step to set."""
     plan_id = found.plan_id
-    assert plan_id is not None  # a run that writes a step is of a plan
+    if plan_id is None:  # a run of no plan (a browser login session, a chat): no step to write
+        raise _Skipped(404, "the run is of no plan")
     for attempt in range(1, PLAN_TRIES + 1):
         held = await read_plan(conn, access, plan_id)
         if held is None:

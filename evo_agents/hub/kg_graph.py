@@ -54,7 +54,9 @@ from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.policy import Label, Policy, audience_below
-from evo_agents.kg.serve import HANDLE_TTL, IMPACT_STATUSES, TOOLS, Session, ToolError
+from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session
+from evo_agents.kg.serve_impact import IMPACT_STATUSES
+from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)

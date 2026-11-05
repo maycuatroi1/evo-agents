@@ -162,7 +162,7 @@ async def _latest_build(conn: AsyncConnection, project_id: int):
     return (await conn.execute(query)).first()
 
 
-async def _asker(conn: AsyncConnection, ctx) -> tuple[int, str] | None:
+async def asker_of(conn: AsyncConnection, ctx) -> tuple[int, str] | None:
     """(id, login) of the user the review run is dispatched by: who asked, else the first admin of the project."""
     u, g = tables.users, tables.grants
     if ctx.requested_by is not None:
@@ -280,7 +280,7 @@ async def _queue_agent(
     questions first); its id, or None with why in ``body["notes"]``."""
     from evo_agents.hub.server.run_state import notify_queued, write_event
 
-    who = await _asker(conn, ctx)
+    who = await asker_of(conn, ctx)
     if who is None:
         body.setdefault("notes", []).append("no review run: the project has no admin to dispatch it as")
         return None
@@ -320,7 +320,7 @@ async def _queued(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure, n
     body = dict(ctx.body or {})
     if body.get("measures") is None:
         async with engine.begin() as conn:
-            asker = await _asker(conn, ctx)
+            asker = await asker_of(conn, ctx)
         row = SimpleNamespace(
             project_id=ctx.project_id,
             project=ctx.project,

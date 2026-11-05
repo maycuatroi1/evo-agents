@@ -312,6 +312,7 @@ def opened(data: bytes | None) -> bytes:
 
 
 def kg_hub_context(*args, sealer, **kwargs):
+    from evo_agents.hub.server.kg_entity_key import find
     from evo_agents.hub.worker import HubContext
 
-    return HubContext(*args, sealer=sealer, **kwargs)
+    return HubContext(*args, sealer=sealer, entity_key=find, **kwargs)

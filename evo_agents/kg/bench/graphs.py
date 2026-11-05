@@ -62,7 +62,7 @@ class DiskFull(BenchError):
 def extractor() -> str:
     """Digest of what a bench graph is made with; a change of it builds the graphs again (see the module)."""
     from evo_agents.kg import store, text
-    from evo_agents.kg.connectors import _git, git
+    from evo_agents.kg.connectors import git, gitcli
     from evo_agents.kg.extract import graphify as gfy
     from evo_agents.kg.pipeline import curation
     from evo_agents.kg.pipeline.binding import BINDING_VERSION
@@ -77,7 +77,7 @@ def extractor() -> str:
         BINDING_VERSION,
         curation.CURATION_VERSION,
         gfy.version() if gfy.available() else None,
-        *(hashlib.sha256(Path(m.__file__).read_bytes()).hexdigest() for m in (text, git, _git)),
+        *(hashlib.sha256(Path(m.__file__).read_bytes()).hexdigest() for m in (text, git, gitcli)),
     ]
     return hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:16]
 

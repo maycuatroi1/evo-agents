@@ -120,6 +120,17 @@ def check(value):
     if unknown:
         raise EntitiesError(f"entities has unknown keys {', '.join(unknown)} (known: {', '.join(sorted(FIELDS))})")
     out = dict(value)
+    _check_names(out)
+    _check_command(out)
+    _check_url(out)
+    _check_access(out)
+    _check_ceiling(out)
+    _check_tuning(out)
+    return out
+
+
+def _check_names(out: dict) -> None:
+    """The lists of names, the model's name and the node kinds."""
     for key in ("items", "node_kinds", "relations"):
         if key in out:
             items = out[key]
@@ -129,6 +140,9 @@ def check(value):
         raise EntitiesError("entities.model must name the model (letters, digits, . _ : / -), it is the evidence")
     if not out.get("node_kinds"):
         raise EntitiesError("entities.node_kinds must list the kinds the model may state")
+
+
+def _check_command(out: dict) -> None:
     if "command" in out:
         c = out["command"]
         if not isinstance(c, list) or not c or not all(isinstance(a, str) and a for a in c):
@@ -140,6 +154,9 @@ def check(value):
             "entities.command runs Claude Code, which sends the text to Anthropic: name the llm-backend sink in "
             "entities.sink"
         )
+
+
+def _check_url(out: dict) -> None:
     if "url" in out:
         url = out["url"]
         if not isinstance(url, str) or urlparse(url).scheme not in ("http", "https") or not urlparse(url).hostname:
@@ -148,12 +165,19 @@ def check(value):
             raise EntitiesError(
                 "entities.url reaches a model that is not local: name the llm-backend sink in entities.sink"
             )
+
+
+def _check_access(out: dict) -> None:
+    """A model to reach, the sink it is reached through and the variable of its key."""
     if "command" not in out and "url" not in out:
         raise EntitiesError("entities needs a command (a local model) or a url")
     if "sink" in out and not (isinstance(out["sink"], str) and out["sink"]):
         raise EntitiesError("entities.sink must be a sink id of the policy")
     if "key_env" in out and not (isinstance(out["key_env"], str) and re.match(r"^[A-Z_][A-Z0-9_]*$", out["key_env"])):
         raise EntitiesError("entities.key_env must be the name of an environment variable")
+
+
+def _check_ceiling(out: dict) -> None:
     for key in _INTS:
         if key in out and (isinstance(out[key], bool) or not isinstance(out[key], int) or out[key] < 1):
             raise EntitiesError(f"entities.{key} must be a positive whole number")
@@ -161,6 +185,10 @@ def check(value):
         isinstance(out["max_cost"], bool) or not isinstance(out["max_cost"], (int, float)) or out["max_cost"] < 0
     ):
         raise EntitiesError("entities.max_cost must be a number of at least 0")
+
+
+def _check_tuning(out: dict) -> None:
+    """The price of a model that reports no cost, and the cosine of a synonym."""
     if "price" in out:
         p = out["price"]
         if (
@@ -173,7 +201,6 @@ def check(value):
         t = out["synonym_threshold"]
         if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0 < t <= 1:
             raise EntitiesError("entities.synonym_threshold must be a cosine above 0 and at most 1")
-    return out
 
 
 def enabled(tuning, harness_root=None) -> dict | None:
@@ -239,13 +266,13 @@ class Spend:
 def estimate(text: str, node_kinds: list[str], relations: list[str]) -> dict:
     """The usage of a call that reported none, such as one that failed or timed out: the prompt's tokens in (4
     characters a token), none out."""
-    return {"input_tokens": -(-len(_prompt(text, node_kinds, relations)) // 4), "output_tokens": 0}
+    return {"input_tokens": -(-len(prompt(text, node_kinds, relations)) // 4), "output_tokens": 0}
 
 
 # -- the models ---------------------------------------------------------------------------------------------------
 
 
-def _parse_answer(text: str) -> dict:
+def parse_answer(text: str) -> dict:
     """The JSON object in a model's answer (it may sit in a fence or after a sentence)."""
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
@@ -259,7 +286,8 @@ def _parse_answer(text: str) -> dict:
     return data
 
 
-def _prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
+def prompt(text: str, node_kinds: list[str], relations: list[str]) -> str:
+    """What a model is asked of ``text``: the entities of ``node_kinds`` and the ``relations`` it says outright."""
     return (
         "Read the text and state the entities and the relations between them that it says outright.\n"
         f"Entity kinds you may use: {', '.join(node_kinds)}.\n"
@@ -293,7 +321,7 @@ def call_command(config: dict, text: str, node_kinds: list[str], relations: list
         raise ModelStop(str(why or done.stderr.strip() or "the model command asked to stop")[:200])
     if done.returncode != 0:
         raise EntitiesError(f"the model command exited {done.returncode}: {done.stderr.strip()[:200]}")
-    return _parse_answer(done.stdout)
+    return parse_answer(done.stdout)
 
 
 def key_of(config: dict, keys: dict | None = None) -> str | None:
@@ -327,7 +355,7 @@ def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: lis
     try:
         got = client.chat.completions.create(
             model=config["model"],
-            messages=[{"role": "user", "content": _prompt(text, node_kinds, relations)}],
+            messages=[{"role": "user", "content": prompt(text, node_kinds, relations)}],
             temperature=0,
         )
     except Exception as exc:  # the library's errors differ by version: a failed call is a failed call
@@ -340,7 +368,7 @@ def call_endpoint(config: dict, text: str, node_kinds: list[str], relations: lis
             "output_tokens": getattr(usage, "completion_tokens", 0),
         }
     try:
-        data = _parse_answer(got.choices[0].message.content or "")
+        data = parse_answer(got.choices[0].message.content or "")
     except EntitiesError as exc:
         raise EntitiesError(str(exc), used) from None
     if used is not None:
@@ -433,11 +461,48 @@ def run(
     without ``claude``; ``inbox`` maps a request's key to the answer a run that had ``claude`` gave. ``keys`` maps a
     variable named by ``key_env`` to its value, held in memory only (``key_of``)."""
     from evo_agents.kg.pipeline.stages import item_unit
-    from evo_agents.kg.profile import class_of
 
-    policy = project.policy
     out: dict[str, list[dict]] = {}
-    cov = {
+    cov = _coverage(config, offline)
+    allowed_kinds = [k for k in config["node_kinds"] if kinds is None or k in kinds]
+    allowed_rels = [r for r in config.get("relations") or [] if relations_known is None or r in relations_known]
+    cov["rejected_config"] = sorted(
+        (set(config["node_kinds"]) - set(allowed_kinds)) | (set(config.get("relations") or []) - set(allowed_rels))
+    )
+    if not allowed_kinds:
+        cov["stopped"] = "no node kind of entities.node_kinds is in the ontology"
+        return out, cov
+    step = _Step(config, memo, cov, allowed_kinds, allowed_rels, offline=offline, outbox=outbox, inbox=inbox or {})
+    step.keys = keys
+    if "url" in config and not cov["local"] and config.get("key_env") and key_of(config, keys) is None:
+        step.halted.append(f"no key: {config['key_env']} is not set on this machine nor given by a hub secret")
+    digest = config_digest(config, allowed_kinds, allowed_rels)
+    todo = _todo(config, project.policy, records, body, unit_labels, cov, digest)
+    jobs = int(config.get("jobs", 1))
+    ready: dict[str, dict | EntitiesError] = {}
+    if jobs > 1 and not offline and not step.defer and not step.halted:
+        ready = _prefetch(
+            config, todo, memo, step.inbox, step.spend, step.halted, allowed_kinds, allowed_rels, jobs, keys
+        )
+    answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
+    for rec, label, text, inputs, key in todo:
+        cleaned = step.answer(rec.item_id, text, inputs, key, ready)
+        if cleaned is None:
+            continue
+        has_doc = any(f["t"] == "node" and f["id"] == rec.item_id for f in first.get(rec.item_id, []))
+        answers.append((rec.item_id, item_unit(rec.item_id), has_doc, cleaned, _rank(label)))
+        cov["nodes"] += len(cleaned["nodes"])
+        cov["edges"] += len(cleaned["edges"])
+        cov["rejected"] += cleaned["dropped"]
+    _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline)
+    spend = step.spend
+    cov.update(calls=spend.calls, tokens_in=spend.tokens_in, tokens_out=spend.tokens_out, cost=round(spend.cost, 6))
+    return out, cov
+
+
+def _coverage(config: dict, offline: bool) -> dict:
+    """The coverage of a step that has done nothing yet."""
+    return {
         "enabled": True,
         "model": config["model"],
         "sink": config.get("sink"),
@@ -460,32 +525,30 @@ def run(
         "deferred": 0,
         "answered_elsewhere": 0,
     }
-    allowed_kinds = [k for k in config["node_kinds"] if kinds is None or k in kinds]
-    allowed_rels = [r for r in config.get("relations") or [] if relations_known is None or r in relations_known]
-    cov["rejected_config"] = sorted(
-        (set(config["node_kinds"]) - set(allowed_kinds)) | (set(config.get("relations") or []) - set(allowed_rels))
-    )
+
+
+def _sink_problem(policy, sink: str | None) -> str | None:
+    """Why the mapping's sink cannot take any item: not declared, or not an llm-backend."""
+    if sink is None:
+        return None
+    if sink not in policy.sinks:
+        return f"sink {sink!r} is not declared in knowledge.yaml policy.sinks"
+    if policy.sinks[sink].kind != "llm-backend":
+        return f"sink {sink!r} is of kind {policy.sinks[sink].kind!r}, not llm-backend"
+    return None
+
+
+def _todo(config: dict, policy, records, body, unit_labels, cov: dict, digest: str) -> list[tuple]:
+    """(rec, label, text, inputs, key) of every item that is sent or read from the memo: of the kinds the mapping
+    chooses, with text, and of a label the sink may take (the others counted in ``cov["refused"]``)."""
+    from evo_agents.kg.pipeline.stages import item_unit
+    from evo_agents.kg.profile import class_of
+
     sink = config.get("sink")
-    sink_problem = None
-    if sink is not None:
-        if sink not in policy.sinks:
-            sink_problem = f"sink {sink!r} is not declared in knowledge.yaml policy.sinks"
-        elif policy.sinks[sink].kind != "llm-backend":
-            sink_problem = f"sink {sink!r} is of kind {policy.sinks[sink].kind!r}, not llm-backend"
-    if not allowed_kinds:
-        cov["stopped"] = "no node kind of entities.node_kinds is in the ontology"
-        return out, cov
+    sink_problem = _sink_problem(policy, sink)
     wanted = set(config.get("items") or [])
-    spend = Spend(config)
-    digest = config_digest(config, allowed_kinds, allowed_rels)
     max_chars = config.get("max_chars", DEFAULT_MAX_CHARS)
-    defer = "command" in config and claude_code.uses(config["command"]) and not claude_code.available()
-    inbox = inbox or {}
-    halted: list[str] = []  # why a command asked to stop: no item after it is sent
-    if "url" in config and not cov["local"] and config.get("key_env") and key_of(config, keys) is None:
-        halted.append(f"no key: {config['key_env']} is not set on this machine nor given by a hub secret")
-    answers: list[tuple[str, str, bool, dict, tuple]] = []  # item, unit, has a document node, the answer, how public
-    todo = []  # (rec, label, text, inputs, key) of every item that is sent or read from the memo
+    todo = []
     for rec in records:
         r = rec.record
         if (r["kind"] not in wanted) if wanted else (class_of(r["kind"]) != "prose"):
@@ -510,48 +573,24 @@ def run(
             "text": hashlib.sha256(text.encode()).hexdigest(),
             "config": digest,
         }
-
         todo.append((rec, label, text, inputs, memo_key("entities", VERSION, inputs)))
-    jobs = int(config.get("jobs", 1))
-    ready: dict[str, dict | EntitiesError] = {}
-    if jobs > 1 and not offline and not defer and not halted:
-        ready = _prefetch(config, todo, memo, inbox, spend, halted, allowed_kinds, allowed_rels, jobs, keys)
-    for rec, label, text, inputs, key in todo:
+    return todo
 
-        def task(text=text, key=key, item=rec.item_id):
-            if offline:
-                raise BudgetStop("offline")
-            given = inbox.get(key)
-            if isinstance(given, dict):
-                cov["answered_elsewhere"] += 1
-                cleaned = _clean(given, set(allowed_kinds), set(allowed_rels))
-                cleaned["usage"] = given.get("usage") if isinstance(given.get("usage"), dict) else {}
-                return cleaned
-            if halted:
-                raise BudgetStop("halted")
-            if defer:
-                cov["deferred"] += 1
-                if outbox is not None:
-                    request = {"text": text, "node_kinds": allowed_kinds, "relations": allowed_rels}
-                    outbox.append({"key": key, "item": item, **request, "model": config["model"]})
-                raise BudgetStop("deferred")
-            why = spend.exhausted()
-            if why:
-                raise BudgetStop(why)
-            try:
-                answer = call_model(config, text, allowed_kinds, allowed_rels, keys)
-            except ModelStop as stop:
-                halted.append(str(stop))
-                raise BudgetStop("halted") from None
-            except EntitiesError as exc:  # a failed call, a timeout or JSON that does not read was paid all the same
-                spend.add(exc.usage if isinstance(exc.usage, dict) else estimate(text, allowed_kinds, allowed_rels))
-                raise
-            usage = answer.get("usage") if isinstance(answer.get("usage"), dict) else {}
-            spend.add(usage)
-            cleaned = _clean(answer, set(allowed_kinds), set(allowed_rels))
-            cleaned["usage"] = usage
-            return cleaned
 
+class _Step:
+    """The answers of one build's step, item by item: from the memo, the inbox or a call, within the ceiling."""
+
+    def __init__(self, config, memo, cov: dict, kinds: list[str], rels: list[str], *, offline, outbox, inbox: dict):
+        self.config, self.memo, self.cov, self.kinds, self.rels = config, memo, cov, kinds, rels
+        self.offline, self.outbox, self.inbox = offline, outbox, inbox
+        self.spend = Spend(config)
+        self.defer = "command" in config and claude_code.uses(config["command"]) and not claude_code.available()
+        self.halted: list[str] = []  # why a command asked to stop: no item after it is sent
+        self.keys: dict | None = None  # the keys of a url model, held in memory (``key_of``)
+
+    def answer(self, item: str, text: str, inputs: dict, key: str, ready: dict) -> dict | None:
+        """The cleaned answer of an item, or None when it is skipped or its call failed (counted in coverage)."""
+        memo, cov = self.memo, self.cov
         before = memo.misses["entities"]
         fresh = key in ready  # answered (and memoized) by _prefetch: a call of this build, not a cache hit
         try:
@@ -561,41 +600,70 @@ def run(
                     raise found
                 cleaned = found
             else:
-                cleaned, _ = memo.run("entities", VERSION, inputs, task, commit=True)
+                cleaned, _ = memo.run("entities", VERSION, inputs, lambda: self.ask(text, key, item), commit=True)
         except BudgetStop as stop:
             memo.misses["entities"] = before
-            cov["skipped"] += 1
-            if str(stop) == "halted":
-                cov["stopped"] = f"the model stopped the step ({halted[0]}); the rest waits for a later build"
-            elif str(stop) == "deferred":
-                cov["stopped"] = (
-                    f"claude is not installed on this machine: {cov['deferred']} item(s) wait for a run that has it"
-                )
-            elif str(stop) != "offline":
-                cov["stopped"] = f"the ceiling of this build was reached ({stop}); the rest waits for a later build"
-            continue
+            self.skipped(str(stop))
+            return None
         except EntitiesError as exc:
             memo.misses["entities"] = before
             cov["failed"] += 1
             cov.setdefault("errors", [])
             if len(cov["errors"]) < REFUSED_SAMPLES:
-                cov["errors"].append({"item": rec.item_id, "error": str(exc)[:200]})
-            continue
+                cov["errors"].append({"item": item, "error": str(exc)[:200]})
+            return None
         if memo.misses["entities"] == before and not fresh:
             cov["cache_hits"] += 1
-        has_doc = any(f["t"] == "node" and f["id"] == rec.item_id for f in first.get(rec.item_id, []))
-        answers.append((rec.item_id, item_unit(rec.item_id), has_doc, cleaned, _rank(label)))
-        cov["nodes"] += len(cleaned["nodes"])
-        cov["edges"] += len(cleaned["edges"])
-        cov["rejected"] += cleaned["dropped"]
-    _assemble(config, answers, first, out, cov, project, memo, semantic_settings, offline)
-    cov.update(
-        calls=spend.calls,
-        tokens_in=spend.tokens_in,
-        tokens_out=spend.tokens_out,
-        cost=round(spend.cost, 6),
-    )
-    return out, cov
+        return cleaned
+
+    def skipped(self, why: str) -> None:
+        cov = self.cov
+        cov["skipped"] += 1
+        if why == "halted":
+            cov["stopped"] = f"the model stopped the step ({self.halted[0]}); the rest waits for a later build"
+        elif why == "deferred":
+            cov["stopped"] = (
+                f"claude is not installed on this machine: {cov['deferred']} item(s) wait for a run that has it"
+            )
+        elif why != "offline":
+            cov["stopped"] = f"the ceiling of this build was reached ({why}); the rest waits for a later build"
+
+    def ask(self, text: str, key: str, item: str) -> dict:
+        """The memo's task for an item it lacks: the inbox's answer, else a call to the model. BudgetStop when offline,
+        halted, deferred or at the ceiling; a call that fails counts toward the ceiling all the same."""
+        if self.offline:
+            raise BudgetStop("offline")
+        given = self.inbox.get(key)
+        if isinstance(given, dict):
+            self.cov["answered_elsewhere"] += 1
+            cleaned = _clean(given, set(self.kinds), set(self.rels))
+            cleaned["usage"] = given.get("usage") if isinstance(given.get("usage"), dict) else {}
+            return cleaned
+        if self.halted:
+            raise BudgetStop("halted")
+        if self.defer:
+            self.cov["deferred"] += 1
+            if self.outbox is not None:
+                request = {"text": text, "node_kinds": self.kinds, "relations": self.rels}
+                self.outbox.append({"key": key, "item": item, **request, "model": self.config["model"]})
+            raise BudgetStop("deferred")
+        why = self.spend.exhausted()
+        if why:
+            raise BudgetStop(why)
+        try:
+            answer = call_model(self.config, text, self.kinds, self.rels, self.keys)
+        except ModelStop as stop:
+            self.halted.append(str(stop))
+            raise BudgetStop("halted") from None
+        except EntitiesError as exc:  # a failed call, a timeout or JSON that does not read was paid all the same
+            self.spend.add(exc.usage if isinstance(exc.usage, dict) else estimate(text, self.kinds, self.rels))
+            raise
+        given = answer.get("usage")
+        usage = given if isinstance(given, dict) else {}
+        self.spend.add(usage)
+        cleaned = _clean(answer, set(self.kinds), set(self.rels))
+        cleaned["usage"] = usage
+        return cleaned
 
 
 def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=None) -> dict:

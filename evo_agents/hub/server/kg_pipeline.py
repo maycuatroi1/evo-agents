@@ -190,7 +190,8 @@ async def _tell_one(conn: AsyncConnection, row, project: str) -> str | None:
     ).scalars()
     title, body = _notice(project, row.id, found)
     details = {"upload": row.id, "state": found.state, "phase": found.phase, "build": found.build_id}
-    for user_id in sorted({*admins, *([row.created_by] if row.created_by is not None else [])}):
+    told: set[int] = {*admins, *([row.created_by] if row.created_by is not None else [])}
+    for user_id in sorted(told):
         await notify(
             conn,
             user_id=user_id,

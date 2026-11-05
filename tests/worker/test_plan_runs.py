@@ -1432,6 +1432,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "agent_home",
             "doctor_report",
             "browser_install",
+            "repoless_review",
         ]
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
         assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))

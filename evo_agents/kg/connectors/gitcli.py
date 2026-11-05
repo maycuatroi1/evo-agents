@@ -8,6 +8,7 @@ import re
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal, overload
 
 FETCH_TIMEOUT = 120.0
 COMMIT_START = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})? ")  # %H and the space before %P, as a history record opens
@@ -18,7 +19,11 @@ class GitError(RuntimeError):
     pass
 
 
-def git(repo: Path, *args: str, binary: bool = False):
+@overload
+def git(repo: Path, *args: str, binary: Literal[False] = False) -> str: ...
+@overload
+def git(repo: Path, *args: str, binary: Literal[True]) -> bytes: ...
+def git(repo: Path, *args: str, binary: bool = False) -> str | bytes:
     result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
     if result.returncode != 0:
         err = result.stderr.decode("utf-8", "replace")

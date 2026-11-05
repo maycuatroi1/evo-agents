@@ -625,15 +625,16 @@ async def _stopped(
 
 
 async def _entity_key(conn: AsyncConnection, context, project_id: int, tuning) -> tuple[dict, str | None]:
-    """The key of the entities step's url model, opened from a member's secret (``kg_entity_key``), and the secret's
-    ``secret:<id>``; nothing when the project's strategy does not run the step with a url."""
-    from evo_agents.hub.server import kg_entity_key
+    """The key of the entities step's url model, opened from a member's secret by the server's finder the ``hub worker``
+    command hands down (``HubContext.entity_key``, ``evo_agents.hub.server.kg_entity_key.find``), and the secret's
+    ``secret:<id>``; nothing when the project's strategy does not run the step with a url, or without a finder."""
     from evo_agents.kg import entities
 
+    find = getattr(context, "entity_key", None)
     mapping = entities.enabled(tuning) if tuning is not None else None
-    if kg_entity_key.wants_key(mapping) is None:
+    if find is None or mapping is None:
         return {}, None
-    return await kg_entity_key.find(conn, getattr(context, "sealer", None), project_id, mapping)
+    return await find(conn, getattr(context, "sealer", None), project_id, mapping)
 
 
 async def run_build(context, project: str, build_id: int | None, job_id: int | None, manager=None) -> dict:
@@ -698,8 +699,9 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             uploads,
             keys,
         )
-        if key_from is not None and isinstance(built.coverage.get("entities"), dict):
-            built.coverage["entities"]["key_from"] = key_from
+        entities_coverage = (built.coverage or {}).get("entities")
+        if key_from is not None and isinstance(entities_coverage, dict):
+            entities_coverage["key_from"] = key_from
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop

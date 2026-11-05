@@ -845,7 +845,7 @@ def evaluate(
             if question.lines:
                 if question.project not in checkouts:
                     checkouts[question.project] = checkouts_for(question.project)
-                file_length = _length_reader(checkouts[question.project], grep_ref, lengths, question.project)
+                file_length = length_reader(checkouts[question.project], grep_ref, lengths, question.project)
             outcomes.append(
                 run_kg(
                     sessions[question.project], method, question, limit, budget_tokens, line_budget, file_length, scope
@@ -865,7 +865,7 @@ def evaluate(
     return Report(settings, report_rows(outcomes, methods, extended), outcomes)
 
 
-def _length_reader(checkouts: dict[str, Path], ref: str | None, cache: dict, project: str | None):
+def length_reader(checkouts: dict[str, Path], ref: str | None, cache: dict, project: str | None):
     """A function (repo, path) -> the lines of that file in a checkout (at ``ref``), None when no checkout has it."""
 
     def length(repo: str | None, path: str) -> int | None:

@@ -141,12 +141,12 @@ def upload(
             for future in futures:
                 future.result()
             say(f"sent {start + len(batch)} of {len(missing)} parts")
-    done = hub.call("POST", f"{path_of}/complete", {})
+    done = hub.call("POST", f"{path_of}/complete", {}) or {}
     return done, len(missing), len(kept)
 
 
 def pipeline_of(hub: Hub, project: str, upload_id: int) -> dict:
-    return hub.call("GET", f"{_base(project)}/{upload_id}/pipeline")
+    return hub.call("GET", f"{_base(project)}/{upload_id}/pipeline") or {}
 
 
 def _phases(found: dict) -> str:
@@ -229,7 +229,7 @@ def cmd_pipeline(args) -> int:
     hub, _ = signed_in()
     upload_id = args.upload
     if upload_id is None:
-        listed = hub.call("GET", f"{_base(args.project)}?limit=1")["uploads"]
+        listed = (hub.call("GET", f"{_base(args.project)}?limit=1") or {})["uploads"]
         if not listed:
             sys.exit(f"project {args.project} has no upload your grant sees")
         upload_id = listed[0]["id"]
@@ -251,7 +251,7 @@ def _skipped(skipped: dict) -> str:
 @client_command
 def cmd_uploads(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", f"{_base(args.project)}?limit={args.limit}")
+    found = hub.call("GET", f"{_base(args.project)}?limit={args.limit}") or {}
     if args.json:
         print_json(found)
         return 0

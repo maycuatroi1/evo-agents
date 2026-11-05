@@ -17,7 +17,8 @@ from evo_agents.kg.memo import Memo
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
-from evo_agents.kg.store import Graph, Store, edge_id, label_columns
+from evo_agents.kg.store import Graph, Store, edge_id
+from evo_agents.kg.store_filters import label_columns
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
 from tests.kg.projects import write
@@ -43,7 +44,7 @@ print(json.dumps({
 def with_entities(project, kg_env, script_text, tmp_path):
     """``project`` with the entities step on, its model the script ``script_text``, synced."""
     script = tmp_path / "model.py"
-    script.write_text(script_text)
+    script.write_text(script_text, encoding="utf-8")
     mapping = {
         "model": "fake-1",
         "command": [sys.executable, str(script)],

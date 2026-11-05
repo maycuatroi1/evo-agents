@@ -30,9 +30,9 @@ def cmd_kg_pool(args) -> int:
     hub, _ = signed_in()
     if args.set:
         owner, pool = args.set.split("/")
-        view = hub.call("PUT", PATH, {"owner": owner, "pool": pool})
+        view = hub.call("PUT", PATH, {"owner": owner, "pool": pool}) or {}
     else:
-        view = hub.call("DELETE" if args.clear else "GET", PATH)
+        view = hub.call("DELETE" if args.clear else "GET", PATH) or {}
     if args.json:
         print_json(view)
     elif view["pool"] is None:

@@ -80,40 +80,57 @@ class SettingsError(ValueError):
     pass
 
 
-def _check(key: str, value):
-    """``value`` as the type ``key`` holds, or SettingsError saying what is wrong."""
-    if key not in KEYS:
-        raise SettingsError(f"{key} is not a KG setting: {', '.join(KEYS)}")
-    if key == "semantic_mode":
-        if value not in semantic.MODES:
-            raise SettingsError(f"semantic_mode {value!r} is not one of {', '.join(semantic.MODES)}")
-        return value
-    if key == "semantic_model":
-        if not isinstance(value, str) or not value.strip():
-            raise SettingsError("semantic_model must be a model name")
-        return value.strip()
-    if key == "entities":
-        from evo_agents.kg import entities
+def _semantic_mode(value):
+    if value not in semantic.MODES:
+        raise SettingsError(f"semantic_mode {value!r} is not one of {', '.join(semantic.MODES)}")
+    return value
 
-        try:
-            return entities.check(value)
-        except entities.EntitiesError as exc:
-            raise SettingsError(str(exc)) from None
-    if key == "walk":
-        from evo_agents.kg import ppr
 
-        try:
-            return ppr.check(value)
-        except ppr.WalkError as exc:
-            raise SettingsError(str(exc)) from None
-    if key == "strategy":
-        import re
+def _semantic_model(value):
+    if not isinstance(value, str) or not value.strip():
+        raise SettingsError("semantic_model must be a model name")
+    return value.strip()
 
-        if value is None or value == "":
-            return None
-        if not isinstance(value, str) or not re.match(STRATEGY_PATTERN, value):
-            raise SettingsError(f"strategy {value!r} must be a lowercase name of letters, digits and hyphens")
-        return value
+
+def _entities(value):
+    from evo_agents.kg import entities
+
+    try:
+        return entities.check(value)
+    except entities.EntitiesError as exc:
+        raise SettingsError(str(exc)) from None
+
+
+def _walk(value):
+    from evo_agents.kg import ppr
+
+    try:
+        return ppr.check(value)
+    except ppr.WalkError as exc:
+        raise SettingsError(str(exc)) from None
+
+
+def _strategy(value):
+    import re
+
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not re.match(STRATEGY_PATTERN, value):
+        raise SettingsError(f"strategy {value!r} must be a lowercase name of letters, digits and hyphens")
+    return value
+
+
+_CHECKS = {
+    "semantic_mode": _semantic_mode,
+    "semantic_model": _semantic_model,
+    "entities": _entities,
+    "walk": _walk,
+    "strategy": _strategy,
+}
+
+
+def _number(key: str, value):
+    """``value`` as the number ``key`` holds, in its range."""
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         raise SettingsError(f"{key} must be a number")
     try:
@@ -128,6 +145,14 @@ def _check(key: str, value):
             raise SettingsError(f"{key} {value} must be a whole number")
         return int(number)
     return number
+
+
+def _check(key: str, value):
+    """``value`` as the type ``key`` holds, or SettingsError saying what is wrong."""
+    if key not in KEYS:
+        raise SettingsError(f"{key} is not a KG setting: {', '.join(KEYS)}")
+    check = _CHECKS.get(key)
+    return check(value) if check else _number(key, value)
 
 
 def parse_value(key: str, text: str):

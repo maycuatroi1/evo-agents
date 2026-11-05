@@ -66,6 +66,7 @@ from evo_agents.kg.clusters import IMAGE_SUFFIXES, STRUCTURAL
 from evo_agents.kg.pipeline.link import DATED_DIR
 from evo_agents.kg.protocol import sha256
 from evo_agents.kg.store import Graph
+from evo_agents.kg.store_clusters import Clusters
 
 RULES = (
     "dangling_mention",
@@ -299,28 +300,49 @@ def compute(graph: Graph) -> list[dict]:
     found = graph.clusters
     if found is None or not found.clusters:
         return []
-    nodes = graph.nodes
-    deprecated = {nid for nid, n in nodes.items() if _deprecated(n)}
-    degree: Counter = Counter()
-    mentioned: set[str] = set()
-    linked: dict[str, set[tuple[str, str]]] = defaultdict(set)  # src -> (rel, dst) of the edges decisions link
-    for e in graph.edges.values():
-        if e["rel"] in STRUCTURAL or _deprecated(e):
-            continue
-        if (e.get("props") or {}).get("decision") is not None:
-            linked[e["src"]].add((e["rel"], e["dst"]))
-        degree[e["src"]] += 1
-        degree[e["dst"]] += 1
-        dst = nodes.get(e["dst"])
-        if dst is not None and dst["kind"] == "Document":
-            src = nodes.get(e["src"])
-            own = src is not None and src["kind"] == "Section" and src["props"].get("item") == e["dst"]
-            if not own:
-                mentioned.add(e["dst"])
-    fixer = _Fixer(graph, deprecated)
+    review = _Review(graph, found)
+    review.mentions()
+    review.path_edges()
+    review.unmentioned_documents()
+    review.clusters_without_knowledge()
+    review.duplicates()
+    review.bulk_noise()
+    review.conflicting_claims()
+    return [review.items[fp] for fp in sorted(review.items)]
 
-    def owner(nid: str) -> str:
-        n = nodes.get(nid)
+
+class _Review:
+    """The items of one graph, rule by rule, with what the rules share: the deprecated nodes, the degree of each node,
+    the documents something mentions and the edges decisions linked."""
+
+    def __init__(self, graph: Graph, found: Clusters):
+        self.graph, self.found, self.nodes = graph, found, graph.nodes
+        self.deprecated = {nid for nid, n in self.nodes.items() if _deprecated(n)}
+        self.degree: Counter = Counter()
+        self.mentioned: set[str] = set()
+        self.linked: dict[str, set[tuple[str, str]]] = defaultdict(set)  # src -> (rel, dst) of edges decisions link
+        for e in graph.edges.values():
+            if e["rel"] in STRUCTURAL or _deprecated(e):
+                continue
+            if (e.get("props") or {}).get("decision") is not None:
+                self.linked[e["src"]].add((e["rel"], e["dst"]))
+            self.degree[e["src"]] += 1
+            self.degree[e["dst"]] += 1
+            if self._mentions_document(e):
+                self.mentioned.add(e["dst"])
+        self.fixer = _Fixer(graph, self.deprecated)
+        self.items: dict[str, dict] = {}
+
+    def _mentions_document(self, e: dict) -> bool:
+        """Whether an edge goes to a document from something other than one of its own sections."""
+        dst = self.nodes.get(e["dst"])
+        if dst is None or dst["kind"] != "Document":
+            return False
+        src = self.nodes.get(e["src"])
+        return not (src is not None and src["kind"] == "Section" and src["props"].get("item") == e["dst"])
+
+    def owner(self, nid: str) -> str:
+        n = self.nodes.get(nid)
         if n is None:
             return nid
         if n["kind"] == "Symbol":
@@ -329,16 +351,15 @@ def compute(graph: Graph) -> list[dict]:
             return n["props"].get("item") or nid
         return nid
 
-    def cluster_of(nid: str) -> str | None:
-        member = found.members.get(owner(nid))
+    def cluster_of(self, nid: str) -> str | None:
+        member = self.found.members.get(self.owner(nid))
         return member[0] if member else None
 
-    def ranked(ids) -> list[str]:
-        return sorted(set(ids), key=lambda i: (-degree[i], i))
-
-    items: dict[str, dict] = {}
+    def ranked(self, ids) -> list[str]:
+        return sorted(set(ids), key=lambda i: (-self.degree[i], i))
 
     def add(
+        self,
         rule: str,
         key: str,
         evidence: list[str],
@@ -350,8 +371,8 @@ def compute(graph: Graph) -> list[dict]:
     ) -> None:
         fp = fingerprint(rule, key)
         kept = evidence[:EVIDENCE]
-        clusters = [cluster_of(nid) for nid in kept]
-        items[fp] = {
+        clusters = [self.cluster_of(nid) for nid in kept]
+        self.items[fp] = {
             "fingerprint": fp,
             "rule": rule,
             "cluster": next((c for c in clusters if c), None),
@@ -367,152 +388,147 @@ def compute(graph: Graph) -> list[dict]:
             },
         }
 
-    # 1 and 5: the mentions of each item that matched nothing, or several nodes
-    for item_id, m in sorted(graph.mentions.items()):
-        if item_id not in nodes or item_id in deprecated:
-            continue
-        links = linked.get(item_id, set())
-        for rule, what in (("dangling_mention", "dangling"), ("ambiguous_match", "ambiguous")):
-            count = m.get(what)
-            if not count:
+    def mentions(self) -> None:
+        """1 and 5: the mentions of each item that matched nothing, or several nodes."""
+        for item_id, m in sorted(self.graph.mentions.items()):
+            if item_id not in self.nodes or item_id in self.deprecated:
                 continue
-            every = (m.get("samples") or {}).get(what, [])
-            fix, whole = fixer.mentions(item_id, every, what)
-            fixed = whole and len(every) >= count and all((d["rel"], d["dst"]) in links for d in fix)
-            if len(links) >= count or fixed:
-                continue  # decisions linked it
-            fix = [d for d in fix if (d["rel"], d["dst"]) not in links]
-            if not fix and _dated(nodes[item_id]):
-                continue  # history nobody edits, and no link to take
-            add(rule, item_id, [item_id], {"mentions": count, "samples": every[:SAMPLES]}, fix=fix)
+            links = self.linked.get(item_id, set())
+            for rule, what in (("dangling_mention", "dangling"), ("ambiguous_match", "ambiguous")):
+                count = m.get(what)
+                if not count:
+                    continue
+                every = (m.get("samples") or {}).get(what, [])
+                fix, whole = self.fixer.mentions(item_id, every, what)
+                fixed = whole and len(every) >= count and all((d["rel"], d["dst"]) in links for d in fix)
+                if len(links) >= count or fixed:
+                    continue  # decisions linked it
+                fix = [d for d in fix if (d["rel"], d["dst"]) not in links]
+                if not fix and _dated(self.nodes[item_id]):
+                    continue  # history nobody edits, and no link to take
+                self.add(rule, item_id, [item_id], {"mentions": count, "samples": every[:SAMPLES]}, fix=fix)
 
-    # 5: path edges resolved to one of several files with that path
-    by_path: dict[str, list[str]] = defaultdict(list)
-    for nid, n in nodes.items():
-        if n["kind"] == "File" and _path(n) and nid not in deprecated:
-            by_path[_path(n)].append(nid)
-    for eid, e in sorted(graph.edges.items()):
-        if e["status"] != "resolved" or e["rel"] in STRUCTURAL or _deprecated(e):
-            continue
-        dst = nodes.get(e["dst"])
-        if dst is None or dst["kind"] != "File" or len(by_path.get(_path(dst), [])) < 2:
-            continue
-        if e["src"] in deprecated or e["dst"] in deprecated:
-            continue
-        others = [c for c in sorted(by_path[_path(dst)]) if c != e["dst"]]
-        if any((e["rel"], f) in linked.get(e["src"], ()) for f in [e["dst"], *others]):
-            continue  # a decision linked its source to one of the files
-        add(
-            "ambiguous_match",
-            eid,
-            [e["src"], e["dst"], *others],
-            {"edge": eid, "rel": e["rel"], "path": _path(dst)},
-            required=2,
-            least=2,
-            fix=fixer.edge(e, [e["dst"], *others]),
-        )
-
-    # 2: documents no other node mentions
-    for nid, n in sorted(nodes.items()):
-        if n["kind"] == "Document" and nid not in mentioned and nid in found.members and nid not in deprecated:
-            add("unmentioned_document", nid, [nid], {"path": _path(n) or None}, fix=fixer.document(nid))
-
-    # 3: clusters with code and no knowledge
-    kinds_of: dict[str, set[str]] = defaultdict(set)
-    code_of: dict[str, list[str]] = defaultdict(list)
-    for nid, (top, _sub) in found.members.items():
-        n = nodes.get(nid)
-        if n is None or nid in deprecated:
-            continue
-        kinds_of[top].add(n["kind"])
-        if n["kind"] in CODE_KINDS:
-            code_of[top].append(nid)
-    for cid, c in sorted(found.clusters.items()):
-        if c["level"] != 1 or not code_of[cid] or kinds_of[cid] & KNOWLEDGE_KINDS:
-            continue
-        add("cluster_without_knowledge", cid, ranked(code_of[cid]), {"label": c["label"], "report": True}, required=0)
-
-    # 4: nodes of one kind with the same normalised name
-    named: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for nid, n in nodes.items():
-        key = normal(n["name"])
-        if n["kind"] not in UNIQUE_SKIP and len(key) >= 3 and nid not in deprecated:
-            named[(n["kind"], key)].append(nid)
-    for (kind, key), ids in sorted(named.items()):
-        paths = [_path(nodes[i]) for i in ids]
-        if all(paths) and len(set(paths)) == 1:
-            continue  # each repo's own file at one path (AGENTS.md, CLAUDE.md), not one thing twice
-        if len(ids) >= 2:
-            order = ranked(ids)
-            add(
-                "possible_duplicate",
-                f"{kind}\x1f{key}",
-                order,
-                {"kind": kind},
-                required=0,
+    def path_edges(self) -> None:
+        """5: path edges resolved to one of several files with that path."""
+        by_path: dict[str, list[str]] = defaultdict(list)
+        for nid, n in self.nodes.items():
+            if n["kind"] == "File" and _path(n) and nid not in self.deprecated:
+                by_path[_path(n)].append(nid)
+        for eid, e in sorted(self.graph.edges.items()):
+            if e["status"] != "resolved" or e["rel"] in STRUCTURAL or _deprecated(e):
+                continue
+            dst = self.nodes.get(e["dst"])
+            if dst is None or dst["kind"] != "File" or len(by_path.get(_path(dst), [])) < 2:
+                continue
+            if e["src"] in self.deprecated or e["dst"] in self.deprecated:
+                continue
+            others = [c for c in sorted(by_path[_path(dst)]) if c != e["dst"]]
+            if any((e["rel"], f) in self.linked.get(e["src"], ()) for f in [e["dst"], *others]):
+                continue  # a decision linked its source to one of the files
+            self.add(
+                "ambiguous_match",
+                eid,
+                [e["src"], e["dst"], *others],
+                {"edge": eid, "rel": e["rel"], "path": _path(dst)},
+                required=2,
                 least=2,
-                fix=fixer.merge(order[:EVIDENCE]),
+                fix=self.fixer.edge(e, [e["dst"], *others]),
             )
 
-    # 6: bulk noise, per directory or per repeated step name
-    noise: dict[tuple[str, str], list[str]] = defaultdict(list)
-    step_plans: dict[str, set[str]] = defaultdict(set)
-    for e in graph.edges.values():
-        if e["rel"] == "has_step":
-            step_plans[e["dst"]].add(e["src"])
-    steps: dict[str, list[str]] = defaultdict(list)
-    for nid, n in nodes.items():
-        if nid in deprecated:
-            continue
-        path = _path(n)
-        if n["kind"] == "PlanStep":
-            steps[normal(n["name"])].append(nid)
-        elif path.lower().endswith(IMAGE_SUFFIXES):
-            noise[("image", posixpath.dirname(path))].append(nid)
-        elif path and GENERATED.search(path):
-            noise[("generated", posixpath.dirname(path))].append(nid)
+    def unmentioned_documents(self) -> None:
+        """2: documents no other node mentions."""
+        for nid, n in sorted(self.nodes.items()):
+            if n["kind"] != "Document" or nid in self.mentioned:
+                continue
+            if nid in self.found.members and nid not in self.deprecated:
+                self.add("unmentioned_document", nid, [nid], {"path": _path(n) or None}, fix=self.fixer.document(nid))
 
-    def exclude(ids: list[str], why: str) -> list[dict]:
-        return [decision("deprecate", nid, None, None, why) for nid in ids[:EVIDENCE]]
+    def clusters_without_knowledge(self) -> None:
+        """3: clusters with code and no knowledge."""
+        kinds_of: dict[str, set[str]] = defaultdict(set)
+        code_of: dict[str, list[str]] = defaultdict(list)
+        for nid, (top, _sub) in self.found.members.items():
+            n = self.nodes.get(nid)
+            if n is None or nid in self.deprecated:
+                continue
+            kinds_of[top].add(n["kind"])
+            if n["kind"] in CODE_KINDS:
+                code_of[top].append(nid)
+        for cid, c in sorted(self.found.clusters.items()):
+            if c["level"] != 1 or not code_of[cid] or kinds_of[cid] & KNOWLEDGE_KINDS:
+                continue
+            detail = {"label": c["label"], "report": True}
+            self.add("cluster_without_knowledge", cid, self.ranked(code_of[cid]), detail, required=0)
 
-    for (what, where), ids in sorted(noise.items()):
-        if len(ids) >= BULK:
-            order = sorted(ids)
-            why = f"one of {len(ids)} {what} files in {where or '/'}"
-            add(
-                "bulk_noise",
-                f"{what}\x1f{where}",
-                order,
-                {"kind": what, "where": where},
-                required=0,
-                fix=exclude(order, why),
-            )
-    for name, ids in sorted(steps.items()):
-        plans = {p for i in ids for p in step_plans.get(i) or {i}}
-        if name and len(plans) >= BULK:
-            order = sorted(ids)
-            why = f"a step whose name repeats in {len(plans)} plans"
-            add(
-                "bulk_noise",
-                f"step\x1f{name}",
-                order,
-                {"kind": "step", "where": None},
-                required=0,
-                fix=exclude(order, why),
-            )
-    # 7: two documents that state different objects of one subject and relation
-    for (src, rel), objects in sorted(_claims(graph, deprecated).items()):
-        for a, b, docs in _pairs(objects):
-            claims = [_claim(graph, objects[x][0], src, rel, x, doc) for x, doc in ((a, docs[0]), (b, docs[1]))]
-            add(
-                "conflicting_claim",
-                f"{src}\x1f{rel}\x1f{a}\x1f{b}",
-                [src, a, b, *docs],
-                {"rel": rel, "claims": claims},
-                required=5,
-                least=5,
-            )
-    return [items[fp] for fp in sorted(items)]
+    def duplicates(self) -> None:
+        """4: nodes of one kind with the same normalised name."""
+        named: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for nid, n in self.nodes.items():
+            key = normal(n["name"])
+            if n["kind"] not in UNIQUE_SKIP and len(key) >= 3 and nid not in self.deprecated:
+                named[(n["kind"], key)].append(nid)
+        for (kind, key), ids in sorted(named.items()):
+            paths = [_path(self.nodes[i]) for i in ids]
+            if all(paths) and len(set(paths)) == 1:
+                continue  # each repo's own file at one path (AGENTS.md, CLAUDE.md), not one thing twice
+            if len(ids) >= 2:
+                order = self.ranked(ids)
+                self.add(
+                    "possible_duplicate",
+                    f"{kind}\x1f{key}",
+                    order,
+                    {"kind": kind},
+                    required=0,
+                    least=2,
+                    fix=self.fixer.merge(order[:EVIDENCE]),
+                )
+
+    def bulk_noise(self) -> None:
+        """6: bulk noise, per directory or per repeated step name."""
+        noise: dict[tuple[str, str], list[str]] = defaultdict(list)
+        step_plans: dict[str, set[str]] = defaultdict(set)
+        for e in self.graph.edges.values():
+            if e["rel"] == "has_step":
+                step_plans[e["dst"]].add(e["src"])
+        steps: dict[str, list[str]] = defaultdict(list)
+        for nid, n in self.nodes.items():
+            if nid in self.deprecated:
+                continue
+            path = _path(n)
+            if n["kind"] == "PlanStep":
+                steps[normal(n["name"])].append(nid)
+            elif path.lower().endswith(IMAGE_SUFFIXES):
+                noise[("image", posixpath.dirname(path))].append(nid)
+            elif path and GENERATED.search(path):
+                noise[("generated", posixpath.dirname(path))].append(nid)
+        for (what, where), ids in sorted(noise.items()):
+            if len(ids) >= BULK:
+                why = f"one of {len(ids)} {what} files in {where or '/'}"
+                self._exclude(f"{what}\x1f{where}", sorted(ids), {"kind": what, "where": where}, why)
+        for name, ids in sorted(steps.items()):
+            plans = {p for i in ids for p in step_plans.get(i) or {i}}
+            if name and len(plans) >= BULK:
+                why = f"a step whose name repeats in {len(plans)} plans"
+                self._exclude(f"step\x1f{name}", sorted(ids), {"kind": "step", "where": None}, why)
+
+    def _exclude(self, key: str, order: list[str], detail: dict, why: str) -> None:
+        fix = [decision("deprecate", nid, None, None, why) for nid in order[:EVIDENCE]]
+        self.add("bulk_noise", key, order, detail, required=0, fix=fix)
+
+    def conflicting_claims(self) -> None:
+        """7: two documents that state different objects of one subject and relation."""
+        graph = self.graph
+        for (src, rel), objects in sorted(_claims(graph, self.deprecated).items()):
+            for a, b, docs in _pairs(objects):
+                claims = [_claim(graph, objects[x][0], src, rel, x, doc) for x, doc in ((a, docs[0]), (b, docs[1]))]
+                self.add(
+                    "conflicting_claim",
+                    f"{src}\x1f{rel}\x1f{a}\x1f{b}",
+                    [src, a, b, *docs],
+                    {"rel": rel, "claims": claims},
+                    required=5,
+                    least=5,
+                )
 
 
 def _sources(graph: Graph, eid: str, e: dict) -> set[str]:

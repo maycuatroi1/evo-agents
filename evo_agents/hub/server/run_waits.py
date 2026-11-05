@@ -13,7 +13,10 @@ in hub_events of kind ``on`` (``hub_events.KINDS``, or a kind a core plugin reco
 ``contains``, written after the wait was asked (``after`` is the project's last event then). A wait on another plan's
 step names ``plan.step`` (``evo_agents.hub.plan_step_status``) with the plan, the step and the status, such as
 ``{"plan": "northwind-launch", "step": "8", "status": "done"}``; the payload holds a plan's id and a step as text, so a
-number given for one of TEXT_KEYS is taken as its text (``--contains step=8`` reads 8 as JSON).
+number given for one of TEXT_KEYS is taken as its text (``--contains step=8`` reads 8 as JSON). A wait on a run of a
+GitHub Actions workflow names ``github.workflow_run`` with the run's id, and its repo unless the project has one on
+GitHub (``workflow_waits``): the route takes the run to be one the hub can read, and the hub reads it on each pass of the
+reaper, recording the event when the run completed or a job of it failed.
 
 ``wake_waits``, on each pass of the reaper (``run_reaper.recover_runs``), answers every open wait whose event or time
 came, each in a transaction of its own under the locks an answer takes (``decision_resume.lock_run_of``): the decision
@@ -41,6 +44,7 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, runs, tables
+from evo_agents.hub.server import workflow_waits
 from evo_agents.hub.server.decision_resume import lock_run_of, resume_parked
 from evo_agents.hub.server.decisions import Decision, DecisionAsk, OptionIn, store_decision
 from evo_agents.hub.server.errors import ErrorBody
@@ -57,7 +61,10 @@ MAX_REASON_CHARS = 1000
 MAX_CONTAINS_BYTES = 2048  # what a wait's event must contain, as JSON
 PAYLOAD_IN_MESSAGE = 2048  # bytes of the event's payload the message that wakes the agent repeats
 MAX_WAIT = timedelta(days=runs.MAX_WAIT_DAYS)
-TEXT_KEYS = {hub_events.PLAN_STEP: ("plan", "plan_id", "step")}  # keys of the payload of a kind that hold text
+TEXT_KEYS = {  # keys of the payload of a kind that hold text
+    hub_events.PLAN_STEP: ("plan", "plan_id", "step"),
+    hub_events.WORKFLOW_RUN: workflow_waits.TEXT_KEYS,
+}
 GO_ON, STOP = "now", "stop"
 OPTIONS = (
     (GO_ON, "Go on now", "What the run waits for came, or it need not wait: the agent goes on at once."),
@@ -167,8 +174,13 @@ async def wait(request: Request, run_id: RunId, body: WaitIn, user: CurrentUser)
     """Wait, in a plan run this worker holds, for a time or an event of the hub: a decision of category wait the hub
     answers when either comes."""
     wake_at = wake_time(body, datetime.now(UTC))
-    e = tables.hub_events
-    async with request.app.state.engine.begin() as conn:
+    e, engine = tables.hub_events, request.app.state.engine
+    if body.on == hub_events.WORKFLOW_RUN:  # a run the hub can read, on a GitHub repo of the project
+        async with engine.connect() as conn:
+            _, row = await held_plan_run(conn, user, run_id)
+            repos = await workflow_waits.github_repos(conn, row.project_id)
+        body.contains = await workflow_waits.checked(request.app.state.github_app, repos, body.contains)
+    async with engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True)
         wake: dict = {"wake_at": wake_at, "wake_on": None}
         if body.on is not None:
@@ -197,6 +209,7 @@ def woke_message(decision_id: int, reason: str, *, time: datetime | None = None,
     lines = [
         came,
         f"It waited for: {one_line(reason, 500)}",
+        *([workflow_waits.WOKE_HINT] if event is not None and event.kind == hub_events.WORKFLOW_RUN else []),
         "Check on the hub that what you waited for is there before you rely on it, and wait again with `evo-agents "
         "worker wait` when it is not.",
     ]

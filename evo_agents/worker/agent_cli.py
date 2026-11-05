@@ -780,7 +780,10 @@ def _register_wait(wsub) -> None:
         "prints the wait's id",
         description="Wait for a time or an event of the hub rather than ask the owner when it came. A step of another "
         "plan done: --on plan.step --contains plan=northwind-launch --contains step=8 --contains status=done --until "
-        "+12h.",
+        "+12h. A GitHub Actions run (the CI of a tag, a deploy) that completes or has a job fail: --on "
+        "github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID --until +90m, ID the databaseId of `gh run "
+        "list`; the hub reads that run every minute and wakes on its first failed job, or, with --contains "
+        "status=completed, on its end alone.",
     )
     wait.add_argument("--reason", required=True, help="what the run waits for and why, for the owner to read")
     wait.add_argument(
@@ -793,14 +796,16 @@ def _register_wait(wsub) -> None:
         "--on",
         metavar="KIND",
         help="wake sooner on an event of the hub of this kind: plan.step (a step's status of a plan set or changed), "
-        "tasks.status, canvas.baseline, canvas.claim, signal.posted, srs.version.approved, or plugin.<plugin>.<name>",
+        "github.workflow_run (a GitHub Actions run that completed or had a job fail), tasks.status, canvas.baseline, "
+        "canvas.claim, signal.posted, srs.version.approved, or plugin.<plugin>.<name>",
     )
     wait.add_argument(
         "--contains",
         action="append",
         metavar="KEY=VALUE",
         help="the event's payload has KEY equal to VALUE (read as JSON when it is), such as plan=SLUG, step=8 and "
-        "status=done for plan.step; repeat it",
+        "status=done for plan.step, or repo=OWNER/NAME, run_id=ID and status=completed, failed=true or attempt=2 for "
+        "github.workflow_run; repeat it",
     )
     wait.add_argument("--step", help="the step of the run's plan it is about")
     wait.set_defaults(func=cmd_wait)
