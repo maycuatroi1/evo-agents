@@ -205,6 +205,7 @@
   "nav": {
     "label": "Main navigation",
     "home": "Home",
+    "today": "Today",
     "newProject": "New project from data",
     "hub": "Hub",
     "project": "Project",
@@ -363,7 +364,7 @@
       "help": "Show keyboard shortcuts",
       "sidebar": "Show or hide the sidebar",
       "close": "Close a dialog or menu",
-      "goHome": "Home",
+      "goToday": "Today",
       "goInbox": "Inbox",
       "goPlans": "Plans",
       "goRuns": "Runs",
@@ -520,7 +521,7 @@
     }
   },
   "home": {
-    "title": "Home",
+    "title": "Today",
     "metrics": {
       "label": "Your work across projects",
       "waiting": "Waiting on you",
@@ -664,6 +665,36 @@
           "report": "{count, plural, one {a report of your work} other {# reports of your work}}"
         }
       }
+    }
+  },
+  "chatHome": {
+    "title": "Home",
+    "todayLink": "Today",
+    "picker": {
+      "label": "Chatting with {name} of {project}. Choose another agent",
+      "heading": "{count, plural, one {# agent you can chat with} other {# agents you can chat with}}"
+    },
+    "start": {
+      "title": "Chat with {name}",
+      "label": "Your first message to {name}",
+      "placeholder": "Ask {name} anything",
+      "hint": "Your message opens your direct chat with {name}: every message goes to it, and it answers under yours.",
+      "send": "Send",
+      "sending": "Sending…",
+      "blank": "Write a message first.",
+      "long": "A message can be at most {max} bytes.",
+      "starters": "Try asking"
+    },
+    "none": {
+      "title": "No agent to chat with yet",
+      "body": "An agent shows here once it is on a project you can give work to and has a worker pool to run on. Open your projects to set one up, or ask a project admin.",
+      "projects": "Open your projects",
+      "today": "Go to Today"
+    },
+    "off": {
+      "title": "Chats are off on this hub",
+      "body": "A hub admin has turned chats off, so there is no agent to chat with here. Today shows what needs you across your projects.",
+      "today": "Go to Today"
     }
   },
   "project": {

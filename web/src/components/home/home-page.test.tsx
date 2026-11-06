@@ -136,7 +136,7 @@ beforeEach(() => {
 describe("HomePage", () => {
   it("counts what waits, runs and ended in one strip, the done days named in words", async () => {
     setup(overview());
-    expect(screen.getByRole("heading", { level: 1, name: "Trang chủ" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Hôm nay" })).toBeInTheDocument();
     const strip = screen.getByTestId("home-metrics");
     expect(within(strip).getByTestId("summary-waiting-value")).toHaveTextContent("1");
     expect(within(strip).getByTestId("summary-waiting-value").className).toContain("text-attention");

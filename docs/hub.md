@@ -25,7 +25,8 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 
 | Page | What it shows | Route |
 | --- | --- | --- |
-| Home, `/` | Today first: one sentence of what waits and what changed, the things that changed since you last looked, each a link, and a caught-up line, the seen mark moved only once the end of the list was on screen (`docs/notifications.md`, Today and its summary push); then what waits on you (Needs you: the questions asked of you), what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat (one that waits on a decision of its own stands in Needs you through the decision alone, not again there), and a decision of an author run without a plan named "Author run #N" with the run's title, never a link to a plan | `GET /v1/me/today`, `POST /v1/me/today/seen`, `GET /v1/me/overview` |
+| Home, `/` | A chat with one of the agents you may give work to, over every project of your grants: the one you wrote to last first, its starters around the composer until your direct chat with it has a message, then that chat ("Chat home", below) | `GET /v1/me/chat-agents`, `PUT /v1/chats/direct/{handle}`, the routes of a chat |
+| Today, `/today` | Today first: one sentence of what waits and what changed, the things that changed since you last looked, each a link, and a caught-up line, the seen mark moved only once the end of the list was on screen (`docs/notifications.md`, Today and its summary push); then what waits on you (Needs you: the questions asked of you), what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat (one that waits on a decision of its own stands in Needs you through the decision alone, not again there), and a decision of an author run without a plan named "Author run #N" with the run's title, never a link to a plan | `GET /v1/me/today`, `POST /v1/me/today/seen`, `GET /v1/me/overview` |
 | Notification settings, `/settings/notifications` (the user menu) | push on this browser, turned on from one button, with the steps to add the web to the Home Screen on an iPhone or iPad first; your push devices, each with a test push and Remove; the tier of each kind of notification; quiet hours and their time zone; the time of the summary push; Hide details on the lock screen (`docs/notifications.md`, Push to devices). The web's service worker, `/sw.js`, which shows the pushes, loads without a session | `GET /v1/push/config`, `GET` and `PUT /v1/me/notification-settings`, `/v1/me/push/devices` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
 | a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises, and each decision the agent asked as a DecisionCard right after the agent's message that ended the turn which asked it, in the order asked: the owner picks an option with the mouse (the recommended one chosen already), adds words if they like and sends each card, an answered card folds to its answer (which the chat does not repeat as a message), the label of whose turn it is says how many decisions wait, another member reads the cards without a form, and "Asked you" in the Trace opens the card in this tab; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
@@ -40,7 +41,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 
 Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
 and the actions the visitor's grants allow (Run plan, New plan, Revise with agent, Dispatch a step, Rerun, Register
-worker), never one that deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Home,
+worker), never one that deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Today,
 Inbox, Plans, Runs or Workers, D opens Dispatch for a writer, / focuses the page's search. A switch in that dialog turns
 the single keys off on the browser. Every page takes the full width beside the sidebar, less a 24 px gutter (16 px
 under 768 px). Under 768 px tables become lists whose rows open their page, filters move into
@@ -1087,6 +1088,29 @@ run: WHY". An ask within one project skips the check.
 
 The prompt of a chat run names the read command and says the hub may leave items out, so the agent says so and never
 guesses at them (`chat_runs.reading_rule`). No schema change.
+
+## Chat home
+
+Home (`/`) is a chat with an agent, for every member. The agent picker at the top lists the agents the visitor may give
+work to across the projects of their grants, from `GET /v1/me/chat-agents`: an agent of a project where they are a
+writer (an admin, for an agent type that takes work from the admins alone), that has a worker pool of its own. The
+list puts the agent they wrote to last first, and Home opens on it; `?agent=HANDLE` names another, and a pick writes it
+there, so a reload keeps it.
+
+Until the visitor's direct chat with the agent has a message, the frame shows the agent's start: its face, name,
+project and what it does, the composer in the middle, and the agent's starters under it. A starter puts its words in
+the box and the focus there; nothing is sent until the visitor sends. Looking at an agent opens nothing: the first
+message opens the direct chat (`PUT /v1/chats/direct/{handle}`, as on Chats) and sends. From then on Home shows that
+chat with the components of a chat's own page: messages, live, their threads, their outputs and interactive answers,
+and the composer. A question one agent asks another with `worker agent ask` shows in the asking run's thread as "@a
+asked @b ..." and then "@b answered ..." ("Agents across projects", above).
+
+With no agent to chat with, Home says why (no agent on a project they may give work to, or none with a worker pool) and
+leads to the Projects card of Today (`/today#projects`). With chats off for the hub it says so and leads to Today.
+
+Today, Needs you, the runs in flight and the fleet moved to `/today`, which has its own sidebar entry. G then H, the
+command palette and the push of Today's summary (`docs/notifications.md`) lead there. The mobile app and
+`GET /v1/me/today` did not change. The web's parts are in `web/DESIGN.md`, Chat home.
 
 ## Plans and their copies in git
 

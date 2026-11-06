@@ -21,7 +21,8 @@ import {
 import { toast } from "./support/toast";
 
 /**
- * Home against the real API (GET /v1/me/overview and the workers list): the metric strip counts what waits for the
+ * Today (`/today`, which was Home until the chat home took `/`) against the real API (GET /v1/me/overview, Today and
+ * the workers list), with its own entry in the sidebar after Home: the metric strip counts what waits for the
  * member, what runs and what is queued; Needs you lists the decisions only they answer, and one is answered in two
  * clicks from there (Answer, then Send answer with the agent's pick chosen); In flight, Recent with Rerun, the Fleet
  * card and the Projects card follow. A member reads nothing of a project they hold no grant on. The specs play the
@@ -53,8 +54,13 @@ test("an admin with an open decision and runs in flight sees them counted and li
   const project = me.projects[0];
   const { waiting, working, queued } = await seedWork(me, project);
 
-  await open(page, "/");
-  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Home");
+  await open(page, "/today");
+  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Today");
+  // Today has its own entry in the sidebar, right after Home, which is the chat home now.
+  const sidebar = page.getByRole("navigation", { name: "Main navigation" });
+  await expect(sidebar.getByTestId("nav-today")).toHaveAttribute("aria-current", "page");
+  await expect(sidebar.getByTestId("nav-today")).toHaveAttribute("href", "/today");
+  await expect(sidebar.getByTestId("nav-home")).not.toHaveAttribute("aria-current", "page");
   const strip = main(page).getByTestId("home-metrics");
   await expect(strip.getByTestId("summary-waiting-value")).toHaveText("1");
   await expect(strip.getByTestId("summary-running-value")).toHaveText("1");
@@ -104,11 +110,12 @@ test("an admin with an open decision and runs in flight sees them counted and li
   await expect(strip.getByTestId("summary-waiting-value")).toHaveText("2");
 });
 
-test("Home opens with Today: what changed as links, and the seen mark moves only once the list has shown", async ({ page, member }) => {
+test("Today opens with what changed as links, and the seen mark moves only once the list has shown", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   const api = bearerClient(await machineToken(me));
-  // Signing in lands on Home, whose Today (nothing yet) has shown its end: the mark is the moment of that look.
+  // A first look at Today (nothing yet) shows its end: the mark is the moment of that look.
+  await open(page, "/today");
   await expect.poll(async () => (await call(api.GET("/v1/me/today"))).seen_at).not.toBeNull();
   const looked = (await call(api.GET("/v1/me/today"))).seen_at;
   await seedRunPlan(me, project);
@@ -130,7 +137,7 @@ test("Home opens with Today: what changed as links, and the seen mark moves only
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname === "/v1/me/today/seen") posted.push(request.postData() ?? "");
   });
-  await open(page, "/");
+  await open(page, "/today");
   const today = main(page).getByRole("region", { name: "Today" });
   const cards = main(page).locator("section[aria-labelledby]");
   await expect(cards.first()).toHaveAttribute("data-testid", "today");
@@ -168,15 +175,15 @@ test("answers a decision in two clicks, and it leaves Needs you", async ({ page,
   await seedPlanRunPlan(me, project);
   const { run, decision } = await planRunUnderway(me, project, uniqueName("home-answer"), { waiting: true });
 
-  await open(page, "/");
+  await open(page, "/today");
   const needs = main(page).getByTestId("needs-you");
   const answer = needs.getByRole("button", { name: `Answer decision #${decision}` });
 
-  // One: Answer opens the decision in a sheet over Home, the agent's pick chosen.
+  // One: Answer opens the decision in a sheet over Today, the agent's pick chosen.
   await answer.click();
   const sheet = page.getByTestId("decision-sheet");
   await expect(sheet).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/today$/);
   await expect(sheet.getByRole("radio", { name: /Deploy to staging now/ })).toBeChecked();
   await expect(sheet.getByTestId("decision-parks")).toContainText("parks in");
   // Two: Send answer.
@@ -190,7 +197,7 @@ test("answers a decision in two clicks, and it leaves Needs you", async ({ page,
   expect(answered.state).toBe("answered");
   expect(answered.answer_option).toBe("deploy");
 
-  // Closing the sheet leaves the visitor on Home, the run still in flight.
+  // Closing the sheet leaves the visitor on Today, the run still in flight.
   await sheet.getByTestId("decision-close").click();
   await expect(sheet).toBeHidden();
   await expect(main(page).getByTestId("in-flight").getByTestId("in-flight-item")).toHaveCount(1);
@@ -206,7 +213,7 @@ test("reruns a failed run from Recent, where the member writes", async ({ page, 
   await startRun(live, failing.id);
   await reportState(live, failing.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
 
-  await open(page, "/");
+  await open(page, "/today");
   const strip = main(page).getByTestId("home-metrics");
   // Nothing is in flight: the strip gives way to the quiet line, which still counts the week.
   await expect(strip.getByTestId("home-quiet")).toContainText("All quiet.");
@@ -234,7 +241,7 @@ test("a member reads nothing of a project they hold no grant on", async ({ page,
   await seedWork(other, hidden);
 
   const me = await member([{ role: "reader", maxLevel: "internal" }]);
-  await open(page, "/");
+  await open(page, "/today");
   const home = main(page);
   await expect(home.getByTestId("home-projects").getByTestId("home-project")).toHaveCount(1);
   await expect(home.getByTestId("home-projects").getByTestId("home-project")).toHaveAttribute("data-project", me.projects[0]);
@@ -253,11 +260,11 @@ test("a member reads nothing of a project they hold no grant on", async ({ page,
   await expect(menu).not.toContainText(hidden);
 });
 
-test("on a phone Home is one column, Today and Needs you first", async ({ page, member }) => {
+test("on a phone Today is one column, its Today card and Needs you first", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   await seedWork(me, me.projects[0]);
   await page.setViewportSize({ width: 375, height: 812 });
-  await open(page, "/");
+  await open(page, "/today");
   const order = ["today", "needs-you", "in-flight", "recent", "fleet", "home-projects"];
   for (const id of order) await expect(main(page).getByTestId(id)).toBeVisible();
   const boxes = await Promise.all(order.map((id) => main(page).getByTestId(id).boundingBox()));

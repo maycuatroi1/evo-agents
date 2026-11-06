@@ -120,13 +120,13 @@ test("a writer starts New plan, answers the agent in the run's chat, follows the
   await expect(chat.getByTestId("run-chat-reply")).toContainText("The agent waits for your reply.");
   await axeBoth(page, "the chat waiting for a reply");
 
-  // Home lists the run while it waits for the visitor, linked to its chat.
-  await open(page, "/");
+  // Today lists the run while it waits for the visitor, linked to its chat.
+  await open(page, "/today");
   const waiting = main(page).getByRole("region", { name: "Waiting for your reply" });
   const item = waiting.getByTestId("author-waiting-item");
   await expect(item).toHaveAttribute("data-run-id", String(run.id));
   await expect(item.getByTestId("author-waiting-link")).toContainText("Should **New plan** sit");
-  await axeBoth(page, "Home with an author run waiting for a reply");
+  await axeBoth(page, "Today with an author run waiting for a reply");
   await item.getByTestId("author-waiting-reply").click();
   await expect(page).toHaveURL(new RegExp(`/p/${project}/runs/${run.id}\\?tab=chat$`));
 

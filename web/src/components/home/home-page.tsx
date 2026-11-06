@@ -144,8 +144,8 @@ function MissionControl({ overview, viewer, today }: { overview: Overview; viewe
 }
 
 /**
- * Home (`/`), the kit's MissionControl (web/DESIGN.md, Home): Today first (what changed since the visitor last looked,
- * read once a visit from GET /v1/me/today), then what needs the visitor, what is in flight, what ended lately, their
+ * Today (`/today`, which was Home until the chat home took `/`), the kit's MissionControl (web/DESIGN.md, Today):
+ * Today first (what changed since the visitor last looked, read once a visit from GET /v1/me/today), then what needs the visitor, what is in flight, what ended lately, their
  * workers and their projects, from one read of GET /v1/me/overview (and the workers list for the Fleet card). The
  * overview is asked every 5 seconds while a run is in flight or a decision is open, every 30 otherwise, and the top
  * bar says whether the page is current. Under 768 px it is one column, Today then Needs you first.
@@ -153,7 +153,7 @@ function MissionControl({ overview, viewer, today }: { overview: Overview; viewe
 export function HomePage({ initialError, todayError = null }: { initialError: ApiErrorInfo | null; todayError?: ApiErrorInfo | null }) {
   const t = useTranslations("home");
   const { data: me } = useQuery(whoamiQuery(browserApi));
-  // The page's main query: the top bar says from it whether Home is current.
+  // The page's main query: the top bar says from it whether Today is current.
   const state = useHubQuery({ ...overviewQuery(browserApi), refetchInterval: homeRefreshInterval }, initialError, { live: true });
   const today = useHubQuery(todayQuery(browserApi), todayError);
   return (

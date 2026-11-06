@@ -646,8 +646,8 @@ neither listed nor counted. It answers:
 
 The window starts at the caller's seen mark (`today_marks.seen_at`, schema 0158). Without a mark it is the last 24
 hours, and a mark older than seven days counts from seven days ago. `POST /v1/me/today/seen` moves the mark forward to
-its `seen_at` (now when left out, never past now); a later mark stays where it is. Home on the web opens with Today
-and posts `seen_until` once the end of the list has been on screen.
+its `seen_at` (now when left out, never past now); a later mark stays where it is. Today on the web (`/today`) opens with
+Today and posts `seen_until` once the end of the list has been on screen.
 
 The job `hub.today_digest` runs every minute (`today_digest.py`, through `brief.send_today_digests`). A member gets a
 summary push when they have a push device that reaches them, have been away from the hub for 8 hours (by
@@ -655,12 +655,12 @@ summary push when they have a push device that reaches them, have been away from
 set the tier of `today` to `off`, and it is their `digest_at` (default `07:30`) in their time zone, or up to three hours
 later. The day is claimed in `today_marks.digest_on` before Today is worked out, so a second pass sends nothing and a
 member gets at most one a local day. When their Today has an item, they get a notice `today`: no project, the title
-`Today on the hub`, the sentence as its body, a link to Home, read when it is stored, and delivered to their devices
+`Today on the hub`, the sentence as its body, a link to Today (`/today`), read when it is stored, and delivered to their devices
 alone. A day with no item sends nothing. Quiet hours hold it as any push, and Hide details leaves only `Today on the
 hub`.
 
 `GET /v1/me/overview` counts in `waiting_on_you`, and marks `yours`, the decisions asked of the caller, and names the
-person each decision is asked of (`asked_of`); Home's Needs you reads it.
+person each decision is asked of (`asked_of`); the Needs you card of Today on the web reads it.
 
 ### On the web
 

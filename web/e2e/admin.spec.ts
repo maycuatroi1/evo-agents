@@ -177,7 +177,7 @@ test.describe("members and grants", () => {
     await expect(toast(page, `Đã thu hồi quyền của ${account.login}`)).toContainText(`${account.login} không còn vào được dự án ${project}.`);
     await expect(page.getByTestId("member-grants-section")).toContainText("Chưa có quyền ở dự án nào");
 
-    await member.page.goto("/");
+    await member.page.goto("/today");
     await expect(member.page.getByTestId("state-empty")).toBeVisible();
     await member.page.goto(`/p/${project}`);
     await expect(member.page.getByTestId("state-not-found")).toBeVisible();

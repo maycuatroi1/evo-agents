@@ -60,13 +60,13 @@ test("every page of a member takes the full width beside the sidebar at 1920 px,
   const project = me.projects[0];
   await seedPlans(me, project);
   await seedPlanRunPlan(me, project);
-  // A plan run that waits for the member: the Inbox lists its decision, Workers its worker, Home both.
+  // A plan run that waits for the member: the Inbox lists its decision, Workers its worker, Today both.
   const { live, run } = await planRunUnderway(me, project, uniqueName("wide"), { waiting: true });
   await sendEvents(live, run.id, [say("Reading the plan.")]);
   await page.setViewportSize(WINDOW);
 
   const pages: { path: string; ready?: (page: Page) => Promise<void> }[] = [
-    { path: "/", ready: async (p) => expect(p.locator("#main").getByTestId("needs-you-item").first()).toBeVisible() },
+    { path: "/today", ready: async (p) => expect(p.locator("#main").getByTestId("needs-you-item").first()).toBeVisible() },
     { path: "/inbox" },
     { path: "/monitor", ready: async (p) => expect(p.locator("#main").getByTestId("monitor-tile").first()).toBeVisible() },
     { path: `/p/${project}/runs`, ready: async (p) => expect(p.locator("#main").getByTestId("runs-table")).toBeVisible() },

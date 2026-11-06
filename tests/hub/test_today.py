@@ -427,13 +427,13 @@ def summaries(db) -> list[tuple]:
     return sql(db, query.where(n.c.notice_kind == "today").order_by(n.c.id))
 
 
-def test_a_member_away_gets_one_summary_push_at_their_time_with_a_link_home(client, members, away, hub_db, service):
+def test_a_member_away_gets_one_summary_push_at_their_time_with_a_link_to_today(client, members, away, hub_db, service):
     now = away["now"]
     assert digests(client, now - 2 * MINUTE) == {"not_due": 1}  # bea was seen an hour ago: not asked
     assert digests(client, now) == {"today": 1}
     assert digests(client, now + MINUTE) == {"sent": 1}  # once a day
     sentence = "Nothing waits for your answer. Since you last looked: a failed run."
-    assert summaries(hub_db) == [(user_id(hub_db, OWNER), None, "Today on the hub", sentence, "/", True)]
+    assert summaries(hub_db) == [(user_id(hub_db, OWNER), None, "Today on the hub", sentence, "/today", True)]
     # It goes to owner's devices alone: no delivery on the web, read already, so the bell does not count it.
     targets = select(DELIVERIES.c.channel_id, DELIVERIES.c.device_id.is_not(None)).join_from(
         DELIVERIES, NOTIFICATIONS, NOTIFICATIONS.c.id == DELIVERIES.c.notification_id
@@ -445,7 +445,7 @@ def test_a_member_away_gets_one_summary_push_at_their_time_with_a_link_home(clie
     assert (shown["title"], shown["body"], shown["url"], shown["kind"], shown["project"]) == (
         "Today on the hub",
         sentence,
-        f"{HUB_URL}/",
+        f"{HUB_URL}/today",
         "notice",
         None,
     )

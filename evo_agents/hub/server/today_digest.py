@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 AWAY = timedelta(hours=8)  # a member seen on the hub more recently gets no summary push
 NOTICE = "today"  # runs.NOTICE_KINDS: the summary push
 TITLE = "Today on the hub"
-HOME = "/"  # the web's Home, which opens with Today
+TODAY = "/today"  # the web's Today, which was Home until the chat home took "/"
 
 
 def _candidates(now: datetime):
@@ -105,7 +105,7 @@ async def _push(conn: AsyncConnection, user_id: int, found: today.Today) -> int:
         title=TITLE,
         body=found.summary,
         details=details,
-        link=HOME,
+        link=TODAY,
         read_at=func.now(),
     )
     notification_id = (await conn.execute(stored.returning(n.c.id))).scalar_one()

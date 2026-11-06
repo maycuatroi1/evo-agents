@@ -106,7 +106,7 @@ test.describe("upload data", () => {
 
   test("a hub admin makes a project from data; a member without the right is told why", async ({ page, signInAs }) => {
     await signInAs(ADMIN_ACCOUNT);
-    await open(page, "/");
+    await open(page, "/today");
     await page.getByTestId("home-new-project").first().click();
     await expect(page).toHaveURL(/\/projects\/new$/);
     await expect(page.getByRole("heading", { level: 1, name: "New project from data" })).toBeVisible();

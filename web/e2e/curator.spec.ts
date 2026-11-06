@@ -438,7 +438,7 @@ test("the Curator page shows the weekly probe report, flagging only what is wron
 test.describe("dark theme", () => {
   test.use({ colorScheme: "dark" });
 
-  test("Home says where each project's Curator stands, and a reader reads the Curator without changing it", async ({ page, admin, signInAs }) => {
+  test("Today says where each project's Curator stands, and a reader reads the Curator without changing it", async ({ page, admin, signInAs }) => {
     const owner = newAccount("owner");
     const reader = newAccount("reader");
     const project = uniqueName("curator");
@@ -448,13 +448,13 @@ test.describe("dark theme", () => {
     const night = await seedCurator(owner, project, uniqueName("night"));
     await signInAs(reader);
 
-    await open(page, "/");
+    await open(page, "/today");
     const row = main(page).locator(`[data-testid="home-project"][data-project="${project}"]`);
     await expect(row.getByTestId("home-project-curator")).toHaveAttribute("data-state", "on_duty");
     await expect(row.getByTestId("home-project-curator-link")).toHaveText("Curator: On duty");
     await expect(row.getByTestId("home-project-proposals")).toHaveText("4 proposals wait");
     await expect(page.locator("html")).toHaveClass(/dark/);
-    await expectNoSeriousViolations(page, "Home with a Curator (dark)");
+    await expectNoSeriousViolations(page, "Today with a Curator (dark)");
 
     // G then C opens the Curator of the project shown.
     await open(page, `/p/${project}`);
