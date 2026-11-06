@@ -33,10 +33,18 @@ const NEAR = "600px 0px";
 
 type Phase = "idle" | "loading" | "ready" | "error";
 
-/** The outputs of a message the chat shows as interactive answers: HTML its agent marked. */
-export function isInteractiveAnswer(output: ViewedFile): boolean {
-  return output.interactive === true && output.viewer === "html";
+/**
+ * The nearest ancestor of `element` that scrolls (the thread's column), or null for the viewport. The observer must
+ * take it as its root: with the viewport as root, the column's own clipping hides a message until it is on screen,
+ * and NEAR would never reach past it.
+ */
+function scrollingAncestor(element: HTMLElement): HTMLElement | null {
+  for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+    if (/(auto|scroll|overlay)/.test(getComputedStyle(parent).overflowY)) return parent;
+  }
+  return null;
 }
+
 
 /**
  * An interactive answer inside its chat message (web/DESIGN.md, Chats): the page the agent wrote, in a frame with
@@ -79,7 +87,7 @@ export function InteractiveAnswer({ chatId, output, className }: { chatId: numbe
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) setNear(true);
       },
-      { rootMargin: NEAR },
+      { root: scrollingAncestor(element), rootMargin: NEAR },
     );
     observer.observe(element);
     return () => observer.disconnect();
@@ -157,7 +165,7 @@ export function InteractiveAnswer({ chatId, output, className }: { chatId: numbe
       data-output-id={output.id}
       data-state={phase}
     >
-      <div className="relative w-full overflow-hidden rounded-lg border bg-card" style={{ height: phase === "error" ? undefined : height }}>
+      <div className="w-full overflow-hidden rounded-lg border bg-card">
         {phase === "error" ? (
           <div role="alert" className="flex flex-wrap items-center gap-2 px-3 py-3 text-sm text-foreground" data-testid="interactive-answer-error">
             <TriangleAlert className="size-4 shrink-0 text-destructive" aria-hidden="true" />
@@ -172,7 +180,8 @@ export function InteractiveAnswer({ chatId, output, className }: { chatId: numbe
             </Button>
           </div>
         ) : (
-          <>
+          // The height the page asked is the frame's own; the border sits outside it.
+          <div className="relative w-full" style={{ height }}>
             {near ? (
               <iframe
                 key={attempt}
@@ -194,7 +203,7 @@ export function InteractiveAnswer({ chatId, output, className }: { chatId: numbe
                 <Skeleton className="min-h-0 w-full flex-1" />
               </div>
             ) : null}
-          </>
+          </div>
         )}
       </div>
       <figcaption className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">

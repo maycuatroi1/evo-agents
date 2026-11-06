@@ -4,7 +4,7 @@ import { createAgentByApi } from "./support/agents";
 import { expectNoSeriousViolations } from "./support/a11y";
 import { agentSays, chatPageOf, chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
-import { uniqueName } from "./support/hub";
+import { HubAdmin, registration, uniqueName } from "./support/hub";
 import { sendOutputs } from "./support/outputs";
 import { open } from "./support/plans";
 
@@ -78,9 +78,18 @@ const PLAIN_PAGE = `<!doctype html><html lang="en"><head><title>Plain</title></h
 
 const html = (text: string) => Buffer.from(text, "utf8");
 
-/** A chat where agent Analyst answered `asks` in a thread with the two interactive answers and one plain HTML file. */
+/**
+ * A chat that is not restricted, where agent Analyst answered in a thread with the two interactive answers and one
+ * plain HTML file, then said each of `extra`. The stack's projects clear their hub sink at internal with no location,
+ * which `telegram.restricted` reads as the top location, domestic-only: restricted, served without 'self' or the CDNs.
+ * This project's hub sink names location any.
+ */
 async function answeredChat(me: Member, extra: string[] = []) {
   const project = me.projects[0];
+  const sinks = (registration().sinks ?? []).map((sink) =>
+    sink.kind === "hub" ? { ...sink, clearance: { level: "internal", location: "any" } } : sink,
+  );
+  await new HubAdmin().registerProject(project, { sinks });
   const handle = uniqueName("analyst");
   await createAgentByApi(me, project, { handle, name: "Analyst" });
   const live = await chatWorker(me, project, uniqueName("chat-box"), 1, handle);
@@ -178,13 +187,14 @@ test("the frame loads only once its message comes near the viewport", async ({ p
   await expect(shown.getByTestId("interactive-answer-frame")).toHaveCount(0);
   await shown.scrollIntoViewIfNeeded();
   await expect(shown).toHaveAttribute("data-state", "ready");
-  await expect(shown.getByTestId("interactive-answer-frame")).toHaveAttribute("src", answer.url);
+  // The chat's own route, which serves the answer under the chat's policy, not the run's.
+  await expect(shown.getByTestId("interactive-answer-frame")).toHaveAttribute("src", `/v1/chats/${chat.id}/outputs/${answer.id}/content`);
 });
 
 for (const scheme of ["light", "dark"] as const) {
   test(`a message with an interactive answer passes axe at 1440 and 375 px in ${scheme}, and the page never scrolls sideways`, async ({ page, member }) => {
     await page.emulateMedia({ colorScheme: scheme });
-    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const me = await member([{ role: "admin", maxLevel: "internal" }]);
     const { chat, root, answer, kit } = await answeredChat(me);
     for (const [width, height] of [
       [1440, 900],

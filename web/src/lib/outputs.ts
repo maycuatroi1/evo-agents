@@ -20,6 +20,14 @@ export type ViewedFile = Omit<RunOutput, "source" | "run_id" | "tool_call_id" | 
   interactive?: boolean;
 };
 
+/**
+ * The outputs of a message the chat shows as interactive answers (components/chats/interactive-answer.tsx): HTML its
+ * agent marked.
+ */
+export function isInteractiveAnswer(output: ViewedFile): boolean {
+  return output.interactive === true && output.viewer === "html";
+}
+
 /** `outputs.SOURCES` of the API, in its order: sent on purpose, taken out of a tool's result, left in .evo-run/outputs/. */
 export const OUTPUT_SOURCES = ["sent", "tool", "outputs"] as const satisfies readonly OutputSource[];
 

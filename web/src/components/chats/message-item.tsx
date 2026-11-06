@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageSquareReply, Reply } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, type Ref, useMemo } from "react";
 
@@ -9,14 +10,15 @@ import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
 import { linkedFiles } from "@/lib/attachments";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
 import { chatMentionMarks } from "@/lib/mention-marks";
+import { isInteractiveAnswer } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { AgentMenu } from "./agent-menu";
 import { messageDocs } from "./doc-model";
 import { AuthorAvatar, NO_COLOUR } from "./faces";
-import { InteractiveAnswer, isInteractiveAnswer } from "./interactive-answer";
 import type { Quote } from "./line-model";
 import { MessageHead, ReplyQuote, ThreadSummary } from "./message-parts";
 import { MessageLinks, MessageRuns } from "./message-links";
@@ -57,6 +59,15 @@ type Props = MessageActions & {
 };
 
 /** The side a message takes: the visitor's own on the right, anyone else's on the left after their face. */
+/**
+ * An interactive answer's frame and its bridge load with the first message that carries one; until then a box of the
+ * frame's first height (320 px and its border) holds its place.
+ */
+const InteractiveAnswer = dynamic(() => import("./interactive-answer").then((module) => module.InteractiveAnswer), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[322px] w-full rounded-lg" />,
+});
+
 const COLUMN = {
   mine: "items-end max-w-[85%] md:max-w-[min(42rem,calc(100%-4.5rem))]",
   theirs: "items-start max-w-[calc(100%-2.5rem)] md:max-w-[min(42rem,calc(100%-7rem))]",
