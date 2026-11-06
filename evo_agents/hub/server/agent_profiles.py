@@ -10,7 +10,8 @@ that project's default profile, which the registration of the project created an
 permissions stay all and its instructions empty (422), while its name, description, colour, starters and avatar may
 change. A handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a
 version of its plugin (``agent_packs.pinned``; the default profile attaches none). Its starters are at most
-``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chat_home``). Every edit that
+``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chat_home``). ``runs_on`` says where its runs run, worker
+(the default) or hub; the hub only stores it so far. Every edit that
 changes something, the avatar and the packs included, raises the version by one and writes the version row; PATCH with
 ``if_version`` other than the version now is 409, nothing changed. Deleting sets ``deleted_at``: the profile takes no
 new run, and reads as before; its accounts (``evo_agents.hub.server.agent_accounts``) are deleted in the same
@@ -148,6 +149,11 @@ Starters = Annotated[
     ),
 ]
 
+RunsOn = Annotated[
+    Literal["worker", "hub"],
+    Field(description="where its runs run: on a worker of its pool (worker) or on the hub (hub)"),
+]
+
 
 class AgentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -158,6 +164,7 @@ class AgentCreate(BaseModel):
     instructions: Instructions = Field("", description="added to the system prompt of the profile's runs")
     color: Color | None = Field(None, description="default: one picked by the handle")
     starters: Starters = Field(default_factory=list)
+    runs_on: RunsOn | None = Field(None, description="default: worker")
     permissions: AgentPermissions = Field(default_factory=AgentPermissions)
     packs: Pins = Field(
         default_factory=list, description="the agent packs it attaches, in order; see GET .../agent-packs"
@@ -174,6 +181,7 @@ class AgentEdit(BaseModel):
     instructions: Instructions | None = None
     color: Color | None = None
     starters: Starters | None = Field(None, description="the starters whole, in order; [] for none")
+    runs_on: RunsOn | None = None
     permissions: AgentPermissions | None = Field(None, description="the eight axes whole; an axis left out allows all")
     packs: Pins | None = Field(None, description="the agent packs it attaches, whole, in order; [] for none")
     if_version: int | None = Field(None, ge=1, description="409 unless the profile is at this version now")
@@ -210,6 +218,7 @@ class Agent(BaseModel):
     icon_url: str | None = Field(description="GET of the avatar on this hub; null: draw the initial on the colour")
     avatar_sha256: str | None
     starters: list[str] = Field(description="questions the chat home offers before a first message, in order")
+    runs_on: RunsOn
     is_default: bool = Field(description="the project's default profile, @<project>: every permission")
     permissions: AgentPermissions
     restricted: list[str] = Field(description="the axes that are allowlists, in the order of the eight")
@@ -252,6 +261,7 @@ def agent_view(profile: Profile) -> Agent:
         icon_url=icon_url(profile),
         avatar_sha256=profile.avatar_sha256,
         starters=list(profile.starters or ()),
+        runs_on=profile.runs_on,
         is_default=profile.is_default,
         permissions=AgentPermissions.model_validate(profile.permissions),
         restricted=profiles.restricted_axes(profile.permissions),
@@ -379,6 +389,7 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         "color": body.color or profiles.default_color(body.handle),
         "avatar_sha256": None,
         "starters": body.starters,
+        "runs_on": body.runs_on or profiles.DEFAULT_RUNS_ON,
         "is_default": False,
         "permissions": body.permissions.stored(),
     }

@@ -2217,6 +2217,7 @@
           "icon_url",
           "avatar_sha256",
           "starters",
+          "runs_on",
           "is_default",
           "permissions",
           "restricted",
@@ -2282,6 +2283,18 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--runs-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "worker",
+            "hub"
+          ]
         },
         {
           "flags": [
@@ -2354,6 +2367,7 @@
           "icon_url",
           "avatar_sha256",
           "starters",
+          "runs_on",
           "is_default",
           "permissions",
           "restricted",
@@ -2409,6 +2423,7 @@
           "icon_url",
           "avatar_sha256",
           "starters",
+          "runs_on",
           "is_default",
           "permissions",
           "restricted",
@@ -2474,6 +2489,18 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--runs-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "worker",
+            "hub"
+          ]
         },
         {
           "flags": [
@@ -2588,6 +2615,7 @@
           "icon_url",
           "avatar_sha256",
           "starters",
+          "runs_on",
           "is_default",
           "permissions",
           "restricted",
@@ -2643,6 +2671,7 @@
           "icon_url",
           "avatar_sha256",
           "starters",
+          "runs_on",
           "is_default",
           "permissions",
           "restricted",
@@ -2698,6 +2727,7 @@
           "icon_url",
           "avatar_sha256",
           "starters",
+          "runs_on",
           "is_default",
           "permissions",
           "restricted",
@@ -24921,6 +24951,287 @@
         }
       ],
       "json": null
+    },
+    "hub system delete": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "deleted"
+        ],
+        "schema": "SystemDeleted"
+      }
+    },
+    "hub system export": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "-o",
+            "--output"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "hub system list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "slug",
+          "name",
+          "revision",
+          "entry_agent",
+          "nodes",
+          "edges",
+          "updated_by",
+          "updated_at"
+        ],
+        "schema": "SystemSummary"
+      }
+    },
+    "hub system put": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--slug"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "slug",
+          "name",
+          "revision",
+          "latest_revision",
+          "spec",
+          "pins",
+          "problems",
+          "entry_agent",
+          "can_change",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "created",
+          "changed"
+        ],
+        "schema": "SystemWritten"
+      }
+    },
+    "hub system show": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "slug",
+          "name",
+          "revision",
+          "latest_revision",
+          "spec",
+          "pins",
+          "problems",
+          "entry_agent",
+          "can_change",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "SystemOut"
+      }
+    },
+    "hub system validate": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--slug"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "valid",
+          "spec",
+          "problems"
+        ],
+        "schema": "SystemChecked"
+      }
     },
     "hub task block": {
       "positionals": [
@@ -79813,6 +80124,551 @@
           }
         }
       },
+      "/v1/projects/{project}/systems": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "List Systems",
+          "description": "The agent systems of the project, by slug.",
+          "operationId": "list_systems_v1_projects__project__systems_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SystemSummary"
+                    },
+                    "title": "Response List Systems V1 Projects  Project  Systems Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/validate": {
+        "post": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Validate System",
+          "description": "What is wrong in a spec against the project, and the spec as PUT would store it; nothing is written.",
+          "operationId": "validate_system_v1_projects__project__systems_validate_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemCheck"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemChecked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Show System",
+          "description": "One agent system, its spec at a revision, its pins and what is wrong in it now.",
+          "operationId": "show_system_v1_projects__project__systems__slug__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "revision",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a revision of it; the latest by default",
+                "title": "Revision"
+              },
+              "description": "a revision of it; the latest by default"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Put System",
+          "description": "Create the agent system, or store ``spec`` as its next revision.",
+          "operationId": "put_system_v1_projects__project__systems__slug__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPut"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemConflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Delete System",
+          "description": "Delete an agent system with its revisions; its profiles, graphs and runs stay.",
+          "operationId": "delete_system_v1_projects__project__systems__slug__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemDeleted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/revisions": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "System Revisions",
+          "description": "The revisions of an agent system, the newest first.",
+          "operationId": "system_revisions_v1_projects__project__systems__slug__revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SystemRevision"
+                    },
+                    "title": "Response System Revisions V1 Projects  Project  Systems  Slug  Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         "put": {
           "tags": [
@@ -103185,6 +104041,15 @@
               "title": "Starters",
               "description": "questions the chat home offers before a first message, in order"
             },
+            "runs_on": {
+              "type": "string",
+              "enum": [
+                "worker",
+                "hub"
+              ],
+              "title": "Runs On",
+              "description": "where its runs run: on a worker of its pool (worker) or on the hub (hub)"
+            },
             "is_default": {
               "type": "boolean",
               "title": "Is Default",
@@ -103276,6 +104141,7 @@
             "icon_url",
             "avatar_sha256",
             "starters",
+            "runs_on",
             "is_default",
             "permissions",
             "restricted",
@@ -104171,6 +105037,23 @@
               "title": "Starters",
               "description": "questions the chat home offers before a first message to the agent, in order; one line each"
             },
+            "runs_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "worker",
+                    "hub"
+                  ],
+                  "description": "where its runs run: on a worker of its pool (worker) or on the hub (hub)"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runs On",
+              "description": "default: worker"
+            },
             "permissions": {
               "$ref": "#/components/schemas/AgentPermissions"
             },
@@ -104264,6 +105147,22 @@
               ],
               "title": "Starters",
               "description": "the starters whole, in order; [] for none"
+            },
+            "runs_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "worker",
+                    "hub"
+                  ],
+                  "description": "where its runs run: on a worker of its pool (worker) or on the hub (hub)"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runs On"
             },
             "permissions": {
               "anyOf": [
@@ -142421,6 +143320,72 @@
           ],
           "title": "PayoutIn"
         },
+        "Pin": {
+          "properties": {
+            "node": {
+              "type": "string",
+              "title": "Node"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "orchestrator"
+              ],
+              "title": "Kind"
+            },
+            "profile": {
+              "type": "string",
+              "title": "Profile",
+              "description": "the handle of the profile"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version of the profile the node pins"
+            },
+            "latest_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest Version",
+              "description": "the profile's version now; null when the project has none"
+            },
+            "outdated": {
+              "type": "boolean",
+              "title": "Outdated",
+              "description": "the profile has a newer version than the one pinned"
+            },
+            "deleted": {
+              "type": "boolean",
+              "title": "Deleted",
+              "description": "the profile was deleted: it takes no new run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "node",
+            "kind",
+            "profile",
+            "version",
+            "latest_version",
+            "outdated",
+            "deleted"
+          ],
+          "title": "Pin"
+        },
         "PinnedPack": {
           "properties": {
             "pack": {
@@ -148043,6 +149008,59 @@
           ],
           "title": "ProblemMetric",
           "description": "How much a problem hurts: a key of the project's signals summed up over a window, as a goal's metric is, with\nno target."
+        },
+        "ProblemOut": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "error",
+                "warning"
+              ],
+              "title": "Level",
+              "description": "an error stops a write; a warning does not"
+            },
+            "path": {
+              "type": "string",
+              "title": "Path",
+              "description": "where in the spec, as nodes[2].version or edges[0]; empty for the spec whole"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message"
+            },
+            "node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node",
+              "description": "the id of the node it is about, to show it there"
+            },
+            "edge": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edge",
+              "description": "the index of the edge it is about in edges"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level",
+            "path",
+            "message"
+          ],
+          "title": "ProblemOut"
         },
         "ProblemPlan": {
           "properties": {
@@ -168531,6 +169549,494 @@
           },
           "type": "object",
           "title": "StoredProbe"
+        },
+        "SystemCheck": {
+          "properties": {
+            "spec": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Spec"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slug",
+              "description": "the system it would replace, whose entry agent it may keep"
+            }
+          },
+          "type": "object",
+          "required": [
+            "spec"
+          ],
+          "title": "SystemCheck"
+        },
+        "SystemChecked": {
+          "properties": {
+            "valid": {
+              "type": "boolean",
+              "title": "Valid",
+              "description": "no error: PUT would store it"
+            },
+            "spec": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Spec",
+              "description": "the spec as PUT would store it, defaults filled in and versions pinned"
+            },
+            "problems": {
+              "items": {
+                "$ref": "#/components/schemas/ProblemOut"
+              },
+              "type": "array",
+              "title": "Problems"
+            }
+          },
+          "type": "object",
+          "required": [
+            "valid",
+            "spec",
+            "problems"
+          ],
+          "title": "SystemChecked"
+        },
+        "SystemConflict": {
+          "properties": {
+            "error": {
+              "type": "string",
+              "title": "Error"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message"
+            },
+            "request_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detail"
+            },
+            "current": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SystemOut"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the system as the hub holds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "error",
+            "message"
+          ],
+          "title": "SystemConflict"
+        },
+        "SystemDeleted": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "deleted": {
+              "type": "string",
+              "title": "Deleted"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "deleted"
+          ],
+          "title": "SystemDeleted"
+        },
+        "SystemOut": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "the revision shown"
+            },
+            "latest_revision": {
+              "type": "integer",
+              "title": "Latest Revision"
+            },
+            "spec": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Spec",
+              "description": "the spec at that revision, evo-agent-system/1"
+            },
+            "pins": {
+              "items": {
+                "$ref": "#/components/schemas/Pin"
+              },
+              "type": "array",
+              "title": "Pins",
+              "description": "the agent and orchestrator nodes, with the versions they pin"
+            },
+            "problems": {
+              "items": {
+                "$ref": "#/components/schemas/ProblemOut"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "what is wrong in the spec against the project now"
+            },
+            "entry_agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Agent"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "the caller holds the admin role on the project"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "slug",
+            "name",
+            "revision",
+            "latest_revision",
+            "spec",
+            "pins",
+            "problems",
+            "entry_agent",
+            "can_change",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "SystemOut"
+        },
+        "SystemPut": {
+          "properties": {
+            "spec": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Spec",
+              "description": "evo-agent-system/1: schema, name, purpose, limits, nodes, edges"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "the revision it is at now; none or 0 creates it, and is 409 when it exists"
+            }
+          },
+          "type": "object",
+          "required": [
+            "spec"
+          ],
+          "title": "SystemPut"
+        },
+        "SystemRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "actor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "actor",
+            "created_at"
+          ],
+          "title": "SystemRevision"
+        },
+        "SystemSummary": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "entry_agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Agent",
+              "description": "the handle of the agent its entry interacts with; null for none"
+            },
+            "nodes": {
+              "type": "integer",
+              "title": "Nodes"
+            },
+            "edges": {
+              "type": "integer",
+              "title": "Edges"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "name",
+            "revision",
+            "entry_agent",
+            "nodes",
+            "edges",
+            "updated_by",
+            "updated_at"
+          ],
+          "title": "SystemSummary"
+        },
+        "SystemWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "the revision shown"
+            },
+            "latest_revision": {
+              "type": "integer",
+              "title": "Latest Revision"
+            },
+            "spec": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Spec",
+              "description": "the spec at that revision, evo-agent-system/1"
+            },
+            "pins": {
+              "items": {
+                "$ref": "#/components/schemas/Pin"
+              },
+              "type": "array",
+              "title": "Pins",
+              "description": "the agent and orchestrator nodes, with the versions they pin"
+            },
+            "problems": {
+              "items": {
+                "$ref": "#/components/schemas/ProblemOut"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "what is wrong in the spec against the project now"
+            },
+            "entry_agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Agent"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "the caller holds the admin role on the project"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the hub already held exactly this; no revision was added"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "slug",
+            "name",
+            "revision",
+            "latest_revision",
+            "spec",
+            "pins",
+            "problems",
+            "entry_agent",
+            "can_change",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at",
+            "created",
+            "changed"
+          ],
+          "title": "SystemWritten"
         },
         "Task": {
           "properties": {

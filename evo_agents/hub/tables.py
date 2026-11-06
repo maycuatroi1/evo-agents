@@ -70,6 +70,7 @@ from evo_agents.hub import (
     tables_sessions,
     tables_settings,
     tables_signals,
+    tables_systems,
     tables_triage,
     tables_workers,
 )
@@ -778,6 +779,7 @@ channel_link_codes = Table(  # the one-time codes that link a member's channel: 
 
 accounts, account_policies, run_accounts, user_emails, provider_accounts = tables_accounts.account_tables(metadata)
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
+agent_systems, agent_system_revisions = tables_systems.system_tables(metadata)  # 0217
 account_pools, account_pool_members = tables_account_pools.account_pool_tables(metadata)  # 0191
 guard_terms, guard_targets = tables_guard.guard_tables(metadata)  # the private names and published repos (0192)
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031

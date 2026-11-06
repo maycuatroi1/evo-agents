@@ -497,7 +497,9 @@ A profile has a handle, unique on the hub (deleted profiles' included) and never
 `[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
 none; starters, at most 4 questions of one line and at most 120 characters each, which the chat home offers before a
-first message to the agent (`starters`, since migration 0215); and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
+first message to the agent (`starters`, since migration 0215); where its runs run, `runs_on`, `worker` (the default)
+or `hub` (since migration 0217; the hub stores it and runs nothing on it yet: `--runs-on` of `hub agent create|edit`);
+and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
 `description`, and `icon_url` for the avatar.
@@ -690,6 +692,85 @@ Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_prof
 the project, at version 1; and `profile_id` with `profile_version` on `runs` and on `credential_leases`, both null or
 both set, naming a version. Going back to 0029 drops the two tables and the columns: the profiles, and which profile
 each run and lease went under, are lost.
+
+## Agent systems
+
+An agent system is an object of a project: its agents, named graphs, Curator and orchestrator laid out on a canvas,
+with typed edges between them. It is a spec, `evo-agent-system/1` (`evo_agents/hub/system_spec.py`), kept by revision
+like a plan, in `agent_systems` and `agent_system_revisions` (migration 0217, `evo_agents/hub/tables_systems.py`).
+Every member of the project reads its systems; an admin of the project writes them.
+
+A node has an `id`, a `kind`, an optional `label` and a canvas `position` `{x, y}`:
+
+| Kind | What it names | How many |
+| --- | --- | --- |
+| `entry` | whoever writes to the system | exactly one |
+| `agent` | a profile of the project (`profile`), pinned at one of its versions (`version`) | any |
+| `kg` | a named graph of the project (`graph`), `default` for every source | any |
+| `curator` | the Curator of the project | at most one |
+| `orchestrator` | a profile of the project, pinned like an agent | at most one |
+
+An edge has `from`, `to`, a `kind` and a `description`; its kind fixes the kinds of its ends:
+
+| Kind | From | To |
+| --- | --- | --- |
+| `interacts` | entry or agent | agent |
+| `uses_kg` | agent | kg |
+| `optimizes` | curator | agent or kg |
+| `orchestrates` | orchestrator | agent |
+| `escalates` | agent | orchestrator |
+
+The agent the entry interacts with is the system's entry agent: at most one per system, and a profile is the entry
+agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
+`trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). The hub only stores them so far.
+
+The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
+an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
+not have. A deleted profile, a version the profile never had, and a profile that is already the entry agent of
+another system are errors too. A pinned version older than the profile's latest is a warning, and so is an entry that
+interacts with no agent. Each problem has `level`, `path`, `message` and the `node` id or `edge` index it is about,
+so the web can show it there. A spec with an error is refused with 422 and the problems as `detail`, and nothing is
+written. An agent or orchestrator node that names no version is pinned at its profile's latest when the spec is
+stored. The API shows each pin with the profile's `latest_version` next to it.
+
+A chat run of an entry agent takes the version its system pins: the run's `profile_version` is that version, and the
+hub reads the run's rules from `agent_profile_versions`, as for every run. A profile in no system runs as before.
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/systems` | `hub system list` | a member |
+| `GET .../systems/{slug}` (`?revision=N`), its spec, pins and problems now | `hub system show SLUG [--revision N]` | a member |
+| `GET .../systems/{slug}/revisions`, the newest first | | a member |
+| `GET .../systems/{slug}`, written as YAML | `hub system export SLUG [-o FILE]` | a member |
+| `POST .../systems/validate` `{spec, slug}`, written nowhere | `hub system validate FILE` | a member |
+| `PUT .../systems/{slug}` `{spec, if_revision}` | `hub system put FILE [--slug S] [--if-revision N]` | an admin of the project |
+| `DELETE .../systems/{slug}` | `hub system delete SLUG` | an admin of the project |
+
+`PUT` without `if_revision` (or 0) creates the system and is 409 when it exists. With it, the spec replaces that
+revision, or the hub answers 409 `revision_conflict` with the system as it holds it now. A spec the hub already holds
+adds no revision (`changed: false`). `export` writes the revision it read in a `# if_revision: N` line, which `put`
+takes when `--if-revision` is not given, so a change someone made in the meantime is refused, not lost. The slug
+`validate` is reserved. The audit rows `system.create`, `system.update` and `system.delete` name
+`<project> system=<slug> revision=<n>`. For example:
+
+```sh
+evo-agents hub system export support --project northwind -o support.yaml
+evo-agents hub system validate support.yaml --project northwind
+evo-agents hub system put support.yaml --project northwind
+```
+
+```yaml
+schema: evo-agent-system/1
+slug: support
+name: Northwind support
+nodes:
+- {id: in, kind: entry, position: {x: 0, y: 0}}
+- {id: triage, kind: agent, profile: lumen-triage, version: 3, position: {x: 240, y: 0}}
+- {id: docs, kind: kg, graph: default, position: {x: 480, y: 0}}
+edges:
+- {from: in, to: triage, kind: interacts, description: every question}
+- {from: triage, to: docs, kind: uses_kg, description: product docs}
+```
 
 ## Group chats
 

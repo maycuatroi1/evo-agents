@@ -15,6 +15,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     icon_url: null,
     avatar_sha256: null,
     starters: [],
+    runs_on: "worker",
     is_default: false,
     home_pool: null,
     account_pool: null,

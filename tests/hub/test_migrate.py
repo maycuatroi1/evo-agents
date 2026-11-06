@@ -172,6 +172,8 @@ TABLES |= {"plugin_cron"}  # migration 0203
 TABLES |= {"kg_answer_jobs", "kg_answers"}  # migration 0207
 TABLES |= {"run_spend"}  # migration 0210
 TABLES |= {"kg_entity_map_runs"}  # migration 0212
+TABLES |= {"kg_named_graphs"}  # migration 0216
+TABLES |= {"agent_systems", "agent_system_revisions"}  # migration 0217
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.

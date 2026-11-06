@@ -49,6 +49,7 @@ AGENT_KEYS = (
     "icon_url",
     "avatar_sha256",
     "starters",
+    "runs_on",
     "is_default",
     "permissions",
     "restricted",
@@ -110,6 +111,7 @@ def _show(agent: dict) -> None:
     packs = [f"{pack['plugin']}/{pack['name']}@{pack['version']}" for pack in agent.get("packs") or ()]
     print(f"  {'packs:'.ljust(12)}{', '.join(packs) or 'none'}")
     print(f"  {'pool:'.ljust(12)}{agent.get('home_pool') or 'none'}")
+    print(f"  {'runs on:'.ljust(12)}{agent.get('runs_on') or 'worker'}")
     print(f"  created by {agent['created_by']} at {when(agent['created_at'])} UTC, changed {when(agent['updated_at'])}")
 
 
@@ -235,7 +237,7 @@ def cmd_create(args) -> int:
     try:
         body = {"handle": args.handle.removeprefix("@"), "name": args.name}
         fields = {"description": args.description, "instructions": _instructions(args), "color": args.color}
-        fields |= {"permissions": permissions_from(args), "packs": packs_from(args)}
+        fields |= {"runs_on": args.runs_on, "permissions": permissions_from(args), "packs": packs_from(args)}
         avatar = _avatar(args.avatar) if args.avatar else None
     except (ValueError, OSError) as exc:
         return _usage(str(exc))
@@ -259,6 +261,7 @@ def cmd_edit(args) -> int:
             "description": args.description,
             "instructions": _instructions(args),
             "color": args.color,
+            "runs_on": args.runs_on,
             "permissions": permissions_from(args, current["permissions"]),
             "packs": packs_from(args),
         }
@@ -297,6 +300,11 @@ def _fields(parser, *, creating: bool) -> None:
     text.add_argument("--instructions", help="added to the system prompt of its runs, at most 8000 characters")
     text.add_argument("--instructions-file", metavar="PATH", help="read the instructions from a file, - for stdin")
     parser.add_argument("--color", metavar="#RRGGBB", help="its colour, lowercase hex (default: one picked by handle)")
+    parser.add_argument(
+        "--runs-on",
+        choices=("worker", "hub"),
+        help="where its runs run: on a worker of its pool or on the hub" + (" (default: worker)" if creating else ""),
+    )
     parser.add_argument(
         "--allow",
         action="append",

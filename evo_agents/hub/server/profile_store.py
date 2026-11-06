@@ -4,7 +4,8 @@ profile of a project and the version rows, for the routes of ``agent_profiles``,
 
 A version row holds the profile whole as that version had it (``snapshot``), its agent packs with the version each
 pins; it is written in the transaction that makes the version. A row written before the packs (schema 0041) has no
-``packs`` key, read as none, and one written before 0215 no ``starters`` key. ``ensure_default`` gives a project its
+``packs`` key, read as none, and one written before 0215 no ``starters`` key, one written before 0217 no
+``runs_on`` key (``worker``). ``ensure_default`` gives a project its
 default profile when it has none: the registration of a new project calls it, and so does a run queued in a project
 that has none (one inserted outside the API), so that every run records a profile. ``create_pool`` gives an agent its
 own pool when the agent is created (since 0189).
@@ -34,6 +35,7 @@ SNAPSHOT = (
     "permissions",
     "packs",
     "starters",
+    "runs_on",
 )
 
 
@@ -54,6 +56,7 @@ class Profile:
     permissions: dict
     packs: list  # the agent packs it attaches, each {"plugin", "name", "version"} (agent_packs)
     starters: list  # the questions the chat home offers, at most profiles.MAX_STARTERS (since 0215)
+    runs_on: str  # where its runs run: worker or hub (profiles.RUNS_ON, since 0217)
     home_pool: str | None  # the name of its own pool (``agent-<handle>``); None for an agent deleted before 0189
     account_pool_id: int | None  # its account pool (``account_pools``); None until an admin attaches one
     account_pool: str | None  # that pool's name
@@ -90,6 +93,7 @@ def profile_select() -> Select:
             ap.c.permissions,
             ap.c.packs,
             ap.c.starters,
+            ap.c.runs_on,
             select(wp.c.name).where(wp.c.agent_id == ap.c.id).scalar_subquery().label("home_pool"),
             ap.c.account_pool_id,
             select(tables.account_pools.c.name)
@@ -165,6 +169,7 @@ async def ensure_default(conn: AsyncConnection, project_id: int) -> Profile:
         "permissions": profiles.all_access(),
         "packs": [],
         "starters": [],
+        "runs_on": profiles.DEFAULT_RUNS_ON,
     }
     row_values = {**values, "created_by": project.created_by}
     statement = pg_insert(ap).values(**row_values).on_conflict_do_nothing().returning(ap.c.id)

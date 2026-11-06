@@ -48,6 +48,7 @@ from evo_agents.hub.server import (
     pool_accounts,
     run_access_rules,
     run_autonomy,
+    system_store,
 )
 from evo_agents.hub.server.chat_access import ChatAccess, LabelProject, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
@@ -55,7 +56,7 @@ from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.output_store import attach_leftovers, link_message
-from evo_agents.hub.server.profile_store import Profile, by_id
+from evo_agents.hub.server.profile_store import Profile, by_id, version_rules
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
@@ -406,6 +407,16 @@ async def go_on_parked(
     return new_id
 
 
+async def _pinned(conn: AsyncConnection, profile: Profile) -> tuple[int, dict]:
+    """The version of ``profile`` a chat run of it takes, with that version's permissions: the one the agent system
+    whose entry agent it is pins (``system_store.entry_pin``), its version now otherwise."""
+    pin = await system_store.entry_pin(conn, profile.id)
+    body = None if pin is None or pin[1] == profile.version else await version_rules(conn, profile.id, pin[1])
+    if body is None:
+        return profile.version, profile.permissions
+    return pin[1], body.get("permissions") or profile.permissions
+
+
 async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     """Queue the first run of a session of ``hand`` on ``worker`` (on none, for an agent in pool mode whose pool has no
     node ready: the run waits for one, and starts with the project's harness alone), on the branch chat/<its id>, with
@@ -426,7 +437,8 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
             if harness in await repo_origins(conn, profile.project_id, hand.owner_id, [harness]):
                 names.append(harness)
         names = [name for name in names if name == harness]
-    allow = profiles.allowed(profile.permissions, "model")
+    version, permissions = await _pinned(conn, profile)
+    allow = profiles.allowed(permissions, "model")
     model = allow[0] if allow else None
     owner, project = hand.owner_id, profile.project_id
     asker = gateway_accounts.Asker(0, owner, owner, project, profile.id, project, agent_owned=not profile.is_default)
@@ -446,7 +458,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
         "approval": "auto",
         "timeout_s": rules.TIMEOUT_MIN * 60,
         "profile_id": profile.id,
-        "profile_version": profile.version,
+        "profile_version": version,
         "chat_id": hand.chat.chat_id,
         "chat_message_id": hand.message_id,
         "hop": hand.hop,

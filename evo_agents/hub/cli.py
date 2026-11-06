@@ -306,6 +306,10 @@ def _register_workspace_commands(hsub) -> None:
 
     register_agents(hsub)
 
+    from evo_agents.hub.cli_systems import register as register_systems
+
+    register_systems(hsub)
+
     from evo_agents.hub.cli_chats import register_chats
 
     register_chats(hsub)

@@ -181,6 +181,11 @@ AGENT_CREATE = "agent.create"  # an admin of the project created an agent profil
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
 AGENT_PLACEMENT = "agent.placement"  # no longer written: an admin once moved an agent between legacy and its own pool
+# A project's agent systems (evo_agents.hub.server.agent_systems), in the project; the target is
+# "<project> system=<slug> revision=<n>", never a description or a purpose.
+SYSTEM_CREATE = "system.create"  # an admin of the project created an agent system, at revision 1
+SYSTEM_UPDATE = "system.update"  # an admin stored a new revision of it
+SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
 # Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.

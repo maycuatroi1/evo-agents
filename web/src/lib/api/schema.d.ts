@@ -9022,6 +9022,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Systems
+         * @description The agent systems of the project, by slug.
+         */
+        get: operations["list_systems_v1_projects__project__systems_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate System
+         * @description What is wrong in a spec against the project, and the spec as PUT would store it; nothing is written.
+         */
+        post: operations["validate_system_v1_projects__project__systems_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show System
+         * @description One agent system, its spec at a revision, its pins and what is wrong in it now.
+         */
+        get: operations["show_system_v1_projects__project__systems__slug__get"];
+        /**
+         * Put System
+         * @description Create the agent system, or store ``spec`` as its next revision.
+         */
+        put: operations["put_system_v1_projects__project__systems__slug__put"];
+        post?: never;
+        /**
+         * Delete System
+         * @description Delete an agent system with its revisions; its profiles, graphs and runs stay.
+         */
+        delete: operations["delete_system_v1_projects__project__systems__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Revisions
+         * @description The revisions of an agent system, the newest first.
+         */
+        get: operations["system_revisions_v1_projects__project__systems__slug__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         parameters: {
             query?: never;
@@ -13499,6 +13587,12 @@ export interface components {
              */
             starters: string[];
             /**
+             * Runs On
+             * @description where its runs run: on a worker of its pool (worker) or on the hub (hub)
+             * @enum {string}
+             */
+            runs_on: "worker" | "hub";
+            /**
              * Is Default
              * @description the project's default profile, @<project>: every permission
              */
@@ -13914,6 +14008,11 @@ export interface components {
              * @description questions the chat home offers before a first message to the agent, in order; one line each
              */
             starters?: string[];
+            /**
+             * Runs On
+             * @description default: worker
+             */
+            runs_on?: ("worker" | "hub") | null;
             permissions?: components["schemas"]["AgentPermissions"];
             /**
              * Packs
@@ -13939,6 +14038,8 @@ export interface components {
              * @description the starters whole, in order; [] for none
              */
             starters?: string[] | null;
+            /** Runs On */
+            runs_on?: ("worker" | "hub") | null;
             /** @description the eight axes whole; an axis left out allows all */
             permissions?: components["schemas"]["AgentPermissions"] | null;
             /**
@@ -30429,6 +30530,41 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** Pin */
+        Pin: {
+            /** Node */
+            node: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "orchestrator";
+            /**
+             * Profile
+             * @description the handle of the profile
+             */
+            profile: string;
+            /**
+             * Version
+             * @description the version of the profile the node pins
+             */
+            version: number | null;
+            /**
+             * Latest Version
+             * @description the profile's version now; null when the project has none
+             */
+            latest_version: number | null;
+            /**
+             * Outdated
+             * @description the profile has a newer version than the one pinned
+             */
+            outdated: boolean;
+            /**
+             * Deleted
+             * @description the profile was deleted: it takes no new run
+             */
+            deleted: boolean;
+        };
         /**
          * PinnedPack
          * @description A pack a profile attaches, at the version of its plugin it pins.
@@ -33007,6 +33143,32 @@ export interface components {
              * @description one tenant's alone
              */
             tenant?: string | null;
+        };
+        /** ProblemOut */
+        ProblemOut: {
+            /**
+             * Level
+             * @description an error stops a write; a warning does not
+             * @enum {string}
+             */
+            level: "error" | "warning";
+            /**
+             * Path
+             * @description where in the spec, as nodes[2].version or edges[0]; empty for the spec whole
+             */
+            path: string;
+            /** Message */
+            message: string;
+            /**
+             * Node
+             * @description the id of the node it is about, to show it there
+             */
+            node?: string | null;
+            /**
+             * Edge
+             * @description the index of the edge it is about in edges
+             */
+            edge?: number | null;
         };
         /**
          * ProblemPlan
@@ -41911,6 +42073,224 @@ export interface components {
              * @description a model to ask, when the endpoint lists none; its first otherwise
              */
             model?: string | null;
+        };
+        /** SystemCheck */
+        SystemCheck: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /**
+             * Slug
+             * @description the system it would replace, whose entry agent it may keep
+             */
+            slug?: string | null;
+        };
+        /** SystemChecked */
+        SystemChecked: {
+            /**
+             * Valid
+             * @description no error: PUT would store it
+             */
+            valid: boolean;
+            /**
+             * Spec
+             * @description the spec as PUT would store it, defaults filled in and versions pinned
+             */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Problems */
+            problems: components["schemas"]["ProblemOut"][];
+        };
+        /** SystemConflict */
+        SystemConflict: {
+            /** Error */
+            error: string;
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** @description the system as the hub holds it */
+            current?: components["schemas"]["SystemOut"] | null;
+        };
+        /** SystemDeleted */
+        SystemDeleted: {
+            /** Project */
+            project: string;
+            /** Deleted */
+            deleted: string;
+        };
+        /** SystemOut */
+        SystemOut: {
+            /** Project */
+            project: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Revision
+             * @description the revision shown
+             */
+            revision: number;
+            /** Latest Revision */
+            latest_revision: number;
+            /**
+             * Spec
+             * @description the spec at that revision, evo-agent-system/1
+             */
+            spec: {
+                [key: string]: unknown;
+            };
+            /**
+             * Pins
+             * @description the agent and orchestrator nodes, with the versions they pin
+             */
+            pins: components["schemas"]["Pin"][];
+            /**
+             * Problems
+             * @description what is wrong in the spec against the project now
+             */
+            problems: components["schemas"]["ProblemOut"][];
+            /** Entry Agent */
+            entry_agent: string | null;
+            /**
+             * Can Change
+             * @description the caller holds the admin role on the project
+             */
+            can_change: boolean;
+            /** Created By */
+            created_by: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SystemPut */
+        SystemPut: {
+            /**
+             * Spec
+             * @description evo-agent-system/1: schema, name, purpose, limits, nodes, edges
+             */
+            spec: {
+                [key: string]: unknown;
+            };
+            /**
+             * If Revision
+             * @description the revision it is at now; none or 0 creates it, and is 409 when it exists
+             */
+            if_revision?: number | null;
+        };
+        /** SystemRevision */
+        SystemRevision: {
+            /** Revision */
+            revision: number;
+            /** Actor */
+            actor: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SystemSummary */
+        SystemSummary: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Entry Agent
+             * @description the handle of the agent its entry interacts with; null for none
+             */
+            entry_agent: string | null;
+            /** Nodes */
+            nodes: number;
+            /** Edges */
+            edges: number;
+            /** Updated By */
+            updated_by: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SystemWritten */
+        SystemWritten: {
+            /** Project */
+            project: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Revision
+             * @description the revision shown
+             */
+            revision: number;
+            /** Latest Revision */
+            latest_revision: number;
+            /**
+             * Spec
+             * @description the spec at that revision, evo-agent-system/1
+             */
+            spec: {
+                [key: string]: unknown;
+            };
+            /**
+             * Pins
+             * @description the agent and orchestrator nodes, with the versions they pin
+             */
+            pins: components["schemas"]["Pin"][];
+            /**
+             * Problems
+             * @description what is wrong in the spec against the project now
+             */
+            problems: components["schemas"]["ProblemOut"][];
+            /** Entry Agent */
+            entry_agent: string | null;
+            /**
+             * Can Change
+             * @description the caller holds the admin role on the project
+             */
+            can_change: boolean;
+            /** Created By */
+            created_by: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Created */
+            created: boolean;
+            /**
+             * Changed
+             * @description false when the hub already held exactly this; no revision was added
+             */
+            changed: boolean;
         };
         /**
          * Task
@@ -79696,6 +80076,378 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_systems_v1_projects__project__systems_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_system_v1_projects__project__systems_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemChecked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_system_v1_projects__project__systems__slug__get: {
+        parameters: {
+            query?: {
+                /** @description a revision of it; the latest by default */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_system_v1_projects__project__systems__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemConflict"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_system_v1_projects__project__systems__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    system_revisions_v1_projects__project__systems__slug__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

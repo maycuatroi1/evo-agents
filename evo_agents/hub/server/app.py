@@ -527,6 +527,7 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_profiles,
         agent_provider_accounts,
         agent_reads,
+        agent_systems,
         agent_types,
         autonomy_policies,
         branding,
@@ -601,6 +602,7 @@ def _include_member_routes(app: FastAPI) -> None:
         rate_limits.worker_router,
         worker_autonomy.worker_router,
         agent_profiles.router,
+        agent_systems.router,  # the agent systems of a project (0217)
         agent_accounts.router,
         account_pools.router,
         agent_provider_accounts.router,
