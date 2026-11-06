@@ -370,6 +370,14 @@ class Agent:
             raise RunFailed(why, cause="credentials") from None
         except OSError as exc:
             raise RunFailed(f"Claude Code's config dir {directory} was not written: {exc}", cause="runtime") from None
+        if context.resume_session:
+            try:
+                await asyncio.to_thread(claude_home.carry_session, directory, run.daemon.env, context.resume_session)
+            except OSError as exc:
+                raise RunFailed(
+                    f"the transcript of session {context.resume_session} was not copied to {directory}: {exc}",
+                    cause="runtime",
+                ) from None
         if (
             login is None
             and claude_home.pooled(run.spec)

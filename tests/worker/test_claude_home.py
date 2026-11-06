@@ -544,3 +544,19 @@ def test_mcp_config_names_the_servers_and_is_strict():
     assert argv[0] == "--mcp-config" and json.loads(argv[1]) == {"mcpServers": {"evo-hub": server}}
     assert argv[-1] == "--strict-mcp-config"  # last, so the prompt after it is not read as a config
     assert claude_home.mcp_config({}) == ["--strict-mcp-config"]
+
+
+def test_carry_session_copies_a_transcript_only_the_owners_dir_has(tmp_path):
+    owner = tmp_path / "home" / ".claude" / "projects" / "-run-dir"
+    (owner / "s1" / "subagents").mkdir(parents=True)
+    (owner / "s1.jsonl").write_text('{"x": 1}\n')
+    (owner / "s1" / "subagents" / "a.jsonl").write_text("{}\n")
+    directory = tmp_path / "run" / "claude-config"
+    env = {"HOME": str(tmp_path / "home")}
+    carried = claude_home.carry_session(directory, env, "s1")
+    assert carried == directory / "projects" / "-run-dir" / "s1.jsonl"
+    assert carried.read_text() == '{"x": 1}\n'
+    assert (directory / "projects" / "-run-dir" / "s1" / "subagents" / "a.jsonl").exists()
+    carried.write_text("newer\n")
+    assert claude_home.carry_session(directory, env, "s1").read_text() == "newer\n"  # never overwritten
+    assert claude_home.carry_session(directory, env, "unknown") is None

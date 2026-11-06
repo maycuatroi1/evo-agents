@@ -6,7 +6,16 @@ import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { checkBudgets, checkRatchet, formatTable, main, measureRoutes, parseBudgets, toKb } from "./bundle-budget.mjs";
+import {
+  checkBudgets,
+  checkRatchet,
+  fixtureRoutes,
+  formatTable,
+  main,
+  measureRoutes,
+  parseBudgets,
+  toKb,
+} from "./bundle-budget.mjs";
 
 /** `length` characters that gzip poorly, the same on every run, so the fake chunks weigh a few kB each. */
 function noise(seed, length) {
@@ -93,6 +102,21 @@ describe("measureRoutes", () => {
 
   it("says to build first when the build left no stats", () => {
     expect(() => measureRoutes(webDir)).toThrow(/pnpm build/);
+  });
+});
+
+describe("fixtureRoutes", () => {
+  it("maps each page.fixture.tsx under src/app to its route, without route groups or slots", () => {
+    for (const dir of [["(app)", "p", "[project]", "x", "notes", "entries"], ["(app)", "@modal", "demo"], ["(app)"]]) {
+      mkdirSync(path.join(webDir, "src", "app", ...dir), { recursive: true });
+      writeFileSync(path.join(webDir, "src", "app", ...dir, "page.fixture.tsx"), "");
+    }
+    writeFileSync(path.join(webDir, "src", "app", "(app)", "p", "[project]", "x", "notes", "entries", "page.tsx"), "");
+    expect([...fixtureRoutes(webDir)].sort()).toEqual(["/", "/demo", "/p/[project]/x/notes/entries"]);
+  });
+
+  it("finds none without src/app", () => {
+    expect(fixtureRoutes(webDir).size).toBe(0);
   });
 });
 
@@ -228,6 +252,21 @@ describe("main", () => {
       [chunk("framework.js"), chunk("run.js"), chunk("main.js")],
     );
     expect(lines[4]).toContain("next experimental-analyze");
+  });
+
+  it("leaves out a fixture route of an EVO_WEB_FIXTURES=1 build, which has no budget", () => {
+    writeBuild(webDir, { "/": ["home.js"], "/runs/[id]": ["run.js"], "/p/[project]/x/notes/entries": ["run.js"] });
+    const pageDir = path.join(webDir, "src", "app", "(app)", "p", "[project]", "x", "notes", "entries");
+    mkdirSync(pageDir, { recursive: true });
+    writeFileSync(path.join(pageDir, "page.fixture.tsx"), "export default function Page() {}\n");
+    writeBudgetFile(webDir, { "/": { kB: toKb(homeBytes()) }, "/runs/[id]": { kB: toKb(runBytes()) } });
+    commitBase(webDir);
+    const result = run(["--base", "base"]);
+    expect(result.err).toBe("");
+    expect(result.out).toContain("left out the tests' fixture routes (an EVO_WEB_FIXTURES=1 build): /p/[project]/x/notes/entries");
+    expect(result.out).toContain("2 routes within their budgets");
+    expect(result.code).toBe(0);
+    expect(run(["--chunks", "/p/[project]/x/notes/entries"]).code).toBe(0);
   });
 
   it("writes budgets equal to the measure, keeping reasons", () => {
