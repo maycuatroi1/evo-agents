@@ -233,3 +233,51 @@ def test_a_command_that_asks_to_stop_halts_the_step(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, extra={"command": [sys.executable, "-c", stop]})
     cov = build_project(project).coverage["entities"]
     assert cov["calls"] == 0 and cov["skipped"] == 3 and cov["failed"] == 0 and "no login" in cov["stopped"]
+
+
+def test_in_a_run_claude_takes_the_pool_login_from_the_run_socket_when_the_shell_lacks_it(fake_claude, monkeypatch):
+    """Claude Code keeps CLAUDE_CODE_OAUTH_TOKEN out of its tools' shells, so `hub kg entities` run by an agent asks
+    the run's socket for the lease; only the login is taken, and outside a run nothing is asked."""
+    from evo_agents.worker import credential_commands
+
+    calls, _ = fake_claude
+    asked = []
+
+    def lease_env(run_id, home=None, environ=None):
+        asked.append(run_id)
+        return {claude_code.LOGIN_VARIABLE: OAUTH, "GITLAB_TOKEN": "glpat-" + "g" * 20}
+
+    monkeypatch.setattr(credential_commands, "lease_env", lease_env)
+    monkeypatch.delenv(claude_code.LOGIN_VARIABLE)
+    monkeypatch.setenv(claude_code.RUN_VARIABLE, "822")
+    got = claude_code.answer(REQUEST)
+    assert [n["name"] for n in got["nodes"]] == ["Search", "Server"]
+    assert calls()[-1]["oauth"] and not calls()[-1]["api_key"] and asked == [822]
+    env = claude_code.with_run_login({claude_code.RUN_VARIABLE: "822"})
+    assert env == {claude_code.RUN_VARIABLE: "822", claude_code.LOGIN_VARIABLE: OAUTH}, "the login alone"
+
+    asked.clear()
+    assert claude_code.run_login({claude_code.RUN_VARIABLE: "822", claude_code.LOGIN_VARIABLE: OAUTH}) == {}
+    assert claude_code.run_login({}) == {} and claude_code.run_login({claude_code.RUN_VARIABLE: "x"}) == {}
+    assert asked == [], "a shell with the login, or no run, asks no socket"
+    monkeypatch.setattr(credential_commands, "lease_env", lambda *a, **k: None)
+    assert claude_code.run_login({claude_code.RUN_VARIABLE: "822"}) == {}
+
+
+def test_the_lease_env_of_a_run_is_what_its_socket_answers_and_print_env_exports_it(monkeypatch):
+    from evo_agents.worker import credential_commands, credentials
+
+    requests = []
+
+    def ask(home, run_id, request, timeout=None):
+        requests.append((run_id, request))
+        return {"env": {"CLAUDE_CODE_OAUTH_TOKEN": OAUTH}} if run_id == 7 else None
+
+    monkeypatch.setattr(credentials, "ask", ask)
+    assert credential_commands.lease_env(7, home=object(), environ={}) == {"CLAUDE_CODE_OAUTH_TOKEN": OAUTH}
+    assert credential_commands.lease_env(8, home=object(), environ={}) is None
+    assert requests[0] == (7, {"op": "env"})
+    out, err = io.StringIO(), io.StringIO()
+    assert credential_commands.print_env(7, out, err, home=object(), environ={}) == 0
+    assert out.getvalue() == f"export CLAUDE_CODE_OAUTH_TOKEN={OAUTH}\n"
+    assert credential_commands.print_env(8, out, err, home=object(), environ={}) == 1

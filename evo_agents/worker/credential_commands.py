@@ -89,19 +89,28 @@ def ask_open(home: WorkerHome, run_id: int, repo: str) -> dict:
     return answer if answer is not None else {"error": f"run {run_id} holds no socket on this worker to open a repo"}
 
 
-def print_env(
-    run_id: int, stdout, stderr, home: WorkerHome | None = None, environ: Mapping[str, str] | None = None
-) -> int:
-    """``evo-agents worker env --run N``: ``export NAME=value`` lines of what run N's leases add to its agent's
-    environment, for a shell to evaluate; 1 when the run holds no socket here, or answers nothing (a run of the
-    Curator asked without its pane's ticket, ENV_TICKET_VARIABLE)."""
+def lease_env(
+    run_id: int, home: WorkerHome | None = None, environ: Mapping[str, str] | None = None
+) -> dict[str, str] | None:
+    """What run N's leases add to its agent's environment, as the run's socket answers ``op env``; None when the run
+    holds no socket here, or answers nothing (a run of the Curator asked without its pane's ticket,
+    ENV_TICKET_VARIABLE)."""
     request: dict = {"op": "env"}
     ticket = (os.environ if environ is None else environ).get(credentials.ENV_TICKET_VARIABLE)
     if ticket:
         request["ticket"] = ticket
     answer = credentials.ask(home or WorkerHome(), run_id, request)
     env = answer.get("env") if isinstance(answer, dict) else None
-    if not isinstance(env, dict):
+    return env if isinstance(env, dict) else None
+
+
+def print_env(
+    run_id: int, stdout, stderr, home: WorkerHome | None = None, environ: Mapping[str, str] | None = None
+) -> int:
+    """``evo-agents worker env --run N``: ``export NAME=value`` lines of what run N's leases add to its agent's
+    environment (``lease_env``), for a shell to evaluate; 1 when the run answers nothing."""
+    env = lease_env(run_id, home, environ)
+    if env is None:
         stderr.write(f"evo-agents: run {run_id} holds no credentials on this worker\n")
         return 1
     for key, value in sorted(env.items()):
