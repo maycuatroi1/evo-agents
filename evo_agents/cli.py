@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from evo_agents import __version__
@@ -125,6 +126,14 @@ def _utf8_streams() -> None:
             reconfigure(encoding="utf-8", errors=handling)
 
 
+def _run_lease_env(run_id: int, environ: Mapping[str, str]) -> Mapping[str, str] | None:
+    """What run N's socket adds to its agent's environment (``evo-agents worker env --run N``), for the Claude Code
+    calls of the knowledge graph, which imports no worker (``evo_agents.kg.claude_code.use_lease_env``)."""
+    from evo_agents.worker import credential_commands
+
+    return credential_commands.lease_env(run_id, environ=environ)
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8_streams()
     argv = sys.argv[1:] if argv is None else list(argv)
@@ -147,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
             if refreshed(argv):  # a command a plugin added since the list was kept: read the hub's list again
                 parser = build_parser()
         args = parser.parse_args(argv)
+        from evo_agents.kg import claude_code
+
+        claude_code.use_lease_env(_run_lease_env)
         if args.group == "worker" and os.name == "nt":
             print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
             return 2

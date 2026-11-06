@@ -98,18 +98,30 @@ def _masked(text: str) -> str:
     return SECRET.sub("[masked]", str(text))[:ERROR_CHARS]
 
 
+LeaseEnv = Callable[[int, Mapping[str, str]], "Mapping[str, str] | None"]
+_lease_env: LeaseEnv | None = None  # how run_login asks a run's socket; the command line sets it (use_lease_env)
+
+
+def use_lease_env(lookup: LeaseEnv | None) -> None:
+    """Set how ``run_login`` asks run N's socket what its leases add to the environment. The knowledge graph imports
+    no worker, so the command line (``evo_agents.cli``) hands it the worker's ``credential_commands.lease_env``;
+    without one, ``run_login`` asks nothing."""
+    global _lease_env
+    _lease_env = lookup
+
+
 def run_login(env: Mapping[str, str]) -> dict[str, str]:
     """The login of the run this process belongs to, when ``env`` lacks it: Claude Code keeps CLAUDE_CODE_OAUTH_TOKEN
     out of the shell of its tools, so ``evo-agents hub kg entities`` run by a run's agent would start ``claude``
-    logged out. The run's socket gives it back (``op env``, as ``evo-agents worker env --run N`` does), and only that
-    variable is taken. {} outside a run, with the variable set already, or when the socket answers nothing."""
+    logged out. The run's socket gives it back (``op env``, as ``evo-agents worker env --run N`` does, through the
+    lookup ``use_lease_env`` set), and only that variable is taken. {} outside a run, with the variable set already,
+    with no lookup set, or when the socket answers nothing."""
     raw = str(env.get(RUN_VARIABLE) or "").strip()
-    if env.get(LOGIN_VARIABLE) or not raw.isdigit():
+    lookup = _lease_env
+    if env.get(LOGIN_VARIABLE) or not raw.isdigit() or lookup is None:
         return {}
     try:
-        from evo_agents.worker import credential_commands
-
-        leases = credential_commands.lease_env(int(raw), environ=env) or {}
+        leases = lookup(int(raw), env) or {}
     except (AttributeError, OSError):  # no AF_UNIX socket on this platform, or no worker home to read
         return {}
     value = leases.get(LOGIN_VARIABLE)
