@@ -435,6 +435,17 @@ def test_prose_credential_a_plan_run_asking_a_credentials_value_in_words_gets_42
     [
         pytest.param({}, id="no-credential"),
         pytest.param({"question": "Should session tokens expire after a day or a week?"}, id="design-of-tokens"),
+        pytest.param(  # run 1937: tokens counted, and "give" and "value" in the same text
+            {
+                "question": "Values 2, 3 or 5 give the same result, but tokens per file rise from 515.0 to 515.9. "
+                "No value avoids it: keep NAMED_SHARED = 3 or drop it?"
+            },
+            id="counted-tokens",
+        ),
+        pytest.param(
+            {"question": "Retrieval spends tokens on one-line constants. Which value of NAMED_SHARED should we keep?"},
+            id="tokens-and-value-in-two-sentences",
+        ),
         pytest.param({"question": "Key the cache on CACHE_KEY or on PRIMARY_KEY?"}, id="keys-of-data"),
         pytest.param({"category": "deploy", "question": "Deploy with OPENAI_API_KEY set from the vault?"}, id="deploy"),
         pytest.param(
@@ -468,6 +479,22 @@ def test_prose_credential_the_gate_holds_plan_and_author_runs_alone():
         assert refused.value.status_code == 422 and f"{CREDENTIAL_COMMAND} TELEGRAM_BOT_TOKEN" in refused.value.detail
     chat = DecisionAsk(category="triage", question="Retry, or give me TELEGRAM_BOT_TOKEN?", options=OPTIONS)
     admit_ask(7, "chat", chat)  # a chat run asks triage as before
+
+
+@pytest.mark.parametrize(
+    ("question", "refused"),
+    [
+        ("Please paste the GitLab token here.", True),
+        ("Give me 300 tokens of context and the API token, please.", True),  # counted tokens aside, one is asked
+        ("Cost per file rose by 0.9 tokens. Give it a week?", False),
+        ("The token budget is 3000; give each step the same value?", False),
+        ("Which tokens_per_file value should the plan accept?", False),
+    ],
+)
+def test_prose_credential_reads_a_credential_and_its_giving_in_one_sentence(question, refused):
+    from evo_agents.hub.credential_requests import prose_credential
+
+    assert (prose_credential("scope", question, None) is not None) is refused
 
 
 # a3 of plan hub-attention-runtime: a question the run's autonomy leaves to its agent is refused with the card's rule

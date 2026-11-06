@@ -163,11 +163,45 @@ def is_curator_branch(name: str | None) -> bool:
 
 
 STEP_PROGRESS = ("status", "done_at", "evidence", "proofs", "note")  # what a draft's step may say of progress, dropped
+# A criterion id as a draft may write it (A1): the plan keeps a<number>, the only id a proof can name (proofs.CRITERION_ID).
+DRAFT_CRITERION_ID = re.compile(r"[Aa](\d+)")
+
+
+def criterion_id(value):
+    """``value`` as the id of a criterion of a plan: ``A1`` and ``a1`` both ``a1``; anything else unchanged."""
+    found = DRAFT_CRITERION_ID.fullmatch(value.strip()) if isinstance(value, str) else None
+    return f"a{found.group(1)}" if found else value
+
+
+def repo_verify(verify, repo: str):
+    """``verify`` as it runs at the root of ``repo``'s worktree, where a Builder and the Judge run it: without a
+    leading ``cd <repo> &&`` (or ``;``), which a draft written from a harness puts first and fails there."""
+    if not isinstance(verify, str):
+        return verify
+    lead = re.match(rf"\s*cd\s+(?:\./)?{re.escape(repo)}/?\s*(?:&&|;)\s*", verify)
+    return verify[lead.end() :] if lead and verify[lead.end() :].strip() else verify
+
+
+def _criteria(acceptance):
+    """A draft's acceptance with each criterion's id as ``criterion_id`` gives it, and ``text`` read as
+    ``criterion``, the key proofs read; a plan's acceptance that is no list stays as it is."""
+    if not isinstance(acceptance, list):
+        return acceptance
+    found = []
+    for item in acceptance:
+        if isinstance(item, dict):
+            item = {**item, "id": criterion_id(item["id"])} if "id" in item else dict(item)
+            if "criterion" not in item and isinstance(item.get("text"), str):
+                item["criterion"] = item.pop("text")
+        found.append(item)
+    return found
 
 
 def curator_plan(draft: dict, *, plan_id: str, repo: str, branch: str, proposal_id: int, project: str) -> dict:
     """The plan the draft of proposal ``proposal_id`` becomes: id ``plan_id``, one repo ``repo`` on ``branch``,
-    every step in that repo and pending, with no progress of the draft's, and a context that says whose it is."""
+    every step in that repo and pending, with no progress of the draft's, and a context that says whose it is. A
+    criterion's id is ``a<number>`` (``criterion_id``) in the acceptance and in each step's, and a step's verify runs
+    at the repo's root (``repo_verify``)."""
     body = json.loads(json.dumps(draft if isinstance(draft, dict) else {}))
     for key in ("hub", "status"):
         body.pop(key, None)
@@ -179,11 +213,17 @@ def curator_plan(draft: dict, *, plan_id: str, repo: str, branch: str, proposal_
     context = body.get("context")
     body["context"] = note + (f"\n\n{context}" if isinstance(context, str) and context.strip() else "")
     body["repos"] = [{"repo": repo, "branch": branch}]
+    if "acceptance" in body:
+        body["acceptance"] = _criteria(body["acceptance"])
     steps = []
     for step in body.get("steps") if isinstance(body.get("steps"), list) else []:
         if isinstance(step, dict):
             step = {key: value for key, value in step.items() if key not in STEP_PROGRESS}
             step["repo"], step["status"] = repo, "pending"
+            if "verify" in step:
+                step["verify"] = repo_verify(step["verify"], repo)
+            if isinstance(step.get("acceptance"), list):
+                step["acceptance"] = [criterion_id(item) for item in step["acceptance"]]
         steps.append(step)
     body["steps"] = steps
     return body
