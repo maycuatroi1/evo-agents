@@ -22,9 +22,9 @@ looks_through``); members decide them, and the run changes no claim, baseline, g
 Evidence is one of EVIDENCE_KINDS, written ``session:ID[:FIELD:INDEX]`` (a session of the project, and an entry of
 one of the lists of its facet, else of its digest), ``transcript:ID[:FILE]:LINE`` (a line of a transcript of a session
 of the project the hub holds, of its own file ``main`` unless FILE names a subagent's), ``run:ID:SEQ`` (an event of a
-run of the project), ``code:REPO:PATH[:LINE]`` (a line of a file of a repo of the project) or ``memory:ID:REV`` (a
-revision of a memory of the project, an agent's or a shared one) on the command line (``parse_evidence``), and as an
-object in the API. The hub refuses a finding or a proposal whose evidence it cannot
+run of the project), ``code:REPO:PATH[:LINE]`` (a line of a file of a repo of the project), ``memory:ID:REV`` (a
+revision of a memory of the project, an agent's or a shared one) or ``span:ID`` (a span of a trace of an agent system
+of the project) on the command line (``parse_evidence``), and as an object in the API. The hub refuses a finding or a proposal whose evidence it cannot
 find; a file of a repo of the project that the knowledge graph does not hold yet is kept, as ``unmatched``.
 
 The Reviewer reads the history in two tiers: the numbers first (the night's figures, the sessions and runs with the
@@ -72,6 +72,7 @@ Lens = Literal[
     "security",
     "product_goals",
     "product",
+    "agent_system",
     "kg_health",
     "kg_init",
     "kg_questions",
@@ -104,6 +105,13 @@ LENSES: dict[str, str] = {
     "product": "the product through its numbers (the figures' product): the signals the project measures, the claims "
     "of its canvases with their evidence and baselines, and its goals with their metrics; a claim the numbers suggest "
     "and no canvas holds, a claim they contradict, and a cap or a pace of the autonomy policy that holds a goal back",
+    "agent_system": "an agent system of the project whose curator node optimizes agents and named knowledge graphs "
+    "(an optimizes edge): read its traces (failed turns, escalations, kg queries that came back empty, what each "
+    "agent cost, edges taken off the design) and propose a better instructions, skill or model of a target agent's "
+    "profile, or better sources or a decision of a target graph, each resting on span:ID evidence. Accepting one "
+    "writes a new profile version, with a spec revision of the system that pins it, or a change of the graph; "
+    "nothing is edited directly. Added to a night when a system of the project has an optimizes edge and traces in "
+    "the window, never a night's turn",
     "kg_health": "the knowledge graph's health: how far each git source lags its default branch, the files the graph "
     "lacks, holds stale or still holds after their deletion, what its builds cover over time (mentions resolved, "
     "ambiguous, dangling; Python methods no call edge reaches; builds that changed nothing), and what agents got from "
@@ -121,7 +129,8 @@ LENSES: dict[str, str] = {
     "(evo_agents.hub.server.kg_entity_map_run), never a night's turn",
 }
 WHOLE_RUN_LENSES = ("kg_entity_map",)  # lenses whose run works to its cap, not stopping well before it
-ON_DEMAND_LENSES = ("kg_init", "kg_questions", "kg_entity_map")  # lenses a run asks for, not in the nights' turns
+# lenses a run or a project's systems ask for, not in the nights' turns
+ON_DEMAND_LENSES = ("agent_system", "kg_init", "kg_questions", "kg_entity_map")
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
 Severity = Literal["low", "medium", "high"]
@@ -134,7 +143,7 @@ ANSWERED = {"accept": "accepted", "reject": "rejected", "defer": "deferred"}
 DEFER_DAYS = (1, 90)  # the fewest and most days a proposal is deferred
 DEFAULT_DEFER_DAYS = 7
 
-EvidenceKind = Literal["session", "transcript", "run", "code", "memory"]
+EvidenceKind = Literal["session", "transcript", "run", "code", "memory", "span"]
 EVIDENCE_KINDS: tuple[str, ...] = get_args(EvidenceKind)
 DigestField = Literal[
     "user_turns", "commands", "repeated_commands", "errors", "files_edited", "tools", "bash", "skills"
@@ -368,16 +377,20 @@ def _memory_revision(rest: str, text: str) -> dict:
 
 def parse_evidence(text: str) -> dict:
     """The evidence object of ``text`` as the command line takes it: ``session:ID``, ``session:ID:FIELD:INDEX``,
-    ``transcript:ID:LINE``, ``transcript:ID:FILE:LINE``, ``run:ID:SEQ``, ``code:REPO:PATH``, ``code:REPO:PATH:LINE``
-    or ``memory:ID:REV``. EvidenceProblem when it is none of these."""
+    ``transcript:ID:LINE``, ``transcript:ID:FILE:LINE``, ``run:ID:SEQ``, ``code:REPO:PATH``, ``code:REPO:PATH:LINE``,
+    ``memory:ID:REV`` or ``span:ID``. EvidenceProblem when it is none of these."""
     kind, sep, rest = (text or "").strip().partition(":")
     if not sep or kind not in EVIDENCE_KINDS or not rest:
         raise EvidenceProblem(
-            "evidence is session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ, code:REPO:PATH[:LINE] or "
-            f"memory:ID:REV, not {text!r}"
+            "evidence is session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ, code:REPO:PATH[:LINE], "
+            f"memory:ID:REV or span:ID, not {text!r}"
         )
     if kind == "memory":
         return _memory_revision(rest, text)
+    if kind == "span":
+        if ":" in rest:
+            raise EvidenceProblem(f"span evidence is span:ID, a span of a trace of an agent system, not {text!r}")
+        return {"kind": "span", "span_id": _int(rest, "the span's id")}
     if kind == "transcript":
         return _transcript_line(rest, text)
     if kind == "session":
@@ -420,6 +433,8 @@ def evidence_text(item: dict) -> str:
         return f"run:{item['run_id']}:{item['seq']}"
     if kind == "memory":
         return f"memory:{item['memory_id']}:{item['revision']}"
+    if kind == "span":
+        return f"span:{item['span_id']}"
     if kind == "probe":
         model = f":{item['model']}" if item.get("model") else ""
         return f"probe:{item['probe_id']}:{item['week']}:{item['runtime']}{model}"

@@ -151,6 +151,10 @@ async def _refusal(conn: AsyncConnection, project_id: int, proposal) -> str | No
         return f"proposal {proposal.id} is {proposal.state}: only an accepted proposal becomes the Curator's plan"
     if proposal.promotion is not None:
         return f"proposal {proposal.id} promotes agents' memories: accepting it wrote them, and it becomes no plan"
+    if proposal.system_change is not None:
+        return (
+            f"proposal {proposal.id} changes an agent system's target: accepting it applied it, and it becomes no plan"
+        )
     planned = await planned_tiers_of(conn, project_id)
     if proposal.tier not in planned:
         return (

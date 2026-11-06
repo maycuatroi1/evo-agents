@@ -1,8 +1,8 @@
 """What the commands of a run's agent read (``evo_agents.worker.cli``): a text from a file or stdin, within a bound,
 an option of a decision and what else a question carries (``decision_extras``), the time and the event a wait wakes on (``wait_until``, ``payload_contains``), the evidence
 specs of a finding or a proposal (``evo_agents.hub.review.parse_evidence``) and the code evidence checked against the
-run's worktrees (``attest``), and the draft plan or the promotion of a proposal from a YAML or JSON file
-(``plan_file``, ``promotion_file``). A problem is a WorkerStateError, which the command prints as one ``error:``
+run's worktrees (``attest``), and the draft plan, the promotion or the system change of a proposal from a YAML or
+JSON file (``plan_file``, ``promotion_file``, ``system_change_file``). A problem is a WorkerStateError, which the command prints as one ``error:``
 line."""
 
 from __future__ import annotations
@@ -196,3 +196,12 @@ def promotion_file(source: str) -> dict:
     from evo_agents.hub.memory_files import MAX_BODY
 
     return _mapping_file(source, "promotion", 2 * MAX_BODY, "a promotion is a mapping with target and body")
+
+
+def system_change_file(source: str) -> dict:
+    """The system change of a proposal of kind agent_config (``worker propose --system-change-file``): the system,
+    the node its curator optimizes and what changes there (``evo_agents.hub.server.system_curation``)."""
+    from evo_agents.hub.profiles import MAX_INSTRUCTIONS_CHARS
+
+    holds = "a system change is a mapping with system, node and what changes"
+    return _mapping_file(source, "system change", 4 * MAX_INSTRUCTIONS_CHARS + 64 * 1024, holds)

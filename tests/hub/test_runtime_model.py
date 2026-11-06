@@ -490,7 +490,7 @@ def test_the_lenses_runtime_and_harness_have_their_figures_and_metrics_in_the_le
     assert {"runtime", "harness"} <= set(review.LENSES) and {"runtime", "harness"} <= set(review.FIGURE_KEYS)
     assert (
         list(review.LENSES)[-4:] == ["kg_health", "kg_init", "kg_questions", "kg_entity_map"]
-        and len(review.LENSES) == 18
+        and len(review.LENSES) == 19
     )
     assert ledger.LENS_METRICS["runtime"] == (
         "session_cost_usd",

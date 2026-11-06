@@ -20147,6 +20147,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * DecisionIn
+         * @description A decision on the project's knowledge graph, as ``kg_decisions.NewKgDecision`` takes one.
+         */
+        DecisionIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deprecate" | "merge" | "link";
+            /** Src */
+            src: string;
+            /** Rel */
+            rel?: string | null;
+            /** Dst */
+            dst?: string | null;
+            /** Reason */
+            reason: string;
+        };
         /** DecisionList */
         DecisionList: {
             /**
@@ -22080,7 +22099,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "session" | "transcript" | "run" | "code" | "memory";
+            kind: "session" | "transcript" | "run" | "code" | "memory" | "span";
             /**
              * Session Id
              * @description session, transcript: the session
@@ -22141,6 +22160,11 @@ export interface components {
              * @description memory: one of its revisions
              */
             revision?: number | null;
+            /**
+             * Span Id
+             * @description span: a span of an agent system's trace
+             */
+            span_id?: number | null;
         };
         /** FacetCluster */
         FacetCluster: {
@@ -22323,7 +22347,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Severity
              * @default medium
@@ -31142,7 +31166,7 @@ export interface components {
              * Lens
              * @description add: the lens it is for; none: every lens
              */
-            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
             /**
              * Text
              * @description add: the lesson
@@ -34870,6 +34894,13 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * System Change
+             * @description kind agent_config: what it changes, and what accepting it made (applied)
+             */
+            system_change?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Note
              * @description the owner's note with the answer
              */
@@ -34922,13 +34953,13 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
              * @enum {string}
              */
-            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "agent_config" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
             /** Title */
             title: string;
             /**
@@ -34957,6 +34988,8 @@ export interface components {
             } | null;
             /** @description kind memory: in place of a plan */
             promotion?: components["schemas"]["PromotionIn"] | null;
+            /** @description kind agent_config, lens agent_system: in place of a plan */
+            system_change?: components["schemas"]["SystemChangeIn"] | null;
             /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
             probe?: components["schemas"]["ProbeIn"] | null;
             /**
@@ -39922,7 +39955,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Severity
              * @default medium
@@ -39955,13 +39988,13 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
              * @enum {string}
              */
-            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "agent_config" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
             /** Title */
             title: string;
             /**
@@ -39990,6 +40023,8 @@ export interface components {
             } | null;
             /** @description kind memory: in place of a plan */
             promotion?: components["schemas"]["PromotionIn"] | null;
+            /** @description kind agent_config, lens agent_system: in place of a plan */
+            system_change?: components["schemas"]["SystemChangeIn"] | null;
             /** @description a task and a verify that say whether an agent repeats the mistake; required when the evidence cites a correction and the paths include a file a probe arm can place */
             probe?: components["schemas"]["ProbeIn"] | null;
             /**
@@ -42363,6 +42398,43 @@ export interface components {
              * @description a model to ask, when the endpoint lists none; its first otherwise
              */
             model?: string | null;
+        };
+        /**
+         * SystemChangeIn
+         * @description What a proposal of kind agent_config changes: a target of an optimizes edge of an agent system.
+         */
+        SystemChangeIn: {
+            /**
+             * System
+             * @description the agent system's slug
+             */
+            system: string;
+            /**
+             * Node
+             * @description the node its curator optimizes
+             */
+            node: string;
+            /**
+             * Instructions
+             * @description an agent: its instructions, whole
+             */
+            instructions?: string | null;
+            /** @description an agent: its skill axis, whole */
+            skill?: components["schemas"]["AgentAxis"] | null;
+            /** @description an agent: its model axis, whole */
+            model?: components["schemas"]["AgentAxis"] | null;
+            /**
+             * Add
+             * @description a kg node: sources its graph gets
+             */
+            add?: string[];
+            /**
+             * Remove
+             * @description a kg node: sources it loses
+             */
+            remove?: string[];
+            /** @description a kg node: a decision on the project's graph */
+            decision?: components["schemas"]["DecisionIn"] | null;
         };
         /** SystemCheck */
         SystemCheck: {
@@ -60824,7 +60896,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -60963,7 +61035,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -66013,7 +66085,7 @@ export interface operations {
     show_earlier_v1_projects__project__curator_earlier_get: {
         parameters: {
             query?: {
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
                 limit?: number;
             };
@@ -66078,7 +66150,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description its entries and those of no lens */
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map") | null;
                 /** @description the retired entries too, after the live ones */
                 retired?: boolean;
             };
