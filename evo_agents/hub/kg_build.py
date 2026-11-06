@@ -391,9 +391,9 @@ def build_in_cache(
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
-    items are fetched and held as a plugin's (``kg_upload_sources``). ``keys``: the key of the entities step's url model,
-    in memory (``evo_agents.hub.server.kg_entity_key``). ``maps``: the hashes of the project's kg-entity-map blobs, put
-where the entity_map step reads them (``kg_entity_maps``). Blocking."""
+    items are fetched and held as a plugin's (``kg_upload_sources``). ``keys``: the key of the entities step's url
+    model, in memory (``evo_agents.hub.server.kg_entity_key``). ``maps``: the hashes of the project's kg-entity-map
+    blobs, put where the entity_map step reads them (``kg_entity_maps``). Blocking."""
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
     write_config(data_dir, name, *knowledge_and_ontology(config, sources, tuning))

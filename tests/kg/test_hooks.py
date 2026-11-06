@@ -416,6 +416,7 @@ def linked(tmp_path, kg_env, monkeypatch):
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
         monkeypatch.delenv("EVO_KG_PROJECT", raising=False)
         monkeypatch.delenv("EVO_KG_GREP_HINTS", raising=False)
+        monkeypatch.setattr(post_search, "BUDGET", 30.0)  # a loaded CI runner can take past 0.35s on a cold store
         return project
 
     return make
@@ -645,8 +646,9 @@ def test_post_search_cli_adds_context_and_never_touches_the_result(linked, tmp_p
         "sys.stdin", io.StringIO(bash(app, "grep -rn 'def search' .", "./app/search.py:5:def search(q):\n"))
     )
     assert main(["kg", "hook", "post-search", "--only", "grep"]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out == {
+    out, err = capsys.readouterr()
+    assert err == ""
+    assert json.loads(out) == {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "additionalContext": "\n".join([post_search.NOTE, SEARCH]),
