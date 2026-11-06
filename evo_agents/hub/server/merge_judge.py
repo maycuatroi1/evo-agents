@@ -13,11 +13,14 @@ branch, the head to judge, its URL, and the run's own key, kept as a SHA-256), s
 prompt is ``merge_gate.build_prompt`` (``merge_prompt``). GET /v1/worker/runs/{id}/merge-judge, with the run's key,
 hands it the verify of the plan's steps in the repo and the hidden checks of the project's charter, which only it
 reads. POST /v1/worker/runs/{id}/merge-verdict, with the key, takes its verdict: the worker's own reading of the diff
-(gate 3 again), the checks (gate 4), and the Judge (gate 5, or 7 for the second Judge), every dimension passed. The
-first Judge passing records the risk (gate 6): a normal risk lets the merge request into the queue (``ready``), a
-high one has the job queue the second Judge. Each gate is a line of the ledger, the Judge's verdict another
-(``judged``: its run, its model, each dimension, the patch, the findings it raised and its marks of earlier ones); a
-gate not passed blocks the merge request with why.
+(gate 3 again, unless an admin's pass covers the head judged: the claim said ``signs_passed`` and the Judge weighed the
+signs against the plan), the checks (gate 4), and the Judge (gate 5, or 7 for the second Judge), every dimension
+passed. A verdict whose signs held the merge request at gate 3 does not hold for the patch
+(``merge_gate.held_by_signs``): after an admin's pass the Judge judges it. The first Judge passing records the risk
+(gate 6): a normal risk lets the merge request into the queue (``ready``), a high one has the job queue the second
+Judge. Each gate is a line of the ledger, the Judge's verdict another (``judged``: its run, its model, each dimension,
+the patch, the findings it raised and its marks of earlier ones); a gate not passed blocks the merge request with
+why.
 
 The findings (``evo_agents.hub.findings``) live in the verdict (merge_queue.verdict ``findings``), which a new patch
 hands on (``findings.carried``): the prompt of a later round lists those still open on its Judge's dimensions, and the
@@ -40,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate, merge_infra, runs, tables, tiers
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, merge_pass
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.change_views import (
@@ -187,6 +190,8 @@ async def merge_claim(conn: AsyncConnection, view) -> dict | None:
         "base_branch": row.target_branch,
         "head_sha": row.head_sha,
         "pr_url": row.web_url,
+        # an admin passed gate 3 at this head: the Judge weighs the signs against the plan, not failing them unjudged
+        "signs_passed": await merge_pass.covers(conn, row) is not None,
     }
     if row.state == "judging":
         key = secrets.token_urlsafe(32)
@@ -305,6 +310,11 @@ class MergeVerdictIn(BaseModel):
         None,
         max_length=judge.MAX_PATHS,
         description="a merge check's: the paths where merging the base into the head conflicts; null when it merged",
+    )
+    signs_weighed: bool = Field(
+        False,
+        description="the Judge weighed the signs of score hacking against the plan (judge.WEIGH_SIGNS) instead of the "
+        "signs failing the change unjudged: a merge check's Judge, or the queue's when its claim said signs_passed",
     )
 
 
@@ -425,6 +435,7 @@ async def merge_verdict(
         hidden_count = (row.verdict or {}).get("hidden_count")
         if not isinstance(hidden_count, int):
             hidden_count = len(hidden_of(await queue.charter_of(conn, row.project_id)))
+        passed_signs = await merge_pass.covers(conn, row)  # an admin passed gate 3 at the head judged
         found = Judged(
             body=body,
             second=second,
@@ -433,6 +444,7 @@ async def merge_verdict(
             head=row.head_sha,
             ledger=findings.ledger_of(row.verdict),
             run_id=run_id,
+            signs_weighed=passed_signs is not None and body.signs_weighed,
         )
         entry = found.entry(run_id, run.model)
         verdict = {
@@ -443,7 +455,7 @@ async def merge_verdict(
         }
         await queue.set_row(conn, row.id, verdict=verdict, judge_run_id=None, judge_key=None, judge_attempts=0)
         row = await queue.row_of(conn, row.id)
-        await _close_gates(conn, row, found, entry)
+        await _close_gates(conn, row, found, entry, passed_signs=passed_signs is not None)
         row = await queue.row_of(conn, row.id)
         said = "passed" if entry["passed"] else "failed"
         text = f"The merge queue took the verdict: the Judge {said} merge request !{row.iid}; it is {row.state} now."
@@ -467,8 +479,10 @@ class Judged:
         run_id: int | None = None,
         signs_weighed: bool = False,
     ):
-        """``signs_weighed``: the Judge weighed the signs of score hacking against the plan (a merge check of a pull
-        request, ``judge.WEIGH_SIGNS``), so they fail nothing by themselves; the queue's signs hold at gate 3."""
+        """``signs_weighed``: the Judge weighed the signs of score hacking against the plan (``judge.WEIGH_SIGNS``: a
+        merge check of a pull request, or a merge request of the queue whose gate 3 an admin passed at the head
+        judged, ``merge_pass.covers``), so they fail nothing by themselves; any other signs of the queue hold at gate
+        3."""
         self.body, self.second = body, second
         self.signs_weighed = signs_weighed
         self.expected, self.hidden_count = expected, hidden_count
@@ -556,6 +570,7 @@ class Judged:
             "verify": self.verify,
             "hidden": self.hidden,
             "signs": self.signs,
+            "signs_weighed": self.signs_weighed,
             "failures": self.checks_why + self.judge_why,
             "passed": passed,
             "findings": [item["id"] for item in self.raised],
@@ -564,12 +579,16 @@ class Judged:
         }
 
 
-async def _close_gates(conn: AsyncConnection, row, found: Judged, entry: dict) -> None:
-    """The ledger of the gates a verdict closes, and where the merge request goes."""
+async def _close_gates(conn: AsyncConnection, row, found: Judged, entry: dict, *, passed_signs: bool = False) -> None:
+    """The ledger of the gates a verdict closes, and where the merge request goes. The worker's reading of the diff
+    holds it at gate 3 again unless an admin's pass covers the head judged and the Judge weighed the signs
+    (``passed_signs``, ``found.signs_weighed``)."""
     sha, run_id = row.head_sha, entry["run_id"]
-    if found.signs:
+    if found.signs and not found.signs_weighed:
         kinds = ", ".join(sorted({item["kind"] for item in found.signs}))
         why = f"the worker's reading of the diff shows signs of score hacking ({kinds})"
+        if passed_signs:  # a worker from before the hub told it of the pass fails the signs unjudged
+            why += ", and its Judge did not weigh them against the plan although an admin passed gate 3 at this head"
         await queue.hold(conn, row, 3, why, blocked=True)
         return
     await queue.record(

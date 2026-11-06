@@ -115730,6 +115730,12 @@
               "description": "a Judge of a merge check: merge the current base into the head in a scratch worktree and run the checks there; a conflict fails it with needs a rebase",
               "default": false
             },
+            "signs_passed": {
+              "type": "boolean",
+              "title": "Signs Passed",
+              "description": "a Judge of the merge queue: an admin passed gate 3 (score hacking) at the head it judges, so it weighs the signs of score hacking against the plan instead of failing the change unjudged",
+              "default": false
+            },
             "judge_key": {
               "anyOf": [
                 {
@@ -134825,6 +134831,12 @@
               ],
               "title": "Conflicts",
               "description": "a merge check's: the paths where merging the base into the head conflicts; null when it merged"
+            },
+            "signs_weighed": {
+              "type": "boolean",
+              "title": "Signs Weighed",
+              "description": "the Judge weighed the signs of score hacking against the plan (judge.WEIGH_SIGNS) instead of the signs failing the change unjudged: a merge check's Judge, or the queue's when its claim said signs_passed",
+              "default": false
             }
           },
           "type": "object",

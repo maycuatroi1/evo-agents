@@ -110,6 +110,11 @@ class CuratorSpec(BaseModel):
         description="a Judge of a merge check: merge the current base into the head in a scratch worktree and run the "
         "checks there; a conflict fails it with needs a rebase",
     )
+    signs_passed: bool = Field(
+        False,
+        description="a Judge of the merge queue: an admin passed gate 3 (score hacking) at the head it judges, so it "
+        "weighs the signs of score hacking against the plan instead of failing the change unjudged",
+    )
     judge_key: str | None = Field(
         None,
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "

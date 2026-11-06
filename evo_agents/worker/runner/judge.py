@@ -23,6 +23,11 @@ already fails the change, on the worktree put back again, the hub's prompt and w
 hidden checks). The agent's verdict is the JSON object that ends its last message (``judge.verdict_from_message``),
 which reaches the worker from the agent's own output: no file the code under test could write.
 
+A sign fails the change unjudged, except for a merge check, and for a merge request of the queue whose claim says an
+admin passed gate 3 at the head judged (``signs_passed``, ``evo_agents.hub.server.merge_pass.covers``): there the
+Judge's agent starts and weighs each sign against the plan (``judge.WEIGH_SIGNS``), and the verdict says so
+(``signs_weighed``).
+
 For a merge check, each check that failed on the merge result runs again on origin's base branch alone (``on_base``):
 its exit code there goes with its result (``base_exit_code``), and the Judge reads that a check the base fails too is
 not the change's. The hub then holds such a failure for its triage (``evo_agents.hub.merge_infra``) instead of handing
@@ -114,9 +119,12 @@ class JudgeRun:
         self.head: str | None = None
         self.merge_base: str | None = None
         self.merge_result = bool(change.get("merge_result"))  # a merge check's: the checks run on head and base merged
+        # A merge request of the queue whose gate 3 an admin passed at the head judged (``merge_pass.covers``).
+        self.signs_passed = self.merge and bool(change.get("signs_passed"))
         # A merge check's Judge weighs the signs against the plan rather than the signs failing the change unjudged:
-        # run #1673 failed pull request #462 on the golden contract additions its plan's criterion a7 asked for.
-        self.weighs_signs = self.merge_result
+        # run #1673 failed pull request #462 on the golden contract additions its plan's criterion a7 asked for. So does
+        # the queue's once an admin passed gate 3: before, its run failed the merge request unjudged after the pass.
+        self.weighs_signs = self.merge_result or self.signs_passed
         self.tested: str | None = None  # the commit the checks run at: the head, or its merge with the base
         self.at: str | None = None  # the commit ``restore`` put the worktree at last, which the watchdog compares with
         self.moving = False  # while ``restore`` moves the worktree, which the watchdog then leaves alone
@@ -197,7 +205,12 @@ class JudgeRun:
             "security": security,
         }
         if self.merge:
-            body.update(dimensions=self.dimensions, findings=self.findings, prior=self.prior)
+            body.update(
+                dimensions=self.dimensions,
+                findings=self.findings,
+                prior=self.prior,
+                signs_weighed=self.weighs_signs and bool(signs),
+            )
         await self.post(body)
 
     def run_path(self) -> str | None:
@@ -359,14 +372,17 @@ class JudgeRun:
                 if self.weighs_signs
                 else "the change fails, and its Judge does not start"
             )
+            if self.signs_passed:
+                then = f"an admin passed gate 3 at this head, so {then}"
             run.note(f"The diff shows signs of score hacking ({kinds}): {then}.")
         return files, signs
 
     async def ask_judge(
         self, cls, cwd: Path, checks: list[dict], results: list[dict], signs: list[dict]
     ) -> tuple[str | None, str | None]:
-        """The Judge's verdict and its reasons, unless a sign already fails the change (a merge check's Judge weighs
-        them instead): its agent on the worktree put back again, the hub's prompt and what the worker ran."""
+        """The Judge's verdict and its reasons, unless a sign already fails the change (a merge check's Judge, and the
+        queue's whose claim says an admin passed gate 3, weigh them instead): its agent on the worktree put back again,
+        the hub's prompt and what the worker ran."""
         if signs and not self.weighs_signs:
             return None, None
         await self.restore(cwd)
