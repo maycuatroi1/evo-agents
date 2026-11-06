@@ -1489,6 +1489,50 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
     assert latest(hub)["status"] == "succeeded"
 
 
+def test_a_build_whose_entities_step_stopped_at_its_ceiling_queues_the_next(hub, tmp_path, monkeypatch):
+    from evo_agents.hub.db import open_pool
+    from evo_agents.hub.jobs import JobQueue
+    from evo_agents.hub.kg_build import run_build
+    from evo_agents.kg.entity_mapping import CEILING
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    ((job_id, *_),) = jobs(hub.db)
+    builds = tables.kg_builds
+    ((build_id,),) = query(hub.db, select(builds.c.id))
+    set_job_status(hub.db, job_id, "doing")  # a worker took it
+    original = hub_kg_build.build_graph
+    said = {"enabled": True, "stopped": f"{CEILING} (max_tokens 400000); the rest waits", "calls": 3, "failed": 0}
+
+    def build_at_the_ceiling(project, **entities):
+        path, report = original(project, **entities)
+        report.coverage["entities"] = dict(said)
+        return path, report
+
+    monkeypatch.setattr(hub_kg_build, "build_graph", build_at_the_ceiling)
+
+    async def build_once():
+        config = make_config(hub.db, hub.worker_dir, hub.s3)
+        pool = await open_pool(config)
+        store = BlobStore.from_config(config)
+        try:
+            job_queue = await JobQueue.open(pool)
+            context = HubContext(config, pool, store, config.data_dir)
+            return await run_build(context, PROJECT, build_id, job_id, job_queue._manager)
+        finally:
+            await pool.close()
+            store.close()
+
+    assert asyncio.run(build_once())["status"] == "succeeded"
+    done, next_build = query(hub.db, select(builds.c.status).order_by(builds.c.id))
+    assert done == ("succeeded",) and next_build == ("queued",), "the rest of the items is read now"
+    set_job_status(hub.db, job_id, "succeeded")
+    said["calls"] = said["failed"] = 2  # a build that read nothing queues none: no loop
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert [r[0] for r in query(hub.db, select(builds.c.status).order_by(builds.c.id))] == ["succeeded"] * 2
+
+
 # The plans of the hub in the graph of a harness that names a hub project
 
 HUB_HARNESS_KNOWLEDGE = """\

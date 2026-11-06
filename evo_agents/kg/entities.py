@@ -64,6 +64,7 @@ from evo_agents.kg import claude_code
 from evo_agents.kg import entity_links as links
 from evo_agents.kg import entity_merge as merge
 from evo_agents.kg.entity_mapping import (
+    CEILING,
     DEFAULT_MAX_CHARS,
     LIGHTRAG_READ,
     LOCAL_HOSTS,
@@ -550,7 +551,7 @@ class _Step:
                 f"claude is not installed on this machine: {cov['deferred']} item(s) wait for a run that has it"
             )
         elif why != "offline":
-            cov["stopped"] = f"the ceiling of this build was reached ({why}); the rest waits for a later build"
+            cov["stopped"] = f"{CEILING} ({why}); the rest waits for a later build"
 
     def ask(self, text: str, key: str, item: str) -> dict:
         """The memo's task for an item it lacks: the inbox's answer, else a call to the model. BudgetStop when offline,
@@ -624,7 +625,7 @@ class _Step:
             return None
         why = self.spend.exhausted()
         if why:
-            self.cov["stopped"] = f"the ceiling of this build was reached ({why}); the rest waits for a later build"
+            self.cov["stopped"] = f"{CEILING} ({why}); the rest waits for a later build"
             return None
         try:
             answer = call_task(self.config, task, asked, self.keys)

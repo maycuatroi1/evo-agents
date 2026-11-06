@@ -1,0 +1,61 @@
+# Everything a project holds as text, read as one graph of entities (docs/kg-strategies.md, "entity-graph-all"): the
+# entities step of entity-graph-api over every text item, not only prose (documents, plans, records of the hub's
+# plugins, chat messages, emails, memories, commits and pull requests), and the entity_map step of entity-graph-agent,
+# whose maps tie entities to the directories, files and symbols that implement them. Code itself is read by the map's
+# agent, not by the model. The mapping keeps entity-graph-api's model, kinds, relations, style, reasoning and max_chars,
+# so its digest is entity-graph-api's and a project moving from it reuses the answers its memo holds. A build reads
+# more of the corpus at once than entity-graph-api does (its ceilings are higher), and the hub queues the next build
+# when one stops at the ceiling after reading items (entity_mapping.goes_on), until every item is read.
+version: 1
+name: entity-graph-all
+description: Every text of a project (documents, plans, hub records, chat messages, emails, memories, commits and pull
+  requests) as one graph of entities and relations read by the build through OpenRouter (anthropic/claude-haiku-5.5,
+  as entity-graph-api), with the entity maps an agent run posts (as entity-graph-agent) tying entities to the code
+  that implements them. The hub queues builds until every item is read.
+suits: [prose, conversation, structured, history]
+knowledge:
+  ontology:
+    node_kinds:
+      - Actor          # a person or a role the text names
+      - Creature       # an animal or another living being
+      - Organization   # a company, team, institution or group
+      - Place          # a country, city, site or address
+      - Event          # something that happened or is planned, with a time
+      - Concept        # an idea, term or feature the text defines or uses
+      - Method         # a way, process or technique of doing something
+      - Content        # a document, book, article, film or other work of words, sound or image
+      - Data           # a figure, measure, dataset or record
+      - Artifact       # a product, tool, device or other made thing
+      - NaturalObject  # a thing of nature that is not alive
+      - Component      # a part of a system: a service, module, store or interface
+      - Feature        # something a system does for its users
+      - Other          # an entity of none of these types; its own type is in props.type
+    relations:
+      - relates_to     # two entities the text or the map ties, with keywords, a description and a strength
+settings:
+  passage_from: 2500
+  passage_chars: 1800
+  embed_chars: 3000
+  semantic_mode: index
+  walk: {}
+  entities:
+    model: anthropic/claude-haiku-5.5
+    url: https://openrouter.ai/api/v1
+    key_env: OPENROUTER_API_KEY
+    sink: llm
+    style: lightrag
+    reasoning: {enabled: false}
+    # The prose kinds, plans and records, chat messages, emails and memories, commits and pull requests: every class
+    # of the data profile that holds text, but code (read by the map's agent) and binaries.
+    items: [markdown, text, docx, doc, html, wiki, page, pdf, pptx, xlsx, plan, ticket, record, message, email, memory,
+      commit, pr]
+    node_kinds: [Actor, Creature, Organization, Place, Event, Concept, Method, Content, Data, Artifact, NaturalObject,
+      Other]
+    relations: [relates_to]
+    price: {input: 0.1, output: 0.5}
+    max_calls: 1000
+    max_tokens: 3000000
+    max_cost: 5.0
+    jobs: 8
+    synonym_threshold: 0.8
+steps: [entities, entity_map]

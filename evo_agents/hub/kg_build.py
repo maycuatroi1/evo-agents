@@ -647,6 +647,23 @@ async def _stopped(
             await queue_build(JobQueue(manager), conn, project_id, project, None)
 
 
+async def _go_on(engine, manager, project_id: int, project: str, coverage: dict | None) -> None:
+    """Queue the next build of a project whose entities step stopped at its ceiling after reading items
+    (``entity_mapping.goes_on``), so the rest is read now rather than after the next push; a busy queue leaves it to
+    that push, and a build that read nothing queues none."""
+    from evo_agents.kg.entity_mapping import goes_on
+
+    if manager is None or not goes_on(coverage):
+        return
+    try:
+        async with engine.begin() as conn:
+            await queue_build(JobQueue(manager), conn, project_id, project, None)
+    except QueueBusy:
+        log.warning(
+            "kg build to go on with the entities step not queued: the queue was busy", extra={"project": project}
+        )
+
+
 async def _entity_key(conn: AsyncConnection, context, project_id: int, tuning) -> tuple[dict, str | None]:
     """The key of the entities step's url model, opened from a member's secret by the server's finder the ``hub worker``
     command hands down (``HubContext.entity_key``, ``evo_agents.hub.server.kg_entity_key.find``), and the secret's
@@ -729,6 +746,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             entities_coverage["key_from"] = key_from
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)
+        await _go_on(engine, manager, project_id, project, built.coverage)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop
         await asyncio.shield(_stopped(engine, digest, len(ingests), build_id, project_id, project, manager))
         log.warning("kg build stopped with the worker", extra={"project": project, "build_id": build_id})
