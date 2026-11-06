@@ -1582,6 +1582,27 @@ message, in a sandboxed frame. It is an output of the run like any other (Output
   window, with four methods: `context` (the theme and the language), `resize` (the height the page asks, within
   bounds), `sendPrompt({ text })` and `openLink({ url })`, which opens an https URL in a new tab with noopener and
   noreferrer.
+- **The wire of `evo-answer/1`.** The page posts `parent.postMessage({bridge: "evo-answer/1", id, method, params},
+  "*")`; the web answers `{bridge, id, result}` or `{bridge, id, error: {code, message, status?}}`, posted to that
+  frame's window only, and posts `{bridge, event: "theme", theme}` when the viewer's theme changes. `context` gives
+  `{bridge, theme, locale}`; `resize({height})` gives the height kept, from 120 to 1600 px (the frame starts at 320);
+  `sendPrompt({text})` gives `{message_id}`; `openLink({url})` gives `{opened: true}` for an https URL without
+  credentials. Error codes: `unsupported_bridge`, `invalid_request`, `unknown_method` (any other method),
+  `invalid_params`, `busy` (a question of this frame is still being sent), `rate_limited` (status 429: 6 questions of
+  a frame in 60 seconds, the hub's own limit per person on top), `hub_refused` (with the hub's status) and
+  `hub_unavailable`. The web code is `web/src/components/chats/answer-bridge.ts` and `interactive-answer.tsx`.
+- **Helper and tokens.** In a chat that is not restricted, a page loads the hub's helper and the plugin UI kit's
+  tokens from `'self'`: `<link rel="stylesheet" href="/v1/plugin-ui/kit/1/evo-ui.css">` and `<script
+  src="/v1/plugin-ui/kit/1/evo-answer.js"></script>`. The helper gives `window.evoAnswer` (`ready`, a promise of the
+  context; `sendPrompt(text)`, `openLink(url)`, `resize(height?)`, `onTheme(listener)`, `call(method, params)`), puts
+  the theme on `<html>` as class `dark`, which `evo-ui.css` reads, sets `<html lang>`, and keeps the frame's height
+  to the page's own (`<html data-evo-resize="off">` turns that off). A restricted chat serves the answer under
+  `HTML_POLICY`, which allows no `'self'`: there the page posts the messages above itself and brings its own styles.
+- **On the web.** The frame sits under the message's text (web/DESIGN.md, Chats), `sandbox="allow-scripts"` and
+  never `allow-same-origin`, and loads only once its message comes within 600 px of the viewport, after a read of
+  its URL that the hub answered with 200 (a refusal shows an error with Try again). Before it loads it shows a
+  skeleton. The run page and a question show the same file as any HTML output; Telegram and the mobile app show the
+  text only.
 - **Asking from an answer.** `sendPrompt` posts the viewer's message: `POST /v1/chats/{id}/messages` with
   `from_answer`, the answer's output id, and 1 to 4000 characters of text after trimming
   (`chats.MAX_ANSWER_PROMPT_CHARS`). The hub checks that a message of this chat carries the answer and that the sender

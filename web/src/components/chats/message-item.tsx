@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { AgentMenu } from "./agent-menu";
 import { messageDocs } from "./doc-model";
 import { AuthorAvatar, NO_COLOUR } from "./faces";
+import { InteractiveAnswer, isInteractiveAnswer } from "./interactive-answer";
 import type { Quote } from "./line-model";
 import { MessageHead, ReplyQuote, ThreadSummary } from "./message-parts";
 import { MessageLinks, MessageRuns } from "./message-links";
@@ -69,7 +70,8 @@ const ACTIONS = {
 /**
  * One message of a chat as a chat app draws it (web/DESIGN.md, Chats): the visitor's own on the right in a `brand-soft`
  * bubble with no face; anyone else's on the left in a `muted` bubble after their face and name, shown once for messages
- * that run on. The text is Markdown that is never HTML, the chat's members it names marked without their `@`; under the bubble, the files of its run it carries (an agent's,
+ * that run on. The text is Markdown that is never HTML, the chat's members it names marked without their `@`; under the bubble, its interactive answers in their
+ * sandboxed frames (`interactive-answer.tsx`, the message then as wide as its column allows), the files of its run it carries (an agent's,
  * as chips that open the viewer, the bytes served to who reads the message), where it leads (its pull requests, a mention
  * the hub refused), how far each run it handed work to is (`message-progress.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
@@ -82,6 +84,9 @@ export function MessageItem(props: Props) {
   const tFiles = useTranslations("outputs.strip");
   const tAttach = useTranslations("attachments");
   const attached = linkedFiles(message.attachments, message.created_at);
+  const outputs = message.outputs ?? [];
+  const answers = outputs.filter(isInteractiveAnswer);
+  const files = answers.length ? outputs.filter((output) => !isInteractiveAnswer(output)) : outputs;
   const format = useFormatter();
   const marks = useMemo(() => chatMentionMarks(chat), [chat]);
   const mine = isMine(message.author, me);
@@ -114,7 +119,7 @@ export function MessageItem(props: Props) {
       )}
     >
       {mine ? null : runOn ? <span className="w-8 shrink-0" aria-hidden="true" /> : <Face author={message.author} />}
-      <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side])}>
+      <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side], answers.length > 0 && "w-full")}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
         {quote && onQuote ? <ReplyQuote quote={quote} me={me} marks={marks} onShow={onQuote} /> : null}
         {message.body || !attached.length ? (
@@ -137,8 +142,11 @@ export function MessageItem(props: Props) {
             </SafeMarkdown>
           </div>
         ) : null}
+        {answers.map((output) => (
+          <InteractiveAnswer key={output.id} chatId={message.chat_id} output={output} />
+        ))}
         <OutputStrip outputs={attached} label={tAttach("files")} className={cn(mine && "justify-end")} testId="message-attachments" />
-        <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
+        <OutputStrip outputs={files} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <DocButtons files={messageDocs(message)} className={cn(mine && "justify-end")} />
         <MessageLinks message={message} />
         <MessageProgress progress={message.progress} />

@@ -1071,7 +1071,17 @@ Shared pieces built on them:
   table scrolling inside it. A member of the chat the text names is marked (`lib/mention-marks.ts`): an agent's
   `@handle` shows as its name, a person's `@login` or bare login as the login, never with the `@`, `medium` in `brand`
   on a tint of it, `radius-xs`; text in code, a link or a path keeps the name as written. A one-line preview of a
-  message (the list of chats, a reply's quote, the composer's Replying to) drops the `@` of the members it mentions too. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: a
+  message (the list of chats, a reply's quote, the composer's Replying to) drops the `@` of the members it mentions too. Right under the bubble, an interactive answer (an HTML output its
+  agent marked; docs/hub.md, Interactive answers) shows as the page itself (`interactive-answer.tsx`): a frame
+  `sandbox="allow-scripts"`, never `allow-same-origin`, the column's full width (the message then takes all of its
+  42 rem), in a `card` box with a border and `radius-lg`, 320 px tall at first and then as tall as the page asks
+  through the bridge `evo-answer/1` (`answer-bridge.ts`), from 120 to 1600 px; under it a caption in `xs`
+  `muted-foreground` with `Sparkles`, "Interactive answer: name". It loads only once its message comes within 600 px
+  of the viewport, a skeleton in its place until the page loaded, and a read the hub refused shows an alert line with
+  `TriangleAlert` and Try again. A page that asks the agent (`sendPrompt`) sends the viewer's message into the
+  answer's thread, where it shows as any of theirs; a failure is the hub's error toast. The same HTML not marked stays
+  a chip that opens the viewer. It looks right in light and dark (the bridge gives the theme; the plugin kit's
+  `evo-ui.css` gives the tokens) and at 375 px. Then, on its side: square chips for where it leads (`message-links.tsx`: a
   mention the hub refused in `attention` with the
   hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
   that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite
