@@ -18,6 +18,7 @@ hub a strategy is the `strategy` key of the project's KG settings.
 | `entity-graph` | prose to look at as a graph of entities and relations | the keys of `documents`, the entities step in its `lightrag` style on Claude Code, the walk |
 | `entity-graph-api` | the same prose, on the hub | `entity-graph` with the entities step calling OpenRouter from the build, reasoning off |
 | `entity-graph-agent` | prose and code, on the hub | entities read by an agent run that posts an entity map; the build reads the maps and calls no model |
+| `entity-graph-all` | every text of a project, on the hub | the entities step of `entity-graph-api` over documents, plans, hub records, chat messages, emails, memories, commits and pull requests, with the maps of `entity-graph-agent` for the code |
 
 The built-in files live in `evo_agents/kg/strategies/`.
 
@@ -339,6 +340,24 @@ evo-agents kg bench run ... --settings candidate.json
 ```
 
 Being a query key, it takes effect at once, and on the hub it can be measured on the newest build before it is kept.
+
+## The entity-graph-all strategy
+
+`entity-graph-all` puts everything a project holds as text into one graph of entities. It runs both steps in each
+build:
+
+- `entities`, the mapping of `entity-graph-api` (OpenRouter, `anthropic/claude-haiku-5.5`, sink `llm`, style
+  `lightrag`, reasoning off), over the item kinds of every class that holds text: the prose kinds, `plan`, `ticket`,
+  `record`, chat `message`, `email`, `memory`, `commit` and `pr`. Code is left to the map's agent, binaries hold no text;
+- `entity_map`, as `entity-graph-agent` has it: the maps a Curator run posts tie entities to the directories, files and
+  symbols that implement them. The node kinds are `entity-graph-agent`'s, `Component` and `Feature` included.
+
+The mapping's model, kinds, relations, style, reasoning and `max_chars` are those of `entity-graph-api`, so its digest is
+the same and a project moving from `entity-graph-api` keeps the answers its memo holds. Its ceilings are higher
+(`max_calls` 1,000, `max_tokens` 3,000,000, `max_cost` 5.0, `jobs` 8 per build), and on the hub a build whose step
+stopped at its ceiling after at least one answer (`entity_mapping.goes_on`) queues the next build at once, until every
+item is read. A build that stopped for another reason, or that read nothing, queues none, so the chain cannot loop.
+This applies to every strategy with the `entities` step, not only this one.
 
 ## The Curator and prose
 

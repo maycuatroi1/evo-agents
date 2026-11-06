@@ -3,8 +3,8 @@
 ``check`` reads the setting and says what is wrong with it, ``enabled`` gives the mapping a strategy turns on,
 ``Spend`` counts one build's calls, tokens and cost against the ceiling, and ``prompt`` and ``parse_answer`` are the
 question a model gets and the reading of its answer, ``quoted`` and ``quote_line`` the reading of a quote it gives.
-``evo_agents.kg.entities`` imports each name it uses from here, so
-callers keep reading them there.
+``goes_on`` says whether a build stopped at the ceiling after reading items, so the next one should follow at once.
+``evo_agents.kg.entities`` imports each name it uses from here, so callers keep reading them there.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ DEFAULT_MAX_COST = 5.0
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 STYLES = ("closed", "lightrag")
 OTHER = "Other"  # the kind of a lightrag entity whose type is none of the mapping's node kinds
+CEILING = "the ceiling of this build was reached"  # how coverage["entities"]["stopped"] starts at the ceiling
 MAX_EVIDENCE = 200
 QUOTE_JOIN = " … "  # between the quotes of a model that gave its evidence as a list of them
 # How a lightrag answer is read, part of its mapping's digest (``entities.config_digest``): raising it asks the memo's
@@ -272,3 +273,12 @@ def prompt(text: str, node_kinds: list[str], relations: list[str], style: str | 
         'quote of the text and conf is between 0 and 1. A node may add "aliases": the other names the text gives it. '
         "Leave out what the text does not say.\n\nTEXT:\n" + text
     )
+
+
+def goes_on(coverage: dict | None) -> bool:
+    """Whether the entities step of a build with ``coverage`` stopped at its ceiling after at least one answer: items
+    are left that a build may read at once, and the build made headway, so queueing the next one cannot loop."""
+    found = (coverage or {}).get("entities") or {}
+    stopped = found.get("stopped")
+    calls, failed = int(found.get("calls") or 0), int(found.get("failed") or 0)
+    return isinstance(stopped, str) and stopped.startswith(CEILING) and calls > failed
