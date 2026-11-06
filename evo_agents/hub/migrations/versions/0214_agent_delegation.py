@@ -1,7 +1,7 @@
 """A chat run that another agent's run asked for: runs.spawned_by_run_id and runs.spawned_wait_id.
 
 Revision ID: 0214
-Revises: 0212
+Revises: 0213
 Create Date: 2026-11-06
 
 The agent of a chat run asks an agent of another project with `evo-agents worker agent ask` (plan chat-first-home,
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0214"
-down_revision = "0212"
+down_revision = "0213"
 branch_labels = None
 depends_on = None
 
