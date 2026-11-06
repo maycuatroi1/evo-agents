@@ -86,9 +86,10 @@ JUDGE_ATTEMPTS = 3  # judge runs of one change that end without a verdict before
 JUDGE_KEY_HEADER = "X-Evo-Judge-Key"  # a judge run's own credential, which its claim hands the daemon alone
 SETUP_EXITS = frozenset({2, 126, 127})  # what a check that could not set up or start exits with: usage, not found
 SETUP_MS = 5000  # a failed check this fast with one of SETUP_EXITS most likely never reached the change
-# Said to the Judge of a merge check after what the worker ran when the diff showed signs of score hacking.
+# Said to the Judge of a merge check, or of the queue after an admin passed gate 3, after what the worker ran when the
+# diff showed signs of score hacking.
 WEIGH_SIGNS = (
-    "\nThe signs of score hacking above do not fail the pull request by themselves: weigh each against the plan. "
+    "\nThe signs of score hacking above do not fail the change by themselves: weigh each against the plan. "
     "A sign the plan asks for (an acceptance criterion or a step that changes a golden file, a verify command or a "
     "test's expectations) is no finding; a sign the plan does not ask for is a finding of its dimension, with the "
     "path, and fails it.\n"

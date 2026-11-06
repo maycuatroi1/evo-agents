@@ -138,6 +138,64 @@ def test_merge_pass_a_new_push_takes_the_pass_back(world):
     assert gate_pass(world) == {"judging": 1}
 
 
+def unweighed(signs: list[dict]) -> dict:
+    """What a worker posts when its signs fail the change unjudged: no agent, no dimensions, no security pass."""
+    return {"verdict": None, "reasons": None, "signs": signs, "dimensions": None, "security": None}
+
+
+CI_SIGN = {"kind": "ci_changed", "path": ".gitlab-ci.yml", "line": None, "text": "the pipeline changed"}
+WORKER_HELD = "gate 3 (score hacking): the worker's reading of the diff shows signs of score hacking"
+
+
+def test_merge_pass_the_judge_weighs_the_signs_the_pass_covers_and_gate_3_holds_no_more(world):
+    """An admin passed gate 3 at the head: the judge run's claim says so (``signs_passed``), its Judge weighs the
+    signs against the plan, and the hub takes the verdict past gate 3 to the Judges' own gates. A worker from before
+    that release still fails the signs unjudged: the hub holds the merge request at gate 3 again and says why, and that
+    verdict does not hold for the patch, so the next pass has the Judge judge it instead of failing it at gate 5."""
+    merge_request, entry = held_at_gate_3(world)
+    assert pass_hold(world, entry["id"]).status_code == 200
+    assert gate_pass(world) == {"judging": 1}
+    spec, answer = judged(world, head=merge_request.sha, extra=unweighed([CI_SIGN]))  # a worker before the release
+    assert spec["curator"]["signs_passed"] is True and answer["passed"] is False
+    entry = one(world)
+    assert entry["state"] == "blocked" and entry["reason"].startswith(f"{WORKER_HELD} (ci_changed), and its Judge did")
+    assert "an admin passed gate 3 at this head" in entry["reason"]
+
+    assert pass_hold(world, entry["id"], "The worker weighs them now.").status_code == 200
+    assert gate_pass(world) == {"judging": 1}, "the held verdict does not hold for the patch: the Judge judges it"
+    weighed = {"signs": [CI_SIGN], "signs_weighed": True}
+    spec, answer = judged(world, head=merge_request.sha, extra=weighed)
+    assert spec["curator"]["signs_passed"] is True and answer["passed"] is True
+    entry = one(world)
+    assert (entry["state"], entry["reason"]) == ("judging", "gate 7 (second Judge): waits for the second Judge")
+    assert [e["gate"] for e in entry["events"] if e["kind"] == "gate" and e["passed"]][:3] == [6, 5, 4]
+    assert gate_pass(world) == {"judging": 1}
+    _, answer = judged(world, head=merge_request.sha, names=merge_gate.RISK_DIMENSIONS, extra=weighed)
+    assert answer["state"] == "ready"
+
+
+def test_merge_pass_without_a_pass_the_workers_signs_hold_at_gate_3_and_a_pass_has_the_judge_judge(world):
+    """The hub's reading of the diff found no sign and the worker's did (a diff longer than GitLab shows): no pass
+    covers the head, so the claim says nothing of one and the signs hold the merge request at gate 3, a hold for a
+    person, even when the worker says it weighed them. Once an admin passes that hold, the Judge judges the patch
+    with the signs weighed, and its verdict passes gate 3."""
+    plan_done(world)
+    assert gate_pass(world) == {"opened": 1}
+    (merge_request,) = world.project.merge_requests.values()
+    green(world, merge_request)
+    assert gate_pass(world) == {"judging": 1}
+    unreadable = {"kind": "diff_unreadable", "path": "(the diff)", "line": None, "text": "the diff is too long"}
+    spec, answer = judged(world, head=merge_request.sha, extra={"signs": [unreadable], "signs_weighed": True})
+    assert spec["curator"]["signs_passed"] is False and answer["passed"] is False
+    entry = one(world)
+    assert (entry["state"], entry["reason"]) == ("blocked", f"{WORKER_HELD} (diff_unreadable)")
+
+    assert pass_hold(world, entry["id"], "The lockfile alone makes the diff long.").status_code == 200
+    assert gate_pass(world) == {"judging": 1}
+    spec, answer = judged(world, head=merge_request.sha, extra={"signs": [unreadable], "signs_weighed": True})
+    assert spec["curator"]["signs_passed"] is True and answer == {**answer, "passed": True, "state": "ready"}
+
+
 def test_merge_pass_a_hold_a_person_merges_on_gitlab_leaves_the_queue_with_the_merge_in_its_ledger(world):
     merge_request, entry = held_at_gate_3(world)
     merge_request.state, merge_request.merge_commit_sha = "merged", sha_of("merged by hand on GitLab")

@@ -6,9 +6,12 @@ The merge request goes back to ``gating`` at the same head; its ledger has a lin
 admin and the reason (the key PERSON of its detail), and the audit says merge.pass. The job's next pass reads its gates
 again at that head (``evo_agents.hub.server.merge_gate``): gate 3 lets the signs through for the pass (``passes``),
 and the risk, the checks and the Judges (unless their verdicts hold for the patch), its turn, the pipeline at its
-rebased head and the merge still apply. At the rebased head (``evo_agents.hub.server.merge_turn``) gate 3 lets the
-signs through again while the patch is the one the gates passed. A new head (a push of someone else, or a rebase that
-changed the patch: the ledger's ``head``) takes the pass back, and the hold it comes to again needs a new pass.
+rebased head and the merge still apply. The Judge's claim says the pass covers the head it judges (``covers``), so
+the worker's Judge weighs the signs against the plan (``judge.WEIGH_SIGNS``) instead of failing the change unjudged,
+and the hub takes its verdict past gate 3 on the signs of that patch. At the rebased head
+(``evo_agents.hub.server.merge_turn``) gate 3 lets the signs through again while the patch is the one the gates passed.
+A new head (a push of someone else, or a rebase that changed the patch: the ledger's ``head``) takes the pass back,
+and the hold it comes to again needs a new pass.
 """
 
 from __future__ import annotations
@@ -92,6 +95,17 @@ async def standing(conn: AsyncConnection, row_id: int, gate: int) -> Pass | None
     if (await conn.execute(select(later))).scalar_one():
         return None
     return Pass(found.id, found.sha, str(found.detail.get(PERSON)), found.reason or "")
+
+
+async def covers(conn: AsyncConnection, row) -> Pass | None:
+    """The admin's pass of gate 3 that covers the signs of score hacking at the head of merge request ``row``, the one
+    its Judge judges: a pass that still holds and was given at that head; None without one. Its judge run is told so
+    (``merge_judge.merge_claim``, ``signs_passed``): the Judge weighs the signs against the plan instead of failing the
+    change unjudged, and the hub does not hold it at gate 3 again on the worker's reading of the same patch."""
+    found = await standing(conn, row.id, 3)
+    if found is None or row.head_sha is None or found.sha != row.head_sha:
+        return None
+    return found
 
 
 async def passes(

@@ -159,8 +159,16 @@ reads the diff and passes the hold with a reason (`evo-agents hub merge pass REP
 .../merge-queue/{id}/pass`). The merge request is gated again at the same head and the queue goes on from that gate:
 the risk, the checks, the Judges (unless their verdict holds for the patch), its turn, the pipeline at its rebased head
 and the merge all still apply, and at the rebased head gate 3 lets the signs through while the patch is the one the
-gates passed. A new push, or a rebase that changes the patch, takes the pass back, and the hold it comes to again needs
-a new pass. The ledger has the pass as a line of gate 3 passed that names the admin and the reason, and the gate's
+gates passed. The judge run's claim says that an admin passed gate 3 at the head it judges (`signs_passed`), so the
+worker's Judge starts and weighs each sign against the plan, as a merge check's Judge does: a sign the plan asks for is
+no finding, and one it does not ask for fails its dimension. Its verdict says it weighed them (`signs_weighed`), and the
+hub takes it on to gates 4 to 7 instead of holding the merge request at gate 3 again on the worker's reading of the
+same patch. Without a pass at that head, the signs the worker finds still hold the merge request at gate 3, even those
+the hub's own reading missed (a diff longer than GitLab shows), and a verdict held there does not count as the
+Judges' for the patch: once an admin passes that hold, the Judge judges the patch. A worker that predates
+`signs_passed` still fails the signs unjudged after a pass; the hub then holds the merge request at gate 3 again and
+says its Judge did not weigh them. A new push, or a rebase that changes the patch, takes the pass back, and the hold it
+comes to again needs a new pass. The ledger has the pass as a line of gate 3 passed that names the admin and the reason, and the gate's
 line at the next pass names the pass; the audit says `merge.pass`. Any other block moves only with a new push, and a
 revert's gate 3 (its diff undoing the merge) is passed by no person. The hub's comment on a merge request held at gate
 3 says that an admin may pass it, and the decision board's item of a held merge request says how it goes on.

@@ -961,17 +961,26 @@ async def judge_run_title(conn: AsyncConnection, run_id: int, plan_id: str | Non
 
 def next_round(verdict: dict | None, risk: dict | None) -> str:
     """What the Judges' ``verdict`` for a patch whose risk is ``risk`` calls for next: ``first`` (the Judge),
-    ``second`` (the second Judge, for a high risk), ``ready`` (both said what they had to), or ``failed``."""
+    ``second`` (the second Judge, for a high risk), ``ready`` (both said what they had to), or ``failed``. A round its
+    signs held at gate 3 (``held_by_signs``) is still to come."""
     first, second = (verdict or {}).get("first"), (verdict or {}).get("second")
-    if first is None:
+    if first is None or held_by_signs(first):
         return "first"
     if not first.get("passed"):
         return "failed"
     if not (risk or {}).get("high"):
         return "ready"
-    if second is None:
+    if second is None or held_by_signs(second):
         return "second"
     return "ready" if second.get("passed") else "failed"
+
+
+def held_by_signs(entry: dict) -> bool:
+    """Whether a Judge's ``entry`` of the verdict held the merge request at gate 3: the worker's reading of the diff
+    showed signs of score hacking no Judge weighed (``merge_judge._close_gates``), so no later gate read it and its
+    agent most often never started. Once an admin passes that hold, the Judge judges the patch: the entry does not hold
+    for it (before, the second pass of such a hold failed gate 5 on the entry, and only a merge by hand moved it)."""
+    return bool(entry.get("signs")) and entry.get("signs_weighed") is not True
 
 
 async def older(conn: AsyncConnection, moment: datetime, span: timedelta = OPEN_RETRY) -> bool:

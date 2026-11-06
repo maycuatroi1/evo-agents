@@ -32,6 +32,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
+from evo_agents.hub import judge
 from evo_agents.worker import credentials, gitops, interactive
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.runtimes import claude_code
@@ -182,6 +183,56 @@ def test_judge_run_finding_memory_posts_the_findings_and_marks_of_a_merge_reques
         {"dimension": "tests", "path": "src/wait.py", "line": 3, "text": "no test of the timeout"}
     ]
     assert sent["prior"] == {"F1": {"status": "fixed", "where": "src/wait.py:9", "reason": ""}}
+
+
+MERGE_REQUEST = {
+    "change_id": None,
+    "forge": "gitlab",
+    "pr_url": "https://gitlab.example.org/northwind/alpha/-/merge_requests/3",
+}
+SIGNED = {"curator.yaml": "protected: changed\n", "tests/test_wait.py": TEST_FILE}  # a protected path: a sign
+
+
+def test_judge_run_of_a_merge_request_whose_gate_3_an_admin_passed_weighs_the_signs(machine):  # noqa: F811
+    """An admin passed gate 3 of the merge request at the head judged, and its claim says so (``signs_passed``): the
+    Judge starts and weighs each sign against the plan, as a merge check's does, and the verdict says it weighed them.
+    Before, the run failed the merge request unjudged after the pass, and the hub held it at gate 3 again."""
+    head = change_branch(machine, SIGNED)
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, []), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "The plan asks for that file."}'}],
+        claim={**MERGE_REQUEST, "signs_passed": True},
+    )
+    hub, run_id = found["hub"], found["run"]
+    (sent,) = hub.verdicts
+    assert (sent["route"], sent["verdict"], sent["signs_weighed"]) == ("merge-verdict", "pass", True)
+    assert [item["kind"] for item in sent["signs"]] == ["protected_path"]
+    assert sent["security"] is not None, "the security pass ran on the change judged"
+    texts = hub.texts(run_id)
+    assert any("an admin passed gate 3 at this head, so the Judge weighs each against the plan" in t for t in texts)
+    (start,) = [item for item in machine.starts() if item["run"] == run_id][:1]
+    assert judge.WEIGH_SIGNS.strip() in start["prompt"]
+
+
+def test_judge_run_of_a_merge_request_with_no_pass_of_gate_3_fails_its_signs_unjudged(machine):  # noqa: F811
+    head = change_branch(machine, SIGNED)
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, []), "queue_id": 3},
+        [{"say": '{"verdict": "pass", "reasons": "Should not be asked."}'}],
+        claim=MERGE_REQUEST,
+    )
+    hub, run_id = found["hub"], found["run"]
+    (sent,) = hub.verdicts
+    assert (sent["verdict"], sent["signs_weighed"], sent["security"]) == (None, False, None)
+    assert [item["kind"] for item in sent["signs"]] == ["protected_path"]
+    texts = hub.texts(run_id)
+    assert any("the change fails, and its Judge does not start" in text for text in texts), texts
+    started = machine.starts() if machine.starts_path.exists() else []
+    assert not [item for item in started if item["run"] == run_id], "no Judge's agent started"
 
 
 def test_judge_run_kills_what_a_command_left_and_reads_no_verdict_file(machine):  # noqa: F811

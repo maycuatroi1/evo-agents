@@ -2868,6 +2868,15 @@ the merge base, the results, the signs and the paths the diff touches (`POST /v1
 decides whether the change passed. The run then ends `done`, pushing nothing (`gitops.check_push` refuses every push
 of a judge run). `evo-agents worker step`, `ask`, `notify`, `finding` and `propose` refuse inside a judge run.
 
+A judge run of the hub's merge queue on GitLab, or of a merge check of a pull request on GitHub
+([merge-queue.md](merge-queue.md)), names no change: it reads its inputs from `GET /v1/worker/runs/{id}/merge-judge`
+and posts its verdict, with what the Judge said of each dimension, to `POST /v1/worker/runs/{id}/merge-verdict`. A
+merge check's claim says `merge_result`, and its Judge weighs the signs of score hacking against the plan
+(`judge.WEIGH_SIGNS` closes its prompt) instead of the signs failing the change unjudged. A merge request of the queue
+gets the same when its claim says `signs_passed`: an admin passed its gate 3 at the head the run judges. The log then
+says so, the agent and the security pass run, and the verdict says `signs_weighed: true`. Without `signs_passed`, a
+sign fails the merge request unjudged, as it fails the Curator's change, and the hub holds it at gate 3 for a person.
+
 ### A replay run on the machine
 
 A replay run (kind `replay`) does one step of the project's history again, to measure a change of the Curator
