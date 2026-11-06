@@ -22075,6 +22075,86 @@
         "schema": "Run"
       }
     },
+    "hub run watch": {
+      "positionals": [
+        {
+          "name": "runs",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "queued",
+            "leased",
+            "running",
+            "interactive",
+            "verifying",
+            "waiting",
+            "review",
+            "parked",
+            "done",
+            "failed",
+            "lost",
+            "cancelled",
+            "idle",
+            "ended"
+          ]
+        },
+        {
+          "flags": [
+            "--no-decisions"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--for"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 360
+        },
+        {
+          "flags": [
+            "--every"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 60
+        }
+      ],
+      "json": null
+    },
     "hub run-cause": {
       "positionals": [
         {

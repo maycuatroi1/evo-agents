@@ -40,6 +40,8 @@ REFUSED = [
     "gh pr checks 12 --watch --required",
     "evo-agents hub run logs 1538 --project evo-agents --follow",
     "evo-agents hub run logs 1538 -f",
+    "evo-agents hub run watch 2320 2321 --plan chat-first-home:5 --for 360",
+    "evo-ak hub run watch --plan rollout",
     "watch -n 30 evo-agents hub run show 1538",
     "timeout 3600 bash -c 'until curl -fsS https://pypi.org/pypi/evo-ak/0.55.4/json; do sleep 60; done'",
     "nohup sh -c 'while true; do gh pr checks 5; sleep 20; done' &",
