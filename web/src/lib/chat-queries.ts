@@ -108,6 +108,16 @@ export async function sendChatMessage(api: ApiClient, id: number, body: string, 
   return call(api.POST("/v1/chats/{chat_id}/messages", { params: { path: { chat_id: id } }, body: payload, headers }));
 }
 
+/**
+ * Send `body` as the visitor's question from interactive answer `output` (an output a message of the chat carries):
+ * the hub puts it in that message's thread and hands it to the agent that wrote the answer (docs/hub.md, Interactive
+ * answers).
+ */
+export async function sendAnswerPrompt(api: ApiClient, id: number, output: number, body: string): Promise<GroupMessage> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/chats/{chat_id}/messages", { params: { path: { chat_id: id } }, body: { body, from_answer: output }, headers }));
+}
+
 /** Put the visitor's emoji on a message, or take it off. */
 export async function toggleReaction(api: ApiClient, id: number, message: number, emoji: string, on: boolean): Promise<GroupMessage> {
   const headers = await csrfHeaders(api);

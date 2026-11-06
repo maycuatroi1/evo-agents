@@ -28,6 +28,9 @@ chat_bridges holds each link (the plugin, the kind of channel, the group's id th
 keeps, who linked it and who unlinked it, from where), chat_bridge_codes the one-time codes a chat admin links one
 with, chat_bridge_messages the group's id of each message a bridge carried in or out; chat_messages takes ``via``, the
 kind of channel a message came in by. ``bridge_tables`` adds them.
+
+Revision 0213 gives chat_messages ``from_output_id``, the interactive answer (an output of a run) a person sent the
+message from, which the message keeps as its source and the hub's rate limit counts (``chat_answers``).
 """
 
 from __future__ import annotations
@@ -126,11 +129,13 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         Column("label", JSONB, nullable=False),
         _stamp("created_at"),
         Column("via", Text),  # 0165: the kind of channel it came in by, from a bridged group
+        Column("from_output_id", BigInteger),  # 0213: the interactive answer a person sent it from
         _fk("chat_messages", "chat_id", "chats.id", ondelete="CASCADE"),
         _fk("chat_messages", "thread_root_id", "chat_messages.id", ondelete="CASCADE"),
         _fk("chat_messages", "author_user_id", "users.id", ondelete="RESTRICT"),
         _fk("chat_messages", "author_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
         _fk("chat_messages", "run_id", "runs.id", ondelete="SET NULL"),
+        _fk("chat_messages", "from_output_id", "run_outputs.id", ondelete="SET NULL", use_alter=True),  # 0213
         PrimaryKeyConstraint("id", name="chat_messages_pkey"),
         UniqueConstraint("chat_id", "seq", name="chat_messages_seq_key"),
     )
@@ -139,6 +144,12 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         messages.c.thread_root_id,
         messages.c.id,
         postgresql_where=messages.c.thread_root_id.is_not(None),
+    )
+    Index(  # 0213: the messages a person sent from interactive answers, which the hub's rate limit counts
+        "chat_messages_from_answer_idx",
+        messages.c.author_user_id,
+        messages.c.created_at,
+        postgresql_where=messages.c.from_output_id.is_not(None),
     )
     mentions = Table(
         "chat_mentions",

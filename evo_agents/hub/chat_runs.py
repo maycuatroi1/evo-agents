@@ -34,8 +34,9 @@ threads, the person's messages and the agent's answers in them. In a settle chat
 every message of a person wakes the agent without an @. Its rules tell the agent to do the whole of what it is asked,
 the steps on the way too, and to ask only what changes what it builds or comes before what cannot be undone, all
 questions in one reply; and that a secret seen in the run's own log stays on the hub, so it warns of none and asks no
-rotation unless the secret left the hub. The profile's instructions reach the agent through its system prompt
-(``evo_agents.worker.runtimes.profiles``), not this prompt.
+rotation unless the secret left the hub. They say when and how to answer with an interactive answer, with libraries
+from the CDNs only in a chat that is not restricted (``interactive_rules``). The profile's instructions reach the agent
+through its system prompt (``evo_agents.worker.runtimes.profiles``), not this prompt.
 
 The run works in a writable worktree of each repo of its project the worker has a checkout of, all on the branch
 ``chat/<id>``, the id of the first run of its session (``branch_of``). On a daemon that lists ``runs.LAZY_CHAT_REPOS``
@@ -66,7 +67,9 @@ import re
 from datetime import datetime
 
 from evo_agents.hub.chats import DIRECT as DIRECT_KIND
+from evo_agents.hub.chats import MAX_ANSWER_PROMPT_CHARS
 from evo_agents.hub.chats import SETTLE as SETTLE_KIND
+from evo_agents.hub.outputs import CDN_HOSTS, MAX_INTERACTIVE_BYTES
 from evo_agents.hub.run_prompts import OUTPUTS_RULE
 from evo_agents.hub.runs import (
     MAX_MESSAGE_BYTES,
@@ -118,6 +121,51 @@ MENTION_COMMAND = "evo-agents worker chat mention"
 CREATE_COMMAND = "evo-agents worker chat create"
 COMMANDS = ("post", "react", "create", "mention", "read")  # under `evo-agents worker chat`
 COMMAND_KINDS = ("step", "plan", "author", "chat")  # the kinds of run whose agent uses them
+
+# When and how an agent answering in a hub chat answers with a page of its own (docs/hub.md, Interactive answers):
+# INTERACTIVE_RULE, then INTERACTIVE_CDN_RULE in a chat that is not restricted or INTERACTIVE_NO_CDN_RULE in one that is
+# (``interactive_rules``). Any prompt of an agent that answers in a chat says the same; the skill interactive-answers of
+# the plugin evo-hub has the long form.
+ANSWER_BRIDGE = "evo-answer/1"
+INTERACTIVE_RULE = (
+    "- Answer with an interactive answer, a small HTML page you write, when a comparison, figures, a diagram of how "
+    "something works or a calculator helps the reader more than text; answer a direct question in text alone. Write "
+    f"one HTML file, its CSS and script inline, of at most {MAX_INTERACTIVE_BYTES // 1024 // 1024} MiB, and send it "
+    f"with `{POST_COMMAND} TEXT --attach answer.html --interactive`: the chat shows it under TEXT in a sandboxed frame "
+    "with no origin, which reads no cookie and reaches no server, so put its data in the page and never fetch. TEXT "
+    "must stand alone, with the answer and its main figures: Telegram, notices and the mobile app show TEXT and no "
+    f"frame. The page talks to the chat by the bridge {ANSWER_BRIDGE}, whose methods are `context` (result "
+    "{bridge, theme: light or dark, locale}), `resize` ({height} in px after each change of layout; result {height}), "
+    f"`sendPrompt` ({{text}}, 1 to {MAX_ANSWER_PROMPT_CHARS} characters: asks you a follow-up in this thread, so put "
+    "the values the reader chose in it; result {message_id}) and `openLink` ({url}, https only, opens a new tab; "
+    "result {opened: true}). Use the hub's colour tokens and fonts, both themes, a width of 375 px and the keyboard; "
+    "check the bounds of every number and say which figures are assumptions. The skill evo-hub:interactive-answers "
+    "has the long form."
+)
+INTERACTIVE_CDN_RULE = (
+    "  In this chat the page may load scripts, styles, fonts and images from the hub itself and from "
+    + ", ".join(CDN_HOSTS)
+    + " only, each CDN URL pinning the library's exact version (as https://esm.sh/chart.js@4.4.1); nothing else "
+    "loads. Load the hub's tokens and bridge helper with "
+    '`<link rel="stylesheet" href="/v1/plugin-ui/kit/1/evo-ui.css">` and '
+    '`<script src="/v1/plugin-ui/kit/1/evo-answer.js"></script>`, then call '
+    "`window.evoAnswer`: `ready` (a promise of the context), `sendPrompt(text)`, `openLink(url)`, `resize(height?)`, `onTheme(fn)` and "
+    "`call(method, params)`, each a promise of the result; the helper sets the theme and the language on <html> and "
+    "keeps the frame's height."
+)
+INTERACTIVE_NO_CDN_RULE = (
+    "  This chat is restricted: the page loads nothing from outside, neither a CDN nor the hub's helper and tokens, so "
+    "inline what it needs or answer in text. Call the bridge yourself: post "
+    f'`parent.postMessage({{bridge: "{ANSWER_BRIDGE}", id, method, params}}, "*")` and take, from `parent` only, '
+    "`{bridge, id, result}` or `{bridge, id, error: {code, message}}`."
+)
+
+
+def interactive_rules(cdn: bool) -> list[str]:
+    """The rules of an interactive answer for an agent answering in a chat: with ``cdn`` (the chat is not restricted,
+    ``ChatAccess.restricted``) the page may load libraries from ``outputs.CDN_HOSTS``; without, from nowhere."""
+    return [INTERACTIVE_RULE, INTERACTIVE_CDN_RULE if cdn else INTERACTIVE_NO_CDN_RULE]
+
 
 # What the agent is told when people wrote to it in the thread while its turn was on: their messages follow.
 REPLY_PROMPT = (
@@ -323,6 +371,7 @@ def _rules(
     direct: bool = False,
     settle: bool = False,
     ships: bool = False,
+    cdn: bool = False,
 ) -> list[str]:
     turns = (
         [
@@ -368,6 +417,7 @@ def _rules(
         OUTPUTS_RULE + " A file you send so goes under your next message in this thread. To change a document of "
         "the chat (a Markdown file someone attached or sent), send the changed file under the same name: the chat "
         "reloads it as the document's next version and shows what changed.",
+        *interactive_rules(cdn),
         f"- Keep {RESULT_DIR}/ out of your commits. Before you end each turn, write {RESULT_FILE} as a JSON object "
         'whose "summary" says what you did, what you changed and what is left.',
     ]
@@ -422,6 +472,7 @@ def build_chat_prompt(
     harness: str | None = None,
     ships: bool = False,
     label: dict | None = None,
+    cdn: bool = False,
 ) -> str:
     """The prompt of a chat run of ``agent`` ({handle, name, project, description}) in ``chat`` ({id, title, people,
     agents, and kind: ``chats.DIRECT`` or ``chats.SETTLE`` for those}), woken by message ``trigger`` (as
@@ -434,7 +485,9 @@ def build_chat_prompt(
     (``autonomy_card.ships``: K5 and K6 auto for the run's principal), its rules let the agent push its branch and merge
     its pull request itself. With ``label`` ({level, default}: the chat's level set below the default level of the
     agent's project), its rules say messages of the chat may leave the hub at that level, so nothing above it goes
-    into them (``label_lines``)."""
+    into them (``label_lines``). With ``cdn`` (the chat is not restricted), its rules let an interactive answer load
+    libraries from ``outputs.CDN_HOSTS``; without, they say the page loads nothing from outside
+    (``interactive_rules``)."""
     handle = agent.get("handle") or "agent"
     people = ", ".join(chat.get("people") or []) or "none"
     agents = ", ".join(f"@{name}" for name in chat.get("agents") or []) or "none"
@@ -454,7 +507,7 @@ def build_chat_prompt(
         f"You are @{handle} ({agent.get('name') or handle}), an agent of project {agent.get('project')} on the "
         f"evo-agents hub, in {where} (#{chat.get('id')}). {about}".rstrip(),
         "",
-        *_rules(handle, login, branch, hop, lazy, harness, direct, settle, ships),
+        *_rules(handle, login, branch, hop, lazy, harness, direct, settle, ships, cdn),
         *label_lines(label, agent.get("project")),
         "",
         f"People of the chat: {people}. Agents: {agents}.",

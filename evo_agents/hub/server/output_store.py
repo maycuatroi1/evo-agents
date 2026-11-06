@@ -13,6 +13,10 @@ output it is, with the source of the two that is kept longer (``outputs.KEPT_ORD
 it had, or these when it had none. Each call that adds or changes outputs writes one ``system`` event in the run's log
 naming them (``outputs``: their ids), which wakes the run's streams.
 
+An output sent ``interactive`` is an interactive answer (``outputs.check_interactive``, checked by ``OutputIn`` so that
+whatever records outputs here holds the same rule: HTML of at most ``outputs.MAX_INTERACTIVE_BYTES``, else 422); a file
+the run holds sent again marked takes the mark, and one sent again unmarked keeps it.
+
 A question carries the outputs of its run that its ``output_ids`` name (``link_decision``), and a chat message of a
 run's agent those its ``output_ids`` name (``link_message``), never one of source tool there (422). A chat run's
 outputs that it sent or left in its outputs directory go under its messages besides: under the next message it posts,
@@ -29,7 +33,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import UUID4, BaseModel, Field, field_validator
+from pydantic import UUID4, BaseModel, Field, field_validator, model_validator
 from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -83,10 +87,21 @@ class OutputIn(BaseModel):
     upload_id: UUID4 | None = Field(
         None, description="the upload of its bytes (POST .../output-uploads); null when the project holds them already"
     )
+    interactive: bool = Field(
+        False,
+        description=f"an interactive answer: an HTML file of at most {outputs.MAX_INTERACTIVE_BYTES} bytes, which the "
+        "web shows inside the chat message that carries it; a file sent again marked keeps the mark",
+    )
 
     _name = field_validator("name")(outputs.check_name)
     _media_type = field_validator("media_type")(outputs.check_media_type)
     _caption = field_validator("caption")(outputs.check_caption)
+
+    @model_validator(mode="after")
+    def _interactive(self):
+        if self.interactive:
+            outputs.check_interactive(self.media_type, self.size)
+        return self
 
     @field_validator("tool_call_id")
     @classmethod
@@ -249,13 +264,15 @@ def _merged(row, item: OutputIn) -> dict:
         changed["caption"] = item.caption
     if row.tool_call_id is None and item.tool_call_id is not None:
         changed["tool_call_id"] = item.tool_call_id
+    if item.interactive and not row.interactive:  # checked against the item, whose bytes are the row's
+        changed["interactive"] = True
     return changed
 
 
 async def _write(conn: AsyncConnection, target: Target, items: list[OutputIn]) -> tuple[list[int], list[int]]:
     """(the ids of the outputs of ``items`` in their order, the ids added or changed) after writing them."""
     o = tables.run_outputs
-    query = select(o.c.id, o.c.sha256, o.c.source, o.c.caption, o.c.tool_call_id).where(
+    query = select(o.c.id, o.c.sha256, o.c.source, o.c.caption, o.c.tool_call_id, o.c.interactive).where(
         o.c.run_id == target.run_id, one_of(o.c.sha256, [item.sha256 for item in items])
     )
     held = {row.sha256: row for row in (await conn.execute(query.with_for_update())).all()}
