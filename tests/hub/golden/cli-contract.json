@@ -2216,6 +2216,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2352,6 +2353,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2406,6 +2408,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2584,6 +2587,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2638,6 +2642,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2692,6 +2697,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -84871,6 +84877,42 @@
           }
         }
       },
+      "/v1/me/chat-agents": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "List Chat Agents",
+          "description": "The agents you may chat with on any project you hold a grant on, the ones you wrote to last first.",
+          "operationId": "list_chat_agents_v1_me_chat_agents_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ChatHomeAgent"
+                    },
+                    "type": "array",
+                    "title": "Response List Chat Agents V1 Me Chat Agents Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/people/{login}": {
         "put": {
           "tags": [
@@ -102427,6 +102469,14 @@
               ],
               "title": "Avatar Sha256"
             },
+            "starters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Starters",
+              "description": "questions the chat home offers before a first message, in order"
+            },
             "is_default": {
               "type": "boolean",
               "title": "Is Default",
@@ -102517,6 +102567,7 @@
             "color",
             "icon_url",
             "avatar_sha256",
+            "starters",
             "is_default",
             "permissions",
             "restricted",
@@ -103400,6 +103451,18 @@
               "title": "Color",
               "description": "default: one picked by the handle"
             },
+            "starters": {
+              "items": {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 4,
+              "title": "Starters",
+              "description": "questions the chat home offers before a first message to the agent, in order; one line each"
+            },
             "permissions": {
               "$ref": "#/components/schemas/AgentPermissions"
             },
@@ -103473,6 +103536,26 @@
                 }
               ],
               "title": "Color"
+            },
+            "starters": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 4,
+                  "description": "questions the chat home offers before a first message to the agent, in order; one line each"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starters",
+              "description": "the starters whole, in order; [] for none"
             },
             "permissions": {
               "anyOf": [
@@ -113107,6 +113190,94 @@
             "more"
           ],
           "title": "ChatEvents"
+        },
+        "ChatHomeAgent": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "title": "Handle"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color"
+            },
+            "icon_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon Url",
+              "description": "GET of the avatar on this hub; null: draw the initial on the colour"
+            },
+            "starters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Starters",
+              "description": "questions to offer before a first message, in order"
+            },
+            "is_default": {
+              "type": "boolean",
+              "title": "Is Default",
+              "description": "the project's default agent, @<project>"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "your direct chat with the agent; null until one is opened"
+            },
+            "last_chatted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Chatted At",
+              "description": "when you last wrote in your direct chat with the agent; null when you never did"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "project",
+            "name",
+            "description",
+            "color",
+            "icon_url",
+            "starters",
+            "is_default",
+            "chat_id",
+            "last_chatted_at"
+          ],
+          "title": "ChatHomeAgent"
         },
         "ChatImageChange": {
           "properties": {

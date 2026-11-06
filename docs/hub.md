@@ -120,7 +120,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read`, `GET` and `PUT /v1/me/notification-settings` (the notices you turned off, the tier of each kind, quiet hours, time zone, the time of the summary push, Hide details) |
 | push | `GET /v1/push/config`, public: the VAPID key a browser subscribes with and which senders are on; `GET` and `POST /v1/me/push/devices`, `DELETE /v1/me/push/devices/{id}`, `POST /v1/me/push/devices/{id}/test`: your push devices, a browser's Web Push subscription, an APNs or an FCM token (`docs/notifications.md`, Push to devices) |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `PUT` and `DELETE .../label`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/me/chat-agents`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `PUT` and `DELETE .../label`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/waiting`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides, or a writer for a problem or an opportunity (`docs/plugins.md`, section Builder) |
@@ -495,7 +495,8 @@ without a grant gets the project's 404.
 A profile has a handle, unique on the hub (deleted profiles' included) and never a project's name, written
 `[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
-none; and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
+none; starters, at most 4 questions of one line and at most 120 characters each, which the chat home offers before a
+first message to the agent (`starters`, since migration 0215); and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
 `description`, and `icon_url` for the avatar.
@@ -503,7 +504,7 @@ lists. A deleted profile takes no new run. Field names follow an A2A Agent Card 
 Every project has a default profile, `@<project>`, whose handle is the project's name: the registration of a project
 creates it, and migration 0030 created one for every project before it. It allows everything and has no instructions,
 always (422 otherwise), so a run whose dispatch names no profile, which goes under it, runs as runs ran before
-profiles; its name, description, colour and avatar may change, and it is never deleted. A project cannot be registered
+profiles; its name, description, colour, starters and avatar may change, and it is never deleted. A project cannot be registered
 under the handle of another project's agent (409), since `@<name>` would name both.
 
 Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
@@ -907,6 +908,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
 | `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
 | `PUT /v1/chats/direct/{handle}`: their direct chat with the agent | | anyone (making one: writer on its project) |
+| `GET /v1/me/chat-agents`: the agents they may chat with, each with its starters, their direct chat with it and when they last wrote there; an agent deleted or without a pool of its own is left out | | anyone: the agents of the projects they may give work to, by the rules of a mention (`agent_tasking`) |
 | `GET /v1/chats/people` (`agents`, repeated): whom they may add, each with why they could not be in a chat with those agents | | anyone: the people they share a project or a chat with |
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |

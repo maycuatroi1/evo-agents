@@ -74,6 +74,7 @@ def profile_tables(metadata: MetaData, runs: Table, credential_leases: Table) ->
         Column("is_default", Boolean, nullable=False, server_default=false()),
         Column("permissions", JSONB, nullable=False),
         Column("packs", JSONB, nullable=False, server_default="[]"),  # since 0041
+        Column("starters", JSONB, nullable=False, server_default="[]"),  # since 0215: questions the chat home offers
         Column("account_pool_id", BigInteger),  # since 0191: its account pool (account_pools), NULL for none
         Column("version", Integer, nullable=False, server_default="1"),
         Column("created_by", BigInteger, nullable=False),

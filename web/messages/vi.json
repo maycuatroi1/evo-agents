@@ -3632,6 +3632,12 @@
       "nameHint": "Tên agent hiện trong run và chat.",
       "description": "Mô tả",
       "descriptionHint": "Agent dùng để làm gì.",
+      "starters": "Câu gợi ý",
+      "startersHint": "Các câu hỏi màn chat gợi ý trước tin nhắn đầu tiên gửi agent, mỗi dòng một câu: tối đa {max} câu, mỗi câu tối đa {chars} ký tự.",
+      "startersProblems": {
+        "tooMany": "Tối đa {max} câu gợi ý.",
+        "long": "Mỗi câu gợi ý tối đa {max} ký tự."
+      },
       "optional": "(không bắt buộc)",
       "chars": "{count} trên {max} ký tự.",
       "instructions": "Chỉ dẫn",
@@ -3820,7 +3826,8 @@
           "model": "model",
           "runtime": "runtime",
           "environment": "môi trường",
-          "packs": "các gói agent"
+          "packs": "các gói agent",
+          "starters": "câu gợi ý"
         }
       },
       "delete": {

@@ -17,6 +17,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     color: "#7c3aed",
     icon_url: null,
     avatar_sha256: null,
+    starters: [],
     is_default: false,
     home_pool: null,
     account_pool: null,
@@ -97,6 +98,26 @@ describe("what the form sends", () => {
     expect(editBody(draft, current)).toBeNull();
     draft.description = "The demo project's own.";
     expect(editBody(draft, current)).toEqual({ description: "The demo project's own.", if_version: 3 });
+  });
+
+  it("sends the starters, one a line, of any agent, the default one too, and checks their count and length", () => {
+    const current = agent({ handle: "demo", is_default: true, permissions: {}, restricted: [], instructions: "", starters: ["What runs today?"] });
+    const draft = draftOf(current);
+    expect(draft.starters).toBe("What runs today?");
+    expect(editBody(draft, current)).toBeNull();
+    draft.starters = "  What runs today?  \n\nWho owns the deploy?\n";
+    expect(editBody(draft, current)).toEqual({ starters: ["What runs today?", "Who owns the deploy?"], if_version: 3 });
+    draft.starters = "";
+    expect(editBody(draft, current)).toEqual({ starters: [], if_version: 3 });
+    expect(createBody({ ...emptyDraft(), handle: "helper", name: "Helper", starters: "Hi\n" }).starters).toEqual(["Hi"]);
+    expect(createBody({ ...emptyDraft(), handle: "helper", name: "Helper" })).not.toHaveProperty("starters");
+    const checked = (starters: string) => draftProblems({ ...emptyDraft(), handle: "helper", name: "Helper", starters }, { creating: true, projects: [] }).starters;
+    expect(checked("a\nb\nc\nd")).toBeUndefined();
+    expect(checked("a\nb\nc\nd\ne")).toBe("tooMany");
+    expect(checked("x".repeat(121))).toBe("long");
+    expect(checked("x".repeat(120))).toBeUndefined();
+    expect(versionChanges({ starters: ["Hi"] }, {})).toEqual(["starters"]);
+    expect(versionChanges({ starters: [] }, {})).toEqual([]);
   });
 
   it("takes a PNG, JPEG or WebP image up to 512 KiB, and sends its bytes in base64", async () => {

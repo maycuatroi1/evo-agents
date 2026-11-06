@@ -7,12 +7,14 @@ editing and deleting a profile, and its avatar, need the admin role on the proje
 
 A handle is unique on the hub, deleted profiles' included, and may not be the name of a project (409): @<project> is
 that project's default profile, which the registration of the project created and which can never be deleted; its
-permissions stay all and its instructions empty (422), while its name, description, colour and avatar may change. A
-handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a version of its
-plugin (``agent_packs.pinned``; the default profile attaches none). Every edit that changes something, the avatar and
-the packs included, raises the version by one and writes the version row; PATCH with ``if_version`` other than the version now is 409, nothing changed. Deleting sets
-``deleted_at``: the profile takes no new run, and reads as before; its accounts
-(``evo_agents.hub.server.agent_accounts``) are deleted in the same transaction.
+permissions stay all and its instructions empty (422), while its name, description, colour, starters and avatar may
+change. A handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a
+version of its plugin (``agent_packs.pinned``; the default profile attaches none). Its starters are at most
+``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chat_home``). Every edit that
+changes something, the avatar and the packs included, raises the version by one and writes the version row; PATCH with
+``if_version`` other than the version now is 409, nothing changed. Deleting sets ``deleted_at``: the profile takes no
+new run, and reads as before; its accounts (``evo_agents.hub.server.agent_accounts``) are deleted in the same
+transaction.
 
 The avatar is a PNG, JPEG or WebP image of at most AVATAR_MAX_BYTES, sent as base64 in JSON and checked by its first
 bytes. The hub stores it in the blob store as a blob of kind agent-avatar that the project holds, and serves it back
@@ -34,7 +36,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -134,6 +136,17 @@ DisplayName = Annotated[str, Field(min_length=1, max_length=profiles.MAX_NAME_CH
 Description = Annotated[str, Field(max_length=profiles.MAX_DESCRIPTION_CHARS)]
 Instructions = Annotated[str, Field(max_length=profiles.MAX_INSTRUCTIONS_CHARS)]
 Color = Annotated[str, Field(pattern=profiles.COLOR_PATTERN, description="#rrggbb, lowercase")]
+Starter = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=profiles.MAX_STARTER_CHARS, pattern=PRINTABLE),
+]
+Starters = Annotated[
+    list[Starter],
+    Field(
+        max_length=profiles.MAX_STARTERS,
+        description="questions the chat home offers before a first message to the agent, in order; one line each",
+    ),
+]
 
 
 class AgentCreate(BaseModel):
@@ -144,6 +157,7 @@ class AgentCreate(BaseModel):
     description: Description = ""
     instructions: Instructions = Field("", description="added to the system prompt of the profile's runs")
     color: Color | None = Field(None, description="default: one picked by the handle")
+    starters: Starters = Field(default_factory=list)
     permissions: AgentPermissions = Field(default_factory=AgentPermissions)
     packs: Pins = Field(
         default_factory=list, description="the agent packs it attaches, in order; see GET .../agent-packs"
@@ -159,6 +173,7 @@ class AgentEdit(BaseModel):
     description: Description | None = None
     instructions: Instructions | None = None
     color: Color | None = None
+    starters: Starters | None = Field(None, description="the starters whole, in order; [] for none")
     permissions: AgentPermissions | None = Field(None, description="the eight axes whole; an axis left out allows all")
     packs: Pins | None = Field(None, description="the agent packs it attaches, whole, in order; [] for none")
     if_version: int | None = Field(None, ge=1, description="409 unless the profile is at this version now")
@@ -194,6 +209,7 @@ class Agent(BaseModel):
     color: str
     icon_url: str | None = Field(description="GET of the avatar on this hub; null: draw the initial on the colour")
     avatar_sha256: str | None
+    starters: list[str] = Field(description="questions the chat home offers before a first message, in order")
     is_default: bool = Field(description="the project's default profile, @<project>: every permission")
     permissions: AgentPermissions
     restricted: list[str] = Field(description="the axes that are allowlists, in the order of the eight")
@@ -235,6 +251,7 @@ def agent_view(profile: Profile) -> Agent:
         color=profile.color,
         icon_url=icon_url(profile),
         avatar_sha256=profile.avatar_sha256,
+        starters=list(profile.starters or ()),
         is_default=profile.is_default,
         permissions=AgentPermissions.model_validate(profile.permissions),
         restricted=profiles.restricted_axes(profile.permissions),
@@ -361,6 +378,7 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         "instructions": body.instructions,
         "color": body.color or profiles.default_color(body.handle),
         "avatar_sha256": None,
+        "starters": body.starters,
         "is_default": False,
         "permissions": body.permissions.stored(),
     }

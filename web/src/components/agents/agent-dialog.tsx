@@ -13,7 +13,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type Agent, AXES } from "@/lib/agents";
-import { MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS } from "@/lib/agent-rules";
+import { MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS, MAX_STARTER_CHARS, MAX_STARTERS } from "@/lib/agent-rules";
 import { fileBase64 } from "@/lib/avatars";
 import { browserApi } from "@/lib/api/browser";
 
@@ -36,7 +36,8 @@ type Props = {
 
 /**
  * New agent and Edit agent, for an admin of the project (web/DESIGN.md, Agents): who the agent is (handle, creating
- * only, since it never changes; name, description, colour, and creating, an avatar) and, for any agent but the
+ * only, since it never changes; name, description, colour, the starters the chat home offers, and creating, an
+ * avatar) and, for any agent but the
  * project's default, its instructions, its eight axes and the agent packs it attaches. The form repeats the hub's
  * checks and shows them once the admin tries to save; an edit sends only what changed, against the version it opened
  * on. The content mounts each time the dialog opens, so it starts from the agent as the hub holds it.
@@ -223,6 +224,27 @@ function AgentForm({
         </Field>
 
         <ColourField value={draft.color} onChange={(color) => set({ color })} allowAuto={creating} disabled={pending} />
+
+        <Field
+          label={t("starters")}
+          optional={t("optional")}
+          hint={t("startersHint", { max: format.number(MAX_STARTERS), chars: format.number(MAX_STARTER_CHARS) })}
+          error={shown.starters ? t(`startersProblems.${shown.starters}`, { max: format.number(shown.starters === "long" ? MAX_STARTER_CHARS : MAX_STARTERS) }) : null}
+          testId="agent-starters"
+        >
+          {({ id, describedBy, invalid }) => (
+            <Textarea
+              id={id}
+              value={draft.starters}
+              rows={3}
+              onChange={(event) => set({ starters: event.target.value })}
+              aria-invalid={invalid || undefined}
+              aria-describedby={describedBy || undefined}
+              className="max-h-40"
+              data-testid="agent-starters-input"
+            />
+          )}
+        </Field>
 
         {creating ? (
           <div className="flex min-w-0 flex-col gap-2" data-testid="agent-avatar-field">
