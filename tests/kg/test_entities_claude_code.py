@@ -238,16 +238,14 @@ def test_a_command_that_asks_to_stop_halts_the_step(tmp_path, kg_env):
 def test_in_a_run_claude_takes_the_pool_login_from_the_run_socket_when_the_shell_lacks_it(fake_claude, monkeypatch):
     """Claude Code keeps CLAUDE_CODE_OAUTH_TOKEN out of its tools' shells, so `hub kg entities` run by an agent asks
     the run's socket for the lease; only the login is taken, and outside a run nothing is asked."""
-    from evo_agents.worker import credential_commands
-
     calls, _ = fake_claude
     asked = []
 
-    def lease_env(run_id, home=None, environ=None):
+    def lease_env(run_id, environ):
         asked.append(run_id)
         return {claude_code.LOGIN_VARIABLE: OAUTH, "GITLAB_TOKEN": "glpat-" + "g" * 20}
 
-    monkeypatch.setattr(credential_commands, "lease_env", lease_env)
+    monkeypatch.setattr(claude_code, "_lease_env", lease_env)
     monkeypatch.delenv(claude_code.LOGIN_VARIABLE)
     monkeypatch.setenv(claude_code.RUN_VARIABLE, "822")
     got = claude_code.answer(REQUEST)
@@ -260,8 +258,35 @@ def test_in_a_run_claude_takes_the_pool_login_from_the_run_socket_when_the_shell
     assert claude_code.run_login({claude_code.RUN_VARIABLE: "822", claude_code.LOGIN_VARIABLE: OAUTH}) == {}
     assert claude_code.run_login({}) == {} and claude_code.run_login({claude_code.RUN_VARIABLE: "x"}) == {}
     assert asked == [], "a shell with the login, or no run, asks no socket"
-    monkeypatch.setattr(credential_commands, "lease_env", lambda *a, **k: None)
+    monkeypatch.setattr(claude_code, "_lease_env", lambda *a, **k: None)
     assert claude_code.run_login({claude_code.RUN_VARIABLE: "822"}) == {}
+    monkeypatch.setattr(claude_code, "_lease_env", None)
+    assert claude_code.run_login({claude_code.RUN_VARIABLE: "822"}) == {}, "no lookup set: nothing is asked"
+
+
+def test_the_command_line_hands_the_knowledge_graph_the_workers_lease_lookup(monkeypatch):
+    """kg imports no worker: evo_agents.cli sets the lookup run_login asks a run's socket with."""
+    from evo_agents import cli
+    from evo_agents.worker import credential_commands
+
+    asked = []
+    monkeypatch.setattr(claude_code, "_lease_env", None)
+    monkeypatch.setattr(
+        credential_commands, "lease_env", lambda run_id, home=None, environ=None: asked.append(run_id) or {}
+    )
+    monkeypatch.setattr(cli, "build_parser", lambda: _parser_of(lambda args: 0))
+    assert cli.main(["noop"]) == 0
+    assert claude_code._lease_env is cli._run_lease_env
+    assert claude_code.run_login({claude_code.RUN_VARIABLE: "9"}) == {} and asked == [9]
+
+
+def _parser_of(func):
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("group")
+    parser.set_defaults(func=func)
+    return parser
 
 
 def test_the_lease_env_of_a_run_is_what_its_socket_answers_and_print_env_exports_it(monkeypatch):
