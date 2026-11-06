@@ -534,6 +534,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_bridges,
         chat_direct,
         chat_events,
+        chat_home,
         chat_images,
         chat_labels,
         chat_members,
@@ -617,6 +618,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,
         chat_direct.router,
+        chat_home.router,  # the agents a member may chat with, for the chat home of the web
         chat_members.router,
         chat_images.router,
         chat_labels.router,

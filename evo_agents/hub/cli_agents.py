@@ -48,6 +48,7 @@ AGENT_KEYS = (
     "color",
     "icon_url",
     "avatar_sha256",
+    "starters",
     "is_default",
     "permissions",
     "restricted",

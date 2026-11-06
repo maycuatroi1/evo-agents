@@ -3632,6 +3632,12 @@
       "nameHint": "How the agent shows in runs and chats.",
       "description": "Description",
       "descriptionHint": "What the agent is for.",
+      "starters": "Starters",
+      "startersHint": "Questions the chat home offers before a first message to the agent, one a line: at most {max}, each of at most {chars} characters.",
+      "startersProblems": {
+        "tooMany": "At most {max} starters.",
+        "long": "Each starter has at most {max} characters."
+      },
       "optional": "(optional)",
       "chars": "{count} of {max} characters.",
       "instructions": "Instructions",
@@ -3820,7 +3826,8 @@
           "model": "models",
           "runtime": "runtimes",
           "environment": "environments",
-          "packs": "agent packs"
+          "packs": "agent packs",
+          "starters": "starters"
         }
       },
       "delete": {

@@ -9824,6 +9824,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/chat-agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat Agents
+         * @description The agents you may chat with on any project you hold a grant on, the ones you wrote to last first.
+         */
+        get: operations["list_chat_agents_v1_me_chat_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/people/{login}": {
         parameters: {
             query?: never;
@@ -13403,6 +13423,11 @@ export interface components {
             /** Avatar Sha256 */
             avatar_sha256: string | null;
             /**
+             * Starters
+             * @description questions the chat home offers before a first message, in order
+             */
+            starters: string[];
+            /**
              * Is Default
              * @description the project's default profile, @<project>: every permission
              */
@@ -13813,6 +13838,11 @@ export interface components {
              * @description default: one picked by the handle
              */
             color?: string | null;
+            /**
+             * Starters
+             * @description questions the chat home offers before a first message to the agent, in order; one line each
+             */
+            starters?: string[];
             permissions?: components["schemas"]["AgentPermissions"];
             /**
              * Packs
@@ -13833,6 +13863,11 @@ export interface components {
             instructions?: string | null;
             /** Color */
             color?: string | null;
+            /**
+             * Starters
+             * @description the starters whole, in order; [] for none
+             */
+            starters?: string[] | null;
             /** @description the eight axes whole; an axis left out allows all */
             permissions?: components["schemas"]["AgentPermissions"] | null;
             /**
@@ -17961,6 +17996,44 @@ export interface components {
              */
             progress?: components["schemas"]["ChatProgress"][] | null;
         };
+        /** ChatHomeAgent */
+        ChatHomeAgent: {
+            /** Handle */
+            handle: string;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Color */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the avatar on this hub; null: draw the initial on the colour
+             */
+            icon_url: string | null;
+            /**
+             * Starters
+             * @description questions to offer before a first message, in order
+             */
+            starters: string[];
+            /**
+             * Is Default
+             * @description the project's default agent, @<project>
+             */
+            is_default: boolean;
+            /**
+             * Chat Id
+             * @description your direct chat with the agent; null until one is opened
+             */
+            chat_id: number | null;
+            /**
+             * Last Chatted At
+             * @description when you last wrote in your direct chat with the agent; null when you never did
+             */
+            last_chatted_at: string | null;
+        };
         /** ChatImageChange */
         ChatImageChange: {
             /**
@@ -19380,6 +19453,12 @@ export interface components {
              * @default false
              */
             merge_result: boolean;
+            /**
+             * Signs Passed
+             * @description a Judge of the merge queue: an admin passed gate 3 (score hacking) at the head it judges, so it weighs the signs of score hacking against the plan instead of failing the change unjudged
+             * @default false
+             */
+            signs_passed: boolean;
             /**
              * Judge Key
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
@@ -27553,6 +27632,12 @@ export interface components {
              * @description a merge check's: the paths where merging the base into the head conflicts; null when it merged
              */
             conflicts?: string[] | null;
+            /**
+             * Signs Weighed
+             * @description the Judge weighed the signs of score hacking against the plan (judge.WEIGH_SIGNS) instead of the signs failing the change unjudged: a merge check's Judge, or the queue's when its claim said signs_passed
+             * @default false
+             */
+            signs_weighed: boolean;
         };
         /** MergedAnswer */
         MergedAnswer: {
@@ -83045,6 +83130,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chat_agents_v1_me_chat_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatHomeAgent"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
