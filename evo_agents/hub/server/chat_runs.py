@@ -645,7 +645,9 @@ async def post_agent(
     """Store a message of agent ``profile`` of run ``run_id`` in ``chat``, in the thread of ``root_id``; (its id, its
     mentions). A person it mentions gets the notice. The agent ``target`` names gets the work ``hand`` asks
     (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL). The agent naming itself ("I am
-    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing. The message
+    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing. An agent the run's
+    session asked (``agent_asks``, ``_asked``) is refused nothing either, in the chat or not: its mention names the
+    latest run asked of it, the work the agent did give it. The message
     carries the outputs of the run ``output_ids`` names and, for a chat run, those no message carries yet
     (``output_store.link_message``)."""
     from evo_agents.hub.server.chats import resolve_mentions  # its routes hand work through this module
@@ -655,7 +657,12 @@ async def post_agent(
     message_id, _ = await insert_message(
         conn, chat, body, thread_root_id=root_id, author_profile_id=profile.id, run_id=run_id
     )
+    others = any(mention["profile_id"] not in (None, profile.id) for mention in kept)
+    asked = await _asked(conn, run_id) if others else {}
     for mention in kept:
+        if mention["profile_id"] in asked and mention["name"] != target:
+            mention["run_id"], mention["refusal"] = asked[mention["profile_id"]], None
+            continue
         if mention["profile_id"] is None or mention["refusal"] is not None:
             continue
         if mention["profile_id"] == profile.id and mention["name"] != target:
@@ -670,6 +677,26 @@ async def post_agent(
     for user_id in dict.fromkeys(people):
         await notice_mention(conn, chat, user_id, message_id, body)
     return message_id, kept
+
+
+async def _asked(conn: AsyncConnection, run_id: int) -> dict[int, int]:
+    """The agents that run ``run_id`` asked, it or the parked runs it goes on from (``resume_of_run_id``), through
+    ``agent_asks``: profile id to the latest run asked of it."""
+    r = tables.runs
+    chain = select(r.c.id, r.c.resume_of_run_id).where(r.c.id == run_id).cte("asking", recursive=True)
+    earlier = r.alias("earlier")
+    chain = chain.union(
+        select(earlier.c.id, earlier.c.resume_of_run_id).join_from(
+            earlier, chain, earlier.c.id == chain.c.resume_of_run_id
+        )
+    )
+    query = (
+        select(r.c.profile_id, func.max(r.c.id))
+        .join_from(r, chain, r.c.spawned_by_run_id == chain.c.id)
+        .where(r.c.profile_id.is_not(None))
+        .group_by(r.c.profile_id)
+    )
+    return {profile_id: asked for profile_id, asked in await conn.execute(query)}
 
 
 async def _hand_on(conn: AsyncConnection, hand: Hand, profile_id: int) -> tuple[int | None, str | None]:

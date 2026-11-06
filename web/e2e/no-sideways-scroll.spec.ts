@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { createAgentByApi } from "./support/agents";
 import { ceilingOver } from "./support/autonomy";
-import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
+import { agentAnswers, chatWorker, claimChatRun, createChatByApi, openDirectByApi, sendByApi, signedInPerson, takeInbox } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
@@ -79,6 +79,9 @@ async function noSidewaysScroll(page: Page, widths: number[], visits: Visit[]) {
       await expect(page.locator("#main").getByTestId("state-loading")).toHaveCount(0);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect.soft(overflow, `${visit.path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
+      // A chat's log scrolls up and down only: the actions beside an agent's widest message stay inside it.
+      const logs = await page.locator('[data-testid="chat-log"]').evaluateAll((elements) => elements.map((element) => element.scrollWidth - element.clientWidth));
+      for (const sideways of logs) expect.soft(sideways, `the chat log of ${visit.path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
       // A plugin's page draws inside its frame, so the frame's own document must not scroll sideways either.
       for (const handle of await page.locator('#main [data-testid="plugin-frame"]').elementHandles()) {
         const inner = await handle.contentFrame();
@@ -399,8 +402,15 @@ for (const width of WIDTHS) {
     const project = me.projects[0];
     // Agents enough to fill the row at the head of the list, one with a long unbroken name: the row scrolls on its own.
     for (const index of [1, 2, 3, 4, 5, 6]) await createAgentByApi(me, project, { handle: `wide-${index}-${project}`.slice(0, 100), name: `${LONG}-${index}` });
+    // The agent answers as wide as the log allows, its actions (React, its run, Reply) beside the answer.
+    const live = await chatWorker(me, project, `wide-${width}`);
     const direct = await openDirectByApi(me, project);
-    await sendByApi(me, direct.id, `${LONG}${LONG}`);
+    const asked = await sendByApi(me, direct.id, `${LONG}${LONG}`);
+    const runId = asked.mentions[0]?.run_id;
+    if (!runId) throw new Error(`the direct message made no run: ${JSON.stringify(asked.mentions)}`);
+    await claimChatRun(live, runId);
+    await takeInbox(live, runId);
+    await agentAnswers(live, runId, `${LONG}${LONG}`);
     const mai = await signedInPerson("wide", [project]);
     const chat = await createChatByApi(me, { title: `${LONG}${LONG}`.slice(0, 120), people: [mai.login], agents: [project] });
     const root = await sendByApi(me, chat.id, `${LONG}${LONG} https://github.com/example-org/${LONG}/pull/7\n\n\`\`\`\n${LONG}${LONG}${LONG}\n\`\`\``);

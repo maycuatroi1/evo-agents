@@ -147,6 +147,44 @@ def test_delegation_parks_and_wakes_parent(client, hub, hub_db):
     assert any(item.startswith(f"@{KB_AGENT} gave no answer: run #{again['run_id']} ended failed") for item in shown)
 
 
+def test_an_agent_naming_the_agent_it_asked_is_refused_nothing(client, hub, hub_db):
+    """The asking run's own messages that name @kb-bot, before it parks and after the answer resumes it, point at the
+    run asked rather than saying @kb-bot is not in the chat; an agent it did not ask is still refused."""
+    from evo_agents.hub.server.chats import NOT_IN_CHAT
+
+    kb_project(client, hub, hub_db)
+    agent(client, hub["owner"], "kb-docs", project=KB)
+    studio = chat_worker(client, hub["owner"], "studio")
+    node = kb_node(client, hub["owner"], hub_db)
+    chat = created(client, hub["owner"])
+    mention, spec = started(client, hub, studio, chat)
+    child = ask(client, studio, spec["id"])["run_id"]
+
+    def mentions_of(text: str) -> list[tuple]:
+        (item,) = [item for item in thread(client, hub["owner"], chat["id"], mention["id"]) if item["body"] == text]
+        return [(m["name"], m["run_id"], m["refusal"]) for m in item["mentions"]]
+
+    waiting = f"I asked @{KB_AGENT}; @kb-docs may know too."
+    reply(client, studio, spec["id"], waiting)
+    refused = NOT_IN_CHAT.format(name="kb-docs")
+    assert mentions_of(waiting) == [(KB_AGENT, child, None), ("kb-docs", None, refused)]
+
+    moved(client, studio, spec["id"], "waiting")
+    recover(client)
+    assert claim(client, node)["id"] == child
+    moved(client, node, child, "running", session_id="sess-kb")
+    reply(client, node, child, "The export service signs them.")
+    ended(client, node, child)
+    r = tables.runs
+    ((resumed,),) = sql(hub_db, select(r.c.id).where(r.c.resume_of_run_id == spec["id"]))
+    assert claim(client, studio)["id"] == resumed
+    moved(client, studio, resumed, "running", session_id="sess-1")
+    answered = f"@{KB_AGENT} says the export service signs them."
+    reply(client, studio, resumed, answered)
+    assert mentions_of(answered) == [(KB_AGENT, child, None)]
+    assert len(runs_of(hub_db)) == 3  # naming it handed @kb-bot no new work
+
+
 @pytest.mark.parametrize(
     ("role", "said"),
     [
