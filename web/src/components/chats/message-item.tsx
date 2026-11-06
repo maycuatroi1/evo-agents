@@ -68,9 +68,14 @@ const InteractiveAnswer = dynamic(() => import("./interactive-answer").then((mod
   loading: () => <Skeleton className="h-[322px] w-full rounded-lg" />,
 });
 
+/**
+ * A message column leaves room on its open side for ACTIONS (three small buttons, 98 px with their gap) inside the
+ * row: 5.5rem beside one's own message, 8rem beside another's, whose face and gap take 40 px more. Less, and the actions
+ * of the widest message stick out of the chat log, which then scrolls sideways.
+ */
 const COLUMN = {
-  mine: "items-end max-w-[85%] md:max-w-[min(42rem,calc(100%-4.5rem))]",
-  theirs: "items-start max-w-[calc(100%-2.5rem)] md:max-w-[min(42rem,calc(100%-7rem))]",
+  mine: "items-end max-w-[85%] md:max-w-[min(42rem,calc(100%-5.5rem))]",
+  theirs: "items-start max-w-[calc(100%-2.5rem)] md:max-w-[min(42rem,calc(100%-8rem))]",
 };
 /** React, the message's runs and Reply from 768 px: beside the message at its top, on the side away from its face, while it has the pointer or a key. */
 const ACTIONS = {
