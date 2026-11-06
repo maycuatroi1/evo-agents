@@ -25481,6 +25481,26 @@
       ],
       "json": null
     },
+    "worker agent ask": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
     "worker ask": {
       "positionals": [],
       "options": [
@@ -86588,6 +86608,91 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/agent/asks": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask",
+          "description": "Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring).",
+          "operationId": "ask_v1_worker_runs__run_id__agent_asks_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAskIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentAsked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/chat/read": {
         "post": {
           "tags": [
@@ -102895,6 +103000,75 @@
             "created"
           ],
           "title": "AgentAccountWritten"
+        },
+        "AgentAskIn": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Handle",
+              "description": "the agent asked, of another project, @ left out"
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Body",
+              "description": "what it is asked, at most 16384 bytes of UTF-8"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "body"
+          ],
+          "title": "AgentAskIn"
+        },
+        "AgentAsked": {
+          "properties": {
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent asked; null when the hub refused"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the wait of the asking run its answer wakes; null when refused"
+            },
+            "refusal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refusal",
+              "description": "why the hub handed no work, as the thread says too"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "decision_id",
+            "refusal"
+          ],
+          "title": "AgentAsked"
         },
         "AgentAxis": {
           "properties": {
@@ -155886,6 +156060,18 @@
               ],
               "title": "Resume Of Run Id",
               "description": "the parked plan run this one goes on from, in its session"
+            },
+            "spawned_by_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Spawned By Run Id",
+              "description": "the chat run whose agent asked the agent of this one, of another project (worker agent ask); null for a run no agent asked that way"
             },
             "state": {
               "type": "string",

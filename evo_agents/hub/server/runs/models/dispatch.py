@@ -247,6 +247,11 @@ class Run(RunPlacement):
     max_attempts: int
     parent_run_id: int | None = Field(description="the run this one retries or reruns")
     resume_of_run_id: int | None = Field(description="the parked plan run this one goes on from, in its session")
+    spawned_by_run_id: int | None = Field(
+        None,
+        description="the chat run whose agent asked the agent of this one, of another project (worker agent ask); "
+        "null for a run no agent asked that way",
+    )
     state: runs.ShownState = Field(
         description="idle and ended are a local run's alone: the turn ended and the person has the word; the session "
         "is over, or went silent for a day"

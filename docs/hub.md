@@ -1000,6 +1000,53 @@ hub leaves open for its owner is told in the thread, and the agent merges it thr
 /v1/worker/runs/{id}/curator/merge` at the head the Judge passed, only when every sign of its files is one of a
 protected path and the rest of the hub's merge allows it, K5 of the chat run's principal included.
 
+## Agents across projects
+
+The agent of a chat run asks an agent of another project for work or knowledge of that project with
+`evo-agents worker agent ask HANDLE TEXT` (`evo_agents/worker/agent_ask_cli.py`), which calls
+`POST /v1/worker/runs/{id}/agent/asks` with the worker's token (`evo_agents/hub/server/agent_asks.py`). Only a chat run
+asks: a run of another kind gets 422. `worker chat mention` stays as it was, for an agent of the same chat.
+
+The hub refuses, with why, writes nothing else and says the refusal in the asking run's thread (201, `refusal` set,
+exit status 1 on the command line), when:
+
+- the person at the origin of the chain holds no grant on the target's project, or no agent has that handle: "no agent
+  @x that LOGIN can see";
+- the ask would go past hop 3 (`chat_runs.MAX_HOPS`), or the agent asks itself (`chat_runs.hop_problem`);
+- that person may not give the agent work, by the rule a mention keeps: writer on the agent's project, admin for an
+  agent type that takes work from the admins alone (`agent_tasking.task_refusal`);
+- the agent was deleted or has no pool of its own (`agent_tasking.work_home`).
+
+Who may give an agent work, and whether it takes work at all, is one module, `evo_agents/hub/server/agent_tasking.py`:
+a mention in a chat (`chat_runs.hand_work`), an ask and the list of agents a person may chat with call the same
+functions, so they never disagree.
+
+Otherwise the hub opens the origin person's direct chat with the agent asked and posts the question there as a message
+of the asking agent, which starts a thread. The run it hands is a chat run of the agent asked, on its pool,
+dispatched by the origin person, one hop further, with `runs.spawned_by_run_id` naming the asking run. Its rights are
+those of the run before it at most: it acts within the asking run's principal and autonomy snapshot
+(`run_autonomy.of_message`), so each run of a chain holds the intersection of the rights of the runs above it. It opens
+none of the asking project's repos.
+
+The asking run gets a wait (a decision of category `wait`, as `worker wait` asks, which notifies nobody), named in
+`runs.spawned_wait_id` of the run asked. The command notes the wait and tells the agent to end its turn: the run waits,
+and the reaper parks it, so it holds no worker. When the run asked ends, the hub answers the wait
+(`agent_asks.answer_asker`, from `chat_runs.chat_run_moved`) and the asking run resumes in its session with a message
+that names the decision. A run that ends `done` sends the last message of its agent in its thread, its outputs, its
+branch and repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A
+run that fails, is cancelled or is lost sends why. A run asked that goes on in a new run (a parked run resumed, an
+inbox untaken) carries both columns, so the run that really ends answers. A wait already answered, by its time (7
+days) or by a person's Go on now or Stop waiting, is left as it is.
+
+The asking run's thread shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run
+#N): TEXT" when the ask is taken, "@kb-bot: WHY" when it is refused, then "@kb-bot answered (run #N): ..." or "@kb-bot
+gave no answer: run #N ended failed: WHY". The thread shows at most 2 KiB of the answer
+(`agent_asks.ANSWER_IN_THREAD`); the agent gets it whole, within the size of a decision's answer.
+
+The prompt of a chat run names the command, the hop the run is at and its limits (`chat_runs.delegation_rule`).
+Schema 0214 adds `runs.spawned_by_run_id` (a run) and `runs.spawned_wait_id` (a decision), both null for any other run
+and set to null when what they name is deleted; the run API returns `spawned_by_run_id`. Going back drops both.
+
 ## Plans and their copies in git
 
 A harness hands its plans to the hub by naming the project in `harness.yaml`:

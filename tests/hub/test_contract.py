@@ -278,6 +278,7 @@ def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_print
 def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     printed = commands()
     assert sorted(key for key in printed if not key.startswith("hub ")) == [
+        "worker agent ask",
         "worker ask",
         "worker backup",
         "worker chat create",

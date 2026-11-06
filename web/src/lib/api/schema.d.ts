@@ -10134,6 +10134,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/agent/asks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring).
+         */
+        post: operations["ask_v1_worker_runs__run_id__agent_asks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/chat/read": {
         parameters: {
             query?: never;
@@ -13684,6 +13704,37 @@ export interface components {
              * @description false when an account of this name was replaced
              */
             created: boolean;
+        };
+        /** AgentAskIn */
+        AgentAskIn: {
+            /**
+             * Handle
+             * @description the agent asked, of another project, @ left out
+             */
+            handle: string;
+            /**
+             * Body
+             * @description what it is asked, at most 16384 bytes of UTF-8
+             */
+            body: string;
+        };
+        /** AgentAsked */
+        AgentAsked: {
+            /**
+             * Run Id
+             * @description the run of the agent asked; null when the hub refused
+             */
+            run_id: number | null;
+            /**
+             * Decision Id
+             * @description the wait of the asking run its answer wakes; null when refused
+             */
+            decision_id: number | null;
+            /**
+             * Refusal
+             * @description why the hub handed no work, as the thread says too
+             */
+            refusal: string | null;
         };
         /**
          * AgentAxis
@@ -36729,6 +36780,11 @@ export interface components {
              * @description the parked plan run this one goes on from, in its session
              */
             resume_of_run_id: number | null;
+            /**
+             * Spawned By Run Id
+             * @description the chat run whose agent asked the agent of this one, of another project (worker agent ask); null for a run no agent asked that way
+             */
+            spawned_by_run_id?: number | null;
             /**
              * State
              * @description idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day
@@ -84248,6 +84304,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatRepo"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_v1_worker_runs__run_id__agent_asks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAsked"];
                 };
             };
             /** @description Unauthorized */

@@ -518,6 +518,7 @@ def _include_member_routes(app: FastAPI) -> None:
         accounts,
         agent_account_views,
         agent_accounts,
+        agent_asks,
         agent_packs,
         agent_profiles,
         agent_provider_accounts,
@@ -623,6 +624,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_events.router,
         chat_events.stream_router,
         chat_agents.worker_router,
+        agent_asks.worker_router,  # a chat run's agent asks an agent of another project
         chat_read.worker_router,
         triage_actions.worker_router,
         curator_threads.worker_router,  # the agent of a proposal's thread answers it

@@ -32,6 +32,8 @@
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``probe add``: a review run's agent's probe of a merged change that has none (``probe_cli``).
 - ``merge-check REPO``: a plan run's agent has the hub judge its pull request at its head (``merge_check_cli``).
+- ``agent ask HANDLE TEXT``: a chat run's agent asks an agent of another project, and its run waits for the answer
+  (``agent_ask_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.

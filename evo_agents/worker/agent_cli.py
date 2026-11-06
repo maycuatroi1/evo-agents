@@ -17,6 +17,7 @@ from evo_agents.hub import credential_requests, decision_asks, proofs, runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import (
+    agent_ask_cli,
     backup_cli,
     chat_cli,
     cli_support,
@@ -70,6 +71,7 @@ AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output, ba
 AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged change
 AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull request judged at its head
 AGENT_PARSERS += (curator_cli.register_curator,)  # a proposal's thread answers the proposal
+AGENT_PARSERS += (agent_ask_cli.register_agent,)  # a chat run asks an agent of another project
 
 
 @dataclass
@@ -407,13 +409,18 @@ def noted_decision(agent: _AgentRun, answer, *, credential: bool = False) -> int
     """The id of the decision the hub answered with, noted in the run's file of decisions, which the daemon waits on;
     a credential request is noted as one, so the daemon takes the run's leases again once it is answered."""
     decision_id = answer.get("id") if isinstance(answer, dict) else None
+    return note_decision(agent.home, agent.run_id, decision_id, credential=credential)
+
+
+def note_decision(home: WorkerHome, run_id: int, decision_id, *, credential: bool = False) -> int:
+    """Note decision ``decision_id`` of run ``run_id`` in the run's file of decisions (``noted_decision``); its id."""
     if not isinstance(decision_id, int):
         raise HubError("the hub did not answer with the decision's id")
     line = {"id": decision_id, "asked_at": datetime.now(UTC).isoformat(timespec="seconds")}
     if credential:
         line[credential_requests.NOTED] = True
     noted = json.dumps(line)
-    with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:
+    with open(home.decisions_path(run_id), "a", encoding="utf-8") as handle:
         handle.write(noted + "\n")
     return decision_id
 

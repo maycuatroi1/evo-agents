@@ -40,6 +40,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server import (
     agent_placement,
+    agent_tasking,
     attachment_store,
     autonomy_hold,
     gateway_accounts,
@@ -128,9 +129,9 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
     mentioned the agent and whatever the agent type's run_as names. ``hand.on_worker`` when it is one of them and fit,
     else the node that ran the thread's last turn of the agent when it is still fit, else the one with a checkout of
     the most repos of the project, then the most free slots."""
-    home = await agent_placement.home_of(conn, hand.profile.id)
+    home, why = await agent_tasking.work_home(conn, hand.profile)
     if home is None:
-        return None, f"@{hand.profile.handle} has no pool of its own: an admin adds one (`evo-agents worker pool`)"
+        return None, why
     return await _pool_worker(conn, hand, home)
 
 
@@ -250,6 +251,7 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
 CONTINUED = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")
 CONTINUED += ("profile_id", "profile_version", "session_id", "runtime", "principal_id", "autonomy")
 CONTINUED += ("gateway_provider",)
+CONTINUED += ("spawned_by_run_id", "spawned_wait_id")  # a run another agent asked: the run that ends answers it
 
 
 def _continue_run(previous: int, values: dict):
@@ -460,18 +462,6 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     return run_id
 
 
-async def _admins_only(conn: AsyncConnection, profile_id: int) -> bool:
-    """Whether the profile ``profile_id`` is that of an agent type a version of its plugin says takes work from the
-    project's admins alone (``mentioned_by: admin``); any version the hub holds counts, so it never opens up."""
-    t, v = tables.project_agent_types, tables.plugin_versions
-    query = select(t.c.name, v.c.manifest).join_from(t, v, v.c.plugin_id == t.c.plugin_id)
-    for row in await conn.execute(query.where(t.c.profile_id == profile_id)):
-        for item in (row.manifest.get("contributes") or {}).get("agent_types") or ():
-            if item.get("name") == row.name and item.get("mentioned_by") == "admin":
-                return True
-    return False
-
-
 async def _attends(conn: AsyncConnection, hand: Hand) -> bool:
     """Whether ``hand``'s profile is the agent of its settle chat, which every member of its project wakes."""
     if hand.chat.kind != chats.SETTLE:
@@ -482,27 +472,9 @@ async def _attends(conn: AsyncConnection, hand: Hand) -> bool:
 
 
 async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
-    profile, g = hand.profile, tables.grants
-    if profile.deleted_at is not None:
-        return f"@{profile.handle} was deleted: it takes no new work"
-    query = select(g.c.role).where(g.c.user_id == hand.dispatcher_id, g.c.project_id == profile.project_id)
-    role = (await conn.execute(query)).scalar_one_or_none()
-    if role is None and await _attends(conn, hand):
-        return (
-            f"@{profile.handle} works for the members of project {profile.project} in this settle chat, and "
-            f"{hand.dispatcher} holds no grant there"
-        )
-    if not has_role(role, "writer") and not await _attends(conn, hand):
-        return (
-            f"@{profile.handle} works for the writers of project {profile.project}, and {hand.dispatcher} holds "
-            f"{role or 'no grant'} there"
-        )
-    if not has_role(role, "admin") and await _admins_only(conn, profile.id):
-        return (
-            f"@{profile.handle} takes work from the admins of project {profile.project} alone, and {hand.dispatcher} "
-            f"holds {role} there"
-        )
-    return None
+    """Why the person at the origin of ``hand`` may not give its agent work (``agent_tasking.task_refusal``)."""
+    attends = await _attends(conn, hand)
+    return await agent_tasking.task_refusal(conn, hand.profile, hand.dispatcher_id, hand.dispatcher, attends=attends)
 
 
 async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
@@ -768,7 +740,8 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     """What chat run ``run_id`` moving to ``new`` does in its chat: the chat's streams woken, since the run's progress
     under its messages changed (``chat_progress``); the agent's reaction on the message that started it, the hub's
     reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run that goes on
-    in its session with them (its id), titled by the first of them."""
+    in its session with them (its id), titled by the first of them. A run another agent's run asked that ended, and
+    goes on in no run, answers that run's wait (``agent_asks.answer_asker``)."""
     if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)
         return None
     found = await chat_run(conn, run_id)
@@ -779,12 +752,21 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     await status_reaction(conn, message_id=found.message_id, profile_id=found.profile_id, state=new)
     if new in runs.TERMINAL_STATES:  # what it sent after its last message goes under that one
         await attach_leftovers(conn, run_id)
+    profile = await _run_profile(conn, run_id) if new in runs.TERMINAL_STATES else None
     if new == "failed":
-        profile = await _run_profile(conn, run_id)
         why = found.error or "its worker gave no reason"
         await hub_reply(conn, found.chat_id, found.root_id, f"Run #{run_id} of @{profile.handle} failed: {why}")
-    if new != "done":
-        return None
+    went_on = await _go_on_untaken(conn, run_id, found) if new == "done" else None
+    if profile is not None and went_on is None:
+        from evo_agents.hub.server.agent_asks import answer_asker  # its route hands work through this module
+
+        await answer_asker(conn, run_id, new, profile.handle)
+    return went_on
+
+
+async def _go_on_untaken(conn: AsyncConnection, run_id: int, found: ChatRun) -> int | None:
+    """The run that goes on in the session of chat run ``run_id``, which ended done, with the messages of its inbox
+    untaken; None when there are none, or it has no session."""
     untaken = await _untaken(conn, run_id)
     r = tables.runs
     session = (await conn.execute(select(r.c.session_id).where(r.c.id == run_id))).one()

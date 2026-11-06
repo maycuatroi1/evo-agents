@@ -101,6 +101,7 @@ def run_select():
             r.c.max_attempts,
             r.c.parent_run_id,
             r.c.resume_of_run_id,
+            r.c.spawned_by_run_id,
             r.c.state,
             r.c.lease_expires_at,
             r.c.session_id,
