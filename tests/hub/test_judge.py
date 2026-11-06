@@ -162,6 +162,43 @@ def test_hack_an_assertion_removed_from_a_test_is_a_sign():
     assert signs_of(moved) == []  # the same assertion, written again
 
 
+def test_hack_an_assertion_rewritten_on_the_same_subject_is_no_sign():
+    # Release run #2271: the hook test read stderr too, so its assertion now decodes stdout itself.
+    rewritten = file_diff(
+        "tests/kg/test_hooks.py",
+        "-    out = json.loads(capsys.readouterr().out)",
+        "-    assert out == {",
+        "+    out, err = capsys.readouterr()",
+        '+    assert err == ""',
+        "+    assert json.loads(out) == {",
+        '         "hookSpecificOutput": {',
+        start=646,
+    )
+    assert signs_of(rewritten) == []
+    two_for_one = file_diff(
+        "tests/test_queue.py", "-    assert out == 1", "-    assert out == 1, 'again'", "+    assert int(out) == 1"
+    )
+    assert kinds(signs_of(two_for_one)) == ["assert_removed", "assert_removed"]
+
+
+@pytest.mark.parametrize(
+    "added",
+    [
+        "+    assert claim() or True == 1",  # another subject
+        "+    assert claim() == 1 or True",  # another expected side
+        "+    assert claim() != 1",  # another operator
+        "+    assert len(claim()) == 1",
+        "+    assert sorted(claim()) == 1",
+        "+    assert claim().strip() == 1",
+        "+    assert other() == 1",  # reads none of the old subject
+        "+    assert claim",  # no comparison left
+    ],
+)
+def test_hack_an_assertion_loosened_in_its_rewrite_is_still_a_sign(added):
+    found = signs_of(file_diff("tests/test_queue.py", "-    assert claim() == 1", added))
+    assert "assert_removed" in kinds(found)
+
+
 def test_hack_a_test_removed_is_a_sign():
     whole = file_diff(
         "tests/test_queue.py", "-def test_claim():", "-    assert claim()", mode="deleted file mode 100644"

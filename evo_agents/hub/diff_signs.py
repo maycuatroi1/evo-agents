@@ -193,6 +193,15 @@ SOURCE_SUFFIXES = (
 ASSERTION = re.compile(
     r"\bassert\b|\bself\.assert\w*\s*\(|\bassert\w*\s*\(|\bexpect\s*\(|\bpytest\.raises\b|\.should\b"
 )
+PY_COMPARISON = re.compile(  # a Python assertion of one comparison: what it reads, how, against what
+    r"^assert\s+(?P<subject>.+?)\s+(?P<op>==|!=|<=|>=|<|>|is\s+not|is|not\s+in|in)\s+(?P<expected>.+)$"
+)
+TOKEN = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|\d+(?:\.\d+)?|[A-Za-z_]\w*")
+# Words a rewritten assertion may not add to its subject: each can make it hold for more.
+LOOSENERS = frozenset(
+    "or not if else lambda True False None any all bool len set frozenset type sorted abs round int float str repr"
+    " min max sum lower upper casefold strip lstrip rstrip get".split()
+)
 TEST_DEFINITION = re.compile(r"^\s*(?:async\s+)?def\s+test\w*\s*\(|^\s*(?:it|test)\s*\(\s*['\"`]")
 TEST_NAME = re.compile(r"\bdef\s+test\w*")  # a Python test's name; the literals of it() and test() fold apart
 SKIP = re.compile(
@@ -388,6 +397,30 @@ def _masked(text: str) -> str:
     return NUMBER.sub("#", " ".join(text.split()))
 
 
+def _assertion_shape(text: str) -> tuple[str, str, frozenset[str]] | None:
+    """(operator, expected side, tokens of the subject) of a Python ``assert subject OP expected`` line, else None."""
+    match = PY_COMPARISON.match(" ".join(text.split()))
+    if not match:
+        return None
+    subject, op, expected = match.group("subject", "op", "expected")
+    return op, expected, frozenset(TOKEN.findall(subject))
+
+
+def _rewritten(shape: tuple[str, str, frozenset[str]] | None, rewrites: list) -> bool:
+    """True, and that rewrite used up, when an assertion the file adds keeps the removed one's operator and expected
+    side and reads all of its subject, adding no word that could loosen it (``assert out == {`` written again as
+    ``assert json.loads(out) == {``)."""
+    if shape is None:
+        return False
+    op, expected, tokens = shape
+    for index, (other_op, other_expected, other_tokens) in enumerate(rewrites):
+        added = other_tokens - tokens
+        if other_op == op and other_expected == expected and tokens <= other_tokens and not added & LOOSENERS:
+            del rewrites[index]
+            return True
+    return False
+
+
 def _removed_signs(sign, path: str, diff: FileDiff) -> None:
     """The signs of the lines ``diff`` of a test file removes, each read against what that same file adds."""
     # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
@@ -400,6 +433,11 @@ def _removed_signs(sign, path: str, diff: FileDiff) -> None:
         for _, text in diff.added
         if TEST_DEFINITION.search(text) and " ".join(text.split()) not in removed_texts
     ]
+    rewrites = [  # the assertions this file adds anew, each the rewrite of at most one it removes
+        shape
+        for _, text in diff.added
+        if " ".join(text.split()) not in removed_texts and (shape := _assertion_shape(text)) is not None
+    ]
     for number, text in diff.removed:
         flat = " ".join(text.split())
         if not flat or flat in added_texts:
@@ -408,7 +446,8 @@ def _removed_signs(sign, path: str, diff: FileDiff) -> None:
         if (asserting or TOLERANCE.search(text)) and NUMBER.search(text) and _masked(text) in added_masked:
             sign("threshold_changed", path, number, text)
         elif asserting:
-            sign("assert_removed", path, number, text)
+            if not _rewritten(_assertion_shape(text), rewrites):
+                sign("assert_removed", path, number, text)
         elif TEST_DEFINITION.search(text):
             if _definition_shape(text) in renamed:  # a test renamed, once for each definition added
                 renamed.remove(_definition_shape(text))
